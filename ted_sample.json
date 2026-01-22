@@ -1,0 +1,62 @@
+{
+  "__typename": "Video",
+  "type": {
+    "__typename": "TypeOfVideo",
+    "name": "TEDx Talk"
+  },
+  "presenterDisplayName": "Kathryn Hecht",
+  "duration": 1004,
+  "videoContext": "TEDxMinneapolis",
+  "canonicalUrl": "https://www.ted.com/talks/kathryn_hecht_how_to_raise_kids_who_can_handle_hard_things",
+  "viewedCount": 0,
+  "tedcomPercentage": null,
+  "youtubePercentage": null,
+  "podcastsPercentage": null,
+  "tedappsPercentage": null,
+  "publishedAt": "2026-01-21T15:40:34Z",
+  "topics": {
+    "__typename": "TopicConnection",
+    "nodes": [
+      {
+        "__typename": "Topic",
+        "name": "psychology"
+      },
+      {
+        "__typename": "Topic",
+        "name": "parenting"
+      },
+      {
+        "__typename": "Topic",
+        "name": "decision-making"
+      },
+      {
+        "__typename": "Topic",
+        "name": "society"
+      },
+      {
+        "__typename": "Topic",
+        "name": "kids"
+      }
+    ]
+  },
+  "id": "170292",
+  "title": "How to raise kids who can handle hard things",
+  "slug": "kathryn_hecht_how_to_raise_kids_who_can_handle_hard_things",
+  "primaryImageSet": [
+    {
+      "__typename": "PhotoSize",
+      "url": "https://talkstar-assets.s3.amazonaws.com/production/talks/talk_170292/4beb4580-88c4-4ff7-b0ac-02aea96df345/KatherynHecht_2025X-embed.jpg",
+      "aspectRatioName": "16x9"
+    },
+    {
+      "__typename": "PhotoSize",
+      "url": "https://talkstar-assets.s3.amazonaws.com/production/talks/talk_170292/6283cb7b-f10f-45c1-9048-0b10cfbf4f5c/KatherynHecht_2025X-stageshot.jpg",
+      "aspectRatioName": "4x3"
+    },
+    {
+      "__typename": "PhotoSize",
+      "url": "https://talkstar-assets.s3.amazonaws.com/production/talks/talk_170292/f71cdaf0-638d-4a26-9a42-ae22b0ed702b/KatherynHecht_2025X-1350x675.jpg",
+      "aspectRatioName": "2x1"
+    }
+  ]
+}
