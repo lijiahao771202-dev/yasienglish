@@ -58,35 +58,50 @@ export async function POST(req: Request) {
             
             Paragraph: "${text}"
 
-            You MUST analyze EVERY single sentence in the paragraph. Do not skip any sentence.
+            OBJECTIVE:
+            1. Split the paragraph into individual sentences. You MUST include EVERY sentence.
+            2. For EACH sentence, provide a natural Chinese translation.
+            3. CRITICAL: Analyze the sentence structure exhaustively. **EVERY part of the sentence must be tagged.**
+               - Identify the Main Components: Subject (主语), Predicate/Verb (谓语), Object (宾语/表语).
+               - Identify Modifiers: Adjectives/Attributives (定语), Adverbs/Adverbials (状语), Complements (补语), Appositives (同位语).
+               - Identify Connectors/Prepositions: Conjunctions (连词), Prepositions (介词).
+               - Identify Clauses: Relative Clause (定语从句), Noun Clause (名词性从句), etc.
 
-            Provide the output in the following JSON format:
+            OUTPUT FORMAT (JSON):
             {
                 "tags": ["Tag1", "Tag2"], 
-                "overview": "A brief summary of the grammatical complexity.",
+                "overview": "Brief summary",
                 "difficult_sentences": [
                     {
-                        "sentence": "The exact sentence from the text.",
-                        "structure_tags": ["Relative Clause", "Passive Voice"],
-                        "translation": "Natural Chinese translation.",
+                        "sentence": "Exact substring from text",
+                        "translation": "Chinese translation",
                         "highlights": [
                             {
-                                "substring": "which tracked...", 
-                                "type": "Relative Clause", 
-                                "explanation": "Explanation for this specific part",
-                                "segment_translation": "Direct translation of this segment"
+                                "substring": "exact substring",
+                                "type": "主语",
+                                "explanation": "Explanation",
+                                "segment_translation": "Translation"
+                            },
+                            {
+                                "substring": "exact substring",
+                                "type": "定语",
+                                "explanation": "Explanation",
+                                "segment_translation": "Translation"
                             }
+                            // ... Ensure the UNION of all 'substring's covers the entire sentence as much as possible.
                         ]
                     }
                 ]
             }
             
             IMPORTANT: 
-            1. Return an entry for EVERY sentence.
-            2. 'type' in 'highlights' MUST be in Simplified Chinese (e.g., '定语从句', '谓语动词').
-            3. **CRITICAL**: In 'highlights', you MUST identify and tag the CORE components: "主语" (Subject), "谓语" (Predicate/Verb), and "宾语" (Object).
-            4. **CRITICAL**: 'explanation' should be detailed and educational. Don't just say "This is an appositive". Say "Appositive, explaining that dendritic spines are tiny protrusions... (同位语，进一步解释dendritic spines是...)". It must explain the FUNCTION and MEANING relation.
-            5. Do NOT include 'sentence_tree' or detailed 'analysis_results' in this mode.
+            1. The "difficult_sentences" array MUST contain ALL sentences in the paragraph, in order.
+            2. "sentence" MUST be an EXACT substring of the original text.
+            3. **FULL COVERAGE**: Try to assign a tag to every significant chunk of the sentence. Do not leave large gaps.
+            4. **HIERARCHY**: If a phrase is a "Clause", tag the whole clause. Inside it, you can optionally tag sub-components if relevant, but prioritization is:
+               - Top level structure (e.g., Main Clause, Dependent Clause) FIRST.
+               - OR: Constituent parts (Subject, Verb, Object) covering the whole text.
+            5. "type" MUST be in Simplified Chinese.
             `;
         }
 

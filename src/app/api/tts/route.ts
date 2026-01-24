@@ -28,7 +28,7 @@ export async function POST(req: Request) {
         await tts.synthesize(text, voice, {
             outputFormat: "audio-24khz-48kbitrate-mono-mp3"
         });
-        
+
         step = "Getting Buffer";
         // Get the buffer directly from the instance
         const audioBuffer = tts.toBuffer();
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
             throw new Error("Generated audio buffer is empty");
         }
 
-        return new NextResponse(audioBuffer, {
+        return new NextResponse(new Uint8Array(audioBuffer), {
             headers: {
                 "Content-Type": "audio/mpeg",
                 "Content-Length": audioBuffer.length.toString(),

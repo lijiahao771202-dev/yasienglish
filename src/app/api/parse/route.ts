@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Readability } from "@mozilla/readability";
 import { JSDOM } from "jsdom";
+import { YoutubeTranscript } from "youtube-transcript";
 
 export async function POST(req: Request) {
     try {
@@ -66,6 +67,80 @@ export async function POST(req: Request) {
 
         console.log("Initial URL:", url);
         console.log("Final URL:", finalUrl);
+
+        // Special handling for YouTube (TED Feed or Direct)
+        if (finalUrl.includes('youtube.com') || finalUrl.includes('youtu.be')) {
+            console.log("YouTube URL detected:", finalUrl);
+            let videoId = "";
+            try {
+                if (finalUrl.includes("v=")) {
+                    videoId = finalUrl.split("v=")[1].split("&")[0];
+                } else if (finalUrl.includes("youtu.be/")) {
+                    videoId = finalUrl.split("youtu.be/")[1].split("?")[0];
+                }
+            } catch (e) {
+                console.error("Failed to extract video ID");
+            }
+
+            if (videoId) {
+                try {
+                    const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+
+                    // Helper: Decode HTML entities in text
+                    const decodeHtml = (html: string) => {
+                        // Simple naive decoder or use he/jsdom
+                        return html.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+                    };
+
+                    // Group transcript lines into paragraphs (e.g., every 15 seconds or by gap)
+                    // Simple approach: Group chunks of ~5 lines
+                    const blocks: any[] = [];
+                    const CHUNK_SIZE = 5;
+
+                    for (let i = 0; i < transcript.length; i += CHUNK_SIZE) {
+                        const chunk = transcript.slice(i, i + CHUNK_SIZE);
+                        const text = chunk.map(c => decodeHtml(c.text)).join(' ');
+                        const startTime = chunk[0].offset / 1000; // ms to s
+                        const endTime = (chunk[chunk.length - 1].offset + chunk[chunk.length - 1].duration) / 1000;
+
+                        blocks.push({
+                            type: 'paragraph',
+                            content: text,
+                            startTime: startTime,
+                            endTime: endTime
+                        });
+                    }
+
+                    const fullText = blocks.map(b => b.content).join(' ');
+
+                    // Fetch metadata (title, etc) via oEmbed as fallback if not provided
+                    let title = "YouTube Video";
+                    let author = "YouTube";
+
+                    try {
+                        const oembed = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`).then(r => r.json());
+                        title = oembed.title || title;
+                        author = oembed.author_name || author;
+                    } catch (e) { console.warn("oEmbed failed", e); }
+
+                    return NextResponse.json({
+                        title: title,
+                        content: blocks.map((b: any) => `<p>${b.content}</p>`).join(''),
+                        textContent: fullText,
+                        blocks: blocks,
+                        videoUrl: `https://www.youtube.com/embed/${videoId}`,
+                        excerpt: fullText.substring(0, 150) + "...",
+                        byline: author,
+                        siteName: "YouTube",
+                        url: finalUrl
+                    });
+
+                } catch (e) {
+                    console.error("YouTube transcript fetch failed:", e);
+                    // Fallthrough to standard parsing if transcript fails (though likely won't work well for YT)
+                }
+            }
+        }
 
         // Special handling for TED Talks
         if (finalUrl.includes('ted.com/talks')) {

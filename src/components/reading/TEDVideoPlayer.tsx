@@ -31,8 +31,8 @@ const TEDVideoPlayer = forwardRef<TEDVideoPlayerRef, TEDVideoPlayerProps>(
                     className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-red-600/20 to-red-500/10 border-b border-white/10 hover:bg-red-600/30 transition-colors"
                 >
                     <span className="text-sm font-medium text-white/90 flex items-center gap-2">
-                        <span className="w-6 h-4 bg-red-600 rounded text-[10px] font-bold flex items-center justify-center">TED</span>
-                        视频播放器
+                        <span className="w-6 h-4 bg-red-600 rounded text-[10px] font-bold flex items-center justify-center">Play</span>
+                        Video Player
                     </span>
                     {isCollapsed ? <ChevronDown className="w-4 h-4 text-white/60" /> : <ChevronUp className="w-4 h-4 text-white/60" />}
                 </button>
@@ -51,7 +51,7 @@ const TEDVideoPlayer = forwardRef<TEDVideoPlayerRef, TEDVideoPlayerProps>(
                     </div>
                     <div className="px-4 py-2 bg-black/20 border-t border-white/5">
                         <p className="text-xs text-white/40 text-center">
-                            TED 官方播放器不支持字幕同步高亮
+                            Supports Timestamp Sync (YouTube)
                         </p>
                     </div>
                 </div>

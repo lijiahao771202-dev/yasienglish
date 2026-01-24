@@ -27,6 +27,12 @@ const FEEDS = {
         { name: "Hugging Face", url: "https://hf.co/blog/feed.xml" },
         { name: "LangChain", url: "https://blog.langchain.dev/rss/" },
         { name: "Arxiv CS.AI", url: "https://rss.arxiv.org/rss/cs.AI" },
+        { name: "LangChain", url: "https://blog.langchain.dev/rss/" },
+        { name: "Arxiv CS.AI", url: "https://rss.arxiv.org/rss/cs.AI" },
+    ],
+    ted: [
+        // Official TED YouTube Channel RSS
+        { name: "TED Talks", url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCAuUUnT6oDeKwE6v1NGQxug" }
     ]
 };
 
@@ -48,24 +54,39 @@ export async function GET(req: Request) {
         const feedPromises = sources.map(async (source) => {
             try {
                 const feed = await parser.parseURL(source.url);
-                return feed.items.slice(0, 5).map((item: any) => {
+                return feed.items.slice(0, 10).map((item: any) => {
                     // Extract image
                     let image = null;
-                    if (item.enclosure && item.enclosure.url && item.enclosure.type?.startsWith('image')) {
-                        image = item.enclosure.url;
-                    } else if (item['media:content'] && item['media:content'].$ && item['media:content'].$.url) {
-                        image = item['media:content'].$.url;
-                    } else if (item['media:thumbnail'] && item['media:thumbnail'].$ && item['media:thumbnail'].$.url) {
-                        image = item['media:thumbnail'].$.url;
-                    } else if (item.content) {
-                        const imgMatch = item.content.match(/<img[^>]+src="([^">]+)"/);
-                        if (imgMatch) {
-                            image = imgMatch[1];
+                    let videoId = null;
+
+                    // YouTube Specific Parsing
+                    if (source.url.includes('youtube.com')) {
+                        // YouTube RSS usually puts video ID in yt:videoId
+                        // rss-parser might put it in item['yt:videoId'] or item.id
+                        // Thumbnail usually in media:group -> media:thumbnail
+                        const ytMedia = item['media:group'];
+                        if (ytMedia) {
+                            image = ytMedia['media:thumbnail']?.[0]?.$.url;
                         }
-                    } else if (item.description) {
-                        const imgMatch = item.description.match(/<img[^>]+src="([^">]+)"/);
-                        if (imgMatch) {
-                            image = imgMatch[1];
+                        videoId = item['yt:videoId'];
+                    } else {
+                        // Standard RSS Image Extraction
+                        if (item.enclosure && item.enclosure.url && item.enclosure.type?.startsWith('image')) {
+                            image = item.enclosure.url;
+                        } else if (item['media:content'] && item['media:content'].$ && item['media:content'].$.url) {
+                            image = item['media:content'].$.url;
+                        } else if (item['media:thumbnail'] && item['media:thumbnail'].$ && item['media:thumbnail'].$.url) {
+                            image = item['media:thumbnail'].$.url;
+                        } else if (item.content) {
+                            const imgMatch = item.content.match(/<img[^>]+src="([^">]+)"/);
+                            if (imgMatch) {
+                                image = imgMatch[1];
+                            }
+                        } else if (item.description) {
+                            const imgMatch = item.description.match(/<img[^>]+src="([^">]+)"/);
+                            if (imgMatch) {
+                                image = imgMatch[1];
+                            }
                         }
                     }
 
@@ -75,7 +96,11 @@ export async function GET(req: Request) {
                         pubDate: item.pubDate,
                         source: source.name,
                         snippet: item.contentSnippet || item.content,
-                        image: image
+                        image: image,
+                        // TED/YouTube Specifics
+                        duration: item.itunes?.duration,
+                        speaker: item.author, // YouTube uses 'author'
+                        videoId: videoId
                     };
                 });
             } catch (err) {

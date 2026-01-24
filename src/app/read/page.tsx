@@ -7,7 +7,7 @@ import { AudioPlayer } from "@/components/shadowing/AudioPlayer";
 import { WritingEditor } from "@/components/writing/WritingEditor";
 import { RecommendedArticles, ArticleItem } from "@/components/reading/RecommendedArticles";
 import { ArticleSidebar } from "@/components/reading/ArticleSidebar";
-import { PenTool, ArrowLeft, Palette, Check, Edit3 } from "lucide-react";
+import { PenTool, ArrowLeft, Palette, Check, Edit3, Flashlight, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import axios from "axios";
 import { useUserStore } from "@/lib/store";
@@ -24,47 +24,45 @@ interface ArticleData {
     videoUrl?: string; // TED video URL
 }
 
-export default function ReadingPage() {
+
+import { ReadingSettingsProvider, useReadingSettings, READING_THEMES } from "@/contexts/ReadingSettingsContext";
+import { AppearanceMenu } from "@/components/reading/AppearanceMenu";
+
+function ReadingPageContent() {
     const [isLoading, setIsLoading] = useState(false);
     const [article, setArticle] = useState<ArticleData | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isWritingMode, setIsWritingMode] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
-    const { loadUserData } = useUserStore();
+    const { loadUserData, markArticleAsRead } = useUserStore();
 
-    // Theme State
-    const [theme, setTheme] = useState('warm');
+    // Context Settings
+    const { theme, fontClass, fontSizeClass, isFocusMode, toggleFocusMode, isBionicMode, toggleBionicMode } = useReadingSettings();
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
 
-    const themes = [
-        { id: 'warm', name: 'Warm Paper', class: 'bg-gradient-to-br from-orange-50 via-white to-rose-50', dot: 'bg-orange-300' },
-        { 
-            id: 'sunlight', 
-            name: 'Morning Sun', 
-            // Simplified high-contrast gradients for better browser compatibility and visibility
-            class: 'bg-[#F2EFE9] bg-[radial-gradient(circle_at_90%_10%,_rgba(255,255,255,1)_0%,_rgba(255,250,235,0.8)_30%,_rgba(235,230,220,0)_60%)]', 
-            dot: 'bg-amber-400' 
-        },
-        { 
-            id: 'vintage', 
-            name: 'Aged Book', 
-            class: 'bg-[#EBE5D9] bg-[linear-gradient(135deg,_rgba(0,0,0,0.02)_25%,_transparent_25%,_transparent_50%,_rgba(0,0,0,0.02)_50%,_rgba(0,0,0,0.02)_75%,_transparent_75%,_transparent_100%)] bg-[length:4px_4px]', 
-            dot: 'bg-stone-400' 
-        },
-        { id: 'green', name: 'Eye Care', class: 'bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50', dot: 'bg-emerald-300' },
-        { id: 'cool', name: 'Cool Mist', class: 'bg-gradient-to-br from-slate-50 via-blue-50 to-sky-50', dot: 'bg-blue-300' },
-        { id: 'mono', name: 'Minimal', class: 'bg-gradient-to-br from-stone-50 via-white to-stone-100', dot: 'bg-stone-300' },
-    ];
+    // Scroll Progress
+    const [scrollProgress, setScrollProgress] = useState(0);
+
+    useEffect(() => {
+        const handleScroll = () => {
+            const totalScroll = document.documentElement.scrollTop;
+            const windowHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+            const scroll = `${totalScroll / windowHeight}`;
+            setScrollProgress(Number(scroll));
+        }
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
 
     // Load user data (history, vocab, read status) from DB on mount
     useEffect(() => {
         loadUserData();
-        
+
         const checkDailyArticle = async () => {
             const { db } = await import("@/lib/db");
             const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
             const lastFetchDate = localStorage.getItem('last_daily_fetch_date');
-            
+
             // 1. Try to restore last reading session first
             const lastArticle = await db.articles.orderBy('timestamp').last();
             if (lastArticle && !article) {
@@ -88,8 +86,14 @@ export default function ReadingPage() {
                     // Fetch feed list
                     const feedRes = await axios.get('/api/feed?category=news');
                     if (feedRes.data && feedRes.data.length > 0) {
-                        const dailyUrl = feedRes.data[0].url;
-                        
+                        // FIX: Use .link or .url depending on feed structure (API returns .link)
+                        const dailyUrl = feedRes.data[0].link || feedRes.data[0].url;
+
+                        if (!dailyUrl) {
+                            console.error("Daily article missing URL", feedRes.data[0]);
+                            return;
+                        }
+
                         // Check if we already have it
                         const existing = await db.articles.get({ url: dailyUrl });
                         if (!existing) {
@@ -97,7 +101,7 @@ export default function ReadingPage() {
                             // Download and cache
                             const parseRes = await axios.post("/api/parse", { url: dailyUrl });
                             const articleData = { ...parseRes.data, url: dailyUrl };
-                            
+
                             await db.articles.put({
                                 url: dailyUrl,
                                 title: articleData.title,
@@ -108,7 +112,7 @@ export default function ReadingPage() {
                                 blocks: articleData.blocks,
                                 timestamp: Date.now()
                             });
-                            
+
                             console.log("Daily article saved.");
                         }
                     }
@@ -136,7 +140,7 @@ export default function ReadingPage() {
             // Check cache first
             const { db } = await import("@/lib/db");
             const cached = await db.articles.get({ url });
-            
+
             if (cached) {
                 console.log("Loaded from cache:", cached.title);
                 setArticle({
@@ -148,9 +152,10 @@ export default function ReadingPage() {
                     blocks: cached.blocks,
                     url: cached.url
                 });
-                
+
                 // Update timestamp
                 db.articles.update([cached.url, cached.title, cached.timestamp], { timestamp: Date.now() });
+                markArticleAsRead(cached.url);
                 setIsLoading(false);
                 return;
             }
@@ -158,9 +163,10 @@ export default function ReadingPage() {
             const response = await axios.post("/api/parse", { url });
             const finalUrl = response.data.url || url;
             console.log('Setting article with URL:', finalUrl);
-            
+
             const articleData = { ...response.data, url: finalUrl };
             setArticle(articleData);
+            markArticleAsRead(finalUrl);
 
             // Cache it
             await db.articles.put({
@@ -189,7 +195,8 @@ export default function ReadingPage() {
     return (
         <main className={cn(
             "min-h-screen text-stone-800 p-6 md:p-12 transition-all duration-500 ease-in-out",
-            themes.find(t => t.id === theme)?.class,
+            READING_THEMES.find(t => t.id === theme)?.class,
+            fontClass, // Apply Font Global
             isSidebarOpen ? "md:pl-96" : ""
         )}>
             {/* Sidebar */}
@@ -201,100 +208,155 @@ export default function ReadingPage() {
                 setIsOpen={setIsSidebarOpen}
             />
 
-            {/* Navbar Placeholder */}
-            <nav className={cn(
-                "fixed top-0 left-0 w-full p-6 flex justify-between items-center z-30 pointer-events-none transition-all duration-500",
-                isSidebarOpen ? "md:pl-96" : ""
-            )}>
-                <div className="flex items-center gap-3 pointer-events-auto">
+            {/* Floating Navigation Dock */}
+            <nav className="fixed top-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-500">
+                <div className="glass-panel bg-white/70 backdrop-blur-xl rounded-full px-2 py-1.5 flex items-center gap-1 shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/50 ring-1 ring-black/5">
+
+                    {/* Home / Back */}
                     {article && (
-                        <button 
+                        <button
                             onClick={() => {
                                 setArticle(null);
                                 setCurrentUrl("");
                                 setIsWritingMode(false);
                                 setIsEditMode(false);
-                                // Optional: Clear URL param if we were using router
                             }}
-                            className="glass-button w-9 h-9 flex items-center justify-center rounded-full text-stone-500 hover:text-stone-800 hover:bg-white/80 transition-all shadow-sm group"
+                            className="w-10 h-10 flex items-center justify-center rounded-full text-stone-500 hover:text-stone-900 hover:bg-white/80 transition-all group"
                             title="Back to Home"
                         >
-                            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+                            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
                         </button>
                     )}
-                    <div className="glass-button px-4 py-2 rounded-full text-sm font-bold text-amber-600 border-amber-200/50 shadow-sm">
-                        DeepSeek IELTS
-                    </div>
-                </div>
 
-                <div className="flex items-center gap-3 pointer-events-auto">
-                    {/* Theme Switcher */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
-                            className="glass-button w-9 h-9 flex items-center justify-center rounded-full text-stone-500 hover:text-stone-800 hover:bg-white/80 transition-all shadow-sm"
-                            title="Change Background"
-                        >
-                            <Palette className="w-4 h-4" />
-                        </button>
-                        
-                        {isThemeMenuOpen && (
-                            <div className="absolute top-full right-0 mt-3 w-48 glass-panel p-1.5 rounded-xl flex flex-col gap-1 shadow-xl animate-in fade-in zoom-in-95 z-50 border border-white/50">
-                                {themes.map(t => (
-                                    <button
-                                        key={t.id}
-                                        onClick={() => { setTheme(t.id); setIsThemeMenuOpen(false); }}
-                                        className={cn(
-                                            "flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all",
-                                            theme === t.id 
-                                                ? "bg-white shadow-sm text-stone-800" 
-                                                : "text-stone-500 hover:bg-white/50 hover:text-stone-700"
-                                        )}
-                                    >
-                                        <div className="flex items-center gap-2.5">
-                                            <div className={cn("w-2.5 h-2.5 rounded-full shadow-sm ring-1 ring-black/5", t.dot)} />
-                                            {t.name}
-                                        </div>
-                                        {theme === t.id && <Check className="w-3.5 h-3.5 text-stone-800" />}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {article && (
-                        <div className="flex gap-2">
-                            {/* Edit Mode Toggle */}
-                            <button
-                                onClick={() => setIsEditMode(!isEditMode)}
-                                className={cn(
-                                    "glass-button px-3 py-2 rounded-full text-sm font-medium flex items-center gap-2 transition-all shadow-sm",
-                                    isEditMode 
-                                        ? "bg-amber-100 text-amber-700 border-amber-200" 
-                                        : "text-stone-500 hover:text-stone-800 hover:bg-white/80"
-                                )}
-                                title="Toggle Edit Mode"
-                            >
-                                <Edit3 className="w-4 h-4" />
-                                {isEditMode && <span className="text-xs">Editing</span>}
-                            </button>
-
-                            <button
-                                onClick={() => setIsWritingMode(!isWritingMode)}
-                                className="glass-button px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 text-stone-600 hover:text-stone-900 transition-all hover:bg-white/80 shadow-sm"
-                            >
-                                {isWritingMode ? (
-                                    <>
-                                        <ArrowLeft className="w-4 h-4" /> Back to Reading
-                                    </>
-                                ) : (
-                                    <>
-                                        <PenTool className="w-4 h-4" /> Start Writing
-                                    </>
-                                )}
-                            </button>
+                    {/* Brand Pill */}
+                    {!article && (
+                        <div className="px-4 py-2 font-newsreader italic font-bold text-xl text-stone-800">
+                            DeepSeek IELTS
                         </div>
                     )}
+
+                    {/* Progress Ring & Brand (When Article Active) */}
+                    {article && (
+                        <div className="flex items-center gap-3 px-2">
+                            {/* Nano Progress Ring */}
+                            <div className="relative w-5 h-5 flex items-center justify-center">
+                                {/* Track */}
+                                <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                                    <path
+                                        className="text-stone-200"
+                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="4"
+                                    />
+                                    {/* Indicator */}
+                                    <path
+                                        className="text-amber-500 transition-all duration-100 ease-out"
+                                        strokeDasharray={`${scrollProgress * 100}, 100`}
+                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="4"
+                                        strokeLinecap="round"
+                                    />
+                                </svg>
+                            </div>
+
+                            <div className="font-newsreader italic font-bold text-lg text-stone-800 hidden md:block">
+                                DeepSeek IELTS
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Divider */}
+                    {article && <div className="w-px h-4 bg-stone-300/50 mx-1" />}
+
+                    {/* Tools Group */}
+                    <div className="flex items-center gap-1">
+                        {/* Focus Mode Toggle */}
+                        {article && (
+                            <button
+                                onClick={toggleFocusMode}
+                                className={cn(
+                                    "w-10 h-10 flex items-center justify-center rounded-full transition-all duration-300",
+                                    isFocusMode
+                                        ? "bg-stone-800 text-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)] ring-1 ring-yellow-400/50"
+                                        : "text-stone-400 hover:text-stone-600 hover:bg-stone-100/50"
+                                )}
+                                title="Deep Focus Mode"
+                            >
+                                <Flashlight className={cn("w-4 h-4", isFocusMode && "fill-current")} />
+                            </button>
+                        )}
+
+                        {/* Bionic Reading Toggle */}
+                        {article && (
+                            <button
+                                onClick={toggleBionicMode}
+                                className={cn(
+                                    "w-10 h-10 flex items-center justify-center rounded-full transition-all duration-300",
+                                    isBionicMode
+                                        ? "bg-stone-800 text-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.5)] ring-1 ring-blue-400/50"
+                                        : "text-stone-400 hover:text-stone-600 hover:bg-stone-100/50"
+                                )}
+                                title="Bionic Reading"
+                            >
+                                <Eye className={cn("w-4 h-4", isBionicMode && "fill-current")} />
+                            </button>
+                        )}
+
+                        {/* Theme Switcher */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
+                                className={cn(
+                                    "w-10 h-10 flex items-center justify-center rounded-full transition-all",
+                                    isThemeMenuOpen ? "bg-stone-100 text-stone-900" : "text-stone-500 hover:text-stone-900 hover:bg-white/50"
+                                )}
+                                title="Appearance"
+                            >
+                                <Palette className="w-5 h-5" />
+                            </button>
+
+                            {isThemeMenuOpen && (
+                                <AppearanceMenu onClose={() => setIsThemeMenuOpen(false)} />
+                            )}
+                        </div>
+
+                        {article && (
+                            <>
+                                <button
+                                    onClick={() => setIsEditMode(!isEditMode)}
+                                    className={cn(
+                                        "w-10 h-10 flex items-center justify-center rounded-full transition-all",
+                                        isEditMode ? "bg-amber-100 text-amber-700" : "text-stone-500 hover:text-stone-900 hover:bg-white/50"
+                                    )}
+                                    title="Edit Text"
+                                >
+                                    <Edit3 className="w-4 h-4" />
+                                </button>
+
+                                <button
+                                    onClick={() => setIsWritingMode(!isWritingMode)}
+                                    className={cn(
+                                        "px-4 h-10 rounded-full text-sm font-bold flex items-center gap-2 transition-all ml-1",
+                                        isWritingMode
+                                            ? "bg-stone-900 text-white shadow-lg"
+                                            : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
+                                    )}
+                                >
+                                    {isWritingMode ? (
+                                        <>Close Writer</>
+                                    ) : (
+                                        <>
+                                            <PenTool className="w-4 h-4" />
+                                            <span>Write</span>
+                                        </>
+                                    )}
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
             </nav>
 
@@ -334,7 +396,7 @@ export default function ReadingPage() {
                                 isEditMode={isEditMode}
                             />
                             {!isWritingMode && (
-                                <div className="sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">
+                                <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">
                                     <AudioPlayer text={article.textContent || ""} />
                                 </div>
                             )}
@@ -352,3 +414,12 @@ export default function ReadingPage() {
         </main>
     );
 }
+
+export default function ReadingPage() {
+    return (
+        <ReadingSettingsProvider>
+            <ReadingPageContent />
+        </ReadingSettingsProvider>
+    );
+}
+

@@ -31,7 +31,7 @@ export function ArticleSidebar({ articles, currentUrl, onSelect, isOpen, setIsOp
             {/* Sidebar Container */}
             <div
                 className={cn(
-                    "fixed left-0 top-0 h-full z-40 bg-white/80 backdrop-blur-xl border-r border-stone-200/50 transition-all duration-500 ease-in-out flex flex-col shadow-2xl",
+                    "fixed left-0 top-0 h-full z-40 bg-white/70 backdrop-blur-2xl border-r border-stone-200/50 transition-all duration-500 ease-in-out flex flex-col shadow-2xl",
                     isOpen ? "w-80 translate-x-0" : "w-80 -translate-x-full"
                 )}
             >
@@ -61,10 +61,10 @@ export function ArticleSidebar({ articles, currentUrl, onSelect, isOpen, setIsOp
                                 className={cn(
                                     "p-3 rounded-lg cursor-pointer transition-all group border border-transparent",
                                     isActive
-                                        ? "bg-amber-100 border-amber-200"
+                                        ? "bg-amber-100 border-amber-200 glass-card-hover"
                                         : isRead
-                                            ? "bg-stone-50 border-stone-100 hover:border-stone-200"
-                                            : "hover:bg-amber-50 hover:border-amber-100"
+                                            ? "bg-stone-50 border-stone-100 hover:border-stone-200 opacity-60 hover:opacity-100"
+                                            : "glass-card-hover hover:bg-white/50"
                                 )}
                             >
                                 <div className="flex items-start gap-3">

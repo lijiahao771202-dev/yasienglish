@@ -6,6 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2, BookOpen, Volume2, Sparkles, Book, Globe } from "lucide-react";
 import { ParagraphCard } from "./ParagraphCard";
 import TEDVideoPlayer, { TEDVideoPlayerRef } from "./TEDVideoPlayer";
+import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
+import { cn } from "@/lib/utils";
 
 interface Block {
     type: 'paragraph' | 'header' | 'list' | 'image' | 'blockquote';
@@ -68,8 +70,15 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
     const [activeSpan, setActiveSpan] = useState<HTMLElement | null>(null);
 
     const popupRef = useRef<HTMLDivElement>(null);
+    const { fontClass, fontSizeClass, isFocusMode } = useReadingSettings();
+    const [lockedFocusIndex, setLockedFocusIndex] = useState<number | null>(null);
 
-    const isTED = siteName === 'TED';
+    // Reset lock when focus mode is toggled off
+    useEffect(() => {
+        if (!isFocusMode) setLockedFocusIndex(null);
+    }, [isFocusMode]);
+
+    const isTED = siteName === 'TED' || siteName === 'YouTube';
 
 
     // Handle click outside to close popup
@@ -117,7 +126,7 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
 
     useEffect(() => {
         if (blocks) {
-             setActiveBlocks(blocks.map(b => ({
+            setActiveBlocks(blocks.map(b => ({
                 ...b,
                 id: (b as any).id || Math.random().toString(36).substr(2, 9)
             })));
@@ -127,13 +136,13 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
     const handleSplit = (index: number, textBefore: string, textAfter: string) => {
         const newBlocks = [...activeBlocks];
         // Create two new paragraph blocks with new IDs
-        const block1: Block = { 
-            type: 'paragraph', 
+        const block1: Block = {
+            type: 'paragraph',
             content: textBefore,
             id: Math.random().toString(36).substr(2, 9)
         };
-        const block2: Block = { 
-            type: 'paragraph', 
+        const block2: Block = {
+            type: 'paragraph',
             content: textAfter,
             id: Math.random().toString(36).substr(2, 9)
         };
@@ -206,16 +215,16 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
                     const range = document.createRange();
                     range.setStart(textNode, start);
                     range.setEnd(textNode, end);
-                    
+
                     const span = document.createElement("span");
                     // Apply visual style
                     // Using inline-block to allow transform, but it might affect line height slightly
                     // Using background and color for safer "press" effect
                     span.className = "inline-block rounded-md bg-amber-200/50 text-amber-900 transition-all duration-150 ease-out origin-center scale-95 shadow-sm";
-                    
+
                     range.surroundContents(span);
                     setActiveSpan(span);
-                    
+
                     // Trigger "release" animation after short delay
                     setTimeout(() => {
                         if (span && span.isConnected) {
@@ -310,86 +319,95 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
         <motion.article
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="max-w-2xl mx-auto space-y-8 pb-32 relative"
+            className="max-w-3xl mx-auto pb-32 relative"
         >
-            <header className="space-y-4 text-center mb-12">
-                <h1 className="text-4xl md:text-5xl font-bold text-stone-800 leading-tight">
-                    {title}
-                </h1>
-                {byline && (
-                    <p className="text-stone-500 italic">
-                        By {byline}
-                    </p>
-                )}
-            </header>
+            <div className="glass-panel rounded-2xl p-8 md:p-16 mb-24 transition-all duration-500">
+                <header className="space-y-6 text-center mb-16 border-b border-stone-100 pb-12">
+                    <h1 className="text-4xl md:text-6xl font-medium font-newsreader italic text-stone-900 leading-tight">
+                        {title}
+                    </h1>
+                    {byline && (
+                        <p className="text-xs font-bold tracking-[0.2em] uppercase text-stone-400">
+                            By {byline}
+                        </p>
+                    )}
+                </header>
 
-            {/* TED Video Player */}
-            {isTED && videoUrl && (
-                <div className="mb-8">
-                    <TEDVideoPlayer
-                        ref={videoPlayerRef}
-                        videoUrl={videoUrl}
-                    />
+                {/* TED Video Player */}
+                {isTED && videoUrl && (
+                    <div className="mb-12 rounded-xl overflow-hidden shadow-lg">
+                        <TEDVideoPlayer
+                            ref={videoPlayerRef}
+                            videoUrl={videoUrl}
+                        />
+                    </div>
+                )}
+
+                <div className={cn("space-y-4 text-stone-800 leading-loose group/article", fontClass)}>
+                    {activeBlocks && activeBlocks.length > 0 ? (
+                        activeBlocks.map((block, index) => {
+                            if (block.type === 'paragraph' && block.content) {
+                                return (
+                                    <ParagraphCard
+                                        key={block.id || index}
+                                        text={block.content}
+                                        index={index}
+                                        articleTitle={title}
+                                        onWordClick={handleArticleClick}
+                                        onSplit={handleSplit}
+                                        onMerge={handleMerge}
+                                        onUpdate={handleUpdate}
+                                        isEditMode={isEditMode}
+                                        startTime={block.startTime}
+                                        endTime={block.endTime}
+                                        // Deep Focus Mode
+                                        isFocusMode={isFocusMode}
+                                        isFocusLocked={lockedFocusIndex === index}
+                                        hasActiveFocusLock={lockedFocusIndex !== null}
+                                        onToggleFocusLock={() => setLockedFocusIndex(prev => prev === index ? null : index)}
+                                    />
+                                );
+                            } else if (block.type === 'header') {
+                                const HeaderTag = (block.tag || 'h2') as React.ElementType;
+                                return <HeaderTag key={index} className="text-amber-700 font-bold mt-8 mb-4 text-2xl">{block.content}</HeaderTag>;
+                            } else if (block.type === 'list' && block.items) {
+                                const ListTag = (block.tag || 'ul') as React.ElementType;
+                                return (
+                                    <ListTag key={index} className="list-disc list-inside space-y-2 text-stone-700 pl-4">
+                                        {block.items.map((item, i) => <li key={i}>{item}</li>)}
+                                    </ListTag>
+                                );
+                            } else if (block.type === 'image' && block.src) {
+                                return (
+                                    <div key={index} className="my-6 rounded-xl overflow-hidden shadow-xl border border-stone-200/50">
+                                        <img src={block.src} alt={block.alt || ''} className="w-full h-auto" />
+                                    </div>
+                                );
+                            } else if (block.type === 'blockquote' && block.content) {
+                                return (
+                                    <blockquote key={index} className="border-l-4 border-amber-400 pl-4 py-2 my-6 bg-amber-50/50 rounded-r-lg text-stone-600 italic">
+                                        {block.content}
+                                    </blockquote>
+                                );
+                            }
+                            return null;
+                        })
+                    ) : (
+                        <div
+                            ref={contentRef}
+                            onClick={handleArticleClick}
+                            className={cn(
+                                "prose prose-lg prose-stone max-w-none cursor-text",
+                                "prose-p:text-lg prose-p:leading-loose prose-p:text-stone-700 prose-p:mb-8",
+                                "prose-headings:font-newsreader prose-headings:font-medium prose-headings:text-stone-800",
+                                "prose-a:text-amber-600 prose-a:no-underline hover:prose-a:underline",
+                                "prose-blockquote:border-l-amber-400 prose-blockquote:bg-amber-50/50 prose-blockquote:p-6 prose-blockquote:rounded-r-lg prose-blockquote:italic prose-blockquote:font-newsreader",
+                                "prose-img:rounded-xl prose-img:shadow-xl",
+                                fontClass // Apply dynamic font
+                            )}
+                        />
+                    )}
                 </div>
-            )}
-
-            <div className="space-y-1">
-                {activeBlocks && activeBlocks.length > 0 ? (
-                    activeBlocks.map((block, index) => {
-                        if (block.type === 'paragraph' && block.content) {
-                            return (
-                                <ParagraphCard
-                                    key={block.id || index}
-                                    text={block.content}
-                                    index={index}
-                                    articleTitle={title}
-                                    onWordClick={handleArticleClick}
-                                    onSplit={handleSplit}
-                                    onMerge={handleMerge}
-                                    onUpdate={handleUpdate}
-                                    isEditMode={isEditMode}
-                                    startTime={block.startTime}
-                                    endTime={block.endTime}
-                                />
-                            );
-                        } else if (block.type === 'header') {
-                            const HeaderTag = (block.tag || 'h2') as React.ElementType;
-                            return <HeaderTag key={index} className="text-amber-700 font-bold mt-8 mb-4 text-2xl">{block.content}</HeaderTag>;
-                        } else if (block.type === 'list' && block.items) {
-                            const ListTag = (block.tag || 'ul') as React.ElementType;
-                            return (
-                                <ListTag key={index} className="list-disc list-inside space-y-2 text-stone-700 pl-4">
-                                    {block.items.map((item, i) => <li key={i}>{item}</li>)}
-                                </ListTag>
-                            );
-                        } else if (block.type === 'image' && block.src) {
-                            return (
-                                <div key={index} className="my-6 rounded-xl overflow-hidden shadow-xl border border-stone-200/50">
-                                    <img src={block.src} alt={block.alt || ''} className="w-full h-auto" />
-                                </div>
-                            );
-                        } else if (block.type === 'blockquote' && block.content) {
-                            return (
-                                <blockquote key={index} className="border-l-4 border-amber-400 pl-4 py-2 my-6 bg-amber-50/50 rounded-r-lg text-stone-600 italic">
-                                    {block.content}
-                                </blockquote>
-                            );
-                        }
-                        return null;
-                    })
-                ) : (
-                    <div
-                        ref={contentRef}
-                        onClick={handleArticleClick}
-                        className="prose prose-lg max-w-none
-                        prose-p:text-stone-700 prose-p:leading-8 prose-p:mb-6 cursor-text
-                        prose-headings:text-amber-700 prose-headings:font-semibold
-                        prose-a:text-amber-600 prose-a:no-underline hover:prose-a:underline
-                        prose-strong:text-stone-900 prose-strong:font-bold
-                        prose-blockquote:border-l-amber-400 prose-blockquote:bg-amber-50/50 prose-blockquote:p-6 prose-blockquote:rounded-r-lg
-                        prose-img:rounded-xl prose-img:shadow-xl"
-                    />
-                )}
             </div>
 
             <AnimatePresence>
@@ -435,8 +453,8 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
                                     >
                                         <Volume2 className="w-4 h-4" />
                                     </button>
-                                    <button 
-                                        onClick={() => setPopup(null)} 
+                                    <button
+                                        onClick={() => setPopup(null)}
                                         className="p-2 text-stone-400 hover:text-stone-600 hover:bg-stone-100/50 rounded-full transition-colors"
                                     >
                                         <X className="w-4 h-4" />
@@ -453,7 +471,7 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
                                     <Book className="w-3 h-3" />
                                     <span>Dictionary</span>
                                 </div>
-                                
+
                                 {isLoadingDict ? (
                                     <div className="flex items-center gap-2 text-stone-400 py-2">
                                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -482,7 +500,7 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
                                         <Sparkles className="w-3 h-3" />
                                         <span>In Context</span>
                                     </div>
-                                    
+
                                     {!definition?.context_meaning && !isLoadingAI && (
                                         <button
                                             onClick={handleAnalyzeContext}

@@ -41,7 +41,72 @@
 
   /* Reading Typography */
   --font-reading: "Georgia", "Cambria", "Times New Roman", serif;
+
+  /* Google Fonts Mappings */
+  --font-inter: var(--font-inter);
+  --font-merriweather: var(--font-merriweather);
+  --font-lora: var(--font-lora);
+  --font-roboto-mono: var(--font-roboto-mono);
+  --font-libre-baskerville: var(--font-libre-baskerville);
+  --font-source-serif: var(--font-source-serif);
+  --font-work-sans: var(--font-work-sans);
+  --font-comic: var(--font-comic);
+  --font-newsreader: var(--font-newsreader);
 }
+
+/* Font Utilities */
+.font-inter {
+  font-family: var(--font-inter), sans-serif;
+}
+
+.font-merriweather {
+  font-family: var(--font-merriweather), serif;
+}
+
+.font-lora {
+  font-family: var(--font-lora), serif;
+}
+
+.font-roboto-mono {
+  font-family: var(--font-roboto-mono), monospace;
+}
+
+.font-libre-baskerville {
+  font-family: var(--font-libre-baskerville), serif;
+}
+
+.font-source-serif {
+  font-family: var(--font-source-serif), serif;
+}
+
+.font-work-sans {
+  font-family: var(--font-work-sans), sans-serif;
+}
+
+.font-comic {
+  font-family: var(--font-comic), cursive, sans-serif;
+}
+
+.font-newsreader {
+  font-family: var(--font-newsreader), serif;
+}
+
+/* Textures & Themes */
+.theme-sunlight-bg {
+  background-color: #fffbf0;
+  /* Very warm cream base */
+  background-image:
+    /* 1. Sunlight Ray (Top Right) */
+    radial-gradient(circle at 100% 0%, rgba(251, 191, 36, 0.25) 0%, rgba(251, 146, 60, 0.1) 40%, transparent 70%),
+    /* 2. Soft Ambient Warmth */
+    linear-gradient(120deg, rgba(255, 255, 255, 0.4) 0%, rgba(255, 241, 220, 0.2) 100%),
+    /* 3. Paper Texture (Fine Noise) */
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
+  background-blend-mode: normal, normal, multiply;
+  box-shadow: inset 0 0 120px rgba(168, 162, 158, 0.1);
+  /* Subtle vignette for depth */
+}
+
 
 /* Animations */
 @keyframes float {
@@ -66,24 +131,43 @@
 
 /* Base Styles */
 body {
-  background: linear-gradient(135deg, #fff7ed 0%, #fff1f2 50%, #fffbeb 100%);
-  /* Warm Orange-50 -> Rose-50 -> Amber-50 */
+  /* Morning Coffee Theme Base */
+  background-color: #fdfbf7;
+  background-image:
+    radial-gradient(at 0% 0%, rgba(255, 241, 242, 0.5) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(254, 243, 199, 0.5) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(255, 251, 235, 0.5) 0px, transparent 50%);
   color: var(--color-foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
   min-height: 100vh;
   overflow-x: hidden;
 }
 
 /* Glassmorphism Utilities - Warm Light */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   box-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.02),
-    0 2px 4px -1px rgba(0, 0, 0, 0.02),
+    0 20px 40px -4px rgba(0, 0, 0, 0.05),
+    0 8px 16px -2px rgba(0, 0, 0, 0.02),
     0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+}
+
+.glass-card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card-hover:hover {
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  /* transform: translateY(-1px) scale(1.005); Removed scale per user request */
+  transform: translateY(-1px);
+  box-shadow:
+    0 12px 24px -6px rgba(0, 0, 0, 0.05),
+    0 0 0 1px rgba(255, 255, 255, 0.4);
 }
 
 .glass-button {
@@ -103,6 +187,14 @@ body {
   box-shadow:
     0 4px 12px rgba(251, 191, 36, 0.15),
     0 0 0 1px rgba(251, 191, 36, 0.2);
+}
+
+/* Selection Color */
+::selection {
+  background: rgba(245, 158, 11, 0.2);
+  /* Amber-500 @ 20% */
+  color: #78350f;
+  /* Amber-900 */
 }
 
 /* Scrollbar */

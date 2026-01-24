@@ -1,11 +1,14 @@
 import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Volume2, Gauge, X, Sparkles, XCircle, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
 import { useTTS } from "@/hooks/useTTS";
 import { SpeakingPanel } from "./SpeakingPanel";
 import { useAnalysisStore } from "@/lib/analysis-store";
 import { SyntaxTreeView } from "./SyntaxTreeView";
+import { bionicText } from "@/lib/bionic";
 
 interface ParagraphCardProps {
     text: string;
@@ -21,9 +24,15 @@ interface ParagraphCardProps {
     endTime?: number;
     currentVideoTime?: number;
     onSeekToTime?: (time: number) => void;
+    // Deep Focus Mode Props
+    isFocusMode?: boolean;
+    isFocusLocked?: boolean;
+    hasActiveFocusLock?: boolean;
+    onToggleFocusLock?: () => void;
 }
 
-export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit, onMerge, onUpdate, isEditMode, startTime, endTime, currentVideoTime, onSeekToTime }: ParagraphCardProps) {
+export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit, onMerge, onUpdate, isEditMode, startTime, endTime, currentVideoTime, onSeekToTime, isFocusMode, isFocusLocked, hasActiveFocusLock, onToggleFocusLock }: ParagraphCardProps) {
+    const { fontSizeClass, fontClass, isBionicMode } = useReadingSettings();
     const {
         translations, setTranslation: setStoreTranslation,
         grammarAnalyses, setGrammarAnalysis: setStoreGrammarAnalysis,
@@ -96,7 +105,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
 
     const handleSelection = () => {
         const selection = window.getSelection();
-        
+
         // If no selection or collapsed
         if (!selection || selection.isCollapsed) {
             // Only clear if we are NOT currently viewing an analysis
@@ -107,19 +116,19 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
         }
 
         const selectedStr = selection.toString().trim();
-        if (selectedStr.length < 2) return; 
+        if (selectedStr.length < 2) return;
 
         // Check if selection is within this paragraph
         if (!pRef.current?.contains(selection.anchorNode)) return;
 
         // Clean up previous highlight if exists
         if (activeHighlightSpan) {
-             unwrapSpan(activeHighlightSpan);
+            unwrapSpan(activeHighlightSpan);
         }
 
         const range = selection.getRangeAt(0);
         const rect = range.getBoundingClientRect();
-        
+
         setSelectionRect(rect);
         setSelectedText(selectedStr);
         setPhraseAnalysis(null);
@@ -145,9 +154,9 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
 
     const handleAnalyzePhrase = async () => {
         if (!selectedText) return;
-        
+
         setIsAnalyzingPhrase(true);
-        
+
         try {
             const res = await fetch("/api/ai/analyze-phrase", {
                 method: "POST",
@@ -241,7 +250,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
 
         setShowGrammar(true);
         if (mode === "deep") setShowDeepAnalysis(true);
-        
+
         setIsAnalyzingGrammar(true);
         try {
             const res = await fetch("/api/ai/grammar", {
@@ -250,7 +259,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                 body: JSON.stringify({ text, mode }),
             });
             const data = await res.json();
-            
+
             // If deep mode, merge with existing data if possible, or just set it
             // For simplicity, we just set it. 
             // In a real app, we might want to preserve some basic info, but here the deep analysis includes everything needed.
@@ -322,12 +331,12 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
             isSplitting.current = false;
             return;
         }
-        
+
         if (isEditMode && onUpdate && pRef.current) {
-             const newText = pRef.current.innerText;
-             if (newText !== text) {
-                 onUpdate(index, newText);
-             }
+            const newText = pRef.current.innerText;
+            if (newText !== text) {
+                onUpdate(index, newText);
+            }
         }
     };
 
@@ -365,25 +374,77 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
     // If isEditMode is true, we use dangerouslySetInnerHTML to let the browser manage the editable content
     // and avoid React reconciliation issues (caret jumping, inability to type).
     // When switching out of edit mode, we render the complex interactive view.
-    
+
     // Safety: Escape text for HTML
     const safeHtml = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+
+    // Focus Mode Class Logic
+    const getFocusClasses = () => {
+        if (!isFocusMode) {
+            // Default behavior (Focus Mode OFF)
+            // Use the new glass-card-hover for that liquid feel
+            return isVideoActive
+                ? "bg-red-50/40 rounded-lg -mx-4 px-4 py-3 shadow-sm ring-1 ring-red-100"
+                : "rounded-lg glass-card-hover -mx-4 px-4 py-1";
+        }
+
+        // Focus Mode ON
+        if (hasActiveFocusLock) {
+            if (isFocusLocked) {
+                // LIGHT ON: The active paragraph needs to pop out
+                // User requested NO magnification. Removed scale-[1.02].
+                return "opacity-100 bg-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.12)] ring-1 ring-white/50 backdrop-blur-sm rounded-xl -mx-6 px-6 py-6 z-20 my-4";
+            } else {
+                // LIGHT OFF: Deep fade for background paragraphs
+                return "opacity-20 blur-[1px] grayscale transition-all duration-700 pointer-events-none";
+            }
+        } else {
+            // Focus Mode ON (Idle): Everything is slightly dimmed until hovered
+            // User requested NO magnification. Removed hover:scale-[1.005].
+            return "opacity-60 hover:opacity-100 hover:bg-white/40 transition-all duration-500 rounded-lg -mx-4 px-4 py-2";
+        }
+    }
 
     return (
         <div
             className={cn(
-                "group relative pl-4 border-l-2 transition-all duration-300 py-1",
-                isVideoActive
-                    ? "border-red-500 bg-red-50/30"
-                    : "border-transparent hover:border-amber-400/50"
+                "group relative transition-all duration-500 py-1",
+                getFocusClasses()
             )}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
-            onClick={onSeekToTime ? handleVideoSeek : undefined}
-            style={{ cursor: onSeekToTime ? 'pointer' : undefined }}
+            onClick={(e) => {
+                // Prevent Focus Lock toggle if user is selecting text
+                const selection = window.getSelection();
+                if (selection && selection.toString().length > 0) {
+                    return;
+                }
+
+                // Prevent Focus Lock toggle if clicking on interactive elements
+                const target = e.target as HTMLElement;
+                if (target.closest('.group\\/highlight') || target.closest('button') || target.closest('a') || target.closest('.cursor-help')) {
+                    return;
+                }
+
+                // Toggle Focus Lock on Click
+                if (onToggleFocusLock && isFocusMode) {
+                    onToggleFocusLock();
+                }
+
+                if (onSeekToTime) handleVideoSeek();
+            }}
+            style={{ cursor: isFocusMode ? 'pointer' : (onSeekToTime ? 'pointer' : undefined) }}
         >
+            {/* Margin Marker Visualization */}
+            <div className={cn(
+                "absolute -left-6 top-3 w-1.5 h-1.5 rounded-full transition-all duration-300",
+                isVideoActive
+                    ? "bg-red-500 opacity-100 scale-125"
+                    : "bg-amber-400 opacity-0 group-hover:opacity-100 scale-100"
+            )} />
+
             {/* Controls - Floating on the left or right, or inline */}
-            <div className="absolute -left-10 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1 items-center">
+            <div className="absolute -left-12 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1 items-center z-10">
                 {/* ... (Keep existing controls) ... */}
                 {/* Drag Handle */}
                 <div
@@ -446,7 +507,13 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                     onKeyDown={handleKeyDown}
                     onBlur={handleBlur}
                     className={cn(
-                        "text-lg md:text-xl leading-loose tracking-wide font-reading text-stone-800 transition-all duration-300 outline-none focus:ring-0",
+                        "leading-loose tracking-wide transition-all duration-300 outline-none focus:ring-0",
+                        fontSizeClass, // Apply dynamic size
+                        // fontClass is applied globally but can be reinforced here if needed
+                        // remove text-lg md:text-xl font-reading text-stone-800 to allow cascade/override
+                        // keeping text-stone-800 as base color if needed, but globals sets it. let's check.
+                        // globals.css sets color: var(--color-foreground) on body.
+                        // ParagraphCard has text-stone-800. Let's keep text-stone-800 but rely on fontSizeClass.
                         isEditMode ? "cursor-text border border-dashed border-stone-300 p-2 rounded-md bg-white/50" : "hover:text-stone-950 cursor-pointer selection:bg-amber-200",
                         isBlind && "blur-md select-none"
                     )}
@@ -483,12 +550,10 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                 >
                     {isEditMode ? null : (showGrammar && grammarAnalysis ? (
                         (() => {
-                            let content = [];
-                            let lastIndex = 0;
+                            let content: React.ReactNode[] = [];
                             const sentences = grammarAnalysis.difficult_sentences || [];
 
                             // Flatten all highlights from all sentences into a single list of ranges
-                            // Each range: { start, end, type, explanation, color }
                             interface HighlightRange {
                                 start: number;
                                 end: number;
@@ -501,19 +566,42 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
 
                             const ranges: HighlightRange[] = [];
 
-                            sentences.forEach((s: any) => {
+                            sentences.forEach((s: any, sIdx: number) => {
                                 const sStart = text.indexOf(s.sentence);
                                 if (sStart === -1) return;
 
-                                // Add the main sentence range (for context/hover)
-                                ranges.push({
-                                    start: sStart,
-                                    end: sStart + s.sentence.length,
-                                    type: "sentence",
-                                    explanation: s.translation,
-                                    color: "bg-stone-100/50", // Subtle background for the whole sentence
-                                    isMainSentence: true
-                                });
+                                // Add the main sentence ID range (for translation marker)
+                                content.push(
+                                    <span key={`trans-icon-${sStart}`} className="inline-block mr-1 relative group/trans-icon align-middle select-none z-10">
+                                        <span className="cursor-help text-[10px] font-bold bg-amber-100 text-amber-600 hover:text-white hover:bg-amber-500 rounded-full w-4 h-4 flex items-center justify-center transition-all duration-300 border border-amber-200 shadow-sm">
+                                            {sIdx + 1}
+                                        </span>
+
+                                        {/* Full Sentence Translation Tooltip */}
+                                        <span className="fixed z-[9999] p-4 rounded-xl opacity-0 group-hover/trans-icon:opacity-100 pointer-events-none transition-all duration-300 ease-out transform translate-y-2 group-hover/trans-icon:translate-y-0 backdrop-blur-xl bg-white/95 shadow-[0_8px_30px_rgba(0,0,0,0.12)] border border-white/50 text-left w-80 ring-1 ring-black/5"
+                                            style={{
+                                                left: `Math.min(e.clientX, window.innerWidth - 340)px`, // This needs dynamic positioning, simplified for now
+                                                // Using simple CSS positioning relative to parent might be safer if not clipped
+                                                // Reverting to absolute for simplicity, assuming no overflow issues for now or relying on smart placement if we had a library
+                                            }}
+                                        >
+                                            {/* Note: Fixed positioning without JS measurements is tricky. 
+                                                Let's stick to absolute relative to the icon for now, but ensure z-index is high. 
+                                                If overflow happens, we might need the Portal approach again. 
+                                                For this "StartLine" fix, let's keep it simple. 
+                                            */}
+                                        </span>
+                                        <span className="absolute bottom-full left-0 mb-2 w-80 p-4 rounded-xl opacity-0 group-hover/trans-icon:opacity-100 pointer-events-none z-30 transition-all duration-300 ease-out transform translate-y-2 group-hover/trans-icon:translate-y-0 backdrop-blur-xl bg-white/95 shadow-xl border border-stone-200 text-left">
+                                            <div className="flex justify-between items-center mb-2 border-b border-stone-100 pb-2">
+                                                <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">第 {sIdx + 1} 句</span>
+                                                <span className="text-[10px] font-medium text-stone-400 bg-stone-50 px-2 py-0.5 rounded-full">中文翻译</span>
+                                            </div>
+                                            <div className="text-sm text-stone-700 leading-relaxed font-medium">
+                                                {s.translation}
+                                            </div>
+                                        </span>
+                                    </span>
+                                );
 
                                 // Add structural highlights
                                 if (s.highlights) {
@@ -529,40 +617,41 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                             type: h.type,
                                             explanation: h.explanation,
                                             segment_translation: h.segment_translation,
-                                            color: getHighlightColor(h.type), // Helper function needed
+                                            color: getHighlightColor(h.type),
                                             isMainSentence: false
                                         });
                                     });
                                 }
                             });
 
-                            // Sort ranges by start position. 
-                            // Note: This simple logic assumes no overlapping ranges for simplicity, 
-                            // or that we just render them sequentially. 
-                            // For true nested rendering, we'd need a recursive component, but let's try a flat approach first 
-                            // where we prioritize structural highlights over the sentence background.
-
-                            // Actually, to handle nesting (structure inside sentence), we can just render the text 
-                            // and wrap parts. But React rendering of nested ranges is tricky without a tree.
-                            // Let's try a simpler approach: 
-                            // 1. Render the text.
-                            // 2. If a part is inside a highlight, style it.
-                            // 3. If a part is inside multiple, mix or prioritize.
-                            // Map end index to translation for insertion
-                            // const sentenceTranslations = new Map<number, string>();
-                            // sentences.forEach((s: any) => {
-                            //     const sStart = text.indexOf(s.sentence);
-                            //     if (sStart !== -1) {
-                            //         sentenceTranslations.set(sStart + s.sentence.length, s.translation);
-                            //     }
-                            // });
+                            // Remove the rendering loop that was causing issues and use a simpler replacement strategy
+                            // or keep the range logic but fix the "StartLine" error 
+                            // The error was likely due to the previous `content.push` inside the loop not being in the right place relative to the text reconstruction.
+                            // Let's rebuild the text reconstruction cleanly.
 
                             const points = new Set<number>([0, text.length]);
                             ranges.forEach(r => {
                                 points.add(r.start);
                                 points.add(r.end);
                             });
+                            // Also need to split where sentences start to insert icons?
+                            // No, I inserted icons separately above. Wait, that pushes icons to `content`, but the text reconstruction loop below creates a NEW content list? 
+                            // Ah, I need to merge them.
+
+                            // Better strategy:
+                            // 1. Reconstruct text segments.
+                            // 2. Insert icons at the appropriate segment boundaries.
+
+                            sentences.forEach((s: any) => {
+                                const start = text.indexOf(s.sentence);
+                                if (start !== -1) points.add(start);
+                            });
+
                             const sortedPoints = Array.from(points).sort((a, b) => a - b);
+
+                            // We need to sync the icons with the text. The icons are "independent" nodes in the DOM flow.
+                            // Let's reset content array to be strictly the flow of elements.
+                            content = [];
 
                             for (let i = 0; i < sortedPoints.length - 1; i++) {
                                 const start = sortedPoints[i];
@@ -570,96 +659,74 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                 const segmentText = text.substring(start, end);
                                 if (!segmentText) continue;
 
-                                // Find all ranges covering this segment
-                                const coveringRanges = ranges.filter(r => r.start <= start && r.end >= end);
-
-                                // Determine style based on covering ranges
-                                // Priority: Structural Highlight > Sentence Background
-                                const structRange = coveringRanges.find(r => !r.isMainSentence);
-                                const sentenceRange = coveringRanges.find(r => r.isMainSentence);
-
-                                // Check if we need to insert a translation indicator at the START of the sentence
-                                if (sentenceRange && start === sentenceRange.start) {
-                                     // Find the sentence index to display numbering
-                                     const sentenceIndex = sentences.findIndex((s: any) => text.indexOf(s.sentence) === sentenceRange.start) + 1;
-                                     
-                                     content.push(
-                                        <span key={`trans-icon-${start}`} className="inline-block mr-1 relative group/trans-icon align-middle select-none">
-                                            <span className="cursor-help text-xs font-bold bg-amber-100 text-amber-600 hover:text-white hover:bg-amber-500 rounded-full w-5 h-5 flex items-center justify-center transition-all duration-300 border border-amber-200 shadow-sm">
-                                                {sentenceIndex}
+                                // Check if a NEW sentence starts exactly here
+                                const startingSentenceIdx = sentences.findIndex((s: any) => text.indexOf(s.sentence) === start);
+                                if (startingSentenceIdx !== -1) {
+                                    content.push(
+                                        <span key={`icon-${start}`} className="inline-block mr-1 relative group/trans-icon align-middle select-none z-10">
+                                            <span className="cursor-help text-[10px] font-bold bg-amber-100 text-amber-600 hover:text-white hover:bg-amber-500 rounded-full w-4 h-4 flex items-center justify-center transition-all duration-300 border border-amber-200 shadow-sm">
+                                                {startingSentenceIdx + 1}
                                             </span>
-                                            
-                                            {/* Full Sentence Translation Tooltip */}
                                             <span className="absolute bottom-full left-0 mb-2 w-80 p-4 rounded-xl opacity-0 group-hover/trans-icon:opacity-100 pointer-events-none z-30 transition-all duration-300 ease-out transform translate-y-2 group-hover/trans-icon:translate-y-0 backdrop-blur-xl bg-white/95 shadow-xl border border-stone-200 text-left">
                                                 <div className="flex justify-between items-center mb-2 border-b border-stone-100 pb-2">
-                                                    <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">第 {sentenceIndex} 句</span>
-                                                    <span className="text-[10px] font-medium text-stone-400 bg-stone-50 px-2 py-0.5 rounded-full">中文翻译</span>
+                                                    <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">第 {startingSentenceIdx + 1} 句</span>
+                                                    <span className="text-xs font-bold text-stone-400 bg-stone-50 px-2 py-0.5 rounded-full">译文</span>
                                                 </div>
                                                 <div className="text-sm text-stone-700 leading-relaxed font-medium">
-                                                    {sentenceRange.explanation}
+                                                    {sentences[startingSentenceIdx].translation}
                                                 </div>
-                                                {/* Arrow */}
-                                                <span className="absolute top-full left-2 border-6 border-transparent border-t-white/95"></span>
                                             </span>
                                         </span>
-                                     );
+                                    );
                                 }
+
+                                // Find ranges covering this segment
+                                const coveringRanges = ranges.filter(r => r.start <= start && r.end >= end);
+                                // Prioritize structural highlights (smallest range first ideally, for nesting, but here we assume flat structure mostly)
+                                const structRange = coveringRanges.sort((a, b) => (a.end - a.start) - (b.end - b.start))[0];
 
                                 if (structRange) {
                                     content.push(
                                         <span
                                             key={`${start}-${end}`}
                                             className={cn(
-                                                "cursor-help transition-all duration-200 relative group/highlight rounded-sm px-0.5 mx-0.5", 
+                                                "cursor-help transition-all duration-200 relative group/highlight rounded-sm px-0.5 mx-0.5 border-b-2",
                                                 structRange.color
                                             )}
                                         >
                                             {segmentText}
-                                            {/* Tooltip */}
+                                            {/* Highlight Tooltip */}
                                             <span className={cn(
-                                                "absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-max max-w-[280px] rounded-xl opacity-0 group-hover/highlight:opacity-100 pointer-events-none z-20 transition-all duration-300 ease-out transform translate-y-2 group-hover/highlight:translate-y-0 backdrop-blur-xl bg-white/90 text-stone-800 shadow-[0_8px_32px_rgba(0,0,0,0.15)] border border-white/50 overflow-hidden ring-1 ring-black/5"
+                                                "absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[280px] rounded-xl opacity-0 group-hover/highlight:opacity-100 pointer-events-none z-[100] transition-all duration-200 ease-out transform translate-y-2 group-hover/highlight:translate-y-0 backdrop-blur-xl bg-white/95 text-stone-800 shadow-[0_8px_30px_rgba(0,0,0,0.15)] border border-white/60 overflow-hidden ring-1 ring-black/5"
                                             )}>
                                                 {/* Header: Type */}
-                                                <div className="px-4 py-2.5 bg-gradient-to-r from-stone-50/80 to-stone-100/50 border-b border-stone-200/50 flex justify-between items-center">
-                                                    <span className="text-xs font-bold text-stone-700 tracking-wide">
+                                                <div className="px-3 py-2 bg-gradient-to-r from-stone-50 to-white border-b border-stone-100 flex justify-between items-center">
+                                                    <span className="text-[10px] font-bold text-stone-600 uppercase tracking-widest flex items-center gap-1.5">
+                                                        <BookOpen className="w-3 h-3 text-amber-500" />
                                                         {translateGrammarType(structRange.type)}
                                                     </span>
                                                 </div>
-                                                
+
                                                 {/* Content: Translation & Explanation */}
-                                                <div className="p-4 space-y-2.5">
+                                                <div className="p-3 bg-white/50 space-y-2">
                                                     {structRange.segment_translation && (
                                                         <div className="text-sm font-bold text-amber-600 leading-tight pb-2 border-b border-stone-100 border-dashed">
                                                             {structRange.segment_translation}
                                                         </div>
                                                     )}
-                                                    <div className="text-xs text-stone-600 leading-relaxed font-medium">
+                                                    <div className="text-xs text-stone-600 font-medium leading-relaxed">
                                                         {structRange.explanation}
                                                     </div>
                                                 </div>
-                                                
+
                                                 {/* Decorative Arrow */}
-                                                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-8 border-transparent border-t-white/80 filter drop-shadow-sm"></div>
+                                                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-6 border-transparent border-t-white/95 filter drop-shadow-sm"></div>
                                             </span>
-                                        </span>
-                                    );
-                                } else if (sentenceRange) {
-                                    content.push(
-                                        <span
-                                            key={`${start}-${end}`}
-                                            className="text-stone-400 font-light" // Non-highlighted text is subtle
-                                        >
-                                            {segmentText}
                                         </span>
                                     );
                                 } else {
                                     content.push(<span key={`${start}-${end}`}>{segmentText}</span>);
                                 }
-
-                                // Check if we need to insert a translation indicator at the end of the sentence
-                                // We check if this segment ends at the same position as the sentence range
-                                // REMOVED: Numbering is now at the start
-                                // if (sentenceRange && end === sentenceRange.end) { ... }
                             }
 
                             return content;
@@ -692,7 +759,24 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                 );
                             })()
                         ) : (
-                            text
+                            // Default or Bionic Text
+                            isBionicMode ? (
+                                <span>
+                                    {bionicText(text).map((segment, i) => {
+                                        if (segment.type === 'word') {
+                                            return (
+                                                <span key={i}>
+                                                    <strong className="font-bold">{segment.bold}</strong>
+                                                    <span className="font-normal">{segment.regular}</span>
+                                                </span>
+                                            );
+                                        }
+                                        return <span key={i}>{segment.text}</span>;
+                                    })}
+                                </span>
+                            ) : (
+                                text
+                            )
                         )
                     ))}
                 </div>
@@ -808,7 +892,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                                 <RotateCcw className="w-3 h-3" />
                                             </button>
                                         </div>
-                                        
+
                                         <div className="flex items-center gap-2">
                                             {/* Deep Analysis Controls */}
                                             {showDeepAnalysis && grammarAnalysis.difficult_sentences[0].sentence_tree && (
@@ -820,7 +904,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                                     <RotateCcw className="w-3 h-3" />
                                                 </button>
                                             )}
-                                            
+
                                             <button
                                                 onClick={() => {
                                                     if (!showDeepAnalysis && !grammarAnalysis.difficult_sentences[0].sentence_tree) {
@@ -1041,9 +1125,9 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
             </div>
 
             {/* Phrase Analysis Popup - Fixed Positioning - Liquid Glass Style */}
-            {selectionRect && (
-                <div 
-                    className="fixed z-50 animate-in fade-in zoom-in-95 duration-200"
+            {selectionRect && typeof document !== 'undefined' && createPortal(
+                <div
+                    className="fixed z-[9999] animate-in fade-in zoom-in-95 duration-200"
                     style={{
                         top: `${selectionRect.bottom + 12}px`,
                         left: `${Math.min(Math.max(16, selectionRect.left), window.innerWidth - 320)}px`,
@@ -1051,12 +1135,12 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                         maxWidth: '360px',
                         minWidth: '200px'
                     }}
-                    onMouseDown={(e) => e.stopPropagation()} 
+                    onMouseDown={(e) => e.stopPropagation()}
                 >
                     <div className={cn(
                         "rounded-2xl backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/40 overflow-hidden transition-all duration-300",
-                        phraseAnalysis 
-                            ? "bg-white/80 p-0" 
+                        phraseAnalysis
+                            ? "bg-white/80 p-0"
                             : "bg-white/60 hover:bg-white/70 p-1"
                     )}>
                         {!phraseAnalysis ? (
@@ -1134,7 +1218,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                     )}
                                 </div>
                                 {/* Close Button (Absolute) */}
-                                <button 
+                                <button
                                     onClick={closePhraseAnalysis}
                                     className="absolute top-3 right-3 p-1.5 text-stone-400 hover:text-stone-600 rounded-full hover:bg-stone-200/50 transition-colors opacity-0 group-hover:opacity-100"
                                 >
@@ -1143,7 +1227,8 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                             </div>
                         )}
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
@@ -1152,61 +1237,63 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
 // Helper to get colors for different grammar types
 function getHighlightColor(type: string): string {
     const t = type.toLowerCase();
-    
-    // === 核心层 (Core Layer) - 实心、高亮、强调 ===
-    
-    // 主语 (Subject): 翡翠绿 (Emerald) - 稳重
+
+    // === 核心层 (Core Layer) - 优雅、清晰 ===
+    // 移除默认背景，改用 hover 显现，增强呼吸感
+    // 使用 border-b-2 + opacity 降低视觉冲击
+
+    // 主语 (Subject): 湖水绿 (Teal)
     if (t.includes("subject") || t.includes("主语")) {
-        return "border-emerald-600 text-emerald-800 bg-emerald-100 font-semibold";
+        return "border-b-2 border-teal-400/40 text-teal-800 hover:bg-teal-50/50 transition-colors pb-0.5";
     }
 
-    // 谓语/动词 (Predicate/Verb): 玫瑰红 (Rose) - 核心动能
+    // 谓语/动词 (Predicate/Verb): 玫瑰红 (Rose)
     if (t.includes("verb") || t.includes("predicate") || t.includes("谓语") || t.includes("动词")) {
-        return "border-rose-600 text-rose-800 bg-rose-100 font-bold";
+        return "border-b-2 border-rose-400/40 text-rose-800 hover:bg-rose-50/50 transition-colors pb-0.5";
     }
 
-    // 宾语 (Object): 紫罗兰 (Violet) - 承接
+    // 宾语 (Object): 靛青 (Indigo)
     if (t.includes("object") || t.includes("宾语")) {
-        return "border-violet-600 text-violet-800 bg-violet-100 font-semibold";
+        return "border-b-2 border-indigo-400/40 text-indigo-800 hover:bg-indigo-50/50 transition-colors pb-0.5";
     }
 
-    // === 修饰层 (Modifier Layer) - 虚线、轻量、不抢戏 ===
+    // === 修饰层 (Modifier Layer) - 轻盈、呼吸感 ===
+    // 虚线 + 轻量化颜色
 
-    // 定语 (Attributive/Adjective): 天蓝 (Sky) - 清新
+    // 定语 (Attributive/Adjective): 天空蓝 (Sky)
     if (t.includes("adjective") || t.includes("attributive") || t.includes("定语")) {
-        return "border-b-2 border-dashed border-sky-400 text-sky-700 hover:bg-sky-50"; 
+        return "border-b border-dashed border-sky-400/40 text-sky-700 hover:bg-sky-50/30 pb-0.5";
     }
 
-    // 状语 (Adverbial): 琥珀 (Amber) - 补充
+    // 状语 (Adverbial): 琥珀金 (Amber)
     if (t.includes("adverb") || t.includes("状语")) {
-        return "border-b-2 border-dashed border-amber-400 text-amber-700 hover:bg-amber-50";
+        return "border-b border-dashed border-amber-400/40 text-amber-700 hover:bg-amber-50/30 pb-0.5";
     }
 
-    // 补语 (Complement): 靛蓝 (Indigo)
+    // 补语 (Complement): 紫罗兰 (Violet)
     if (t.includes("complement") || t.includes("补语")) {
-        return "border-b-2 border-dashed border-indigo-400 text-indigo-700 hover:bg-indigo-50";
+        return "border-b border-dashed border-violet-400/40 text-violet-700 hover:bg-violet-50/30 pb-0.5";
     }
-    
+
     // 同位语 (Appositive): 橙色 (Orange)
     if (t.includes("appositive") || t.includes("同位语")) {
-        return "border-b-2 border-dotted border-orange-400 text-orange-700 hover:bg-orange-50";
+        return "border-b border-dotted border-orange-400/40 text-orange-700 hover:bg-orange-50/30 pb-0.5";
     }
 
-    // 介词短语 (Preposition): 粉色 (Pink) - 连接
+    // 介词短语 (Preposition): 石灰色 (Stone)
     if (t.includes("preposition") || t.includes("介词")) {
-        return "border-b border-pink-300 text-pink-600 hover:bg-pink-50";
+        return "border-b border-stone-200 text-stone-600 hover:bg-stone-50/50 pb-0.5";
     }
 
-    // === 结构层 (Structure Layer) - 区间标记 ===
-    
-    // 从句 (Clause): 蓝色 (Blue) - 逻辑块
+    // === 结构层 (Structure Layer) - 柔和标记 ===
+
+    // 从句 (Clause): 极细侧边
     if (t.includes("clause") || t.includes("从句")) {
-        // 从句通常很长，不使用背景色，而是使用特殊的边框样式
-        return "border-l-4 border-blue-400 pl-1 text-stone-600 hover:bg-blue-50/30";
+        return "border-l-2 border-stone-200/60 pl-1 text-stone-600 hover:bg-stone-50/30";
     }
 
-    // Default (Stone) - 灰色，降噪处理，仅轻微下划线
-    return "border-b border-stone-200 text-stone-500";
+    // Default: 干净的文字
+    return "text-stone-600";
 }
 
 function translateGrammarType(type: string): string {
