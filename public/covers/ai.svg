@@ -1,0 +1,18 @@
+<svg width="600" height="400" viewBox="0 0 600 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="600" height="400" fill="#F0F9FF"/>
+<rect x="0" y="0" width="600" height="400" fill="url(#paint0_linear_ai)"/>
+<circle cx="300" cy="200" r="120" stroke="url(#paint1_linear_ai)" stroke-width="2"/>
+<circle cx="300" cy="200" r="80" stroke="url(#paint1_linear_ai)" stroke-width="2" stroke-dasharray="10 10"/>
+<circle cx="300" cy="200" r="40" fill="#38BDF8" fill-opacity="0.2"/>
+<path d="M300 80V0M300 400V320M180 200H0M600 200H420" stroke="#7DD3FC" stroke-width="2"/>
+<defs>
+<linearGradient id="paint0_linear_ai" x1="0" y1="0" x2="600" y2="400" gradientUnits="userSpaceOnUse">
+<stop stop-color="#E0F2FE"/>
+<stop offset="1" stop-color="#BAE6FD" stop-opacity="0.2"/>
+</linearGradient>
+<linearGradient id="paint1_linear_ai" x1="300" y1="80" x2="300" y2="320" gradientUnits="userSpaceOnUse">
+<stop stop-color="#0EA5E9"/>
+<stop offset="1" stop-color="#7DD3FC" stop-opacity="0"/>
+</linearGradient>
+</defs>
+</svg>

@@ -386,28 +386,21 @@ function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
             <div className="h-44 w-full relative overflow-hidden bg-stone-100">
                 <img
                     src={item.image || (() => {
-                        let hash = 0;
-                        for (let i = 0; i < item.title.length; i++) {
-                            hash = item.title.charCodeAt(i) + ((hash << 5) - hash);
-                        }
-                        const safeHash = Math.abs(hash);
-
-                        const keywordPools: Record<string, string[]> = {
-                            'news': ['city', 'building', 'street', 'business', 'newspaper', 'meeting', 'conference', 'office', 'work'],
-                            'psychology': ['brain', 'mind', 'thought', 'psychology', 'neuron', 'head', 'face', 'people'],
-                            'ai_news': ['robot', 'technology', 'ai', 'chip', 'computer', 'code', 'server', 'future', 'cyber'],
-                            'ielts': ['library', 'book', 'study', 'university', 'student', 'writing', 'pen', 'classroom', 'exam'],
-                            'cet4': ['campus', 'student', 'book', 'study', 'college', 'desk'],
-                            'cet6': ['university', 'library', 'reading', 'writing', 'learn', 'education'],
-                            'ai_gen': ['abstract', 'art', 'future', 'colorful', 'design', 'creative'],
-                            'ted': ['stage', 'speaker', 'audience', 'idea', 'presentation', 'mic']
+                        const categoryMap: Record<string, string> = {
+                            'news': '/covers/news.svg',
+                            'psychology': '/covers/psychology.svg',
+                            'ai_news': '/covers/ai.svg',
+                            'ai_gen': '/covers/ai.svg',
+                            'ielts': '/covers/ielts.svg',
+                            'cet4': '/covers/ielts.svg',
+                            'cet6': '/covers/ielts.svg',
+                            'ted': '/covers/news.svg'
                         };
-
-                        const pool = keywordPools[category] || ['nature', 'water', 'sky', 'forest'];
-                        const keyword = pool[safeHash % pool.length];
-
-                        return `https://loremflickr.com/600/400/${keyword}?lock=${safeHash}`;
+                        return categoryMap[category] || '/covers/default.svg';
                     })()}
+                    style={!item.image ? {
+                        filter: `hue-rotate(${Math.abs(item.title.split('').reduce((acc, char) => char.charCodeAt(0) + ((acc << 5) - acc), 0)) % 360}deg)`
+                    } : undefined}
                     alt={item.title}
                     className={cn(
                         "w-full h-full object-cover transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-105",
@@ -418,6 +411,24 @@ function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
                         e.currentTarget.nextElementSibling?.classList.remove('hidden');
                     }}
                 />
+
+                {/* Date Badge (Issue Number) */}
+                {!item.image && (
+                    <div className="absolute top-2 right-2 flex flex-col items-center justify-center w-10 h-10 bg-white/20 backdrop-blur-md border border-white/30 rounded-full shadow-sm z-10">
+                        <span className="text-xs font-bold text-stone-700/70 font-serif leading-none">
+                            {new Date(item.pubDate).getDate() || new Date().getDate()}
+                        </span>
+                    </div>
+                )}
+
+                {/* Title Overlay (Magazine Style) */}
+                {!item.image && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none flex items-end p-4 z-10">
+                        <h3 className="text-white font-newsreader italic text-2xl font-medium leading-tight drop-shadow-md opacity-90 line-clamp-2">
+                            {item.title.split(' ').slice(0, 6).join(' ')}...
+                        </h3>
+                    </div>
+                )}
 
                 {/* Fallback Gradient */}
                 <div className={cn(

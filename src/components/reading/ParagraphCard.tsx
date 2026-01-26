@@ -690,7 +690,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                         <span
                                             key={`${start}-${end}`}
                                             className={cn(
-                                                "cursor-help transition-all duration-200 relative group/highlight rounded-sm px-0.5 mx-0.5 border-b-2",
+                                                "cursor-help transition-all duration-200 relative group/highlight rounded-sm px-0.5 mx-0.5",
                                                 structRange.color
                                             )}
                                         >

@@ -22,6 +22,7 @@ interface ArticleData {
     url?: string; // Track current URL for sidebar highlighting
     siteName?: string; // For TED video sync
     videoUrl?: string; // TED video URL
+    image?: string | null;
 }
 
 
@@ -110,6 +111,7 @@ function ReadingPageContent() {
                                 byline: articleData.byline,
                                 siteName: articleData.siteName,
                                 blocks: articleData.blocks,
+                                image: articleData.image,
                                 timestamp: Date.now()
                             });
 

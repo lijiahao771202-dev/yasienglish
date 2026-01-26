@@ -48,17 +48,40 @@ export async function POST(req: Request) {
         try {
             const response = await fetch(url, {
                 headers: {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Upgrade-Insecure-Requests": "1",
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Sec-Fetch-User": "?1"
                 },
                 redirect: 'follow',
             });
 
             if (!response.ok) {
-                throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+                // Try again with different user agent if 403
+                if (response.status === 403) {
+                    console.log("Retrying with mobile UA...");
+                    const retryResponse = await fetch(url, {
+                        headers: {
+                            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+                        }
+                    });
+                    if (retryResponse.ok) {
+                        finalUrl = retryResponse.url;
+                        html = await retryResponse.text();
+                    } else {
+                        throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+                    }
+                } else {
+                    throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+                }
+            } else {
+                finalUrl = response.url;
+                html = await response.text();
             }
-
-            finalUrl = response.url;
-            html = await response.text();
 
         } catch (e: any) {
             console.error("Fetch error:", e);
@@ -282,6 +305,15 @@ export async function POST(req: Request) {
         const reader = new Readability(doc.window.document);
         const article = reader.parse();
 
+        // Extract Image
+        let imageUrl = null;
+        const metaImage = doc.window.document.querySelector('meta[property="og:image"]') ||
+            doc.window.document.querySelector('meta[name="twitter:image"]') ||
+            doc.window.document.querySelector('meta[property="twitter:image"]');
+        if (metaImage) {
+            imageUrl = metaImage.getAttribute('content');
+        }
+
         if (!article) {
             return NextResponse.json({ error: "Failed to parse article" }, { status: 500 });
         }
@@ -328,6 +360,7 @@ export async function POST(req: Request) {
             excerpt: article.excerpt,
             byline: article.byline,
             siteName: article.siteName,
+            image: imageUrl,
         });
     } catch (error) {
         console.error("Error parsing article:", error);

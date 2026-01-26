@@ -45,14 +45,14 @@ function calculateLCS(original: string[], transcript: string[]) {
 export async function POST(req: NextRequest) {
     try {
         const formData = await req.formData();
-        const audioFile = formData.get('audio') as Blob;
+        const audioFile = formData.get('audio') as File | Blob;
         const originalText = formData.get('text') as string;
 
         if (!audioFile || !originalText) {
             return NextResponse.json({ error: 'Missing audio or text' }, { status: 400 });
         }
 
-        // 1. Send to Whisper Server
+        // 1. Send to local Whisper Server (same as useWhisper.ts)
         const arrayBuffer = await audioFile.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
 
@@ -65,7 +65,9 @@ export async function POST(req: NextRequest) {
         });
 
         if (!whisperRes.ok) {
-            throw new Error('Whisper server failed');
+            const errorText = await whisperRes.text();
+            console.error('Whisper server failed:', whisperRes.status, errorText);
+            throw new Error(`Whisper server failed: ${whisperRes.status}`);
         }
 
         const whisperData = await whisperRes.json();
@@ -79,23 +81,14 @@ export async function POST(req: NextRequest) {
         const { length: matchCount, matches } = calculateLCS(originalNorm, transcriptNorm);
 
         // Calculate Score: (Matches / Total Original Words) * 100
-        // We use a slightly more forgiving denominator to avoid punishing short sentences too hard? 
-        // No, standard accuracy is fine.
         const score = Math.round((matchCount / Math.max(1, originalNorm.length)) * 100);
 
         // 3. Generate Diff for UI
-        // We map over the ORIGINAL words to preserve the text structure the user sees.
-        // We need to map the raw original words to the normalized indices.
-        // This is a bit tricky because splitting by space might not align perfectly if punctuation was removed.
-        // Let's do a best-effort mapping.
-
         let normIndex = 0;
         const diff = originalWordsRaw.map((word) => {
-            // Check if this raw word corresponds to the current normalized word
             const cleanWord = word.toLowerCase().replace(/[.,!?;:"'()]/g, '');
 
             if (cleanWord.length === 0) {
-                // It was just punctuation, mark as correct (or neutral)
                 return { word, status: 'correct', transcript: '' };
             }
 
@@ -105,7 +98,7 @@ export async function POST(req: NextRequest) {
             return {
                 word,
                 status: isMatch ? 'correct' : 'incorrect',
-                transcript: isMatch ? cleanWord : '?' // We don't easily know WHICH wrong word they said without more complex alignment, but LCS tells us if it matched.
+                transcript: isMatch ? cleanWord : '?'
             };
         });
 

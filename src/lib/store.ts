@@ -1,14 +1,7 @@
 import { create } from 'zustand';
-import { db } from './db';
+import { db, VocabItem } from './db';
 
-export interface VocabularyItem {
-    word: string;
-    definition: string;
-    translation: string;
-    context: string;
-    example: string;
-    timestamp: number;
-}
+// Removed local VocabularyItem interface in favor of db.ts export
 
 export interface WritingHistoryItem {
     id?: number;
@@ -19,11 +12,11 @@ export interface WritingHistoryItem {
 }
 
 interface UserState {
-    vocabulary: VocabularyItem[];
+    vocabulary: VocabItem[];
     writingHistory: WritingHistoryItem[];
     readArticleUrls: string[]; // In-memory cache of read URLs
 
-    addVocabulary: (item: VocabularyItem) => Promise<void>;
+    addVocabulary: (item: VocabItem) => Promise<void>;
     addWritingHistory: (item: WritingHistoryItem) => Promise<void>;
     markArticleAsRead: (url: string) => Promise<void>;
 

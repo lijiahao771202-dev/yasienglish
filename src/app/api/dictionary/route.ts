@@ -8,21 +8,48 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Word is required" }, { status: 400 });
         }
 
-        // Fetch from Youdao Suggest API
-        const response = await fetch(`http://dict.youdao.com/suggest?num=1&doctype=json&q=${encodeURIComponent(word)}`);
+        // Parallel fetch: Youdao (Chinese Def) + FreeDict (Phonetic)
+        const [youdaoRes, freeDictRes] = await Promise.all([
+            fetch(`http://dict.youdao.com/suggest?num=1&doctype=json&q=${encodeURIComponent(word)}`),
+            fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`)
+        ]);
 
-        if (!response.ok) {
-            throw new Error(`Youdao API error: ${response.statusText}`);
+        let definition = "";
+        let translation = "";
+        let phonetic = "";
+
+        // Process Youdao (Chinese)
+        if (youdaoRes.ok) {
+            const data = await youdaoRes.json();
+            if (data.result?.code === 200 && data.data?.entries?.length > 0) {
+                const entry = data.data.entries[0];
+                definition = entry.explain;
+                translation = entry.explain.split(' ').pop() || entry.explain;
+            }
         }
 
-        const data = await response.json();
+        // Process FreeDict (Phonetic)
+        if (freeDictRes.ok) {
+            const data = await freeDictRes.json();
+            if (Array.isArray(data) && data.length > 0) {
+                // Find first non-empty phonetic text
+                const phoneticObj = data[0].phonetics?.find((p: any) => p.text);
+                if (phoneticObj?.text) {
+                    phonetic = phoneticObj.text;
+                }
+                // Fallback: data[0].phonetic
+                if (!phonetic && data[0].phonetic) {
+                    phonetic = data[0].phonetic;
+                }
+            }
+        }
 
-        if (data.result?.code === 200 && data.data?.entries?.length > 0) {
-            const entry = data.data.entries[0];
+        if (definition || phonetic) {
             return NextResponse.json({
-                word: entry.entry,
-                definition: entry.explain,
-                translation: entry.explain.split(' ').pop() || entry.explain // Simple fallback
+                word,
+                definition: definition || "No definition found",
+                translation,
+                phonetic
             });
         }
 
