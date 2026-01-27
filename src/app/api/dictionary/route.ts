@@ -8,48 +8,54 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Word is required" }, { status: 400 });
         }
 
-        // Parallel fetch: Youdao (Chinese Def) + FreeDict (Phonetic)
-        const [youdaoRes, freeDictRes] = await Promise.all([
-            fetch(`http://dict.youdao.com/suggest?num=1&doctype=json&q=${encodeURIComponent(word)}`),
-            fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`)
-        ]);
+        // Youdao JSONAPI (Rich Data)
+        const youdaoRes = await fetch(`https://dict.youdao.com/jsonapi?q=${encodeURIComponent(word)}`);
 
         let definition = "";
         let translation = "";
         let phonetic = "";
+        let audio = "";
 
-        // Process Youdao (Chinese)
         if (youdaoRes.ok) {
             const data = await youdaoRes.json();
-            if (data.result?.code === 200 && data.data?.entries?.length > 0) {
-                const entry = data.data.entries[0];
-                definition = entry.explain;
-                translation = entry.explain.split(' ').pop() || entry.explain;
+
+            // 1. Extract Phonetics (US preferred)
+            const simple = data.simple?.word?.[0];
+            const ec = data.ec?.word?.[0];
+
+            if (simple) {
+                phonetic = simple.usphone || simple.ukphone || "";
+                // Construct audio URL directly if available (type=2 for US)
+                if (simple.usspeech) {
+                    audio = `https://dict.youdao.com/dictvoice?audio=${simple.usspeech}`;
+                }
+            }
+
+            // 2. Extract Definition (EC - Exam Category / Chinese)
+            if (ec && ec.trs && ec.trs.length > 0) {
+                const firstTr = ec.trs[0]; // First translation group
+                // Usually structure: tr[0].tr[0].l.i[0] -> "int. 喂..."
+                const defRaw = firstTr.tr?.[0]?.l?.i?.[0];
+
+                if (defRaw) {
+                    definition = defRaw;
+                    // Clean up part of speech part if needed, or keep it
+                    translation = defRaw.split(/；|，/).slice(0, 2).join("；"); // Shorten for UI
+                }
+            } else if (data.web_trans?.["web-translation"]?.[0]) {
+                // Fallback to web translation for names/brands
+                translation = data.web_trans["web-translation"][0].value;
+                definition = data.web_trans["web-translation"][0].value;
             }
         }
 
-        // Process FreeDict (Phonetic)
-        if (freeDictRes.ok) {
-            const data = await freeDictRes.json();
-            if (Array.isArray(data) && data.length > 0) {
-                // Find first non-empty phonetic text
-                const phoneticObj = data[0].phonetics?.find((p: any) => p.text);
-                if (phoneticObj?.text) {
-                    phonetic = phoneticObj.text;
-                }
-                // Fallback: data[0].phonetic
-                if (!phonetic && data[0].phonetic) {
-                    phonetic = data[0].phonetic;
-                }
-            }
-        }
-
-        if (definition || phonetic) {
+        if (definition || phonetic || translation) {
             return NextResponse.json({
                 word,
-                definition: definition || "No definition found",
+                definition: definition || translation,
                 translation,
-                phonetic
+                phonetic,
+                audio
             });
         }
 

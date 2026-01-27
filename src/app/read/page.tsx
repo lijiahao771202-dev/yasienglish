@@ -339,22 +339,11 @@ function ReadingPageContent() {
                                 </button>
 
                                 <button
-                                    onClick={() => setIsWritingMode(!isWritingMode)}
-                                    className={cn(
-                                        "px-4 h-10 rounded-full text-sm font-bold flex items-center gap-2 transition-all ml-1",
-                                        isWritingMode
-                                            ? "bg-stone-900 text-white shadow-lg"
-                                            : "bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
-                                    )}
+                                    onClick={() => setIsWritingMode(true)}
+                                    className="px-4 h-10 rounded-full text-sm font-bold flex items-center gap-2 transition-all ml-1 bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
                                 >
-                                    {isWritingMode ? (
-                                        <>Close Writer</>
-                                    ) : (
-                                        <>
-                                            <PenTool className="w-4 h-4" />
-                                            <span>Write</span>
-                                        </>
-                                    )}
+                                    <PenTool className="w-4 h-4" />
+                                    <span>Drill</span>
                                 </button>
                             </>
                         )}
@@ -384,9 +373,9 @@ function ReadingPageContent() {
                         />
                     </div>
                 ) : (
-                    <div className={cn("grid gap-8 h-full", isWritingMode ? "grid-cols-2" : "grid-cols-1")}>
+                    <div className="grid gap-8 h-full grid-cols-1">
                         {/* Reading Column */}
-                        <div className={cn("space-y-12 transition-all duration-700", isWritingMode ? "overflow-y-auto pr-4 custom-scrollbar" : "")}>
+                        <div className={cn("space-y-12 transition-all duration-700 mx-auto max-w-3xl")}>
                             <ArticleDisplay
                                 title={article.title}
                                 content={article.content}
@@ -397,23 +386,23 @@ function ReadingPageContent() {
                                 articleUrl={article.url}
                                 isEditMode={isEditMode}
                             />
-                            {!isWritingMode && (
-                                <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">
-                                    <AudioPlayer text={article.textContent || ""} />
-                                </div>
-                            )}
+                            <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">
+                                <AudioPlayer text={article.textContent || ""} />
+                            </div>
                         </div>
 
-                        {/* Writing Column */}
+                        {/* Writing Overlay */}
                         {isWritingMode && (
-                            <div className="h-full">
-                                <WritingEditor articleTitle={article.title} />
-                            </div>
+                            <WritingEditor
+                                articleTitle={article.title}
+                                articleContent={article.textContent || article.content}
+                                onClose={() => setIsWritingMode(false)}
+                            />
                         )}
                     </div>
                 )}
             </div>
-        </main>
+        </main >
     );
 }
 

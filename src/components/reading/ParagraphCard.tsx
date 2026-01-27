@@ -9,6 +9,7 @@ import { SpeakingPanel } from "./SpeakingPanel";
 import { useAnalysisStore } from "@/lib/analysis-store";
 import { SyntaxTreeView } from "./SyntaxTreeView";
 import { bionicText } from "@/lib/bionic";
+import ReactMarkdown from "react-markdown";
 
 interface ParagraphCardProps {
     text: string;
@@ -57,11 +58,12 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
     const translation = translations[text];
     const grammarAnalysis = grammarAnalyses[text];
 
-    // Ask AI State
+    // Ask AI State - Multi-turn chat with streaming
     const [isAskOpen, setIsAskOpen] = useState(false);
     const [question, setQuestion] = useState("");
-    const [answer, setAnswer] = useState<string | null>(null);
+    const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
     const [isAskLoading, setIsAskLoading] = useState(false);
+    const [streamingContent, setStreamingContent] = useState("");
 
     // Practice State
     const [isPracticing, setIsPracticing] = useState(false);
@@ -274,19 +276,57 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
     const handleAskAI = async () => {
         if (!question.trim()) return;
 
+        const userMessage = question.trim();
+        setMessages(prev => [...prev, { role: "user", content: userMessage }]);
+        setQuestion(""); // Clear input immediately
         setIsAskLoading(true);
-        setAnswer(null);
+        setStreamingContent("");
+
         try {
             const res = await fetch("/api/ai/ask", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, question }),
+                body: JSON.stringify({ text, question: userMessage, selection: selectedText }),
             });
-            const data = await res.json();
-            setAnswer(data.answer);
+
+            if (!res.ok) throw new Error("API Error");
+
+            const reader = res.body?.getReader();
+            const decoder = new TextDecoder();
+            let fullContent = "";
+
+            if (reader) {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split("\n");
+
+                    for (const line of lines) {
+                        if (line.startsWith("data: ")) {
+                            const data = line.slice(6);
+                            if (data === "[DONE]") break;
+                            try {
+                                const parsed = JSON.parse(data);
+                                if (parsed.content) {
+                                    fullContent += parsed.content;
+                                    setStreamingContent(fullContent);
+                                }
+                            } catch (e) {
+                                // Ignore parse errors for incomplete chunks
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Add completed message to history
+            setMessages(prev => [...prev, { role: "assistant", content: fullContent }]);
+            setStreamingContent("");
         } catch (err) {
             console.error(err);
-            setAnswer("Sorry, something went wrong. Please try again.");
+            setMessages(prev => [...prev, { role: "assistant", content: "抱歉，出错了。请再试一次。" }]);
         } finally {
             setIsAskLoading(false);
         }
@@ -1036,30 +1076,72 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                             animate={{ opacity: 1, height: "auto" }}
                             className="space-y-3"
                         >
+                            {/* Chat History */}
+                            {messages.length > 0 && (
+                                <div className="max-h-64 overflow-y-auto space-y-2 p-3 bg-stone-50/50 rounded-xl border border-stone-100">
+                                    {messages.map((msg, i) => (
+                                        <div
+                                            key={i}
+                                            className={cn(
+                                                "text-sm p-3 rounded-xl max-w-[90%]",
+                                                msg.role === "user"
+                                                    ? "ml-auto bg-blue-500 text-white"
+                                                    : "mr-auto bg-white/80 backdrop-blur border border-stone-200 text-stone-700 prose prose-sm prose-stone max-w-none"
+                                            )}
+                                        >
+                                            {msg.role === "user" ? msg.content : <ReactMarkdown>{msg.content}</ReactMarkdown>}
+                                        </div>
+                                    ))}
+                                    {/* Streaming response (typing effect) */}
+                                    {streamingContent && (
+                                        <div className="mr-auto bg-white/80 backdrop-blur border border-stone-200 text-stone-700 text-sm p-3 rounded-xl max-w-[90%] prose prose-sm prose-stone">
+                                            <ReactMarkdown>{streamingContent}</ReactMarkdown>
+                                            <span className="inline-block w-1.5 h-4 bg-blue-500 ml-0.5 animate-pulse rounded-sm" />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Input Area */}
                             <div className="relative">
                                 <input
                                     type="text"
                                     value={question}
                                     onChange={(e) => setQuestion(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleAskAI()}
-                                    placeholder="Ask a question about this paragraph..."
-                                    className="w-full bg-white/50 border border-stone-200 rounded-lg p-3 pr-10 text-stone-800 focus:outline-none focus:border-blue-400 text-sm"
+                                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleAskAI()}
+                                    placeholder={selectedText ? `关于 "${selectedText.slice(0, 20)}..." 提问...` : "问我关于这段话的问题..."}
+                                    className="w-full bg-white/70 backdrop-blur border border-stone-200 rounded-xl p-3.5 pr-12 text-stone-800 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-sm transition-all placeholder:text-stone-400"
                                 />
                                 <button
                                     onClick={handleAskAI}
                                     disabled={isAskLoading || !question.trim()}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-blue-100 hover:bg-blue-200 text-blue-600 rounded-md disabled:opacity-50 transition-colors"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                                 >
                                     {isAskLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                                 </button>
                             </div>
 
-                            {answer && (
-                                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <span className="font-bold text-blue-600 text-sm">AI Answer</span>
-                                    </div>
-                                    <p className="text-sm text-stone-700">{answer}</p>
+                            {/* Quick Actions */}
+                            {messages.length === 0 && !isAskLoading && (
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        onClick={() => { setQuestion("帮我分析这段话的语法结构"); handleAskAI(); }}
+                                        className="text-xs bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-full transition-colors"
+                                    >
+                                        🔍 语法分析
+                                    </button>
+                                    <button
+                                        onClick={() => { setQuestion("用一句话总结这段话的大意"); handleAskAI(); }}
+                                        className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 px-3 py-1.5 rounded-full transition-colors"
+                                    >
+                                        📝 总结大意
+                                    </button>
+                                    <button
+                                        onClick={() => { setQuestion("列出这段话中的高级词汇并解释"); handleAskAI(); }}
+                                        className="text-xs bg-violet-50 hover:bg-violet-100 text-violet-600 border border-violet-200 px-3 py-1.5 rounded-full transition-colors"
+                                    >
+                                        ✨ 难词解析
+                                    </button>
                                 </div>
                             )}
                         </motion.div>
