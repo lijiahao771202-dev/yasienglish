@@ -1083,42 +1083,52 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                         <div
                                             key={i}
                                             className={cn(
-                                                "text-sm p-3 rounded-xl max-w-[90%]",
+                                                "text-sm p-5 rounded-3xl max-w-[90%] shadow-md transition-all duration-500 animate-in fade-in slide-in-from-bottom-4",
                                                 msg.role === "user"
-                                                    ? "ml-auto bg-blue-500 text-white"
-                                                    : "mr-auto bg-white/80 backdrop-blur border border-stone-200 text-stone-700 prose prose-sm prose-stone max-w-none"
+                                                    ? "ml-auto bg-gradient-to-tr from-violet-600 to-indigo-600 text-white shadow-indigo-500/20 rounded-tr-sm border border-white/10"
+                                                    : "mr-auto bg-white/70 backdrop-blur-xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.08)] text-stone-700 prose prose-sm prose-stone ring-1 ring-white/60 rounded-tl-sm"
                                             )}
                                         >
-                                            {msg.role === "user" ? msg.content : <ReactMarkdown>{msg.content}</ReactMarkdown>}
+                                            <div className="leading-relaxed tracking-wide">
+                                                {msg.role === "user" ? msg.content : <ReactMarkdown>{msg.content}</ReactMarkdown>}
+                                            </div>
                                         </div>
                                     ))}
-                                    {/* Streaming response (typing effect) */}
+                                    {/* Streaming response (typing effect) with Glass Style */}
                                     {streamingContent && (
-                                        <div className="mr-auto bg-white/80 backdrop-blur border border-stone-200 text-stone-700 text-sm p-3 rounded-xl max-w-[90%] prose prose-sm prose-stone">
+                                        <div className="mr-auto bg-white/70 backdrop-blur-xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.08)] text-stone-700 text-sm p-5 rounded-3xl max-w-[90%] prose prose-sm prose-stone ring-1 ring-white/60 rounded-tl-sm animate-pulse">
                                             <ReactMarkdown>{streamingContent}</ReactMarkdown>
-                                            <span className="inline-block w-1.5 h-4 bg-blue-500 ml-0.5 animate-pulse rounded-sm" />
+                                            <span className="inline-block w-2 h-4 align-middle bg-indigo-500/50 rounded-sm animate-pulse ml-1" />
                                         </div>
                                     )}
                                 </div>
                             )}
 
                             {/* Input Area */}
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    value={question}
-                                    onChange={(e) => setQuestion(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleAskAI()}
-                                    placeholder={selectedText ? `关于 "${selectedText.slice(0, 20)}..." 提问...` : "问我关于这段话的问题..."}
-                                    className="w-full bg-white/70 backdrop-blur border border-stone-200 rounded-xl p-3.5 pr-12 text-stone-800 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 text-sm transition-all placeholder:text-stone-400"
-                                />
-                                <button
-                                    onClick={handleAskAI}
-                                    disabled={isAskLoading || !question.trim()}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
-                                >
-                                    {isAskLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                </button>
+                            {/* Floating Input Area */}
+                            <div className="relative group mt-2">
+                                <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-300/30 to-purple-300/30 rounded-full blur opacity-50 group-hover:opacity-100 transition duration-500"></div>
+                                <div className="relative flex items-center bg-white/80 backdrop-blur-xl rounded-full border border-white/60 shadow-[0_4px_20px_rgba(0,0,0,0.03)] focus-within:shadow-[0_8px_30px_rgba(59,130,246,0.15)] focus-within:border-blue-200/50 transition-all duration-300">
+                                    <input
+                                        type="text"
+                                        value={question}
+                                        onChange={(e) => setQuestion(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleAskAI()}
+                                        placeholder={selectedText ? `Ask about selection...` : "Ask a question..."}
+                                        className="w-full bg-transparent border-none text-stone-800 text-sm px-6 py-3.5 focus:outline-none focus:ring-0 placeholder:text-stone-400 placeholder:font-light"
+                                    />
+                                    <button
+                                        onClick={handleAskAI}
+                                        disabled={isAskLoading || !question.trim()}
+                                        className="mr-1.5 p-2 rounded-full transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed group-focus-within:bg-blue-500 group-focus-within:text-white group-focus-within:shadow-lg text-stone-400 hover:bg-stone-100"
+                                    >
+                                        {isAskLoading ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Send className="w-4 h-4 translate-x-px translate-y-px group-focus-within:rotate-[-10deg] transition-transform" />
+                                        )}
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Quick Actions */}
@@ -1208,110 +1218,136 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
 
             {/* Phrase Analysis Popup - Fixed Positioning - Liquid Glass Style */}
             {selectionRect && typeof document !== 'undefined' && createPortal(
-                <div
-                    className="fixed z-[9999] animate-in fade-in zoom-in-95 duration-200"
-                    style={{
-                        top: `${selectionRect.bottom + 12}px`,
-                        left: `${Math.min(Math.max(16, selectionRect.left), window.innerWidth - 320)}px`,
-                        width: 'auto',
-                        maxWidth: '360px',
-                        minWidth: '200px'
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                >
-                    <div className={cn(
-                        "rounded-2xl backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/40 overflow-hidden transition-all duration-300",
-                        phraseAnalysis
-                            ? "bg-white/80 p-0"
-                            : "bg-white/60 hover:bg-white/70 p-1"
-                    )}>
-                        {!phraseAnalysis ? (
-                            // Initial State: Action Button
-                            <button
-                                onClick={handleAnalyzePhrase}
-                                disabled={isAnalyzingPhrase}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-stone-700 hover:text-amber-600 transition-colors"
-                            >
-                                {isAnalyzingPhrase ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                                        <span className="text-stone-500">Translating...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Sparkles className="w-4 h-4 text-amber-500" />
-                                        <span>Context Translate</span>
-                                    </>
-                                )}
-                            </button>
-                        ) : (
-                            // Result State: Content
-                            <div className="relative group">
-                                <div className="p-5 pr-8 space-y-4">
-                                    {/* Primary Translation */}
-                                    <div className="space-y-1">
-                                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600/70 uppercase tracking-widest">
-                                            <Globe className="w-3 h-3" />
-                                            <span>中文翻译</span>
-                                        </div>
-                                        <div className="text-stone-800 text-base font-semibold leading-relaxed">
-                                            {phraseAnalysis.translation}
-                                        </div>
-                                    </div>
-
-                                    {/* Grammar Point */}
-                                    {phraseAnalysis.grammar_point && (
-                                        <div className="space-y-1 pt-3 border-t border-stone-100">
-                                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-blue-500/70 uppercase tracking-widest">
-                                                <BookOpen className="w-3 h-3" />
-                                                <span>语法解析</span>
-                                            </div>
-                                            <div className="text-stone-600 text-sm leading-relaxed">
-                                                {phraseAnalysis.grammar_point}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Nuance/Context */}
-                                    {phraseAnalysis.nuance && (
-                                        <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100/50">
-                                            <div className="text-amber-800 text-xs leading-relaxed italic">
-                                                {phraseAnalysis.nuance}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Key Vocabulary */}
-                                    {phraseAnalysis.vocabulary && phraseAnalysis.vocabulary.length > 0 && (
-                                        <div className="space-y-2 pt-3 border-t border-stone-100">
-                                            <div className="flex items-center gap-1.5 text-[10px] font-bold text-stone-400 uppercase tracking-widest">
-                                                <Sparkles className="w-3 h-3" />
-                                                <span>核心词汇</span>
-                                            </div>
-                                            <div className="grid grid-cols-1 gap-2">
-                                                {phraseAnalysis.vocabulary.map((item: any, i: number) => (
-                                                    <div key={i} className="flex flex-col">
-                                                        <span className="text-xs font-bold text-stone-700">{item.word}</span>
-                                                        <span className="text-xs text-stone-500">{item.definition}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                {/* Close Button (Absolute) */}
-                                <button
-                                    onClick={closePhraseAnalysis}
-                                    className="absolute top-3 right-3 p-1.5 text-stone-400 hover:text-stone-600 rounded-full hover:bg-stone-200/50 transition-colors opacity-0 group-hover:opacity-100"
-                                >
-                                    <X className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                </div>,
+                <PhraseAnalysisPopup
+                    selectionRect={selectionRect}
+                    phraseAnalysis={phraseAnalysis}
+                    isAnalyzingPhrase={isAnalyzingPhrase}
+                    onAnalyze={handleAnalyzePhrase}
+                    onClose={closePhraseAnalysis}
+                />,
                 document.body
             )}
+        </div>
+    );
+}
+
+// Extracted Component for Click Outside Handling
+function PhraseAnalysisPopup({ selectionRect, phraseAnalysis, isAnalyzingPhrase, onAnalyze, onClose }: any) {
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (ref.current && !ref.current.contains(event.target as Node)) {
+                onClose();
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [onClose]);
+
+    return (
+        <div
+            ref={ref}
+            className="fixed z-[9999] animate-in fade-in zoom-in-95 duration-200"
+            style={{
+                top: `${selectionRect.bottom + 12}px`,
+                left: `${Math.min(Math.max(16, selectionRect.left), window.innerWidth - 320)}px`,
+                width: 'auto',
+                maxWidth: '360px',
+                minWidth: '200px'
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+        >
+            <div className={cn(
+                "rounded-2xl backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/40 overflow-hidden transition-all duration-300",
+                phraseAnalysis
+                    ? "bg-white/80 p-0"
+                    : "bg-white/60 hover:bg-white/70 p-1"
+            )}>
+                {!phraseAnalysis ? (
+                    // Initial State: Action Button
+                    <button
+                        onClick={onAnalyze}
+                        disabled={isAnalyzingPhrase}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-stone-700 hover:text-amber-600 transition-colors"
+                    >
+                        {isAnalyzingPhrase ? (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                                <span className="text-stone-500">Translating...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles className="w-4 h-4 text-amber-500" />
+                                <span>Context Translate</span>
+                            </>
+                        )}
+                    </button>
+                ) : (
+                    // Result State: Content
+                    <div className="relative group">
+                        <div className="p-5 pr-8 space-y-4">
+                            {/* Primary Translation */}
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600/70 uppercase tracking-widest">
+                                    <Globe className="w-3 h-3" />
+                                    <span>中文翻译</span>
+                                </div>
+                                <div className="text-stone-800 text-base font-semibold leading-relaxed">
+                                    {phraseAnalysis.translation}
+                                </div>
+                            </div>
+
+                            {/* Grammar Point */}
+                            {phraseAnalysis.grammar_point && (
+                                <div className="space-y-1 pt-3 border-t border-stone-100">
+                                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-blue-500/70 uppercase tracking-widest">
+                                        <BookOpen className="w-3 h-3" />
+                                        <span>语法解析</span>
+                                    </div>
+                                    <div className="text-stone-600 text-sm leading-relaxed">
+                                        {phraseAnalysis.grammar_point}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Nuance/Context */}
+                            {phraseAnalysis.nuance && (
+                                <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100/50">
+                                    <div className="text-amber-800 text-xs leading-relaxed italic">
+                                        {phraseAnalysis.nuance}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Key Vocabulary */}
+                            {phraseAnalysis.vocabulary && phraseAnalysis.vocabulary.length > 0 && (
+                                <div className="space-y-2 pt-3 border-t border-stone-100">
+                                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+                                        <Sparkles className="w-3 h-3" />
+                                        <span>核心词汇</span>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {phraseAnalysis.vocabulary.map((item: any, i: number) => (
+                                            <div key={i} className="flex flex-col">
+                                                <span className="text-xs font-bold text-stone-700">{item.word}</span>
+                                                <span className="text-xs text-stone-500">{item.definition}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        {/* Close Button (Absolute) */}
+                        <button
+                            onClick={onClose}
+                            className="absolute top-3 right-3 p-1.5 text-stone-400 hover:text-stone-600 rounded-full hover:bg-stone-200/50 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

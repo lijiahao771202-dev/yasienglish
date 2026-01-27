@@ -3,7 +3,7 @@ import { deepseek } from "@/lib/deepseek";
 
 export async function POST(req: NextRequest) {
     try {
-        const { articleTitle, articleContent, difficultyModifier = "standard", mode = "translation" } = await req.json();
+        const { articleTitle, articleContent, difficulty = "Medium", mode = "translation" } = await req.json();
 
         if (!articleTitle) {
             return NextResponse.json(
@@ -16,24 +16,32 @@ export async function POST(req: NextRequest) {
         const snippet = articleContent ? articleContent.slice(0, 3000) : "";
 
         let difficultyPrompt = "";
-        if (difficultyModifier === "easier") {
-            difficultyPrompt = "The user finds the previous level too hard. Generate a SIMPLER sentence (CEFR B1/B2). Use common vacabulary.";
-        } else if (difficultyModifier === "harder") {
-            difficultyPrompt = "The user finds the previous level too easy. Generate a HARDER sentence (CEFR C1/C2). Use complex structure and rare vocabulary.";
-        } else {
-            difficultyPrompt = "Generate a standard advanced (B2/C1) level sentence.";
-        }
+
+        // Granular Difficulty Levels (1-5)
+        const levelMap: Record<string, string> = {
+            'Level 1': "Generate a BEGINNER sentence (CEFR A1/A2). Short, simple SVO structure. High-frequency vocabulary only (Top 1000 words). No complex tenses.",
+            'Level 2': "Generate an ELEMENTARY sentence (CEFR A2/B1). Simple compound sentences (and/but). Common daily topics. Top 2000 vocabulary.",
+            'Level 3': "Generate an INTERMEDIATE sentence (CEFR B1/B2). Standard professional English. Use relative clauses, passive voice, or conditionals. Top 4000 vocabulary.",
+            'Level 4': "Generate an ADVANCED sentence (CEFR C1). Complex syntactic structures (inversion, subjunctive). Nuanced academic or formal vocabulary. abstract concepts.",
+            'Level 5': "Generate an EXPERT sentence (CEFR C2). Native-level sophistication. Idiomatic expressions, subtle stylistic nuance, or dense information packing. Challenge even native speakers.",
+            // Legacy fallbacks
+            'Easy': "Generate a SIMPLE sentence (CEFR A2).",
+            'Medium': "Generate an INTERMEDIATE sentence (CEFR B2).",
+            'Hard': "Generate a CHALLENGING sentence (CEFR C1).",
+        };
+
+        difficultyPrompt = levelMap[difficulty] || levelMap['Level 3'];
 
         const isListening = mode === "listening";
 
         const prompt = `
         You are an expert IELTS English tutor. 
-        Based on the following article snippet, generate a high-quality "${isListening ? "Listening Dictation" : "Translation Drill"}" for an advanced student.
+        Based on the following article snippet, generate a high-quality "${isListening ? "Listening Dictation" : "Translation Drill"}" for a student at ${difficulty} level.
         
         Article Title: "${articleTitle}"
         Snippet: "${snippet}"
 
-        User Difficulty Request: ${difficultyPrompt}
+        Constraint: ${difficultyPrompt}
 
         Task:
         1. Identify the core theme and 2-3 vocabulary words.

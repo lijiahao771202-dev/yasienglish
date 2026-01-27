@@ -146,9 +146,12 @@ export function useWhisper() {
             const data = await response.json();
             console.log('[ASR] Whisper result:', data);
 
-            if (data.success && data.text) {
+            // Handle various response formats from local whisper servers
+            const text = data.text || (data.success && data.text) || "";
+
+            if (text) {
                 setResult({
-                    text: data.text,
+                    text: text,
                     isEndpoint: true,
                     isFinal: true
                 });

@@ -1,0 +1,236 @@
+[Whisper Server] Starting...
+[Whisper Server] CLI path: /Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp.new/build/bin/whisper-cli
+[Whisper Server] Model path: /Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin
+[Whisper Server] whisper-cli and model found. Ready to transcribe.
+[Whisper Server] Running on http://localhost:3002
+[Whisper Server] POST /transcribe - Send audio for transcription
+[Whisper] Received audio, size: 213525 bytes
+[Whisper] Converted to WAV, transcribing...
+[Whisper] Transcription result: {
+  systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
+  model: {
+    type: 'medium',
+    multilingual: false,
+    vocab: 51864,
+    audio: { ctx: 1500, state: 1024, head: 16, layer: 24 },
+    text: { ctx: 448, state: 1024, head: 16, layer: 24 },
+    mels: 80,
+    ftype: 1
+  },
+  params: {
+    model: '/Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin',
+    language: 'en',
+    translate: false
+  },
+  result: { language: 'en' },
+  transcription: [
+    {
+      timestamps: [Object],
+      offsets: [Object],
+      text: ' For many patients with treatment-resistant depression, despite having a triangle retracement,'
+    },
+    {
+      timestamps: [Object],
+      offsets: [Object],
+      text: ' a new important device may offer less therapy and the effect will be right.'
+    }
+  ]
+}
+[Whisper] Received audio, size: 113613 bytes
+[Whisper] Converted to WAV, transcribing...
+[Whisper] Transcription result: {
+  systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
+  model: {
+    type: 'medium',
+    multilingual: false,
+    vocab: 51864,
+    audio: { ctx: 1500, state: 1024, head: 16, layer: 24 },
+    text: { ctx: 448, state: 1024, head: 16, layer: 24 },
+    mels: 80,
+    ftype: 1
+  },
+  params: {
+    model: '/Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin',
+    language: 'en',
+    translate: false
+  },
+  result: { language: 'en' },
+  transcription: [
+    {
+      timestamps: [Object],
+      offsets: [Object],
+      text: ' Many people with depression have tried different treatments, but they did not improve much.'
+    }
+  ]
+}
+[Whisper] Received audio, size: 139727 bytes
+[Whisper] Converted to WAV, transcribing...
+[Whisper] Transcription result: {
+  systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
+  model: {
+    type: 'medium',
+    multilingual: false,
+    vocab: 51864,
+    audio: { ctx: 1500, state: 1024, head: 16, layer: 24 },
+    text: { ctx: 448, state: 1024, head: 16, layer: 24 },
+    mels: 80,
+    ftype: 1
+  },
+  params: {
+    model: '/Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin',
+    language: 'en',
+    translate: false
+  },
+  result: { language: 'en' },
+  transcription: [
+    {
+      timestamps: [Object],
+      offsets: [Object],
+      text: ' A new medication impact on healthy people with severe depression where other treatments do not work.'
+    }
+  ]
+}
+[Whisper] Received audio, size: 143591 bytes
+[Whisper] Converted to WAV, transcribing...
+[Whisper] Transcription result: {
+  systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
+  model: {
+    type: 'medium',
+    multilingual: false,
+    vocab: 51864,
+    audio: { ctx: 1500, state: 1024, head: 16, layer: 24 },
+    text: { ctx: 448, state: 1024, head: 16, layer: 24 },
+    mels: 80,
+    ftype: 1
+  },
+  params: {
+    model: '/Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin',
+    language: 'en',
+    translate: false
+  },
+  result: { language: 'en' },
+  transcription: [
+    {
+      timestamps: [Object],
+      offsets: [Object],
+      text: ' A new impactor can help people with severe depression when other treatments do not work.'
+    }
+  ]
+}
+[Whisper] Received audio, size: 29491 bytes
+[Whisper] Converted to WAV, transcribing...
+[Whisper] Transcription result: {
+  systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
+  model: {
+    type: 'medium',
+    multilingual: false,
+    vocab: 51864,
+    audio: { ctx: 1500, state: 1024, head: 16, layer: 24 },
+    text: { ctx: 448, state: 1024, head: 16, layer: 24 },
+    mels: 80,
+    ftype: 1
+  },
+  params: {
+    model: '/Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin',
+    language: 'en',
+    translate: false
+  },
+  result: { language: 'en' },
+  transcription: [ { timestamps: [Object], offsets: [Object], text: ' TVBubble.' } ]
+}
+[Whisper] Received audio, size: 253827 bytes
+[Whisper] Converted to WAV, transcribing...
+[Whisper] Transcription result: {
+  systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
+  model: {
+    type: 'medium',
+    multilingual: false,
+    vocab: 51864,
+    audio: { ctx: 1500, state: 1024, head: 16, layer: 24 },
+    text: { ctx: 448, state: 1024, head: 16, layer: 24 },
+    mels: 80,
+    ftype: 1
+  },
+  params: {
+    model: '/Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin',
+    language: 'en',
+    translate: false
+  },
+  result: { language: 'en' },
+  transcription: [
+    {
+      timestamps: [Object],
+      offsets: [Object],
+      text: ' For patients suffered from the transmembrane-resistant depression, a novel implant device might often'
+    },
+    {
+      timestamps: [Object],
+      offsets: [Object],
+      text: ' sustain samples realized, repeating a significant burden in the treatment approach.'
+    }
+  ]
+}
+[Whisper] Received audio, size: 136829 bytes
+[Whisper] Converted to WAV, transcribing...
+[Whisper] Transcription result: {
+  systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
+  model: {
+    type: 'medium',
+    multilingual: false,
+    vocab: 51864,
+    audio: { ctx: 1500, state: 1024, head: 16, layer: 24 },
+    text: { ctx: 448, state: 1024, head: 16, layer: 24 },
+    mels: 80,
+    ftype: 1
+  },
+  params: {
+    model: '/Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin',
+    language: 'en',
+    translate: false
+  },
+  result: { language: 'en' },
+  transcription: [
+    {
+      timestamps: [Object],
+      offsets: [Object],
+      text: ' Many people with depression try different treatments, but a new implant can help them feel better.'
+    }
+  ]
+}
+[Whisper] Received audio, size: 342131 bytes
+[Whisper] Converted to WAV, transcribing...
+[Whisper] Transcription result: {
+  systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
+  model: {
+    type: 'medium',
+    multilingual: false,
+    vocab: 51864,
+    audio: { ctx: 1500, state: 1024, head: 16, layer: 24 },
+    text: { ctx: 448, state: 1024, head: 16, layer: 24 },
+    mels: 80,
+    ftype: 1
+  },
+  params: {
+    model: '/Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin',
+    language: 'en',
+    translate: false
+  },
+  result: { language: 'en' },
+  transcription: [
+    {
+      timestamps: [Object],
+      offsets: [Object],
+      text: ' While many patients with depression impose sustained treatment, those with treatment-resistant'
+    },
+    {
+      timestamps: [Object],
+      offsets: [Object],
+      text: ' depression may continue to suffer from persistent samples for years, even as multiple treatment'
+    },
+    {
+      timestamps: [Object],
+      offsets: [Object],
+      text: ' has been a pattern.'
+    }
+  ]
+}

@@ -139,7 +139,7 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                 top: popup.y,
                 transform: 'translateX(-50%)'
             }}
-            className="z-50 w-[320px] rounded-2xl backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/40 overflow-hidden bg-white/80 ring-1 ring-black/5 text-left"
+            className="z-[1000] w-[320px] rounded-2xl backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/40 overflow-hidden bg-white/80 ring-1 ring-black/5 text-left"
         >
             {/* Header: Word & Audio */}
             <div className="bg-gradient-to-br from-amber-50/80 to-white/50 p-4 border-b border-white/50 relative">

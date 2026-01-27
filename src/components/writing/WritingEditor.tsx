@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import * as Diff from 'diff';
 import { WordPopup, PopupState } from "../reading/WordPopup";
+import { useWhisper } from "@/hooks/useWhisper";
 
 interface WritingEditorProps {
     articleTitle: string;
@@ -59,8 +60,17 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
     const [loadingWord, setLoadingWord] = useState<string | null>(null);
     const [wordPopup, setWordPopup] = useState<PopupState | null>(null);
 
-    // Voice Input State
-    const [isListening, setIsListening] = useState(false);
+    // Voice Input State (Legacy WebSpeech - replaced by Whisper hook for main interaction)
+    const [isListeningLegacy, setIsListeningLegacy] = useState(false);
+
+    // Whisper Integration
+    const {
+        isRecording: whisperRecording,
+        isProcessing: whisperProcessing,
+        result: whisperResult,
+        startRecognition,
+        stopRecognition
+    } = useWhisper();
 
     // Ask Tutor State
     const [isTutorOpen, setIsTutorOpen] = useState(false);
@@ -70,6 +80,35 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
 
     // Blind Mode State
     const [isBlindMode, setIsBlindMode] = useState(true);
+
+    // Auto-Submit on Whisper Final Result
+    useEffect(() => {
+        if (mode === "listening" && whisperResult.isFinal && whisperResult.text) {
+            setUserTranslation(whisperResult.text);
+            // Trigger submit after a short delay to allow state update
+            // We use a ref or direct call if we could, but here we rely on the effect.
+            // Actually, we can just call handleSubmitDrill with the text directly if we refactor,
+            // but `handleSubmitDrill` uses the state `userTranslation`.
+            // Let's set a flag to auto-submit.
+        }
+    }, [whisperResult, mode]);
+
+    // Effect to trigger submit when translation updates if it came from Whisper
+    const [shouldAutoSubmit, setShouldAutoSubmit] = useState(false);
+    useEffect(() => {
+        if (shouldAutoSubmit && userTranslation) {
+            handleSubmitDrill();
+            setShouldAutoSubmit(false);
+        }
+    }, [userTranslation, shouldAutoSubmit]);
+
+    // Update auto-submit flag when whisper finishes
+    useEffect(() => {
+        if (mode === "listening" && whisperResult.isFinal && whisperResult.text) {
+            setShouldAutoSubmit(true);
+        }
+    }, [whisperResult, mode]);
+
 
     // Audio Sync Loop (Karaoke)
     useEffect(() => {
@@ -130,7 +169,7 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                     body: JSON.stringify({
                         text: drillData.reference_english,
                         voice: "en-US-JennyNeural",
-                        rate: "+15%" // Default speed
+                        rate: "+0%" // Fetch at normal speed, we adjust via playbackRate
                     }),
                 });
                 if (!response.ok) throw new Error("TTS failed");
@@ -162,6 +201,8 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                 setCurrentAudioTime(0);
             };
 
+            // Apply current speed
+            audio.playbackRate = playbackSpeed;
             await audio.play();
         } catch (error) {
             console.error("Audio chain failed", error);
@@ -237,12 +278,12 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
             return;
         }
 
-        if (isListening) {
-            setIsListening(false);
+        if (isListeningLegacy) {
+            setIsListeningLegacy(false);
             return;
         }
 
-        setIsListening(true);
+        setIsListeningLegacy(true);
         const recognition = new (window as any).webkitSpeechRecognition();
         recognition.lang = "en-US";
         recognition.continuous = true;
@@ -260,13 +301,31 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
             }
         };
 
-        recognition.onerror = () => setIsListening(false);
-        recognition.onend = () => setIsListening(false);
+        recognition.onerror = () => setIsListeningLegacy(false);
+        recognition.onend = () => setIsListeningLegacy(false);
         recognition.start();
     };
 
     // --- Drill Handlers ---
-    const handleGenerateDrill = async (difficulty: "standard" | "easier" | "harder" = "standard") => {
+    const [difficulty, setDifficulty] = useState<string>('Level 3');
+    const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+    const [isDynamic, setIsDynamic] = useState(true);
+    const [level, setLevel] = useState(1);
+
+    // --- Persistence ---
+    useEffect(() => {
+        const savedDiff = localStorage.getItem('yasi_drill_difficulty');
+        const savedLevel = localStorage.getItem('yasi_drill_level');
+        if (savedDiff) setDifficulty(savedDiff);
+        if (savedLevel) setLevel(parseInt(savedLevel));
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem('yasi_drill_difficulty', difficulty);
+        localStorage.setItem('yasi_drill_level', level.toString());
+    }, [difficulty, level]);
+
+    const handleGenerateDrill = async (targetDifficulty = difficulty) => {
         setIsGeneratingDrill(true);
         setDrillData(null);
         setDrillFeedback(null);
@@ -286,7 +345,7 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                 body: JSON.stringify({
                     articleTitle,
                     articleContent: articleContent || "",
-                    difficultyModifier: difficulty,
+                    difficulty: targetDifficulty,
                     mode
                 }),
             });
@@ -299,9 +358,35 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
         }
     };
 
+    const updateDifficultyBasedOnScore = (score: number) => {
+        if (!isDynamic) return;
+
+        const levels = ['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5'];
+        const currentIndex = levels.indexOf(difficulty);
+        if (currentIndex === -1) return; // Should not happen
+
+        let newDiff = difficulty;
+
+        // Upgrade Logic: Score >= 8.5 -> Level Up
+        if (score >= 8.5 && currentIndex < levels.length - 1) {
+            newDiff = levels[currentIndex + 1];
+        }
+        // Downgrade Logic: Score <= 6 -> Level Down
+        else if (score <= 6 && currentIndex > 0) {
+            newDiff = levels[currentIndex - 1];
+        }
+
+        if (newDiff !== difficulty) {
+            setDifficulty(newDiff);
+        }
+    };
+
     const handleSubmitDrill = async () => {
         if (!userTranslation.trim() || !drillData) return;
         setIsSubmittingDrill(true);
+
+        // Simulate "Thinking" / Animation Delay for Transition
+        await new Promise(r => setTimeout(r, 1200));
 
         try {
             const response = await fetch("/api/ai/score_translation", {
@@ -310,11 +395,20 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                 body: JSON.stringify({
                     user_translation: userTranslation,
                     reference_english: drillData.reference_english,
-                    original_chinese: drillData.chinese
+                    original_chinese: drillData.chinese,
+                    mode // Pass mode to backend for context-aware scoring
                 }),
             });
             const data = await response.json();
             setDrillFeedback(data);
+
+            // Auto-adjust difficulty for NEXT round
+            if (data.score !== undefined) {
+                updateDifficultyBasedOnScore(data.score);
+                if (data.score >= 6) {
+                    setLevel(prev => prev + 1);
+                }
+            }
         } catch (error) {
             console.error(error);
         } finally {
@@ -363,28 +457,89 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
         setUserTranslation(prev => prev + (prev.endsWith(" ") ? "" : " ") + nextChunk);
     };
 
-    // --- Diff Rendering ---
+    // --- Diff Rendering (Interactive) ---
     const renderDiff = () => {
         if (!drillData || !drillFeedback) return null;
-        const diffs = Diff.diffWords(userTranslation, drillData.reference_english);
+
+        // Normalization Helper
+        const normalize = (str: string) => {
+            return str
+                .toLowerCase()
+                .replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "") // Remove punctuation
+                .replace(/\s{2,}/g, " ") // Collapse spaces
+                .trim();
+        };
+
+        const cleanUser = mode === "listening" ? normalize(userTranslation) : userTranslation;
+        const cleanTarget = mode === "listening" ? normalize(drillData.reference_english) : drillData.reference_english;
+
+        const diffs = Diff.diffWords(cleanUser, cleanTarget);
+
+        // Process diffs into a renderable list of tokens with metadata
+        // We want to show the USER'S perspective primarily, marking errors on it.
+        // Strategy:
+        // - Common: Text
+        // - Removed: This is what user wrote but shouldn't have. Mark as Error. Check next for correction.
+        // - Added: This is what user missed. Show as insertion point.
+
+        const elements: JSX.Element[] = [];
+
+        for (let i = 0; i < diffs.length; i++) {
+            const part = diffs[i];
+
+            if (!part.added && !part.removed) {
+                // Correct Text
+                elements.push(
+                    <span key={i} className="text-stone-800">{part.value}</span>
+                );
+            } else if (part.removed) {
+                // WRONG WORD (User wrote this, but it's not in target)
+                // Check if next part is added (Substitution)
+                let correction = null;
+                if (i + 1 < diffs.length && diffs[i + 1].added) {
+                    correction = diffs[i + 1].value;
+                    i++; // Skip next
+                }
+
+                elements.push(
+                    <span key={i} className="group relative inline-block cursor-help mx-1">
+                        <span className="text-rose-600 decoration-2 underline decoration-wavy decoration-rose-300 bg-rose-50/50 rounded px-0.5">
+                            {part.value}
+                        </span>
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] px-3 py-2 bg-stone-900 text-white text-xs rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
+                            <div className="font-bold text-rose-200 mb-0.5">Incorrect</div>
+                            {correction ? (
+                                <>Try: <span className="text-emerald-300 font-mono text-sm">{correction}</span></>
+                            ) : (
+                                <span>Unnecessary word</span>
+                            )}
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-stone-900"></div>
+                        </div>
+                    </span>
+                );
+            } else if (part.added) {
+                // MISSING WORD (User didn't write this)
+                // Render a green caret/marker
+                elements.push(
+                    <span key={i} className="group relative inline-block cursor-help mx-0.5 align-text-bottom">
+                        <div className="w-5 h-5 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-[10px] font-bold border border-emerald-200 hover:scale-110 transition-transform">
+                            +
+                        </div>
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] px-3 py-2 bg-stone-900 text-white text-xs rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
+                            <div className="font-bold text-emerald-300 mb-0.5">Missing Word</div>
+                            <span className="font-mono text-sm">{part.value}</span>
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-stone-900"></div>
+                        </div>
+                    </span>
+                );
+            }
+        }
 
         return (
             <div className="font-newsreader text-2xl leading-relaxed text-stone-800">
-                {diffs.map((part, i) => {
-                    const isChange = part.added || part.removed;
-                    return (
-                        <span
-                            key={i}
-                            className={cn(
-                                isChange ? "mx-1 px-1 rounded transition-all duration-500" : "",
-                                part.added ? "bg-emerald-100/80 text-emerald-800 shadow-sm border-b-2 border-emerald-400 font-medium" : "",
-                                part.removed ? "bg-rose-50 text-rose-300 line-through decoration-rose-300 decoration-2 opacity-60" : ""
-                            )}
-                        >
-                            {part.value}
-                        </span>
-                    );
-                })}
+                {elements}
             </div>
         );
     };
@@ -392,7 +547,7 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
     // Mounting
     useEffect(() => {
         if (!drillData && !isGeneratingDrill) {
-            handleGenerateDrill("standard");
+            handleGenerateDrill(difficulty);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode]);
@@ -443,6 +598,14 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
         });
     };
 
+    const getDifficultyColor = (d: string) => {
+        switch (d) {
+            case 'Easy': return "bg-cyan-100 text-cyan-700 border-cyan-200";
+            case 'Hard': return "bg-rose-100 text-rose-700 border-rose-200";
+            default: return "bg-indigo-100 text-indigo-700 border-indigo-200";
+        }
+    };
+
     return (
         <AnimatePresence>
             <motion.div
@@ -465,7 +628,7 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                     className="relative w-full max-w-5xl h-[90vh] glass-panel bg-white/60 border border-white/60 shadow-2xl shadow-stone-300/40 rounded-[3rem] overflow-hidden flex flex-col"
                 >
                     {/* Header */}
-                    <div className="flex items-center justify-between p-6 md:p-8 border-b border-stone-100/50 shrink-0">
+                    <div className="flex items-center justify-between p-4 md:p-6 border-b border-stone-100/50 shrink-0">
                         <div className="flex items-center gap-4">
                             <div className="flex bg-stone-100 p-1 rounded-full border border-stone-200">
                                 <button
@@ -498,8 +661,8 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                         </button>
                     </div>
 
-                    {/* Content Body */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-12 relative flex flex-col items-center">
+                    {/* Content Body - Optimized for Compactness */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 relative flex flex-col items-center">
                         {isGeneratingDrill && !drillData ? (
                             <div className="h-full flex flex-col items-center justify-center space-y-6 animate-pulse mt-32">
                                 <div className="w-16 h-16 rounded-full border-4 border-stone-200 border-t-stone-800 animate-spin" />
@@ -508,7 +671,52 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                                 </p>
                             </div>
                         ) : drillData ? (
-                            <div className="max-w-3xl w-full space-y-8 pb-32">
+                            <div className="max-w-3xl w-full space-y-4 pb-12">
+                                {/* Difficulty & Dynamic Header */}
+                                {!drillFeedback && (
+                                    <div className="flex justify-center items-center gap-4 mb-4 animate-in fade-in slide-in-from-top-4">
+                                        {/* Level Badge */}
+                                        <div className="flex items-center gap-1.5 px-3 py-1 bg-stone-900 text-white rounded-full text-xs font-bold shadow-lg shadow-stone-300/50">
+                                            <span className="text-amber-400">LVL</span>
+                                            <span>{level}</span>
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            <div className="flex gap-1 bg-stone-100 p-1 rounded-lg">
+                                                {['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5'].map((d, i) => (
+                                                    <button
+                                                        key={d}
+                                                        onClick={() => {
+                                                            setDifficulty(d);
+                                                            handleGenerateDrill(d);
+                                                        }}
+                                                        className={cn(
+                                                            "px-3 py-1 rounded-md text-[10px] font-bold transition-all",
+                                                            difficulty === d
+                                                                ? "bg-white shadow-sm text-indigo-600 ring-1 ring-stone-200"
+                                                                : "text-stone-400 hover:text-stone-600 hover:bg-stone-200/50"
+                                                        )}
+                                                        title={d}
+                                                    >
+                                                        {i + 1}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => setIsDynamic(!isDynamic)}
+                                            className={cn(
+                                                "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all",
+                                                isDynamic ? "bg-stone-800 text-white border-stone-800" : "bg-white text-stone-400 border-stone-200 hover:border-stone-300"
+                                            )}
+                                            title="Dynamic Difficulty: Automatically adjusts based on your score"
+                                        >
+                                            {isDynamic ? <Sparkles className="w-3 h-3 text-amber-300" /> : <div className="w-3 h-3 rounded-full border border-stone-300" />}
+                                            Dynamic Flow
+                                        </button>
+                                    </div>
+                                )}
+
                                 {/* Source / Listening Area */}
                                 <div className="space-y-6 text-center w-full">
                                     <motion.div
@@ -518,43 +726,89 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                                     >
                                         {mode === "listening" ? (
                                             <div className="w-full flex flex-col items-center justify-center relative">
-                                                {/* Play Button */}
+                                                {/* Play Button - Compact */}
                                                 <button
                                                     onClick={playAudio}
                                                     disabled={isPlaying}
-                                                    className="relative w-24 h-24 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white flex items-center justify-center shadow-xl shadow-indigo-500/30 transition-all hover:scale-105 active:scale-95 disabled:opacity-80 disabled:scale-100 mb-6 group overflow-hidden"
+                                                    className="group relative w-20 h-20 flex items-center justify-center transition-all duration-500 hover:scale-105 active:scale-95 disabled:opacity-80 disabled:scale-100 mb-4"
                                                 >
-                                                    {isPlaying ? (
-                                                        <>
-                                                            <Volume2 className="w-10 h-10 relative z-10" />
-                                                            <div className="absolute inset-0 flex items-center justify-center gap-1 opacity-50">
-                                                                <div className="w-1 h-8 bg-white animate-pulse" style={{ animationDelay: "0ms" }} />
-                                                                <div className="w-1 h-12 bg-white animate-pulse" style={{ animationDelay: "200ms" }} />
-                                                                <div className="w-1 h-6 bg-white animate-pulse" style={{ animationDelay: "100ms" }} />
+                                                    {/* Outer Glow / Atmosphere */}
+                                                    <div className={cn(
+                                                        "absolute inset-0 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 blur-xl transition-all duration-500",
+                                                        isPlaying ? "scale-110 opacity-100" : "scale-100 opacity-0 group-hover:opacity-100"
+                                                    )} />
+
+                                                    {/* Glass Container */}
+                                                    <div className="absolute inset-0 rounded-full bg-white/40 dark:bg-white/10 backdrop-blur-2xl border border-white/60 dark:border-white/20 shadow-xl shadow-indigo-500/10 transition-all duration-300 group-hover:bg-white/50 group-hover:border-white/80" />
+
+                                                    {/* Inner Content */}
+                                                    <div className="relative z-10 text-indigo-600 dark:text-indigo-300 drop-shadow-sm flex items-center justify-center">
+                                                        {isPlaying ? (
+                                                            <div className="flex items-center gap-1 h-8">
+                                                                {[0.4, 1, 0.6, 0.8, 0.5].map((h, i) => (
+                                                                    <motion.div
+                                                                        key={i}
+                                                                        animate={{ height: [8 * h, 24 * h, 8 * h] }}
+                                                                        transition={{
+                                                                            duration: 0.6 + (i * 0.1),
+                                                                            repeat: Infinity,
+                                                                            ease: "easeInOut",
+                                                                            repeatType: "mirror"
+                                                                        }}
+                                                                        className="w-1 bg-indigo-600 dark:bg-indigo-400 rounded-full"
+                                                                    />
+                                                                ))}
                                                             </div>
+                                                        ) : (
+                                                            <Play className="w-8 h-8 ml-1 fill-indigo-600 dark:fill-indigo-400 text-indigo-600 dark:text-indigo-400" />
+                                                        )}
+                                                    </div>
+
+                                                    {/* Ripple Effect (Active) */}
+                                                    {isPlaying && (
+                                                        <>
+                                                            <div className="absolute inset-0 rounded-full border border-indigo-500/30 animate-ping" style={{ animationDuration: '2s' }} />
+                                                            <div className="absolute inset-0 rounded-full border border-indigo-500/20 animate-ping" style={{ animationDuration: '2s', animationDelay: '0.6s' }} />
                                                         </>
-                                                    ) : (
-                                                        <Play className="w-10 h-10 ml-1 relative z-10" />
                                                     )}
                                                 </button>
 
-                                                {/* Blind Toggle */}
-                                                <div className="flex items-center gap-3">
-                                                    <p className="text-stone-500 font-medium">Listen and type what you hear</p>
+                                                {/* Blind Toggle & Speed Control */}
+                                                <div className="flex items-center gap-4 mb-2">
                                                     <button
                                                         onClick={() => setIsBlindMode(!isBlindMode)}
                                                         className={cn(
-                                                            "text-xs px-2.5 py-1 rounded-full font-bold transition-all flex items-center gap-1.5",
+                                                            "text-[10px] px-2.5 py-1 rounded-full font-bold transition-all flex items-center gap-1.5 uppercase tracking-wide",
                                                             isBlindMode ? "bg-stone-100 text-stone-500 hover:bg-stone-200" : "bg-indigo-100 text-indigo-600"
                                                         )}
                                                     >
                                                         {isBlindMode ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                                        {isBlindMode ? "Blind Mode" : "Text Revealed"}
+                                                        {isBlindMode ? "Blind" : "Text"}
                                                     </button>
+
+                                                    <div className="h-4 w-px bg-stone-200" />
+
+                                                    <div className="flex bg-stone-100 rounded-full p-0.5">
+                                                        {[0.75, 1.0, 1.25, 1.5].map((speed) => (
+                                                            <button
+                                                                key={speed}
+                                                                onClick={() => {
+                                                                    setPlaybackSpeed(speed);
+                                                                    if (audioRef.current) audioRef.current.playbackRate = speed;
+                                                                }}
+                                                                className={cn(
+                                                                    "text-[10px] px-2 py-0.5 rounded-full font-bold transition-all min-w-[32px]",
+                                                                    playbackSpeed === speed ? "bg-white text-stone-800 shadow-sm" : "text-stone-400 hover:text-stone-600"
+                                                                )}
+                                                            >
+                                                                {speed}x
+                                                            </button>
+                                                        ))}
+                                                    </div>
                                                 </div>
 
                                                 {/* Audio Progress Slider (Draggable Cursor) */}
-                                                <div className="w-full max-w-sm flex items-center gap-3 px-4 mt-6 mb-2">
+                                                <div className="w-full max-w-sm flex items-center gap-3 px-4 mt-2 mb-2">
                                                     <span className="text-[10px] font-mono text-stone-400 w-8 text-right">
                                                         {(currentAudioTime / 1000).toFixed(1)}s
                                                     </span>
@@ -576,11 +830,11 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
 
                                                 {/* Interactive Text & Active Word Popover */}
                                                 {!isBlindMode && (
-                                                    <div className="relative w-full max-w-4xl mx-auto mt-8 px-6">
+                                                    <div className="relative w-full max-w-4xl mx-auto mt-4 px-4">
                                                         <motion.div
                                                             initial={{ opacity: 0, height: 0 }}
                                                             animate={{ opacity: 1, height: "auto" }}
-                                                            className="text-left text-justify font-newsreader italic text-3xl leading-loose text-stone-700 tracking-wide"
+                                                            className="text-left text-justify font-newsreader italic text-2xl leading-relaxed text-stone-700 tracking-wide"
                                                         >
                                                             {renderInteractiveText(drillData.reference_english)}
                                                         </motion.div>
@@ -588,8 +842,9 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                                                 )}
                                             </div>
                                         ) : (
-                                            <h3 className="text-3xl md:text-4xl font-newsreader font-medium text-stone-900 leading-normal md:leading-relaxed px-4">
+                                            <h3 className="text-2xl md:text-3xl font-newsreader font-medium text-stone-900 leading-normal md:leading-relaxed px-4">
                                                 {drillData.chinese}
+                                                {/* Speed Control (Translation Mode - for reading out loud maybe? No, usually for listening) */}
                                             </h3>
                                         )}
 
@@ -608,31 +863,6 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                                     </motion.div>
                                 </div>
 
-                                {/* Controls: Regenerate / Difficulty */}
-                                {!drillFeedback && (
-                                    <div className="flex flex-wrap items-center justify-center gap-2 md:gap-4 mt-8">
-                                        <button
-                                            onClick={() => handleGenerateDrill("easier")}
-                                            className="px-4 py-2 rounded-full text-xs font-bold bg-green-50 text-green-700 hover:bg-green-100 border border-green-200 transition-colors"
-                                        >
-                                            Too Hard
-                                        </button>
-                                        <button
-                                            onClick={() => handleGenerateDrill("standard")}
-                                            className="p-2 rounded-full text-stone-400 hover:text-stone-800 hover:bg-stone-100 transition-colors"
-                                            title="Regenerate"
-                                        >
-                                            <RefreshCw className="w-4 h-4" />
-                                        </button>
-                                        <button
-                                            onClick={() => handleGenerateDrill("harder")}
-                                            className="px-4 py-2 rounded-full text-xs font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 transition-colors"
-                                        >
-                                            Too Easy
-                                        </button>
-                                    </div>
-                                )}
-
                                 {/* Divider */}
                                 <div className="w-full max-w-xs mx-auto h-px bg-gradient-to-r from-transparent via-stone-200 to-transparent my-8" />
 
@@ -645,65 +875,99 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                                         className="w-full space-y-6"
                                     >
                                         <div className="relative group">
-                                            <textarea
-                                                value={userTranslation}
-                                                onChange={(e) => setUserTranslation(e.target.value)}
-                                                placeholder={mode === "listening" ? "Type what you hear..." : "Enter your English translation..."}
-                                                className="w-full min-h-[160px] p-6 text-xl font-newsreader bg-white/50 border border-stone-200 rounded-3xl focus:ring-4 ring-stone-100 focus:border-stone-400 transition-all resize-none placeholder:text-stone-300 text-stone-800 shadow-sm group-hover:shadow-md outline-none"
-                                                spellCheck={false}
-                                                autoFocus
-                                            />
-                                            {/* Action Buttons */}
-                                            <div className="absolute bottom-4 right-4 flex items-center gap-3">
-                                                {/* Voice Input Trigger (Listening Mode) */}
-                                                {mode === "listening" && (
-                                                    <button
-                                                        onClick={toggleVoiceInput}
-                                                        className={cn(
-                                                            "h-10 px-4 rounded-xl flex items-center gap-2 transition-all font-bold text-sm",
-                                                            isListening ? "bg-rose-100 text-rose-600 animate-pulse" : "bg-stone-100 text-stone-600 hover:bg-stone-200"
-                                                        )}
-                                                        title="Dictate"
-                                                    >
-                                                        <Mic className="w-4 h-4" />
-                                                        {isListening ? "Listening..." : "Dictate"}
-                                                    </button>
-                                                )}
+                                            {mode === "listening" ? (
+                                                <div className="flex flex-col items-center justify-center gap-4 py-4 min-h-[160px]">
+                                                    {/* Listening Mode: Big Mic Button & Live Transcript */}
 
-                                                {/* Magic Hint Trigger */}
-                                                <button
-                                                    onClick={handleMagicHint}
-                                                    className="h-10 px-4 rounded-xl bg-amber-100/50 text-amber-700 hover:bg-amber-100 flex items-center gap-2 transition-all font-bold text-sm"
-                                                    title="Auto-Complete Hint"
-                                                >
-                                                    <Wand2 className="w-4 h-4" />
-                                                    Hint
-                                                </button>
-
-                                                {/* Ask Tutor Trigger */}
-                                                <button
-                                                    onClick={() => setIsTutorOpen(!isTutorOpen)}
-                                                    className="w-10 h-10 rounded-full bg-stone-100 text-stone-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition-all shadow-sm"
-                                                    title="Ask AI Tutor"
-                                                >
-                                                    <HelpCircle className="w-5 h-5" />
-                                                </button>
-
-                                                <button
-                                                    onClick={handleSubmitDrill}
-                                                    disabled={!userTranslation.trim() || isSubmittingDrill}
-                                                    className="bg-stone-900 hover:bg-black text-white px-6 py-2.5 rounded-xl font-bold shadow-xl shadow-stone-900/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0"
-                                                >
-                                                    {isSubmittingDrill ? (
-                                                        <Sparkles className="w-4 h-4 animate-spin" />
+                                                    {whisperProcessing ? (
+                                                        <div className="flex flex-col items-center animate-pulse gap-4">
+                                                            <div className="w-24 h-24 rounded-full bg-indigo-50 border-4 border-indigo-100 flex items-center justify-center">
+                                                                <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin" />
+                                                            </div>
+                                                            <p className="text-indigo-400 font-bold tracking-wide text-sm uppercase">Transcribing...</p>
+                                                        </div>
                                                     ) : (
-                                                        <Send className="w-4 h-4" />
+                                                        <button
+                                                            onClick={whisperRecording ? stopRecognition : startRecognition}
+                                                            className={cn(
+                                                                "relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl",
+                                                                whisperRecording
+                                                                    ? "bg-rose-500 shadow-rose-500/40 scale-110"
+                                                                    : "bg-white hover:bg-stone-50 shadow-stone-200/50 hover:scale-105 border border-stone-100"
+                                                            )}
+                                                        >
+                                                            {whisperRecording ? (
+                                                                <>
+                                                                    <div className="absolute inset-0 rounded-full border-4 border-rose-200 animate-ping" />
+                                                                    <div className="w-8 h-8 bg-white rounded-lg shadow-sm" />
+                                                                </>
+                                                            ) : (
+                                                                <Mic className="w-10 h-10 text-stone-700" />
+                                                            )}
+                                                        </button>
                                                     )}
-                                                    Check
-                                                </button>
-                                            </div>
 
-                                            {/* AI Tutor Cloud */}
+                                                    {/* Live Transcript Preview */}
+                                                    <div className="max-w-2xl w-full text-center min-h-[3rem]">
+                                                        {whisperResult.text || whisperRecording ? (
+                                                            <p className={cn(
+                                                                "text-2xl font-newsreader leading-relaxed transition-all",
+                                                                whisperRecording ? "text-stone-400 italic" : "text-stone-800"
+                                                            )}>
+                                                                "{whisperResult.text || "Listening..."}"
+                                                            </p>
+                                                        ) : (
+                                                            <p className="text-stone-400 text-sm">Tap the microphone to speak your answer</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                // Translation Mode: Textarea (Original)
+                                                <>
+                                                    <textarea
+                                                        value={userTranslation}
+                                                        onChange={(e) => setUserTranslation(e.target.value)}
+                                                        placeholder="Enter your English translation..."
+                                                        className="w-full min-h-[160px] p-6 text-xl font-newsreader bg-white/50 border border-stone-200 rounded-3xl focus:ring-4 ring-stone-100 focus:border-stone-400 transition-all resize-none placeholder:text-stone-300 text-stone-800 shadow-sm group-hover:shadow-md outline-none"
+                                                        spellCheck={false}
+                                                        autoFocus
+                                                    />
+
+                                                    <div className="absolute bottom-4 right-4 flex items-center gap-3">
+                                                        <button
+                                                            onClick={handleMagicHint}
+                                                            className="h-10 px-4 rounded-xl bg-amber-100/50 text-amber-700 hover:bg-amber-100 flex items-center gap-2 transition-all font-bold text-sm"
+                                                            title="Auto-Complete Hint"
+                                                        >
+                                                            <Wand2 className="w-4 h-4" />
+                                                            Hint
+                                                        </button>
+
+                                                        <button
+                                                            onClick={() => setIsTutorOpen(!isTutorOpen)}
+                                                            className="w-10 h-10 rounded-full bg-stone-100 text-stone-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition-all shadow-sm"
+                                                            title="Ask AI Tutor"
+                                                        >
+                                                            <HelpCircle className="w-5 h-5" />
+                                                        </button>
+
+                                                        <button
+                                                            onClick={handleSubmitDrill}
+                                                            disabled={!userTranslation.trim() || isSubmittingDrill}
+                                                            className="bg-stone-900 hover:bg-black text-white px-6 py-2.5 rounded-xl font-bold shadow-xl shadow-stone-900/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0"
+                                                        >
+                                                            {isSubmittingDrill ? (
+                                                                <Sparkles className="w-4 h-4 animate-spin" />
+                                                            ) : (
+                                                                <Send className="w-4 h-4" />
+                                                            )}
+                                                            Check
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {/* AI Tutor Cloud (Shared) */}
                                             <AnimatePresence>
                                                 {isTutorOpen && (
                                                     <motion.div
@@ -772,48 +1036,69 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
 
                                         {/* Revision View */}
                                         <div className="bg-white/80 p-8 md:p-10 rounded-[2.5rem] shadow-xl shadow-stone-200/50 border border-stone-100">
-                                            <div className="flex items-center gap-3 mb-6 text-stone-400 text-sm font-bold uppercase tracking-wider">
-                                                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                                                Smart Revision
-                                            </div>
-                                            {renderDiff()}
-                                        </div>
-
-                                        {/* Golden Translation */}
-                                        <div className="bg-stone-900 text-stone-200 p-8 rounded-[2rem] shadow-2xl shadow-stone-900/10">
-                                            <div className="flex items-center justify-between mb-4">
-                                                <p className="text-xs font-bold text-stone-500 uppercase tracking-widest">Golden Translation</p>
+                                            <div className="flex items-center justify-between mb-6">
+                                                <div className="flex items-center gap-3 text-stone-400 text-sm font-bold uppercase tracking-wider">
+                                                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                                    Smart Revision
+                                                </div>
                                                 <button
                                                     onClick={playAudio}
-                                                    className="w-8 h-8 rounded-full bg-stone-800 hover:bg-stone-700 flex items-center justify-center transition-all"
+                                                    className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-all"
+                                                    title="Listen to Correct Version"
                                                 >
-                                                    <Volume2 className="w-4 h-4" />
+                                                    <Volume2 className="w-5 h-5" />
                                                 </button>
                                             </div>
-                                            <div className="text-xl font-newsreader italic font-light leading-relaxed">
-                                                "{renderInteractiveText(drillData.reference_english)}"
-                                            </div>
-                                        </div>
+                                            {renderDiff()}
 
-                                        {/* Feedback Grid */}
-                                        <div className="grid md:grid-cols-2 gap-4">
-                                            {drillFeedback.feedback.map((comment, i) => (
-                                                <div key={i} className="bg-white/40 p-5 rounded-2xl border border-stone-100 flex gap-3 items-start">
-                                                    <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-stone-400 shrink-0" />
-                                                    <p className="text-stone-600 text-sm leading-relaxed">{comment}</p>
+                                            {/* Coach's Feedback Section */}
+                                            {drillFeedback.feedback && drillFeedback.feedback.length > 0 && (
+                                                <div className="mt-8 pt-6 border-t border-stone-100">
+                                                    <h4 className="text-sm font-bold text-indigo-600 uppercase tracking-wider mb-4 flex items-center gap-2">
+                                                        <Sparkles className="w-4 h-4" />
+                                                        Coach's Analysis
+                                                    </h4>
+                                                    <div className="space-y-3">
+                                                        {drillFeedback.feedback.map((point, i) => (
+                                                            <div key={i} className="flex gap-3 text-stone-600 leading-relaxed font-medium">
+                                                                <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-2 shrink-0" />
+                                                                <p>{point}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                            ))}
+                                            )}
                                         </div>
 
-                                        {/* Action */}
-                                        <div className="flex justify-center pt-8">
+                                        {/* Golden Translation (Collapsed/Simplified since we have Play in Revision) */}
+                                        {/* We can keep it if user wants to see the raw text without diff marks, but Diff is usually enough. 
+                                            Let's keep it but make it less dominant or merge it? 
+                                            User asked for "Detailed Revision", so Diff is key. 
+                                            Let's keep the Golden Translation box as a "Clean Read" reference.
+                                        */}
+                                        {/* Golden Translation Removed */}
+
+                                        {/* Action Buttons */}
+                                        <div className="flex justify-center gap-4 pt-1">
                                             <button
-                                                onClick={() => handleGenerateDrill("standard")}
-                                                className="group relative px-8 py-4 bg-white border border-stone-200 rounded-full text-stone-800 font-bold hover:shadow-xl hover:shadow-stone-200/50 hover:border-stone-300 transition-all duration-300 overflow-hidden"
+                                                onClick={() => {
+                                                    setDrillFeedback(null);
+                                                    setUserTranslation("");
+                                                    setIsSubmittingDrill(false);
+                                                    setWordPopup(null);
+                                                    // Don't clear drillData, so we retry the same one
+                                                }}
+                                                className="px-6 py-3 bg-transparent border-2 border-stone-200 rounded-full text-stone-500 font-bold hover:border-stone-300 hover:text-stone-700 hover:bg-stone-50 transition-all duration-300 text-sm"
                                             >
-                                                <div className="absolute inset-0 bg-stone-50 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                <span className="relative flex items-center gap-3">
-                                                    <RefreshCw className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" />
+                                                Try Again
+                                            </button>
+
+                                            <button
+                                                onClick={() => handleGenerateDrill(difficulty)}
+                                                className="group relative px-6 py-3 bg-stone-900 border border-stone-900 rounded-full text-white font-bold hover:shadow-xl hover:shadow-indigo-500/20 hover:scale-105 transition-all duration-300 overflow-hidden text-sm"
+                                            >
+                                                <span className="relative flex items-center gap-2">
+                                                    <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
                                                     Next Challenge
                                                 </span>
                                             </button>
