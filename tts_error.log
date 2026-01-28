@@ -1,0 +1,4 @@
+[2026-01-28T09:11:34.588Z] Step: Generating (Fallback) | Error: WebSocket inactivity timeout - no response from server | Stack: Error: WebSocket inactivity timeout - no response from server
+    at Timeout._onTimeout (/Users/lijiahao/yasi/.next/dev/server/chunks/node_modules_25125bf1._.js:18831:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)

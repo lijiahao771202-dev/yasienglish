@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpen, Mic, PenTool } from "lucide-react";
+import { ArrowRight, BookOpen, Mic, PenTool, Sword } from "lucide-react";
 import Link from "next/link";
 
 export default function Home() {
@@ -33,9 +33,14 @@ export default function Home() {
           ))}
         </div>
 
-        <Link href="/read" className="px-8 py-3 rounded-full bg-gradient-to-r from-amber-500 to-rose-500 text-white font-bold shadow-lg shadow-rose-500/30 flex items-center gap-2 hover:scale-105 active:scale-95 transition-all">
-          Start Learning <ArrowRight className="w-5 h-5" />
-        </Link>
+        <div className="flex gap-4">
+          <Link href="/read" className="px-8 py-3 rounded-full bg-gradient-to-r from-amber-500 to-rose-500 text-white font-bold shadow-lg shadow-rose-500/30 flex items-center gap-2 hover:scale-105 active:scale-95 transition-all">
+            Start Learning <ArrowRight className="w-5 h-5" />
+          </Link>
+          <Link href="/battle" className="px-8 py-3 rounded-full bg-stone-900 text-white font-bold shadow-lg shadow-stone-900/30 flex items-center gap-2 hover:scale-105 active:scale-95 transition-all">
+            Battle Arena <Sword className="w-5 h-5" />
+          </Link>
+        </div>
       </div>
     </main>
   );
