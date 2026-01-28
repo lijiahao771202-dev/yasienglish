@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Newspaper, Brain, ExternalLink, Loader2, BookOpen, GraduationCap, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, LayoutGrid } from "lucide-react";
+import { Newspaper, Brain, ExternalLink, Loader2, BookOpen, GraduationCap, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, LayoutGrid, ChevronDown, ChevronRight, Settings2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useFeedStore } from "@/lib/feed-store";
@@ -24,57 +24,45 @@ interface RecommendedArticlesProps {
 
 export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }: RecommendedArticlesProps) {
     const [articles, setArticles] = useState<ArticleItem[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false); // Changed: no auto-loading
     const [category, setCategory] = useState<'news' | 'psychology' | 'ielts' | 'cet4' | 'cet6' | 'ai_news' | 'ai_gen' | 'ted'>('psychology');
     const [genTopic, setGenTopic] = useState("");
     const [isGenerating, setIsGenerating] = useState(false);
 
+    // New states for enhanced UX
+    const [fetchCount, setFetchCount] = useState(3); // Articles to fetch per refresh
+    const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
+        'read': false,
+        'new': false,
+        'unread': false
+    });
+    const [showSettings, setShowSettings] = useState(false);
+    const [newlyFetchedLinks, setNewlyFetchedLinks] = useState<Set<string>>(new Set()); // Track new articles for animation
+    const [isFetching, setIsFetching] = useState(false); // Just for button state
+    const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+
     const { feeds, setFeed, getFeed, loadFeedFromDB, deleteArticle } = useFeedStore();
     const { readArticleUrls, markArticleAsRead } = useUserStore();
 
+    // Load from DB only (no auto-fetch from API)
     useEffect(() => {
         if (category === 'ai_gen') {
             setLoading(false);
             return;
         }
 
-        // Try to load from DB first (which updates memory)
+        // Only load from DB/memory - NO auto-fetch
         loadFeedFromDB(category).then(() => {
-            // Check global store (memory)
             const cachedFeeds = getFeed(category);
             if (cachedFeeds) {
                 setArticles(cachedFeeds);
-                setLoading(false);
                 if (onListUpdate) {
                     onListUpdate(cachedFeeds);
                 }
-                return;
             }
-
-            // If not in DB/memory, fetch from API
-            const fetchFeed = async () => {
-                setLoading(true);
-                try {
-                    const res = await fetch(`/api/feed?category=${category}`);
-                    const data = await res.json();
-                    if (Array.isArray(data)) {
-                        setArticles(data);
-                        // Update global store & DB
-                        setFeed(category, data);
-                        if (onListUpdate) {
-                            onListUpdate(data);
-                        }
-                    }
-                } catch (error) {
-                    console.error(error);
-                } finally {
-                    setLoading(false);
-                }
-            };
-
-            fetchFeed();
+            setLoading(false);
         });
-    }, [category, getFeed, setFeed, loadFeedFromDB]);
+    }, [category, getFeed, loadFeedFromDB]);
 
     const handleGenerate = async () => {
         if (!genTopic.trim()) return;
@@ -97,24 +85,67 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     };
 
     const handleRefresh = async () => {
-        setLoading(true);
+        setIsFetching(true); // Use isFetching instead of loading to avoid skeleton
         try {
-            // Add timestamp to bypass cache
-            const res = await fetch(`/api/feed?category=${category}&t=${Date.now()}`);
+            // Add timestamp to bypass cache and count parameter
+            const res = await fetch(`/api/feed?category=${category}&count=${fetchCount}&t=${Date.now()}`);
             const data = await res.json();
             if (Array.isArray(data)) {
-                setArticles(data);
-                // Update global store & DB
-                setFeed(category, data);
-                if (onListUpdate) {
-                    onListUpdate(data);
+                // Limit new data to fetchCount
+                const newArticles = data.slice(0, fetchCount);
+
+                // Merge with existing articles (keep old, add new at top, remove duplicates)
+                const existingLinks = new Set(articles.map(a => a.link));
+                const uniqueNewArticles = newArticles.filter(a => !existingLinks.has(a.link));
+
+                if (uniqueNewArticles.length > 0) {
+                    // Track new links for animation
+                    const newLinks = new Set(uniqueNewArticles.map(a => a.link));
+                    setNewlyFetchedLinks(newLinks);
+
+                    // Show success notification
+                    setNotification({
+                        message: `成功抓取 ${uniqueNewArticles.length} 篇新文章`,
+                        type: 'success'
+                    });
+
+                    // Clear animation flag after 2 seconds
+                    setTimeout(() => {
+                        setNewlyFetchedLinks(new Set());
+                    }, 2000);
+
+                    // Combine: new articles first, then existing
+                    const mergedArticles = [...uniqueNewArticles, ...articles];
+
+                    setArticles(mergedArticles);
+                    // Update global store & DB
+                    setFeed(category, mergedArticles);
+                    if (onListUpdate) {
+                        onListUpdate(mergedArticles);
+                    }
+                } else {
+                    setNotification({
+                        message: "暂时没有发现新文章",
+                        type: 'info'
+                    });
                 }
             }
         } catch (error) {
             console.error("Refresh error:", error);
+            setNotification({ message: "抓取失败，请稍后重试", type: 'info' });
         } finally {
-            setLoading(false);
+            setIsFetching(false);
+            // Clear notification after 3 seconds
+            setTimeout(() => setNotification(null), 3000);
         }
+    };
+
+    // Toggle section collapse
+    const toggleSection = (section: string) => {
+        setCollapsedSections(prev => ({
+            ...prev,
+            [section]: !prev[section]
+        }));
     };
 
     const handleDelete = async (e: React.MouseEvent, link: string) => {
@@ -156,15 +187,64 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                     {category === 'ai_news' && <Cpu className="w-5 h-5 text-indigo-600" />}
                     {category === 'ai_gen' && <Sparkles className="w-5 h-5 text-rose-500" />}
                     {category === 'ted' && <span className="w-5 h-5 flex items-center justify-center font-bold text-[10px] text-white bg-red-600 rounded">TED</span>}
-                    Recommended Reading
-                    <button
-                        onClick={handleRefresh}
-                        disabled={loading}
-                        className="ml-2 p-1.5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-colors disabled:opacity-50"
-                        title={`Refresh ${category.replace('_', ' ')} articles`}
-                    >
-                        <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-                    </button>
+                    推荐阅读
+
+                    {/* Refresh Controls */}
+                    <div className="flex items-center gap-1 ml-auto relative">
+                        {/* Fetch Count Selector */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowSettings(!showSettings)}
+                                className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-colors"
+                                title="设置抓取数量"
+                            >
+                                <Settings2 className="w-4 h-4" />
+                            </button>
+
+                            <AnimatePresence>
+                                {showSettings && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                        className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-lg border border-stone-200 p-3 z-50 min-w-[160px]"
+                                    >
+                                        <div className="text-xs font-bold text-stone-500 mb-2">抓取数量</div>
+                                        <div className="flex gap-1.5">
+                                            {[1, 2, 3, 4, 5].map(count => (
+                                                <button
+                                                    key={count}
+                                                    onClick={() => {
+                                                        setFetchCount(count);
+                                                        setShowSettings(false);
+                                                    }}
+                                                    className={cn(
+                                                        "px-2.5 py-1.5 text-xs rounded-lg font-bold transition-all",
+                                                        fetchCount === count
+                                                            ? "bg-amber-100 text-amber-700 border border-amber-200"
+                                                            : "bg-stone-50 text-stone-500 hover:bg-stone-100 border border-stone-100"
+                                                    )}
+                                                >
+                                                    {count}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+
+                        {/* Refresh Button */}
+                        <button
+                            onClick={handleRefresh}
+                            disabled={isFetching}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-600 font-bold text-xs transition-colors disabled:opacity-50 border border-amber-100"
+                            title={`刷新 ${category} 文章`}
+                        >
+                            <RefreshCw className={cn("w-3.5 h-3.5", isFetching && "animate-spin")} />
+                            抓取 {fetchCount} 篇
+                        </button>
+                    </div>
                 </h3>
 
                 <div className="flex flex-col items-center justify-center gap-6">
@@ -255,27 +335,6 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                         ))}
                     </div>
                 </div>
-            ) : loading ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {[1, 2, 3, 4, 5, 6].map((i) => (
-                        <div key={i} className="glass-panel rounded-2xl overflow-hidden h-full border-white/40">
-                            <div className="h-40 w-full bg-stone-200/50 animate-pulse" />
-                            <div className="p-5 space-y-4">
-                                <div className="space-y-2">
-                                    <div className="flex justify-between">
-                                        <div className="h-4 w-20 bg-stone-200/50 rounded animate-pulse" />
-                                        <div className="h-4 w-4 bg-stone-200/50 rounded animate-pulse" />
-                                    </div>
-                                    <div className="h-6 w-full bg-stone-200/50 rounded animate-pulse" />
-                                    <div className="h-6 w-2/3 bg-stone-200/50 rounded animate-pulse" />
-                                </div>
-                                <div className="pt-3 border-t border-stone-200/50 flex justify-between">
-                                    <div className="h-4 w-16 bg-stone-200/50 rounded animate-pulse" />
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
             ) : (
                 <div className="space-y-12">
                     {(() => {
@@ -296,40 +355,73 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                             return isNaN(pub) || (now - pub) >= NEW_THRESHOLD;
                         });
 
-                        const renderSection = (title: string, items: ArticleItem[], icon?: React.ReactNode) => {
+                        const renderSection = (key: string, title: string, items: ArticleItem[], icon?: React.ReactNode) => {
                             if (items.length === 0) return null;
+                            const isCollapsed = collapsedSections[key];
+
                             return (
                                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                                    <h4 className="flex items-center gap-2 text-sm font-bold text-stone-400 uppercase tracking-widest pl-1">
+                                    <button
+                                        onClick={() => toggleSection(key)}
+                                        className="flex items-center gap-2 text-sm font-bold text-stone-400 uppercase tracking-widest pl-1 hover:text-stone-600 transition-colors w-full text-left group"
+                                    >
+                                        {isCollapsed ? (
+                                            <ChevronRight className="w-4 h-4 transition-transform" />
+                                        ) : (
+                                            <ChevronDown className="w-4 h-4 transition-transform" />
+                                        )}
                                         {icon}
                                         {title}
                                         <span className="bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded text-[10px] ml-1">{items.length}</span>
-                                    </h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        {items.map(item => (
-                                            <ArticleCard
-                                                key={item.link}
-                                                item={item}
-                                                isRead={readArticleUrls.includes(item.link)}
-                                                category={category}
-                                                onSelect={onSelect}
-                                                onDelete={(link) => handleDelete({ stopPropagation: () => { } } as any, link)} // Hacky but works for now or needs updated handler signature
-                                            />
-                                        ))}
-                                    </div>
+                                    </button>
+
+                                    <AnimatePresence>
+                                        {!isCollapsed && (
+                                            <motion.div
+                                                initial={{ opacity: 0, height: 0 }}
+                                                animate={{ opacity: 1, height: "auto" }}
+                                                exit={{ opacity: 0, height: 0 }}
+                                                transition={{ duration: 0.3 }}
+                                                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-hidden"
+                                            >
+                                                {items.map(item => (
+                                                    <motion.div
+                                                        key={item.link}
+                                                        layout
+                                                        initial={newlyFetchedLinks.has(item.link) ? { opacity: 0, y: -20, scale: 0.95 } : false}
+                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                        transition={{ duration: 0.5, type: "spring", bounce: 0.3 }}
+                                                    >
+                                                        <ArticleCard
+                                                            item={item}
+                                                            isRead={readArticleUrls.includes(item.link)}
+                                                            category={category}
+                                                            onSelect={onSelect}
+                                                            onDelete={(link) => handleDelete({ stopPropagation: () => { } } as any, link)}
+                                                        />
+                                                    </motion.div>
+                                                ))}
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
                                 </div>
                             );
                         };
 
                         return (
                             <>
-                                {renderSection("New Arrivals", newArticles, <Sparkles className="w-4 h-4 text-amber-500" />)}
-                                {renderSection("Unread", olderUnread, <BookOpen className="w-4 h-4 text-stone-400" />)}
-                                {renderSection("Read History", read, <Check className="w-4 h-4 text-green-500" />)}
+                                {/* Read History FIRST */}
+                                {renderSection("read", "已读历史 / Read History", read, <Check className="w-4 h-4 text-green-500" />)}
+
+                                {/* New Arrivals */}
+                                {renderSection("new", "新到达 / New Arrivals", newArticles, <Sparkles className="w-4 h-4 text-amber-500" />)}
+
+                                {/* Older Unread */}
+                                {renderSection("unread", "待阅读 / Unread", olderUnread, <BookOpen className="w-4 h-4 text-stone-400" />)}
 
                                 {articles.length === 0 && (
                                     <div className="text-center py-20 text-stone-400 italic">
-                                        No articles found in this category.
+                                        点击刷新按钮抓取文章 / Click refresh to fetch articles
                                     </div>
                                 )}
                             </>
@@ -337,6 +429,26 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                     })()}
                 </div>
             )}
+
+            {/* Notification Toast */}
+            <AnimatePresence>
+                {notification && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 20, scale: 0.9 }}
+                        transition={{ type: "spring", bounce: 0.3, duration: 0.5 }}
+                        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 bg-stone-800/90 backdrop-blur-md text-white rounded-full shadow-xl border border-white/10 text-sm font-bold tracking-wide"
+                    >
+                        {notification.type === 'success' ? (
+                            <div className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.6)] animate-pulse" />
+                        ) : (
+                            <div className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.6)]" />
+                        )}
+                        {notification.message}
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
@@ -384,53 +496,58 @@ function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
         >
             {/* Cover Image Container */}
             <div className="h-44 w-full relative overflow-hidden bg-stone-100">
-                <img
-                    src={item.image || (() => {
-                        const categoryMap: Record<string, string> = {
-                            'news': '/covers/news.svg',
-                            'psychology': '/covers/psychology.svg',
-                            'ai_news': '/covers/ai.svg',
-                            'ai_gen': '/covers/ai.svg',
-                            'ielts': '/covers/ielts.svg',
-                            'cet4': '/covers/ielts.svg',
-                            'cet6': '/covers/ielts.svg',
-                            'ted': '/covers/news.svg'
-                        };
-                        return categoryMap[category] || '/covers/default.svg';
-                    })()}
-                    style={!item.image ? {
-                        filter: `hue-rotate(${Math.abs(item.title.split('').reduce((acc, char) => char.charCodeAt(0) + ((acc << 5) - acc), 0)) % 360}deg)`
-                    } : undefined}
-                    alt={item.title}
-                    className={cn(
-                        "w-full h-full object-cover transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-105",
-                        item.image ? "" : "opacity-90 grayscale-[0.2]"
-                    )}
-                    onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                        e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                    }}
-                />
+                {/* Background Image - Picsum with deterministic seed */}
+                {item.image ? (
+                    <img
+                        src={item.image}
+                        alt={item.title}
+                        className="w-full h-full object-cover transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-105"
+                        onError={(e) => {
+                            // On error, show gradient fallback
+                            e.currentTarget.style.display = 'none';
+                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                        }}
+                    />
+                ) : (
+                    <>
+                        {/* Picsum random photo based on title hash */}
+                        <img
+                            src={`https://picsum.photos/seed/${encodeURIComponent(item.title.slice(0, 20))}/800/600`}
+                            alt=""
+                            className="w-full h-full object-cover transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-105"
+                            onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                // Show gradient fallback
+                                const parent = e.currentTarget.parentElement;
+                                if (parent) {
+                                    const fallback = parent.querySelector('[data-fallback]') as HTMLElement;
+                                    if (fallback) fallback.classList.remove('hidden');
+                                }
+                            }}
+                        />
 
-                {/* Date Badge (Issue Number) */}
-                {!item.image && (
-                    <div className="absolute top-2 right-2 flex flex-col items-center justify-center w-10 h-10 bg-white/20 backdrop-blur-md border border-white/30 rounded-full shadow-sm z-10">
-                        <span className="text-xs font-bold text-stone-700/70 font-serif leading-none">
-                            {new Date(item.pubDate).getDate() || new Date().getDate()}
-                        </span>
-                    </div>
+                        {/* Gradient fallback if Picsum fails */}
+                        <div
+                            data-fallback
+                            className={cn(
+                                "w-full h-full absolute inset-0 hidden",
+                                getGradient(item.title)
+                            )}
+                        />
+
+                        {/* Source Badge Only (no title overlay) */}
+                        <div className="absolute bottom-3 left-3 flex items-center gap-1.5 bg-black/50 backdrop-blur-md rounded-full px-2.5 py-1 border border-white/10">
+                            {category === 'news' && <Newspaper className="w-3 h-3 text-white/90" />}
+                            {category === 'psychology' && <Brain className="w-3 h-3 text-white/90" />}
+                            {(category === 'ielts' || category === 'cet4' || category === 'cet6') && <GraduationCap className="w-3 h-3 text-white/90" />}
+                            {category === 'ai_news' && <Cpu className="w-3 h-3 text-white/90" />}
+                            {category === 'ted' && <span className="text-white/90 text-[10px] font-bold">TED</span>}
+                            <span className="text-white/90 text-[10px] uppercase tracking-wider font-medium">{item.source}</span>
+                        </div>
+                    </>
                 )}
 
-                {/* Title Overlay (Magazine Style) */}
-                {!item.image && (
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none flex items-end p-4 z-10">
-                        <h3 className="text-white font-newsreader italic text-2xl font-medium leading-tight drop-shadow-md opacity-90 line-clamp-2">
-                            {item.title.split(' ').slice(0, 6).join(' ')}...
-                        </h3>
-                    </div>
-                )}
-
-                {/* Fallback Gradient */}
+                {/* Fallback Gradient (shown on image load error) */}
                 <div className={cn(
                     "w-full h-full absolute top-0 left-0 hidden",
                     getGradient(item.title)
@@ -440,7 +557,7 @@ function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
                 {isRead && (
                     <div className="absolute top-3 left-3 bg-stone-900/40 backdrop-blur-md text-white text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded-full flex items-center gap-1.5 z-10 border border-white/10">
                         <div className="w-1 h-1 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]" />
-                        Read
+                        已读
                     </div>
                 )}
 
@@ -458,15 +575,12 @@ function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
             </div>
 
             {/* Content Area */}
-            <div className="p-5 flex flex-col flex-1 justify-between space-y-4">
-                <div className="space-y-3">
-                    {/* Meta Row */}
-                    <div className="flex items-center justify-between border-b border-stone-200/50 pb-2">
-                        <span className="text-[10px] font-bold tracking-[0.1em] text-amber-600/80 uppercase">
-                            {item.source}
-                        </span>
+            <div className="p-5 flex flex-col flex-1 justify-between space-y-3">
+                <div className="space-y-2">
+                    {/* Date Only (source is on cover) */}
+                    <div className="flex items-center justify-end">
                         <span className="text-[10px] font-medium text-stone-400">
-                            {new Date(item.pubDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            {new Date(item.pubDate).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
                         </span>
                     </div>
 
@@ -488,6 +602,8 @@ function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
                     </div>
                 )}
             </div>
+
+
         </div>
     );
 }

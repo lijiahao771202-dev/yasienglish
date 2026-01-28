@@ -70,6 +70,10 @@ export class YasiDB extends Dexie {
         streak_count: number;
         max_elo: number;
         last_practice: number;
+        // Listening Stats (Optional for backward compatibility)
+        listening_elo?: number;
+        listening_streak?: number;
+        listening_max_elo?: number;
     }>;
 
     constructor() {
@@ -122,6 +126,19 @@ export class YasiDB extends Dexie {
                 streak_count: 0,
                 max_elo: 1200,
                 last_practice: Date.now()
+            });
+        });
+
+        // Version 5: Add Listening Specific Stats
+        this.version(5).stores({
+            user_profile: '++id'
+        }).upgrade(tx => {
+            return tx.table('user_profile').toCollection().modify(profile => {
+                if (profile.listening_elo === undefined) {
+                    profile.listening_elo = 1200;
+                    profile.listening_streak = 0;
+                    profile.listening_max_elo = 1200;
+                }
             });
         });
     }

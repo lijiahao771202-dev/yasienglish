@@ -13,10 +13,16 @@ const FEEDS = {
     ],
     psychology: [
         { name: "ScienceDaily", url: "https://www.sciencedaily.com/rss/mind_brain/psychology.xml" },
+        { name: "ScienceDaily Mind", url: "https://www.sciencedaily.com/rss/mind_brain.xml" },
         { name: "Psychology Today", url: "https://www.psychologytoday.com/us/feed" },
         { name: "PsyArXiv", url: "https://blog.psyarxiv.com/feed/" },
         { name: "Neuroscience News", url: "https://neurosciencenews.com/feed/" },
         { name: "BPS Research Digest", url: "https://digest.bps.org.uk/feed/" },
+        { name: "APA Monitor", url: "https://www.apa.org/monitor/rss" },
+        { name: "PsyPost", url: "https://www.psypost.org/feed" },
+        { name: "The Conversation Psychology", url: "https://theconversation.com/us/topics/psychology-702/articles.atom" },
+        { name: "Scientific American Mind", url: "https://www.scientificamerican.com/section/mind-brain/?format=rss" },
+        { name: "Greater Good Science", url: "https://greatergood.berkeley.edu/feed/rss" },
     ],
     ai_news: [
         { name: "Wired AI", url: "https://www.wired.com/feed/category/ai/latest/rss" },
@@ -55,37 +61,89 @@ export async function GET(req: Request) {
             try {
                 const feed = await parser.parseURL(source.url);
                 return feed.items.slice(0, 10).map((item: any) => {
-                    // Extract image
+                    // Extract image from various RSS fields
                     let image = null;
                     let videoId = null;
 
                     // YouTube Specific Parsing
                     if (source.url.includes('youtube.com')) {
-                        // YouTube RSS usually puts video ID in yt:videoId
-                        // rss-parser might put it in item['yt:videoId'] or item.id
-                        // Thumbnail usually in media:group -> media:thumbnail
                         const ytMedia = item['media:group'];
                         if (ytMedia) {
                             image = ytMedia['media:thumbnail']?.[0]?.$.url;
                         }
                         videoId = item['yt:videoId'];
                     } else {
-                        // Standard RSS Image Extraction
-                        if (item.enclosure && item.enclosure.url && item.enclosure.type?.startsWith('image')) {
+                        // Try multiple image sources in order of preference
+
+                        // 1. Enclosure (common in podcasts/feeds)
+                        if (item.enclosure?.url && item.enclosure.type?.startsWith('image')) {
                             image = item.enclosure.url;
-                        } else if (item['media:content'] && item['media:content'].$ && item['media:content'].$.url) {
-                            image = item['media:content'].$.url;
-                        } else if (item['media:thumbnail'] && item['media:thumbnail'].$ && item['media:thumbnail'].$.url) {
-                            image = item['media:thumbnail'].$.url;
-                        } else if (item.content) {
-                            const imgMatch = item.content.match(/<img[^>]+src="([^">]+)"/);
+                        }
+
+                        // 2. media:content (common in news feeds)
+                        if (!image && item['media:content']) {
+                            const mediaContent = Array.isArray(item['media:content'])
+                                ? item['media:content'][0]
+                                : item['media:content'];
+                            if (mediaContent?.$?.url) {
+                                image = mediaContent.$.url;
+                            }
+                        }
+
+                        // 3. media:thumbnail
+                        if (!image && item['media:thumbnail']) {
+                            const thumbnail = Array.isArray(item['media:thumbnail'])
+                                ? item['media:thumbnail'][0]
+                                : item['media:thumbnail'];
+                            if (thumbnail?.$?.url) {
+                                image = thumbnail.$.url;
+                            }
+                        }
+
+                        // 4. image field (some feeds)
+                        if (!image && item.image) {
+                            image = typeof item.image === 'string' ? item.image : item.image?.url;
+                        }
+
+                        // 5. content:encoded field (WordPress, many blogs)
+                        if (!image && item['content:encoded']) {
+                            const imgMatch = item['content:encoded'].match(/<img[^>]+src=["']([^"'>]+)["']/i);
                             if (imgMatch) {
                                 image = imgMatch[1];
                             }
-                        } else if (item.description) {
-                            const imgMatch = item.description.match(/<img[^>]+src="([^">]+)"/);
+                        }
+
+                        // 6. Regular content field
+                        if (!image && item.content) {
+                            const imgMatch = item.content.match(/<img[^>]+src=["']([^"'>]+)["']/i);
                             if (imgMatch) {
                                 image = imgMatch[1];
+                            }
+                        }
+
+                        // 7. Description field
+                        if (!image && item.description) {
+                            const imgMatch = item.description.match(/<img[^>]+src=["']([^"'>]+)["']/i);
+                            if (imgMatch) {
+                                image = imgMatch[1];
+                            }
+                        }
+
+                        // 8. Summary field (Atom feeds)
+                        if (!image && item.summary) {
+                            const imgMatch = item.summary.match(/<img[^>]+src=["']([^"'>]+)["']/i);
+                            if (imgMatch) {
+                                image = imgMatch[1];
+                            }
+                        }
+
+                        // Clean up relative URLs
+                        if (image && !image.startsWith('http')) {
+                            try {
+                                const baseUrl = new URL(source.url);
+                                image = new URL(image, baseUrl.origin).href;
+                            } catch {
+                                image = null;
                             }
                         }
                     }

@@ -5,21 +5,19 @@ export async function POST(req: NextRequest) {
     try {
         const { articleTitle, articleContent, difficulty, eloRating, mode = "translation" } = await req.json();
 
-        if (!articleTitle) {
-            return NextResponse.json(
-                { error: "Article title is required" },
-                { status: 400 }
-            );
+        // Determine if this is a Scenario Drill (no content) or Article Drill
+        const isScenario = !articleContent || articleContent.length < 50;
+
+        if (!articleTitle && !isScenario) {
+            return NextResponse.json({ error: "Article title is required" }, { status: 400 });
         }
 
-        // Truncate content
+        // Truncate content if exists
         const snippet = articleContent ? articleContent.slice(0, 3000) : "";
 
-        // Dynamic Elo Prompt Engineering (Smooth Interpolation)
-        // Base rating 1200. Range 0-3000.
+        // Dynamic Elo Prompt Engineering
         const currentElo = eloRating || 1200;
 
-        // Define anchor points for the LLM to interpolate
         const difficultyScale = `
         Scale Reference:
         - 800 (A1): Simple SVO sentences, top 500 words.
@@ -29,17 +27,13 @@ export async function POST(req: NextRequest) {
         - 2400 (C1): Sophisticated/Academic, inversion, nuanced vocabulary.
         `;
 
-        // Calculate specific instructions based on range
-        // This allows the LLM to "mix" levels (e.g. 1300 is A2 but with introduction of B1 elements)
         let specificInstruction = "";
-
         if (currentElo < 1000) specificInstruction = "Strictly beginner. Keep sentences extremely short (max 8-12 words). Subject-Verb-Object only.";
         else if (currentElo < 1400) specificInstruction = "Elementary. Max 20-25 words. Simple compound sentences allowed.";
         else if (currentElo < 1800) specificInstruction = "Intermediate. Max 30-40 words. Mix standard professional English.";
         else if (currentElo < 2200) specificInstruction = "Upper Intermediate. Max 45-60 words. Abstract concepts.";
         else specificInstruction = "Advanced. Max 70+ words. Sophisticated expression.";
 
-        // Force explicit constraint for Listening Mode to avoid long monologues at lower levels
         if (mode === "listening" && currentElo < 1500) {
             specificInstruction += " For Listening: ONE single clear sentence only. No paragraphs.";
         } else if (mode === "listening") {
@@ -49,42 +43,88 @@ export async function POST(req: NextRequest) {
         const difficultyPrompt = `
         Current User Rating: ${currentElo}.
         ${difficultyScale}
-        
-        ADAPTATION INSTRUCTION: Generate a drill that matches the user's exact rating of ${currentElo}. 
-        Do not jump to the next band unless the rating is close to it. 
+        ADAPTATION INSTRUCTION: Generate a drill that matches the user's exact rating of ${currentElo}.
         ${specificInstruction}
-        
-        CRITICAL LENGTH CONSTRAINT: You MUST follow the word count limits above. Do NOT generate long texts for < 2000 Elo.
+        CRITICAL LENGTH CONSTRAINT: You MUST follow the word count limits above.
         `;
-
-
 
         const isListening = mode === "listening";
+        const randomSeed = Math.random().toString(36).substring(7);
 
-        const prompt = `
-        You are an expert IELTS English tutor. 
-        Based on the following article snippet, generate a high-quality "${isListening ? "Listening Dictation" : "Translation Drill"}" for a student at ${difficulty} level.
-        
-        Article Title: "${articleTitle}"
-        Snippet: "${snippet}"
+        let prompt = "";
 
-        Constraint: ${difficultyPrompt}
+        if (isScenario) {
+            // --- SCENARIO MODE PROMPT ---
+            const styles = ["Dialogue Response", "Casual Remark", "Formal Request", "Emergency Question", "Witty Comment"];
+            const randomStyle = styles[Math.floor(Math.random() * styles.length)];
 
-        Task:
-        1. Identify the core theme and 2-3 vocabulary words.
-        ${isListening ?
-                `2. Create a meaningful English sentence that reflects the theme. It should be challenging to listen to (e.g. linking sounds, detailed information).
-         3. Provide the exact transcript as 'reference_english'.` :
-                `2. Create a meaningful Chinese sentence that reflects the theme.
-         3. Provide a 'Golden' English translation.`}
-        
-        Output strictly in JSON format:
-        {
-            "chinese": "${isListening ? "Listen to the audio and write down what you hear." : "The Chinese sentence challenge"}",
-            "target_english_vocab": ["EnglishWord1", "EnglishWord2"],
-            "reference_english": "The ideal English translation"
+            prompt = `
+            [SCENARIO MODE | DIVERSITY SEED: ${randomSeed}]
+            You are an expert English coach.
+            
+            Topic: "${articleTitle}"
+            
+            Task:
+            1. Invent a specific, realistic "Micro-Scenario" regarding this topic.
+            2. ${isListening ?
+                    `Create a challenging English line someone would say in this context (for listening dictation).` :
+                    `Create a Chinese source sentence for the user to translate into English.`}
+            3. Ensure the target English line matches Elo ${currentElo}.
+
+            Constraint: ${difficultyPrompt}
+
+            **Context**: The user is in a "Battle Mode".
+            **Style**: ${randomStyle}.
+            
+            Output strictly in JSON format:
+            {
+                "chinese": "${isListening ? "Direct Chinese Translation of the English sentence (NOT a description of the situation)" : "The Chinese sentence to translate"}",
+                "target_english_vocab": ["Keyword1", "Keyword2"],
+                "reference_english": "The ideal English sentence matching the scenario."
+            }
+            `;
+        } else {
+            // --- ARTICLE MODE PROMPT (Existing) ---
+            // Random Variety Seeds
+            const perspectives = [
+                "from a scientist's perspective", "from a journalist's perspective", "from a student's perspective",
+                "focusing on cause and effect", "focusing on comparison", "focusing on future implications",
+                "identifying a specific detail", "summarizing the core argument"
+            ];
+            const randomPerspective = perspectives[Math.floor(Math.random() * perspectives.length)];
+
+            prompt = `
+            [ARTICLE MODE | DIVERSITY SEED: ${randomSeed}]
+            You are an expert IELTS English tutor.
+            Based on the article snippet, generate a high-quality "${isListening ? "Listening Dictation" : "Translation Drill"}" for a student at ${difficulty} level.
+            
+            Article Title: "${articleTitle}"
+            Snippet: "${snippet}"
+
+            Constraint: ${difficultyPrompt}
+
+            **CRITICAL VARIETY INSTRUCTIONS**:
+            - Generate content ${randomPerspective}.
+            - DO NOT repeat common phrases.
+            - Pick a DIFFERENT aspect of the topic than the most obvious one.
+            - Be CREATIVE and SURPRISING while staying on topic.
+
+            Task:
+            1. Identify the core theme and 2-3 vocabulary words.
+            ${isListening ?
+                    `2. Create a meaningful English sentence that reflects the theme. It should be challenging to listen to.
+             3. Provide the exact transcript as 'reference_english'.` :
+                    `2. Create a meaningful Chinese sentence that reflects the theme.
+             3. Provide a 'Golden' English translation.`}
+            
+            Output strictly in JSON format:
+            {
+                "chinese": "${isListening ? "某个相关的中文提示/翻译" : "The Chinese sentence challenge"}",
+                "target_english_vocab": ["EnglishWord1", "EnglishWord2"],
+                "reference_english": "The ideal English translation"
+            }
+            `;
         }
-        `;
 
         const completion = await deepseek.chat.completions.create({
             messages: [
