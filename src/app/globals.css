@@ -129,6 +129,70 @@
   animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
+@keyframes shake {
+
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  10%,
+  30%,
+  50%,
+  70%,
+  90% {
+    transform: translateX(-8px);
+  }
+
+  20%,
+  40%,
+  60%,
+  80% {
+    transform: translateX(8px);
+  }
+}
+
+.animate-shake {
+  animation: shake 0.4s cubic-bezier(.36, .07, .19, .97) both;
+  will-change: transform;
+}
+
+@keyframes glitch {
+  0% {
+    transform: translate(0);
+    text-shadow: none;
+  }
+
+  20% {
+    transform: translate(-2px, 1px);
+    text-shadow: 2px 0 #ff00c1, -2px -2px #00fff9;
+  }
+
+  40% {
+    transform: translate(2px, -1px);
+    text-shadow: -2px 0 #ff00c1, 2px 2px #00fff9;
+  }
+
+  60% {
+    transform: translate(-2px, 0);
+    text-shadow: 2px -1px #ff00c1, -2px 1px #00fff9;
+  }
+
+  80% {
+    transform: translate(2px, 1px);
+    text-shadow: -2px 2px #ff00c1, 2px -2px #00fff9;
+  }
+
+  100% {
+    transform: translate(0);
+    text-shadow: none;
+  }
+}
+
+.animate-glitch {
+  animation: glitch 0.3s cubic-bezier(.25, .46, .45, .94) both infinite;
+}
+
 /* Base Styles */
 body {
   /* Morning Coffee Theme Base */
