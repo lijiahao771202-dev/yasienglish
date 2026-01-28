@@ -66,9 +66,22 @@ app.post('/transcribe', async (req, res) => {
         console.log('[Whisper] Converted to WAV, transcribing...');
 
         // Transcribe with whisper-cli
+        // Transcribe with whisper-cli
         const result = await new Promise((resolve, reject) => {
+            // Get prompt from header if present
+            const promptHeader = req.headers['x-whisper-prompt'];
+            let promptArg = '';
+
+            if (promptHeader) {
+                // Sanitize prompt: remove quotes and dangerous chars
+                const safePrompt = promptHeader.replace(/["\\$;|]/g, ' ').slice(0, 200); // Limit length
+                console.log('[Whisper] Using prompt:', safePrompt);
+                promptArg = `--prompt "${safePrompt}"`;
+            }
+
             // Use whisper-cli with JSON output
-            const cmd = `"${whisperCliPath}" -m "${modelPath}" -f "${tempWavPath}" -l en --output-json -of /tmp/whisper_output_${timestamp}`;
+            // Added --prompt argument
+            const cmd = `"${whisperCliPath}" -m "${modelPath}" -f "${tempWavPath}" -l en ${promptArg} --output-json -of /tmp/whisper_output_${timestamp}`;
 
             exec(cmd, { timeout: 60000 }, (error, stdout, stderr) => {
                 if (error) {

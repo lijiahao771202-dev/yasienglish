@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, RefreshCw, Send, X, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Pause, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen } from "lucide-react";
+import { Sparkles, RefreshCw, Send, X, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Pause, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import * as Diff from 'diff';
 import { WordPopup, PopupState } from "../reading/WordPopup";
 import { useWhisper } from "@/hooks/useWhisper";
+import { db } from "@/lib/db";
+import { Zap, TrendingUp, Trophy, Check } from "lucide-react";
+import { getRank } from "@/lib/rankUtils";
 
 interface WritingEditorProps {
     articleTitle: string;
@@ -23,8 +26,14 @@ interface DrillData {
 
 interface DrillFeedback {
     score: number;
-    feedback: string[];
+    feedback: any; // Can be string[] or object with listening_tips
     improved_version: string;
+    segments?: {
+        word: string;
+        status: "correct" | "phonetic_error" | "missing" | "typo" | "user_extra" | "variation";
+        user_input?: string;
+        feedback?: string;
+    }[];
 }
 
 interface DictionaryData {
@@ -47,9 +56,11 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
     const [isGeneratingDrill, setIsGeneratingDrill] = useState(false);
     const [isSubmittingDrill, setIsSubmittingDrill] = useState(false);
     const [drillFeedback, setDrillFeedback] = useState<DrillFeedback | null>(null);
+    const [hasRatedDrill, setHasRatedDrill] = useState(false); // Track if current drill has been rated
 
     // Audio & Dictionary State
     const [isPlaying, setIsPlaying] = useState(false);
+    const [isAudioLoading, setIsAudioLoading] = useState(false); // New Loading State
     const audioRef = useRef<HTMLAudioElement | null>(null);
     // Cache stores { url: string, marks: { time: number, value: string }[] }
     const audioCache = useRef<Map<string, { url: string; marks?: any[] }>>(new Map());
@@ -68,8 +79,13 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
         isRecording: whisperRecording,
         isProcessing: whisperProcessing,
         result: whisperResult,
+        audioLevel,
+        setContext,
         startRecognition,
-        stopRecognition
+        stopRecognition,
+        playRecording,
+        engineMode,
+        setEngineMode
     } = useWhisper();
 
     // Ask Tutor State
@@ -155,7 +171,7 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
 
         const textKey = "SENTENCE_" + drillData.reference_english;
         // Don't stop if already valid? No, force restart for consistent flow
-        setIsPlaying(true);
+        setIsPlaying(true); // Optimistically show playing? No, show loading.
         setActiveWord(null);
         setWordPopup(null);
 
@@ -163,6 +179,9 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
             let cached = audioCache.current.get(textKey);
 
             if (!cached) {
+                setIsAudioLoading(true); // START LOADING
+                setIsPlaying(false);     // Ensure play icon is hidden while loading
+
                 const response = await fetch("/api/tts", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -177,6 +196,7 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                 const data = await response.json();
                 cached = { url: data.audio, marks: data.marks };
                 audioCache.current.set(textKey, cached!);
+                setIsAudioLoading(false); // STOP LOADING
             }
 
             if (audioRef.current) {
@@ -204,9 +224,11 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
             // Apply current speed
             audio.playbackRate = playbackSpeed;
             await audio.play();
+            setIsPlaying(true); // NOW SHOW PLAYING
         } catch (error) {
             console.error("Audio chain failed", error);
             setIsPlaying(false);
+            setIsAudioLoading(false);
         }
     };
 
@@ -307,23 +329,45 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
     };
 
     // --- Drill Handlers ---
-    const [difficulty, setDifficulty] = useState<string>('Level 3');
+    // --- Drill Handlers ---
+    const [difficulty, setDifficulty] = useState<string>('Level 3'); // Keep as fallback for now
     const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
     const [isDynamic, setIsDynamic] = useState(true);
-    const [level, setLevel] = useState(1);
+
+    // Elo State
+    const [eloRating, setEloRating] = useState(1200);
+    const [streakCount, setStreakCount] = useState(0);
+    const [eloChange, setEloChange] = useState<number | null>(null);
+
+    // Load Elo from DB
+    useEffect(() => {
+        const loadProfile = async () => {
+            const profile = await db.user_profile.orderBy('id').first();
+            if (profile) {
+                setEloRating(profile.elo_rating);
+                setStreakCount(profile.streak_count);
+            } else {
+                // Init new profile
+                await db.user_profile.add({
+                    elo_rating: 1200,
+                    streak_count: 0,
+                    max_elo: 1200,
+                    last_practice: Date.now()
+                });
+            }
+        };
+        loadProfile();
+    }, []);
 
     // --- Persistence ---
     useEffect(() => {
         const savedDiff = localStorage.getItem('yasi_drill_difficulty');
-        const savedLevel = localStorage.getItem('yasi_drill_level');
         if (savedDiff) setDifficulty(savedDiff);
-        if (savedLevel) setLevel(parseInt(savedLevel));
     }, []);
 
     useEffect(() => {
         localStorage.setItem('yasi_drill_difficulty', difficulty);
-        localStorage.setItem('yasi_drill_level', level.toString());
-    }, [difficulty, level]);
+    }, [difficulty]);
 
     const handleGenerateDrill = async (targetDifficulty = difficulty) => {
         setIsGeneratingDrill(true);
@@ -345,7 +389,8 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                 body: JSON.stringify({
                     articleTitle,
                     articleContent: articleContent || "",
-                    difficulty: targetDifficulty,
+                    difficulty, // Legacy param, kept for safety
+                    eloRating, // NEW: Elo-based generation
                     mode
                 }),
             });
@@ -385,8 +430,8 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
         if (!userTranslation.trim() || !drillData) return;
         setIsSubmittingDrill(true);
 
-        // Simulate "Thinking" / Animation Delay for Transition
-        await new Promise(r => setTimeout(r, 1200));
+        // Network Request immediately
+
 
         try {
             const response = await fetch("/api/ai/score_translation", {
@@ -396,17 +441,69 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                     user_translation: userTranslation,
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
+                    current_elo: eloRating || 1200, // Pass current Elo for AI Judgment
                     mode // Pass mode to backend for context-aware scoring
                 }),
             });
             const data = await response.json();
             setDrillFeedback(data);
 
-            // Auto-adjust difficulty for NEXT round
+            // Auto-adjust Elo Rating
             if (data.score !== undefined) {
-                updateDifficultyBasedOnScore(data.score);
-                if (data.score >= 6) {
-                    setLevel(prev => prev + 1);
+                // Practice Mode: If already rated this drill, skip Elo update
+                if (hasRatedDrill) {
+                    console.log('[Elo] Practice Mode - Skipping Elo update');
+                    setEloChange(0); // This will trigger "Practice Mode" UI
+                    setIsSubmittingDrill(false);
+                    return; // Early exit, don't update Elo
+                }
+
+                // First Attempt: Mark as rated
+                setHasRatedDrill(true);
+
+                // Calculate Elo Change (Smoothed K-Factor)
+                let change = 0;
+
+                // Use AI Judge's Adjustment if available, otherwise fallback
+                if (data.elo_adjustment !== undefined) {
+                    change = data.elo_adjustment;
+                } else {
+                    // Fallback Logic (Legacy)
+                    if (data.score >= 9) change = 15;
+                    else if (data.score >= 8) change = 10;
+                    else if (data.score >= 6) change = 5;
+                    else if (data.score >= 4) change = -4;
+                    else change = -10;
+                }
+
+                // Streak Bonus (Visual / Minor)
+                let newStreak = streakCount;
+                if (data.score >= 9) {
+                    newStreak += 1;
+                    if (newStreak >= 3) {
+                        // AI Judge already accounts for "Mastery", but we can add a tiny 'consistency' bonus
+                        change += 2;
+                    }
+                } else {
+                    newStreak = 0;
+                }
+
+                const newElo = Math.max(0, (eloRating || 1200) + change);
+
+                // Update State
+                setEloRating(newElo);
+                setStreakCount(newStreak);
+                setEloChange(change);
+
+                // Update DB
+                const profile = await db.user_profile.orderBy('id').first();
+                if (profile && profile.id) {
+                    await db.user_profile.update(profile.id, {
+                        elo_rating: newElo,
+                        streak_count: newStreak,
+                        max_elo: Math.max(profile.max_elo, newElo),
+                        last_practice: Date.now()
+                    });
                 }
             }
         } catch (error) {
@@ -461,7 +558,73 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
     const renderDiff = () => {
         if (!drillData || !drillFeedback) return null;
 
-        // Normalization Helper
+        // 1. New "Phonetic Alignment" Mode (Listening)
+        if (mode === "listening" && drillFeedback.segments) {
+            return (
+                <div className="p-5 bg-white/60 rounded-2xl border border-stone-100 shadow-sm">
+                    <div className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <BookOpen className="w-3 h-3" />
+                        对照修订
+                    </div>
+                    <div className="font-newsreader text-2xl leading-loose text-stone-800 flex flex-wrap gap-x-1 gap-y-2">
+                        {drillFeedback.segments.map((seg, i) => {
+                            // ✅ Correct
+                            if (seg.status === "correct" || seg.status === "variation") {
+                                return (
+                                    <span key={i} className="text-emerald-700">
+                                        {seg.word}
+                                    </span>
+                                );
+                            }
+
+                            // ❌ Missing (User skipped this word)
+                            if (seg.status === "missing") {
+                                return (
+                                    <span key={i} className="relative group">
+                                        <span className="text-rose-500 font-semibold underline decoration-wavy decoration-rose-300 cursor-help animate-pulse">
+                                            {seg.word}
+                                        </span>
+                                        <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] bg-rose-500 text-white px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                            漏读
+                                        </span>
+                                    </span>
+                                );
+                            }
+
+                            // 🟡 Phonetic Error (sounds similar)
+                            if (seg.status === "phonetic_error") {
+                                return (
+                                    <span key={i} className="relative group cursor-help">
+                                        {/* Show correct word with user's wrong pronunciation below */}
+                                        <span className="text-amber-600 font-semibold">
+                                            {seg.word}
+                                        </span>
+                                        <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[10px] text-amber-500 bg-amber-50 px-1 rounded border border-amber-200 opacity-70 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                            你说: {seg.user_input}
+                                        </span>
+                                    </span>
+                                );
+                            }
+
+                            // ❌ Wrong Word
+                            return (
+                                <span key={i} className="relative group cursor-help">
+                                    {/* Show correct word, with wrong attempt on hover */}
+                                    <span className="text-rose-600 font-semibold underline decoration-rose-300 decoration-2">
+                                        {seg.word}
+                                    </span>
+                                    <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[10px] text-rose-400 line-through opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                        {seg.user_input || "???"}
+                                    </span>
+                                </span>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
+        // 2. Fallback / legacy Diff logic for Translation Mode
         const normalize = (str: string) => {
             return str
                 .toLowerCase()
@@ -482,7 +645,7 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
         // - Removed: This is what user wrote but shouldn't have. Mark as Error. Check next for correction.
         // - Added: This is what user missed. Show as insertion point.
 
-        const elements: JSX.Element[] = [];
+        const elements = [];
 
         for (let i = 0; i < diffs.length; i++) {
             const part = diffs[i];
@@ -551,6 +714,17 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode]);
+
+    // --- Context Injection for Whisper ---
+    useEffect(() => {
+        if (drillData?.reference_english && setContext) {
+            // We provide the EXACT target sentence as context. 
+            // Whisper is uncannily good at bias-towards-text if provided.
+            const keywords = drillData.target_english_vocab?.join(" ") || "";
+            const prompt = `Topic: ${articleTitle}. Keywords: ${keywords}. Sentence: ${drillData.reference_english}`;
+            setContext(prompt);
+        }
+    }, [drillData, articleTitle, setContext]);
 
     const vocabList = drillData?.target_english_vocab || drillData?.key_vocab || [];
 
@@ -661,8 +835,28 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                         </button>
                     </div>
 
+                    {/* Progress Bar (Loading State) */}
+                    <AnimatePresence>
+                        {isSubmittingDrill && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 4 }}
+                                exit={{ opacity: 0, height: 0 }}
+                                className="w-full bg-stone-100/50 overflow-hidden relative shrink-0"
+                            >
+                                <motion.div
+                                    className="absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-80"
+                                    animate={{ left: ["-100%", "200%"] }}
+                                    transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                                />
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
                     {/* Content Body - Optimized for Compactness */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 relative flex flex-col items-center">
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8 relative flex flex-col items-center pb-32">
+
+
                         {isGeneratingDrill && !drillData ? (
                             <div className="h-full flex flex-col items-center justify-center space-y-6 animate-pulse mt-32">
                                 <div className="w-16 h-16 rounded-full border-4 border-stone-200 border-t-stone-800 animate-spin" />
@@ -675,45 +869,46 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                                 {/* Difficulty & Dynamic Header */}
                                 {!drillFeedback && (
                                     <div className="flex justify-center items-center gap-4 mb-4 animate-in fade-in slide-in-from-top-4">
-                                        {/* Level Badge */}
-                                        <div className="flex items-center gap-1.5 px-3 py-1 bg-stone-900 text-white rounded-full text-xs font-bold shadow-lg shadow-stone-300/50">
-                                            <span className="text-amber-400">LVL</span>
-                                            <span>{level}</span>
-                                        </div>
+                                        {/* Elo Rating Badge */}
+                                        <div className="flex flex-col items-center group cursor-help relative animate-in fade-in slide-in-from-top-4 duration-700 delay-300">
+                                            {(() => {
+                                                const rank = getRank(eloRating || 1200);
+                                                return (
+                                                    <>
+                                                        <div className={cn(
+                                                            "flex items-center gap-2 px-4 py-1.5 rounded-full border shadow-sm transition-all bg-white/50 backdrop-blur-md",
+                                                            rank.border, rank.color
+                                                        )}>
+                                                            <Trophy className="w-4 h-4" />
+                                                            <span className="font-bold text-xs tracking-wider uppercase">{rank.title}</span>
+                                                            <div className="w-px h-3 bg-current opacity-20 mx-1" />
+                                                            <span className="font-newsreader font-medium italic text-lg">{eloRating || 1200}</span>
+                                                        </div>
 
-                                        <div className="flex gap-2">
-                                            <div className="flex gap-1 bg-stone-100 p-1 rounded-lg">
-                                                {['Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5'].map((d, i) => (
-                                                    <button
-                                                        key={d}
-                                                        onClick={() => {
-                                                            setDifficulty(d);
-                                                            handleGenerateDrill(d);
-                                                        }}
-                                                        className={cn(
-                                                            "px-3 py-1 rounded-md text-[10px] font-bold transition-all",
-                                                            difficulty === d
-                                                                ? "bg-white shadow-sm text-indigo-600 ring-1 ring-stone-200"
-                                                                : "text-stone-400 hover:text-stone-600 hover:bg-stone-200/50"
-                                                        )}
-                                                        title={d}
-                                                    >
-                                                        {i + 1}
-                                                    </button>
-                                                ))}
-                                            </div>
+                                                        {/* Tooltip / Progress Popup on Hover */}
+                                                        <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-48 bg-white rounded-xl shadow-xl border border-stone-100 p-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                                            <div className="text-xs font-bold text-stone-500 mb-1 flex justify-between">
+                                                                <span>To {rank.nextRank?.title || "Max"}</span>
+                                                                <span>{Math.round(rank.progress)}%</span>
+                                                            </div>
+                                                            <div className="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
+                                                                <div
+                                                                    className={cn("h-full rounded-full transition-all duration-500", rank.bg.replace('bg-', 'bg-slate-400 '))}
+                                                                    style={{ width: `${rank.progress}%`, backgroundColor: 'currentColor' }}
+                                                                />
+                                                            </div>
+                                                            <div className="text-[10px] text-stone-400 mt-1 text-center font-medium">
+                                                                {rank.distToNext > 0 ? `${rank.distToNext} pts to promote` : "Max Level Reached"}
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
-                                        <button
-                                            onClick={() => setIsDynamic(!isDynamic)}
-                                            className={cn(
-                                                "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-all",
-                                                isDynamic ? "bg-stone-800 text-white border-stone-800" : "bg-white text-stone-400 border-stone-200 hover:border-stone-300"
-                                            )}
-                                            title="Dynamic Difficulty: Automatically adjusts based on your score"
-                                        >
-                                            {isDynamic ? <Sparkles className="w-3 h-3 text-amber-300" /> : <div className="w-3 h-3 rounded-full border border-stone-300" />}
-                                            Dynamic Flow
-                                        </button>
+                                        <div className="h-4 w-[1px] bg-stone-200" />
+                                        <span className="text-stone-400 font-bold text-xs tracking-wider uppercase">
+                                            {mode} Drill
+                                        </span>
                                     </div>
                                 )}
 
@@ -887,24 +1082,53 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                                                             <p className="text-indigo-400 font-bold tracking-wide text-sm uppercase">Transcribing...</p>
                                                         </div>
                                                     ) : (
-                                                        <button
-                                                            onClick={whisperRecording ? stopRecognition : startRecognition}
-                                                            className={cn(
-                                                                "relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl",
-                                                                whisperRecording
-                                                                    ? "bg-rose-500 shadow-rose-500/40 scale-110"
-                                                                    : "bg-white hover:bg-stone-50 shadow-stone-200/50 hover:scale-105 border border-stone-100"
-                                                            )}
-                                                        >
-                                                            {whisperRecording ? (
-                                                                <>
-                                                                    <div className="absolute inset-0 rounded-full border-4 border-rose-200 animate-ping" />
-                                                                    <div className="w-8 h-8 bg-white rounded-lg shadow-sm" />
-                                                                </>
-                                                            ) : (
-                                                                <Mic className="w-10 h-10 text-stone-700" />
-                                                            )}
-                                                        </button>
+                                                        <div className="relative">
+                                                            {/* Engine Mode Toggle */}
+                                                            <button
+                                                                onClick={() => setEngineMode(engineMode === 'fast' ? 'precise' : 'fast')}
+                                                                className={cn(
+                                                                    "absolute -top-6 -right-6 py-1 px-3 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm border",
+                                                                    engineMode === 'fast'
+                                                                        ? "bg-amber-100 text-amber-600 border-amber-200 hover:bg-amber-200"
+                                                                        : "bg-emerald-100 text-emerald-600 border-emerald-200 hover:bg-emerald-200"
+                                                                )}
+                                                                title={engineMode === 'fast' ? "Fast Mode: Browser Recognition (Instant)" : "Precise Mode: Whisper AI (High Accuracy)"}
+                                                            >
+                                                                {engineMode === 'fast' ? <Zap className="w-3 h-3" /> : <BrainCircuit className="w-3 h-3" />}
+                                                                {engineMode === 'fast' ? "Fast" : "Pro"}
+                                                            </button>
+
+                                                            <button
+                                                                onClick={whisperRecording ? stopRecognition : startRecognition}
+                                                                style={{
+                                                                    boxShadow: whisperRecording
+                                                                        ? `0 0 ${20 + audioLevel}px ${5 + audioLevel / 4}px rgba(244, 63, 94, 0.4)`
+                                                                        : undefined,
+                                                                    transform: whisperRecording
+                                                                        ? `scale(${1 + audioLevel / 200})`
+                                                                        : undefined
+                                                                }}
+                                                                className={cn(
+                                                                    "relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-75 ease-out shadow-2xl",
+                                                                    whisperRecording
+                                                                        ? "bg-rose-500 shadow-rose-500/40"
+                                                                        : "bg-white hover:bg-stone-50 shadow-stone-200/50 hover:scale-105 border border-stone-100"
+                                                                )}
+                                                            >
+                                                                {whisperRecording ? (
+                                                                    <>
+                                                                        {/* Ripple Rings */}
+                                                                        <div className="absolute inset-0 rounded-full border-4 border-rose-200 opacity-20 animate-ping" style={{ animationDuration: '2s' }} />
+                                                                        <div className="absolute inset-0 rounded-full border-4 border-rose-300 opacity-20 animate-ping" style={{ animationDuration: '1.5s', animationDelay: '0.2s' }} />
+
+                                                                        {/* Center Stop Icon */}
+                                                                        <div className="w-8 h-8 bg-white rounded-lg shadow-sm z-10" />
+                                                                    </>
+                                                                ) : (
+                                                                    <Mic className="w-10 h-10 text-stone-700" />
+                                                                )}
+                                                            </button>
+                                                        </div>
                                                     )}
 
                                                     {/* Live Transcript Preview */}
@@ -961,7 +1185,7 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                                                             ) : (
                                                                 <Send className="w-4 h-4" />
                                                             )}
-                                                            Check
+                                                            {isSubmittingDrill ? "Checking..." : "Check"}
                                                         </button>
                                                     </div>
                                                 </>
@@ -1032,6 +1256,36 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                                                 <span className="text-2xl text-stone-300 font-normal">/10</span>
                                             </div>
                                             <p className="text-stone-500 font-medium">Accuracy Score</p>
+
+                                            {/* AI Judge's Verdict (Elo Change) */}
+                                            {eloChange !== 0 ? (
+                                                <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150">
+                                                    <div className={cn(
+                                                        "px-4 py-1.5 rounded-full text-sm font-bold flex items-center gap-2 shadow-sm border",
+                                                        eloChange > 0 ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-rose-50 text-rose-600 border-rose-100"
+                                                    )}>
+                                                        <TrendingUp className={cn("w-4 h-4", eloChange < 0 && "rotate-180")} />
+                                                        {eloChange > 0 ? "+" : ""}{eloChange} Elo
+                                                    </div>
+                                                    {drillFeedback.judge_reasoning && (
+                                                        <p className="text-xs text-stone-400 mt-2 max-w-xs text-center leading-relaxed">
+                                                            <span className="font-bold text-stone-500 mr-1">Judge's Verdict:</span>
+                                                            {drillFeedback.judge_reasoning}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                // Practice Mode Indicator (Zero Change)
+                                                <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150">
+                                                    <div className="px-4 py-1.5 rounded-full text-sm font-bold flex items-center gap-2 shadow-sm border bg-stone-50 text-stone-500 border-stone-200">
+                                                        <RefreshCw className="w-3 h-3" />
+                                                        练习模式
+                                                    </div>
+                                                    <p className="text-[10px] text-stone-400 mt-1 max-w-xs text-center">
+                                                        仅记录分数，不更新段位 (重试)
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Revision View */}
@@ -1041,30 +1295,68 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                                                     <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                                                     Smart Revision
                                                 </div>
-                                                <button
-                                                    onClick={playAudio}
-                                                    className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-all"
-                                                    title="Listen to Correct Version"
-                                                >
-                                                    <Volume2 className="w-5 h-5" />
-                                                </button>
+                                                <div className="flex gap-2">
+                                                    {mode === 'listening' && (
+                                                        <button
+                                                            onClick={playRecording}
+                                                            className="px-4 py-2 rounded-full bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center gap-2 transition-all text-xs font-bold"
+                                                            title="Play My Recording"
+                                                        >
+                                                            <Mic className="w-4 h-4" />
+                                                            My Audio
+                                                        </button>
+                                                    )}
+                                                    <button
+                                                        onClick={playAudio}
+                                                        className="w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-all"
+                                                        title="Listen to Correct Version"
+                                                    >
+                                                        <Volume2 className="w-5 h-5" />
+                                                    </button>
+                                                </div>
                                             </div>
+
+                                            {/* Final Transcript Display (Standard Mode Only) - Listening Mode handles this inside renderDiff now */}
+                                            {mode !== "listening" && (
+                                                <div className="mb-6 p-4 bg-stone-50 rounded-2xl border border-stone-100">
+                                                    <p className="text-xs text-stone-400 font-bold uppercase mb-2">You said:</p>
+                                                    <p className="text-lg font-newsreader text-stone-700 italic">"{userTranslation}"</p>
+                                                </div>
+                                            )}
+
                                             {renderDiff()}
 
                                             {/* Coach's Feedback Section */}
-                                            {drillFeedback.feedback && drillFeedback.feedback.length > 0 && (
+                                            {drillFeedback.feedback && (
                                                 <div className="mt-8 pt-6 border-t border-stone-100">
                                                     <h4 className="text-sm font-bold text-indigo-600 uppercase tracking-wider mb-4 flex items-center gap-2">
                                                         <Sparkles className="w-4 h-4" />
                                                         Coach's Analysis
                                                     </h4>
                                                     <div className="space-y-3">
-                                                        {drillFeedback.feedback.map((point, i) => (
-                                                            <div key={i} className="flex gap-3 text-stone-600 leading-relaxed font-medium">
-                                                                <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-2 shrink-0" />
-                                                                <p>{point}</p>
+                                                        {Array.isArray(drillFeedback.feedback) ? (
+                                                            drillFeedback.feedback.map((point: string, i: number) => (
+                                                                <div key={i} className="flex gap-3 text-stone-600 leading-relaxed font-medium">
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-2 shrink-0" />
+                                                                    <p>{point}</p>
+                                                                </div>
+                                                            ))
+                                                        ) : (
+                                                            // Listening Feedback Object
+                                                            <div className="grid gap-4">
+                                                                {drillFeedback.feedback.listening_tips && (
+                                                                    <div className="bg-amber-50 p-4 rounded-xl text-amber-800 text-sm">
+                                                                        <strong className="block mb-1 text-amber-600">👂 Listening Tips</strong>
+                                                                        {drillFeedback.feedback.listening_tips}
+                                                                    </div>
+                                                                )}
+                                                                {drillFeedback.feedback.encouragement && (
+                                                                    <div className="italic text-stone-500">
+                                                                        "{drillFeedback.feedback.encouragement}"
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                        ))}
+                                                        )}
                                                     </div>
                                                 </div>
                                             )}
@@ -1078,36 +1370,46 @@ export function WritingEditor({ articleTitle, articleContent, onClose }: Writing
                                         */}
                                         {/* Golden Translation Removed */}
 
-                                        {/* Action Buttons */}
-                                        <div className="flex justify-center gap-4 pt-1">
-                                            <button
-                                                onClick={() => {
-                                                    setDrillFeedback(null);
-                                                    setUserTranslation("");
-                                                    setIsSubmittingDrill(false);
-                                                    setWordPopup(null);
-                                                    // Don't clear drillData, so we retry the same one
-                                                }}
-                                                className="px-6 py-3 bg-transparent border-2 border-stone-200 rounded-full text-stone-500 font-bold hover:border-stone-300 hover:text-stone-700 hover:bg-stone-50 transition-all duration-300 text-sm"
-                                            >
-                                                Try Again
-                                            </button>
-
-                                            <button
-                                                onClick={() => handleGenerateDrill(difficulty)}
-                                                className="group relative px-6 py-3 bg-stone-900 border border-stone-900 rounded-full text-white font-bold hover:shadow-xl hover:shadow-indigo-500/20 hover:scale-105 transition-all duration-300 overflow-hidden text-sm"
-                                            >
-                                                <span className="relative flex items-center gap-2">
-                                                    <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
-                                                    Next Challenge
-                                                </span>
-                                            </button>
-                                        </div>
+                                        {/* Action Buttons Moved to Floating Dock */}
                                     </motion.div>
                                 )}
                             </div>
                         ) : null}
                     </div>
+                    {/* Floating Action Bar (Dock) */}
+                    <AnimatePresence>
+                        {drillFeedback && (
+                            <motion.div
+                                initial={{ y: 100, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: 100, opacity: 0 }}
+                                className="absolute bottom-8 left-0 right-0 flex justify-center z-50 pointer-events-none"
+                            >
+                                <div className="bg-white/90 backdrop-blur-xl border border-white/50 shadow-2xl shadow-stone-400/30 p-2 rounded-full flex gap-2 pointer-events-auto scale-110">
+                                    <button
+                                        onClick={() => {
+                                            setDrillFeedback(null);
+                                            setUserTranslation("");
+                                            setIsSubmittingDrill(false);
+                                            setWordPopup(null);
+                                        }}
+                                        className="px-6 py-3 rounded-full text-stone-500 font-bold hover:bg-stone-100 hover:text-stone-800 transition-all text-sm flex flex-col items-center"
+                                        title="Practice only - Elo will not change"
+                                    >
+                                        <span>Try Again</span>
+                                        <span className="text-[10px] font-normal text-stone-400">练习模式</span>
+                                    </button>
+                                    <button
+                                        onClick={() => handleGenerateDrill(difficulty)}
+                                        className="px-8 py-3 bg-stone-900 text-white rounded-full font-bold shadow-lg hover:bg-black hover:scale-105 transition-all flex items-center gap-2 text-sm"
+                                    >
+                                        <RefreshCw className="w-4 h-4" />
+                                        Next Challenge
+                                    </button>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </motion.div>
             </motion.div>
             {/* Render WordPopup Portal/Overlay if active */}

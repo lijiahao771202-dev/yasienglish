@@ -4,8 +4,9 @@
 [Whisper Server] whisper-cli and model found. Ready to transcribe.
 [Whisper Server] Running on http://localhost:3002
 [Whisper Server] POST /transcribe - Send audio for transcription
-[Whisper] Received audio, size: 213525 bytes
+[Whisper] Received audio, size: 75180 bytes
 [Whisper] Converted to WAV, transcribing...
+[Whisper] Using prompt: Topic: Patients tried everything for depression then this implant changed their lives. Keywords: depression treatment device. Sentence: A new device helps people with depression.
 [Whisper] Transcription result: {
   systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
   model: {
@@ -27,17 +28,13 @@
     {
       timestamps: [Object],
       offsets: [Object],
-      text: ' For many patients with treatment-resistant depression, despite having a triangle retracement,'
-    },
-    {
-      timestamps: [Object],
-      offsets: [Object],
-      text: ' a new important device may offer less therapy and the effect will be right.'
+      text: ' A new device helps people with depression.'
     }
   ]
 }
-[Whisper] Received audio, size: 113613 bytes
+[Whisper] Received audio, size: 215826 bytes
 [Whisper] Converted to WAV, transcribing...
+[Whisper] Using prompt: Topic: Patients tried everything for depression then this implant changed their lives. Keywords: depression treatment device. Sentence: Many people have depression, but some treatments do not help. A 
 [Whisper] Transcription result: {
   systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
   model: {
@@ -59,12 +56,13 @@
     {
       timestamps: [Object],
       offsets: [Object],
-      text: ' Many people with depression have tried different treatments, but they did not improve much.'
+      text: ' new device can help those people and it works for a long time.'
     }
   ]
 }
-[Whisper] Received audio, size: 139727 bytes
+[Whisper] Received audio, size: 149532 bytes
 [Whisper] Converted to WAV, transcribing...
+[Whisper] Using prompt: Topic: Patients tried everything for depression then this implant changed their lives. Keywords: depression treatment device. Sentence: Many people have depression, but some treatments do not help. A 
 [Whisper] Transcription result: {
   systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
   model: {
@@ -86,12 +84,13 @@
     {
       timestamps: [Object],
       offsets: [Object],
-      text: ' A new medication impact on healthy people with severe depression where other treatments do not work.'
+      text: ' new device can help.'
     }
   ]
 }
-[Whisper] Received audio, size: 143591 bytes
+[Whisper] Received audio, size: 124654 bytes
 [Whisper] Converted to WAV, transcribing...
+[Whisper] Using prompt: Topic: Patients tried everything for depression then this implant changed their lives. Keywords: implant depression improvement. Sentence: An implant helps people with depression. It gives them improv
 [Whisper] Transcription result: {
   systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
   model: {
@@ -113,33 +112,13 @@
     {
       timestamps: [Object],
       offsets: [Object],
-      text: ' A new impactor can help people with severe depression when other treatments do not work.'
+      text: ' An implant helps people with depression. It gets them improvement'
     }
   ]
 }
-[Whisper] Received audio, size: 29491 bytes
+[Whisper] Received audio, size: 147934 bytes
 [Whisper] Converted to WAV, transcribing...
-[Whisper] Transcription result: {
-  systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
-  model: {
-    type: 'medium',
-    multilingual: false,
-    vocab: 51864,
-    audio: { ctx: 1500, state: 1024, head: 16, layer: 24 },
-    text: { ctx: 448, state: 1024, head: 16, layer: 24 },
-    mels: 80,
-    ftype: 1
-  },
-  params: {
-    model: '/Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin',
-    language: 'en',
-    translate: false
-  },
-  result: { language: 'en' },
-  transcription: [ { timestamps: [Object], offsets: [Object], text: ' TVBubble.' } ]
-}
-[Whisper] Received audio, size: 253827 bytes
-[Whisper] Converted to WAV, transcribing...
+[Whisper] Using prompt: Topic: Patients tried everything for depression then this implant changed their lives. Keywords: depression treatment device. Sentence: Many people have depression and try different treatments, but fo
 [Whisper] Transcription result: {
   systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
   model: {
@@ -161,17 +140,13 @@
     {
       timestamps: [Object],
       offsets: [Object],
-      text: ' For patients suffered from the transmembrane-resistant depression, a novel implant device might often'
-    },
-    {
-      timestamps: [Object],
-      offsets: [Object],
-      text: ' sustain samples realized, repeating a significant burden in the treatment approach.'
+      text: ' Many people have depression.'
     }
   ]
 }
-[Whisper] Received audio, size: 136829 bytes
+[Whisper] Received audio, size: 309912 bytes
 [Whisper] Converted to WAV, transcribing...
+[Whisper] Using prompt: Topic: Patients tried everything for depression then this implant changed their lives. Keywords: depression treatment device. Sentence: Many people try different treatments for depression, but some do
 [Whisper] Transcription result: {
   systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
   model: {
@@ -193,12 +168,13 @@
     {
       timestamps: [Object],
       offsets: [Object],
-      text: ' Many people with depression try different treatments, but a new implant can help them feel better.'
+      text: ' not get better. Now a small device can help. Those people feel much better for a long time.'
     }
   ]
 }
-[Whisper] Received audio, size: 342131 bytes
+[Whisper] Received audio, size: 127552 bytes
 [Whisper] Converted to WAV, transcribing...
+[Whisper] Using prompt: Topic: Patients tried everything for depression then this implant changed their lives. Keywords: depression treatment implant. Sentence: Many people try many treatments for depression, but a new impla
 [Whisper] Transcription result: {
   systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
   model: {
@@ -220,17 +196,91 @@
     {
       timestamps: [Object],
       offsets: [Object],
-      text: ' While many patients with depression impose sustained treatment, those with treatment-resistant'
-    },
+      text: ' Many people try many treatments for depression, but a new implant may help then'
+    }
+  ]
+}
+[Whisper] Received audio, size: 289546 bytes
+[Whisper] Converted to WAV, transcribing...
+[Whisper] Using prompt: Topic: Patients tried everything for depression then this implant changed their lives. Keywords: treatment-resistant implanted stimulate. Sentence: While many patients with depression find relief thro
+[Whisper] Transcription result: {
+  systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
+  model: {
+    type: 'medium',
+    multilingual: false,
+    vocab: 51864,
+    audio: { ctx: 1500, state: 1024, head: 16, layer: 24 },
+    text: { ctx: 448, state: 1024, head: 16, layer: 24 },
+    mels: 80,
+    ftype: 1
+  },
+  params: {
+    model: '/Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin',
+    language: 'en',
+    translate: false
+  },
+  result: { language: 'en' },
+  transcription: [
     {
       timestamps: [Object],
       offsets: [Object],
-      text: ' depression may continue to suffer from persistent samples for years, even as multiple treatment'
-    },
+      text: ' Well, many patients with depression find relief through standing treatments. Those suffering from the treatment-resistant depression may need to exploit the inverse dead bulb such as an impacted device, which provides elastic samples empowered by the similar steps that are currently used.'
+    }
+  ]
+}
+[Whisper] Received audio, size: 175094 bytes
+[Whisper] Converted to WAV, transcribing...
+[Whisper] Using prompt: Topic: Patients tried everything for depression then this implant changed their lives. Keywords: implant depression treatment. Sentence: A new implant helps people with severe depression, and it gives
+[Whisper] Transcription result: {
+  systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
+  model: {
+    type: 'medium',
+    multilingual: false,
+    vocab: 51864,
+    audio: { ctx: 1500, state: 1024, head: 16, layer: 24 },
+    text: { ctx: 448, state: 1024, head: 16, layer: 24 },
+    mels: 80,
+    ftype: 1
+  },
+  params: {
+    model: '/Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin',
+    language: 'en',
+    translate: false
+  },
+  result: { language: 'en' },
+  transcription: [
     {
       timestamps: [Object],
       offsets: [Object],
-      text: ' has been a pattern.'
+      text: ' them a better life after many treatments did not work.'
+    }
+  ]
+}
+[Whisper] Received audio, size: 403032 bytes
+[Whisper] Converted to WAV, transcribing...
+[Whisper] Using prompt: Topic: Patients tried everything for depression then this implant changed their lives. Keywords: implant treatment-resistant clinical trial. Sentence: A clinical trial, which involved nearly 500 patie
+[Whisper] Transcription result: {
+  systeminfo: 'WHISPER : COREML = 0 | OPENVINO = 0 | Metal : EMBED_LIBRARY = 1 | CPU : NEON = 1 | ARM_FMA = 1 | FP16_VA = 1 | MATMUL_INT8 = 1 | DOTPROD = 1 | SME = 1 | ACCELERATE = 1 | REPACK = 1 | ',
+  model: {
+    type: 'medium',
+    multilingual: false,
+    vocab: 51864,
+    audio: { ctx: 1500, state: 1024, head: 16, layer: 24 },
+    text: { ctx: 448, state: 1024, head: 16, layer: 24 },
+    mels: 80,
+    ftype: 1
+  },
+  params: {
+    model: '/Users/lijiahao/yasi/node_modules/@lumen-labs-dev/whisper-node/lib/whisper.cpp/models/ggml-medium.en.bin',
+    language: 'en',
+    translate: false
+  },
+  result: { language: 'en' },
+  transcription: [
+    {
+      timestamps: [Object],
+      offsets: [Object],
+      text: ' A clinical trial, which involved nearly 1,500 patients who had struggled with treatment-resistant depression for decades, found that a small implant device could lasting improve, especially for those whose condition has not responded to other treatments.'
     }
   ]
 }

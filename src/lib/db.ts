@@ -64,6 +64,13 @@ export class YasiDB extends Dexie {
     vocabulary!: Table<VocabItem>;
     writing_history!: Table<WritingEntry>;
     articles!: Table<CachedArticle>;
+    user_profile!: Table<{
+        id?: number;
+        elo_rating: number;
+        streak_count: number;
+        max_elo: number;
+        last_practice: number;
+    }>;
 
     constructor() {
         super('YasiDB');
@@ -87,15 +94,10 @@ export class YasiDB extends Dexie {
             articles: '&url, title, timestamp'
         });
 
-        // Version 3: Add FSRS fields to vocabulary (indexing 'due' for review queries)
+        // Version 3: Add FSRS fields to vocabulary
         this.version(3).stores({
             vocabulary: '&word, timestamp, due, state'
         }).upgrade(tx => {
-            // Migration logic if needed, usually Dexie handles adding new props lazily, 
-            // but we might want to initialize existing items. 
-            // For now, let's assume we can lazily migrate when accessing data or just let new fields be undefined initially.
-            // But strict typing suggests we should probably have defaults. 
-            // Dexie upgrade is robust.
             return tx.table('vocabulary').toCollection().modify(item => {
                 if (item.stability === undefined) {
                     item.stability = 0;
@@ -103,10 +105,23 @@ export class YasiDB extends Dexie {
                     item.elapsed_days = 0;
                     item.scheduled_days = 0;
                     item.reps = 0;
-                    item.state = 0; // New
+                    item.state = 0;
                     item.last_review = 0;
                     item.due = Date.now();
                 }
+            });
+        });
+
+        // Version 4: Add User Profile (Elo)
+        this.version(4).stores({
+            user_profile: '++id' // Singleton table essentially
+        }).upgrade(async tx => {
+            // Initialize default profile
+            await tx.table('user_profile').add({
+                elo_rating: 1200,
+                streak_count: 0,
+                max_elo: 1200,
+                last_practice: Date.now()
             });
         });
     }

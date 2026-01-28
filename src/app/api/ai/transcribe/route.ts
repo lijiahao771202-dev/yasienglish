@@ -15,7 +15,7 @@ export async function POST(req: Request) {
         // DeepSeek API currently does NOT support Whisper. 
         // We must strip the BaseURL to force the SDK to use the official OpenAI endpoint.
         console.log("[Transcribe] Detected DeepSeek BaseURL. Ignoring it for Whisper (Audio) request to use official OpenAI.");
-        baseURL = undefined; 
+        baseURL = undefined;
     }
 
     // 3. Fallback logic
@@ -28,8 +28,8 @@ export async function POST(req: Request) {
     }
 
     if (!apiKey) {
-        return NextResponse.json({ 
-            error: 'Configuration Error: OpenAI API Key is missing.', 
+        return NextResponse.json({
+            error: 'Configuration Error: OpenAI API Key is missing.',
             details: 'To use Whisper Transcription, please add OPENAI_API_KEY to your .env file. DeepSeek keys cannot be used for official OpenAI Audio endpoints.'
         }, { status: 500 });
     }
@@ -42,26 +42,28 @@ export async function POST(req: Request) {
     try {
         const formData = await req.formData();
         const file = formData.get('file') as File;
+        const prompt = formData.get('prompt') as string | null;
 
         if (!file) {
             return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
         }
 
-        console.log(`[Transcribe] Processing file: ${file.name}, size: ${file.size}, type: ${file.type}`);
+        console.log(`[Transcribe] Processing file: ${file.name}, size: ${file.size}, type: ${file.type}, prompt_len: ${prompt?.length || 0}`);
 
         const transcription = await openai.audio.transcriptions.create({
             file: file,
             model: "whisper-1",
-            language: "en", // Force English for drills
+            language: "en",
+            prompt: prompt || undefined, // Inject context
         });
 
         return NextResponse.json({ text: transcription.text });
 
     } catch (error: any) {
         console.error('Transcription error details:', error);
-        return NextResponse.json({ 
-            error: 'Transcription failed', 
-            details: error?.message || 'Unknown error' 
+        return NextResponse.json({
+            error: 'Transcription failed',
+            details: error?.message || 'Unknown error'
         }, { status: 500 });
     }
 }

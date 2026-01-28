@@ -37,6 +37,8 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
     const [isSaved, setIsSaved] = useState(false);
     const popupRef = useRef<HTMLDivElement>(null);
 
+    const audioPlayedRef = useRef(false);
+
     // Initial Load & Dictionary Search
     useEffect(() => {
         let isMounted = true;
@@ -49,6 +51,13 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
         db.vocabulary.get(popup.word).then(item => {
             if (isMounted && item) setIsSaved(true);
         });
+
+        // Auto-Play Audio (Instant Pronunciation) - Only once
+        if (!audioPlayedRef.current) {
+            audioPlayedRef.current = true;
+            const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${popup.word}&type=2`);
+            audio.play().catch(() => { }); // Silent catch for autoplay restrictions
+        }
 
         // Fetch Dictionary Definition
         fetch("/api/dictionary", {

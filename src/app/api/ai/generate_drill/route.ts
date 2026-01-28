@@ -3,7 +3,7 @@ import { deepseek } from "@/lib/deepseek";
 
 export async function POST(req: NextRequest) {
     try {
-        const { articleTitle, articleContent, difficulty = "Medium", mode = "translation" } = await req.json();
+        const { articleTitle, articleContent, difficulty, eloRating, mode = "translation" } = await req.json();
 
         if (!articleTitle) {
             return NextResponse.json(
@@ -15,22 +15,49 @@ export async function POST(req: NextRequest) {
         // Truncate content
         const snippet = articleContent ? articleContent.slice(0, 3000) : "";
 
-        let difficultyPrompt = "";
+        // Dynamic Elo Prompt Engineering (Smooth Interpolation)
+        // Base rating 1200. Range 0-3000.
+        const currentElo = eloRating || 1200;
 
-        // Granular Difficulty Levels (1-5)
-        const levelMap: Record<string, string> = {
-            'Level 1': "Generate a BEGINNER sentence (CEFR A1/A2). Short, simple SVO structure. High-frequency vocabulary only (Top 1000 words). No complex tenses.",
-            'Level 2': "Generate an ELEMENTARY sentence (CEFR A2/B1). Simple compound sentences (and/but). Common daily topics. Top 2000 vocabulary.",
-            'Level 3': "Generate an INTERMEDIATE sentence (CEFR B1/B2). Standard professional English. Use relative clauses, passive voice, or conditionals. Top 4000 vocabulary.",
-            'Level 4': "Generate an ADVANCED sentence (CEFR C1). Complex syntactic structures (inversion, subjunctive). Nuanced academic or formal vocabulary. abstract concepts.",
-            'Level 5': "Generate an EXPERT sentence (CEFR C2). Native-level sophistication. Idiomatic expressions, subtle stylistic nuance, or dense information packing. Challenge even native speakers.",
-            // Legacy fallbacks
-            'Easy': "Generate a SIMPLE sentence (CEFR A2).",
-            'Medium': "Generate an INTERMEDIATE sentence (CEFR B2).",
-            'Hard': "Generate a CHALLENGING sentence (CEFR C1).",
-        };
+        // Define anchor points for the LLM to interpolate
+        const difficultyScale = `
+        Scale Reference:
+        - 800 (A1): Simple SVO sentences, top 500 words.
+        - 1200 (A2): Compound sentences, daily topics, top 1500 words.
+        - 1600 (B1): Relative clauses, passive voice, top 3000 words.
+        - 2000 (B2): Abstract topics, conditionals, top 5000 words.
+        - 2400 (C1): Sophisticated/Academic, inversion, nuanced vocabulary.
+        `;
 
-        difficultyPrompt = levelMap[difficulty] || levelMap['Level 3'];
+        // Calculate specific instructions based on range
+        // This allows the LLM to "mix" levels (e.g. 1300 is A2 but with introduction of B1 elements)
+        let specificInstruction = "";
+
+        if (currentElo < 1000) specificInstruction = "Strictly beginner. Keep sentences extremely short (max 8-12 words). Subject-Verb-Object only.";
+        else if (currentElo < 1400) specificInstruction = "Elementary. Max 20-25 words. Simple compound sentences allowed.";
+        else if (currentElo < 1800) specificInstruction = "Intermediate. Max 30-40 words. Mix standard professional English.";
+        else if (currentElo < 2200) specificInstruction = "Upper Intermediate. Max 45-60 words. Abstract concepts.";
+        else specificInstruction = "Advanced. Max 70+ words. Sophisticated expression.";
+
+        // Force explicit constraint for Listening Mode to avoid long monologues at lower levels
+        if (mode === "listening" && currentElo < 1500) {
+            specificInstruction += " For Listening: ONE single clear sentence only. No paragraphs.";
+        } else if (mode === "listening") {
+            specificInstruction += " For Listening: 1-2 connected sentences.";
+        }
+
+        const difficultyPrompt = `
+        Current User Rating: ${currentElo}.
+        ${difficultyScale}
+        
+        ADAPTATION INSTRUCTION: Generate a drill that matches the user's exact rating of ${currentElo}. 
+        Do not jump to the next band unless the rating is close to it. 
+        ${specificInstruction}
+        
+        CRITICAL LENGTH CONSTRAINT: You MUST follow the word count limits above. Do NOT generate long texts for < 2000 Elo.
+        `;
+
+
 
         const isListening = mode === "listening";
 
