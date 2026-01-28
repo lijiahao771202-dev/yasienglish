@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, RefreshCw, Send, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem } from "lucide-react";
+import { Sparkles, RefreshCw, Send, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import * as Diff from 'diff';
@@ -122,8 +122,155 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // Gamification State (Fever / Themes)
     const [comboCount, setComboCount] = useState(0);
     const [feverMode, setFeverMode] = useState(false);
-    const [theme, setTheme] = useState<'default' | 'fever' | 'boss'>('default');
+    // Gamification State (Fever / Themes)
+    // Removed duplicate state declarations
+    const [theme, setTheme] = useState<'default' | 'fever' | 'boss' | 'crimson'>('default');
+    const [bossState, setBossState] = useState<{
+        active: boolean;
+        introAck: boolean;
+    }>({ active: false, introAck: false });
     const [lootDrop, setLootDrop] = useState<LootDrop | null>(null);
+    const [gambleState, setGambleState] = useState<{
+        active: boolean;
+        introAck: boolean;
+        wager: 'safe' | 'risky' | 'madness' | null;
+        doubleDownCount: number; // New: Track consecutive gambles
+    }>({ active: false, introAck: false, wager: null, doubleDownCount: 0 });
+
+    // Visceral FX State
+    const [shake, setShake] = useState(false);
+    const [showDoubleDown, setShowDoubleDown] = useState(false); // Modal State
+    const heartbeatRef = useRef<HTMLAudioElement | null>(null);
+    const bossAudioRef = useRef<HTMLAudioElement | null>(null);
+    const [fuseTime, setFuseTime] = useState(100); // Boss Fuse (100%)
+    const abortControllerRef = useRef<AbortController | null>(null); // For cancelling pending API requests
+
+    // Theme-based Ambient Audio
+    useEffect(() => {
+        // Gambling: Horror tension rise (intense!)
+        // Boss: War drums impact (one-shot)
+        const crimsonUrl = 'https://assets.mixkit.co/active_storage/sfx/2020/2020-preview.mp3'; // Horror tension rise
+        const bossUrl = 'https://assets.mixkit.co/active_storage/sfx/2773/2773-preview.mp3'; // War drums
+
+        // Initialize crimson audio (ONE-SHOT, no loop)
+        if (!heartbeatRef.current) {
+            heartbeatRef.current = new Audio(crimsonUrl);
+            heartbeatRef.current.loop = false;
+            heartbeatRef.current.volume = 0.4;
+        }
+
+        // Initialize boss audio (ONE-SHOT, no loop)
+        if (!bossAudioRef.current) {
+            bossAudioRef.current = new Audio(bossUrl);
+            bossAudioRef.current.loop = false;
+            bossAudioRef.current.volume = 0.5;
+        }
+
+        const safelyPlay = (audio: HTMLAudioElement) => {
+            console.log('[Audio] Attempting to play:', audio.src);
+            audio.currentTime = 0;
+            audio.play().catch((err) => {
+                console.log('[Audio] Blocked, waiting for click:', err.message);
+                document.addEventListener('click', () => audio.play(), { once: true });
+            });
+        };
+
+        // Gambling: Play only during intro (before wager selected)
+        const shouldPlayCrimson = gambleState.active && !gambleState.wager;
+        // Boss: Play only during intro (before entering)
+        const shouldPlayBoss = bossState.active && !bossState.introAck;
+
+        console.log('[Audio] State check:', { shouldPlayCrimson, shouldPlayBoss, gambleActive: gambleState.active, gambleWager: gambleState.wager, bossActive: bossState.active, bossIntroAck: bossState.introAck });
+
+        if (shouldPlayCrimson && heartbeatRef.current) {
+            console.log('[Audio] Gambling intro - playing suspense');
+            bossAudioRef.current?.pause();
+            safelyPlay(heartbeatRef.current);
+        } else if (shouldPlayBoss && bossAudioRef.current) {
+            console.log('[Audio] Boss intro - playing tick-tock');
+            heartbeatRef.current?.pause();
+            safelyPlay(bossAudioRef.current);
+        } else {
+            heartbeatRef.current?.pause();
+            bossAudioRef.current?.pause();
+        }
+
+        return () => {
+            heartbeatRef.current?.pause();
+            bossAudioRef.current?.pause();
+        };
+    }, [gambleState.active, gambleState.wager, bossState.active, bossState.introAck]);
+
+    // Boss Fuse Timer
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (theme === 'boss' && !isSubmittingDrill && bossState.introAck) {
+            interval = setInterval(() => {
+                setFuseTime(prev => {
+                    if (prev <= 0) {
+                        clearInterval(interval);
+                        // Trigger Defeat
+                        new Audio('https://assets.mixkit.co/sfx/preview/mixkit-explosion-with-rocks-1704.mp3').play().catch(() => { });
+                        if (navigator.vibrate) navigator.vibrate(500);
+                        setShake(true);
+                        setTheme('default');
+                        setBossState(prev => ({ ...prev, active: false }));
+                        return 100;
+                    }
+                    // 100% / 60s / 10 ticks/s = 100 / 600 = 0.166 per tick
+                    return prev - 0.16;
+                });
+            }, 100);
+        } else if (theme !== 'boss') {
+            setFuseTime(100);
+        }
+        return () => clearInterval(interval);
+    }, [theme, isSubmittingDrill, bossState.introAck]);
+
+    // Shake Trigger
+    useEffect(() => {
+        if (shake) {
+            console.log('[Shake] Triggered! shake =', shake);
+            const timeout = setTimeout(() => setShake(false), 500);
+            return () => clearTimeout(timeout);
+        }
+    }, [shake]);
+
+
+    // Auto-dismiss Loot Drop
+    useEffect(() => {
+        if (lootDrop) {
+            const timer = setTimeout(() => {
+                setLootDrop(null);
+            }, 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [lootDrop]);
+
+    // Cleanup: Stop ALL audio and abort requests when component unmounts
+    useEffect(() => {
+        return () => {
+            // Stop TTS audio
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current.src = '';
+            }
+            // Stop ambient audio
+            if (heartbeatRef.current) {
+                heartbeatRef.current.pause();
+                heartbeatRef.current.src = '';
+            }
+            if (bossAudioRef.current) {
+                bossAudioRef.current.pause();
+                bossAudioRef.current.src = '';
+            }
+            // Abort any pending API requests
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+            console.log('[DrillCore] Cleanup: All audio stopped, requests aborted');
+        };
+    }, []);
 
 
     // Computed Elo based on Mode
@@ -177,11 +324,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // --- Audio Logic ---
 
     useEffect(() => {
-        if (mode === "listening" && drillData?.reference_english && !drillFeedback) {
+        // Block TTS during intro overlays (gambling or boss)
+        const isIntroShowing = (gambleState.active && !gambleState.introAck) || (bossState.active && !bossState.introAck);
+
+        if (mode === "listening" && drillData?.reference_english && !drillFeedback && !isIntroShowing) {
             playAudio();
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [drillData, mode]); // removed drillFeedback to prevent auto-replay on score
+    }, [drillData, mode, gambleState.active, gambleState.introAck, bossState.active, bossState.introAck]); // removed drillFeedback to prevent auto-replay on score
 
     const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
         const time = Number(e.target.value);
@@ -334,6 +484,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // --- Core Actions ---
 
     const handleGenerateDrill = async (targetDifficulty = difficulty) => {
+        // Abort any pending request before starting a new one
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+        abortControllerRef.current = new AbortController();
+        const signal = abortControllerRef.current.signal;
+
         setIsGeneratingDrill(true);
         setDrillData(null);
         setDrillFeedback(null);
@@ -356,16 +513,29 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     difficulty,
                     eloRating,
                     mode,
-                    // New fields for Scenario Mode could be passed here if API supports it
-                    // For now relying on existing API which uses articleTitle/Content
                 }),
+                signal, // Pass abort signal
             });
+
+            // Check if aborted before processing response
+            if (signal.aborted) return;
+
             const data = await response.json();
+
+            // Check again after JSON parsing
+            if (signal.aborted) return;
+
             setDrillData(data);
         } catch (error) {
+            if ((error as Error).name === 'AbortError') {
+                console.log('[Drill] Request aborted - switching to new question');
+                return; // Silently exit on abort
+            }
             console.error(error);
         } finally {
-            setIsGeneratingDrill(false);
+            if (!signal.aborted) {
+                setIsGeneratingDrill(false);
+            }
         }
     };
 
@@ -440,9 +610,48 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                 const result = calculateAdvancedElo(activeElo || 1200, difficulty, data.score, activeStreak);
                 let change = result.total;
-                setEloBreakdown(result.breakdown);
-
                 let newStreak = activeStreak;
+
+                // --- GAMBLING LOGIC (Crimson Roulette) ---
+                if (gambleState.active && gambleState.wager && gambleState.wager !== 'safe') {
+                    const isWin = data.score >= 9.0;
+
+                    if (isWin) {
+                        // Calculate Winnings
+                        let baseWin = gambleState.wager === 'risky' ? 60 : 150;
+                        let multiplier = Math.pow(2.5, gambleState.doubleDownCount); // 2.5x multiplier for every double down!
+                        change = Math.round(baseWin * multiplier);
+
+                        // Loot & Sound
+                        new Audio('https://assets.mixkit.co/sfx/preview/mixkit-winning-chimes-201.mp3').play().catch(() => { });
+                        setLootDrop({ type: 'gem', amount: change, rarity: 'legendary', message: `CRIMSON JACKPOT! x${multiplier}` });
+
+                        // Trigger Double Down if eligible (Max 2 times)
+                        if (gambleState.doubleDownCount < 2) {
+                            // Delay showing the modal slightly so they see the score first
+                            setTimeout(() => setShowDoubleDown(true), 1500);
+                        } else {
+                            // Max depth reached, reset
+                            setTimeout(() => {
+                                setGambleState({ active: false, introAck: false, wager: null, doubleDownCount: 0 });
+                                setTheme('default');
+                            }, 3000);
+                        }
+                    } else {
+                        // Loss Logic
+                        let baseLoss = gambleState.wager === 'risky' ? -20 : -50;
+                        change = baseLoss * Math.pow(2, gambleState.doubleDownCount);
+                        new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch(() => { });
+
+                        // Reset
+                        setGambleState({ active: false, introAck: false, wager: null, doubleDownCount: 0 });
+                        setTheme('default');
+                        newStreak = 0;
+                    }
+                }
+                // --- END GAMBLING LOGIC ---
+
+                setEloBreakdown(result.breakdown);
 
                 if (data.score >= 9) {
                     newStreak += 1;
@@ -730,14 +939,27 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 );
             }
         }
-        return <div className="font-newsreader text-2xl leading-relaxed text-stone-800">{elements}</div>;
     };
 
 
     // Auto-Mount Generate
+    // Auto-Mount Generate
     useEffect(() => {
         if (!drillData && !isGeneratingDrill) {
             handleGenerateDrill();
+
+            const roll = Math.random();
+            // 2% Chance for Boss (Higher Priority)
+            if (roll < 0.02) {
+                setBossState({ active: true, introAck: false });
+                setTheme('boss');
+                setPlaybackSpeed(1.25); // Boss Speed
+            }
+            // 5% Chance for Gamble (Exclusive)
+            else if (roll < 0.07) {
+                setGambleState({ active: true, introAck: false, wager: null, doubleDownCount: 0 });
+                setTheme('crimson');
+            }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode]);
@@ -751,7 +973,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/40 backdrop-blur-sm transition-colors duration-1000"
+                className={cn(
+                    "fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 transition-colors duration-1000",
+                    theme === 'default' ? "bg-black/40 backdrop-blur-sm" : "bg-transparent",
+                    shake && "animate-shake"
+                )}
             >
                 {/* Dynamic Background Engine */}
                 <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
@@ -768,6 +994,21 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(76,29,149,0.3),transparent_70%)] animate-pulse" />
                                 <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-fuchsia-500 to-transparent shadow-[0_0_20px_rgba(217,70,239,0.5)]" />
                                 <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-violet-500 to-transparent shadow-[0_0_20px_rgba(139,92,246,0.5)]" />
+                                <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-violet-500 to-transparent shadow-[0_0_20px_rgba(139,92,246,0.5)]" />
+                            </motion.div>
+                        )}
+                        {theme === 'crimson' && (
+                            <motion.div
+                                key="theme-crimson"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 1 }}
+                                className="absolute inset-0 bg-[#2b0a0a]"
+                            >
+                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(220,38,38,0.15),transparent_70%)] animate-pulse" />
+                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20" />
+                                <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-red-600 to-transparent shadow-[0_0_30px_rgba(220,38,38,0.6)]" />
                             </motion.div>
                         )}
                         {theme === 'boss' && (
@@ -793,9 +1034,28 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         "relative w-full max-w-5xl h-[85vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col transition-all duration-700",
                         theme === 'fever' ? "bg-slate-900/90 border border-fuchsia-500/30 shadow-fuchsia-900/20 text-white" :
                             theme === 'boss' ? "bg-black/95 border border-amber-500/30 shadow-amber-900/20 text-amber-50" :
-                                "bg-white/80 backdrop-blur-xl border border-white/40 shadow-stone-200/50"
+                                theme === 'crimson' ? "bg-[#1a0505]/95 border border-red-500/30 shadow-[0_0_60px_rgba(220,38,38,0.2)] text-red-50" :
+                                    "bg-white/80 backdrop-blur-xl border border-white/40 shadow-stone-200/50",
+                        shake && "animate-shake"
                     )}
                 >
+                    {/* Crimson Hellfire Overlay */}
+                    {theme === 'crimson' && (
+                        <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+                            {/* Pulse Vignette */}
+                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(50,0,0,0.4)_100%)] animate-pulse" />
+                            {/* Rising Embers */}
+                            {[...Array(8)].map((_, i) => (
+                                <motion.div
+                                    key={i}
+                                    className="absolute w-1 h-1 bg-red-500 rounded-full blur-[1px]"
+                                    initial={{ top: '100%', left: `${Math.random() * 100}%`, opacity: 0, scale: 0 }}
+                                    animate={{ top: '-10%', opacity: [0, 1, 0], scale: [0, 1.5, 0] }}
+                                    transition={{ duration: 3 + Math.random() * 2, repeat: Infinity, delay: Math.random() * 2, ease: "easeOut" }}
+                                />
+                            ))}
+                        </div>
+                    )}
                     {/* Fever Overlay Particles */}
                     {theme === 'fever' && (
                         <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
@@ -808,6 +1068,19 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     transition={{ duration: 2 + Math.random(), repeat: Infinity, delay: Math.random() * 2, ease: "linear" }}
                                 />
                             ))}
+                        </div>
+                    )}
+
+                    {/* BOSS FUSE (The Burning Wick) */}
+                    {theme === 'boss' && (
+                        <div className="absolute top-0 left-0 right-0 h-2 bg-stone-900 z-50">
+                            <motion.div
+                                className="h-full bg-gradient-to-r from-amber-600 via-orange-500 to-yellow-400 shadow-[0_0_20px_rgba(245,158,11,0.8)] relative"
+                                style={{ width: `${fuseTime}%` }}
+                            >
+                                <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 bg-white rounded-full blur-[2px] animate-pulse" />
+                                <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-8 h-8 bg-orange-500/50 rounded-full blur-xl animate-pulse" />
+                            </motion.div>
                         </div>
                     )}
 
@@ -1083,7 +1356,22 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             {!isBlindMode ? (
                                                                 <div className="relative w-full max-w-4xl mx-auto px-4 py-8 animate-in fade-in zoom-in-95 duration-500">
                                                                     <div className="text-center font-newsreader italic text-2xl md:text-3xl leading-relaxed text-stone-800 tracking-wide selection:bg-indigo-100">
-                                                                        {renderInteractiveText(drillData.reference_english)}
+                                                                        {(theme === 'boss' || (gambleState.active && gambleState.wager !== 'safe')) && !isSubmittingDrill ? (
+                                                                            <div className={cn(
+                                                                                "flex flex-col items-center gap-4 py-8 animate-pulse",
+                                                                                theme === 'boss' ? "text-amber-500/50" : "text-red-500/50"
+                                                                            )}>
+                                                                                {theme === 'boss' ? <Headphones className="w-8 h-8 opacity-50" /> : <Dices className="w-8 h-8 opacity-50" />}
+                                                                                <span className="text-sm font-mono tracking-[0.2em] uppercase">
+                                                                                    {theme === 'boss' ? "Audio Stream Encryption Active" : "HIGH STAKES // BLIND BET"}
+                                                                                </span>
+                                                                                <div className="flex gap-1 mt-2">
+                                                                                    {[...Array(3)].map((_, i) => (
+                                                                                        <div key={i} className={cn("w-2 h-2 rounded-full animate-bounce", theme === 'boss' ? "bg-amber-500/30" : "bg-red-500/30")} style={{ animationDelay: `${i * 0.1}s` }} />
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        ) : renderInteractiveText(drillData.reference_english)}
                                                                     </div>
                                                                     <p className="mt-8 text-stone-400 text-sm font-medium tracking-wide uppercase text-center border-t border-stone-100 pt-6 max-w-xs mx-auto">Translation</p>
                                                                     {showChinese && <p className="mt-2 text-stone-500 text-lg text-center font-medium animate-in fade-in slide-in-from-top-2">{drillData.chinese}</p>}
@@ -1288,6 +1576,29 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         ) : null}
                     </div>
 
+                    {/* DEBUG CONTROLS */}
+                    <div className="absolute bottom-4 left-4 z-[200] flex flex-col gap-2 opacity-30 hover:opacity-100 transition-opacity p-2 bg-black/50 rounded-xl backdrop-blur-md">
+                        <div className="text-[10px] font-mono text-white/50 text-center font-bold">DEV TOOLS</div>
+                        <button
+                            onClick={() => { setGambleState({ active: true, introAck: false, wager: null, doubleDownCount: 0 }); setTheme('crimson'); }}
+                            className="bg-red-900/80 text-red-200 text-[10px] px-2 py-1 rounded border border-red-500/50 hover:bg-red-900"
+                        >
+                            Force Gamble
+                        </button>
+                        <button
+                            onClick={() => { setBossState({ active: true, introAck: false }); setTheme('boss'); setPlaybackSpeed(1.25); }}
+                            className="bg-amber-900/80 text-amber-200 text-[10px] px-2 py-1 rounded border border-amber-500/50 hover:bg-amber-900"
+                        >
+                            Force Boss
+                        </button>
+                        <button
+                            onClick={() => { setFeverMode(true); setComboCount(3); setTheme('fever'); }}
+                            className="bg-purple-900/80 text-purple-200 text-[10px] px-2 py-1 rounded border border-purple-500/50 hover:bg-purple-900"
+                        >
+                            Force Fever
+                        </button>
+                    </div>
+
                     {/* Floating Action Bar - Redesigned */}
                     <AnimatePresence>
                         {drillFeedback && (
@@ -1326,6 +1637,232 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     {wordPopup && <WordPopup key="word-popup" popup={wordPopup} onClose={() => setWordPopup(null)} />}
                 </motion.div>
 
+                {/* Negotiator Overlay (Crimson Roulette) - Localized */}
+                <AnimatePresence>
+                    {gambleState.active && gambleState.introAck && !gambleState.wager && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-[60] bg-black/80 backdrop-blur-md flex items-center justify-center p-8"
+                        >
+                            <motion.div
+                                initial={{ scale: 0.9, y: 20 }}
+                                animate={{ scale: 1, y: 0 }}
+                                className="max-w-md w-full bg-[#1a0505] border border-red-900/50 rounded-3xl p-8 flex flex-col gap-6 shadow-[0_0_50px_rgba(220,38,38,0.2)]"
+                            >
+                                <div className="flex flex-col items-center text-center gap-2">
+                                    <div className="w-16 h-16 rounded-full bg-red-950/50 flex items-center justify-center border border-red-900 mb-2">
+                                        <Dices className="w-8 h-8 text-red-500" />
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-red-100">The Devil's Deal</h2>
+                                    <p className="text-red-400 text-sm">A "High Value" client is challenging you. <br />Wager your skill for multiplied returns.</p>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <button
+                                        onClick={() => { setGambleState(prev => ({ ...prev, wager: 'safe' })); setTheme('default'); }}
+                                        className="w-full p-4 rounded-xl border border-stone-800 bg-stone-900/50 hover:bg-stone-800 transition-colors flex items-center justify-between group"
+                                    >
+                                        <div className="text-left">
+                                            <div className="text-stone-300 font-bold group-hover:text-white">放弃 (认怂)</div>
+                                            <div className="text-xs text-stone-500">正常游戏. 无风险.</div>
+                                        </div>
+                                        <div className="text-stone-400 text-sm">1x</div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => {
+                                            setGambleState(prev => ({ ...prev, wager: 'risky' }));
+                                            setTheme('crimson');
+                                            setShake(true); // Small Shake
+                                        }}
+                                        className="w-full p-4 rounded-xl border border-amber-900/30 bg-amber-950/20 hover:bg-amber-900/30 transition-colors flex items-center justify-between group"
+                                    >
+                                        <div className="text-left">
+                                            <div className="text-amber-500 font-bold group-hover:text-amber-400">加注 (玩玩)</div>
+                                            <div className="text-xs text-amber-700 group-hover:text-amber-600">下注 20 Elo. 赢 60.</div>
+                                        </div>
+                                        <div className="text-amber-500 font-bold text-sm">3x</div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => {
+                                            setGambleState(prev => ({ ...prev, wager: 'madness' }));
+                                            setTheme('crimson');
+                                            setShake(true); // BIG SHAKE
+                                            if (navigator.vibrate) navigator.vibrate(200); // Mobile Haptic
+                                        }}
+                                        className="w-full p-4 rounded-xl border border-red-900/50 bg-red-950/30 hover:bg-red-900/40 transition-colors flex items-center justify-between group relative overflow-hidden"
+                                    >
+                                        <div className="absolute inset-0 bg-red-500/5 opacity-0 group-hover:opacity-100 transition-opacity animate-pulse" />
+                                        <div className="text-left relative z-10">
+                                            <div className="text-red-500 font-bold group-hover:text-red-400 flex items-center gap-2"><AlertTriangle className="w-3 h-3" /> 梭哈 (疯魔)</div>
+                                            <div className="text-xs text-red-700 group-hover:text-red-600">下注 50 Elo. 赢 150.</div>
+                                        </div>
+                                        <div className="text-red-500 font-black text-xl relative z-10">5x</div>
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* DOUBLE DOWN MODAL (The Greed Trap) */}
+                <AnimatePresence>
+                    {showDoubleDown && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-[80] bg-black/95 flex items-center justify-center p-8 overflow-hidden"
+                        >
+                            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagmonds-light.png')] opacity-10" />
+                            <div className="absolute inset-0 bg-red-900/10 animate-pulse" />
+
+                            <motion.div
+                                initial={{ scale: 0.8, rotate: -5 }}
+                                animate={{ scale: 1, rotate: 0 }}
+                                className="relative bg-[#2a0a0a] border-4 border-red-600 p-8 rounded-3xl shadow-[0_0_100px_rgba(220,38,38,0.5)] max-w-sm w-full text-center flex flex-col gap-6"
+                            >
+                                <div className="absolute -top-12 left-1/2 -translate-x-1/2">
+                                    <div className="w-24 h-24 bg-black border-4 border-red-600 rounded-full flex items-center justify-center shadow-2xl">
+                                        <span className="text-4xl">😈</span>
+                                    </div>
+                                </div>
+
+                                <div className="mt-8 space-y-2">
+                                    <h2 className="text-3xl font-black text-red-500 uppercase tracking-tighter">Greed Check</h2>
+                                    <p className="text-red-200 text-sm">You won... but is it enough?</p>
+                                </div>
+
+                                <div className="py-4 bg-black/30 rounded-xl border border-red-900/30">
+                                    <div className="text-xs text-stone-500 uppercase tracking-widest mb-1">Current Winnings</div>
+                                    <div className="text-4xl font-mono font-bold text-white tabular-nums">
+                                        {gambleState.wager === 'risky' ? 60 * Math.pow(2.5, gambleState.doubleDownCount) : 150 * Math.pow(2.5, gambleState.doubleDownCount)}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <button
+                                        onClick={() => {
+                                            setShowDoubleDown(false);
+                                            setGambleState(prev => ({ ...prev, active: false, introAck: false, wager: null, doubleDownCount: 0 }));
+                                            setTheme('default');
+                                        }}
+                                        className="py-4 rounded-xl bg-stone-800 text-stone-400 font-bold hover:bg-stone-700 hover:text-white transition-colors border border-white/5"
+                                    >
+                                        Take it (Weak)
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setShowDoubleDown(false);
+                                            // Reset the drill but KEEP the gamble state and increment count
+                                            setGambleState(prev => ({ ...prev, doubleDownCount: prev.doubleDownCount + 1 }));
+                                            handleGenerateDrill(); // Generate NEXT question immediately
+                                            // Theme stays crimson
+                                            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-sword-slash-swoosh-1476.mp3').play().catch(() => { });
+                                        }}
+                                        className="py-4 rounded-xl bg-red-600 text-white font-bold hover:bg-red-500 transition-all border border-red-400 shadow-[0_0_20px_rgba(220,38,38,0.4)] animate-pulse"
+                                    >
+                                        DOUBLE DOWN 💀
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* Gamble Intro Overlay */}
+                <AnimatePresence>
+                    {gambleState.active && !gambleState.introAck && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-[70] bg-[#1a0505] flex items-center justify-center p-8"
+                            onClick={() => setGambleState(prev => ({ ...prev, introAck: true }))}
+                        >
+                            <div className="flex flex-col items-center gap-8 text-center pointer-events-none">
+                                <motion.div
+                                    initial={{ scale: 2, filter: "blur(10px)" }}
+                                    animate={{ scale: 1, filter: "blur(0px)" }}
+                                    transition={{ duration: 0.8, ease: "circOut" }}
+                                    className="relative"
+                                >
+                                    <div className="absolute inset-0 bg-red-500/20 blur-3xl rounded-full" />
+                                    <AlertTriangle className="w-32 h-32 text-red-600 relative z-10" />
+                                </motion.div>
+
+                                <motion.div
+                                    initial={{ y: 50, opacity: 0 }}
+                                    animate={{ y: 0, opacity: 1 }}
+                                    transition={{ delay: 0.5 }}
+                                    className="space-y-4"
+                                >
+                                    <h2 className="text-5xl font-black text-red-600 tracking-tighter uppercase">Violent Probability</h2>
+                                    <div className="h-1 w-32 bg-red-600 mx-auto" />
+                                    <p className="text-red-200 font-mono text-sm tracking-widest">HIGH RISK • HIGH REWARD</p>
+                                </motion.div>
+
+                                <motion.p
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    transition={{ delay: 1.5, repeat: Infinity, repeatType: "reverse" }}
+                                    className="text-white/30 text-xs mt-12"
+                                >
+                                    CLICK TO ENTER THE DEAL
+                                </motion.p>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* Boss Intro Overlay */}
+                <AnimatePresence>
+                    {bossState.active && !bossState.introAck && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-[70] bg-black flex items-center justify-center p-8"
+                            onClick={() => setBossState(prev => ({ ...prev, introAck: true }))}
+                        >
+                            <div className="flex flex-col items-center gap-8 text-center pointer-events-none">
+                                <motion.div
+                                    initial={{ scale: 2, filter: "blur(10px)" }}
+                                    animate={{ scale: 1, filter: "blur(0px)" }}
+                                    transition={{ duration: 0.8, ease: "circOut" }}
+                                    className="relative"
+                                >
+                                    <div className="absolute inset-0 bg-amber-500/20 blur-3xl rounded-full" />
+                                    <Crown className="w-32 h-32 text-amber-500 relative z-10" />
+                                </motion.div>
+
+                                <motion.div
+                                    initial={{ y: 50, opacity: 0 }}
+                                    animate={{ y: 0, opacity: 1 }}
+                                    transition={{ delay: 0.5 }}
+                                    className="space-y-4"
+                                >
+                                    <h2 className="text-5xl font-black text-amber-500 tracking-tighter uppercase">Boss Encounter</h2>
+                                    <div className="h-1 w-32 bg-amber-500 mx-auto" />
+                                    <p className="text-amber-200 font-mono text-sm tracking-widest">NATIVE SPEED • BLIND MODE</p>
+                                </motion.div>
+
+                                <motion.p
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    transition={{ delay: 1.5, repeat: Infinity, repeatType: "reverse" }}
+                                    className="text-white/30 text-xs mt-12"
+                                >
+                                    CLICK TO START CHALLENGE
+                                </motion.p>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 {/* Loot Overlay */}
                 <AnimatePresence>
                     {lootDrop && (
@@ -1333,7 +1870,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             initial={{ opacity: 0, scale: 0.5, y: 50 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.5, y: -50 }}
-                            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[100] flex flex-col items-center gap-4 pointer-events-none"
+                            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[100] flex flex-col items-center gap-4 pointer-events-auto cursor-pointer"
+                            onClick={() => setLootDrop(null)}
                         >
                             <div className={cn(
                                 "flex flex-col items-center gap-2 p-6 rounded-3xl border-2 shadow-2xl backdrop-blur-xl min-w-[200px]",
