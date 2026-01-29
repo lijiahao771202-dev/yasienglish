@@ -50,6 +50,34 @@ export async function POST(req: Request) {
 
         console.log(`[Transcribe] Processing file: ${file.name}, size: ${file.size}, type: ${file.type}, prompt_len: ${prompt?.length || 0}`);
 
+        // PRIORITY 1: Try Local Whisper Server (localhost:3002)
+        try {
+            console.log('[Transcribe] Attempting Local Whisper (port 3002)...');
+            const arrayBuffer = await file.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            // Note: whisper-server.js expects raw body or similar? 
+            // Checking score/route.ts: it sends 'body: buffer'.
+            // Let's replicate score/route.ts logic exactly.
+
+            const localRes = await fetch('http://localhost:3002/transcribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/octet-stream' },
+                body: buffer,
+            });
+
+            if (localRes.ok) {
+                const localData = await localRes.json();
+                console.log('[Transcribe] Local Whisper Success:', localData.text?.slice(0, 50));
+                return NextResponse.json({ text: localData.text });
+            } else {
+                console.warn('[Transcribe] Local Whisper returned Error:', await localRes.text());
+            }
+        } catch (localErr) {
+            console.warn('[Transcribe] Local Whisper unavailable, falling back to OpenAI Cloud.');
+        }
+
+        // PRIORITY 2: OpenAI Cloud (Fallback)
         const transcription = await openai.audio.transcriptions.create({
             file: file,
             model: "whisper-1",

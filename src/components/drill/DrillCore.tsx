@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, RefreshCw, Send, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle } from "lucide-react";
+import { Sparkles, RefreshCw, Send, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import * as Diff from 'diff';
@@ -10,6 +10,9 @@ import { WordPopup, PopupState } from "../reading/WordPopup";
 import { useWhisper } from "@/hooks/useWhisper";
 import { db } from "@/lib/db";
 import { getRank } from "@/lib/rankUtils";
+import { DeathFX } from "./DeathFX";
+import { BossScoreReveal } from "./BossScoreReveal";
+import { DrillDebug } from "../debug/DrillDebug";
 
 // --- Interfaces ---
 
@@ -55,11 +58,14 @@ interface DictionaryData {
     definition?: string;
 }
 
+// --- State --- 
+
 interface LootDrop {
-    type: 'exp' | 'gem' | 'theme';
+    type: 'gem' | 'exp' | 'theme';
     amount: number;
-    rarity: 'common' | 'rare' | 'legendary';
     message: string;
+    rarity: 'common' | 'rare' | 'legendary';
+    name?: string; // Optional for compatibility
 }
 
 export function DrillCore({ context, initialMode = "translation", onClose }: DrillCoreProps) {
@@ -128,104 +134,122 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [bossState, setBossState] = useState<{
         active: boolean;
         introAck: boolean;
-    }>({ active: false, introAck: false });
+        type: 'blind' | 'lightning' | 'echo' | 'reverser' | 'reaper' | 'roulette' | 'roulette_execution';
+        hp?: number;
+        maxHp?: number;
+        playerHp?: number; // New: Symmetric Duel
+        playerMaxHp?: number;
+    }>({ active: false, introAck: false, type: 'blind' });
+    const [deathAnim, setDeathAnim] = useState<'slash' | 'glitch' | 'shatter' | null>(null);
     const [lootDrop, setLootDrop] = useState<LootDrop | null>(null);
     const [gambleState, setGambleState] = useState<{
         active: boolean;
         introAck: boolean;
         wager: 'safe' | 'risky' | 'madness' | null;
-        doubleDownCount: number; // New: Track consecutive gambles
+        doubleDownCount: number;
     }>({ active: false, introAck: false, wager: null, doubleDownCount: 0 });
+
+    // Server Status Check
+    const [serverStatus, setServerStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+    useEffect(() => {
+        const checkServer = async () => {
+            try {
+                const res = await fetch('http://localhost:3002/health');
+                if (res.ok) setServerStatus('online');
+                else setServerStatus('offline');
+            } catch (e) {
+                setServerStatus('offline');
+            }
+        };
+        checkServer();
+        // Poll every 30s
+        const interval = setInterval(checkServer, 30000);
+        return () => clearInterval(interval);
+    }, []);
 
     // Visceral FX State
     const [shake, setShake] = useState(false);
     const [showDoubleDown, setShowDoubleDown] = useState(false); // Modal State
-    const heartbeatRef = useRef<HTMLAudioElement | null>(null);
-    const bossAudioRef = useRef<HTMLAudioElement | null>(null);
+
+    const hasPlayedEchoRef = useRef(false); // For Echo Beast (One-time audio)
     const [fuseTime, setFuseTime] = useState(100); // Boss Fuse (100%)
     const abortControllerRef = useRef<AbortController | null>(null); // For cancelling pending API requests
+    const [rankUp, setRankUp] = useState<{ oldRank: string; newRank: string; } | null>(null); // Rank promotion celebration
 
     // Theme-based Ambient Audio
-    useEffect(() => {
-        // Gambling: Horror tension rise (intense!)
-        // Boss: War drums impact (one-shot)
-        const crimsonUrl = 'https://assets.mixkit.co/active_storage/sfx/2020/2020-preview.mp3'; // Horror tension rise
-        const bossUrl = 'https://assets.mixkit.co/active_storage/sfx/2773/2773-preview.mp3'; // War drums
-
-        // Initialize crimson audio (ONE-SHOT, no loop)
-        if (!heartbeatRef.current) {
-            heartbeatRef.current = new Audio(crimsonUrl);
-            heartbeatRef.current.loop = false;
-            heartbeatRef.current.volume = 0.4;
-        }
-
-        // Initialize boss audio (ONE-SHOT, no loop)
-        if (!bossAudioRef.current) {
-            bossAudioRef.current = new Audio(bossUrl);
-            bossAudioRef.current.loop = false;
-            bossAudioRef.current.volume = 0.5;
-        }
-
-        const safelyPlay = (audio: HTMLAudioElement) => {
-            console.log('[Audio] Attempting to play:', audio.src);
-            audio.currentTime = 0;
-            audio.play().catch((err) => {
-                console.log('[Audio] Blocked, waiting for click:', err.message);
-                document.addEventListener('click', () => audio.play(), { once: true });
-            });
-        };
-
-        // Gambling: Play only during intro (before wager selected)
-        const shouldPlayCrimson = gambleState.active && !gambleState.wager;
-        // Boss: Play only during intro (before entering)
-        const shouldPlayBoss = bossState.active && !bossState.introAck;
-
-        console.log('[Audio] State check:', { shouldPlayCrimson, shouldPlayBoss, gambleActive: gambleState.active, gambleWager: gambleState.wager, bossActive: bossState.active, bossIntroAck: bossState.introAck });
-
-        if (shouldPlayCrimson && heartbeatRef.current) {
-            console.log('[Audio] Gambling intro - playing suspense');
-            bossAudioRef.current?.pause();
-            safelyPlay(heartbeatRef.current);
-        } else if (shouldPlayBoss && bossAudioRef.current) {
-            console.log('[Audio] Boss intro - playing tick-tock');
-            heartbeatRef.current?.pause();
-            safelyPlay(bossAudioRef.current);
-        } else {
-            heartbeatRef.current?.pause();
-            bossAudioRef.current?.pause();
-        }
-
-        return () => {
-            heartbeatRef.current?.pause();
-            bossAudioRef.current?.pause();
-        };
-    }, [gambleState.active, gambleState.wager, bossState.active, bossState.introAck]);
+    // Theme-based Ambient Audio (Legacy Removed -> Handled by modern BGM Manager at line 523)
 
     // Boss Fuse Timer
     useEffect(() => {
         let interval: NodeJS.Timeout;
-        if (theme === 'boss' && !isSubmittingDrill && bossState.introAck) {
+        const isLightning = theme === 'boss' && bossState.active && bossState.type === 'lightning' && bossState.introAck;
+        const isGamble = theme === 'crimson' && gambleState.active && gambleState.introAck;
+
+        if ((isLightning || isGamble) && !isSubmittingDrill) {
             interval = setInterval(() => {
+                // Timer Duration based on Mode
+                // Lightning: 30s (300 ticks)
+                // Gamble: 45s (450 ticks) for high pressure
+                const durationTicks = isLightning ? 300 : 450;
+                const decrement = 100 / durationTicks;
+
                 setFuseTime(prev => {
                     if (prev <= 0) {
                         clearInterval(interval);
-                        // Trigger Defeat
-                        new Audio('https://assets.mixkit.co/sfx/preview/mixkit-explosion-with-rocks-1704.mp3').play().catch(() => { });
+                        // Trigger Defeat / Time Up
+                        new Audio('https://commondatastorage.googleapis.com/codeskulptor-assets/sounddogs/explosion.mp3').play().catch(() => { });
                         if (navigator.vibrate) navigator.vibrate(500);
                         setShake(true);
-                        setTheme('default');
-                        setBossState(prev => ({ ...prev, active: false }));
-                        return 100;
+
+                        // Calculate Penalty
+                        const penalty = isGamble ? (gambleState.wager === 'risky' ? 20 : 50) : 20;
+
+
+                        // Reset States (Delayed for Animation)
+                        setDeathAnim(isGamble ? 'shatter' : 'glitch');
+
+                        // Apply Penalty (Local & DB)
+                        setEloRating(current => {
+                            const newElo = Math.max(0, current - penalty);
+                            // Sync DB
+                            db.user_profile.orderBy('id').first().then(profile => {
+                                if (profile) {
+                                    db.user_profile.update(profile.id, {
+                                        elo_rating: newElo,
+                                        streak_count: 0
+                                    });
+                                }
+                            });
+                            return newElo;
+                        });
+
+                        // Show Notification
+                        setLootDrop({
+                            type: 'exp',
+                            amount: penalty,
+                            rarity: 'common',
+                            message: 'TIME UP! DEFEAT'
+                        });
+
+                        // Actual State Reset after Animation
+                        setTimeout(() => {
+                            setTheme('default');
+                            setBossState(prev => ({ ...prev, active: false }));
+                            setGambleState(prev => ({ ...prev, active: false, introAck: false, wager: null, doubleDownCount: 0 }));
+                            setStreakCount(0);
+                            setDeathAnim(null);
+                        }, 3000);
+
+                        return 0;
                     }
-                    // 100% / 60s / 10 ticks/s = 100 / 600 = 0.166 per tick
-                    return prev - 0.16;
+                    return Math.max(0, prev - decrement);
                 });
             }, 100);
-        } else if (theme !== 'boss') {
-            setFuseTime(100);
+        } else if (!isLightning && !isGamble) {
+            setFuseTime(100); // Reset if not in a timed mode
         }
         return () => clearInterval(interval);
-    }, [theme, isSubmittingDrill, bossState.introAck]);
+    }, [theme, isSubmittingDrill, bossState.introAck, gambleState.introAck, bossState.active, bossState.type, gambleState.active, gambleState.wager]);
 
     // Shake Trigger
     useEffect(() => {
@@ -255,15 +279,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 audioRef.current.pause();
                 audioRef.current.src = '';
             }
-            // Stop ambient audio
-            if (heartbeatRef.current) {
-                heartbeatRef.current.pause();
-                heartbeatRef.current.src = '';
-            }
-            if (bossAudioRef.current) {
-                bossAudioRef.current.pause();
-                bossAudioRef.current.src = '';
-            }
+            // Stop ambient audio (Legacy removed)
             // Abort any pending API requests
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
@@ -276,6 +292,16 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // Computed Elo based on Mode
     const currentElo = mode === 'listening' ? listeningElo : eloRating;
     const currentStreak = mode === 'listening' ? listeningStreak : streakCount;
+
+    // ELO-based auto-difficulty (replaces manual selection)
+    const getEloDifficulty = (elo: number) => {
+        if (elo < 800) return { level: 'Level 1', label: 'A1 入门', cefr: 'A1', color: 'text-emerald-500', desc: '简单SVO句子' };
+        if (elo < 1200) return { level: 'Level 2', label: 'A2 基础', cefr: 'A2', color: 'text-sky-500', desc: '复合句+日常话题' };
+        if (elo < 1600) return { level: 'Level 3', label: 'B1 中级', cefr: 'B1', color: 'text-amber-500', desc: '从句+被动语态' };
+        if (elo < 2000) return { level: 'Level 4', label: 'B2 进阶', cefr: 'B2', color: 'text-orange-500', desc: '抽象话题+条件句' };
+        return { level: 'Level 5', label: 'C1 高级', cefr: 'C1', color: 'text-rose-500', desc: '学术/复杂表达' };
+    };
+    const eloDifficulty = getEloDifficulty(currentElo || 1200);
 
     const [eloChange, setEloChange] = useState<number | null>(null);
     const [eloBreakdown, setEloBreakdown] = useState<{
@@ -323,15 +349,18 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     // --- Audio Logic ---
 
+    // Auto-Play Removed per User Request (Manual Only)
+    /*
     useEffect(() => {
-        // Block TTS during intro overlays (gambling or boss)
         const isIntroShowing = (gambleState.active && !gambleState.introAck) || (bossState.active && !bossState.introAck);
 
         if (mode === "listening" && drillData?.reference_english && !drillFeedback && !isIntroShowing) {
             playAudio();
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [drillData, mode, gambleState.active, gambleState.introAck, bossState.active, bossState.introAck]); // removed drillFeedback to prevent auto-replay on score
+    }, [drillData, mode, gambleState.active, gambleState.introAck, bossState.active, bossState.introAck]);
+    */
+
+    const lastPlayTime = useRef(0);
 
     const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
         const time = Number(e.target.value);
@@ -342,8 +371,22 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const playAudio = async () => {
         if (!drillData?.reference_english) return;
 
+        // Debounce (Prevent Double Click)
+        const now = Date.now();
+        if (now - lastPlayTime.current < 500) return;
+        lastPlayTime.current = now;
+
+        // Echo Beast Constraint: One-time playback
+        const isBlindMode = bossState.active && bossState.type === 'blind';
+        if (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current) {
+            // Audio "Broken" effect
+            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch(() => { });
+            setShake(true);
+            return;
+        }
+
         const textKey = "SENTENCE_" + drillData.reference_english;
-        // setIsPlaying(true); // <--- REMOVED: This was causing the effect to run too early
+        // setIsPlaying(true); 
         setWordPopup(null);
 
         try {
@@ -392,6 +435,18 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             };
 
             audio.playbackRate = playbackSpeed;
+
+            // Echo Beast Constraint
+            if (bossState.active && bossState.type === 'echo') {
+                if (hasPlayedEchoRef.current) {
+                    new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch(() => { });
+                    setShake(true);
+                    setIsPlaying(false);
+                    return;
+                }
+                hasPlayedEchoRef.current = true;
+            }
+
             await audio.play();
             setIsPlaying(true);
         } catch (error) {
@@ -480,16 +535,66 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         };
     }, [mode, drillFeedback, whisperRecording, isSubmittingDrill, startRecognition, stopRecognition]);
 
+    // --- Intro BGM Manager ---
+    useEffect(() => {
+        let audio: HTMLAudioElement | null = null;
+
+        if (bossState.active) {
+            // Play Boss BGM
+            const config = BOSS_CONFIG[bossState.type];
+            if (config && config.bgm) {
+                console.log("[Audio] Playing Boss BGM:", config.bgm);
+                audio = new Audio(config.bgm);
+                audio.volume = bossState.introAck ? 0.15 : 0.4;
+                audio.loop = false;
+                audio.play().catch(err => console.log("[Audio] Boss play failed:", err));
+            }
+        } else if (gambleState.active) {
+            // Play Gamble Audio (Intro Prompt vs Betting Loop)
+            if (!gambleState.introAck) {
+                // Intro: "Heartbeat/Prompt" sound
+                console.log("[Audio] Playing Gamble Intro");
+                audio = new Audio('/gamble_intro.mp3');
+                audio.volume = 0.6;
+                audio.loop = false;
+            } else {
+                // Betting Phase: "Background Tension" loop
+                console.log("[Audio] Playing Gamble Loop");
+                audio = new Audio('/gamble_loop.mp3');
+                audio.volume = 0.4;
+                audio.loop = true;
+            }
+            audio.play().catch(err => console.log("[Audio] Gamble play failed:", err));
+        }
+
+        return () => {
+            if (audio) {
+                audio.pause();
+                audio = null;
+            }
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [bossState.active, bossState.introAck, bossState.type, gambleState.active, gambleState.introAck]);
+
+
+    // --- DEBUG TRIGGER ---
+    const handleDebugBossTrigger = (type: string) => {
+        console.log(`[DEBUG] Triggering Boss: ${type}`);
+        // Force immediate Drill Generation with Override
+        handleGenerateDrill(undefined, type);
+    };
 
     // --- Core Actions ---
 
-    const handleGenerateDrill = async (targetDifficulty = difficulty) => {
+    const handleGenerateDrill = async (targetDifficulty = difficulty, overrideBossType?: string) => {
         // Abort any pending request before starting a new one
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
         }
         abortControllerRef.current = new AbortController();
         const signal = abortControllerRef.current.signal;
+
+        hasPlayedEchoRef.current = false; // Reset Echo Beast state
 
         setIsGeneratingDrill(true);
         setDrillData(null);
@@ -503,6 +608,71 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setEloChange(null);
         if (audioRef.current) audioRef.current.pause();
 
+        // --- PRE-CALCULATE BOSS/GAMBLE EVENTS ---
+        // Determine if we are entering a new Boss/Gamble encounter or continuing one
+        let nextBossType = overrideBossType || (bossState.active ? bossState.type : undefined);
+        let nextTheme = theme;
+        let pendingBossState = null;
+        let pendingGambleState = null;
+
+        if (!bossState.active && !gambleState.active) {
+            const roll = Math.random();
+            // 2% Chance for Boss
+            if (roll < 0.02) {
+                const bossRoll = Math.random();
+                let type: 'blind' | 'lightning' | 'echo' | 'reverser' | 'reaper' = 'blind';
+
+                if (mode === 'listening') {
+                    // Listening Weights: Blind (30%), Echo (25%), Lightning (25%), Reaper (20%)
+                    if (bossRoll < 0.3) type = 'blind';
+                    else if (bossRoll < 0.55) type = 'echo';
+                    else if (bossRoll < 0.80) type = 'lightning';
+                    else type = 'reaper';
+                } else {
+                    // Translation Weights: Reverser (40%), Lightning (30%), Reaper (30%)
+                    if (bossRoll < 0.4) type = 'reverser';
+                    else if (bossRoll < 0.7) type = 'lightning';
+                    else type = 'reaper';
+                }
+
+                nextBossType = type;
+                nextTheme = 'boss';
+                pendingBossState = {
+                    active: true,
+                    introAck: false,
+                    type,
+                    hp: type === 'reaper' ? 3 : undefined,
+                    maxHp: type === 'reaper' ? 3 : undefined,
+                    playerHp: type === 'reaper' ? 3 : undefined, // Player starts with 3 HP
+                    playerMaxHp: type === 'reaper' ? 3 : undefined
+                };
+            }
+            // 5% Chance for Gamble (Listening Mode Only)
+            else if (roll < 0.07 && mode === 'listening') {
+                nextTheme = 'crimson';
+                pendingGambleState = { active: true, introAck: false, wager: null, doubleDownCount: 0 };
+            }
+        }
+
+        // FORCE OVERRIDE STATE (DEBUG / ROULETTE)
+        if (overrideBossType) {
+            nextTheme = 'boss';
+            nextBossType = overrideBossType as any;
+            pendingBossState = {
+                active: true,
+                introAck: false,
+                type: overrideBossType as any,
+                hp: undefined, // Standard unless reaper
+                maxHp: undefined,
+                playerHp: undefined,
+                playerMaxHp: undefined
+            };
+            // Special handling for roulette execution visuals
+            if (overrideBossType === 'roulette_execution') {
+                // Flash effect can be triggered here if we had a flash state
+            }
+        }
+
         try {
             const response = await fetch("/api/ai/generate_drill", {
                 method: "POST",
@@ -510,9 +680,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 body: JSON.stringify({
                     articleTitle: context.articleTitle || context.topic,
                     articleContent: context.articleContent || "",
-                    difficulty,
-                    eloRating,
+                    difficulty: eloDifficulty.level, // Auto-calculated from ELO
+                    eloRating: currentElo,
                     mode,
+                    bossType: nextBossType // Inject Boss Context for Custom Scenarios
                 }),
                 signal, // Pass abort signal
             });
@@ -526,6 +697,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             if (signal.aborted) return;
 
             setDrillData(data);
+
+            // Apply Pending Boss/Gamble States (Sync UI with Content)
+            if (pendingBossState) {
+                setBossState(pendingBossState);
+                setTheme('boss');
+                setPlaybackSpeed(pendingBossState.type === 'lightning' ? 1.5 : 1.0);
+            }
+            if (pendingGambleState) {
+                setGambleState(pendingGambleState);
+                setTheme('crimson');
+            }
         } catch (error) {
             if ((error as Error).name === 'AbortError') {
                 console.log('[Drill] Request aborted - switching to new question');
@@ -552,7 +734,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
                     current_elo: eloRating || 1200,
-                    mode
+                    mode,
+                    is_reverse: bossState.active && bossState.type === 'reverser'
                 }),
             });
             const data = await response.json();
@@ -613,6 +796,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 let newStreak = activeStreak;
 
                 // --- GAMBLING LOGIC (Crimson Roulette) ---
+                // --- GAMBLING LOGIC (Crimson Roulette) ---
                 if (gambleState.active && gambleState.wager && gambleState.wager !== 'safe') {
                     const isWin = data.score >= 9.0;
 
@@ -643,12 +827,67 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         change = baseLoss * Math.pow(2, gambleState.doubleDownCount);
                         new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch(() => { });
 
-                        // Reset
-                        setGambleState({ active: false, introAck: false, wager: null, doubleDownCount: 0 });
-                        setTheme('default');
+                        // Reset Deferred to BossScoreReveal Interaction
+                        // setGambleState({ active: false, introAck: false, wager: null, doubleDownCount: 0 });
+                        // setTheme('default');
                         newStreak = 0;
                     }
                 }
+
+                // REAPER BOSS LOGIC
+                else if (bossState.active && bossState.type === 'reaper') {
+                    // Suppress standard Elo change during the duel
+                    change = 0;
+
+                    if (data.score >= 9.0) {
+                        // Hit the Boss!
+                        const newHp = (bossState.hp || 3) - 1;
+                        setBossState(prev => ({ ...prev, hp: newHp }));
+
+                        if (newHp <= 0) {
+                            // VICTORY!
+                            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-winning-chimes-201.mp3').play().catch(() => { });
+                            setLootDrop({ type: 'gem', amount: 50, rarity: 'legendary', message: 'REAPER DEFEATED!' });
+
+                            // HUGE REWARD
+                            change = 50;
+
+                            setBossState(prev => ({ ...prev, active: false }));
+                            setTheme('default');
+                        } else {
+                            // Boss damaged
+                            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-dagger-woosh-1487.mp3').play().catch(() => { });
+                            setLootDrop({ type: 'exp', amount: 0, rarity: 'rare', message: 'BOSS HIT! Keep going!' });
+                        }
+                    } else {
+                        // PLAYER TAKES DAMAGE
+                        const newPlayerHp = (bossState.playerHp || 3) - 1;
+                        setBossState(prev => ({ ...prev, playerHp: newPlayerHp }));
+
+                        if (newPlayerHp <= 0) {
+                            // --- DEATH EXECUTION ---
+                            setDeathAnim('slash');
+                            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-sword-slash-swoosh-1476.mp3').play().catch(() => { });
+
+                            // Delay reset to show animation
+                            setTimeout(() => {
+                                setBossState(prev => ({ ...prev, active: false }));
+                                setTheme('default');
+                                newStreak = 0;
+                                setDeathAnim(null);
+                            }, 3000);
+
+                            // PUNISHMENT
+                            change = -50;
+                        } else {
+                            // Warning Hit
+                            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch(() => { });
+                            setShake(true);
+                            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: `LOST HP! ${newPlayerHp} Left` });
+                        }
+                    }
+                }
+
                 // --- END GAMBLING LOGIC ---
 
                 setEloBreakdown(result.breakdown);
@@ -668,23 +907,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         new Audio('https://assets.mixkit.co/sfx/preview/mixkit-futuristic-robotic-blip-hit-695.mp3').play().catch(() => { });
                     }
 
-                    // Loot Logic
-                    const baseChance = feverMode ? 0.5 : 0.2;
-                    if (Math.random() < baseChance) {
-                        const roll = Math.random();
-                        let drop: LootDrop;
-                        if (roll > 0.95) {
-                            drop = { type: 'theme', amount: 1, rarity: 'legendary', message: 'Legendary Theme Fragment!' };
-                            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-winning-chimes-201.mp3').play().catch(() => { });
-                        } else if (roll > 0.70) {
-                            drop = { type: 'gem', amount: Math.floor(Math.random() * 5) + 1, rarity: 'rare', message: 'Rare Gems Found!' };
-                            new Audio('https://assets.mixkit.co/sfx/preview/mixkit-coins-sound-2003.mp3').play().catch(() => { });
-                        } else {
-                            drop = { type: 'exp', amount: Math.floor(Math.random() * 50) + 10, rarity: 'common', message: 'Bonus EXP' };
-                        }
-                        // Delay loot slightly for effect
-                        setTimeout(() => setLootDrop(drop), 1000);
-                    }
+                    // Loot Logic - DISABLED per user request
+                    // (Only Boss/Gamble/Damage events trigger notifications now)
                 } else {
                     newStreak = 0;
                     setComboCount(0);
@@ -694,36 +918,45 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         // Fever Break Sound
                         new Audio('https://assets.mixkit.co/sfx/preview/mixkit-game-over-dark-orchestra-633.mp3').play().catch(() => { });
                     }
-                }
 
-                const newElo = Math.max(0, (activeElo || 1200) + change);
+                    const newElo = Math.max(0, (activeElo || 1200) + change);
 
-                // Update Local State
-                if (isListening) {
-                    setListeningElo(newElo);
-                    setListeningStreak(newStreak);
-                } else {
-                    setEloRating(newElo);
-                    setStreakCount(newStreak);
-                }
-                setEloChange(change);
-
-                // Persist to DB
-                const profile = await db.user_profile.orderBy('id').first();
-                if (profile && profile.id) {
-                    const updateData: any = { last_practice: Date.now() };
-
-                    if (isListening) {
-                        updateData.listening_elo = newElo;
-                        updateData.listening_streak = newStreak;
-                        updateData.listening_max_elo = Math.max(profile.listening_max_elo || 0, newElo);
-                    } else {
-                        updateData.elo_rating = newElo;
-                        updateData.streak_count = newStreak;
-                        updateData.max_elo = Math.max(profile.max_elo, newElo);
+                    // Rank Change Detection
+                    const oldRank = getRank(activeElo || 1200);
+                    const newRank = getRank(newElo);
+                    if (newRank.title !== oldRank.title && change > 0) {
+                        // Rank UP! Trigger celebration
+                        setRankUp({ oldRank: oldRank.title, newRank: newRank.title });
+                        new Audio('https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3').play().catch(() => { });
                     }
 
-                    await db.user_profile.update(profile.id, updateData);
+                    // Update Local State
+                    if (isListening) {
+                        setListeningElo(newElo);
+                        setListeningStreak(newStreak);
+                    } else {
+                        setEloRating(newElo);
+                        setStreakCount(newStreak);
+                    }
+                    setEloChange(change);
+
+                    // Persist to DB
+                    const profile = await db.user_profile.orderBy('id').first();
+                    if (profile && profile.id) {
+                        const updateData: any = { last_practice: Date.now() };
+
+                        if (isListening) {
+                            updateData.listening_elo = newElo;
+                            updateData.listening_streak = newStreak;
+                            updateData.listening_max_elo = Math.max(profile.listening_max_elo || 0, newElo);
+                        } else {
+                            updateData.elo_rating = newElo;
+                            updateData.streak_count = newStreak;
+                            updateData.max_elo = Math.max(profile.max_elo, newElo);
+                        }
+
+                        await db.user_profile.update(profile.id, updateData);
+                    }
                 }
             }
         } catch (error) {
@@ -951,9 +1184,25 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             const roll = Math.random();
             // 2% Chance for Boss (Higher Priority)
             if (roll < 0.02) {
-                setBossState({ active: true, introAck: false });
+                // Select Boss Type
+                const bossRoll = Math.random();
+                let type: 'blind' | 'lightning' | 'echo' | 'reverser' | 'reaper' = 'blind';
+
+                if (bossRoll < 0.05) type = 'reaper';      // 5%
+                else if (bossRoll < 0.20) type = 'reverser'; // 15%
+                else if (bossRoll < 0.45) type = 'echo';     // 25%
+                else if (bossRoll < 0.70) type = 'lightning';// 25%
+                else type = 'blind';                         // 30%
+
+                setBossState({
+                    active: true,
+                    introAck: false,
+                    type,
+                    hp: type === 'reaper' ? 3 : undefined,
+                    maxHp: type === 'reaper' ? 3 : undefined
+                });
                 setTheme('boss');
-                setPlaybackSpeed(1.25); // Boss Speed
+                setPlaybackSpeed(type === 'blind' ? 1.25 : 1.0); // Only Blind boss needs speed up
             }
             // 5% Chance for Gamble (Exclusive)
             else if (roll < 0.07) {
@@ -964,7 +1213,84 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode]);
 
-    // --- Render ---
+
+
+    const BOSS_CONFIG = {
+        'blind': {
+            name: '盲眼聆听者 (BLIND)',
+            desc: '原速播放 • 无文本提示',
+            icon: EyeOff,
+            color: 'text-stone-300',
+            bg: 'bg-stone-500',
+            style: "bg-[#1a1a1a] border-stone-800 shadow-[0_0_60px_rgba(0,0,0,0.8)] text-stone-300 ring-1 ring-stone-800/50 grayscale",
+            introDelay: 2000,
+            bgm: '/blind_intro.mp3'
+        },
+        'lightning': {
+            name: '闪电恶魔 (LIGHTNING)',
+            desc: '30秒限时 • 1.5倍速挑战',
+            icon: Zap,
+            color: 'text-amber-400',
+            bg: 'bg-amber-500',
+            style: "bg-[#2A1B00] border-amber-500/50 shadow-[0_0_80px_rgba(245,158,11,0.3)] text-amber-100 ring-1 ring-amber-500/30",
+            introDelay: 2000,
+            bgm: '/lightning_intro.mp3'
+        },
+        'echo': {
+            name: '回声巨兽 (ECHO)',
+            desc: '只听一次 • 瞬间记忆挑战',
+            icon: Volume2,
+            color: 'text-cyan-400',
+            bg: 'bg-cyan-500',
+            style: "bg-[#082f49] border-cyan-500/40 shadow-[0_0_80px_rgba(6,182,212,0.25)] text-cyan-100 ring-1 ring-cyan-500/20",
+            introDelay: 2500,
+            bgm: 'https://commondatastorage.googleapis.com/codeskulptor-demos/pyman_assets/intromusic.ogg'
+        },
+        'reverser': {
+            name: '逆转行者 (REVERSER)',
+            desc: '绝境逆转 • 英译中挑战',
+            icon: RefreshCw,
+            color: 'text-fuchsia-400',
+            bg: 'bg-fuchsia-500',
+            style: "bg-[#2e1065] border-fuchsia-500/40 shadow-[0_0_80px_rgba(217,70,239,0.25)] text-fuchsia-100 ring-1 ring-fuchsia-500/20",
+            introDelay: 2000,
+            bgm: '/reverser_intro.mp3'
+        },
+        'reaper': {
+            name: '死神 (THE REAPER)',
+            desc: '3 HP • 死亡凝视 • 错误即死',
+            icon: Skull,
+            color: 'text-rose-500',
+            bg: 'bg-rose-600',
+            style: "bg-black border-red-900/60 shadow-[0_0_120px_rgba(225,29,72,0.6)] text-rose-50 ring-2 ring-red-900",
+            introDelay: 3000,
+            bgm: 'https://commondatastorage.googleapis.com/codeskulptor-demos/riceracer_assets/music/lose.ogg'
+        },
+        'roulette': {
+            name: '幸运转轮 (LUCKY CHAMBER)',
+            desc: '1/6 概率死亡 • +20 Elo 奖池',
+            icon: Dices,
+            color: 'text-emerald-400',
+            bg: 'bg-emerald-600',
+            style: "bg-[#022c22] border-emerald-500/50 shadow-[0_0_80px_rgba(16,185,129,0.3)] text-emerald-100 ring-1 ring-emerald-500/30",
+            introDelay: 1000,
+            bgm: '/gamble_intro.mp3'
+        },
+        'roulette_execution': {
+            name: '死刑执行 (EXECUTION)',
+            desc: '实弹命中 • 炼狱难度 • 胜者翻倍',
+            icon: Skull,
+            color: 'text-red-600',
+            bg: 'bg-red-700',
+            style: "bg-black border-red-600 shadow-[0_0_150px_rgba(220,38,38,0.9)] text-red-500 ring-4 ring-red-600 animate-pulse",
+            introDelay: 500,
+            bgm: 'https://commondatastorage.googleapis.com/codeskulptor-demos/riceracer_assets/music/lose.ogg'
+        }
+    } as const;
+
+    const currentBoss = BOSS_CONFIG[bossState.type] || BOSS_CONFIG['blind'];
+
+
 
     return (
         <AnimatePresence mode="wait">
@@ -1033,7 +1359,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     className={cn(
                         "relative w-full max-w-5xl h-[85vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col transition-all duration-700",
                         theme === 'fever' ? "bg-slate-900/90 border border-fuchsia-500/30 shadow-fuchsia-900/20 text-white" :
-                            theme === 'boss' ? "bg-black/95 border border-amber-500/30 shadow-amber-900/20 text-amber-50" :
+                            theme === 'boss' ? currentBoss.style :
                                 theme === 'crimson' ? "bg-[#1a0505]/95 border border-red-500/30 shadow-[0_0_60px_rgba(220,38,38,0.2)] text-red-50" :
                                     "bg-white/80 backdrop-blur-xl border border-white/40 shadow-stone-200/50",
                         shake && "animate-shake"
@@ -1157,25 +1483,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     {/* Header */}
                     <div className="flex items-center justify-between p-4 md:p-6 border-b border-stone-100/50 shrink-0">
                         <div className="flex items-center gap-4">
-                            <div className="flex bg-stone-100 p-1 rounded-full border border-stone-200">
-                                <button
-                                    onClick={() => setMode("translation")}
-                                    className={cn(
-                                        "px-4 py-1.5 rounded-full text-sm font-bold transition-all",
-                                        mode === "translation" ? "bg-white shadow-md text-stone-900" : "text-stone-400 hover:text-stone-600"
-                                    )}
-                                >
-                                    <Globe className="w-3 h-3 inline-block mr-2" /> Translate
-                                </button>
-                                <button
-                                    onClick={() => setMode("listening")}
-                                    className={cn(
-                                        "px-4 py-1.5 rounded-full text-sm font-bold transition-all",
-                                        mode === "listening" ? "bg-white shadow-md text-stone-900" : "text-stone-400 hover:text-stone-600"
-                                    )}
-                                >
-                                    <Headphones className="w-3 h-3 inline-block mr-2" /> Listening
-                                </button>
+                            <div className="flex items-center gap-4">
+                                {/* Mode Badge Instead of Switcher */}
+                                <div className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-stone-100 text-stone-500 border border-stone-200">
+                                    {mode === "translation" ? <><Globe className="w-3 h-3 inline-block mr-1.5" /> Translate Mode</> : <><Headphones className="w-3 h-3 inline-block mr-1.5" /> Listening Mode</>}
+                                </div>
                             </div>
                         </div>
                         {onClose && (
@@ -1227,7 +1539,16 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     <div className="w-px h-3 bg-current opacity-20 mx-1" />
                                                                     <span className="font-newsreader font-medium italic text-lg">{currentElo || 1200}</span>
                                                                 </div>
-                                                                <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-48 bg-white rounded-xl shadow-xl border border-stone-100 p-3 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+
+                                                                <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-48 bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-stone-100 p-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                                                                    {/* Difficulty Info injected into Tooltip */}
+                                                                    <div className="flex items-center justify-between mb-3 pb-3 border-b border-stone-100">
+                                                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">DIFFICULTY</span>
+                                                                        <div className={cn("flex items-center gap-1 text-xs font-bold", eloDifficulty.color.split(' ')[0])}>
+                                                                            <span>{eloDifficulty.label}</span>
+                                                                        </div>
+                                                                    </div>
+
                                                                     <div className="text-xs font-bold text-stone-500 mb-1 flex justify-between">
                                                                         <span>To {rank.nextRank?.title || "Max"}</span>
                                                                         <span>{Math.round(rank.progress)}%</span>
@@ -1235,7 +1556,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     <div className="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
                                                                         <div className={cn("h-full rounded-full transition-all duration-500", rank.bg.replace('bg-', 'bg-slate-400 '))} style={{ width: `${rank.progress}%`, backgroundColor: 'currentColor' }} />
                                                                     </div>
-                                                                    <div className="text-[10px] text-stone-400 mt-1 text-center font-medium">{rank.distToNext > 0 ? `${rank.distToNext} pts to promote` : "Max Level Reached"}</div>
+                                                                    <div className="text-[10px] text-stone-400 mt-2 text-center font-medium bg-stone-50 py-1 rounded-lg">{rank.distToNext > 0 ? `${rank.distToNext} pts to promote` : "Max Level Reached"}</div>
                                                                 </div>
                                                             </>
                                                         );
@@ -1252,7 +1573,16 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     {mode === "listening" ? (
                                                         <div className="w-full flex flex-col items-center justify-center relative">
                                                             {/* Big Play Button */}
-                                                            <button onClick={playAudio} disabled={isPlaying} className="group relative w-24 h-24 flex items-center justify-center transition-all duration-500 hover:scale-105 active:scale-95 disabled:opacity-80 disabled:scale-100 mb-8 mt-4">
+                                                            <button
+                                                                onClick={playAudio}
+                                                                disabled={isPlaying || (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)}
+                                                                className={cn(
+                                                                    "group relative w-24 h-24 flex items-center justify-center transition-all duration-500 mb-8 mt-4",
+                                                                    (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)
+                                                                        ? "grayscale opacity-50 cursor-not-allowed scale-95"
+                                                                        : "hover:scale-105 active:scale-95 disabled:opacity-80 disabled:scale-100"
+                                                                )}
+                                                            >
                                                                 <div className={cn("absolute inset-0 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 blur-2xl transition-all duration-500", isPlaying ? "scale-125 opacity-100" : "scale-100 opacity-0 group-hover:opacity-100")} />
                                                                 <div className="absolute inset-0 rounded-full bg-white/60 dark:bg-white/10 backdrop-blur-2xl border border-white/50 dark:border-white/20 shadow-2xl shadow-indigo-500/10 transition-all duration-300 group-hover:bg-white/80 group-hover:border-white" />
                                                                 <div className="relative z-10 text-indigo-600 dark:text-indigo-300 drop-shadow-sm flex items-center justify-center">
@@ -1308,6 +1638,21 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     {mode === 'listening' && (
                                                                         <>
                                                                             <div className="w-px h-4 bg-stone-300 mx-2" />
+
+                                                                            {/* Server Status */}
+                                                                            <div
+                                                                                className={cn(
+                                                                                    "hidden md:flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors border",
+                                                                                    serverStatus === 'online' ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
+                                                                                        serverStatus === 'offline' ? "bg-rose-50 text-rose-600 border-rose-200" :
+                                                                                            "bg-stone-50 text-stone-400 border-stone-200"
+                                                                                )}
+                                                                                title={serverStatus === 'online' ? "Local Whisper Engine Ready (Port 3002)" : "Local Engine Offline - Using Cloud Fallback"}
+                                                                            >
+                                                                                <div className={cn("w-1.5 h-1.5 rounded-full", serverStatus === 'online' ? "bg-emerald-500 animate-pulse" : "bg-rose-500")} />
+                                                                                {serverStatus === 'online' ? "LOCAL" : serverStatus === 'offline' ? "CLOUD" : "CHECK"}
+                                                                            </div>
+
                                                                             {/* Engine Mode */}
                                                                             <button
                                                                                 onClick={() => setEngineMode(engineMode === 'fast' ? 'precise' : 'fast')}
@@ -1332,31 +1677,98 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                 </div>
                                                             </div>
 
-                                                            {/* Sleek Slider */}
-                                                            <div className="w-full max-w-md flex items-center gap-4 px-4 mb-8 group/slider">
-                                                                <span className="text-[10px] font-mono text-stone-300 w-8 text-right font-medium">{(currentAudioTime / 1000).toFixed(1)}</span>
-                                                                <div className="flex-1 relative h-6 flex items-center">
-                                                                    <input
-                                                                        type="range"
-                                                                        min={0}
-                                                                        max={audioDuration || 100}
-                                                                        value={currentAudioTime}
-                                                                        onChange={handleSeek}
-                                                                        className="absolute w-full h-1.5 bg-stone-100 rounded-full appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-600 transition-all z-10 opacity-0 group-hover/slider:opacity-100"
-                                                                    />
-                                                                    <div className="w-full h-1.5 bg-stone-100 rounded-full overflow-hidden absolute pointer-events-none">
-                                                                        <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min(100, (currentAudioTime / (audioDuration || 1)) * 100)}%` }} />
-                                                                    </div>
-                                                                    <div className="w-3 h-3 bg-indigo-600 rounded-full absolute pointer-events-none shadow-md transition-all duration-100 ease-linear scale-0 group-hover/slider:scale-100" style={{ left: `${(currentAudioTime / (audioDuration || 1)) * 100}%`, transform: 'translateX(-50%)' }} />
-                                                                </div>
-                                                                <span className="text-[10px] font-mono text-stone-300 w-8 text-left font-medium">{(audioDuration / 1000).toFixed(1)}</span>
-                                                            </div>
+                                                            {/* Reaper HP or Fuse Timer based on Boss Type */}
+                                                            {(bossState.active || gambleState.active) && (
+                                                                <div className="flex justify-center mb-0"> { /* Moved down for visibility */}
+                                                                    {bossState.type === 'reaper' ? (
+                                                                        <div className="flex gap-8 items-center animate-in fade-in slide-in-from-top-4">
+                                                                            {/* PLAYER HP (Left) */}
+                                                                            <div className="flex gap-2 items-center bg-stone-900/40 px-4 py-2 rounded-full border border-white/10 backdrop-blur-md">
+                                                                                <span className="text-xs font-bold text-stone-400 mr-2">YOU</span>
+                                                                                {[...Array(bossState.playerMaxHp || 3)].map((_, i) => (
+                                                                                    <motion.div
+                                                                                        key={`p-${i}`}
+                                                                                        initial={{ scale: 0 }}
+                                                                                        animate={{
+                                                                                            scale: i < (bossState.playerHp || 0) ? 1 : 0.8,
+                                                                                            opacity: i < (bossState.playerHp || 0) ? 1 : 0.2,
+                                                                                            filter: i < (bossState.playerHp || 0) ? 'grayscale(0%)' : 'grayscale(100%)'
+                                                                                        }}
+                                                                                    >
+                                                                                        <Heart className={cn(
+                                                                                            "w-6 h-6",
+                                                                                            i < (bossState.playerHp || 0) ? "fill-emerald-500 text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.8)]" : "text-stone-700"
+                                                                                        )} />
+                                                                                    </motion.div>
+                                                                                ))}
+                                                                            </div>
 
-                                                            {/* Text Reveal / Hint Area */}
-                                                            {!isBlindMode ? (
+                                                                            <div className="text-xl font-black text-white/20 italic">VS</div>
+
+                                                                            {/* BOSS HP (Right) */}
+                                                                            <div className="flex gap-2 items-center bg-black/60 px-4 py-2 rounded-full border border-red-900/60 backdrop-blur-md shadow-[0_0_30px_rgba(220,38,38,0.2)]">
+                                                                                {[...Array(bossState.maxHp || 3)].map((_, i) => (
+                                                                                    <motion.div
+                                                                                        key={`b-${i}`}
+                                                                                        initial={{ scale: 0 }}
+                                                                                        animate={{
+                                                                                            scale: i < (bossState.hp || 0) ? 1 : 0.8,
+                                                                                            opacity: i < (bossState.hp || 0) ? 1 : 0.2,
+                                                                                            filter: i < (bossState.hp || 0) ? 'grayscale(0%)' : 'grayscale(100%)'
+                                                                                        }}
+                                                                                    >
+                                                                                        <Heart className={cn(
+                                                                                            "w-6 h-6",
+                                                                                            i < (bossState.hp || 0) ? "fill-red-600 text-red-500 drop-shadow-[0_0_10px_rgba(220,38,38,0.8)]" : "text-stone-800"
+                                                                                        )} />
+                                                                                    </motion.div>
+                                                                                ))}
+                                                                                <span className="text-xs font-bold text-red-500 ml-2">REAPER</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (bossState.type === 'lightning' || gambleState.active) ? (
+                                                                        // Standard Fuse Timer (Lightning ONLY / Gamble)
+                                                                        <div className="flex items-center gap-3 bg-stone-900/80 px-4 py-2 rounded-full border border-white/10 backdrop-blur-md">
+                                                                            <div className={cn("text-xs font-bold uppercase tracking-widest",
+                                                                                theme === 'boss' ? "text-amber-400" : "text-red-400"
+                                                                            )}>
+                                                                                {theme === 'boss' ? "BOSS FUSE" : "DEATH FUSE"}
+                                                                            </div>
+                                                                            <div className="w-32 h-2 bg-stone-800 rounded-full overflow-hidden">
+                                                                                <div
+                                                                                    className={cn("h-full transition-all duration-100 ease-linear",
+                                                                                        theme === 'boss' ? "bg-amber-500" : "bg-red-500 shadow-[0_0_15px_rgba(239,68,68,0.8)]"
+                                                                                    )}
+                                                                                    style={{ width: `${Math.min(100, fuseTime)}%` }}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : null}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Loot Drop Notification (Moved below visual elements) */}
+                                                            <AnimatePresence>
+                                                                {lootDrop && (
+                                                                    <motion.div initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="absolute top-20 left-1/2 -translate-x-1/2 z-50">
+                                                                        <div className="bg-stone-900 text-amber-400 px-6 py-3 rounded-xl shadow-2xl border border-amber-500/30 flex items-center gap-3">
+                                                                            <div className="p-2 bg-amber-500/20 rounded-lg"><Gift className="w-5 h-5 animate-bounce" /></div>
+                                                                            <div>
+                                                                                <div className="text-xs font-bold text-amber-600 uppercase tracking-wider">Loot Dropped</div>
+                                                                                <div className="text-sm font-bold text-amber-100">{lootDrop.name}</div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </motion.div>
+                                                                )}
+                                                            </AnimatePresence>
+                                                            {/* Sleek Slider */}
+
+
+                                                            {/* Text Reveal / Hint Area - Check Manual Toggle OR Boss Force */}
+                                                            {!((bossState.active && bossState.type === 'blind') || isBlindMode) ? (
                                                                 <div className="relative w-full max-w-4xl mx-auto px-4 py-8 animate-in fade-in zoom-in-95 duration-500">
                                                                     <div className="text-center font-newsreader italic text-2xl md:text-3xl leading-relaxed text-stone-800 tracking-wide selection:bg-indigo-100">
-                                                                        {(theme === 'boss' || (gambleState.active && gambleState.wager !== 'safe')) && !isSubmittingDrill ? (
+                                                                        {((gambleState.active && gambleState.wager !== 'safe')) && !isSubmittingDrill ? (
                                                                             <div className={cn(
                                                                                 "flex flex-col items-center gap-4 py-8 animate-pulse",
                                                                                 theme === 'boss' ? "text-amber-500/50" : "text-red-500/50"
@@ -1389,11 +1801,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                         </div>
                                                     ) : (
                                                         <div className="w-full py-12 flex flex-col items-center justify-center gap-8">
-                                                            <h3 className="text-2xl md:text-4xl font-newsreader font-medium text-stone-900 leading-normal text-center max-w-4xl">{drillData.chinese}</h3>
+                                                            <h3 className="text-2xl md:text-4xl font-newsreader font-medium text-stone-900 leading-normal text-center max-w-4xl">
+                                                                {(bossState.active && bossState.type === 'reverser') ? drillData.reference_english : drillData.chinese}
+                                                            </h3>
 
                                                             {/* Keywords */}
                                                             <div className="flex flex-wrap justify-center gap-3">
-                                                                {(drillData.target_english_vocab || drillData.key_vocab || []).map((vocab, i) => (
+                                                                {!(bossState.active && bossState.type === 'reverser') && (drillData.target_english_vocab || drillData.key_vocab || []).map((vocab, i) => (
                                                                     <span key={i} onClick={(e) => handleWordClick(e, vocab)} className="px-5 py-2 rounded-full bg-white border border-stone-200 text-stone-600 font-newsreader italic text-lg hover:bg-stone-50 hover:border-stone-300 hover:text-stone-900 cursor-pointer transition-all shadow-sm">{vocab}</span>
                                                                 ))}
                                                             </div>
@@ -1433,7 +1847,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                         </div>
                                                     ) : (
                                                         <>
-                                                            <textarea value={userTranslation} onChange={(e) => setUserTranslation(e.target.value)} placeholder="Enter your English translation..." className="w-full min-h-[160px] p-6 text-xl font-newsreader bg-white/50 border border-stone-200 rounded-3xl focus:ring-4 ring-stone-100 focus:border-stone-400 transition-all resize-none placeholder:text-stone-300 text-stone-800 shadow-sm group-hover:shadow-md outline-none" spellCheck={false} autoFocus />
+                                                            <textarea
+                                                                value={userTranslation}
+                                                                onChange={(e) => setUserTranslation(e.target.value)}
+                                                                placeholder={(bossState.active && bossState.type === 'reverser') ? "Enter Chinese translation..." : "Enter your English translation..."}
+                                                                className="w-full min-h-[160px] p-6 text-xl font-newsreader bg-white/50 border border-stone-200 rounded-3xl focus:ring-4 ring-stone-100 focus:border-stone-400 transition-all resize-none placeholder:text-stone-300 text-stone-800 shadow-sm group-hover:shadow-md outline-none"
+                                                                spellCheck={false}
+                                                                autoFocus
+                                                            />
                                                             <div className="absolute bottom-4 right-4 flex items-center gap-3">
                                                                 <button onClick={handleMagicHint} className="h-10 px-4 rounded-xl bg-amber-100/50 text-amber-700 hover:bg-amber-100 flex items-center gap-2 transition-all font-bold text-sm" title="Auto-Complete Hint"><Wand2 className="w-4 h-4" /> Hint</button>
                                                                 <button onClick={() => setIsTutorOpen(!isTutorOpen)} className="w-10 h-10 rounded-full bg-stone-100 text-stone-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition-all shadow-sm" title="Ask AI Tutor"><HelpCircle className="w-5 h-5" /></button>
@@ -1464,113 +1885,138 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                         </div>
                                     </motion.div>
                                 ) : (
-                                    <motion.div key="feedback" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 20, opacity: 0 }} transition={{ duration: 0.4, ease: "easeOut" }} className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 md:p-6 pb-48">
-                                        <div className={cn("max-w-4xl mx-auto w-full space-y-4 transition-transform duration-100", drillFeedback.score <= 4 && "animate-[shake_0.5s_ease-in-out]")}>
-                                            <div className="flex flex-col items-center gap-1">
-                                                <div className={cn("text-5xl font-bold font-newsreader", drillFeedback.score >= 8 ? "text-emerald-600" : drillFeedback.score >= 6 ? "text-amber-500" : "text-rose-500")}>
-                                                    {drillFeedback.score}<span className="text-xl text-stone-300 font-normal">/10</span>
-                                                </div>
-                                                <p className="text-stone-500 font-medium text-xs uppercase tracking-wider">Accuracy Score</p>
-                                                {eloChange !== null && eloChange !== 0 ? (
-                                                    <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150 mt-4 w-full max-w-sm">
-                                                        {/* Rank Progress Bar */}
-                                                        {(() => {
-                                                            const rank = getRank(currentElo || 1200);
-                                                            return (
-                                                                <div className="w-full mb-4">
-                                                                    <div className="flex justify-between text-xs font-bold text-stone-400 mb-1.5 uppercase tracking-wider">
-                                                                        <span className={rank.color.replace('bg-', 'text-')}>{rank.title}</span>
-                                                                        <span>{rank.nextRank?.title || "Max"}</span>
-                                                                    </div>
-                                                                    <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden shadow-inner">
-                                                                        <div
-                                                                            className={cn("h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden", rank.bg.replace('bg-', 'bg-gradient-to-r from-transparent to-'))}
-                                                                            style={{ width: `${Math.max(5, rank.progress)}%`, backgroundColor: 'currentColor' }}
-                                                                        >
-                                                                            <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" />
-                                                                        </div>
-                                                                    </div>
-                                                                    <div className="text-[10px] text-right text-stone-300 mt-1 font-mono">{Math.round(rank.progress)}% to promote</div>
-                                                                </div>
-                                                            );
-                                                        })()}
-
-                                                        {/* Elo Change Badge & Breakdown */}
-                                                        <div className="relative group/breakdown cursor-help">
-                                                            <div className={cn("px-4 py-1.5 rounded-full text-sm font-bold flex items-center gap-2 shadow-sm border transition-all hover:scale-105", eloChange > 0 ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-rose-50 text-rose-600 border-rose-100")}>
-                                                                <TrendingUp className={cn("w-4 h-4", eloChange < 0 && "rotate-180")} />
-                                                                <span>{eloChange > 0 ? "+" : ""}{eloChange} Elo</span>
-                                                                {eloBreakdown?.streakBonus && <span className="flex items-center text-orange-500 ml-1 animate-pulse"><Zap className="w-3 h-3 fill-current" /></span>}
-                                                            </div>
-
-                                                            {/* Hover Breakdown */}
-                                                            {eloBreakdown && (
-                                                                <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 bg-white rounded-xl shadow-xl border border-stone-100 p-3 opacity-0 group-hover/breakdown:opacity-100 transition-opacity pointer-events-none z-50 text-xs">
-                                                                    <div className="space-y-1.5 ">
-                                                                        <div className="flex justify-between text-stone-500">
-                                                                            <span>Base Performance</span>
-                                                                            <span className="font-mono font-bold">{eloBreakdown.baseChange > 0 ? "+" : ""}{eloBreakdown.baseChange}</span>
-                                                                        </div>
-                                                                        {eloBreakdown.streakBonus && (
-                                                                            <div className="flex justify-between text-orange-500 font-bold">
-                                                                                <span className="flex items-center gap-1"><Zap className="w-3 h-3" /> Streak Bonus</span>
-                                                                                <span className="font-mono">+{eloBreakdown.bonusChange}</span>
+                                    <AnimatePresence mode="wait">
+                                        {(bossState.active || (gambleState.active && gambleState.introAck)) ? (
+                                            <BossScoreReveal
+                                                key="boss-feedback"
+                                                score={drillFeedback.score}
+                                                drift={0}
+                                                type={gambleState.active ? 'gamble' : bossState.type as any}
+                                                onNext={() => {
+                                                    // Reset Gamble State if finished (Loss or Max Win)
+                                                    if (gambleState.active && (drillFeedback.score < 9.0 || gambleState.doubleDownCount >= 2)) {
+                                                        setGambleState({ active: false, introAck: false, wager: null, doubleDownCount: 0 });
+                                                        setTheme('default');
+                                                    }
+                                                    handleGenerateDrill();
+                                                }}
+                                                onRetry={gambleState.active ? undefined : () => {
+                                                    setDrillFeedback(null);
+                                                    setUserTranslation("");
+                                                    setIsSubmittingDrill(false);
+                                                    setWordPopup(null);
+                                                }}
+                                            />
+                                        ) : (
+                                            <motion.div key="feedback" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 20, opacity: 0 }} transition={{ duration: 0.4, ease: "easeOut" }} className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 md:p-6 pb-48">
+                                                <div className={cn("max-w-4xl mx-auto w-full space-y-4 transition-transform duration-100", drillFeedback.score <= 4 && "animate-[shake_0.5s_ease-in-out]")}>
+                                                    <div className="flex flex-col items-center gap-1">
+                                                        <div className={cn("text-5xl font-bold font-newsreader", drillFeedback.score >= 8 ? "text-emerald-600" : drillFeedback.score >= 6 ? "text-amber-500" : "text-rose-500")}>
+                                                            {drillFeedback.score}<span className="text-xl text-stone-300 font-normal">/10</span>
+                                                        </div>
+                                                        <p className="text-stone-500 font-medium text-xs uppercase tracking-wider">Accuracy Score</p>
+                                                        {eloChange !== null && eloChange !== 0 ? (
+                                                            <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150 mt-4 w-full max-w-sm">
+                                                                {/* Rank Progress Bar */}
+                                                                {(() => {
+                                                                    const rank = getRank(currentElo || 1200);
+                                                                    return (
+                                                                        <div className="w-full mb-4">
+                                                                            <div className="flex justify-between text-xs font-bold text-stone-400 mb-1.5 uppercase tracking-wider">
+                                                                                <span className={rank.color.replace('bg-', 'text-')}>{rank.title}</span>
+                                                                                <span>{rank.nextRank?.title || "Max"}</span>
                                                                             </div>
-                                                                        )}
-                                                                        <div className="w-full h-px bg-stone-100 my-1" />
-                                                                        <div className="flex justify-between text-stone-400 text-[10px] uppercase tracking-wider">
-                                                                            <span>Difficulty</span>
-                                                                            <span>{Math.round(eloBreakdown.difficultyElo)}</span>
+                                                                            <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden shadow-inner">
+                                                                                <div
+                                                                                    className={cn("h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden", rank.bg.replace('bg-', 'bg-gradient-to-r from-transparent to-'))}
+                                                                                    style={{ width: `${Math.max(5, rank.progress)}%`, backgroundColor: 'currentColor' }}
+                                                                                >
+                                                                                    <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" />
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="text-[10px] text-right text-stone-300 mt-1 font-mono">{Math.round(rank.progress)}% to promote</div>
                                                                         </div>
+                                                                    );
+                                                                })()}
+
+                                                                {/* Elo Change Badge & Breakdown */}
+                                                                <div className="relative group/breakdown cursor-help">
+                                                                    <div className={cn("px-4 py-1.5 rounded-full text-sm font-bold flex items-center gap-2 shadow-sm border transition-all hover:scale-105", eloChange > 0 ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-rose-50 text-rose-600 border-rose-100")}>
+                                                                        <TrendingUp className={cn("w-4 h-4", eloChange < 0 && "rotate-180")} />
+                                                                        <span>{eloChange > 0 ? "+" : ""}{eloChange} Elo</span>
+                                                                        {eloBreakdown?.streakBonus && <span className="flex items-center text-orange-500 ml-1 animate-pulse"><Zap className="w-3 h-3 fill-current" /></span>}
                                                                     </div>
+
+                                                                    {/* Hover Breakdown */}
+                                                                    {eloBreakdown && (
+                                                                        <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 bg-white rounded-xl shadow-xl border border-stone-100 p-3 opacity-0 group-hover/breakdown:opacity-100 transition-opacity pointer-events-none z-50 text-xs">
+                                                                            <div className="space-y-1.5 ">
+                                                                                <div className="flex justify-between text-stone-500">
+                                                                                    <span>Base Performance</span>
+                                                                                    <span className="font-mono font-bold">{eloBreakdown.baseChange > 0 ? "+" : ""}{eloBreakdown.baseChange}</span>
+                                                                                </div>
+                                                                                {eloBreakdown.streakBonus && (
+                                                                                    <div className="flex justify-between text-orange-500 font-bold">
+                                                                                        <span className="flex items-center gap-1"><Zap className="w-3 h-3" /> Streak Bonus</span>
+                                                                                        <span className="font-mono">+{eloBreakdown.bonusChange}</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                <div className="w-full h-px bg-stone-100 my-1" />
+                                                                                <div className="flex justify-between text-stone-400 text-[10px] uppercase tracking-wider">
+                                                                                    <span>Difficulty</span>
+                                                                                    <span>{Math.round(eloBreakdown.difficultyElo)}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
-                                                            )}
-                                                        </div>
 
-                                                        {drillFeedback.judge_reasoning && <p className="text-[10px] text-stone-400 mt-3 max-w-lg text-center leading-relaxed"><span className="font-bold text-stone-500 mr-1">AI Judge:</span>{drillFeedback.judge_reasoning}</p>}
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150 mt-1">
-                                                        <div className="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm border bg-stone-50 text-stone-500 border-stone-200"><RefreshCw className="w-3 h-3" /> Practice Mode</div>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <div className="bg-white/90 p-6 rounded-[2rem] shadow-xl shadow-stone-200/50 border border-stone-100 backdrop-blur-sm">
-                                                <div className="flex items-center justify-between mb-4">
-                                                    <div className="flex items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-wider"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Smart Revision</div>
-                                                    <div className="flex gap-2">
-                                                        {mode === 'listening' && (
-                                                            <button onClick={playRecording} className="px-3 py-1.5 rounded-full bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center gap-1.5 transition-all text-[10px] font-bold" title="Play My Recording"><Mic className="w-3 h-3" /> Play Mine</button>
+                                                                {drillFeedback.judge_reasoning && <p className="text-[10px] text-stone-400 mt-3 max-w-lg text-center leading-relaxed"><span className="font-bold text-stone-500 mr-1">AI Judge:</span>{drillFeedback.judge_reasoning}</p>}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150 mt-1">
+                                                                <div className="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm border bg-stone-50 text-stone-500 border-stone-200"><RefreshCw className="w-3 h-3" /> Practice Mode</div>
+                                                            </div>
                                                         )}
-                                                        <button onClick={playAudio} className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-all" title="Listen to Correct Version"><Volume2 className="w-4 h-4" /></button>
+                                                    </div>
+
+                                                    <div className="bg-white/90 p-6 rounded-[2rem] shadow-xl shadow-stone-200/50 border border-stone-100 backdrop-blur-sm">
+                                                        <div className="flex items-center justify-between mb-4">
+                                                            <div className="flex items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-wider"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Smart Revision</div>
+                                                            <div className="flex gap-2">
+                                                                {mode === 'listening' && (
+                                                                    <button onClick={playRecording} className="px-3 py-1.5 rounded-full bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center gap-1.5 transition-all text-[10px] font-bold" title="Play My Recording"><Mic className="w-3 h-3" /> Play Mine</button>
+                                                                )}
+                                                                <button onClick={playAudio} className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-all" title="Listen to Correct Version"><Volume2 className="w-4 h-4" /></button>
+                                                            </div>
+                                                        </div>
+                                                        {mode !== "listening" && (
+                                                            <div className="mb-4 p-3 bg-stone-50 rounded-xl border border-stone-100">
+                                                                <p className="text-[10px] text-stone-400 font-bold uppercase mb-1">Your Answer:</p>
+                                                                <p className="text-base font-newsreader text-stone-700 italic">"{userTranslation}"</p>
+                                                            </div>
+                                                        )}
+                                                        {renderDiff()}
+                                                        {drillFeedback.feedback && (
+                                                            <div className="mt-4 pt-4 border-t border-stone-100">
+                                                                <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center gap-2"><Sparkles className="w-3 h-3" /> Coach's Analysis</h4>
+                                                                <div className="space-y-2">
+                                                                    {Array.isArray(drillFeedback.feedback) ? drillFeedback.feedback.map((point: string, i: number) => (
+                                                                        <div key={i} className="flex gap-2 text-stone-600 leading-snug font-medium text-sm"><div className="w-1 h-1 rounded-full bg-indigo-400 mt-2 shrink-0" /><p>{point}</p></div>
+                                                                    )) : (
+                                                                        <div className="grid gap-3">
+                                                                            {drillFeedback.feedback.listening_tips && <div className="bg-amber-50 p-3 rounded-xl text-amber-800 text-xs"><strong className="block mb-0.5 text-amber-600">👂 Listening Tips</strong>{drillFeedback.feedback.listening_tips}</div>}
+                                                                            {drillFeedback.feedback.encouragement && <div className="italic text-stone-500 text-sm">"{drillFeedback.feedback.encouragement}"</div>}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
-                                                {mode !== "listening" && (
-                                                    <div className="mb-4 p-3 bg-stone-50 rounded-xl border border-stone-100">
-                                                        <p className="text-[10px] text-stone-400 font-bold uppercase mb-1">Your Answer:</p>
-                                                        <p className="text-base font-newsreader text-stone-700 italic">"{userTranslation}"</p>
-                                                    </div>
-                                                )}
-                                                {renderDiff()}
-                                                {drillFeedback.feedback && (
-                                                    <div className="mt-4 pt-4 border-t border-stone-100">
-                                                        <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center gap-2"><Sparkles className="w-3 h-3" /> Coach's Analysis</h4>
-                                                        <div className="space-y-2">
-                                                            {Array.isArray(drillFeedback.feedback) ? drillFeedback.feedback.map((point: string, i: number) => (
-                                                                <div key={i} className="flex gap-2 text-stone-600 leading-snug font-medium text-sm"><div className="w-1 h-1 rounded-full bg-indigo-400 mt-2 shrink-0" /><p>{point}</p></div>
-                                                            )) : (
-                                                                <div className="grid gap-3">
-                                                                    {drillFeedback.feedback.listening_tips && <div className="bg-amber-50 p-3 rounded-xl text-amber-800 text-xs"><strong className="block mb-0.5 text-amber-600">👂 Listening Tips</strong>{drillFeedback.feedback.listening_tips}</div>}
-                                                                    {drillFeedback.feedback.encouragement && <div className="italic text-stone-500 text-sm">"{drillFeedback.feedback.encouragement}"</div>}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </motion.div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
                                 )}
                             </AnimatePresence>
                         ) : null}
@@ -1585,12 +2031,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         >
                             Force Gamble
                         </button>
-                        <button
-                            onClick={() => { setBossState({ active: true, introAck: false }); setTheme('boss'); setPlaybackSpeed(1.25); }}
-                            className="bg-amber-900/80 text-amber-200 text-[10px] px-2 py-1 rounded border border-amber-500/50 hover:bg-amber-900"
-                        >
-                            Force Boss
-                        </button>
+                        <div className="grid grid-cols-2 gap-1">
+                            <button onClick={() => { setBossState({ active: true, introAck: false, type: 'blind' }); setTheme('boss'); setPlaybackSpeed(1.25); }} className="bg-stone-800 text-stone-400 text-[9px] px-1 py-1 rounded hover:bg-stone-700">Force Blind</button>
+                            <button onClick={() => { setBossState({ active: true, introAck: false, type: 'lightning' }); setTheme('boss'); setPlaybackSpeed(1.25); }} className="bg-amber-900/50 text-amber-500 text-[9px] px-1 py-1 rounded hover:bg-amber-900">Force Light.</button>
+                            <button onClick={() => { setBossState({ active: true, introAck: false, type: 'echo' }); setTheme('boss'); setPlaybackSpeed(1.0); }} className="bg-cyan-900/50 text-cyan-500 text-[9px] px-1 py-1 rounded hover:bg-cyan-900">Force Echo</button>
+                            <button onClick={() => { setBossState({ active: true, introAck: false, type: 'reaper', hp: 3, maxHp: 3 }); setTheme('boss'); setPlaybackSpeed(1.0); }} className="bg-rose-900/50 text-rose-500 text-[9px] px-1 py-1 rounded hover:bg-rose-900">Force Reaper</button>
+                            <button onClick={() => { setBossState({ active: true, introAck: false, type: 'reverser' }); setTheme('boss'); setPlaybackSpeed(1.0); }} className="bg-fuchsia-900/50 text-fuchsia-500 text-[9px] px-1 py-1 rounded hover:bg-fuchsia-900">Force Reverse</button>
+                        </div>
                         <button
                             onClick={() => { setFeverMode(true); setComboCount(3); setTheme('fever'); }}
                             className="bg-purple-900/80 text-purple-200 text-[10px] px-2 py-1 rounded border border-purple-500/50 hover:bg-purple-900"
@@ -1601,33 +2048,26 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                     {/* Floating Action Bar - Redesigned */}
                     <AnimatePresence>
-                        {drillFeedback && (
+                        {drillFeedback && !bossState.active && !gambleState.active && (
                             <motion.div
-                                initial={{ y: 100, opacity: 0 }}
+                                initial={{ y: 50, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
-                                exit={{ y: 100, opacity: 0 }}
-                                className="absolute bottom-10 left-0 right-0 flex justify-center z-50 pointer-events-none"
+                                exit={{ y: 50, opacity: 0 }}
+                                className="absolute bottom-8 right-6 md:right-10 z-50 pointer-events-none"
                             >
-                                <div className="bg-stone-900/95 backdrop-blur-2xl text-white p-2 rounded-full flex gap-2 pointer-events-auto border border-white/10 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.4)] scale-110 items-center pl-3">
-                                    <button
-                                        onClick={() => { setDrillFeedback(null); setUserTranslation(""); setIsSubmittingDrill(false); setWordPopup(null); }}
-                                        className="px-5 py-2.5 rounded-full text-stone-400 font-bold hover:text-white hover:bg-white/10 transition-all text-sm flex items-center gap-2 group"
-                                    >
-                                        <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
-                                        <span>Try Again</span>
-                                    </button>
-
-                                    <div className="w-px h-5 bg-white/10" />
-
+                                <div className="pointer-events-auto filter drop-shadow-2xl">
                                     <button
                                         onClick={() => handleGenerateDrill()}
-                                        className="px-8 py-3 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-full font-bold shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40 hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2 text-sm relative overflow-hidden group"
+                                        className="group relative flex items-center gap-3 px-8 py-3.5 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-full font-bold shadow-[0_10px_30px_-10px_rgba(249,115,22,0.5)] hover:shadow-[0_20px_40px_-10px_rgba(249,115,22,0.6)] hover:scale-105 active:scale-95 transition-all text-sm md:text-base tracking-wide overflow-hidden"
                                     >
-                                        <span className="relative z-10 flex items-center gap-2 text-nowrap">
-                                            Next Question <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                                        </span>
-                                        {/* Shimmer Effect */}
-                                        <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/25 to-transparent z-0" />
+                                        <span className="relative z-10 font-bold">Next Question</span>
+                                        <ArrowRight className="w-5 h-5 relative z-10 group-hover:translate-x-1 transition-transform" />
+
+                                        {/* Shimmer Overlay */}
+                                        <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/30 to-transparent z-0" />
+
+                                        {/* Glow Effect */}
+                                        <div className="absolute inset-0 rounded-full bg-orange-500/20 blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
                                     </button>
                                 </div>
                             </motion.div>
@@ -1800,9 +2240,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     transition={{ delay: 0.5 }}
                                     className="space-y-4"
                                 >
-                                    <h2 className="text-5xl font-black text-red-600 tracking-tighter uppercase">Violent Probability</h2>
+                                    <h2 className="text-5xl font-black text-red-600 tracking-tighter uppercase">猩红轮盘</h2>
                                     <div className="h-1 w-32 bg-red-600 mx-auto" />
-                                    <p className="text-red-200 font-mono text-sm tracking-widest">HIGH RISK • HIGH REWARD</p>
+                                    <p className="text-red-200 font-mono text-sm tracking-widest">高风险 • 高回报</p>
                                 </motion.div>
 
                                 <motion.p
@@ -1811,7 +2251,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     transition={{ delay: 1.5, repeat: Infinity, repeatType: "reverse" }}
                                     className="text-white/30 text-xs mt-12"
                                 >
-                                    CLICK TO ENTER THE DEAL
+                                    点击进入交易 (CLICK TO ENTER)
                                 </motion.p>
                             </div>
                         </motion.div>
@@ -1835,8 +2275,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     transition={{ duration: 0.8, ease: "circOut" }}
                                     className="relative"
                                 >
-                                    <div className="absolute inset-0 bg-amber-500/20 blur-3xl rounded-full" />
-                                    <Crown className="w-32 h-32 text-amber-500 relative z-10" />
+                                    <div className={cn("absolute inset-0 blur-3xl rounded-full", currentBoss.bg, "opacity-20")} />
+                                    <currentBoss.icon className={cn("w-32 h-32 relative z-10", currentBoss.color)} />
                                 </motion.div>
 
                                 <motion.div
@@ -1845,9 +2285,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     transition={{ delay: 0.5 }}
                                     className="space-y-4"
                                 >
-                                    <h2 className="text-5xl font-black text-amber-500 tracking-tighter uppercase">Boss Encounter</h2>
-                                    <div className="h-1 w-32 bg-amber-500 mx-auto" />
-                                    <p className="text-amber-200 font-mono text-sm tracking-widest">NATIVE SPEED • BLIND MODE</p>
+                                    <h2 className={cn("text-5xl font-black tracking-tighter uppercase", currentBoss.color)}>{currentBoss.name}</h2>
+                                    <div className={cn("h-1 w-32 mx-auto", currentBoss.bg)} />
+                                    <p className={cn("font-mono text-sm tracking-widest opacity-80", currentBoss.color)}>{currentBoss.desc}</p>
                                 </motion.div>
 
                                 <motion.p
@@ -1875,28 +2315,101 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         >
                             <div className={cn(
                                 "flex flex-col items-center gap-2 p-6 rounded-3xl border-2 shadow-2xl backdrop-blur-xl min-w-[200px]",
-                                lootDrop.rarity === 'legendary' ? "bg-amber-900/90 border-amber-400 shadow-amber-500/50" :
-                                    lootDrop.rarity === 'rare' ? "bg-indigo-900/90 border-indigo-400 shadow-indigo-500/50" :
-                                        "bg-stone-800/90 border-stone-500 shadow-xl"
+                                lootDrop.amount <= 0 ? "bg-red-950/90 border-red-500 shadow-red-500/50" :
+                                    lootDrop.rarity === 'legendary' ? "bg-amber-900/90 border-amber-400 shadow-amber-500/50" :
+                                        lootDrop.rarity === 'rare' ? "bg-indigo-900/90 border-indigo-400 shadow-indigo-500/50" :
+                                            "bg-stone-800/90 border-stone-500 shadow-xl"
                             )}>
                                 <div className="text-6xl animate-bounce">
-                                    {lootDrop.type === 'theme' ? '👑' : lootDrop.type === 'gem' ? '💎' : '🎁'}
+                                    {lootDrop.amount <= 0 ? '💔' : lootDrop.type === 'theme' ? '👑' : lootDrop.type === 'gem' ? '💎' : '🎁'}
                                 </div>
                                 <div className={cn("text-lg font-bold uppercase tracking-wider",
-                                    lootDrop.rarity === 'legendary' ? "text-amber-300" :
-                                        lootDrop.rarity === 'rare' ? "text-indigo-300" :
-                                            "text-stone-300"
+                                    lootDrop.amount <= 0 ? "text-red-300" :
+                                        lootDrop.rarity === 'legendary' ? "text-amber-300" :
+                                            lootDrop.rarity === 'rare' ? "text-indigo-300" :
+                                                "text-stone-300"
                                 )}>
                                     {lootDrop.message}
                                 </div>
-                                <div className="text-3xl font-black text-white font-mono">
-                                    +{lootDrop.amount}
+                                <div className={cn("text-3xl font-black font-mono", lootDrop.amount <= 0 ? "text-red-500" : "text-white")}>
+                                    {lootDrop.amount > 0 ? `+${lootDrop.amount}` : lootDrop.amount}
                                 </div>
                             </div>
                         </motion.div>
                     )}
                 </AnimatePresence>
+
+                {/* RANK UP Celebration Overlay */}
+                <AnimatePresence>
+                    {rankUp && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-md"
+                            onClick={() => setRankUp(null)}
+                        >
+                            <motion.div
+                                initial={{ scale: 0, rotate: -180 }}
+                                animate={{ scale: 1, rotate: 0 }}
+                                exit={{ scale: 0, rotate: 180 }}
+                                transition={{ type: "spring", damping: 12, stiffness: 100 }}
+                                className="flex flex-col items-center gap-6 p-10 rounded-3xl bg-gradient-to-br from-amber-900/90 to-purple-900/90 border-2 border-amber-400/50 shadow-2xl shadow-amber-500/30"
+                            >
+                                {/* Crown Icon */}
+                                <motion.div
+                                    className="text-8xl"
+                                    animate={{
+                                        scale: [1, 1.2, 1],
+                                        rotate: [0, -10, 10, 0]
+                                    }}
+                                    transition={{
+                                        duration: 1,
+                                        repeat: Infinity,
+                                        repeatType: "reverse"
+                                    }}
+                                >
+                                    👑
+                                </motion.div>
+
+                                {/* Title */}
+                                <div className="text-3xl font-black text-amber-300 uppercase tracking-widest">
+                                    段位晋升!
+                                </div>
+
+                                {/* Rank Transition */}
+                                <div className="flex items-center gap-4 text-xl">
+                                    <span className="text-stone-400 line-through">{rankUp.oldRank}</span>
+                                    <motion.span
+                                        className="text-2xl"
+                                        animate={{ x: [0, 5, 0] }}
+                                        transition={{ duration: 0.5, repeat: Infinity }}
+                                    >
+                                        →
+                                    </motion.span>
+                                    <span className="text-amber-200 font-bold text-2xl">{rankUp.newRank}</span>
+                                </div>
+
+                                {/* Tap to Continue */}
+                                <motion.div
+                                    className="text-sm text-amber-400/60 mt-4"
+                                    animate={{ opacity: [0.4, 1, 0.4] }}
+                                    transition={{ duration: 1.5, repeat: Infinity }}
+                                >
+                                    点击继续
+                                </motion.div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                {/* DEATH FX OVERLAY */}
+                <DeathFX type={deathAnim} />
+
             </motion.div>
+            {/* DEBUGGER */}
+            <DrillDebug onTriggerBoss={handleDebugBossTrigger} />
+
         </AnimatePresence>
     );
 }

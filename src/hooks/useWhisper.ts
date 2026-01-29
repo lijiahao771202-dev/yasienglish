@@ -99,8 +99,12 @@ export function useWhisper() {
                     // If Whisper fails or returns empty, keep the WebSpeech result (if any)
                     setResult(prev => ({ ...prev, isFinal: true }));
                 }
-            } catch (err) {
+            } catch (err: any) {
                 console.error('[ASR] Error:', err);
+                // Fallback to WebSpeech if Server fails
+                // TODO: Add Toast Notif? For now just log.
+                // Actually, let's signal the error in the result so UI can show a warning?
+                // Or just silent fallback.
                 setResult(prev => ({ ...prev, isFinal: true }));
             }
         } else {
