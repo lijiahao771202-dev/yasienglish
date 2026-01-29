@@ -96,6 +96,7 @@ export default function BattlePage() {
     const [activeDrill, setActiveDrill] = useState<{ type: "scenario"; topic: string } | null>(null);
     const [eloRating, setEloRating] = useState(1200);
     const [streak, setStreak] = useState(0);
+    const [battleMode, setBattleMode] = useState<'listening' | 'translation'>('listening');
 
     useEffect(() => {
         db.user_profile.orderBy('id').first().then(profile => {
@@ -161,6 +162,36 @@ export default function BattlePage() {
                             </div>
                         </div>
                     </motion.div>
+                </div>
+
+                {/* Mode Switcher */}
+                <div className="flex justify-center mb-12">
+                    <div className="flex items-center gap-2 bg-stone-200/40 backdrop-blur-lg p-1.5 rounded-full border border-stone-200/50 shadow-inner">
+                        <button
+                            onClick={() => setBattleMode('listening')}
+                            className={cn(
+                                "flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold transition-all duration-300",
+                                battleMode === 'listening'
+                                    ? "bg-white text-stone-900 shadow-lg shadow-stone-200/50 scale-105"
+                                    : "text-stone-500 hover:text-stone-700 hover:bg-stone-100/50"
+                            )}
+                        >
+                            <div className={cn("w-2 h-2 rounded-full", battleMode === 'listening' ? "bg-emerald-500 animate-pulse" : "bg-stone-300")} />
+                            Listening
+                        </button>
+                        <button
+                            onClick={() => setBattleMode('translation')}
+                            className={cn(
+                                "flex items-center gap-2 px-6 py-3 rounded-full text-sm font-bold transition-all duration-300",
+                                battleMode === 'translation'
+                                    ? "bg-white text-stone-900 shadow-lg shadow-stone-200/50 scale-105"
+                                    : "text-stone-500 hover:text-stone-700 hover:bg-stone-100/50"
+                            )}
+                        >
+                            <div className={cn("w-2 h-2 rounded-full", battleMode === 'translation' ? "bg-indigo-500 animate-pulse" : "bg-stone-300")} />
+                            Translation
+                        </button>
+                    </div>
                 </div>
 
                 {/* Quick Start Hero */}
@@ -248,7 +279,7 @@ export default function BattlePage() {
                     <DrillCore
                         context={activeDrill}
                         onClose={() => setActiveDrill(null)}
-                        initialMode="listening"
+                        initialMode={battleMode}
                     />
                 )}
             </AnimatePresence>

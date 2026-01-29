@@ -3,7 +3,7 @@ import { deepseek } from "@/lib/deepseek";
 
 export async function POST(req: NextRequest) {
     try {
-        const { articleTitle, articleContent, difficulty, eloRating, mode = "translation" } = await req.json();
+        const { articleTitle, articleContent, difficulty, eloRating, mode = "translation", bossType } = await req.json();
 
         // Determine if this is a Scenario Drill (no content) or Article Drill
         const isScenario = !articleContent || articleContent.length < 50;
@@ -16,10 +16,22 @@ export async function POST(req: NextRequest) {
         const snippet = articleContent ? articleContent.slice(0, 3000) : "";
 
         // Dynamic Elo Prompt Engineering
-        const currentElo = eloRating || 1200;
+        let currentElo = eloRating || 1200;
 
-        const difficultyScale = `
-        Scale Reference:
+        // RUSSIAN ROULETTE DEATH LOGIC
+        if (bossType === 'roulette_execution') {
+            currentElo = 2400; // Force C1/C2 Difficulty
+        }
+
+        const difficultyScale = mode === 'listening' ? `
+        LISTENING SCALE (Focus on Echoing/Memory):
+        - 800 (A1): Very slow, isolated words. No linking sounds.
+        - 1200 (A2): Simple daily sentences. Clear enunciation.
+        - 1600 (B1): Natural speed conversational. Some linking sounds.
+        - 2000 (B2): Fast news anchor speed. Complex information density.
+        - 2400 (C1): Rapid native debate. Multiple speakers style. Idiomatic speed.
+        ` : `
+        TRANSLATION SCALE (Focus on Grammar/Reading):
         - 800 (A1): Simple SVO sentences, top 500 words.
         - 1200 (A2): Compound sentences, daily topics, top 1500 words.
         - 1600 (B1): Relative clauses, passive voice, top 3000 words.
@@ -28,16 +40,23 @@ export async function POST(req: NextRequest) {
         `;
 
         let specificInstruction = "";
-        if (currentElo < 1000) specificInstruction = "Strictly beginner. Keep sentences extremely short (max 8-12 words). Subject-Verb-Object only.";
-        else if (currentElo < 1400) specificInstruction = "Elementary. Max 20-25 words. Simple compound sentences allowed.";
-        else if (currentElo < 1800) specificInstruction = "Intermediate. Max 30-40 words. Mix standard professional English.";
-        else if (currentElo < 2200) specificInstruction = "Upper Intermediate. Max 45-60 words. Abstract concepts.";
-        else specificInstruction = "Advanced. Max 70+ words. Sophisticated expression.";
 
-        if (mode === "listening" && currentElo < 1500) {
-            specificInstruction += " For Listening: ONE single clear sentence only. No paragraphs.";
-        } else if (mode === "listening") {
-            specificInstruction += " For Listening: 1-2 connected sentences.";
+        if (mode === 'listening') {
+            // LISTENING MODE: Shorter, Memory-Focused limits
+            if (currentElo < 1000) specificInstruction = "Strictly beginner. Very short phrase (5-8 words). Slow and clear.";
+            else if (currentElo < 1400) specificInstruction = "Elementary. One clear sentence (10-15 words).";
+            else if (currentElo < 1800) specificInstruction = "Intermediate. One complex sentence or two short ones (15-25 words).";
+            else if (currentElo < 2200) specificInstruction = "Upper Intermediate. News-style brevity (25-35 words). Focus on density.";
+            else specificInstruction = "Advanced. Max 35-45 words. High information density but keep it retainable.";
+
+            specificInstruction += " For Listening: Content must be 'echo-able' from short-term memory.";
+        } else {
+            // TRANSLATION MODE: Longer, Grammar-Focused limits
+            if (currentElo < 1000) specificInstruction = "Strictly beginner. Keep sentences extremely short (max 8-12 words). Subject-Verb-Object only.";
+            else if (currentElo < 1400) specificInstruction = "Elementary. Max 20-25 words. Simple compound sentences allowed.";
+            else if (currentElo < 1800) specificInstruction = "Intermediate. Max 30-40 words. Mix standard professional English.";
+            else if (currentElo < 2200) specificInstruction = "Upper Intermediate. Max 45-60 words. Abstract concepts.";
+            else specificInstruction = "Advanced. Max 70+ words. Sophisticated expression.";
         }
 
         const difficultyPrompt = `
@@ -56,7 +75,25 @@ export async function POST(req: NextRequest) {
         if (isScenario) {
             // --- SCENARIO MODE PROMPT ---
             const styles = ["Dialogue Response", "Casual Remark", "Formal Request", "Emergency Question", "Witty Comment"];
-            const randomStyle = styles[Math.floor(Math.random() * styles.length)];
+            let styleInstruction = styles[Math.floor(Math.random() * styles.length)];
+            let scenarioContext = "The user is in a 'Battle Mode'.";
+
+            // Boss Scenario Injection
+            if (bossType) {
+                const BOSS_SCENARIOS: Record<string, string> = {
+                    'reaper': "Dark / Survival / High Stakes. Example: 'The shadow looms closer as time runs out.'",
+                    'lightning': "Action / Speed / Urgency. Example: 'Quick! The reactor is destabilizing!'",
+                    'blind': "Auditory / Sensory / Mystery. Example: 'She heard a whisper in the complete darkness.'",
+                    'echo': "Memory / Ephemeral / Echoes. Example: 'The voice faded before I could understand it.'",
+                    'reverser': "Paradox / Confusion / Mirror. Example: 'The reflection showed a different truth.'",
+                    'roulette': "Casino / Risk / Luck. Example: 'The wheel spins, deciding your fate.'",
+                    'roulette_execution': "Death / Finality / Judgment. Example: 'The hammer clicks. This is the end.'"
+                };
+                if (BOSS_SCENARIOS[bossType]) {
+                    styleInstruction = `THEME: ${BOSS_SCENARIOS[bossType]}. Create a sentence that fits this specific Vibe.`;
+                    scenarioContext = `BOSS FIGHT ACTIVE: ${bossType.toUpperCase()}. High Tension.`;
+                }
+            }
 
             prompt = `
             [SCENARIO MODE | DIVERSITY SEED: ${randomSeed}]
@@ -73,8 +110,8 @@ export async function POST(req: NextRequest) {
 
             Constraint: ${difficultyPrompt}
 
-            **Context**: The user is in a "Battle Mode".
-            **Style**: ${randomStyle}.
+            **Context**: ${scenarioContext}
+            **Style**: ${styleInstruction}
             
             Output strictly in JSON format:
             {
