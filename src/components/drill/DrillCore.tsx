@@ -630,7 +630,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setEloChange(-penalty);
             setLootDrop({
                 type: 'exp',
-                amount: penalty,
+                amount: -penalty,
                 rarity: 'common',
                 message: '💀 你中弹了！扣除 50 Elo 并开启处决局'
             });
@@ -646,6 +646,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     db.user_profile.update(profile.id, {
                         [isListening ? 'listening_elo' : 'elo_rating']: newElo,
                         [isListening ? 'listening_streak' : 'streak_count']: 0
+                    });
+
+                    // Also record in history so the chart shows the drop
+                    db.elo_history.add({
+                        mode: isListening ? 'listening' : 'translation',
+                        elo: newElo,
+                        change: -penalty,
+                        timestamp: Date.now()
                     });
                 }
             });
@@ -983,7 +991,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         if (data.score >= 9.0) {
                             setLootDrop({ type: 'gem', amount: change, rarity: 'legendary', message: `🎰 SURVIVOR JACKPOT x${rouletteSession.multiplier}!` });
                         } else {
-                            setLootDrop({ type: 'exp', amount: Math.abs(change), rarity: 'common', message: `🎰 GAMBLE FAILED! x${rouletteSession.multiplier} LOSS` });
+                            // Loss also multiplied
+                            setLootDrop({ type: 'exp', amount: change, rarity: 'common', message: `🎰 GAMBLE FAILED! x${rouletteSession.multiplier} LOSS` });
                         }
                     } else if (rouletteSession.result === 'dead') {
                         // EXECUTION: Redemption or Double Death
@@ -992,7 +1001,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             setLootDrop({ type: 'gem', amount: 25, rarity: 'rare', message: '⚖️ REDEMPTION GRANTED!' });
                         } else {
                             change = -50;
-                            setLootDrop({ type: 'exp', amount: 50, rarity: 'common', message: '💀 TOTAL ANNIHILATION!' });
+                            setLootDrop({ type: 'exp', amount: -50, rarity: 'common', message: '💀 TOTAL ANNIHILATION!' });
                         }
                     }
                     setRouletteSession(null);
@@ -1885,20 +1894,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                 </div>
                                                             )}
 
-                                                            {/* Loot Drop Notification (Moved below visual elements) */}
-                                                            <AnimatePresence>
-                                                                {lootDrop && (
-                                                                    <motion.div initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }} className="absolute top-20 left-1/2 -translate-x-1/2 z-50">
-                                                                        <div className="bg-stone-900 text-amber-400 px-6 py-3 rounded-xl shadow-2xl border border-amber-500/30 flex items-center gap-3">
-                                                                            <div className="p-2 bg-amber-500/20 rounded-lg"><Gift className="w-5 h-5 animate-bounce" /></div>
-                                                                            <div>
-                                                                                <div className="text-xs font-bold text-amber-600 uppercase tracking-wider">Loot Dropped</div>
-                                                                                <div className="text-sm font-bold text-amber-100">{lootDrop.name}</div>
-                                                                            </div>
-                                                                        </div>
-                                                                    </motion.div>
-                                                                )}
-                                                            </AnimatePresence>
+
                                                             {/* Sleek Slider */}
 
 
@@ -2447,36 +2443,55 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     )}
                 </AnimatePresence>
 
-                {/* Loot Overlay */}
+                {/* Context-Aware Loot Overlay */}
                 <AnimatePresence>
                     {lootDrop && (
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.5, y: 50 }}
+                            initial={{ opacity: 0, scale: 0.8, y: 50 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.5, y: -50 }}
+                            exit={{ opacity: 0, scale: 0.8, y: -50 }}
                             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[100] flex flex-col items-center gap-4 pointer-events-auto cursor-pointer"
                             onClick={() => setLootDrop(null)}
                         >
                             <div className={cn(
-                                "flex flex-col items-center gap-2 p-6 rounded-3xl border-2 shadow-2xl backdrop-blur-xl min-w-[200px]",
-                                lootDrop.amount <= 0 ? "bg-red-950/90 border-red-500 shadow-red-500/50" :
-                                    lootDrop.rarity === 'legendary' ? "bg-amber-900/90 border-amber-400 shadow-amber-500/50" :
-                                        lootDrop.rarity === 'rare' ? "bg-indigo-900/90 border-indigo-400 shadow-indigo-500/50" :
-                                            "bg-stone-800/90 border-stone-500 shadow-xl"
+                                "flex flex-col items-center gap-4 p-8 rounded-[2.5rem] border shadow-2xl backdrop-blur-3xl min-w-[280px]",
+                                lootDrop.amount < 0 ? "bg-red-950/80 border-red-500/50 shadow-red-500/30" :
+                                    lootDrop.rarity === 'legendary' ? "bg-amber-900/80 border-amber-400/50 shadow-amber-500/30" :
+                                        lootDrop.rarity === 'rare' ? "bg-indigo-900/80 border-indigo-400/50 shadow-indigo-500/30" :
+                                            "bg-stone-900/80 border-stone-500/30 shadow-2xl"
                             )}>
-                                <div className="text-6xl animate-bounce">
-                                    {lootDrop.amount <= 0 ? '💔' : lootDrop.type === 'theme' ? '👑' : lootDrop.type === 'gem' ? '💎' : '🎁'}
-                                </div>
-                                <div className={cn("text-lg font-bold uppercase tracking-wider",
-                                    lootDrop.amount <= 0 ? "text-red-300" :
-                                        lootDrop.rarity === 'legendary' ? "text-amber-300" :
-                                            lootDrop.rarity === 'rare' ? "text-indigo-300" :
-                                                "text-stone-300"
+                                <div className={cn(
+                                    "p-5 rounded-2xl mb-2",
+                                    lootDrop.amount < 0 ? "bg-red-500/20 text-red-400" : "bg-amber-500/20 text-amber-400"
                                 )}>
-                                    {lootDrop.message}
+                                    {lootDrop.amount < 0 || lootDrop.message.includes('💀') ? (
+                                        <Skull className="w-12 h-12 animate-pulse" />
+                                    ) : lootDrop.message.includes('🎰') ? (
+                                        <Zap className="w-12 h-12 animate-bounce" />
+                                    ) : lootDrop.type === 'gem' ? (
+                                        <Gem className="w-12 h-12" />
+                                    ) : (
+                                        <Gift className="w-12 h-12" />
+                                    )}
                                 </div>
-                                <div className={cn("text-3xl font-black font-mono", lootDrop.amount <= 0 ? "text-red-500" : "text-white")}>
-                                    {lootDrop.amount > 0 ? `+${lootDrop.amount}` : lootDrop.amount}
+
+                                <div className="text-center">
+                                    <div className={cn("text-xs font-black uppercase tracking-[0.2em] mb-1 opacity-60",
+                                        lootDrop.amount < 0 ? "text-red-400" : "text-amber-500"
+                                    )}>
+                                        {lootDrop.amount < 0 ? "System Penalty" :
+                                            lootDrop.message.includes('🎰') ? "Stakes Locked" : "Reward Dropped"}
+                                    </div>
+                                    <div className={cn("text-xl font-bold mb-4",
+                                        lootDrop.amount < 0 ? "text-red-100" : "text-amber-50"
+                                    )}>
+                                        {lootDrop.message}
+                                    </div>
+                                    <div className={cn("text-5xl font-black font-mono tracking-tighter",
+                                        lootDrop.amount < 0 ? "text-red-500" : "text-white"
+                                    )}>
+                                        {lootDrop.amount > 0 ? `+${lootDrop.amount}` : lootDrop.amount}
+                                    </div>
                                 </div>
                             </div>
                         </motion.div>
