@@ -32,13 +32,13 @@ export async function POST(req: NextRequest) {
         LISTENING SCALE (Focus on Echoing/Memory) - 400 Elo per tier:
         - 0-400 (A1 新手): Very slow, isolated words. 5-8 words. 500 vocab.
         - 400-800 (A2- 青铜): Simple daily sentences. Clear enunciation. 8-12 words. 1000 vocab.
-        - 800-1200 (A2+ 白银): Moderate speed. Basic linking sounds. 12-15 words. 1500 vocab.
-        - 1200-1600 (B1 黄金): Natural speed conversational. 15-20 words. 3000 vocab.
-        - 1600-2000 (B2 铂金): Fast news anchor speed. 20-30 words. 5000 vocab.
-        - 2000-2400 (C1 钻石): Rapid native debate. Idiomatic expressions. 25-35 words. 7000 vocab.
-        - 2400-2800 (C2 大师): Multiple speakers style. Native-only idioms. 35-45 words. 10000 vocab.
-        - 2800-3200 (C2+ 王者): Fastest possible speech. Dense academic. 45-55 words. 12000 vocab.
-        - 3200+ (☠️ 处决): EXTREME PUNISHMENT. 60+ words MINIMUM. Obscure phrasal verbs, challenging pronunciation, dialect mixing.
+        - 800-1200 (A2+ 白银): Moderate speed. Basic linking sounds. 10-14 words. 1500 vocab.
+        - 1200-1600 (B1 黄金): Natural speed conversational. 12-16 words. 3000 vocab.
+        - 1600-2000 (B2 铂金): Fast news anchor speed. 16-22 words. 5000 vocab.
+        - 2000-2400 (C1 钻石): Rapid native debate. Idiomatic expressions. 20-26 words. 7000 vocab.
+        - 2400-2800 (C2 大师): Multiple speakers style. Native-only idioms. 26-32 words. 10000 vocab.
+        - 2800-3200 (C2+ 王者): Fastest possible speech. Dense academic. 30-40 words. 12000 vocab.
+        - 3200+ (☠️ 处决): EXTREME PUNISHMENT. 45+ words MINIMUM. Obscure phrasal verbs, challenging pronunciation, dialect mixing.
         IMPORTANT: You MUST meet the word count for each level. Count your words!
         ` : `
         TRANSLATION SCALE (Focus on Grammar/Reading) - 400 Elo per tier:
@@ -54,43 +54,47 @@ export async function POST(req: NextRequest) {
         `;
 
         let specificInstruction = "";
+        let targetTier = "";
 
         if (mode === 'listening') {
             // LISTENING MODE: Word count per tier (REALISTIC for short-term memory)
-            if (currentElo < 400) specificInstruction = "A1 Level. STRICT: Generate exactly 5-8 words. Simple phrase only.";
-            else if (currentElo < 800) specificInstruction = "A2- Level. STRICT: Generate exactly 8-12 words. One clear sentence.";
-            else if (currentElo < 1200) specificInstruction = "A2+ Level. STRICT: Generate exactly 12-15 words. One moderate sentence.";
-            else if (currentElo < 1600) specificInstruction = "B1 Level. STRICT: Generate exactly 15-20 words. Complex sentence required.";
-            else if (currentElo < 2000) specificInstruction = "B2 Level. STRICT: Generate exactly 20-30 words. News-style density.";
-            else if (currentElo < 2400) specificInstruction = "C1 Level. STRICT: Generate exactly 25-35 words. High information density.";
-            else if (currentElo < 2800) specificInstruction = "C2 Level. STRICT: Generate exactly 35-45 words. Native complexity.";
-            else if (currentElo < 3200) specificInstruction = "C2+ Level. STRICT: Generate exactly 45-55 words. Dense academic content.";
-            else specificInstruction = "EXECUTION MODE (PUNISHMENT). STRICT: Generate exactly 60+ words. Use extremely fast native speech patterns, obscure idioms, dense academic terminology, and intentionally difficult pronunciation. This should be nearly impossible to repeat.";
+            if (currentElo < 400) { targetTier = "新手"; specificInstruction = `TIER: ${targetTier} (A1). WORD COUNT: 5-8 words EXACTLY. Simple phrase only.`; }
+            else if (currentElo < 800) { targetTier = "青铜"; specificInstruction = `TIER: ${targetTier} (A2-). WORD COUNT: 8-12 words EXACTLY. One clear sentence.`; }
+            else if (currentElo < 1200) { targetTier = "白银"; specificInstruction = `TIER: ${targetTier} (A2+). WORD COUNT: 8-12 words EXACTLY. One moderate sentence with time/place. KEEP IT SHORT.`; }
+            else if (currentElo < 1600) { targetTier = "黄金"; specificInstruction = `TIER: ${targetTier} (B1). WORD COUNT: 14-18 words EXACTLY. Complex sentence with 'because/although'.`; }
+            else if (currentElo < 2000) { targetTier = "铂金"; specificInstruction = `TIER: ${targetTier} (B2). WORD COUNT: 18-24 words EXACTLY. News-style density with relative clauses.`; }
+            else if (currentElo < 2400) { targetTier = "钻石"; specificInstruction = `TIER: ${targetTier} (C1). WORD COUNT: 22-28 words EXACTLY. High information density, dense logic.`; }
+            else if (currentElo < 2800) { targetTier = "大师"; specificInstruction = `TIER: ${targetTier} (C2). WORD COUNT: 32-40 words EXACTLY. Native complexity, abstract concepts. FORCE LONGER SENTENCE.`; }
+            else if (currentElo < 3200) { targetTier = "王者"; specificInstruction = `TIER: ${targetTier} (C2+). WORD COUNT: 45-55 words EXACTLY. Dense academic content explanation. FORCE EXTREME LENGTH.`; }
+            else { targetTier = "处决"; specificInstruction = `TIER: ${targetTier} (PUNISHMENT). WORD COUNT: 60+ words MINIMUM. Extremely fast speed, obscure idioms.`; }
 
-            specificInstruction += " For Listening: Content must be retainable in short-term memory for echo/dictation. COUNT YOUR WORDS.";
+            specificInstruction += " For Listening: Content must be retainable in short-term memory for echo/dictation. COUNT YOUR WORDS BEFORE OUTPUTTING.";
         } else {
             // TRANSLATION MODE: Word count per tier (STRICT with MINIMUM)
-            if (currentElo < 400) specificInstruction = "A1 Level. STRICT: Generate 8-15 words MINIMUM. Subject-Verb-Object only.";
-            else if (currentElo < 800) specificInstruction = "A2- Level. STRICT: Generate 15-25 words MINIMUM. Simple compound sentences.";
-            else if (currentElo < 1200) specificInstruction = "A2+ Level. STRICT: Generate 25-35 words MINIMUM. Simple relative clauses.";
-            else if (currentElo < 1600) specificInstruction = "B1 Level. STRICT: Generate 35-50 words MINIMUM. Passive voice and complex clauses.";
-            else if (currentElo < 2000) specificInstruction = "B2 Level. STRICT: Generate 50-70 words MINIMUM. Abstract concepts and conditionals.";
-            else if (currentElo < 2400) specificInstruction = "C1 Level. STRICT: Generate 70-90 words MINIMUM. Inversion and subjunctive mood.";
-            else if (currentElo < 2800) specificInstruction = "C2 Level. STRICT: Generate 90-110 words MINIMUM. Native-level sophisticated expression.";
-            else if (currentElo < 3200) specificInstruction = "C2+ Level. STRICT: Generate 110-130 words MINIMUM. Rare literary vocabulary.";
-            else specificInstruction = "EXECUTION MODE (PUNISHMENT). STRICT: Generate 130-150 words MINIMUM. MANDATORY: Use archaic vocabulary, legal/medical jargon, triple-nested clauses, garden-path sentences, inverted conditionals (Had I known...), subjunctive mood, split infinitives, and vocabulary only found in academic papers. This is meant to be nearly impossible for non-native speakers.";
+            if (currentElo < 400) { targetTier = "新手"; specificInstruction = `TIER: ${targetTier} (A1). WORD COUNT: 8-15 words MINIMUM. Subject-Verb-Object only.`; }
+            else if (currentElo < 800) { targetTier = "青铜"; specificInstruction = `TIER: ${targetTier} (A2-). WORD COUNT: 15-25 words MINIMUM. Simple compound sentences.`; }
+            else if (currentElo < 1200) { targetTier = "白银"; specificInstruction = `TIER: ${targetTier} (A2+). WORD COUNT: 25-35 words MINIMUM. Simple relative clauses.`; }
+            else if (currentElo < 1600) { targetTier = "黄金"; specificInstruction = `TIER: ${targetTier} (B1). WORD COUNT: 35-50 words MINIMUM. Passive voice and complex clauses.`; }
+            else if (currentElo < 2000) { targetTier = "铂金"; specificInstruction = `TIER: ${targetTier} (B2). WORD COUNT: 50-70 words MINIMUM. Abstract concepts and conditionals.`; }
+            else if (currentElo < 2400) { targetTier = "钻石"; specificInstruction = `TIER: ${targetTier} (C1). WORD COUNT: 70-90 words MINIMUM. Inversion and subjunctive mood.`; }
+            else if (currentElo < 2800) { targetTier = "大师"; specificInstruction = `TIER: ${targetTier} (C2). WORD COUNT: 90-110 words MINIMUM. Native-level sophisticated expression.`; }
+            else if (currentElo < 3200) { targetTier = "王者"; specificInstruction = `TIER: ${targetTier} (C2+). WORD COUNT: 110-130 words MINIMUM. Rare literary vocabulary.`; }
+            else { targetTier = "处决"; specificInstruction = `TIER: ${targetTier} (PUNISHMENT). WORD COUNT: 130-150 words MINIMUM. Use archaic vocabulary, legal/medical jargon, triple-nested clauses.`; }
         }
 
+        // Put the MOST CRITICAL info at the TOP of the prompt
         const difficultyPrompt = `
-        Current User Rating: ${currentElo}.
-        ${difficultyScale}
-        ADAPTATION INSTRUCTION: Generate a drill that matches the user's exact rating of ${currentElo}.
+        ███████████████████████████████████████████████████████
+        ██  MANDATORY TARGET: ELO ${currentElo} → TIER: ${targetTier}  ██
+        ███████████████████████████████████████████████████████
+        
         ${specificInstruction}
         
-        ⚠️ CRITICAL LENGTH CONSTRAINT ⚠️
-        You MUST follow the EXACT word count specified above. 
-        FAILURE TO MEET THE MINIMUM WORD COUNT IS UNACCEPTABLE.
-        Count your words before responding. If too short, add more content.
+        ${difficultyScale}
+        
+        ⚠️ CRITICAL: You MUST generate content for ${targetTier} tier (Elo ${currentElo}).
+        ⚠️ DO NOT generate content for a lower tier.
+        ⚠️ COUNT YOUR WORDS before finalizing output.
         `;
 
         const isListening = mode === "listening";
@@ -143,8 +147,16 @@ export async function POST(req: NextRequest) {
             {
                 "chinese": "${isListening ? "Direct Chinese Translation of the English sentence (NOT a description of the situation)" : "The Chinese sentence to translate"}",
                 "target_english_vocab": ["Keyword1", "Keyword2"],
-                "reference_english": "The ideal English sentence matching the scenario."
+                "reference_english": "The ideal English sentence matching the scenario.",
+                "_ai_difficulty_report": {
+                    "tier": "Your target tier name (e.g. 新手/青铜/白银/黄金/铂金/钻石/大师/王者/处决)",
+                    "cefr": "Your target CEFR level (A1/A2-/A2+/B1/B2/C1/C2/C2+/∞)",
+                    "word_count": "Number of words in your reference_english (COUNT CAREFULLY!)",
+                    "target_range": "Expected word range for this tier (e.g. 20-30)"
+                }
             }
+            
+            ⚠️ CRITICAL: You MUST accurately report your word count in _ai_difficulty_report. We will verify this!
             `;
         } else {
             // --- ARTICLE MODE PROMPT (Existing) ---
@@ -184,26 +196,110 @@ export async function POST(req: NextRequest) {
             {
                 "chinese": "${isListening ? "某个相关的中文提示/翻译" : "The Chinese sentence challenge"}",
                 "target_english_vocab": ["EnglishWord1", "EnglishWord2"],
-                "reference_english": "The ideal English translation"
+                "reference_english": "The ideal English translation",
+                "_ai_difficulty_report": {
+                    "tier": "Your target tier name (e.g. 新手/青铜/白银/黄金/铂金/钻石/大师/王者/处决)",
+                    "cefr": "Your target CEFR level (A1/A2-/A2+/B1/B2/C1/C2/C2+/∞)",
+                    "word_count": "Number of words in your reference_english (COUNT CAREFULLY!)",
+                    "target_range": "Expected word range for this tier (e.g. 20-30)"
+                }
             }
+            
+            ⚠️ CRITICAL: You MUST accurately report your word count in _ai_difficulty_report. We will verify this!
             `;
         }
 
         const completion = await deepseek.chat.completions.create({
             messages: [
-                { role: "system", content: "You are a helpful AI tutor. Output JSON only." },
+                {
+                    role: "system", content: `You are a strict English drill generator. You MUST:
+1. Follow the EXACT word count specified in the prompt. 
+2. Match the specified tier (e.g., 铂金/Platinum = 20-30 words for listening).
+3. Report your tier and word count accurately in _ai_difficulty_report.
+DO NOT generate content for a lower difficulty tier than requested.` },
                 { role: "user", content: prompt }
             ],
             model: "deepseek-chat",
             response_format: { type: "json_object" },
-            temperature: 1.2,
+            temperature: 0.7, // Reduced from 1.2 for more consistent instruction following
         });
 
         const content = completion.choices[0].message.content;
         if (!content) throw new Error("No content generated");
 
         const data = JSON.parse(content);
-        return NextResponse.json(data);
+
+        // === DIFFICULTY VERIFICATION SYSTEM ===
+        // Calculate word count of generated content
+        const generatedText = data.reference_english || "";
+        const actualWordCount = generatedText.trim().split(/\s+/).filter((w: string) => w.length > 0).length;
+
+        // Get expected word count range based on Elo and Mode
+        const getExpectedWordRange = (elo: number, isListeningMode: boolean): { min: number; max: number; tier: string; cefr: string } => {
+            if (isListeningMode) {
+                if (elo < 400) return { min: 5, max: 8, tier: "新手", cefr: "A1" };
+                if (elo < 800) return { min: 8, max: 12, tier: "青铜", cefr: "A2-" };
+                if (elo < 1200) return { min: 10, max: 14, tier: "白银", cefr: "A2+" };
+                if (elo < 1600) return { min: 12, max: 18, tier: "黄金", cefr: "B1" };
+                if (elo < 2000) return { min: 14, max: 22, tier: "铂金", cefr: "B2" };
+                if (elo < 2400) return { min: 16, max: 26, tier: "钻石", cefr: "C1" };
+                if (elo < 2800) return { min: 20, max: 32, tier: "大师", cefr: "C2" };
+                if (elo < 3200) return { min: 24, max: 40, tier: "王者", cefr: "C2+" };
+                return { min: 35, max: 999, tier: "处决", cefr: "∞" };
+            } else {
+                if (elo < 400) return { min: 8, max: 15, tier: "新手", cefr: "A1" };
+                if (elo < 800) return { min: 15, max: 25, tier: "青铜", cefr: "A2-" };
+                if (elo < 1200) return { min: 25, max: 35, tier: "白银", cefr: "A2+" };
+                if (elo < 1600) return { min: 35, max: 50, tier: "黄金", cefr: "B1" };
+                if (elo < 2000) return { min: 50, max: 70, tier: "铂金", cefr: "B2" };
+                if (elo < 2400) return { min: 70, max: 90, tier: "钻石", cefr: "C1" };
+                if (elo < 2800) return { min: 90, max: 110, tier: "大师", cefr: "C2" };
+                if (elo < 3200) return { min: 110, max: 130, tier: "王者", cefr: "C2+" };
+                return { min: 130, max: 150, tier: "处决", cefr: "∞" };
+            }
+        };
+
+        const expected = getExpectedWordRange(currentElo, isListening);
+        const isValid = actualWordCount >= expected.min && actualWordCount <= expected.max;
+        const difficultyStatus = actualWordCount < expected.min ? "TOO_EASY" : (actualWordCount > expected.max ? "TOO_HARD" : "MATCHED");
+
+        // Extract AI self-report (if provided)
+        const aiReport = data._ai_difficulty_report || null;
+        const aiReportedWordCount = aiReport?.word_count ? parseInt(aiReport.word_count, 10) : null;
+        const wordCountMismatch = aiReportedWordCount !== null && aiReportedWordCount !== actualWordCount;
+
+        // Log validation result with AI comparison
+        console.log(`[Difficulty Validation] Elo: ${currentElo}, Mode: ${mode}`);
+        console.log(`  Expected: ${expected.min}-${expected.max} words (${expected.tier} / ${expected.cefr})`);
+        console.log(`  Actual: ${actualWordCount} words | AI Reported: ${aiReportedWordCount ?? 'N/A'} | Status: ${difficultyStatus}`);
+        if (aiReport) {
+            console.log(`  AI Self-Report: Tier=${aiReport.tier}, CEFR=${aiReport.cefr}, Range=${aiReport.target_range}`);
+        }
+        if (wordCountMismatch) {
+            console.log(`  ⚠️ AI WORD COUNT MISMATCH: Reported ${aiReportedWordCount} but actual is ${actualWordCount}`);
+        }
+
+        // Return enriched response with difficulty metadata
+        return NextResponse.json({
+            ...data,
+            _difficultyMeta: {
+                requestedElo: currentElo,
+                tier: expected.tier,
+                cefr: expected.cefr,
+                expectedWordRange: { min: expected.min, max: expected.max },
+                actualWordCount,
+                isValid,
+                status: difficultyStatus,
+                // AI Self-Report Comparison
+                aiSelfReport: aiReport ? {
+                    tier: aiReport.tier,
+                    cefr: aiReport.cefr,
+                    wordCount: aiReportedWordCount,
+                    targetRange: aiReport.target_range,
+                    wordCountAccurate: !wordCountMismatch
+                } : null
+            }
+        });
 
     } catch (error) {
         console.error("Generate Drill Error:", error);
