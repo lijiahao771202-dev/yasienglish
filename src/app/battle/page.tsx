@@ -99,8 +99,12 @@ export default function BattlePage() {
     const [listeningElo, setListeningElo] = useState(600); // Listening
     const [streak, setStreak] = useState(0);
     const [battleMode, setBattleMode] = useState<'listening' | 'translation'>('listening');
+    const [refreshCount, setRefreshCount] = useState(0);
 
     useEffect(() => {
+        if (!activeDrill) {
+            setRefreshCount(prev => prev + 1);
+        }
         db.user_profile.orderBy('id').first().then(profile => {
             if (profile) {
                 setEloRating(profile.elo_rating || 600);
@@ -200,7 +204,7 @@ export default function BattlePage() {
 
                 {/* Elo Chart */}
                 <div className="mb-12">
-                    <EloChart mode={battleMode} />
+                    <EloChart key={`${battleMode}-${refreshCount}`} mode={battleMode} />
                 </div>
 
                 {/* Mode Switcher */}

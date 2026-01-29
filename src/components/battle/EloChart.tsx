@@ -77,7 +77,7 @@ export function EloChart({ mode }: EloChartProps) {
             </div>
 
             <ResponsiveContainer width="100%" height="80%">
-                <AreaChart data={data} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <AreaChart data={data} margin={{ top: 10, right: 20, left: 10, bottom: 10 }}>
                     <defs>
                         <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor={color} stopOpacity={0.3} />
@@ -86,23 +86,47 @@ export function EloChart({ mode }: EloChartProps) {
                     </defs>
                     <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#e5e5e5" />
                     <XAxis
-                        dataKey="dateStr"
-                        tick={{ fontSize: 10, fill: '#a8a29e' }}
+                        dataKey="timestamp"
+                        tickFormatter={(ts) => {
+                            const d = new Date(ts);
+                            return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
+                        }}
+                        tick={{ fontSize: 9, fill: '#a8a29e' }}
                         axisLine={false}
                         tickLine={false}
                         interval="preserveStartEnd"
+                        minTickGap={30}
                     />
                     <YAxis
-                        domain={['auto', 'auto']}
+                        domain={['dataMin - 50', 'dataMax + 50']}
                         tick={{ fontSize: 10, fill: '#a8a29e' }}
                         axisLine={false}
                         tickLine={false}
-                        width={30}
+                        width={45}
                     />
                     <Tooltip
-                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                        itemStyle={{ color: color, fontWeight: 'bold' }}
-                        labelStyle={{ color: '#78716c', fontSize: '12px', marginBottom: '4px' }}
+                        content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                                const item = payload[0].payload;
+                                const change = item.change || 0;
+                                return (
+                                    <div className="bg-white/90 backdrop-blur-md p-3 rounded-2xl border border-stone-200 shadow-xl min-w-[120px]">
+                                        <div className="text-[10px] text-stone-500 font-bold uppercase tracking-wider mb-1">{item.timeStr}</div>
+                                        <div className="flex items-baseline justify-between gap-4">
+                                            <span className="text-xl font-black text-stone-800">{item.elo}</span>
+                                            <span className={cn(
+                                                "text-xs font-bold px-1.5 py-0.5 rounded",
+                                                change > 0 ? "text-emerald-600 bg-emerald-50" :
+                                                    change < 0 ? "text-rose-600 bg-rose-50" : "text-stone-400 bg-stone-50"
+                                            )}>
+                                                {change > 0 ? `+${change}` : change}
+                                            </span>
+                                        </div>
+                                    </div>
+                                );
+                            }
+                            return null;
+                        }}
                     />
                     <Area
                         type="monotone"
