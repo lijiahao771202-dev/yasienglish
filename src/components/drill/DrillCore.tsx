@@ -152,6 +152,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     // Roulette State
     const [showRoulette, setShowRoulette] = useState(false);
+    const [rouletteSession, setRouletteSession] = useState<{
+        active: boolean;
+        result: 'safe' | 'dead';
+        multiplier: number;
+        bullets: number;
+    } | null>(null);
 
     // Server Status Check
     const [serverStatus, setServerStatus] = useState<'online' | 'offline' | 'checking'>('checking');
@@ -601,10 +607,60 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const handleRouletteComplete = (result: 'safe' | 'dead', bulletCount: number) => {
         setShowRoulette(false);
         console.log(`[Roulette] Result: ${result}, Bullets: ${bulletCount}`);
-        // TODO: Apply Greed Scaling logic to Elo calculation based on bulletCount
+
+        const GREED_TABLE = [
+            { bullets: 0, mult: 1 },
+            { bullets: 1, mult: 2 },
+            { bullets: 2, mult: 3 },
+            { bullets: 3, mult: 5 },
+            { bullets: 4, mult: 8 },
+            { bullets: 5, mult: 15 },
+            { bullets: 6, mult: 50 },
+        ];
+
+        const multiplier = GREED_TABLE.find(t => t.bullets === bulletCount)?.mult || 1;
+
         if (result === 'dead') {
+            // --- IMMEDIATE PENALTY ---
+            const penalty = 50;
+            const isListening = mode === 'listening';
+            const activeElo = isListening ? listeningElo : eloRating;
+            const newElo = Math.max(0, (activeElo || 600) - penalty);
+
+            setEloChange(-penalty);
+            setLootDrop({
+                type: 'exp',
+                amount: penalty,
+                rarity: 'common',
+                message: '💀 你中弹了！扣除 50 Elo 并开启处决局'
+            });
+            setShake(true);
+
+            // Update local state
+            if (isListening) setListeningElo(newElo);
+            else setEloRating(newElo);
+
+            // DB Sync
+            db.user_profile.orderBy('id').first().then(profile => {
+                if (profile) {
+                    db.user_profile.update(profile.id, {
+                        [isListening ? 'listening_elo' : 'elo_rating']: newElo,
+                        [isListening ? 'listening_streak' : 'streak_count']: 0
+                    });
+                }
+            });
+
+            setRouletteSession({ active: true, result: 'dead', multiplier: 1, bullets: bulletCount });
             handleGenerateDrill(undefined, 'roulette_execution');
         } else {
+            // --- DEFERRED REWARD ---
+            setRouletteSession({ active: true, result: 'safe', multiplier, bullets: bulletCount });
+            setLootDrop({
+                type: 'gem',
+                amount: 0,
+                rarity: 'legendary',
+                message: `🎰 活下来了！本题奖励 x${multiplier} 倍`
+            });
             handleGenerateDrill(undefined, 'roulette');
         }
     };
@@ -915,12 +971,32 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             // Warning Hit
                             new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch(() => { });
                             setShake(true);
-                            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: `LOST HP! ${newPlayerHp} Left` });
                         }
                     }
                 }
 
-                // --- END GAMBLING LOGIC ---
+                // --- POST-ROULETTE SETTLEMENT ---
+                if (rouletteSession) {
+                    if (rouletteSession.result === 'safe') {
+                        // SURVIVOR: Symmetrical Multiplier
+                        change = Math.round(change * rouletteSession.multiplier);
+                        if (data.score >= 9.0) {
+                            setLootDrop({ type: 'gem', amount: change, rarity: 'legendary', message: `🎰 SURVIVOR JACKPOT x${rouletteSession.multiplier}!` });
+                        } else {
+                            setLootDrop({ type: 'exp', amount: Math.abs(change), rarity: 'common', message: `🎰 GAMBLE FAILED! x${rouletteSession.multiplier} LOSS` });
+                        }
+                    } else if (rouletteSession.result === 'dead') {
+                        // EXECUTION: Redemption or Double Death
+                        if (data.score >= 9.0) {
+                            change = 25; // Redemption Reward
+                            setLootDrop({ type: 'gem', amount: 25, rarity: 'rare', message: '⚖️ REDEMPTION GRANTED!' });
+                        } else {
+                            change = -50;
+                            setLootDrop({ type: 'exp', amount: 50, rarity: 'common', message: '💀 TOTAL ANNIHILATION!' });
+                        }
+                    }
+                    setRouletteSession(null);
+                }
 
                 setEloBreakdown(result.breakdown);
 
@@ -1575,11 +1651,21 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                 <div className="flex flex-col items-center group cursor-help relative animate-in fade-in slide-in-from-top-4 duration-700 delay-300">
                                                     {bossState.type === 'roulette_execution' ? (
                                                         /* EXECUTION MODE OVERRIDE */
-                                                        <div className="flex items-center gap-2 px-4 py-1.5 rounded-full border shadow-lg transition-all bg-red-950/80 backdrop-blur-md border-red-500/50 text-red-200 animate-pulse">
-                                                            <Skull className="w-4 h-4 text-red-400" />
-                                                            <span className="font-bold text-xs tracking-wider uppercase">处决模式</span>
-                                                            <div className="w-px h-3 bg-red-400 opacity-40 mx-1" />
-                                                            <span className="font-newsreader font-medium italic text-lg text-red-100">3200</span>
+                                                        <div className="flex flex-col items-center">
+                                                            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full border shadow-lg transition-all bg-red-950/80 backdrop-blur-md border-red-500/50 text-red-200 animate-pulse">
+                                                                <Skull className="w-4 h-4 text-red-400" />
+                                                                <span className="font-bold text-xs tracking-wider uppercase">处决模式</span>
+                                                            </div>
+                                                            <div className="mt-1 text-[10px] text-red-400/80 font-mono tracking-tighter">— 答对以申请救赎 —</div>
+                                                        </div>
+                                                    ) : rouletteSession?.result === 'safe' ? (
+                                                        /* SURVIVAL MULTIPLIER OVERRIDE */
+                                                        <div className="flex flex-col items-center">
+                                                            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full border shadow-xl transition-all bg-amber-950/80 backdrop-blur-md border-amber-500/50 text-amber-200 ring-2 ring-amber-500/20">
+                                                                <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
+                                                                <span className="font-bold text-xs tracking-wider uppercase">生死豪赌: x{rouletteSession.multiplier} 锁定</span>
+                                                            </div>
+                                                            <div className="mt-1 text-[10px] text-amber-400/80 font-mono tracking-tighter">— 指间生死，胜败百倍 —</div>
                                                         </div>
                                                     ) : (() => {
                                                         const rank = getRank(currentElo || 600);
