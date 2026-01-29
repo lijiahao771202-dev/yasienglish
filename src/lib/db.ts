@@ -57,6 +57,14 @@ export interface CachedArticle {
     timestamp: number;
 }
 
+export interface EloHistoryItem {
+    id?: number;
+    mode: 'translation' | 'listening';
+    elo: number;
+    change: number;
+    timestamp: number;
+}
+
 export class YasiDB extends Dexie {
     ai_cache!: Table<AICacheItem>;
     feeds!: Table<FeedCacheItem>;
@@ -64,6 +72,7 @@ export class YasiDB extends Dexie {
     vocabulary!: Table<VocabItem>;
     writing_history!: Table<WritingEntry>;
     articles!: Table<CachedArticle>;
+    elo_history!: Table<EloHistoryItem, number>;
     user_profile!: Table<{
         id?: number;
         elo_rating: number;
@@ -140,6 +149,11 @@ export class YasiDB extends Dexie {
                     profile.listening_max_elo = 600;
                 }
             });
+        });
+
+        // Version 6: Add Elo History
+        this.version(6).stores({
+            elo_history: '++id, mode, timestamp'
         });
     }
 }

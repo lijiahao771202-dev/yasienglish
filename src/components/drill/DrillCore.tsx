@@ -992,6 +992,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         }
 
                         await db.user_profile.update(profile.id, updateData);
+
+                        // Record in History
+                        await db.elo_history.add({
+                            mode: isListening ? 'listening' : 'translation',
+                            elo: newElo,
+                            change: change,
+                            timestamp: Date.now()
+                        });
                     }
                 }
             }
@@ -1578,7 +1586,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                         return (
                                                             <>
                                                                 <div className={cn("flex items-center gap-2 px-4 py-1.5 rounded-full border shadow-sm transition-all bg-white/50 backdrop-blur-md", rank.border, rank.color)}>
-                                                                    <Trophy className="w-4 h-4" />
+                                                                    <rank.icon className="w-4 h-4" />
                                                                     <span className="font-bold text-xs tracking-wider uppercase">{rank.title}</span>
                                                                     <div className="w-px h-3 bg-current opacity-20 mx-1" />
                                                                     <span className="font-newsreader font-medium italic text-lg">{currentElo || 600}</span>
