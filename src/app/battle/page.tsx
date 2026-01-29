@@ -7,6 +7,7 @@ import { Zap, Briefcase, Plane, GraduationCap, Coffee, Sword, Trophy, Flame, Che
 import { cn } from "@/lib/utils";
 import { getRank } from "@/lib/rankUtils";
 import { db } from "@/lib/db";
+import { EloChart } from "@/components/battle/EloChart";
 
 const TOPICS = [
     {
@@ -195,6 +196,11 @@ export default function BattlePage() {
                             </div>
                         </motion.div>
                     </div>
+                </div>
+
+                {/* Elo Chart */}
+                <div className="mb-12">
+                    <EloChart mode={battleMode} />
                 </div>
 
                 {/* Mode Switcher */}
