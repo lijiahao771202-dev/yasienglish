@@ -122,9 +122,9 @@ export class YasiDB extends Dexie {
         }).upgrade(async tx => {
             // Initialize default profile
             await tx.table('user_profile').add({
-                elo_rating: 1200,
+                elo_rating: 600,
                 streak_count: 0,
-                max_elo: 1200,
+                max_elo: 600,
                 last_practice: Date.now()
             });
         });
@@ -135,9 +135,9 @@ export class YasiDB extends Dexie {
         }).upgrade(tx => {
             return tx.table('user_profile').toCollection().modify(profile => {
                 if (profile.listening_elo === undefined) {
-                    profile.listening_elo = 1200;
+                    profile.listening_elo = 600;
                     profile.listening_streak = 0;
-                    profile.listening_max_elo = 1200;
+                    profile.listening_max_elo = 600;
                 }
             });
         });

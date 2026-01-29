@@ -18,45 +18,67 @@ export async function POST(req: NextRequest) {
         // Dynamic Elo Prompt Engineering
         let currentElo = eloRating || 1200;
 
-        // RUSSIAN ROULETTE DEATH LOGIC
+        // RUSSIAN ROULETTE DEATH LOGIC - MAXIMUM DIFFICULTY
         if (bossType === 'roulette_execution') {
-            currentElo = 2400; // Force C1/C2 Difficulty
+            console.log(`[API] Roulette Execution Detected! Overriding Elo from ${currentElo} to 3200 (MAXIMUM)`);
+            currentElo = 3200; // Force MAXIMUM Difficulty (处决 tier)
         }
 
+        console.log(`[API] Final Elo: ${currentElo}, bossType: ${bossType}`);
+
+        // UNIFIED 400 ELO PER TIER DIFFICULTY SYSTEM
+        // UNIFIED 400 ELO PER TIER DIFFICULTY SYSTEM
         const difficultyScale = mode === 'listening' ? `
-        LISTENING SCALE (Focus on Echoing/Memory):
-        - 800 (A1): Very slow, isolated words. No linking sounds.
-        - 1200 (A2): Simple daily sentences. Clear enunciation.
-        - 1600 (B1): Natural speed conversational. Some linking sounds.
-        - 2000 (B2): Fast news anchor speed. Complex information density.
-        - 2400 (C1): Rapid native debate. Multiple speakers style. Idiomatic speed.
+        LISTENING SCALE (Focus on Echoing/Memory) - 400 Elo per tier:
+        - 0-400 (A1 新手): Very slow, isolated words. 5-8 words. 500 vocab.
+        - 400-800 (A2- 青铜): Simple daily sentences. Clear enunciation. 8-12 words. 1000 vocab.
+        - 800-1200 (A2+ 白银): Moderate speed. Basic linking sounds. 12-15 words. 1500 vocab.
+        - 1200-1600 (B1 黄金): Natural speed conversational. 15-20 words. 3000 vocab.
+        - 1600-2000 (B2 铂金): Fast news anchor speed. 20-30 words. 5000 vocab.
+        - 2000-2400 (C1 钻石): Rapid native debate. Idiomatic expressions. 25-35 words. 7000 vocab.
+        - 2400-2800 (C2 大师): Multiple speakers style. Native-only idioms. 35-45 words. 10000 vocab.
+        - 2800-3200 (C2+ 王者): Fastest possible speech. Dense academic. 45-55 words. 12000 vocab.
+        - 3200+ (☠️ 处决): EXTREME PUNISHMENT. 60+ words MINIMUM. Obscure phrasal verbs, challenging pronunciation, dialect mixing.
+        IMPORTANT: You MUST meet the word count for each level. Count your words!
         ` : `
-        TRANSLATION SCALE (Focus on Grammar/Reading):
-        - 800 (A1): Simple SVO sentences, top 500 words.
-        - 1200 (A2): Compound sentences, daily topics, top 1500 words.
-        - 1600 (B1): Relative clauses, passive voice, top 3000 words.
-        - 2000 (B2): Abstract topics, conditionals, top 5000 words.
-        - 2400 (C1): Sophisticated/Academic, inversion, nuanced vocabulary.
+        TRANSLATION SCALE (Focus on Grammar/Reading) - 400 Elo per tier:
+        - 0-400 (A1 新手): Simple SVO sentences, top 500 words.
+        - 400-800 (A2- 青铜): Compound sentences (and/but), daily topics, 1000 words.
+        - 800-1200 (A2+ 白银): Simple relative clauses (that/which), 1500 words.
+        - 1200-1600 (B1 黄金): Passive voice, complex relative clauses, 3000 words.
+        - 1600-2000 (B2 铂金): Abstract topics, conditionals, participle phrases, 5000 words.
+        - 2000-2400 (C1 钻石): Inversion, subjunctive mood, nuanced vocabulary, 7000 words.
+        - 2400-2800 (C2 大师): Independent absolute constructions, concessive clauses, 10000 words.
+        - 2800-3200 (C2+ 王者): Cleft sentences, garden-path syntax, rare literary vocabulary, 12000 words.
+        - 3200+ (☠️ 处决): EXTREME PUNISHMENT. Archaic expressions, legal/medical jargon, triple-nested clauses, only academic papers.
         `;
 
         let specificInstruction = "";
 
         if (mode === 'listening') {
-            // LISTENING MODE: Shorter, Memory-Focused limits
-            if (currentElo < 1000) specificInstruction = "Strictly beginner. Very short phrase (5-8 words). Slow and clear.";
-            else if (currentElo < 1400) specificInstruction = "Elementary. One clear sentence (10-15 words).";
-            else if (currentElo < 1800) specificInstruction = "Intermediate. One complex sentence or two short ones (15-25 words).";
-            else if (currentElo < 2200) specificInstruction = "Upper Intermediate. News-style brevity (25-35 words). Focus on density.";
-            else specificInstruction = "Advanced. Max 35-45 words. High information density but keep it retainable.";
+            // LISTENING MODE: Word count per tier (REALISTIC for short-term memory)
+            if (currentElo < 400) specificInstruction = "A1 Level. STRICT: Generate exactly 5-8 words. Simple phrase only.";
+            else if (currentElo < 800) specificInstruction = "A2- Level. STRICT: Generate exactly 8-12 words. One clear sentence.";
+            else if (currentElo < 1200) specificInstruction = "A2+ Level. STRICT: Generate exactly 12-15 words. One moderate sentence.";
+            else if (currentElo < 1600) specificInstruction = "B1 Level. STRICT: Generate exactly 15-20 words. Complex sentence required.";
+            else if (currentElo < 2000) specificInstruction = "B2 Level. STRICT: Generate exactly 20-30 words. News-style density.";
+            else if (currentElo < 2400) specificInstruction = "C1 Level. STRICT: Generate exactly 25-35 words. High information density.";
+            else if (currentElo < 2800) specificInstruction = "C2 Level. STRICT: Generate exactly 35-45 words. Native complexity.";
+            else if (currentElo < 3200) specificInstruction = "C2+ Level. STRICT: Generate exactly 45-55 words. Dense academic content.";
+            else specificInstruction = "EXECUTION MODE (PUNISHMENT). STRICT: Generate exactly 60+ words. Use extremely fast native speech patterns, obscure idioms, dense academic terminology, and intentionally difficult pronunciation. This should be nearly impossible to repeat.";
 
-            specificInstruction += " For Listening: Content must be 'echo-able' from short-term memory.";
+            specificInstruction += " For Listening: Content must be retainable in short-term memory for echo/dictation. COUNT YOUR WORDS.";
         } else {
-            // TRANSLATION MODE: Longer, Grammar-Focused limits
-            if (currentElo < 1000) specificInstruction = "Strictly beginner. Keep sentences extremely short (max 8-12 words). Subject-Verb-Object only.";
-            else if (currentElo < 1400) specificInstruction = "Elementary. Max 20-25 words. Simple compound sentences allowed.";
-            else if (currentElo < 1800) specificInstruction = "Intermediate. Max 30-40 words. Mix standard professional English.";
-            else if (currentElo < 2200) specificInstruction = "Upper Intermediate. Max 45-60 words. Abstract concepts.";
-            else specificInstruction = "Advanced. Max 70+ words. Sophisticated expression.";
+            // TRANSLATION MODE: Word count per tier (STRICT with MINIMUM)
+            if (currentElo < 400) specificInstruction = "A1 Level. STRICT: Generate 8-15 words MINIMUM. Subject-Verb-Object only.";
+            else if (currentElo < 800) specificInstruction = "A2- Level. STRICT: Generate 15-25 words MINIMUM. Simple compound sentences.";
+            else if (currentElo < 1200) specificInstruction = "A2+ Level. STRICT: Generate 25-35 words MINIMUM. Simple relative clauses.";
+            else if (currentElo < 1600) specificInstruction = "B1 Level. STRICT: Generate 35-50 words MINIMUM. Passive voice and complex clauses.";
+            else if (currentElo < 2000) specificInstruction = "B2 Level. STRICT: Generate 50-70 words MINIMUM. Abstract concepts and conditionals.";
+            else if (currentElo < 2400) specificInstruction = "C1 Level. STRICT: Generate 70-90 words MINIMUM. Inversion and subjunctive mood.";
+            else if (currentElo < 2800) specificInstruction = "C2 Level. STRICT: Generate 90-110 words MINIMUM. Native-level sophisticated expression.";
+            else if (currentElo < 3200) specificInstruction = "C2+ Level. STRICT: Generate 110-130 words MINIMUM. Rare literary vocabulary.";
+            else specificInstruction = "EXECUTION MODE (PUNISHMENT). STRICT: Generate 130-150 words MINIMUM. MANDATORY: Use archaic vocabulary, legal/medical jargon, triple-nested clauses, garden-path sentences, inverted conditionals (Had I known...), subjunctive mood, split infinitives, and vocabulary only found in academic papers. This is meant to be nearly impossible for non-native speakers.";
         }
 
         const difficultyPrompt = `
@@ -64,7 +86,11 @@ export async function POST(req: NextRequest) {
         ${difficultyScale}
         ADAPTATION INSTRUCTION: Generate a drill that matches the user's exact rating of ${currentElo}.
         ${specificInstruction}
-        CRITICAL LENGTH CONSTRAINT: You MUST follow the word count limits above.
+        
+        ⚠️ CRITICAL LENGTH CONSTRAINT ⚠️
+        You MUST follow the EXACT word count specified above. 
+        FAILURE TO MEET THE MINIMUM WORD COUNT IS UNACCEPTABLE.
+        Count your words before responding. If too short, add more content.
         `;
 
         const isListening = mode === "listening";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, RefreshCw, Send, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart } from "lucide-react";
+import { Sparkles, RefreshCw, Send, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
 import * as Diff from 'diff';
@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { getRank } from "@/lib/rankUtils";
 import { DeathFX } from "./DeathFX";
 import { BossScoreReveal } from "./BossScoreReveal";
+import { RouletteOverlay } from "./RouletteOverlay";
 import { DrillDebug } from "../debug/DrillDebug";
 
 // --- Interfaces ---
@@ -117,10 +118,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
 
     // Elo State
-    const [eloRating, setEloRating] = useState(1200); // Translation Elo
+    const [eloRating, setEloRating] = useState(600); // Translation Elo
     const [streakCount, setStreakCount] = useState(0);
 
-    const [listeningElo, setListeningElo] = useState(1200);
+    const [listeningElo, setListeningElo] = useState(600);
     const [listeningStreak, setListeningStreak] = useState(0);
 
 
@@ -149,6 +150,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         doubleDownCount: number;
     }>({ active: false, introAck: false, wager: null, doubleDownCount: 0 });
 
+    // Roulette State
+    const [showRoulette, setShowRoulette] = useState(false);
+
     // Server Status Check
     const [serverStatus, setServerStatus] = useState<'online' | 'offline' | 'checking'>('checking');
     useEffect(() => {
@@ -174,7 +178,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const hasPlayedEchoRef = useRef(false); // For Echo Beast (One-time audio)
     const [fuseTime, setFuseTime] = useState(100); // Boss Fuse (100%)
     const abortControllerRef = useRef<AbortController | null>(null); // For cancelling pending API requests
-    const [rankUp, setRankUp] = useState<{ oldRank: string; newRank: string; } | null>(null); // Rank promotion celebration
+    const [rankUp, setRankUp] = useState<{ oldRank: ReturnType<typeof getRank>; newRank: ReturnType<typeof getRank>; } | null>(null); // Rank promotion celebration
+    const [rankDown, setRankDown] = useState<{ oldRank: ReturnType<typeof getRank>; newRank: ReturnType<typeof getRank>; } | null>(null); // Rank demotion punishment
 
     // Theme-based Ambient Audio
     // Theme-based Ambient Audio (Legacy Removed -> Handled by modern BGM Manager at line 523)
@@ -293,15 +298,19 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const currentElo = mode === 'listening' ? listeningElo : eloRating;
     const currentStreak = mode === 'listening' ? listeningStreak : streakCount;
 
-    // ELO-based auto-difficulty (replaces manual selection)
+    // ELO-based auto-difficulty (unified 400 Elo per tier)
     const getEloDifficulty = (elo: number) => {
-        if (elo < 800) return { level: 'Level 1', label: 'A1 入门', cefr: 'A1', color: 'text-emerald-500', desc: '简单SVO句子' };
-        if (elo < 1200) return { level: 'Level 2', label: 'A2 基础', cefr: 'A2', color: 'text-sky-500', desc: '复合句+日常话题' };
-        if (elo < 1600) return { level: 'Level 3', label: 'B1 中级', cefr: 'B1', color: 'text-amber-500', desc: '从句+被动语态' };
-        if (elo < 2000) return { level: 'Level 4', label: 'B2 进阶', cefr: 'B2', color: 'text-orange-500', desc: '抽象话题+条件句' };
-        return { level: 'Level 5', label: 'C1 高级', cefr: 'C1', color: 'text-rose-500', desc: '学术/复杂表达' };
+        if (elo < 400) return { level: 'Level 1', label: 'A1 新手', cefr: 'A1', color: 'text-stone-500', desc: '简单SVO句子' };
+        if (elo < 800) return { level: 'Level 2', label: 'A2- 青铜', cefr: 'A2-', color: 'text-amber-600', desc: '日常复合句' };
+        if (elo < 1200) return { level: 'Level 3', label: 'A2+ 白银', cefr: 'A2+', color: 'text-slate-500', desc: '简单从句' };
+        if (elo < 1600) return { level: 'Level 4', label: 'B1 黄金', cefr: 'B1', color: 'text-yellow-600', desc: '被动+关系从句' };
+        if (elo < 2000) return { level: 'Level 5', label: 'B2 铂金', cefr: 'B2', color: 'text-cyan-600', desc: '条件句+分词' };
+        if (elo < 2400) return { level: 'Level 6', label: 'C1 钻石', cefr: 'C1', color: 'text-blue-500', desc: '倒装+虚拟语气' };
+        if (elo < 2800) return { level: 'Level 7', label: 'C2 大师', cefr: 'C2', color: 'text-fuchsia-600', desc: '母语级表达' };
+        if (elo < 3200) return { level: 'Level 8', label: 'C2+ 王者', cefr: 'C2+', color: 'text-purple-600', desc: '极限挑战' };
+        return { level: 'Level 9', label: '☠️ 处决', cefr: '∞', color: 'text-red-500', desc: '惩罚级难度' };
     };
-    const eloDifficulty = getEloDifficulty(currentElo || 1200);
+    const eloDifficulty = getEloDifficulty(currentElo || 600);
 
     const [eloChange, setEloChange] = useState<number | null>(null);
     const [eloBreakdown, setEloBreakdown] = useState<{
@@ -584,6 +593,22 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         handleGenerateDrill(undefined, type);
     };
 
+    const debugTriggerRoulette = () => {
+        // Show the interactive overlay instead of immediate generation
+        setShowRoulette(true);
+    };
+
+    const handleRouletteComplete = (result: 'safe' | 'dead', bulletCount: number) => {
+        setShowRoulette(false);
+        console.log(`[Roulette] Result: ${result}, Bullets: ${bulletCount}`);
+        // TODO: Apply Greed Scaling logic to Elo calculation based on bulletCount
+        if (result === 'dead') {
+            handleGenerateDrill(undefined, 'roulette_execution');
+        } else {
+            handleGenerateDrill(undefined, 'roulette');
+        }
+    };
+
     // --- Core Actions ---
 
     const handleGenerateDrill = async (targetDifficulty = difficulty, overrideBossType?: string) => {
@@ -660,7 +685,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             nextBossType = overrideBossType as any;
             pendingBossState = {
                 active: true,
-                introAck: false,
+                introAck: overrideBossType.includes('roulette'), // Skip standard intro for roulette
                 type: overrideBossType as any,
                 hp: undefined, // Standard unless reaper
                 maxHp: undefined,
@@ -673,7 +698,19 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             }
         }
 
+        // IMMEDIATELY apply Boss/Gamble state BEFORE API call (eliminates flicker)
+        if (pendingBossState) {
+            setBossState(pendingBossState);
+            setTheme('boss');
+            setPlaybackSpeed(pendingBossState.type === 'lightning' ? 1.5 : 1.0);
+        }
+        if (pendingGambleState) {
+            setGambleState(pendingGambleState);
+            setTheme('crimson');
+        }
+
         try {
+            console.log(`[DEBUG] Sending to API: bossType=${nextBossType}, eloRating=${currentElo}`);
             const response = await fetch("/api/ai/generate_drill", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -698,16 +735,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
             setDrillData(data);
 
-            // Apply Pending Boss/Gamble States (Sync UI with Content)
-            if (pendingBossState) {
-                setBossState(pendingBossState);
-                setTheme('boss');
-                setPlaybackSpeed(pendingBossState.type === 'lightning' ? 1.5 : 1.0);
-            }
-            if (pendingGambleState) {
-                setGambleState(pendingGambleState);
-                setTheme('crimson');
-            }
+            // Boss/Gamble states already applied BEFORE API call (no flicker)
         } catch (error) {
             if ((error as Error).name === 'AbortError') {
                 console.log('[Drill] Request aborted - switching to new question');
@@ -733,7 +761,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     user_translation: userTranslation,
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
-                    current_elo: eloRating || 1200,
+                    current_elo: eloRating || 600,
                     mode,
                     is_reverse: bossState.active && bossState.type === 'reverser'
                 }),
@@ -756,12 +784,16 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 // --- Advanced Elo Logic (UIUXProMax) ---
                 const getDifficultyElo = (level: string) => {
                     switch (level) {
-                        case 'Level 1': return 800;
-                        case 'Level 2': return 1200;
-                        case 'Level 3': return 1600;
-                        case 'Level 4': return 2000;
-                        case 'Level 5': return 2400;
-                        default: return 1200;
+                        case 'Level 1': return 200;   // 新手 (0-400 midpoint)
+                        case 'Level 2': return 600;   // 青铜 (400-800 midpoint)
+                        case 'Level 3': return 1000;  // 白银 (800-1200 midpoint)
+                        case 'Level 4': return 1400;  // 黄金 (1200-1600 midpoint)
+                        case 'Level 5': return 1800;  // 铂金 (1600-2000 midpoint)
+                        case 'Level 6': return 2200;  // 钻石 (2000-2400 midpoint)
+                        case 'Level 7': return 2600;  // 大师 (2400-2800 midpoint)
+                        case 'Level 8': return 3000;  // 王者 (2800-3200 midpoint)
+                        case 'Level 9': return 3400;  // 处决 (3200+ midpoint)
+                        default: return 600;
                     }
                 };
 
@@ -791,7 +823,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     };
                 };
 
-                const result = calculateAdvancedElo(activeElo || 1200, difficulty, data.score, activeStreak);
+                const result = calculateAdvancedElo(activeElo || 600, difficulty, data.score, activeStreak);
                 let change = result.total;
                 let newStreak = activeStreak;
 
@@ -919,15 +951,19 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         new Audio('https://assets.mixkit.co/sfx/preview/mixkit-game-over-dark-orchestra-633.mp3').play().catch(() => { });
                     }
 
-                    const newElo = Math.max(0, (activeElo || 1200) + change);
+                    const newElo = Math.max(0, (activeElo || 600) + change);
 
                     // Rank Change Detection
-                    const oldRank = getRank(activeElo || 1200);
+                    const oldRank = getRank(activeElo || 600);
                     const newRank = getRank(newElo);
                     if (newRank.title !== oldRank.title && change > 0) {
-                        // Rank UP! Trigger celebration
-                        setRankUp({ oldRank: oldRank.title, newRank: newRank.title });
+                        // Rank UP!
+                        setRankUp({ oldRank: oldRank, newRank: newRank });
                         new Audio('https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3').play().catch(() => { });
+                    } else if (newRank.title !== oldRank.title && change < 0) {
+                        // Rank DOWN!
+                        setRankDown({ oldRank: oldRank, newRank: newRank });
+                        new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch(() => { });
                     }
 
                     // Update Local State
@@ -1529,15 +1565,23 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                             {/* Elo Badge & Difficulty Header */}
                                             <div className="flex justify-center items-center gap-4 mb-4 animate-in fade-in slide-in-from-top-4">
                                                 <div className="flex flex-col items-center group cursor-help relative animate-in fade-in slide-in-from-top-4 duration-700 delay-300">
-                                                    {(() => {
-                                                        const rank = getRank(currentElo || 1200);
+                                                    {bossState.type === 'roulette_execution' ? (
+                                                        /* EXECUTION MODE OVERRIDE */
+                                                        <div className="flex items-center gap-2 px-4 py-1.5 rounded-full border shadow-lg transition-all bg-red-950/80 backdrop-blur-md border-red-500/50 text-red-200 animate-pulse">
+                                                            <Skull className="w-4 h-4 text-red-400" />
+                                                            <span className="font-bold text-xs tracking-wider uppercase">处决模式</span>
+                                                            <div className="w-px h-3 bg-red-400 opacity-40 mx-1" />
+                                                            <span className="font-newsreader font-medium italic text-lg text-red-100">3200</span>
+                                                        </div>
+                                                    ) : (() => {
+                                                        const rank = getRank(currentElo || 600);
                                                         return (
                                                             <>
                                                                 <div className={cn("flex items-center gap-2 px-4 py-1.5 rounded-full border shadow-sm transition-all bg-white/50 backdrop-blur-md", rank.border, rank.color)}>
                                                                     <Trophy className="w-4 h-4" />
                                                                     <span className="font-bold text-xs tracking-wider uppercase">{rank.title}</span>
                                                                     <div className="w-px h-3 bg-current opacity-20 mx-1" />
-                                                                    <span className="font-newsreader font-medium italic text-lg">{currentElo || 1200}</span>
+                                                                    <span className="font-newsreader font-medium italic text-lg">{currentElo || 600}</span>
                                                                 </div>
 
                                                                 <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-48 bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-stone-100 p-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
@@ -1919,7 +1963,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150 mt-4 w-full max-w-sm">
                                                                 {/* Rank Progress Bar */}
                                                                 {(() => {
-                                                                    const rank = getRank(currentElo || 1200);
+                                                                    const rank = getRank(currentElo || 600);
                                                                     return (
                                                                         <div className="w-full mb-4">
                                                                             <div className="flex justify-between text-xs font-bold text-stone-400 mb-1.5 uppercase tracking-wider">
@@ -2043,6 +2087,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             className="bg-purple-900/80 text-purple-200 text-[10px] px-2 py-1 rounded border border-purple-500/50 hover:bg-purple-900"
                         >
                             Force Fever
+                        </button>
+                        <button
+                            onClick={debugTriggerRoulette}
+                            className="bg-emerald-900/80 text-emerald-200 text-[10px] px-2 py-1 rounded border border-emerald-500/50 hover:bg-emerald-900 flex items-center justify-center gap-1"
+                        >
+                            <Dices className="w-3 h-3" /> Spin Roulette
                         </button>
                     </div>
 
@@ -2346,70 +2396,206 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-md"
+                            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-xl"
                             onClick={() => setRankUp(null)}
                         >
+                            {/* Epic Background Rays */}
                             <motion.div
-                                initial={{ scale: 0, rotate: -180 }}
-                                animate={{ scale: 1, rotate: 0 }}
-                                exit={{ scale: 0, rotate: 180 }}
-                                transition={{ type: "spring", damping: 12, stiffness: 100 }}
-                                className="flex flex-col items-center gap-6 p-10 rounded-3xl bg-gradient-to-br from-amber-900/90 to-purple-900/90 border-2 border-amber-400/50 shadow-2xl shadow-amber-500/30"
+                                animate={{ rotate: 360 }}
+                                transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                                className="absolute inset-0 z-0 opacity-30"
                             >
-                                {/* Crown Icon */}
+                                <div className={cn("w-[200vw] h-[200vw] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r transparent via-white/10 transparent", rankUp.newRank.gradient)} style={{ clipPath: "polygon(50% 50%, 0 0, 100% 0)" }} />
+                            </motion.div>
+
+                            <motion.div
+                                initial={{ scale: 0.5, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.5, opacity: 0 }}
+                                transition={{ type: "spring", damping: 15, stiffness: 200 }}
+                                className="relative z-10 flex flex-col items-center gap-8 p-12 max-w-lg w-full"
+                            >
+                                {/* Shockwave Effect */}
                                 <motion.div
-                                    className="text-8xl"
-                                    animate={{
-                                        scale: [1, 1.2, 1],
-                                        rotate: [0, -10, 10, 0]
-                                    }}
-                                    transition={{
-                                        duration: 1,
-                                        repeat: Infinity,
-                                        repeatType: "reverse"
-                                    }}
-                                >
-                                    👑
-                                </motion.div>
+                                    initial={{ scale: 0, opacity: 0.8 }}
+                                    animate={{ scale: 2, opacity: 0 }}
+                                    transition={{ duration: 0.8, ease: "easeOut" }}
+                                    className={cn("absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full border-4", rankUp.newRank.border)}
+                                />
 
-                                {/* Title */}
-                                <div className="text-3xl font-black text-amber-300 uppercase tracking-widest">
-                                    段位晋升!
-                                </div>
-
-                                {/* Rank Transition */}
-                                <div className="flex items-center gap-4 text-xl">
-                                    <span className="text-stone-400 line-through">{rankUp.oldRank}</span>
-                                    <motion.span
-                                        className="text-2xl"
-                                        animate={{ x: [0, 5, 0] }}
-                                        transition={{ duration: 0.5, repeat: Infinity }}
+                                {/* THE ICON */}
+                                <div className="relative">
+                                    <motion.div
+                                        initial={{ scale: 0, rotate: -180 }}
+                                        animate={{ scale: 1, rotate: 0 }}
+                                        transition={{ type: "spring", damping: 12, stiffness: 100, delay: 0.2 }}
+                                        className={cn("w-40 h-40 rounded-3xl flex items-center justify-center shadow-[0_0_100px_rgba(255,255,255,0.3)] bg-gradient-to-br border-4 border-white/50", rankUp.newRank.gradient)}
                                     >
-                                        →
-                                    </motion.span>
-                                    <span className="text-amber-200 font-bold text-2xl">{rankUp.newRank}</span>
+                                        <rankUp.newRank.icon className="w-20 h-20 text-white drop-shadow-md" strokeWidth={1.5} />
+                                    </motion.div>
+
+                                    {/* Particles */}
+                                    {[...Array(12)].map((_, i) => (
+                                        <motion.div
+                                            key={i}
+                                            initial={{ x: 0, y: 0, opacity: 1, scale: 0 }}
+                                            animate={{
+                                                x: (Math.random() - 0.5) * 300,
+                                                y: (Math.random() - 0.5) * 300,
+                                                opacity: 0,
+                                                scale: Math.random() * 1.5
+                                            }}
+                                            transition={{ duration: 1, ease: "easeOut", delay: 0.3 }}
+                                            className={cn("absolute top-1/2 left-1/2 w-3 h-3 rounded-full", rankUp.newRank.bg.replace('bg-', 'bg-'))}
+                                        />
+                                    ))}
                                 </div>
 
-                                {/* Tap to Continue */}
+                                {/* Text Content */}
+                                <div className="text-center space-y-2">
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.5 }}
+                                        className="text-sm font-bold tracking-[0.3em] uppercase text-white/60"
+                                    >
+                                        Rank Promoted
+                                    </motion.div>
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0.5 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        transition={{ delay: 0.6, type: "spring" }}
+                                        className={cn("text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-white to-white/70 filter drop-shadow-lg")}
+                                    >
+                                        {rankUp.newRank.title}
+                                    </motion.div>
+                                </div>
+
+                                {/* Rank Comparison */}
                                 <motion.div
-                                    className="text-sm text-amber-400/60 mt-4"
-                                    animate={{ opacity: [0.4, 1, 0.4] }}
-                                    transition={{ duration: 1.5, repeat: Infinity }}
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    transition={{ delay: 0.8 }}
+                                    className="flex items-center gap-4 bg-white/10 backdrop-blur-md px-6 py-3 rounded-full border border-white/10"
                                 >
-                                    点击继续
+                                    <span className="text-stone-400 line-through text-lg decoration-stone-500/50">{rankUp.oldRank.title}</span>
+                                    <ChevronRight className="w-5 h-5 text-white/40" />
+                                    <span className="text-white font-bold text-xl">{rankUp.newRank.title}</span>
                                 </motion.div>
+
+                                {/* CTA */}
+                                <motion.button
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    className={cn("px-12 py-4 rounded-xl font-bold text-lg shadow-xl transition-all hover:brightness-110 active:scale-95 text-white shadow-lg", rankUp.newRank.bg.replace('bg-', 'bg-').replace('100', '600'))}
+                                >
+                                    CLAIM GLORY
+                                </motion.button>
                             </motion.div>
                         </motion.div>
                     )}
                 </AnimatePresence>
 
-                {/* DEATH FX OVERLAY */}
-                <DeathFX type={deathAnim} />
+                {/* RANK DOWN Demotion Overlay */}
+                <AnimatePresence>
+                    {rankDown && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-grayscale"
+                            onClick={() => setRankDown(null)}
+                        >
+                            <motion.div
+                                initial={{ scale: 1.1, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                className="flex flex-col items-center gap-8 p-12 max-w-lg w-full relative"
+                            >
+                                {/* Cracking Background Texture */}
+                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cracked-ground.png')] opacity-20 pointer-events-none" />
+
+                                {/* THE SHATTERING ICON */}
+                                <div className="relative">
+                                    {/* The Old Rank Getting Destroyed */}
+                                    <motion.div
+                                        initial={{ scale: 1, filter: "brightness(1)", opacity: 1 }}
+                                        animate={{ scale: [1, 1.1, 0.8], opacity: 0, filter: "brightness(2)" }}
+                                        transition={{ duration: 0.4, delay: 0.2 }}
+                                        className={cn("absolute inset-0 w-40 h-40 rounded-3xl flex items-center justify-center bg-gradient-to-br border-4 border-white/50", rankDown.oldRank.gradient)}
+                                    >
+                                        <rankDown.oldRank.icon className="w-20 h-20 text-white" />
+                                    </motion.div>
+
+                                    {/* The New (Lower) Rank Appearing */}
+                                    <motion.div
+                                        initial={{ scale: 0.5, opacity: 0 }}
+                                        animate={{ scale: 1, opacity: 1 }}
+                                        transition={{ type: "spring", damping: 12, delay: 0.6 }}
+                                        className={cn("w-40 h-40 rounded-3xl flex items-center justify-center shadow-[0_0_50px_rgba(255,0,0,0.2)] bg-stone-900 border-4 border-stone-700 grayscale")}
+                                    >
+                                        <rankDown.newRank.icon className="w-20 h-20 text-stone-500" strokeWidth={1.5} />
+                                    </motion.div>
+                                </div>
+
+                                {/* Text Content */}
+                                <div className="text-center space-y-2 z-10">
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.1 }}
+                                        className="text-sm font-bold tracking-[0.5em] uppercase text-red-600 animate-pulse"
+                                    >
+                                        Demotion Alert
+                                    </motion.div>
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 2 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        transition={{ delay: 0.2, type: "spring", stiffness: 300 }}
+                                        className="text-6xl font-black tracking-tighter text-stone-300"
+                                    >
+                                        RANK LOST
+                                    </motion.div>
+                                    <motion.p
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        transition={{ delay: 0.8 }}
+                                        className="text-stone-500 font-mono text-sm"
+                                    >
+                                        {rankDown.oldRank.title} <span className="mx-2 text-stone-700">➜</span> {rankDown.newRank.title}
+                                    </motion.p>
+                                </div>
+
+                                {/* CTA */}
+                                <motion.button
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 1 }}
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    className="px-10 py-3 rounded-xl font-bold text-sm bg-stone-800 text-stone-400 border border-stone-700 hover:bg-stone-700 hover:text-stone-200 transition-colors"
+                                >
+                                    ACCEPT FATE
+                                </motion.button>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
             </motion.div>
             {/* DEBUGGER */}
-            <DrillDebug onTriggerBoss={handleDebugBossTrigger} />
+            {/* <DrillDebug onTriggerBoss={handleDebugBossTrigger} /> */}
 
-        </AnimatePresence>
+            {/* ROULETTE OVERLAY */}
+            <AnimatePresence>
+                {showRoulette && (
+                    <RouletteOverlay
+                        onComplete={handleRouletteComplete}
+                        onCancel={() => setShowRoulette(false)}
+                    />
+                )}
+            </AnimatePresence>
+
+        </AnimatePresence >
     );
 }
