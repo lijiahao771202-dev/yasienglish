@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DrillCore } from "@/components/drill/DrillCore";
-import { Zap, Briefcase, Plane, GraduationCap, Coffee, Sword, Trophy, Flame, ChevronRight, Lock, Cpu, Heart, Utensils, Stethoscope } from "lucide-react";
+import { Zap, Briefcase, Plane, GraduationCap, Coffee, Sword, Trophy, Flame, ChevronRight, Lock, Cpu, Heart, Utensils, Stethoscope, Headphones, Feather } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRank } from "@/lib/rankUtils";
 import { db } from "@/lib/db";
@@ -94,20 +94,23 @@ const TOPICS = [
 
 export default function BattlePage() {
     const [activeDrill, setActiveDrill] = useState<{ type: "scenario"; topic: string } | null>(null);
-    const [eloRating, setEloRating] = useState(1200);
+    const [eloRating, setEloRating] = useState(600); // Translation
+    const [listeningElo, setListeningElo] = useState(600); // Listening
     const [streak, setStreak] = useState(0);
     const [battleMode, setBattleMode] = useState<'listening' | 'translation'>('listening');
 
     useEffect(() => {
         db.user_profile.orderBy('id').first().then(profile => {
             if (profile) {
-                setEloRating(profile.elo_rating);
+                setEloRating(profile.elo_rating || 600);
+                setListeningElo(profile.listening_elo || 600);
                 setStreak(profile.streak_count);
             }
         });
     }, [activeDrill]); // Refresh when drill closes
 
-    const rank = getRank(eloRating);
+    const transRank = getRank(eloRating);
+    const listenRank = getRank(listeningElo);
 
     return (
         <div className="min-h-screen bg-stone-50 font-sans selection:bg-indigo-100 selection:text-indigo-900 pb-20">
@@ -119,7 +122,7 @@ export default function BattlePage() {
 
             <div className="relative z-10 max-w-6xl mx-auto px-6 py-12 md:py-20">
                 {/* Header Section */}
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-16">
+                <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-8 mb-16">
                     <div>
                         <motion.h1
                             initial={{ opacity: 0, y: 20 }}
@@ -138,30 +141,60 @@ export default function BattlePage() {
                         </motion.p>
                     </div>
 
-                    {/* Stats Card */}
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.2 }}
-                        className="flex items-center gap-6 bg-white/60 backdrop-blur-xl p-4 pr-8 rounded-3xl border border-white/60 shadow-xl shadow-stone-200/50"
-                    >
-                        <div className="relative">
-                            <div className={cn("w-20 h-20 rounded-2xl flex items-center justify-center shadow-lg text-white bg-gradient-to-br", rank.gradient || "from-stone-500 to-stone-700")}>
-                                <Trophy className="w-10 h-10" />
+                    {/* Stats Cards Row */}
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        {/* 1. Listening Stats */}
+                        <motion.div
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.2 }}
+                            className="flex items-center gap-5 bg-white/60 backdrop-blur-xl p-3 pr-6 rounded-2xl border border-white/60 shadow-lg shadow-sky-100/50"
+                        >
+                            <div className={cn("w-16 h-16 rounded-xl flex items-center justify-center shadow-md text-white bg-gradient-to-br border-2 border-white/20 relative overflow-hidden", listenRank.gradient)}>
+                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20" />
+                                <listenRank.icon className="w-8 h-8 relative z-10" />
                             </div>
-                            <div className="absolute -bottom-3 -right-3 w-8 h-8 bg-stone-900 rounded-full flex items-center justify-center border-4 border-white text-xs font-bold text-white shadow-md">
-                                {getRank(eloRating).title.substring(0, 1)}
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-[10px] font-bold tracking-wider text-sky-600 uppercase bg-sky-50 px-2 py-0.5 rounded-full border border-sky-100">Listening</span>
+                                    <div className={cn("w-2 h-2 rounded-full", listenRank.bg.replace('bg-', 'bg-'))} />
+                                    <span className="text-xs font-bold text-stone-400">{listenRank.title}</span>
+                                </div>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-3xl font-bold text-stone-800 tabular-nums tracking-tight">{listeningElo}</span>
+                                    {streak > 1 && (
+                                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex items-center text-amber-500 text-xs font-bold">
+                                            <Flame className="w-3 h-3 mr-0.5 fill-amber-500" />
+                                            Streak
+                                        </motion.div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                        <div>
-                            <div className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">Current Rating</div>
-                            <div className="text-3xl font-bold text-stone-800 font-mono">{eloRating}</div>
-                            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-500 mt-1">
-                                <Flame className="w-3 h-3 fill-amber-500" />
-                                {streak} Day Streak
+                        </motion.div>
+
+                        {/* 2. Translation Stats */}
+                        <motion.div
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.3 }}
+                            className="flex items-center gap-5 bg-white/60 backdrop-blur-xl p-3 pr-6 rounded-2xl border border-white/60 shadow-lg shadow-indigo-100/50"
+                        >
+                            <div className={cn("w-16 h-16 rounded-xl flex items-center justify-center shadow-md text-white bg-gradient-to-br border-2 border-white/20 relative overflow-hidden", transRank.gradient)}>
+                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20" />
+                                <transRank.icon className="w-8 h-8 relative z-10" />
                             </div>
-                        </div>
-                    </motion.div>
+                            <div>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-[10px] font-bold tracking-wider text-indigo-600 uppercase bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">Translation</span>
+                                    <div className={cn("w-2 h-2 rounded-full", transRank.bg.replace('bg-', 'bg-'))} />
+                                    <span className="text-xs font-bold text-stone-400">{transRank.title}</span>
+                                </div>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-3xl font-bold text-stone-800 tabular-nums tracking-tight">{eloRating}</span>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
                 </div>
 
                 {/* Mode Switcher */}
