@@ -57,18 +57,19 @@ export async function POST(req: NextRequest) {
         let targetTier = "";
 
         if (mode === 'listening') {
-            // LISTENING MODE: Word count per tier (REALISTIC for short-term memory)
-            if (currentElo < 400) { targetTier = "新手"; specificInstruction = `TIER: ${targetTier} (A1). WORD COUNT: 5-8 words EXACTLY. Simple phrase only.`; }
-            else if (currentElo < 800) { targetTier = "青铜"; specificInstruction = `TIER: ${targetTier} (A2-). WORD COUNT: 8-12 words EXACTLY. One clear sentence.`; }
-            else if (currentElo < 1200) { targetTier = "白银"; specificInstruction = `TIER: ${targetTier} (A2+). WORD COUNT: 8-12 words EXACTLY. One moderate sentence with time/place. KEEP IT SHORT.`; }
-            else if (currentElo < 1600) { targetTier = "黄金"; specificInstruction = `TIER: ${targetTier} (B1). WORD COUNT: 14-18 words EXACTLY. Complex sentence with 'because/although'.`; }
-            else if (currentElo < 2000) { targetTier = "铂金"; specificInstruction = `TIER: ${targetTier} (B2). WORD COUNT: 18-24 words EXACTLY. News-style density with relative clauses.`; }
-            else if (currentElo < 2400) { targetTier = "钻石"; specificInstruction = `TIER: ${targetTier} (C1). WORD COUNT: 22-28 words EXACTLY. High information density, dense logic.`; }
-            else if (currentElo < 2800) { targetTier = "大师"; specificInstruction = `TIER: ${targetTier} (C2). WORD COUNT: 32-40 words EXACTLY. Native complexity, abstract concepts. FORCE LONGER SENTENCE.`; }
-            else if (currentElo < 3200) { targetTier = "王者"; specificInstruction = `TIER: ${targetTier} (C2+). WORD COUNT: 45-55 words EXACTLY. Dense academic content explanation. FORCE EXTREME LENGTH.`; }
-            else { targetTier = "处决"; specificInstruction = `TIER: ${targetTier} (PUNISHMENT). WORD COUNT: 60+ words MINIMUM. Extremely fast speed, obscure idioms.`; }
+            // LISTENING MODE: Word count per tier - STRICT MAXIMUM to ensure validation passes
+            // AI tends to over-generate, so we set targets BELOW the validation max
+            if (currentElo < 400) { targetTier = "新手"; specificInstruction = `TIER: ${targetTier} (A1). STRICT WORD LIMIT: 5-7 words MAXIMUM. Simple phrase only. DO NOT EXCEED 7 WORDS.`; }
+            else if (currentElo < 800) { targetTier = "青铜"; specificInstruction = `TIER: ${targetTier} (A2-). STRICT WORD LIMIT: 8-10 words MAXIMUM. One clear sentence. DO NOT EXCEED 10 WORDS.`; }
+            else if (currentElo < 1200) { targetTier = "白银"; specificInstruction = `TIER: ${targetTier} (A2+). STRICT WORD LIMIT: 8-12 words MAXIMUM. One moderate sentence. DO NOT EXCEED 12 WORDS.`; }
+            else if (currentElo < 1600) { targetTier = "黄金"; specificInstruction = `TIER: ${targetTier} (B1). STRICT WORD LIMIT: 12-16 words MAXIMUM. Complex sentence. DO NOT EXCEED 16 WORDS.`; }
+            else if (currentElo < 2000) { targetTier = "铂金"; specificInstruction = `TIER: ${targetTier} (B2). STRICT WORD LIMIT: 14-20 words MAXIMUM. News-style with clauses. DO NOT EXCEED 20 WORDS.`; }
+            else if (currentElo < 2400) { targetTier = "钻石"; specificInstruction = `TIER: ${targetTier} (C1). STRICT WORD LIMIT: 18-24 words MAXIMUM. High density logic. DO NOT EXCEED 24 WORDS.`; }
+            else if (currentElo < 2800) { targetTier = "大师"; specificInstruction = `TIER: ${targetTier} (C2). STRICT WORD LIMIT: 24-30 words MAXIMUM. Native complexity. DO NOT EXCEED 30 WORDS.`; }
+            else if (currentElo < 3200) { targetTier = "王者"; specificInstruction = `TIER: ${targetTier} (C2+). STRICT WORD LIMIT: 30-38 words MAXIMUM. Dense academic. DO NOT EXCEED 38 WORDS.`; }
+            else { targetTier = "处决"; specificInstruction = `TIER: ${targetTier} (PUNISHMENT). WORD COUNT: 50+ words MINIMUM. Extremely fast, obscure idioms.`; }
 
-            specificInstruction += " For Listening: Content must be retainable in short-term memory for echo/dictation. COUNT YOUR WORDS BEFORE OUTPUTTING.";
+            specificInstruction += " ⚠️ CRITICAL: COUNT YOUR WORDS! If you exceed the limit, SHORTEN the sentence. The word limit is STRICT.";
         } else {
             // TRANSLATION MODE: Word count per tier (STRICT with MINIMUM)
             if (currentElo < 400) { targetTier = "新手"; specificInstruction = `TIER: ${targetTier} (A1). WORD COUNT: 8-15 words MINIMUM. Subject-Verb-Object only.`; }
@@ -148,6 +149,7 @@ export async function POST(req: NextRequest) {
                 "chinese": "${isListening ? "Direct Chinese Translation of the English sentence (NOT a description of the situation)" : "The Chinese sentence to translate"}",
                 "target_english_vocab": ["Keyword1", "Keyword2"],
                 "reference_english": "The ideal English sentence matching the scenario.",
+                "_scenario_topic": "The specific micro-topic you invented (e.g. 机场误机, 餐厅点菜, 面试自我介绍)",
                 "_ai_difficulty_report": {
                     "tier": "Your target tier name (e.g. 新手/青铜/白银/黄金/铂金/钻石/大师/王者/处决)",
                     "cefr": "Your target CEFR level (A1/A2-/A2+/B1/B2/C1/C2/C2+/∞)",
@@ -262,7 +264,7 @@ DO NOT generate content for a lower difficulty tier than requested.` },
             if (isListeningMode) {
                 if (elo < 400) return { min: 5, max: 8, tier: "新手", cefr: "A1" };
                 if (elo < 800) return { min: 8, max: 12, tier: "青铜", cefr: "A2-" };
-                if (elo < 1200) return { min: 10, max: 14, tier: "白银", cefr: "A2+" };
+                if (elo < 1200) return { min: 8, max: 14, tier: "白银", cefr: "A2+" };
                 if (elo < 1600) return { min: 12, max: 18, tier: "黄金", cefr: "B1" };
                 if (elo < 2000) return { min: 14, max: 22, tier: "铂金", cefr: "B2" };
                 if (elo < 2400) return { min: 16, max: 26, tier: "钻石", cefr: "C1" };
@@ -303,8 +305,15 @@ DO NOT generate content for a lower difficulty tier than requested.` },
         }
 
         // Return enriched response with difficulty metadata
+        // For Scenario mode, prefer AI-generated specific topic over generic "Random Scenario"
+        const displayTopic = data._scenario_topic || articleTitle || "随机场景";
+
         return NextResponse.json({
             ...data,
+            _topicMeta: {
+                topic: displayTopic,
+                isScenario: isScenario
+            },
             _difficultyMeta: {
                 requestedElo: currentElo,
                 tier: expected.tier,
