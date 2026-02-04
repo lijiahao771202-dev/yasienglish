@@ -38,6 +38,7 @@ interface EnhancedEloItem extends EloHistoryItem {
     isMilestone: boolean;
     milestoneValue?: number;
     streak: number; // positive = win streak, negative = lose streak
+    isStreakStart: boolean; // Only show fire/ice on streak start
     rank: ReturnType<typeof getRank>;
     prevRank?: ReturnType<typeof getRank>;
 }
@@ -92,8 +93,8 @@ const CustomDot = (props: any) => {
         );
     }
 
-    // Hot streak (3+ wins) - fire effect
-    if (streak >= 3) {
+    // Hot streak (3+ wins) - fire effect (only on streak start)
+    if (streak >= 3 && item.isStreakStart) {
         const intensity = Math.min(streak, 7);
         return (
             <g>
@@ -104,8 +105,8 @@ const CustomDot = (props: any) => {
         );
     }
 
-    // Cold streak (3+ losses) - ice effect
-    if (streak <= -3) {
+    // Cold streak (3+ losses) - ice effect (only on streak start)
+    if (streak <= -3 && item.isStreakStart) {
         const intensity = Math.min(Math.abs(streak), 7);
         return (
             <g>
@@ -143,41 +144,6 @@ export function EloChart({ mode }: EloChartProps) {
                     .limit(100) // Load more for filtering
                     .toArray();
 
-                // Generate demo data if not enough
-                if (history.length < 5) {
-                    const demoData: EloHistoryItem[] = [];
-                    let elo = mode === 'listening' ? 1200 : 800;
-                    const now = Date.now();
-
-                    for (let i = 0; i < 30; i++) {
-                        const change = Math.round((Math.random() - 0.4) * 40);
-                        elo = Math.max(200, Math.min(2500, elo + change));
-
-                        demoData.push({
-                            mode,
-                            elo,
-                            change,
-                            timestamp: now - (30 - i) * 3600000 * 2
-                        });
-                    }
-
-                    // Add special events
-                    demoData[18].elo = 1620; demoData[18].change = 50; // Peak
-                    demoData[12].elo = 1000; demoData[12].change = 25; // Milestone
-
-                    // Add win streak
-                    for (let i = 8; i < 12; i++) {
-                        demoData[i].change = Math.abs(demoData[i].change) || 15;
-                    }
-
-                    // Add lose streak
-                    for (let i = 22; i < 26; i++) {
-                        demoData[i].change = -Math.abs(demoData[i].change) || -15;
-                    }
-
-                    history = demoData.reverse();
-                }
-
                 // Process data
                 let peak = 0;
                 let currentStreak = 0;
@@ -206,6 +172,9 @@ export function EloChart({ mode }: EloChartProps) {
                     const isPromotion = prevRank && rank.title !== prevRank.title && item.change > 0;
                     const isDemotion = prevRank && rank.title !== prevRank.title && item.change < 0;
 
+                    // Check if this is the start of a streak (streak just reached 3)
+                    const isStreakStart = (currentStreak === 3) || (currentStreak === -3);
+
                     return {
                         ...item,
                         dateStr: new Date(item.timestamp).toLocaleDateString(undefined, { month: '2-digit', day: '2-digit' }),
@@ -216,6 +185,7 @@ export function EloChart({ mode }: EloChartProps) {
                         isMilestone,
                         milestoneValue,
                         streak: currentStreak,
+                        isStreakStart,
                         rank,
                         prevRank
                     };
@@ -276,6 +246,44 @@ export function EloChart({ mode }: EloChartProps) {
     const currentStreak = useMemo(() => {
         if (data.length === 0) return 0;
         return data[data.length - 1].streak;
+    }, [data]);
+
+    // Average Elo
+    const averageElo = useMemo(() => {
+        if (data.length === 0) return 0;
+        return Math.round(data.reduce((sum, d) => sum + d.elo, 0) / data.length);
+    }, [data]);
+
+    // Comparison with yesterday/last week
+    const comparison = useMemo(() => {
+        if (allData.length < 2) return null;
+
+        const now = Date.now();
+        const yesterdayStart = new Date().setHours(0, 0, 0, 0) - 24 * 60 * 60 * 1000;
+        const lastWeekStart = now - 7 * 24 * 60 * 60 * 1000;
+
+        // Find yesterday's last elo
+        const yesterdayData = allData.filter(d => d.timestamp < new Date().setHours(0, 0, 0, 0) && d.timestamp >= yesterdayStart);
+        const lastWeekData = allData.filter(d => d.timestamp < lastWeekStart + 24 * 60 * 60 * 1000 && d.timestamp >= lastWeekStart);
+
+        const yesterdayElo = yesterdayData.length > 0 ? yesterdayData[yesterdayData.length - 1].elo : null;
+        const lastWeekElo = lastWeekData.length > 0 ? lastWeekData[lastWeekData.length - 1].elo : null;
+
+        return {
+            vsYesterday: yesterdayElo ? currentElo - yesterdayElo : null,
+            vsLastWeek: lastWeekElo ? currentElo - lastWeekElo : null
+        };
+    }, [allData, currentElo]);
+
+    // Y-axis domain with nice round numbers
+    const yAxisDomain = useMemo(() => {
+        if (data.length === 0) return [0, 100];
+        const minElo = Math.min(...data.map(d => d.elo));
+        const maxElo = Math.max(...data.map(d => d.elo));
+        // Round to nearest 100
+        const roundedMin = Math.floor((minElo - 50) / 100) * 100;
+        const roundedMax = Math.ceil((maxElo + 50) / 100) * 100;
+        return [roundedMin, roundedMax];
     }, [data]);
 
     const isListening = mode === 'listening';
@@ -341,10 +349,21 @@ export function EloChart({ mode }: EloChartProps) {
                         </div>
                     </div>
 
-                    {/* Peak Elo Badge */}
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-full">
-                        <Crown className="w-4 h-4 text-amber-500" />
-                        <span className="text-xs font-bold text-amber-700">Peak: {peakElo}</span>
+                    {/* Peak Elo Badge + Comparison */}
+                    <div className="flex items-center gap-2">
+                        {/* Comparison badges */}
+                        {comparison && comparison.vsYesterday !== null && (
+                            <div className={cn(
+                                "flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold",
+                                comparison.vsYesterday >= 0 ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
+                            )}>
+                                {comparison.vsYesterday >= 0 ? "+" : ""}{comparison.vsYesterday} vs 昨日
+                            </div>
+                        )}
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-full">
+                            <Crown className="w-4 h-4 text-amber-500" />
+                            <span className="text-xs font-bold text-amber-700">Peak: {peakElo}</span>
+                        </div>
                     </div>
                 </div>
 
@@ -433,6 +452,21 @@ export function EloChart({ mode }: EloChartProps) {
                                 strokeOpacity={0.6}
                             />
 
+                            {/* Average Elo line */}
+                            <ReferenceLine
+                                y={averageElo}
+                                stroke="#a1a1aa"
+                                strokeDasharray="3 3"
+                                strokeWidth={1}
+                                strokeOpacity={0.5}
+                                label={{
+                                    value: `Avg: ${averageElo}`,
+                                    position: 'left',
+                                    fill: '#a1a1aa',
+                                    fontSize: 9
+                                }}
+                            />
+
                             <XAxis
                                 dataKey="timestamp"
                                 tickFormatter={(ts) => {
@@ -448,11 +482,12 @@ export function EloChart({ mode }: EloChartProps) {
                                 minTickGap={40}
                             />
                             <YAxis
-                                domain={['dataMin - 50', 'dataMax + 50']}
+                                domain={yAxisDomain}
                                 tick={{ fontSize: 10, fill: '#a8a29e' }}
                                 axisLine={false}
                                 tickLine={false}
                                 width={45}
+                                tickFormatter={(v) => v.toString()}
                             />
 
                             <Tooltip
@@ -526,7 +561,7 @@ export function EloChart({ mode }: EloChartProps) {
                             />
 
                             <Area
-                                type="monotone"
+                                type="natural"
                                 dataKey="elo"
                                 stroke={trendColor}
                                 strokeWidth={2.5}
