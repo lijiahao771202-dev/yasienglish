@@ -209,20 +209,43 @@ export async function POST(req: NextRequest) {
             `;
         }
 
-        const completion = await deepseek.chat.completions.create({
-            messages: [
-                {
-                    role: "system", content: `You are a strict English drill generator. You MUST:
+        // Retry wrapper for unstable DeepSeek API
+        const MAX_RETRIES = 3;
+        let lastError: Error | null = null;
+        let completion: any = null;
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                console.log(`[API] Attempt ${attempt}/${MAX_RETRIES} for Elo ${currentElo}`);
+                completion = await deepseek.chat.completions.create({
+                    messages: [
+                        {
+                            role: "system", content: `You are a strict English drill generator. You MUST:
 1. Follow the EXACT word count specified in the prompt. 
 2. Match the specified tier (e.g., 铂金/Platinum = 20-30 words for listening).
 3. Report your tier and word count accurately in _ai_difficulty_report.
 DO NOT generate content for a lower difficulty tier than requested.` },
-                { role: "user", content: prompt }
-            ],
-            model: "deepseek-chat",
-            response_format: { type: "json_object" },
-            temperature: 0.7, // Reduced from 1.2 for more consistent instruction following
-        });
+                        { role: "user", content: prompt }
+                    ],
+                    model: "deepseek-chat",
+                    response_format: { type: "json_object" },
+                    temperature: 0.7,
+                });
+                break; // Success, exit retry loop
+            } catch (error) {
+                lastError = error as Error;
+                console.log(`[API] Attempt ${attempt} failed: ${lastError.message}`);
+                if (attempt < MAX_RETRIES) {
+                    // Wait before retry (exponential backoff: 1s, 2s, 4s)
+                    await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+                }
+            }
+        }
+
+        if (!completion) {
+            console.error(`[API] All ${MAX_RETRIES} attempts failed:`, lastError);
+            throw lastError || new Error("Failed after retries");
+        }
 
         const content = completion.choices[0].message.content;
         if (!content) throw new Error("No content generated");

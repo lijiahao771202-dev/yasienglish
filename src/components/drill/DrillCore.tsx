@@ -36,6 +36,22 @@ interface DrillData {
     target_english_vocab?: string[];
     key_vocab?: string[];
     reference_english: string;
+    _difficultyMeta?: {
+        requestedElo: number;
+        tier: string;
+        cefr: string;
+        expectedWordRange: { min: number; max: number };
+        actualWordCount: number;
+        isValid: boolean;
+        status: 'TOO_EASY' | 'TOO_HARD' | 'MATCHED';
+        aiSelfReport?: {
+            tier: string;
+            cefr: string;
+            wordCount: number;
+            targetRange: string;
+            wordCountAccurate: boolean;
+        } | null;
+    };
 }
 
 interface DrillFeedback {
@@ -123,6 +139,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     const [listeningElo, setListeningElo] = useState(600);
     const [listeningStreak, setListeningStreak] = useState(0);
+    const [isEloLoaded, setIsEloLoaded] = useState(false); // Track if Elo has been loaded from DB
 
 
 
@@ -135,7 +152,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [bossState, setBossState] = useState<{
         active: boolean;
         introAck: boolean;
-        type: 'blind' | 'lightning' | 'echo' | 'reverser' | 'reaper' | 'roulette' | 'roulette_execution';
+        type: 'blind' | 'lightning' | 'echo' | 'reaper' | 'roulette' | 'roulette_execution';
         hp?: number;
         maxHp?: number;
         playerHp?: number; // New: Symmetric Duel
@@ -181,7 +198,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [shake, setShake] = useState(false);
     const [showDoubleDown, setShowDoubleDown] = useState(false); // Modal State
 
+    const hasStartedRef = useRef(false);
     const hasPlayedEchoRef = useRef(false); // For Echo Beast (One-time audio)
+
+    // Track if Lightning mode audio has been played (for delayed countdown)
+    const [lightningStarted, setLightningStarted] = useState(false);
+
+    // Boss Fuse Timer
     const [fuseTime, setFuseTime] = useState(100); // Boss Fuse (100%)
     const abortControllerRef = useRef<AbortController | null>(null); // For cancelling pending API requests
     const [rankUp, setRankUp] = useState<{ oldRank: ReturnType<typeof getRank>; newRank: ReturnType<typeof getRank>; } | null>(null); // Rank promotion celebration
@@ -193,7 +216,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // Boss Fuse Timer
     useEffect(() => {
         let interval: NodeJS.Timeout;
-        const isLightning = theme === 'boss' && bossState.active && bossState.type === 'lightning' && bossState.introAck;
+        // Lightning countdown only starts AFTER audio is played
+        const isLightning = theme === 'boss' && bossState.active && bossState.type === 'lightning' && bossState.introAck && lightningStarted;
         const isGamble = theme === 'crimson' && gambleState.active && gambleState.introAck;
 
         if ((isLightning || isGamble) && !isSubmittingDrill) {
@@ -260,7 +284,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setFuseTime(100); // Reset if not in a timed mode
         }
         return () => clearInterval(interval);
-    }, [theme, isSubmittingDrill, bossState.introAck, gambleState.introAck, bossState.active, bossState.type, gambleState.active, gambleState.wager]);
+    }, [theme, isSubmittingDrill, bossState.introAck, gambleState.introAck, bossState.active, bossState.type, gambleState.active, gambleState.wager, lightningStarted]);
 
     // Shake Trigger
     useEffect(() => {
@@ -343,6 +367,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 // Load Listening Stats (Fallback if undefined post-migration in memory before reload)
                 setListeningElo(profile.listening_elo ?? 1200);
                 setListeningStreak(profile.listening_streak ?? 0);
+                setIsEloLoaded(true); // Mark Elo as loaded
             } else {
                 await db.user_profile.add({
                     elo_rating: 1200,
@@ -350,6 +375,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     max_elo: 1200,
                     last_practice: Date.now()
                 });
+                setIsEloLoaded(true); // Mark Elo as loaded (new profile)
             }
         };
         loadProfile();
@@ -464,6 +490,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
             await audio.play();
             setIsPlaying(true);
+
+            // Start Lightning countdown when audio plays
+            if (bossState.active && bossState.type === 'lightning') {
+                setLightningStarted(true);
+            }
         } catch (error) {
             console.error("Audio chain failed", error);
             setIsPlaying(false);
@@ -684,6 +715,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         const signal = abortControllerRef.current.signal;
 
         hasPlayedEchoRef.current = false; // Reset Echo Beast state
+        setLightningStarted(false); // Reset Lightning countdown trigger
 
         setIsGeneratingDrill(true);
         setDrillData(null);
@@ -709,18 +741,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             // 2% Chance for Boss
             if (roll < 0.02) {
                 const bossRoll = Math.random();
-                let type: 'blind' | 'lightning' | 'echo' | 'reverser' | 'reaper' = 'blind';
+                let type: 'blind' | 'lightning' | 'echo' | 'reaper' = 'blind';
 
                 if (mode === 'listening') {
-                    // Listening Weights: Blind (30%), Echo (25%), Lightning (25%), Reaper (20%)
-                    if (bossRoll < 0.3) type = 'blind';
-                    else if (bossRoll < 0.55) type = 'echo';
-                    else if (bossRoll < 0.80) type = 'lightning';
+                    // Listening Weights: Blind (35%), Echo (30%), Lightning (20%), Reaper (15%)
+                    if (bossRoll < 0.35) type = 'blind';
+                    else if (bossRoll < 0.65) type = 'echo';
+                    else if (bossRoll < 0.85) type = 'lightning';
                     else type = 'reaper';
                 } else {
-                    // Translation Weights: Reverser (40%), Lightning (30%), Reaper (30%)
-                    if (bossRoll < 0.4) type = 'reverser';
-                    else if (bossRoll < 0.7) type = 'lightning';
+                    // Translation Weights: Lightning (50%), Reaper (50%)
+                    if (bossRoll < 0.5) type = 'lightning';
                     else type = 'reaper';
                 }
 
@@ -826,8 +857,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
                     current_elo: eloRating || 600,
-                    mode,
-                    is_reverse: bossState.active && bossState.type === 'reverser'
+                    mode
                 }),
             });
             const data = await response.json();
@@ -1168,6 +1198,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     };
 
     const renderInteractiveText = (text: string) => {
+        // Safety check: return empty if text is undefined/null
+        if (!text) return null;
+
         // Find existing marks for this text
         const textKey = "SENTENCE_" + (drillData?.reference_english || "");
         const cached = audioCache.current.get(textKey);
@@ -1304,9 +1337,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     };
 
 
-    // Auto-Mount Generate
-    // Auto-Mount Generate
+    // Auto-Mount Generate (WAIT for Elo to be loaded first!)
     useEffect(() => {
+        // Only generate when Elo is loaded to ensure correct difficulty
+        if (!isEloLoaded) return;
+
         if (!drillData && !isGeneratingDrill) {
             handleGenerateDrill();
 
@@ -1315,13 +1350,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             if (roll < 0.02) {
                 // Select Boss Type
                 const bossRoll = Math.random();
-                let type: 'blind' | 'lightning' | 'echo' | 'reverser' | 'reaper' = 'blind';
+                let type: 'blind' | 'lightning' | 'echo' | 'reaper' = 'blind';
 
                 if (bossRoll < 0.05) type = 'reaper';      // 5%
-                else if (bossRoll < 0.20) type = 'reverser'; // 15%
-                else if (bossRoll < 0.45) type = 'echo';     // 25%
-                else if (bossRoll < 0.70) type = 'lightning';// 25%
-                else type = 'blind';                         // 30%
+                else if (bossRoll < 0.35) type = 'echo';     // 30%
+                else if (bossRoll < 0.60) type = 'lightning';// 25%
+                else type = 'blind';                         // 40%
 
                 setBossState({
                     active: true,
@@ -1340,7 +1374,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [mode]);
+    }, [mode, isEloLoaded]);
 
 
 
@@ -1374,16 +1408,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             style: "bg-[#082f49] border-cyan-500/40 shadow-[0_0_80px_rgba(6,182,212,0.25)] text-cyan-100 ring-1 ring-cyan-500/20",
             introDelay: 2500,
             bgm: 'https://commondatastorage.googleapis.com/codeskulptor-demos/pyman_assets/intromusic.ogg'
-        },
-        'reverser': {
-            name: '逆转行者 (REVERSER)',
-            desc: '绝境逆转 • 英译中挑战',
-            icon: RefreshCw,
-            color: 'text-fuchsia-400',
-            bg: 'bg-fuchsia-500',
-            style: "bg-[#2e1065] border-fuchsia-500/40 shadow-[0_0_80px_rgba(217,70,239,0.25)] text-fuchsia-100 ring-1 ring-fuchsia-500/20",
-            introDelay: 2000,
-            bgm: '/reverser_intro.mp3'
         },
         'reaper': {
             name: '死神 (THE REAPER)',
@@ -1711,6 +1735,30 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                 </div>
                                                 <div className="h-4 w-[1px] bg-stone-200" />
                                                 <span className="text-stone-400 font-bold text-xs tracking-wider uppercase">{mode} Drill</span>
+
+                                                {/* Difficulty Verification Badge */}
+                                                {drillData?._difficultyMeta && (
+                                                    <>
+                                                        <div className="h-4 w-[1px] bg-stone-200" />
+                                                        <div className={cn(
+                                                            "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all",
+                                                            drillData._difficultyMeta.status === 'MATCHED'
+                                                                ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                                                                : drillData._difficultyMeta.status === 'TOO_EASY'
+                                                                    ? "bg-amber-50 text-amber-600 border border-amber-200"
+                                                                    : "bg-rose-50 text-rose-600 border border-rose-200"
+                                                        )}>
+                                                            <span className="font-mono">{drillData._difficultyMeta.tier}</span>
+                                                            <span className="opacity-50">|</span>
+                                                            <span>{drillData._difficultyMeta.actualWordCount}词</span>
+                                                            {drillData._difficultyMeta.status !== 'MATCHED' && (
+                                                                <span className="ml-0.5">
+                                                                    {drillData._difficultyMeta.status === 'TOO_EASY' ? '⚠️' : '🔥'}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </>
+                                                )}
                                             </div>
 
 
@@ -1936,12 +1984,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     ) : (
                                                         <div className="w-full py-12 flex flex-col items-center justify-center gap-8">
                                                             <h3 className="text-2xl md:text-4xl font-newsreader font-medium text-stone-900 leading-normal text-center max-w-4xl">
-                                                                {(bossState.active && bossState.type === 'reverser') ? drillData.reference_english : drillData.chinese}
+                                                                {drillData.chinese}
                                                             </h3>
 
                                                             {/* Keywords */}
                                                             <div className="flex flex-wrap justify-center gap-3">
-                                                                {!(bossState.active && bossState.type === 'reverser') && (drillData.target_english_vocab || drillData.key_vocab || []).map((vocab, i) => (
+                                                                {(drillData.target_english_vocab || drillData.key_vocab || []).map((vocab, i) => (
                                                                     <span key={i} onClick={(e) => handleWordClick(e, vocab)} className="px-5 py-2 rounded-full bg-white border border-stone-200 text-stone-600 font-newsreader italic text-lg hover:bg-stone-50 hover:border-stone-300 hover:text-stone-900 cursor-pointer transition-all shadow-sm">{vocab}</span>
                                                                 ))}
                                                             </div>
@@ -1984,7 +2032,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             <textarea
                                                                 value={userTranslation}
                                                                 onChange={(e) => setUserTranslation(e.target.value)}
-                                                                placeholder={(bossState.active && bossState.type === 'reverser') ? "Enter Chinese translation..." : "Enter your English translation..."}
+                                                                placeholder="Enter your English translation..."
                                                                 className="w-full min-h-[160px] p-6 text-xl font-newsreader bg-white/50 border border-stone-200 rounded-3xl focus:ring-4 ring-stone-100 focus:border-stone-400 transition-all resize-none placeholder:text-stone-300 text-stone-800 shadow-sm group-hover:shadow-md outline-none"
                                                                 spellCheck={false}
                                                                 autoFocus
@@ -2170,7 +2218,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             <button onClick={() => { setBossState({ active: true, introAck: false, type: 'lightning' }); setTheme('boss'); setPlaybackSpeed(1.25); }} className="bg-amber-900/50 text-amber-500 text-[9px] px-1 py-1 rounded hover:bg-amber-900">Force Light.</button>
                             <button onClick={() => { setBossState({ active: true, introAck: false, type: 'echo' }); setTheme('boss'); setPlaybackSpeed(1.0); }} className="bg-cyan-900/50 text-cyan-500 text-[9px] px-1 py-1 rounded hover:bg-cyan-900">Force Echo</button>
                             <button onClick={() => { setBossState({ active: true, introAck: false, type: 'reaper', hp: 3, maxHp: 3 }); setTheme('boss'); setPlaybackSpeed(1.0); }} className="bg-rose-900/50 text-rose-500 text-[9px] px-1 py-1 rounded hover:bg-rose-900">Force Reaper</button>
-                            <button onClick={() => { setBossState({ active: true, introAck: false, type: 'reverser' }); setTheme('boss'); setPlaybackSpeed(1.0); }} className="bg-fuchsia-900/50 text-fuchsia-500 text-[9px] px-1 py-1 rounded hover:bg-fuchsia-900">Force Reverse</button>
                         </div>
                         <button
                             onClick={() => { setFeverMode(true); setComboCount(3); setTheme('fever'); }}
