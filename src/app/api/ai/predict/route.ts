@@ -3,6 +3,39 @@ import { deepseek } from "@/lib/deepseek";
 
 export const runtime = 'edge';
 
+function takeNextWords(text: string, count: number) {
+    const match = text.trimStart().match(new RegExp(`^(\\S+\\s*){1,${count}}`));
+    return match ? match[0].trimEnd() : "";
+}
+
+function getFastReferencePrediction(currentInput: string, referenceAnswer?: string) {
+    if (!referenceAnswer) return "";
+
+    const input = currentInput.trimStart();
+    const reference = referenceAnswer.trimStart();
+    if (!input || !reference) return "";
+
+    if (!reference.toLowerCase().startsWith(input.toLowerCase())) {
+        return "";
+    }
+
+    const remainder = reference.slice(input.length).trimStart();
+    if (!remainder) {
+        return "";
+    }
+
+    const nextWords = takeNextWords(remainder, 3);
+    if (!nextWords) {
+        return "";
+    }
+
+    if (!currentInput.endsWith(' ') && !nextWords.match(/^[.,?!]/)) {
+        return ` ${nextWords}`;
+    }
+
+    return nextWords;
+}
+
 export async function POST(req: NextRequest) {
     try {
         const { sourceText, currentInput, referenceAnswer } = await req.json();
@@ -11,31 +44,20 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ prediction: "" });
         }
 
-        const prompt = `
-Act as an expert typing autocomplete engine.
-Context:
-- Original Sentence to Translate: "${sourceText}"
-- Standard Reference Answer: "${referenceAnswer || 'N/A'}"
-- User's Current Input: "${currentInput}"
+        const fastPrediction = getFastReferencePrediction(currentInput, referenceAnswer);
+        if (fastPrediction) {
+            return NextResponse.json({ prediction: fastPrediction });
+        }
 
-Your Task:
-The user is translating the sentence into English. They have typed the "Current Input" but paused.
-Predict the logical NEXT 1 TO 3 WORDS to continue their sentence.
+        const prompt = `Return strict JSON: {"prediction": ""}.
+Source: "${sourceText}"
+Reference: "${referenceAnswer || 'N/A'}"
+User: "${currentInput}"
 
-CRITICAL RULES:
-1. ONLY output the next 1-3 words. Do NOT output the user's current input.
-2. Do NOT output any explanations, punctuation at the start (unless it belongs to the next word), or quotes.
-3. If the user's current input is already a COMPLETE and VALID translation of the source text, set "is_complete" to true and "prediction" to an empty string "".
-4. If the user's current input has already expressed the full meaning, STOP predicting immediately. Do not loop or add redundant phrases.
-5. Match the casing logically. Usually the next words are lowercase unless it's a proper noun or start of a new sentence.
-6. Smoothly continue from the user's exact last word.
-
-Output JSON format:
-{
-    "is_complete": boolean,
-    "prediction": "the next words or empty string"
-}
-`;
+Return only the next 1 to 3 words that should continue the user's English translation.
+If the translation is already complete, return an empty prediction.
+Do not repeat the user's existing text.
+Do not include quotes or explanations.`;
 
         const completion = await deepseek.chat.completions.create({
             messages: [
@@ -44,8 +66,8 @@ Output JSON format:
             ],
             model: "deepseek-chat",
             response_format: { type: "json_object" },
-            temperature: 0.1, // Low temperature for deterministic, predictable autocomplete
-            max_tokens: 50, // Keep it fast and cheap
+            temperature: 0,
+            max_tokens: 12,
         });
 
         const content = completion.choices[0].message.content;
@@ -54,7 +76,7 @@ Output JSON format:
         const data = JSON.parse(content);
 
         let prediction = data.prediction || "";
-        if (data.is_complete || prediction === "<END>") {
+        if (prediction === "<END>") {
             prediction = "";
         }
 

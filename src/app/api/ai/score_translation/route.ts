@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deepseek } from "@/lib/deepseek";
 
+const LISTENING_MAX_TOKENS = 256;
+const TRANSLATION_MAX_TOKENS = 220;
+const SCORING_TEMPERATURE = 0.2;
+
+type ScoreCompletion = {
+    choices: Array<{
+        message: {
+            content: string | null;
+        };
+    }>;
+};
+
 export async function POST(req: NextRequest) {
     try {
         const { user_translation, reference_english, original_chinese, current_elo, mode = "translation", is_reverse = false, input_source = 'keyboard', teaching_mode = false } = await req.json();
@@ -95,7 +107,6 @@ export async function POST(req: NextRequest) {
             Output JSON:
             {
                 "score": 0-10, 
-                "elo_adjustment": (Int),
                 "judge_reasoning": "Brief spoken performance review",
                 "segments": [ {word, status, user_input?} ... ],
                 "feedback": { "listening_tips": ["pronunciation tip", "flow tip"] }
@@ -160,24 +171,18 @@ export async function POST(req: NextRequest) {
              Output JSON:
              {
                  "score": 0-10,
-                 "elo_adjustment": (Int),
                  "judge_reasoning": "Brief ranking feedback",
                  "feedback": ["Point 1", "Point 2"],
-                 "improved_version": "..."${teaching_mode ? `,
-                 "error_analysis": [
-                     { "error": "用户写错的部分", "correction": "正确写法", "rule": "语法规则解释", "tip": "记忆技巧" }
-                 ],
-                 "similar_patterns": [
-                     { "chinese": "类似中文句子", "english": "对应英文翻译", "point": "这个句型练习的要点" }
-                 ]` : ''}
+                 "improved_version": "..."
              }
              `;
         }
 
         console.log("[score_translation] Calling DeepSeek API...");
         const MAX_RETRIES = 3;
+        const maxTokens = mode === "listening" ? LISTENING_MAX_TOKENS : TRANSLATION_MAX_TOKENS;
         let lastError: Error | null = null;
-        let completion: any = null;
+        let completion: ScoreCompletion | null = null;
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
@@ -189,7 +194,8 @@ export async function POST(req: NextRequest) {
                     ],
                     model: "deepseek-chat",
                     response_format: { type: "json_object" },
-                    temperature: 0.7,
+                    temperature: SCORING_TEMPERATURE,
+                    max_tokens: maxTokens,
                 });
                 break; // Success, exit retry loop
             } catch (error) {
@@ -211,14 +217,15 @@ export async function POST(req: NextRequest) {
         if (!content) throw new Error("No content generated");
 
         const data = JSON.parse(content);
-        console.log("[score_translation] Success:", { score: data.score, elo_adjustment: data.elo_adjustment });
+        console.log("[score_translation] Success:", { score: data.score, teaching_mode });
         return NextResponse.json(data);
 
-    } catch (error: any) {
-        console.error("Score Translation Error:", error?.message || error);
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Failed to score translation";
+        console.error("Score Translation Error:", message);
         console.error("Full error:", JSON.stringify(error, null, 2));
         return NextResponse.json(
-            { error: error?.message || "Failed to score translation" },
+            { error: message },
             { status: 500 }
         );
     }

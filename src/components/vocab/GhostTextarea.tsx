@@ -29,6 +29,80 @@ export function GhostTextarea({
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const localCache = useRef<Record<string, string>>({});
+    const pendingInputRef = useRef<string | null>(null);
+    const pendingPromiseRef = useRef<Promise<string> | null>(null);
+
+    const setGhostFromPrediction = (inputValue: string, suggestion: string) => {
+        setGhostText(suggestion);
+        if (textareaRef.current) {
+            textareaRef.current.dataset.prevInput = inputValue;
+            textareaRef.current.dataset.prevGhost = suggestion;
+        }
+    };
+
+    const fetchPrediction = async (currentInputValue: string) => {
+        if (!currentInputValue.trim() || disabled || (!sourceText && !referenceAnswer)) {
+            return "";
+        }
+
+        const inputKey = currentInputValue.toLowerCase();
+        if (localCache.current[inputKey] !== undefined) {
+            return localCache.current[inputKey];
+        }
+
+        if (pendingInputRef.current === inputKey && pendingPromiseRef.current) {
+            return pendingPromiseRef.current;
+        }
+
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        abortControllerRef.current = new AbortController();
+
+        const request = (async () => {
+            try {
+                const res = await fetch('/api/ai/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sourceText,
+                        currentInput: currentInputValue,
+                        referenceAnswer
+                    }),
+                    signal: abortControllerRef.current?.signal
+                });
+
+                if (!res.ok) {
+                    return "";
+                }
+
+                const data = await res.json();
+                let aiSuggestion = data.prediction || "";
+
+                if (aiSuggestion) {
+                    const match = aiSuggestion.match(new RegExp(`^(\\s*\\S+){1,${predictionWordCount}}`));
+                    aiSuggestion = match ? match[0] : aiSuggestion;
+                }
+
+                localCache.current[inputKey] = aiSuggestion;
+                return aiSuggestion;
+            } catch (err: any) {
+                if (err.name === 'AbortError') {
+                    console.log("Prediction aborted due to new input");
+                    return "";
+                }
+                console.error("AI Prediction error", err);
+                return "";
+            } finally {
+                if (pendingInputRef.current === inputKey) {
+                    pendingInputRef.current = null;
+                    pendingPromiseRef.current = null;
+                }
+            }
+        })();
+
+        pendingInputRef.current = inputKey;
+        pendingPromiseRef.current = request;
+        return request;
+    };
 
     const triggerPrediction = async (currentInputValue: string) => {
         if (!currentInputValue.trim() || disabled || (!sourceText && !referenceAnswer)) {
@@ -37,15 +111,6 @@ export function GhostTextarea({
             return;
         }
 
-        // Check Local AI Memory for this exact input state
-        const inputKey = currentInputValue.toLowerCase();
-        if (localCache.current[inputKey] !== undefined) {
-            setGhostText(localCache.current[inputKey]);
-            setIsPredicting(false);
-            return;
-        }
-
-        // Trigger LLM
         setGhostText('');
         setIsPredicting(true);
         if (textareaRef.current) {
@@ -53,54 +118,11 @@ export function GhostTextarea({
             textareaRef.current.dataset.prevGhost = '';
         }
 
-        if (abortControllerRef.current) abortControllerRef.current.abort();
-        abortControllerRef.current = new AbortController();
-
-        try {
-            const res = await fetch('/api/ai/predict', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    sourceText,
-                    currentInput: currentInputValue,
-                    referenceAnswer
-                }),
-                signal: abortControllerRef.current.signal
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                let aiSuggestion = data.prediction || "";
-
-                // Post-process the AI prediction to ensure it fits nicely
-                if (aiSuggestion) {
-                    const remaining = aiSuggestion;
-                    const match = remaining.match(new RegExp(`^(\\s*\\S+){1,${predictionWordCount}}`));
-                    aiSuggestion = match ? match[0] : remaining;
-                }
-
-                // Save to local dictionary cache
-                localCache.current[inputKey] = aiSuggestion;
-
-                // Only update state if user hasn't typed more during the await
-                if (textareaRef.current?.value === currentInputValue) {
-                    setGhostText(aiSuggestion);
-                    textareaRef.current.dataset.prevInput = currentInputValue;
-                    textareaRef.current.dataset.prevGhost = aiSuggestion;
-                    setIsPredicting(false);
-                }
-            } else {
-                setIsPredicting(false);
-            }
-        } catch (err: any) {
-            if (err.name === 'AbortError') {
-                // Ignored intentionally, since it means user is typing
-                console.log("Prediction aborted due to new input");
-            } else {
-                console.error("AI Prediction error", err);
-                setIsPredicting(false);
-            }
+        const aiSuggestion = await fetchPrediction(currentInputValue);
+        if (textareaRef.current?.value === currentInputValue) {
+            setGhostFromPrediction(currentInputValue, aiSuggestion);
         }
+        setIsPredicting(false);
     };
 
     useEffect(() => {
@@ -154,14 +176,14 @@ export function GhostTextarea({
             <div className="relative w-full">
                 <div
                     className={cn(
-                        "absolute inset-0 pointer-events-none whitespace-pre-wrap break-words text-left bg-transparent",
+                        "absolute inset-0 z-0 pointer-events-none whitespace-pre-wrap break-words text-left bg-transparent",
                         typographyClass
                     )}
                     aria-hidden="true"
                 >
                     <span className="opacity-0">{value}</span>
                     {ghostText && (
-                        <span className="text-indigo-500/40 dark:text-indigo-400/45 font-semibold selection:bg-transparent">
+                        <span className="font-semibold text-indigo-500/32 dark:text-indigo-400/42 selection:bg-transparent">
                             {ghostText}
                         </span>
                     )}
@@ -177,11 +199,16 @@ export function GhostTextarea({
                     placeholder={placeholder}
                     disabled={disabled}
                     className={cn(
-                        "relative z-10 w-full resize-none outline-none bg-transparent text-left transition-colors duration-200",
-                        "text-stone-700 dark:text-stone-200",
-                        "placeholder:text-stone-400/90 dark:placeholder:text-white/25",
+                        "relative z-10 w-full resize-none bg-transparent text-left outline-none opacity-100 mix-blend-normal transition-colors duration-200 antialiased caret-stone-900 selection:bg-indigo-100 selection:text-stone-900",
+                        "text-stone-900 dark:text-stone-100 [-webkit-text-fill-color:theme(colors.stone.900)] dark:[-webkit-text-fill-color:theme(colors.stone.100)]",
+                        "placeholder:text-stone-300/95 dark:placeholder:text-white/25 placeholder:font-medium",
                         typographyClass
                     )}
+                    style={{
+                        color: "#1c1917",
+                        WebkitTextFillColor: "#1c1917",
+                        opacity: 1,
+                    }}
                     spellCheck={false}
                 />
             </div>
