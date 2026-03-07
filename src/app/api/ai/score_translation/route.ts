@@ -3,7 +3,8 @@ import { deepseek } from "@/lib/deepseek";
 
 export async function POST(req: NextRequest) {
     try {
-        const { user_translation, reference_english, original_chinese, current_elo, mode = "translation", is_reverse = false, input_source = 'keyboard' } = await req.json();
+        const { user_translation, reference_english, original_chinese, current_elo, mode = "translation", is_reverse = false, input_source = 'keyboard', teaching_mode = false } = await req.json();
+        console.log("[score_translation] Request received:", { mode, user_translation: user_translation?.substring(0, 30), current_elo });
 
         // Base Elo (Default to 1200 if undefined)
         const userElo = current_elo || 1200;
@@ -29,6 +30,34 @@ export async function POST(req: NextRequest) {
             }
         }
 
+        // Dynamic Listening Grading Standards based on Elo
+        let listeningGradingStandard = "";
+        if (userElo < 1200) {
+            // BEGINNER MODE: Encouragement (High Reward, Minimal Risk)
+            listeningGradingStandard = `
+            Rating Logic (Beginner Mode - Encouragement):
+            - **Perfect Echo (+25)**: User repeated the sentence clearly (minor ASR typos ok).
+            - **Good (+12)**: Missed 1-2 words but got the main flow.
+            - **Mumble (+3)**: Hard to understand, but at least tried to speak.
+            - **Silent/Wrong (-3)**: Completely off or no attempt.`;
+        } else if (userElo < 2000) {
+            // INTERMEDIATE MODE: Standard
+            listeningGradingStandard = `
+            Rating Logic (Intermediate Mode - Standard):
+            - **Perfect Echo (+20)**: User repeated the sentence clearly (minor ASR typos ok).
+            - **Good (+10)**: Missed 1-2 words but got the main flow.
+            - **Mumble (0)**: Hard to understand / wrong words.
+            - **Silent/Wrong (-8)**: Completely off or no attempt.`;
+        } else {
+            // ADVANCED MODE: Hardcore (Low Reward, Higher Risk)
+            listeningGradingStandard = `
+            Rating Logic (Advanced Mode - Hardcore):
+            - **Perfect Echo (+12)**: User repeated the sentence clearly with good pronunciation.
+            - **Good (+5)**: Missed 1-2 words but got the main flow.
+            - **Mumble (-3)**: Unclear pronunciation is unacceptable at this level.
+            - **Silent/Wrong (-12)**: Completely off or no attempt.`;
+        }
+
         if (mode === "listening") {
             // Listening Mode Prompt (Phonetic Alignment + Smart Elo)
             prompt = `
@@ -45,14 +74,11 @@ export async function POST(req: NextRequest) {
  
             **CRITICAL ALIGNMENT RULES** (Phonetic Priority):
             1. **MATCH BY SOUND**: "right" matches "write". "transmission" does NOT match "threatens".
-            2. **IGNORE DISFLUENCIES**: "um", "ah", "I... I..." should be ignored.
-            3. **IGNORE PUNCTUATION**: Full stop, comma, question mark -> Irrelevant.
+            2. **NUMBER EQUIVALENCE**: Numeric forms and word forms are equivalent. "7" = "seven", "700" = "seven hundred", "1st" = "first", "2024" = "twenty twenty-four".
+            3. **IGNORE DISFLUENCIES**: "um", "ah", "I... I..." should be ignored.
+            4. **IGNORE PUNCTUATION**: Full stop, comma, question mark -> Irrelevant.
             
-            Rating Logic:
-            - **Perfect Echo (+20)**: User repeated the sentence clearly (minor ASR typos ok).
-            - **Good (+10)**: Missed 1-2 words but got the main flow.
-            - **Mumble (0)**: Hard to understand / wrong words.
-            - **Silent/Wrong (-10)**: Completely off.
+            ${listeningGradingStandard}
 
             **LANGUAGE REQUIREMENT**:
             - Output 'judge_reasoning' and 'feedback' in **Simplified Chinese (简体中文)**.
@@ -84,23 +110,24 @@ export async function POST(req: NextRequest) {
 
             // Dynamic K-Factor Grading (Anti-Inflation Logic)
             let gradingStandard = "";
-            if (userElo < 1200) {
+            if (userElo < 1600) {
                 // BEGINNER MODE: Encouragement (High Reward, Low Risk)
                 gradingStandard = `
-                 Elo Grading Standards (Beginner Mode):
-                 - **Excellent (+25 to +30)**: Correct meaning and structure.
-                 - **Good (+10 to +15)**: Understandable but with minor errors.
-                 - **Fair (+5)**: Meaning is clear but grammar is shaky.
-                 - **Askew (-5)**: Meaning is wrong.
+                 Elo Grading Standards (Beginner Mode - Be Encouraging):
+                 - **Excellent (+25 to +30)**: Correct meaning and structure. Minor errors ok.
+                 - **Good (+10 to +15)**: Understandable with minor grammar errors.
+                 - **Fair (+5)**: Meaning is mostly clear but grammar is shaky.
+                 - **Askew (-5)**: Meaning is wrong or completely off-topic.
+                 IMPORTANT: Be generous! If the meaning is correct, give at least 7/10.
                  `;
-            } else if (userElo < 2000) {
+            } else if (userElo < 2200) {
                 // INTERMEDIATE MODE: Fair Game (Symmetric)
                 gradingStandard = `
                  Elo Grading Standards (Intermediate Mode):
-                 - **Sophisticated (+20)**: Native-like phrasing using B2 vocabulary.
+                 - **Sophisticated (+20)**: Native-like phrasing using B2+ vocabulary.
                  - **Accurate (+10)**: Correct grammar and meaning. Standard.
-                 - **Clumsy (-5)**: "Chinglish" or awkward phrasing.
-                 - **Error (-15)**: Grammatical faults.
+                 - **Clumsy (-5)**: Awkward phrasing or unnatural expression.
+                 - **Error (-15)**: Grammatical faults or wrong meaning.
                  `;
             } else {
                 // ADVANCED MODE: Hardcore (Low Reward, High Risk) - The Gauntlet
@@ -136,11 +163,18 @@ export async function POST(req: NextRequest) {
                  "elo_adjustment": (Int),
                  "judge_reasoning": "Brief ranking feedback",
                  "feedback": ["Point 1", "Point 2"],
-                 "improved_version": "..."
+                 "improved_version": "..."${teaching_mode ? `,
+                 "error_analysis": [
+                     { "error": "用户写错的部分", "correction": "正确写法", "rule": "语法规则解释", "tip": "记忆技巧" }
+                 ],
+                 "similar_patterns": [
+                     { "chinese": "类似中文句子", "english": "对应英文翻译", "point": "这个句型练习的要点" }
+                 ]` : ''}
              }
              `;
         }
 
+        console.log("[score_translation] Calling DeepSeek API...");
         const completion = await deepseek.chat.completions.create({
             messages: [
                 { role: "system", content: "You are a helpful AI tutor. Output JSON only." },
@@ -150,17 +184,20 @@ export async function POST(req: NextRequest) {
             response_format: { type: "json_object" },
             temperature: 0.7,
         });
+        console.log("[score_translation] DeepSeek API response received");
 
         const content = completion.choices[0].message.content;
         if (!content) throw new Error("No content generated");
 
         const data = JSON.parse(content);
+        console.log("[score_translation] Success:", { score: data.score, elo_adjustment: data.elo_adjustment });
         return NextResponse.json(data);
 
-    } catch (error) {
-        console.error("Score Translation Error:", error);
+    } catch (error: any) {
+        console.error("Score Translation Error:", error?.message || error);
+        console.error("Full error:", JSON.stringify(error, null, 2));
         return NextResponse.json(
-            { error: "Failed to score translation" },
+            { error: error?.message || "Failed to score translation" },
             { status: 500 }
         );
     }

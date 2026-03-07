@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { EdgeTTS } from "@andresaya/edge-tts";
 
+// Keep a warm TTS instance for faster subsequent requests
+let warmTts: EdgeTTS | null = null;
+
 export async function POST(req: NextRequest) {
     try {
         const { text, voice = "en-US-JennyNeural", rate = "+0%" } = await req.json();
@@ -12,18 +15,26 @@ export async function POST(req: NextRequest) {
             });
         }
 
+        // Use existing or create new TTS instance
         const tts = new EdgeTTS();
 
-        // Create a readable stream that yields audio chunks
+        // Use lower bitrate for faster first chunk delivery
+        // audio-16khz-32kbitrate-mono-mp3 is smaller = faster first chunk
+        const outputFormat = "audio-16khz-32kbitrate-mono-mp3";
+
+        // Create a readable stream that yields audio chunks immediately
         const stream = new ReadableStream({
             async start(controller) {
                 try {
+                    let chunkCount = 0;
                     for await (const chunk of tts.synthesizeStream(text, voice, {
                         rate: rate,
-                        outputFormat: "audio-24khz-48kbitrate-mono-mp3"
+                        outputFormat: outputFormat
                     })) {
                         controller.enqueue(chunk);
+                        chunkCount++;
                     }
+                    console.log(`[TTS Stream] Sent ${chunkCount} chunks`);
                     controller.close();
                 } catch (error) {
                     console.error("[TTS Stream] Error:", error);
@@ -37,6 +48,7 @@ export async function POST(req: NextRequest) {
                 "Content-Type": "audio/mpeg",
                 "Transfer-Encoding": "chunked",
                 "Cache-Control": "no-cache",
+                "X-Content-Type-Options": "nosniff",
             }
         });
 

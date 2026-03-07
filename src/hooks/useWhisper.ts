@@ -255,6 +255,11 @@ export function useWhisper() {
         }
     }, [audioBlob]);
 
+    // Reset result (for new questions)
+    const resetResult = useCallback(() => {
+        setResult({ text: "", isEndpoint: false, isFinal: false });
+    }, []);
+
     return {
         isReady,
         isRecording,
@@ -266,6 +271,7 @@ export function useWhisper() {
         startRecognition,
         stopRecognition,
         playRecording,
+        resetResult,
         engineMode,
         setEngineMode
     };
