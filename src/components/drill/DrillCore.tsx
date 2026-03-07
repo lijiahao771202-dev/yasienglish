@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Sparkles, RefreshCw, Send, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as Diff from 'diff';
 import confetti from 'canvas-confetti';
 import { WordPopup, PopupState } from "../reading/WordPopup";
@@ -97,6 +97,166 @@ interface LootDrop {
     rarity: 'common' | 'rare' | 'legendary';
     name?: string; // Optional for compatibility
 }
+
+type StreakTier = 0 | 1 | 2 | 3 | 4;
+
+interface StreakTierVisual {
+    accent: string;
+    badgeGradient: string;
+    badgeBorder: string;
+    badgeShadow: string;
+    badgeGlow: string;
+    auraGradient: string;
+    beamGradient: string;
+    beamShadow: string;
+    surfaceBorder: string;
+    surfaceShadow: string;
+    checkGradient: string;
+    checkBorder: string;
+    checkShadow: string;
+    nextGradient: string;
+    nextShadow: string;
+    eloGradient: string;
+    eloBorder: string;
+    eloShadow: string;
+    progressGradient: string;
+    scoreGlow: string;
+    particleGradient: string;
+    particleDensity: number;
+}
+
+const STREAK_PARTICLE_POSITIONS = [12, 26, 39, 54, 68, 82, 90, 18, 47, 76];
+
+const getStreakTier = (streak: number): StreakTier => {
+    if (streak >= 10) return 4;
+    if (streak >= 7) return 3;
+    if (streak >= 4) return 2;
+    if (streak >= 2) return 1;
+    return 0;
+};
+
+const STREAK_TIER_VISUALS: Record<StreakTier, StreakTierVisual> = {
+    0: {
+        accent: "#78716c",
+        badgeGradient: "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(245,245,244,0.92))",
+        badgeBorder: "rgba(214,211,209,0.9)",
+        badgeShadow: "0 10px 24px rgba(120,113,108,0.08)",
+        badgeGlow: "transparent",
+        auraGradient: "radial-gradient(circle at 50% 0%, rgba(255,255,255,0), transparent 58%)",
+        beamGradient: "linear-gradient(90deg, transparent, transparent)",
+        beamShadow: "none",
+        surfaceBorder: "rgba(255,255,255,0.55)",
+        surfaceShadow: "0 8px 32px rgba(0,0,0,0.08), inset 0 1px 0 rgba(255,255,255,0.9)",
+        checkGradient: "linear-gradient(135deg, #292524 0%, #44403c 40%, #1c1917 100%)",
+        checkBorder: "rgba(68,64,60,0.5)",
+        checkShadow: "0 12px 24px rgba(28,25,23,0.24)",
+        nextGradient: "linear-gradient(90deg, #f97316 0%, #d97706 100%)",
+        nextShadow: "0 10px 30px -10px rgba(249,115,22,0.5)",
+        eloGradient: "linear-gradient(90deg, rgba(16,185,129,0.08), rgba(16,185,129,0.02))",
+        eloBorder: "rgba(209,250,229,0.9)",
+        eloShadow: "0 8px 20px rgba(16,185,129,0.08)",
+        progressGradient: "linear-gradient(90deg, #a8a29e 0%, #78716c 100%)",
+        scoreGlow: "none",
+        particleGradient: "radial-gradient(circle, rgba(255,255,255,0.6), transparent 70%)",
+        particleDensity: 0,
+    },
+    1: {
+        accent: "#c2410c",
+        badgeGradient: "linear-gradient(135deg, rgba(255,247,237,0.98), rgba(255,237,213,0.92))",
+        badgeBorder: "rgba(251,146,60,0.36)",
+        badgeShadow: "0 14px 30px rgba(251,146,60,0.18)",
+        badgeGlow: "rgba(251,146,60,0.18)",
+        auraGradient: "radial-gradient(circle at 50% 0%, rgba(251,191,36,0.16), transparent 56%)",
+        beamGradient: "linear-gradient(90deg, transparent 0%, rgba(251,191,36,0.78) 50%, transparent 100%)",
+        beamShadow: "0 0 28px rgba(251,191,36,0.34)",
+        surfaceBorder: "rgba(251,191,36,0.3)",
+        surfaceShadow: "0 24px 72px rgba(251,146,60,0.12), inset 0 1px 0 rgba(255,255,255,0.88)",
+        checkGradient: "linear-gradient(135deg, #d97706 0%, #f59e0b 52%, #f97316 100%)",
+        checkBorder: "rgba(251,146,60,0.45)",
+        checkShadow: "0 16px 30px rgba(245,158,11,0.28)",
+        nextGradient: "linear-gradient(90deg, #f59e0b 0%, #f97316 100%)",
+        nextShadow: "0 16px 34px -12px rgba(249,115,22,0.48)",
+        eloGradient: "linear-gradient(90deg, rgba(245,158,11,0.96), rgba(249,115,22,0.92))",
+        eloBorder: "rgba(251,191,36,0.5)",
+        eloShadow: "0 18px 40px rgba(249,115,22,0.28)",
+        progressGradient: "linear-gradient(90deg, #f59e0b 0%, #fb923c 100%)",
+        scoreGlow: "0 0 26px rgba(249,115,22,0.2)",
+        particleGradient: "radial-gradient(circle, rgba(251,191,36,0.92), rgba(249,115,22,0.18) 55%, transparent 72%)",
+        particleDensity: 0,
+    },
+    2: {
+        accent: "#ea580c",
+        badgeGradient: "linear-gradient(135deg, rgba(255,245,230,0.98), rgba(254,215,170,0.9))",
+        badgeBorder: "rgba(249,115,22,0.42)",
+        badgeShadow: "0 18px 38px rgba(249,115,22,0.22)",
+        badgeGlow: "rgba(249,115,22,0.24)",
+        auraGradient: "radial-gradient(circle at 50% 0%, rgba(251,146,60,0.18), transparent 56%)",
+        beamGradient: "linear-gradient(90deg, transparent 0%, rgba(249,115,22,0.88) 24%, rgba(251,191,36,0.95) 52%, rgba(249,115,22,0.88) 76%, transparent 100%)",
+        beamShadow: "0 0 40px rgba(249,115,22,0.44)",
+        surfaceBorder: "rgba(249,115,22,0.32)",
+        surfaceShadow: "0 28px 84px rgba(249,115,22,0.16), inset 0 1px 0 rgba(255,255,255,0.9)",
+        checkGradient: "linear-gradient(135deg, #c2410c 0%, #f97316 48%, #fbbf24 100%)",
+        checkBorder: "rgba(249,115,22,0.55)",
+        checkShadow: "0 18px 36px rgba(249,115,22,0.32)",
+        nextGradient: "linear-gradient(90deg, #ea580c 0%, #f59e0b 100%)",
+        nextShadow: "0 20px 40px -12px rgba(249,115,22,0.54)",
+        eloGradient: "linear-gradient(90deg, rgba(249,115,22,0.97), rgba(251,191,36,0.96))",
+        eloBorder: "rgba(251,146,60,0.58)",
+        eloShadow: "0 22px 44px rgba(249,115,22,0.32)",
+        progressGradient: "linear-gradient(90deg, #f97316 0%, #f59e0b 55%, #fbbf24 100%)",
+        scoreGlow: "0 0 34px rgba(249,115,22,0.24)",
+        particleGradient: "radial-gradient(circle, rgba(251,191,36,1), rgba(249,115,22,0.22) 58%, transparent 72%)",
+        particleDensity: 0,
+    },
+    3: {
+        accent: "#fb923c",
+        badgeGradient: "linear-gradient(135deg, rgba(255,240,222,0.98), rgba(254,178,84,0.88))",
+        badgeBorder: "rgba(251,146,60,0.55)",
+        badgeShadow: "0 20px 44px rgba(249,115,22,0.28)",
+        badgeGlow: "rgba(251,146,60,0.32)",
+        auraGradient: "radial-gradient(circle at 50% 0%, rgba(249,115,22,0.24), transparent 54%)",
+        beamGradient: "linear-gradient(90deg, transparent 0%, rgba(251,146,60,0.95) 16%, rgba(250,204,21,0.98) 50%, rgba(251,146,60,0.95) 84%, transparent 100%)",
+        beamShadow: "0 0 48px rgba(249,115,22,0.52)",
+        surfaceBorder: "rgba(251,146,60,0.34)",
+        surfaceShadow: "0 34px 92px rgba(249,115,22,0.2), inset 0 1px 0 rgba(255,255,255,0.92)",
+        checkGradient: "linear-gradient(135deg, #c2410c 0%, #f97316 38%, #fb923c 68%, #facc15 100%)",
+        checkBorder: "rgba(251,146,60,0.6)",
+        checkShadow: "0 22px 42px rgba(249,115,22,0.36)",
+        nextGradient: "linear-gradient(90deg, #ea580c 0%, #f97316 36%, #fbbf24 100%)",
+        nextShadow: "0 24px 46px -14px rgba(249,115,22,0.6)",
+        eloGradient: "linear-gradient(90deg, rgba(234,88,12,0.98), rgba(249,115,22,0.97) 42%, rgba(250,204,21,0.96) 100%)",
+        eloBorder: "rgba(251,146,60,0.64)",
+        eloShadow: "0 24px 48px rgba(249,115,22,0.38)",
+        progressGradient: "linear-gradient(90deg, #ea580c 0%, #f97316 45%, #fbbf24 100%)",
+        scoreGlow: "0 0 42px rgba(249,115,22,0.32)",
+        particleGradient: "radial-gradient(circle, rgba(250,204,21,1), rgba(249,115,22,0.26) 52%, transparent 70%)",
+        particleDensity: 6,
+    },
+    4: {
+        accent: "#facc15",
+        badgeGradient: "linear-gradient(135deg, rgba(255,248,220,0.99), rgba(250,204,21,0.9) 52%, rgba(251,146,60,0.88) 100%)",
+        badgeBorder: "rgba(250,204,21,0.66)",
+        badgeShadow: "0 24px 52px rgba(250,204,21,0.28)",
+        badgeGlow: "rgba(250,204,21,0.36)",
+        auraGradient: "radial-gradient(circle at 50% 0%, rgba(250,204,21,0.26), transparent 52%)",
+        beamGradient: "linear-gradient(90deg, transparent 0%, rgba(255,247,205,0.96) 12%, rgba(250,204,21,1) 50%, rgba(251,146,60,0.96) 88%, transparent 100%)",
+        beamShadow: "0 0 56px rgba(250,204,21,0.58)",
+        surfaceBorder: "rgba(250,204,21,0.38)",
+        surfaceShadow: "0 40px 100px rgba(250,204,21,0.18), inset 0 1px 0 rgba(255,255,255,0.94)",
+        checkGradient: "linear-gradient(135deg, #9a3412 0%, #f97316 24%, #f59e0b 48%, #facc15 78%, #fff7cc 100%)",
+        checkBorder: "rgba(250,204,21,0.72)",
+        checkShadow: "0 26px 48px rgba(250,204,21,0.34)",
+        nextGradient: "linear-gradient(90deg, #c2410c 0%, #f97316 28%, #f59e0b 58%, #facc15 100%)",
+        nextShadow: "0 28px 56px -14px rgba(250,204,21,0.4)",
+        eloGradient: "linear-gradient(90deg, rgba(217,119,6,0.98), rgba(249,115,22,0.98) 35%, rgba(250,204,21,1) 72%, rgba(255,247,205,0.98) 100%)",
+        eloBorder: "rgba(250,204,21,0.78)",
+        eloShadow: "0 28px 56px rgba(250,204,21,0.34)",
+        progressGradient: "linear-gradient(90deg, #d97706 0%, #f97316 34%, #facc15 78%, #fff7cc 100%)",
+        scoreGlow: "0 0 56px rgba(250,204,21,0.34)",
+        particleGradient: "radial-gradient(circle, rgba(255,247,205,1), rgba(250,204,21,0.28) 50%, transparent 70%)",
+        particleDensity: 10,
+    },
+};
 
 export function DrillCore({ context, initialMode = "translation", onClose }: DrillCoreProps) {
     // Mode State
@@ -379,6 +539,18 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // Computed Elo based on Mode
     const currentElo = mode === 'listening' ? listeningElo : eloRating;
     const currentStreak = mode === 'listening' ? listeningStreak : streakCount;
+    const prefersReducedMotion = useReducedMotion();
+    const [streakTransition, setStreakTransition] = useState<'surge' | 'cooldown' | null>(null);
+    const [cooldownTier, setCooldownTier] = useState<StreakTier>(0);
+    const [cooldownStreak, setCooldownStreak] = useState(0);
+    const prevStreakRef = useRef(currentStreak);
+    const prevStreakModeRef = useRef(mode);
+    const streakTier = getStreakTier(currentStreak);
+    const activeStreakTier = streakTransition === 'cooldown' && cooldownTier > streakTier ? cooldownTier : streakTier;
+    const streakVisual = STREAK_TIER_VISUALS[activeStreakTier];
+    const canUseStreakAura = activeStreakTier > 0 && (theme === 'default' || theme === 'fever');
+    const canShowStreakParticles = canUseStreakAura && activeStreakTier >= 3 && !prefersReducedMotion;
+    const activeParticleCount = Math.min(streakVisual.particleDensity, STREAK_PARTICLE_POSITIONS.length);
 
     // ELO-based auto-difficulty (unified 400 Elo per tier)
     const getEloDifficulty = (elo: number) => {
@@ -406,6 +578,42 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     } | null>(null);
 
     const [audioDuration, setAudioDuration] = useState(0);
+
+    useEffect(() => {
+        if (prevStreakModeRef.current !== mode) {
+            prevStreakModeRef.current = mode;
+            prevStreakRef.current = currentStreak;
+            setStreakTransition(null);
+            setCooldownTier(0);
+            setCooldownStreak(0);
+            return;
+        }
+
+        const previousStreak = prevStreakRef.current;
+        let timeoutId: NodeJS.Timeout | null = null;
+
+        if (currentStreak > previousStreak && currentStreak >= 2) {
+            setCooldownTier(0);
+            setCooldownStreak(0);
+            setStreakTransition('surge');
+            timeoutId = setTimeout(() => setStreakTransition(null), prefersReducedMotion ? 220 : 560);
+        } else if (previousStreak >= 2 && currentStreak <= 1) {
+            setCooldownTier(getStreakTier(previousStreak));
+            setCooldownStreak(previousStreak);
+            setStreakTransition('cooldown');
+            timeoutId = setTimeout(() => {
+                setStreakTransition(null);
+                setCooldownTier(0);
+                setCooldownStreak(0);
+            }, prefersReducedMotion ? 180 : 380);
+        }
+
+        prevStreakRef.current = currentStreak;
+
+        return () => {
+            if (timeoutId) clearTimeout(timeoutId);
+        };
+    }, [currentStreak, mode, prefersReducedMotion]);
 
     // --- Loading & Persistance ---
 
@@ -2013,9 +2221,84 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             theme === 'boss' ? currentBoss.style :
                                 theme === 'crimson' ? "bg-[#1a0505]/95 border border-red-500/30 shadow-[0_0_60px_rgba(220,38,38,0.2)] text-red-50" :
                                     "bg-white/70 backdrop-blur-2xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-white/30",
+                        canUseStreakAura && "will-change-transform",
                         shake && "animate-shake"
                     )}
+                    style={canUseStreakAura ? {
+                        borderColor: streakVisual.surfaceBorder,
+                        boxShadow: theme === 'fever'
+                            ? `${streakVisual.surfaceShadow}, 0 0 80px rgba(249,115,22,0.15), 0 0 40px rgba(251,146,60,0.1)`
+                            : streakVisual.surfaceShadow,
+                    } : undefined}
                 >
+                    {canUseStreakAura && (
+                        <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+                            <motion.div
+                                className="absolute inset-0"
+                                style={{ backgroundImage: streakVisual.auraGradient }}
+                                initial={false}
+                                animate={
+                                    streakTransition === 'cooldown'
+                                        ? { opacity: 0.18, scale: 0.98 }
+                                        : streakTransition === 'surge'
+                                            ? { opacity: [0.32, 0.7, 0.42], scale: [0.98, 1.02, 1] }
+                                            : { opacity: theme === 'fever' ? 0.32 : 0.42, scale: 1 }
+                                }
+                                transition={{ duration: prefersReducedMotion ? 0.2 : streakTransition ? 0.55 : 1.2, ease: "easeOut" }}
+                            />
+                            <motion.div
+                                className="absolute inset-x-8 top-0 h-[2px]"
+                                style={{ backgroundImage: streakVisual.beamGradient, boxShadow: streakVisual.beamShadow }}
+                                initial={false}
+                                animate={
+                                    streakTransition === 'cooldown'
+                                        ? { opacity: 0.2, scaleX: 0.82 }
+                                        : streakTransition === 'surge'
+                                            ? { opacity: [0.55, 1, 0.8], scaleX: [0.72, 1.05, 1] }
+                                            : { opacity: 0.78, scaleX: 1 }
+                                }
+                                transition={{ duration: prefersReducedMotion ? 0.2 : 0.48, ease: "easeOut" }}
+                            />
+                            <motion.div
+                                className="absolute inset-[1px] rounded-[2.45rem]"
+                                style={{
+                                    boxShadow: `inset 0 1px 0 rgba(255,255,255,0.72), inset 0 0 0 1px ${streakVisual.surfaceBorder}`,
+                                }}
+                                initial={false}
+                                animate={streakTransition === 'cooldown' ? { opacity: 0.22 } : { opacity: 0.7 }}
+                            />
+
+                            {canShowStreakParticles && (
+                                <div className="absolute inset-0 hidden md:block">
+                                    {STREAK_PARTICLE_POSITIONS.slice(0, activeParticleCount).map((left, index) => (
+                                        <motion.div
+                                            key={`streak-particle-${left}-${index}`}
+                                            className="absolute top-full h-2 w-2 rounded-full blur-[1px]"
+                                            style={{
+                                                left: `${left}%`,
+                                                backgroundImage: streakVisual.particleGradient,
+                                                boxShadow: `0 0 18px ${streakVisual.badgeGlow}`,
+                                            }}
+                                            initial={{ opacity: 0, y: 18, scale: 0.6 }}
+                                            animate={{
+                                                y: [0, -140 - (index % 4) * 16],
+                                                opacity: [0, 0.95, 0],
+                                                scale: [0.4, 1.08, 0.6],
+                                                x: [0, index % 2 === 0 ? 12 : -10, 0],
+                                            }}
+                                            transition={{
+                                                duration: 2.4 + (index % 3) * 0.35,
+                                                repeat: Infinity,
+                                                delay: index * 0.18,
+                                                ease: "easeOut",
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Crimson Hellfire Overlay */}
                     {theme === 'crimson' && (
                         <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
@@ -2084,13 +2367,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     {theme === 'fever' && currentStreak >= 2 && (
                         <div className="absolute top-0 left-0 right-0 h-1.5 bg-stone-900/50 z-50 overflow-hidden">
                             <motion.div
-                                className="h-full bg-gradient-to-r from-orange-600 via-amber-500 to-yellow-400 relative"
+                                className="h-full relative"
                                 initial={{ width: 0 }}
                                 animate={{ width: `${Math.min(currentStreak * 10, 100)}%` }}
                                 transition={{ type: "spring", stiffness: 100, damping: 15 }}
+                                style={{ backgroundImage: streakVisual.progressGradient }}
                             >
                                 {/* Glow effect */}
-                                <div className="absolute inset-0 bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-300 blur-sm opacity-80" />
+                                <div className="absolute inset-0 blur-sm opacity-80" style={{ backgroundImage: streakVisual.progressGradient }} />
                                 {/* Sparkle at end */}
                                 <motion.div
                                     className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-3 h-3 bg-white rounded-full blur-[2px]"
@@ -2100,11 +2384,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             </motion.div>
                             {/* Streak count badge */}
                             <motion.div
-                                className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[10px] font-bold text-amber-300"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[10px] font-bold"
                                 initial={{ opacity: 0, x: 10 }}
                                 animate={{ opacity: 1, x: 0 }}
+                                style={{ color: streakVisual.accent }}
                             >
-                                <Flame className="w-3 h-3 fill-amber-400 text-amber-300" />
+                                <Flame className="w-3 h-3 fill-current" />
                                 <span className="font-mono">{currentStreak}</span>
                             </motion.div>
                         </div>
@@ -2207,21 +2492,70 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             )}
 
                             {/* Streak Counter - Separate for emphasis */}
-                            {currentStreak >= 2 && (
-                                <div className={cn(
-                                    "flex items-center gap-1 px-2.5 py-1 rounded-full border font-bold text-[10px] tracking-wider transition-all",
-                                    currentStreak >= 10
-                                        ? "bg-gradient-to-r from-orange-500/20 via-red-500/20 to-amber-500/20 border-orange-400/50 text-orange-400"
-                                        : currentStreak >= 5
-                                            ? "bg-amber-500/20 border-amber-400/50 text-amber-400"
-                                            : "bg-orange-50/80 border-orange-200 text-orange-500"
-                                )}>
-                                    <Flame className={cn(
-                                        "w-3 h-3",
-                                        currentStreak >= 5 ? "fill-current" : "fill-orange-400"
-                                    )} />
-                                    <span className="font-mono tabular-nums">{currentStreak}连</span>
-                                </div>
+                            {(currentStreak >= 2 || streakTransition === 'cooldown') && (
+                                <motion.div
+                                    initial={false}
+                                    animate={
+                                        streakTransition === 'cooldown'
+                                            ? { scale: 0.96, y: 0, opacity: 0.72 }
+                                            : streakTransition === 'surge'
+                                                ? { scale: [1, 1.08, 1.02], y: [0, -2, 0], opacity: [0.88, 1, 1] }
+                                                : activeStreakTier >= 3 && !prefersReducedMotion
+                                                    ? { scale: [1, 1.018, 1], y: [0, -0.5, 0], opacity: [0.98, 1, 0.98] }
+                                                    : { scale: 1, y: 0, opacity: 1 }
+                                    }
+                                    transition={{
+                                        duration: streakTransition ? 0.45 : activeStreakTier >= 3 ? 2.6 : 1.5,
+                                        repeat: !streakTransition && activeStreakTier >= 3 && !prefersReducedMotion ? Infinity : 0,
+                                        ease: streakTransition ? "easeOut" : "easeInOut",
+                                    }}
+                                    className="relative overflow-hidden rounded-full border px-3 py-1.5"
+                                    style={{
+                                        backgroundImage: streakVisual.badgeGradient,
+                                        borderColor: streakVisual.badgeBorder,
+                                        boxShadow: `0 0 0 1px ${streakVisual.badgeBorder}, ${streakVisual.badgeShadow}`,
+                                        color: streakVisual.accent,
+                                    }}
+                                >
+                                    <div
+                                        className="pointer-events-none absolute inset-0 rounded-full blur-xl"
+                                        style={{
+                                            background: `radial-gradient(circle at center, ${streakVisual.badgeGlow}, transparent 70%)`,
+                                            opacity: streakTier >= 2 ? 0.9 : 0.55,
+                                        }}
+                                    />
+                                    {activeStreakTier >= 3 && !prefersReducedMotion && (
+                                        <motion.div
+                                            className="pointer-events-none absolute inset-y-0 -inset-x-6 rounded-full"
+                                            style={{
+                                                background: "linear-gradient(112deg, transparent 6%, rgba(255,255,255,0.06) 28%, rgba(255,255,255,0.52) 50%, rgba(255,255,255,0.08) 72%, transparent 94%)",
+                                                filter: "blur(10px)",
+                                                mixBlendMode: "screen",
+                                            }}
+                                            animate={{
+                                                x: [-14, 14, -14],
+                                                opacity: [0.34, 0.72, 0.34],
+                                                scaleX: [0.985, 1.02, 0.985],
+                                            }}
+                                            transition={{
+                                                duration: activeStreakTier === 4 ? 3.1 : 4,
+                                                repeat: Infinity,
+                                                ease: "easeInOut",
+                                            }}
+                                        />
+                                    )}
+                                    <div className="relative z-10 flex items-center gap-1.5 font-bold text-[10px] tracking-[0.18em] uppercase">
+                                        <div
+                                            className="flex h-5 w-5 items-center justify-center rounded-full"
+                                            style={{
+                                                background: `radial-gradient(circle, rgba(255,255,255,0.7) 0%, ${streakVisual.badgeGlow} 45%, transparent 100%)`,
+                                            }}
+                                        >
+                                            <Flame className="h-3.5 w-3.5 fill-current" />
+                                        </div>
+                                        <span className="font-mono tabular-nums">{streakTransition === 'cooldown' ? cooldownStreak : currentStreak}连</span>
+                                    </div>
+                                </motion.div>
                             )}
                         </div>
                         {/* Teaching Mode Button - Only for Translation */}
@@ -2280,19 +2614,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         )}
                     </div>
 
-                    {/* Progress Bar */}
-                    <AnimatePresence>
-                        {isSubmittingDrill && (
-                            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 4 }} exit={{ opacity: 0, height: 0 }} className="w-full bg-stone-100/50 overflow-hidden relative shrink-0">
-                                <motion.div
-                                    className="absolute inset-y-0 left-0 w-1/3 bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-80"
-                                    animate={{ left: ["-100%", "200%"] }}
-                                    transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-                                />
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-
                     {/* Content Body */}
                     <div className="flex-1 relative overflow-y-auto flex flex-col">
 
@@ -2301,6 +2622,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             isScoring={isSubmittingDrill && !drillFeedback}
                             userAnswer={userTranslation}
                             mode={mode}
+                            streakTier={streakTier}
                         />
 
 
@@ -2601,7 +2923,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             )}
                                                         </div>
                                                     ) : (
-                                                        <div className="w-full py-12 flex flex-col items-center justify-center gap-8">
+                                                        <div className="w-full py-8 md:py-10 flex flex-col items-center justify-center gap-5 md:gap-6">
                                                             <h3 className="text-2xl md:text-4xl font-newsreader font-medium text-stone-900 leading-normal text-center max-w-4xl">
                                                                 {drillData.chinese}
                                                             </h3>
@@ -2624,7 +2946,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                 </motion.div>
                                             </div>
 
-                                            <div className="w-full max-w-xs mx-auto h-px bg-gradient-to-r from-transparent via-stone-200 to-transparent my-8" />
+                                            <div className="w-full max-w-xs mx-auto h-px bg-gradient-to-r from-transparent via-stone-200 to-transparent my-5 md:my-6" />
 
                                             {/* Teaching Card removed - now in floating panel */}
 
@@ -2755,7 +3077,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     <div className="flex items-center gap-1 md:gap-2">
                                                                         <button
                                                                             onClick={handleMagicHint}
-                                                                            className="flex h-10 items-center gap-1 rounded-full border border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.95),rgba(254,243,199,0.82))] px-2.5 text-[11px] font-bold text-amber-700 shadow-[0_8px_18px_rgba(245,158,11,0.10)] transition-all hover:-translate-y-0.5 hover:border-amber-300 hover:text-amber-800 hover:shadow-[0_10px_22px_rgba(245,158,11,0.14)] active:scale-95 md:gap-1.5 md:px-4 md:text-xs"
+                                                                            className={cn(
+                                                                                "flex h-10 items-center gap-1 rounded-full border px-2.5 text-[11px] font-bold transition-all active:scale-95 md:gap-1.5 md:px-4 md:text-xs",
+                                                                                streakTier >= 2
+                                                                                    ? "border-orange-200/80 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(255,237,213,0.88))] text-orange-700 shadow-[0_10px_22px_rgba(249,115,22,0.12)] hover:-translate-y-0.5 hover:border-orange-300 hover:text-orange-800 hover:shadow-[0_14px_26px_rgba(249,115,22,0.18)]"
+                                                                                    : "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.95),rgba(254,243,199,0.82))] text-amber-700 shadow-[0_8px_18px_rgba(245,158,11,0.10)] hover:-translate-y-0.5 hover:border-amber-300 hover:text-amber-800 hover:shadow-[0_10px_22px_rgba(245,158,11,0.14)]"
+                                                                            )}
                                                                             title="Auto-Complete Hint"
                                                                         >
                                                                             <Wand2 className="w-4 h-4" /> Hint
@@ -2774,9 +3101,16 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                 "flex h-10 items-center gap-1.5 rounded-full px-3 text-[11px] font-bold transition-all active:scale-95 md:gap-2 md:px-6 md:text-xs",
                                                                                 "disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100",
                                                                                 userTranslation.trim() && !isSubmittingDrill
-                                                                                    ? "border border-stone-700/50 bg-[linear-gradient(135deg,#292524_0%,#44403c_40%,#1c1917_100%)] text-white shadow-[0_12px_24px_rgba(28,25,23,0.24)] hover:-translate-y-0.5 hover:shadow-[0_16px_28px_rgba(28,25,23,0.30)]"
+                                                                                    ? "text-white hover:-translate-y-0.5"
                                                                                     : "border border-stone-300/60 bg-stone-200/90 text-stone-400"
                                                                             )}
+                                                                            style={userTranslation.trim() && !isSubmittingDrill ? {
+                                                                                backgroundImage: streakVisual.checkGradient,
+                                                                                borderColor: streakVisual.checkBorder,
+                                                                                boxShadow: streakTransition === 'surge'
+                                                                                    ? `${streakVisual.checkShadow}, 0 0 0 2px ${streakVisual.badgeGlow}`
+                                                                                    : streakVisual.checkShadow,
+                                                                            } : undefined}
                                                                         >
                                                                             {isSubmittingDrill ? <Sparkles className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                                                                             {isSubmittingDrill ? "评分中..." : "Check"}
@@ -2859,7 +3193,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                 ) : (
                                                     <div className={cn("max-w-4xl mx-auto w-full space-y-4 transition-transform duration-100", drillFeedback.score <= 4 && "animate-[shake_0.5s_ease-in-out]")}>
                                                         <div className="flex flex-col items-center gap-1">
-                                                            <div className={cn("text-5xl font-bold font-newsreader", drillFeedback.score >= 8 ? "text-emerald-600" : drillFeedback.score >= 6 ? "text-amber-500" : "text-rose-500")}>
+                                                            <div
+                                                                className={cn("text-5xl font-bold font-newsreader transition-all duration-500", drillFeedback.score >= 8 ? "text-emerald-600" : drillFeedback.score >= 6 ? "text-amber-500" : "text-rose-500")}
+                                                                style={streakTier > 0 && drillFeedback.score >= 8 ? { textShadow: streakVisual.scoreGlow } : undefined}
+                                                            >
                                                                 {drillFeedback.score}<span className="text-xl text-stone-300 font-normal">/10</span>
                                                             </div>
                                                             <p className="text-stone-500 font-medium text-xs uppercase tracking-wider">Accuracy Score</p>
@@ -2874,10 +3211,20 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                     <span className={rank.color.replace('bg-', 'text-')}>{rank.title}</span>
                                                                                     <span>{rank.nextRank?.title || "Max"}</span>
                                                                                 </div>
-                                                                                <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden shadow-inner">
+                                                                                <div
+                                                                                    className="h-2 w-full rounded-full overflow-hidden shadow-inner bg-stone-100"
+                                                                                    style={{
+                                                                                        backgroundColor: streakTier > 0 ? 'rgba(255,247,237,0.85)' : undefined,
+                                                                                        boxShadow: streakTier > 0 ? `inset 0 1px 2px rgba(255,255,255,0.72), 0 0 0 1px ${streakVisual.badgeBorder}` : undefined,
+                                                                                    }}
+                                                                                >
                                                                                     <div
-                                                                                        className={cn("h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden", rank.bg.replace('bg-', 'bg-gradient-to-r from-transparent to-'))}
-                                                                                        style={{ width: `${Math.max(5, rank.progress)}%`, backgroundColor: 'currentColor' }}
+                                                                                        className="h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden"
+                                                                                        style={{
+                                                                                            width: `${Math.max(5, rank.progress)}%`,
+                                                                                            backgroundImage: streakTier > 0 ? streakVisual.progressGradient : 'linear-gradient(90deg, #78716c 0%, #a8a29e 100%)',
+                                                                                            boxShadow: streakTier > 0 ? `0 0 18px ${streakVisual.badgeGlow}` : undefined,
+                                                                                        }}
                                                                                     >
                                                                                         <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" />
                                                                                     </div>
@@ -2895,12 +3242,19 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             transition={{ type: "spring", stiffness: 300, damping: 20 }}
                                                                             className={cn(
                                                                                 "px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 shadow-md border transition-all hover:scale-105",
-                                                                                eloBreakdown?.streakBonus
-                                                                                    ? "bg-gradient-to-r from-orange-500/90 via-amber-500/90 to-orange-500/90 text-white border-orange-400/50 shadow-orange-500/40 shadow-lg"
+                                                                                (eloBreakdown?.streakBonus || (eloChange > 0 && streakTier > 0))
+                                                                                    ? "text-white shadow-lg"
                                                                                     : eloChange > 0
                                                                                         ? "bg-emerald-50 text-emerald-600 border-emerald-100"
                                                                                         : "bg-rose-50 text-rose-600 border-rose-100"
                                                                             )}
+                                                                            style={(eloBreakdown?.streakBonus || (eloChange > 0 && streakTier > 0))
+                                                                                ? {
+                                                                                    backgroundImage: streakVisual.eloGradient,
+                                                                                    borderColor: streakVisual.eloBorder,
+                                                                                    boxShadow: streakVisual.eloShadow,
+                                                                                }
+                                                                                : undefined}
                                                                         >
                                                                             <TrendingUp className={cn("w-4 h-4", eloChange < 0 && "rotate-180")} />
                                                                             <span>{eloChange > 0 ? "+" : ""}{eloChange} Elo</span>
@@ -2921,8 +3275,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         {/* Streak Glow Effect */}
                                                                         {eloBreakdown?.streakBonus && (
                                                                             <motion.div
-                                                                                className="absolute inset-0 rounded-full bg-gradient-to-r from-orange-500/30 via-amber-400/30 to-orange-500/30 blur-xl -z-10"
-                                                                                animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.1, 1] }}
+                                                                                className="absolute inset-0 rounded-full blur-xl -z-10"
+                                                                                style={{ backgroundImage: streakVisual.eloGradient }}
+                                                                                animate={{ opacity: [0.45, 1, 0.45], scale: [1, 1.1, 1] }}
                                                                                 transition={{ repeat: Infinity, duration: 1.5 }}
                                                                             />
                                                                         )}
@@ -3251,16 +3606,23 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                 <div className="pointer-events-auto filter drop-shadow-2xl">
                                     <button
                                         onClick={() => handleGenerateDrill()}
-                                        className="group relative flex items-center gap-3 px-8 py-3.5 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white rounded-full font-bold shadow-[0_10px_30px_-10px_rgba(249,115,22,0.5)] hover:shadow-[0_20px_40px_-10px_rgba(249,115,22,0.6)] hover:scale-105 active:scale-95 transition-all text-sm md:text-base tracking-wide overflow-hidden"
+                                        className="group relative flex items-center gap-3 px-8 py-3.5 text-white rounded-full font-bold hover:scale-105 active:scale-95 transition-all text-sm md:text-base tracking-wide overflow-hidden"
+                                        style={{
+                                            backgroundImage: streakVisual.nextGradient,
+                                            boxShadow: streakVisual.nextShadow,
+                                        }}
                                     >
                                         <span className="relative z-10 font-bold">Next Question</span>
                                         <ArrowRight className="w-5 h-5 relative z-10 group-hover:translate-x-1 transition-transform" />
 
                                         {/* Shimmer Overlay */}
-                                        <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/30 to-transparent z-0" />
+                                        <div className="absolute inset-0 -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-white/35 to-transparent z-0" />
 
                                         {/* Glow Effect */}
-                                        <div className="absolute inset-0 rounded-full bg-orange-500/20 blur-xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        <div
+                                            className="absolute inset-0 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity"
+                                            style={{ background: `radial-gradient(circle at center, ${streakTier > 0 ? streakVisual.badgeGlow : 'rgba(249,115,22,0.22)'}, transparent 70%)` }}
+                                        />
                                     </button>
                                 </div>
                             </motion.div>
