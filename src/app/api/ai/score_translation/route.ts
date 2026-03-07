@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deepseek } from "@/lib/deepseek";
 
-const LISTENING_MAX_TOKENS = 256;
-const TRANSLATION_MAX_TOKENS = 220;
+const LISTENING_MAX_TOKENS = 128;
+const TRANSLATION_MAX_TOKENS = 96;
 const SCORING_TEMPERATURE = 0.2;
 
 type ScoreCompletion = {
@@ -93,23 +93,14 @@ export async function POST(req: NextRequest) {
             ${listeningGradingStandard}
 
             **LANGUAGE REQUIREMENT**:
-            - Output 'judge_reasoning' and 'feedback' in **Simplified Chinese (简体中文)**.
-            - Focus feedback on **Pronunciation** and **Fluency**.
+            - Output 'judge_reasoning' in **Simplified Chinese (简体中文)**.
+            - Keep 'judge_reasoning' to one short sentence focused on pronunciation/fluency.
  
             **CRITICAL OUTPUT FORMAT**:
-            Return "segments" array using Phonetic Matching.
-            
-            segments format:
-            - "word": Reference word.
-            - "status": "correct" | "phonetic_error" | "missing" | "typo"
-            - "user_input": valid only if error.
- 
             Output JSON:
             {
                 "score": 0-10, 
-                "judge_reasoning": "Brief spoken performance review",
-                "segments": [ {word, status, user_input?} ... ],
-                "feedback": { "listening_tips": ["pronunciation tip", "flow tip"] }
+                "judge_reasoning": "一句简短口语表现评价"
             }
             `;
         } else {
@@ -166,14 +157,13 @@ export async function POST(req: NextRequest) {
              ${gradingStandard}
   
              **LANGUAGE REQUIREMENT**:
-             - You MUST output 'judge_reasoning', 'feedback', and 'improved_version' contents in **Simplified Chinese (简体中文)**.
+             - You MUST output 'judge_reasoning' in **Simplified Chinese (简体中文)**.
+             - Keep 'judge_reasoning' to one short sentence.
   
              Output JSON:
              {
                  "score": 0-10,
-                 "judge_reasoning": "Brief ranking feedback",
-                 "feedback": ["Point 1", "Point 2"],
-                 "improved_version": "..."
+                 "judge_reasoning": "一句简短评分结论"
              }
              `;
         }
