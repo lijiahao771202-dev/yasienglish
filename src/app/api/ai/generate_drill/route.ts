@@ -105,9 +105,23 @@ export async function POST(req: NextRequest) {
 
         if (isScenario) {
             // --- SCENARIO MODE PROMPT ---
-            const styles = ["Dialogue Response", "Casual Remark", "Formal Request", "Emergency Question", "Witty Comment"];
+            const styles = ["Dialogue Response", "Casual Remark", "Formal Request", "Emergency Question", "Witty Comment", "Sarcastic Reply", "Polite Inquiry", "Angry Complaint", "Excited Announcement"];
             let styleInstruction = styles[Math.floor(Math.random() * styles.length)];
             let scenarioContext = "The user is in a 'Battle Mode'.";
+
+            // Generate a hyper-specific sub-topic to force absolute randomness
+            const randomSubTopics = [
+                "at a crowded coffee shop", "missing a flight", "arguing with a robot vacuum",
+                "finding a lost wallet", "first day at a new job", "awkward elevator ride",
+                "spilling water on a laptop", "asking for a raise", "getting pulled over by police",
+                "trying a bizarre new food", "meeting a celebrity", "buying a used car",
+                "a ghost in the house", "losing wifi during a meeting", "adopting a pet",
+                "a bad haircut", "a delayed train", "winning the lottery", "a broken umbrella",
+                "getting locked out", "a noisy neighbor", "a confusing text message",
+                "a ruined surprise party", "a fitness tracker malfunction", "a rude customer"
+            ];
+            const hyperSpecificTopic = randomSubTopics[Math.floor(Math.random() * randomSubTopics.length)];
+
 
             // Boss Scenario Injection
             if (bossType) {
@@ -131,9 +145,10 @@ export async function POST(req: NextRequest) {
             You are an expert English coach.
             
             Topic: "${articleTitle}"
+            Specific Situation: "${hyperSpecificTopic}"
             
             Task:
-            1. Invent a specific, realistic "Micro-Scenario" regarding this topic.
+            1. Invent a specific, realistic "Micro-Scenario" regarding this Topic and Specific Situation.
             2. ${isListening ?
                     `Create a challenging English line someone would say in this context (for listening dictation).` :
                     `Create a Chinese source sentence for the user to translate into English.`}
@@ -224,8 +239,9 @@ export async function POST(req: NextRequest) {
                         {
                             role: "system", content: `You are a strict English drill generator. You MUST:
 1. Follow the EXACT word count specified in the prompt. 
-2. Match the specified tier (e.g., 铂金/Platinum = 20-30 words for listening).
+2. Match the specified tier.
 3. Report your tier and word count accurately in _ai_difficulty_report.
+4. CRITICAL: NEVER use or translate the "Example complexity" sentences provided in the prompt. Create your OWN original sentences based on the topic.
 DO NOT generate content for a lower difficulty tier than requested.` },
                         { role: "user", content: prompt }
                     ],
@@ -305,13 +321,13 @@ DO NOT generate content for a lower difficulty tier than requested.` },
         }
 
         // Return enriched response with difficulty metadata
-        // For Scenario mode, prefer AI-generated specific topic over generic "Random Scenario"
-        const displayTopic = data._scenario_topic || articleTitle || "随机场景";
+        // For Scenario mode, we now return both the broad topic and the AI-generated specific sub-topic
 
         return NextResponse.json({
             ...data,
             _topicMeta: {
-                topic: displayTopic,
+                topic: articleTitle || "随机场景",
+                subTopic: data._scenario_topic || null,
                 isScenario: isScenario
             },
             _difficultyMeta: {

@@ -17,6 +17,7 @@ import { DrillDebug } from "../debug/DrillDebug";
 import { ScoringFlipCard } from "./ScoringFlipCard";
 import { TeachingCard } from "./TeachingCard";
 import { GhostTextarea } from "../vocab/GhostTextarea";
+import { TOPICS } from "../../app/battle/page";
 
 // --- Interfaces ---
 
@@ -57,6 +58,7 @@ interface DrillData {
     };
     _topicMeta?: {
         topic: string;
+        subTopic?: string | null;
         isScenario: boolean;
     };
 }
@@ -112,6 +114,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isPlaying, setIsPlaying] = useState(false);
     const [isAudioLoading, setIsAudioLoading] = useState(false);
     const [isPrefetching, setIsPrefetching] = useState(false); // Track background audio prefetch
+    const [prefetchedDrillData, setPrefetchedDrillData] = useState<(DrillData & { mode?: string }) | null>(null);
+    const abortPrefetchRef = useRef<AbortController | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const audioCache = useRef<Map<string, { url?: string; blob?: Blob; marks?: any[] }>>(new Map());
     const [currentAudioTime, setCurrentAudioTime] = useState(0);
@@ -793,10 +797,48 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // --- Core Actions ---
 
     const handleGenerateDrill = async (targetDifficulty = difficulty, overrideBossType?: string) => {
-        // Abort any pending request before starting a new one
-        if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
+        // Abort any pending generation or prefetch requests
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        if (abortPrefetchRef.current) abortPrefetchRef.current.abort();
+
+        // If we have prefetched data ready AND it matches the current mode, consume it instantly
+        if (prefetchedDrillData && prefetchedDrillData.mode === mode && !overrideBossType) {
+            console.log("[Prefetch] Consuming prefetched drill data! Zero ms latency.");
+            setDrillData(prefetchedDrillData);
+            setPrefetchedDrillData(null); // Clear buffer
+
+            // Reset UI states quickly
+            setIsGeneratingDrill(false);
+            setDrillFeedback(null);
+            setUserTranslation("");
+            setTutorAnswer(null);
+            setIsTutorOpen(false);
+            setWordPopup(null);
+            setIsPlaying(false);
+            setHasRatedDrill(false);
+            setEloChange(null);
+            resetResult();
+            if (audioRef.current) audioRef.current.pause();
+            hasPlayedEchoRef.current = false;
+            setLightningStarted(false);
+
+            // Trigger teaching content fetch if needed
+            if (teachingMode && mode === 'translation') {
+                setIsLoadingTeaching(true);
+                fetch("/api/ai/teach", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ reference_english: prefetchedDrillData.reference_english }),
+                })
+                    .then(res => res.json())
+                    .then(data => setTeachingData(data))
+                    .catch(console.error)
+                    .finally(() => setIsLoadingTeaching(false));
+            }
+
+            return; // Skip normal generation!
         }
+
         abortControllerRef.current = new AbortController();
         const signal = abortControllerRef.current.signal;
 
@@ -817,66 +859,60 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (audioRef.current) audioRef.current.pause();
 
         // --- PRE-CALCULATE BOSS/GAMBLE EVENTS ---
-        // Determine if we are entering a new Boss/Gamble encounter or continuing one
-        let nextBossType = overrideBossType || (bossState.active ? bossState.type : undefined);
+        let nextBossType: 'blind' | 'lightning' | 'echo' | 'reaper' | undefined = undefined;
         let nextTheme = theme;
-        let pendingBossState = null;
-        let pendingGambleState = null;
+        let pendingBossState: any = null;
+        let pendingGambleState: any = null;
 
-        if (!bossState.active && !gambleState.active && mode === 'listening') {
-            const roll = Math.random();
-            // 2% Chance for Boss (Listening Only)
-            if (roll < 0.02) {
-                const bossRoll = Math.random();
-                let type: 'blind' | 'lightning' | 'echo' | 'reaper' = 'blind';
+        // ALL Special Events (Boss, Gamble, Roulette) are EXCLUSIVELY for Listening Mode
+        if (mode === 'listening') {
+            nextBossType = overrideBossType as any || (bossState.active ? bossState.type : undefined);
 
-                if (mode === 'listening') {
+            if (!bossState.active && !gambleState.active && !overrideBossType) {
+                const roll = Math.random();
+                // 2% Chance for Boss (Listening Only)
+                if (roll < 0.02) {
+                    const bossRoll = Math.random();
+                    let type: 'blind' | 'lightning' | 'echo' | 'reaper' = 'blind';
+
                     // Listening Weights: Blind (35%), Echo (30%), Lightning (20%), Reaper (15%)
                     if (bossRoll < 0.35) type = 'blind';
                     else if (bossRoll < 0.65) type = 'echo';
                     else if (bossRoll < 0.85) type = 'lightning';
                     else type = 'reaper';
-                } else {
-                    // Translation Weights: Lightning (50%), Reaper (50%)
-                    if (bossRoll < 0.5) type = 'lightning';
-                    else type = 'reaper';
-                }
 
-                nextBossType = type;
+                    nextBossType = type;
+                    nextTheme = 'boss';
+                    pendingBossState = {
+                        active: true,
+                        introAck: false,
+                        type,
+                        hp: type === 'reaper' ? 3 : undefined,
+                        maxHp: type === 'reaper' ? 3 : undefined,
+                        playerHp: type === 'reaper' ? 3 : undefined, // Player starts with 3 HP
+                        playerMaxHp: type === 'reaper' ? 3 : undefined
+                    };
+                }
+                // 5% Chance for Gamble (Listening Mode Only)
+                else if (roll < 0.07) {
+                    nextTheme = 'crimson';
+                    pendingGambleState = { active: true, introAck: false, wager: null, doubleDownCount: 0 };
+                }
+            }
+
+            // FORCE OVERRIDE STATE (DEBUG / ROULETTE)
+            if (overrideBossType) {
                 nextTheme = 'boss';
+                nextBossType = overrideBossType as any;
                 pendingBossState = {
                     active: true,
-                    introAck: false,
-                    type,
-                    hp: type === 'reaper' ? 3 : undefined,
-                    maxHp: type === 'reaper' ? 3 : undefined,
-                    playerHp: type === 'reaper' ? 3 : undefined, // Player starts with 3 HP
-                    playerMaxHp: type === 'reaper' ? 3 : undefined
+                    introAck: overrideBossType.includes('roulette'), // Skip standard intro for roulette
+                    type: overrideBossType as any,
+                    hp: undefined, // Standard unless reaper
+                    maxHp: undefined,
+                    playerHp: undefined,
+                    playerMaxHp: undefined
                 };
-            }
-            // 5% Chance for Gamble (Listening Mode Only)
-            else if (roll < 0.07 && mode === 'listening') {
-                nextTheme = 'crimson';
-                pendingGambleState = { active: true, introAck: false, wager: null, doubleDownCount: 0 };
-            }
-        }
-
-        // FORCE OVERRIDE STATE (DEBUG / ROULETTE)
-        if (overrideBossType) {
-            nextTheme = 'boss';
-            nextBossType = overrideBossType as any;
-            pendingBossState = {
-                active: true,
-                introAck: overrideBossType.includes('roulette'), // Skip standard intro for roulette
-                type: overrideBossType as any,
-                hp: undefined, // Standard unless reaper
-                maxHp: undefined,
-                playerHp: undefined,
-                playerMaxHp: undefined
-            };
-            // Special handling for roulette execution visuals
-            if (overrideBossType === 'roulette_execution') {
-                // Flash effect can be triggered here if we had a flash state
             }
         }
 
@@ -893,16 +929,26 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
         try {
             console.log(`[DEBUG] Sending to API: bossType=${nextBossType}, eloRating=${currentElo}`);
+            // --- DETERMINE TOPIC ---
+            let targetTopic = context.articleTitle || context.topic;
+            if (!targetTopic || targetTopic.length === 0 || targetTopic === "日常闲聊" || targetTopic === "商务精英" || targetTopic === "学术先锋") {
+                const randomTopicObj = TOPICS[Math.floor(Math.random() * TOPICS.length)];
+                targetTopic = randomTopicObj.title;
+            }
+
             const response = await fetch("/api/ai/generate_drill", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                },
                 body: JSON.stringify({
-                    articleTitle: context.articleTitle || context.topic,
+                    articleTitle: targetTopic,
                     articleContent: context.articleContent || "",
                     difficulty: eloDifficulty.level, // Auto-calculated from ELO
                     eloRating: currentElo,
                     mode,
-                    bossType: nextBossType // Inject Boss Context for Custom Scenarios
+                    bossType: nextBossType, // Inject Boss Context for Custom Scenarios
+                    _t: Date.now() // Cache buster to prevent repeated drills
                 }),
                 signal, // Pass abort signal
             });
@@ -1037,10 +1083,31 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                     let kFactor = 40;
                     const isStreak = streak >= 2;
-                    const effectiveK = isStreak ? kFactor * 1.25 : kFactor;
+                    let effectiveK = isStreak ? kFactor * 1.25 : kFactor;
+
+                    // --- Smurf Bonus (Fast Track) ---
+                    // If a high-Elo player is doing a low-Elo question (expectedScore is high, e.g., 0.8+),
+                    // the standard Elo math gives them almost nothing even for a perfect score.
+                    // We add a "smurf multiplier" if they actually achieve that near-perfect score (9 or 10).
+                    let smurfMultiplier = 1;
+                    if (actualScore >= 9 && expectedScore > 0.6) {
+                        // The easier the question (higher expectedScore), the higher the multiplier needed to make the tiny gap meaningful.
+                        // Max multiplier of 3.5x for perfect scores on absolute easiest questions.
+                        smurfMultiplier = 1 + ((expectedScore - 0.6) * 6);
+                        effectiveK *= smurfMultiplier;
+                    }
 
                     const rawChange = effectiveK * (normalizedScore - expectedScore);
-                    const totalChange = Math.round(rawChange);
+                    let totalChange = Math.round(rawChange);
+
+                    // --- Floor Guarantee for Perfect Plays ---
+                    // Guarantee at least +10 for a perfect 10/10, and +5 for a 9/10, regardless of Elo math,
+                    // to ensure the user always feels appropriately rewarded for near-flawless execution.
+                    if (actualScore >= 9.5 && totalChange < 10) {
+                        totalChange = 10;
+                    } else if (actualScore >= 9.0 && actualScore < 9.5 && totalChange < 5) {
+                        totalChange = 5;
+                    }
 
                     return {
                         total: totalChange,
@@ -1050,8 +1117,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             actualScore: normalizedScore,
                             kFactor,
                             streakBonus: isStreak,
+                            smurfMultiplier: parseFloat(smurfMultiplier.toFixed(2)),
                             baseChange: Math.round(kFactor * (normalizedScore - expectedScore)),
-                            bonusChange: Math.round((effectiveK - kFactor) * (normalizedScore - expectedScore))
+                            bonusChange: totalChange - Math.round(kFactor * (normalizedScore - expectedScore))
                         }
                     };
                 };
@@ -1260,6 +1328,60 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             console.error(error);
         } finally {
             setIsSubmittingDrill(false);
+
+            // --- BACKGROUND PREFETCH LOGIC (Evaluation-time) ---
+            // Only prefetch if we successfully scored and calculated a new Elo
+            if (drillData && userTranslation.trim()) {
+                console.log("[Prefetch] Starting background prefetch for next drill...");
+                if (abortPrefetchRef.current) abortPrefetchRef.current.abort();
+                abortPrefetchRef.current = new AbortController();
+
+                // Determine if we are entering a boss/gamble state next
+                let nextBossType: any = undefined;
+                if (mode === 'listening') {
+                    const roll = Math.random();
+                    if (roll < 0.02) {
+                        const bossRoll = Math.random();
+                        if (bossRoll < 0.35) nextBossType = 'blind';
+                        else if (bossRoll < 0.65) nextBossType = 'echo';
+                        else if (bossRoll < 0.85) nextBossType = 'lightning';
+                        else nextBossType = 'reaper';
+                    }
+                }
+
+                // Use the active elo representing the *current* real-time difficulty
+                const prefetchElo = mode === 'listening' ? listeningElo : eloRating;
+
+                let targetTopic = context.articleTitle || context.topic;
+                if (!targetTopic || targetTopic.length === 0 || targetTopic === "日常闲聊" || targetTopic === "商务精英" || targetTopic === "学术先锋") {
+                    const randomTopicObj = TOPICS[Math.floor(Math.random() * TOPICS.length)];
+                    targetTopic = randomTopicObj.title;
+                }
+
+                fetch("/api/ai/generate_drill", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        articleTitle: targetTopic,
+                        articleContent: context.articleContent || "",
+                        difficulty: difficulty, // Will be overridden by Elo on server anyway
+                        eloRating: Math.max(0, prefetchElo),
+                        mode,
+                        bossType: nextBossType,
+                        _t: Date.now() // Cache buster
+                    }),
+                    signal: abortPrefetchRef.current.signal,
+                }).then(res => res.json())
+                    .then(data => {
+                        if (!abortPrefetchRef.current?.signal.aborted) {
+                            console.log("[Prefetch] Background prefetch completed and stored!");
+                            // Also store the generated mode so we can invalidate it if user switches mode
+                            setPrefetchedDrillData({ ...data, mode });
+                        }
+                    }).catch(err => {
+                        if (err.name !== 'AbortError') console.error("[Prefetch] Error:", err);
+                    });
+            }
         }
     };
 
@@ -1472,6 +1594,33 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 );
             }
         }
+
+        return (
+            <div className="space-y-4">
+                <div className="p-5 bg-white/60 rounded-2xl border border-stone-100 shadow-sm">
+                    <div className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <BookOpen className="w-3 h-3" />
+                        对照修订
+                    </div>
+                    <div className="font-newsreader text-xl leading-loose text-stone-800 flex flex-wrap gap-x-1 gap-y-2 mb-4">
+                        {elements}
+                    </div>
+
+                    <div className="pt-4 border-t border-stone-100/80 space-y-3">
+                        {drillFeedback.improved_version && (
+                            <div>
+                                <p className="text-[10px] text-stone-400 font-sans font-bold uppercase mb-1 flex items-center gap-1.5"><Sparkles className="w-3 h-3 text-indigo-400" /> AI 地道改写</p>
+                                <p className="text-lg font-newsreader text-indigo-900 leading-relaxed font-medium">{drillFeedback.improved_version}</p>
+                            </div>
+                        )}
+                        <div>
+                            <p className="text-[10px] text-stone-400 font-sans font-bold uppercase mb-1">Standard Reference (参考答案)</p>
+                            <p className="text-base font-newsreader text-stone-600 italic">"{drillData.reference_english}"</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
     };
 
 
@@ -1885,9 +2034,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     {drillData?._topicMeta && (
                                         <>
                                             <div className="w-px h-5 bg-stone-200" />
-                                            <div className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold text-blue-600 bg-blue-50/50">
+                                            <div className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-blue-600 bg-blue-50/50 rounded-full">
                                                 <span>📌</span>
-                                                <span className="max-w-[120px] truncate">{drillData._topicMeta.topic}</span>
+                                                <span className="max-w-[100px] sm:max-w-[120px] truncate">{drillData._topicMeta.topic}</span>
+                                                {drillData._topicMeta.subTopic && (
+                                                    <>
+                                                        <span className="opacity-40 font-normal">·</span>
+                                                        <span className="max-w-[150px] sm:max-w-[200px] truncate opacity-80 font-medium">
+                                                            {drillData._topicMeta.subTopic}
+                                                        </span>
+                                                    </>
+                                                )}
                                             </div>
                                         </>
                                     )}
@@ -2421,13 +2578,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     onChange={setUserTranslation}
                                                                     placeholder="Type your English translation here..."
                                                                     predictionWordCount={2}
-                                                                    getPrediction={(current) => {
-                                                                        // Provide predicting hint based on actual reference answer
-                                                                        if (drillData?.reference_english && drillData.reference_english.toLowerCase().startsWith(current.toLowerCase())) {
-                                                                            return drillData.reference_english;
-                                                                        }
-                                                                        return "";
-                                                                    }}
+                                                                    sourceText={drillData?.chinese}
+                                                                    referenceAnswer={drillData?.reference_english}
                                                                     disabled={isSubmittingDrill}
                                                                 />
 
@@ -2783,34 +2935,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         )}
                     </AnimatePresence>
 
-                    {/* DEBUG CONTROLS */}
-                    <div className="absolute bottom-4 left-4 z-[200] flex flex-col gap-2 opacity-30 hover:opacity-100 transition-opacity p-2 bg-black/50 rounded-xl backdrop-blur-md">
-                        <div className="text-[10px] font-mono text-white/50 text-center font-bold">DEV TOOLS</div>
-                        <button
-                            onClick={() => { setGambleState({ active: true, introAck: false, wager: null, doubleDownCount: 0 }); setTheme('crimson'); }}
-                            className="bg-red-900/80 text-red-200 text-[10px] px-2 py-1 rounded border border-red-500/50 hover:bg-red-900"
-                        >
-                            Force Gamble
-                        </button>
-                        <div className="grid grid-cols-2 gap-1">
-                            <button onClick={() => { setBossState({ active: true, introAck: false, type: 'blind' }); setTheme('boss'); setPlaybackSpeed(1.25); }} className="bg-stone-800 text-stone-400 text-[9px] px-1 py-1 rounded hover:bg-stone-700">Force Blind</button>
-                            <button onClick={() => { setBossState({ active: true, introAck: false, type: 'lightning' }); setTheme('boss'); setPlaybackSpeed(1.25); }} className="bg-amber-900/50 text-amber-500 text-[9px] px-1 py-1 rounded hover:bg-amber-900">Force Light.</button>
-                            <button onClick={() => { setBossState({ active: true, introAck: false, type: 'echo' }); setTheme('boss'); setPlaybackSpeed(1.0); }} className="bg-cyan-900/50 text-cyan-500 text-[9px] px-1 py-1 rounded hover:bg-cyan-900">Force Echo</button>
-                            <button onClick={() => { setBossState({ active: true, introAck: false, type: 'reaper', hp: 3, maxHp: 3 }); setTheme('boss'); setPlaybackSpeed(1.0); }} className="bg-rose-900/50 text-rose-500 text-[9px] px-1 py-1 rounded hover:bg-rose-900">Force Reaper</button>
-                        </div>
-                        <button
-                            onClick={() => { setFeverMode(true); setComboCount(3); setTheme('fever'); }}
-                            className="bg-purple-900/80 text-purple-200 text-[10px] px-2 py-1 rounded border border-purple-500/50 hover:bg-purple-900"
-                        >
-                            Force Fever
-                        </button>
-                        <button
-                            onClick={debugTriggerRoulette}
-                            className="bg-emerald-900/80 text-emerald-200 text-[10px] px-2 py-1 rounded border border-emerald-500/50 hover:bg-emerald-900 flex items-center justify-center gap-1"
-                        >
-                            <Dices className="w-3 h-3" /> Spin Roulette
-                        </button>
-                    </div>
+
+
 
                     {/* Floating Action Bar - Redesigned */}
                     <AnimatePresence>
