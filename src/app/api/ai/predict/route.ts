@@ -1,52 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deepseek } from "@/lib/deepseek";
+import { getDeterministicPrediction, shouldUseRemotePrediction } from "@/lib/predictHint";
 
 export const runtime = 'edge';
 
-function takeNextWords(text: string, count: number) {
-    const match = text.trimStart().match(new RegExp(`^(\\S+\\s*){1,${count}}`));
-    return match ? match[0].trimEnd() : "";
-}
-
-function getFastReferencePrediction(currentInput: string, referenceAnswer?: string) {
-    if (!referenceAnswer) return "";
-
-    const input = currentInput.trimStart();
-    const reference = referenceAnswer.trimStart();
-    if (!input || !reference) return "";
-
-    if (!reference.toLowerCase().startsWith(input.toLowerCase())) {
-        return "";
-    }
-
-    const remainder = reference.slice(input.length).trimStart();
-    if (!remainder) {
-        return "";
-    }
-
-    const nextWords = takeNextWords(remainder, 3);
-    if (!nextWords) {
-        return "";
-    }
-
-    if (!currentInput.endsWith(' ') && !nextWords.match(/^[.,?!]/)) {
-        return ` ${nextWords}`;
-    }
-
-    return nextWords;
-}
-
 export async function POST(req: NextRequest) {
     try {
-        const { sourceText, currentInput, referenceAnswer } = await req.json();
+        const { sourceText, currentInput, referenceAnswer, predictionWordCount } = await req.json();
+        const wordCount = Math.min(Math.max(Number(predictionWordCount) || 2, 1), 3);
 
         if (!sourceText || !currentInput) {
             return NextResponse.json({ prediction: "" });
         }
 
-        const fastPrediction = getFastReferencePrediction(currentInput, referenceAnswer);
-        if (fastPrediction) {
-            return NextResponse.json({ prediction: fastPrediction });
+        const deterministicPrediction = getDeterministicPrediction(currentInput, referenceAnswer, wordCount);
+        if (deterministicPrediction) {
+            return NextResponse.json({ prediction: deterministicPrediction });
+        }
+
+        if (!shouldUseRemotePrediction(currentInput, referenceAnswer)) {
+            return NextResponse.json({ prediction: "" });
         }
 
         const prompt = `Return strict JSON: {"prediction": ""}.
@@ -54,8 +27,9 @@ Source: "${sourceText}"
 Reference: "${referenceAnswer || 'N/A'}"
 User: "${currentInput}"
 
-Return only the next 1 to 3 words that should continue the user's English translation.
+Return only the next 1 to ${wordCount} words that should continue the user's English translation.
 If the translation is already complete, return an empty prediction.
+If the user text already diverges from the reference, would need rewriting instead of appending, or already contains the same idea in a different wording, return an empty prediction.
 Do not repeat the user's existing text.
 Do not include quotes or explanations.`;
 
@@ -67,7 +41,7 @@ Do not include quotes or explanations.`;
             model: "deepseek-chat",
             response_format: { type: "json_object" },
             temperature: 0,
-            max_tokens: 12,
+            max_tokens: Math.min(10, wordCount * 3 + 2),
         });
 
         const content = completion.choices[0].message.content;
@@ -89,8 +63,8 @@ Do not include quotes or explanations.`;
 
         return NextResponse.json({ prediction });
 
-    } catch (error: any) {
-        console.error("AI Predict Error:", error?.message || error);
+    } catch (error: unknown) {
+        console.error("AI Predict Error:", error instanceof Error ? error.message : error);
         return NextResponse.json(
             { error: "Prediction failed", prediction: "" },
             { status: 500 }

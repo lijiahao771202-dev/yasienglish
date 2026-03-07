@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Sparkles } from 'lucide-react';
+import { getDeterministicPrediction } from '@/lib/predictHint';
 
 interface GhostTextareaProps {
     value: string;
@@ -45,9 +46,15 @@ export function GhostTextarea({
             return "";
         }
 
-        const inputKey = currentInputValue.toLowerCase();
+        const inputKey = currentInputValue.trim().toLowerCase().replace(/\s+/g, ' ');
         if (localCache.current[inputKey] !== undefined) {
             return localCache.current[inputKey];
+        }
+
+        const deterministicPrediction = getDeterministicPrediction(currentInputValue, referenceAnswer, predictionWordCount);
+        if (deterministicPrediction) {
+            localCache.current[inputKey] = deterministicPrediction;
+            return deterministicPrediction;
         }
 
         if (pendingInputRef.current === inputKey && pendingPromiseRef.current) {
@@ -65,7 +72,8 @@ export function GhostTextarea({
                     body: JSON.stringify({
                         sourceText,
                         currentInput: currentInputValue,
-                        referenceAnswer
+                        referenceAnswer,
+                        predictionWordCount,
                     }),
                     signal: abortControllerRef.current?.signal
                 });
@@ -84,8 +92,8 @@ export function GhostTextarea({
 
                 localCache.current[inputKey] = aiSuggestion;
                 return aiSuggestion;
-            } catch (err: any) {
-                if (err.name === 'AbortError') {
+            } catch (err: unknown) {
+                if (err instanceof Error && err.name === 'AbortError') {
                     console.log("Prediction aborted due to new input");
                     return "";
                 }
