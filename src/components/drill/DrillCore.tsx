@@ -2581,7 +2581,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     sourceText={drillData?.chinese}
                                                                     referenceAnswer={drillData?.reference_english}
                                                                     disabled={isSubmittingDrill}
-                                                                    className="min-h-[128px] px-5 pb-16 pt-5 text-[1.02rem] font-medium leading-8 tracking-[0.01em] text-stone-700 placeholder:text-stone-400/90 md:min-h-[144px] md:px-6 md:pb-16 md:pt-6 md:text-[1.08rem]"
+                                                                    className="font-work-sans min-h-[128px] px-5 pb-16 pt-5 text-[1.06rem] font-semibold leading-[1.9] tracking-[0.005em] text-stone-900 placeholder:text-stone-300/95 md:min-h-[144px] md:px-6 md:pb-16 md:pt-6 md:text-[1.12rem]"
                                                                 />
 
                                                                 {/* Bottom toolbar */}
