@@ -175,15 +175,36 @@ export async function POST(req: NextRequest) {
         }
 
         console.log("[score_translation] Calling DeepSeek API...");
-        const completion = await deepseek.chat.completions.create({
-            messages: [
-                { role: "system", content: "You are a helpful AI tutor. Output JSON only." },
-                { role: "user", content: prompt }
-            ],
-            model: "deepseek-chat",
-            response_format: { type: "json_object" },
-            temperature: 0.7,
-        });
+        const MAX_RETRIES = 3;
+        let lastError: Error | null = null;
+        let completion: any = null;
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                console.log(`[score_translation] API Attempt ${attempt}/${MAX_RETRIES} (Teaching Mode: ${teaching_mode})`);
+                completion = await deepseek.chat.completions.create({
+                    messages: [
+                        { role: "system", content: "You are a helpful AI tutor. Output JSON only." },
+                        { role: "user", content: prompt }
+                    ],
+                    model: "deepseek-chat",
+                    response_format: { type: "json_object" },
+                    temperature: 0.7,
+                });
+                break; // Success, exit retry loop
+            } catch (error) {
+                lastError = error as Error;
+                console.log(`[score_translation] Attempt ${attempt} failed: ${lastError.message}`);
+                if (attempt < MAX_RETRIES) {
+                    await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+                }
+            }
+        }
+
+        if (!completion) {
+            console.error(`[score_translation] All ${MAX_RETRIES} attempts failed:`, lastError);
+            throw lastError || new Error("Failed after retries");
+        }
         console.log("[score_translation] DeepSeek API response received");
 
         const content = completion.choices[0].message.content;

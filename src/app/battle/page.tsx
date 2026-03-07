@@ -9,7 +9,7 @@ import { getRank } from "@/lib/rankUtils";
 import { db } from "@/lib/db";
 import { EloChart } from "@/components/battle/EloChart";
 
-const TOPICS = [
+export const TOPICS = [
     {
         id: "business",
         title: "商务精英",
