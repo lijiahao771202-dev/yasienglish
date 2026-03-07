@@ -161,7 +161,7 @@ export function GhostTextarea({
                 >
                     <span className="opacity-0">{value}</span>
                     {ghostText && (
-                        <span className="text-indigo-400/50 dark:text-indigo-500/50 font-semibold selection:bg-transparent">
+                        <span className="text-indigo-500/40 dark:text-indigo-400/45 font-semibold selection:bg-transparent">
                             {ghostText}
                         </span>
                     )}
@@ -177,9 +177,9 @@ export function GhostTextarea({
                     placeholder={placeholder}
                     disabled={disabled}
                     className={cn(
-                        "relative z-10 w-full resize-none outline-none bg-transparent text-left",
-                        "text-stone-800 dark:text-stone-200",
-                        "placeholder:text-stone-300/80 dark:placeholder:text-white/20",
+                        "relative z-10 w-full resize-none outline-none bg-transparent text-left transition-colors duration-200",
+                        "text-stone-700 dark:text-stone-200",
+                        "placeholder:text-stone-400/90 dark:placeholder:text-white/25",
                         typographyClass
                     )}
                     spellCheck={false}
@@ -187,19 +187,19 @@ export function GhostTextarea({
             </div>
 
             {isFocused && (
-                <div className="absolute bottom-6 right-6 z-20 pointer-events-none animate-in fade-in slide-in-from-bottom-2">
+                <div className="absolute bottom-4 right-4 z-20 pointer-events-none animate-in fade-in slide-in-from-bottom-2">
                     {isPredicting ? (
-                        <div className="flex items-center gap-2 text-xs font-bold text-indigo-500/80 bg-indigo-50/90 backdrop-blur-md px-3 py-1.5 rounded-lg shadow-[0_4px_20px_rgba(99,102,241,0.15)] border border-indigo-100/50">
+                        <div className="flex items-center gap-2 rounded-full border border-indigo-100/80 bg-white/90 px-3 py-1.5 text-[11px] font-bold text-indigo-600 shadow-[0_8px_18px_rgba(99,102,241,0.12)] backdrop-blur-md">
                             <Sparkles className="w-3.5 h-3.5 animate-spin" /> AI 生成中...
                         </div>
                     ) : ghostText ? (
-                        <div className="flex items-center gap-2 text-xs font-bold text-indigo-500/80 bg-indigo-50/90 backdrop-blur-md px-3 py-1.5 rounded-lg shadow-[0_4px_20px_rgba(99,102,241,0.15)] border border-indigo-100/50">
-                            按 <kbd className="bg-white border border-indigo-100/80 rounded px-1.5 py-0.5 font-sans shadow-sm text-indigo-600">Tab</kbd> 采纳
+                        <div className="flex items-center gap-2 rounded-full border border-indigo-100/80 bg-white/92 px-3 py-1.5 text-[11px] font-bold text-indigo-600 shadow-[0_8px_18px_rgba(99,102,241,0.12)] backdrop-blur-md">
+                            按 <kbd className="bg-indigo-50 border border-indigo-100/80 rounded-md px-1.5 py-0.5 font-sans shadow-sm text-indigo-700">Tab</kbd> 采纳
                         </div>
                     ) : (
                         value.trim() && (
-                            <div className="flex items-center gap-2 text-xs font-bold text-stone-400/80 bg-stone-50/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-stone-200/50 shadow-sm transition-all duration-300 pointer-events-auto cursor-pointer" onClick={() => triggerPrediction(value)}>
-                                <Sparkles className="w-3.5 h-3.5" /> 遇到困难？按 <kbd className="bg-white border border-stone-200/80 rounded px-1.5 py-0.5 font-sans shadow-sm text-stone-500">Tab</kbd> 呼出 AI 提示
+                            <div className="flex items-center gap-2 rounded-full border border-stone-200/80 bg-white/92 px-3 py-1.5 text-[11px] font-bold text-stone-500 shadow-[0_8px_16px_rgba(15,23,42,0.06)] transition-all duration-300 pointer-events-auto cursor-pointer" onClick={() => triggerPrediction(value)}>
+                                <Sparkles className="w-3.5 h-3.5 text-amber-500" /> 按 <kbd className="bg-stone-50 border border-stone-200/80 rounded-md px-1.5 py-0.5 font-sans shadow-sm text-stone-600">Tab</kbd> 获取提示
                             </div>
                         )
                     )}
