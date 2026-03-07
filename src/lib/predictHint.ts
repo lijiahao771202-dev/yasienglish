@@ -7,6 +7,18 @@ const STOPWORDS = new Set([
     "this", "to", "us", "was", "we", "were", "with", "you", "your",
 ]);
 
+const PHRASE_OPENERS = new Set([
+    "a", "an", "the", "my", "your", "his", "her", "our", "their", "this", "that",
+    "these", "those", "to", "in", "on", "at", "for", "with", "from", "near", "by",
+    "under", "over", "inside", "outside", "around", "behind", "beside", "because",
+    "after", "before", "during", "into", "onto",
+]);
+
+const SHORT_CONTEXT_TOKENS = new Set([
+    ...PHRASE_OPENERS,
+    "i", "we", "you", "he", "she", "they", "it",
+]);
+
 function normalizeToken(token: string) {
     return token.toLowerCase().replace(NORMALIZE_EDGE_RE, "");
 }
@@ -20,6 +32,18 @@ function tokenize(text: string) {
             normalized: normalizeToken(raw),
         }))
         .filter(token => token.normalized.length > 0);
+}
+
+export function getAdaptivePredictionWordCount(currentInput: string, requestedWordCount = 2) {
+    const tokens = tokenize(currentInput);
+    if (tokens.length === 0) return Math.min(Math.max(requestedWordCount, 1), 3);
+
+    const lastToken = tokens[tokens.length - 1]?.normalized;
+    if (lastToken && PHRASE_OPENERS.has(lastToken)) {
+        return 1;
+    }
+
+    return Math.min(Math.max(requestedWordCount, 1), 3);
 }
 
 function takeNextWords(text: string, count: number) {
@@ -43,6 +67,23 @@ function hasStrongSuffixMatch(tokens: Array<{ normalized: string }>) {
         }
     }
     return contentCount >= 2 || (tokens.length >= 4 && contentCount >= 1);
+}
+
+function hasUsefulShortSuffixMatch(tokens: Array<{ normalized: string }>) {
+    if (tokens.length !== 2) {
+        return false;
+    }
+
+    const [firstToken, lastToken] = tokens;
+    if (!lastToken?.normalized || !SHORT_CONTEXT_TOKENS.has(lastToken.normalized)) {
+        return false;
+    }
+
+    return (
+        firstToken.normalized.length >= 3 ||
+        !STOPWORDS.has(firstToken.normalized) ||
+        PHRASE_OPENERS.has(firstToken.normalized)
+    );
 }
 
 export function getExactPrefixPrediction(currentInput: string, referenceAnswer?: string, wordCount = 2) {
@@ -70,15 +111,20 @@ export function getSuffixAlignedPrediction(currentInput: string, referenceAnswer
     const currentTokens = tokenize(currentInput);
     const referenceTokens = tokenize(referenceAnswer);
 
-    if (currentTokens.length < 3 || referenceTokens.length < 4) {
+    if (currentTokens.length < 2 || referenceTokens.length < 3) {
         return "";
     }
 
     const maxWindow = Math.min(5, currentTokens.length - 1, referenceTokens.length - 1);
+    const minWindow = Math.min(2, maxWindow);
 
-    for (let windowSize = maxWindow; windowSize >= 3; windowSize -= 1) {
+    for (let windowSize = maxWindow; windowSize >= minWindow; windowSize -= 1) {
         const suffix = currentTokens.slice(-windowSize);
-        if (!hasStrongSuffixMatch(suffix)) {
+        const canUseWindow = windowSize >= 3
+            ? hasStrongSuffixMatch(suffix)
+            : hasUsefulShortSuffixMatch(suffix);
+
+        if (!canUseWindow) {
             continue;
         }
 
@@ -114,19 +160,17 @@ export function getDeterministicPrediction(currentInput: string, referenceAnswer
     );
 }
 
-export function shouldUseRemotePrediction(currentInput: string, referenceAnswer?: string) {
-    if (!referenceAnswer) return false;
-
+export function shouldUseRemotePrediction(currentInput: string) {
     const normalizedInput = currentInput.trim();
     if (!normalizedInput || /[.!?]\s*$/.test(normalizedInput)) {
         return false;
     }
 
     const tokens = tokenize(normalizedInput);
-    if (tokens.length >= 10) {
+    if (tokens.length > 24) {
         return false;
     }
 
     const contentTokens = tokens.filter(token => token.normalized.length >= 4 && !STOPWORDS.has(token.normalized));
-    return contentTokens.length >= 1;
+    return tokens.length >= 2 || contentTokens.length >= 1;
 }
