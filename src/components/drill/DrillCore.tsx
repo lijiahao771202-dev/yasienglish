@@ -65,9 +65,9 @@ interface DrillData {
 
 interface DrillFeedback {
     score: number;
-    feedback: any; // Can be string[] or object with listening_tips
+    feedback?: any; // Can be string[] or object with listening_tips
     judge_reasoning?: string;
-    improved_version: string;
+    improved_version?: string;
     segments?: {
         word: string;
         status: "correct" | "phonetic_error" | "missing" | "typo" | "user_extra" | "variation";
@@ -109,6 +109,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isSubmittingDrill, setIsSubmittingDrill] = useState(false);
     const [drillFeedback, setDrillFeedback] = useState<DrillFeedback | null>(null);
     const [hasRatedDrill, setHasRatedDrill] = useState(false);
+    const [analysisRequested, setAnalysisRequested] = useState(false);
+    const [isGeneratingAnalysis, setIsGeneratingAnalysis] = useState(false);
+    const [analysisError, setAnalysisError] = useState<string | null>(null);
+    const [analysisDetailsOpen, setAnalysisDetailsOpen] = useState(false);
 
     // Audio & Dictionary State
     const [isPlaying, setIsPlaying] = useState(false);
@@ -841,6 +845,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setWordPopup(null);
             setIsPlaying(false);
             setHasRatedDrill(false);
+            setAnalysisRequested(false);
+            setIsGeneratingAnalysis(false);
+            setAnalysisError(null);
+            setAnalysisDetailsOpen(false);
             setEloChange(null);
             resetResult();
             if (audioRef.current) audioRef.current.pause();
@@ -883,6 +891,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setWordPopup(null);
         setIsPlaying(false);
         setHasRatedDrill(false);
+        setAnalysisRequested(false);
+        setIsGeneratingAnalysis(false);
+        setAnalysisError(null);
+        setAnalysisDetailsOpen(false);
         setEloChange(null);
         resetResult(); // Clear previous recording transcript
         if (audioRef.current) audioRef.current.pause();
@@ -1042,6 +1054,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const handleSubmitDrill = async () => {
         if (!userTranslation.trim() || !drillData) return;
         setIsSubmittingDrill(true);
+        let prefetchNextElo: number | null = null;
+        let prefetchedDifficultyLevel: string | null = null;
 
         try {
             // Use correct Elo based on mode
@@ -1076,6 +1090,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             }
 
             setDrillFeedback(data);
+            setAnalysisRequested(false);
+            setAnalysisError(null);
+            setAnalysisDetailsOpen(false);
 
             if (data.score !== undefined) {
                 if (hasRatedDrill) {
@@ -1303,6 +1320,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                 // === Elo Update Logic (ALWAYS EXECUTED) ===
                 const newElo = Math.max(0, (activeElo || 600) + change);
+                prefetchNextElo = newElo;
+                prefetchedDifficultyLevel = getEloDifficulty(newElo).level;
 
                 // Rank Change Detection
                 const oldRank = getRank(activeElo || 600);
@@ -1359,8 +1378,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setIsSubmittingDrill(false);
 
             // --- BACKGROUND PREFETCH LOGIC (Evaluation-time) ---
-            // Only prefetch if we successfully scored and calculated a new Elo
-            if (drillData && userTranslation.trim()) {
+            // Only prefetch after a successful score produced a fresh Elo for the next question.
+            if (drillData && userTranslation.trim() && prefetchNextElo !== null && prefetchedDifficultyLevel) {
                 console.log("[Prefetch] Starting background prefetch for next drill...");
                 if (abortPrefetchRef.current) abortPrefetchRef.current.abort();
                 abortPrefetchRef.current = new AbortController();
@@ -1378,9 +1397,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     }
                 }
 
-                // Use the active elo representing the *current* real-time difficulty
-                const prefetchElo = mode === 'listening' ? listeningElo : eloRating;
-
                 let targetTopic = context.articleTitle || context.topic;
                 if (!targetTopic || targetTopic.length === 0 || targetTopic === "日常闲聊" || targetTopic === "商务精英" || targetTopic === "学术先锋") {
                     const randomTopicObj = TOPICS[Math.floor(Math.random() * TOPICS.length)];
@@ -1393,8 +1409,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     body: JSON.stringify({
                         articleTitle: targetTopic,
                         articleContent: context.articleContent || "",
-                        difficulty: difficulty, // Will be overridden by Elo on server anyway
-                        eloRating: Math.max(0, prefetchElo),
+                        difficulty: prefetchedDifficultyLevel,
+                        eloRating: Math.max(0, prefetchNextElo),
                         mode,
                         bossType: nextBossType,
                         _t: Date.now() // Cache buster
@@ -1411,6 +1427,45 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         if (err.name !== 'AbortError') console.error("[Prefetch] Error:", err);
                     });
             }
+        }
+    };
+
+    const handleGenerateAnalysis = async () => {
+        if (!drillData || !drillFeedback || isGeneratingAnalysis) return;
+
+        setAnalysisRequested(true);
+        setIsGeneratingAnalysis(true);
+        setAnalysisError(null);
+        setAnalysisDetailsOpen(false);
+
+        try {
+            const activeElo = mode === 'listening' ? listeningEloRef.current : eloRatingRef.current;
+            const response = await fetch("/api/ai/analyze_drill", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    user_translation: userTranslation,
+                    reference_english: drillData.reference_english,
+                    original_chinese: drillData.chinese,
+                    current_elo: activeElo || 600,
+                    score: drillFeedback.score,
+                    mode,
+                    teaching_mode: teachingMode,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || data.error) {
+                throw new Error(data.error || "解析生成失败");
+            }
+
+            setDrillFeedback(prev => prev ? { ...prev, ...data } : prev);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "解析生成失败";
+            setAnalysisError(message);
+        } finally {
+            setIsGeneratingAnalysis(false);
         }
     };
 
@@ -1651,6 +1706,105 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             </div>
         );
     };
+
+    const getAnalysisHighlights = () => {
+        if (!drillData || !drillFeedback) return [];
+
+        if (mode === "listening" && drillFeedback.segments) {
+            return drillFeedback.segments
+                .filter(seg => seg.status !== "correct" && seg.status !== "variation")
+                .slice(0, 3)
+                .map((seg) => {
+                    if (seg.status === "missing") {
+                        return {
+                            kind: "漏读",
+                            before: "未读出",
+                            after: seg.word,
+                            note: "这部分在复述里漏掉了。",
+                        };
+                    }
+
+                    if (seg.status === "phonetic_error") {
+                        return {
+                            kind: "发音偏差",
+                            before: seg.user_input || "发音不清",
+                            after: seg.word,
+                            note: "优先把这个词读清楚。",
+                        };
+                    }
+
+                    return {
+                        kind: "听写修正",
+                        before: seg.user_input || "识别偏差",
+                        after: seg.word,
+                        note: "参考标准读法再跟读一次。",
+                    };
+                });
+        }
+
+        const normalize = (str: string) => str.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ").trim();
+        const cleanUser = mode === "listening" ? normalize(userTranslation) : userTranslation;
+        const cleanTarget = mode === "listening" ? normalize(drillData.reference_english) : drillData.reference_english;
+        const diffs = Diff.diffWords(cleanUser, cleanTarget);
+        const highlights: Array<{ kind: string; before: string; after: string; note: string }> = [];
+
+        for (let i = 0; i < diffs.length; i++) {
+            const part = diffs[i];
+            if (part.removed) {
+                let correction = "";
+                if (i + 1 < diffs.length && diffs[i + 1].added) {
+                    correction = diffs[i + 1].value.trim();
+                    i++;
+                }
+                highlights.push({
+                    kind: correction ? "关键改错" : "多余表达",
+                    before: part.value.trim(),
+                    after: correction || "删除这部分",
+                    note: correction ? "这里需要替换成更准确的形式。" : "这部分在标准表达里不需要。",
+                });
+            } else if (part.added) {
+                highlights.push({
+                    kind: "缺失内容",
+                    before: "未写出",
+                    after: part.value.trim(),
+                    note: "这部分需要补上才完整。",
+                });
+            }
+
+            if (highlights.length >= 3) {
+                break;
+            }
+        }
+
+        return highlights;
+    };
+
+    const getAnalysisLead = () => {
+        if (!drillFeedback) return "";
+        if (drillFeedback.judge_reasoning) return drillFeedback.judge_reasoning;
+        if (Array.isArray(drillFeedback.feedback) && drillFeedback.feedback.length > 0) return drillFeedback.feedback[0];
+        if (drillFeedback.feedback?.listening_tips?.length) return drillFeedback.feedback.listening_tips[0];
+        if (drillFeedback.feedback?.encouragement) return drillFeedback.feedback.encouragement;
+        return "本题解析已生成。";
+    };
+
+    const hasDetailedAnalysis = Boolean(
+        drillFeedback && (
+            drillFeedback.segments ||
+            drillFeedback.feedback ||
+            drillFeedback.improved_version ||
+            (drillFeedback.error_analysis && drillFeedback.error_analysis.length > 0) ||
+            (drillFeedback.similar_patterns && drillFeedback.similar_patterns.length > 0)
+        )
+    );
+    const analysisHighlights = hasDetailedAnalysis ? getAnalysisHighlights() : [];
+    const analysisLead = getAnalysisLead();
+    const primaryAdvice = Array.isArray(drillFeedback?.feedback)
+        ? drillFeedback?.feedback?.[0]
+        : drillFeedback?.feedback?.listening_tips?.[0] || drillFeedback?.feedback?.encouragement || "";
+    const secondaryAdvice = Array.isArray(drillFeedback?.feedback)
+        ? drillFeedback?.feedback?.[1]
+        : drillFeedback?.feedback?.listening_tips?.[1] || "";
 
 
     // Auto-Mount Generate (WAIT for Elo to be loaded first!)
@@ -2673,6 +2827,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     setUserTranslation("");
                                                     setIsSubmittingDrill(false);
                                                     setWordPopup(null);
+                                                    setAnalysisRequested(false);
+                                                    setIsGeneratingAnalysis(false);
+                                                    setAnalysisError(null);
+                                                    setAnalysisDetailsOpen(false);
                                                 }}
                                             />
                                         ) : (
@@ -2687,6 +2845,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             onClick={() => {
                                                                 setDrillFeedback(null);
                                                                 setIsSubmittingDrill(false);
+                                                                setAnalysisRequested(false);
+                                                                setIsGeneratingAnalysis(false);
+                                                                setAnalysisError(null);
+                                                                setAnalysisDetailsOpen(false);
                                                                 handleSubmitDrill();
                                                             }}
                                                             className="mt-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-lg transition-all"
@@ -2794,90 +2956,228 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             ) : null}
                                                         </div>
 
-                                                        <div className="bg-white/90 p-6 rounded-[2rem] shadow-xl shadow-stone-200/50 border border-stone-100 backdrop-blur-sm">
-                                                            <div className="flex items-center justify-between mb-4">
-                                                                <div className="flex items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-wider"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Smart Revision</div>
-                                                                <div className="flex gap-2">
-                                                                    {mode === 'listening' && (
-                                                                        <button onClick={playRecording} className="px-3 py-1.5 rounded-full bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center gap-1.5 transition-all text-[10px] font-bold" title="Play My Recording"><Mic className="w-3 h-3" /> Play Mine</button>
-                                                                    )}
-                                                                    <button onClick={playAudio} className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-all" title="Listen to Correct Version"><Volume2 className="w-4 h-4" /></button>
+                                                        {analysisRequested ? (
+                                                            <div className="bg-white/90 p-6 rounded-[2rem] shadow-xl shadow-stone-200/50 border border-stone-100 backdrop-blur-sm">
+                                                                {isGeneratingAnalysis ? (
+                                                                    <div className="py-10 flex flex-col items-center gap-3 text-center">
+                                                                        <div className="w-10 h-10 rounded-full border-2 border-amber-200 border-t-amber-500 animate-spin" />
+                                                                        <p className="text-sm font-semibold text-stone-700">正在生成解析</p>
+                                                                        <p className="text-xs text-stone-400">按需生成，避免每题都额外消耗 token。</p>
+                                                                    </div>
+                                                                ) : analysisError ? (
+                                                                    <div className="py-6 flex flex-col items-center gap-3 text-center">
+                                                                        <p className="text-sm font-semibold text-rose-600">解析生成失败</p>
+                                                                        <p className="text-xs text-stone-400">{analysisError}</p>
+                                                                        <button
+                                                                            onClick={handleGenerateAnalysis}
+                                                                            className="px-4 py-2 rounded-full bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 transition-colors"
+                                                                        >
+                                                                            重新生成解析
+                                                                        </button>
+                                                                    </div>
+                                                                ) : hasDetailedAnalysis ? (
+                                                                    <div className="space-y-4">
+                                                                        <div className="overflow-hidden rounded-[2rem] border border-stone-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(251,250,248,0.94))] shadow-[0_18px_40px_rgba(28,25,23,0.06)]">
+                                                                            <div className="p-6 md:p-7">
+                                                                                <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+                                                                                    <div className="max-w-2xl">
+                                                                                        <div className="flex flex-wrap items-center gap-2">
+                                                                                            <span className="inline-flex items-center gap-2 rounded-full border border-amber-200/80 bg-amber-50/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
+                                                                                                <Sparkles className="w-3.5 h-3.5" />
+                                                                                                本题解析
+                                                                                            </span>
+                                                                                            <span className="inline-flex items-center rounded-full border border-stone-200 bg-white/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-stone-500">
+                                                                                                {analysisHighlights.length} Fix{analysisHighlights.length === 1 ? "" : "es"}
+                                                                                            </span>
+                                                                                        </div>
+                                                                                        <p className="mt-4 text-[1.8rem] leading-tight text-stone-900 font-newsreader">
+                                                                                            {analysisLead}
+                                                                                        </p>
+                                                                                        {mode !== "listening" && (
+                                                                                            <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500">
+                                                                                                你的答案：<span className="font-newsreader italic text-stone-700">&ldquo;{userTranslation.length > 140 ? userTranslation.slice(0, 140) + "..." : userTranslation}&rdquo;</span>
+                                                                                            </p>
+                                                                                        )}
+                                                                                    </div>
+
+                                                                                    <div className="flex gap-2">
+                                                                                        {mode === 'listening' && (
+                                                                                            <button onClick={playRecording} className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-rose-200/80 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-600 transition-all hover:-translate-y-0.5 hover:bg-rose-100" title="Play My Recording"><Mic className="w-3.5 h-3.5" /> Play Mine</button>
+                                                                                        )}
+                                                                                        <button onClick={playAudio} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-indigo-200/80 bg-indigo-50 text-indigo-600 transition-all hover:-translate-y-0.5 hover:bg-indigo-100" title="Listen to Correct Version"><Volume2 className="w-4 h-4" /></button>
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                <div className="mt-6 grid gap-4 md:grid-cols-[1.15fr_0.85fr]">
+                                                                                    <div className="rounded-[1.5rem] border border-stone-200/80 bg-white/80 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                                                                                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+                                                                                            <BookOpen className="w-3.5 h-3.5 text-stone-400" />
+                                                                                            关键改错
+                                                                                        </div>
+                                                                                        <div className="mt-4 space-y-3">
+                                                                                            {analysisHighlights.length > 0 ? analysisHighlights.map((item, index) => (
+                                                                                                <div key={`${item.kind}-${index}`} className="rounded-2xl border border-stone-100 bg-stone-50/70 px-4 py-3">
+                                                                                                    <div className="flex items-center justify-between gap-3">
+                                                                                                        <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-rose-500">{item.kind}</span>
+                                                                                                        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-300">#{index + 1}</span>
+                                                                                                    </div>
+                                                                                                    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                                                                                                        <span className="rounded-full bg-rose-50 px-2.5 py-1 font-newsreader italic text-rose-600">{item.before}</span>
+                                                                                                        <ArrowRight className="w-3.5 h-3.5 text-stone-300" />
+                                                                                                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-newsreader italic text-emerald-700">{item.after}</span>
+                                                                                                    </div>
+                                                                                                    <p className="mt-2 text-sm leading-6 text-stone-500">{item.note}</p>
+                                                                                                </div>
+                                                                                            )) : (
+                                                                                                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-4 text-sm leading-6 text-emerald-800">
+                                                                                                    这题没有明显结构性错误，主要是细节润色。
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    <div className="rounded-[1.5rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.88),rgba(255,255,255,0.92))] p-5">
+                                                                                        <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-600">
+                                                                                            {mode === "listening" ? "重点建议" : "更自然表达"}
+                                                                                        </div>
+                                                                                        {mode === "listening" ? (
+                                                                                            <div className="mt-4 space-y-3">
+                                                                                                {primaryAdvice ? <p className="text-base leading-7 text-stone-800">{primaryAdvice}</p> : <p className="text-sm text-stone-500">本题没有额外口语建议。</p>}
+                                                                                                {secondaryAdvice ? <p className="text-sm leading-6 text-stone-500">{secondaryAdvice}</p> : null}
+                                                                                            </div>
+                                                                                        ) : drillFeedback.improved_version ? (
+                                                                                            <p className="mt-4 text-[1.6rem] leading-tight text-indigo-900 font-newsreader">
+                                                                                                {drillFeedback.improved_version}
+                                                                                            </p>
+                                                                                        ) : primaryAdvice ? (
+                                                                                            <p className="mt-4 text-base leading-7 text-stone-700">{primaryAdvice}</p>
+                                                                                        ) : (
+                                                                                            <p className="mt-4 text-sm leading-6 text-stone-500">这题主要是局部修正，原句整体已经接近标准表达。</p>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                <div className="mt-4 rounded-[1.4rem] border border-stone-200/80 bg-stone-50/70 p-3.5">
+                                                                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                                                                        <div>
+                                                                                            <p className="text-sm font-semibold text-stone-700">完整解析</p>
+                                                                                            <p className="text-xs text-stone-400">查看对照修订、参考答案和完整说明。</p>
+                                                                                        </div>
+                                                                                        <button
+                                                                                            onClick={() => setAnalysisDetailsOpen(prev => !prev)}
+                                                                                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:bg-white"
+                                                                                        >
+                                                                                            {analysisDetailsOpen ? "收起详情" : "展开详情"}
+                                                                                            <ChevronRight className={cn("w-4 h-4 transition-transform", analysisDetailsOpen && "rotate-90")} />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        <AnimatePresence initial={false}>
+                                                                            {analysisDetailsOpen && (
+                                                                                <motion.div
+                                                                                    initial={{ opacity: 0, y: 16 }}
+                                                                                    animate={{ opacity: 1, y: 0 }}
+                                                                                    exit={{ opacity: 0, y: -10 }}
+                                                                                    transition={{ duration: 0.24, ease: "easeOut" }}
+                                                                                    className="space-y-4"
+                                                                                >
+                                                                                    {renderDiff()}
+                                                                                    {drillFeedback.feedback && (
+                                                                                        <div className="rounded-[1.75rem] border border-stone-100 bg-white/90 p-5 shadow-[0_12px_30px_rgba(28,25,23,0.04)]">
+                                                                                            <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-600">
+                                                                                                <Sparkles className="w-3.5 h-3.5" />
+                                                                                                完整说明
+                                                                                            </h4>
+                                                                                            <div className="mt-4 space-y-3">
+                                                                                                {Array.isArray(drillFeedback.feedback) ? drillFeedback.feedback.map((point: string, i: number) => (
+                                                                                                    <div key={i} className="flex gap-2 text-sm leading-7 text-stone-600"><div className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" /><p>{point}</p></div>
+                                                                                                )) : (
+                                                                                                    <div className="grid gap-3">
+                                                                                                        {drillFeedback.feedback.listening_tips && <div className="rounded-2xl bg-amber-50 p-3 text-sm leading-6 text-amber-800"><strong className="mb-1 block text-xs uppercase tracking-[0.16em] text-amber-600">Listening Tips</strong>{drillFeedback.feedback.listening_tips}</div>}
+                                                                                                        {drillFeedback.feedback.encouragement && <div className="rounded-2xl bg-stone-50 px-4 py-3 text-sm italic text-stone-500">&ldquo;{drillFeedback.feedback.encouragement}&rdquo;</div>}
+                                                                                                    </div>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+
+                                                                                    {teachingMode && drillFeedback.error_analysis && drillFeedback.error_analysis.length > 0 && (
+                                                                                        <div className="rounded-[1.75rem] border border-rose-100 bg-rose-50/40 p-5">
+                                                                                            <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-rose-600">
+                                                                                                <AlertTriangle className="w-3.5 h-3.5" />
+                                                                                                错误精讲
+                                                                                            </h4>
+                                                                                            <div className="mt-4 space-y-3">
+                                                                                                {drillFeedback.error_analysis.map((err: any, i: number) => (
+                                                                                                    <div key={i} className="rounded-2xl border border-rose-100/80 bg-white/80 p-4">
+                                                                                                        <div className="flex items-start gap-2">
+                                                                                                            <span className="rounded bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">错误</span>
+                                                                                                            <span className="text-sm text-stone-600 line-through">{err.error}</span>
+                                                                                                        </div>
+                                                                                                        <div className="mt-2 flex items-start gap-2">
+                                                                                                            <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">正确</span>
+                                                                                                            <span className="text-sm font-medium text-stone-800">{err.correction}</span>
+                                                                                                        </div>
+                                                                                                        <div className="mt-3 border-l-2 border-amber-300 pl-3 text-xs leading-6 text-stone-500">
+                                                                                                            <strong>规则：</strong>{err.rule}
+                                                                                                        </div>
+                                                                                                        {err.tip && <div className="mt-3 rounded-xl bg-indigo-50 px-3 py-2 text-xs leading-5 text-indigo-600">💡 {err.tip}</div>}
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+
+                                                                                    {teachingMode && drillFeedback.similar_patterns && drillFeedback.similar_patterns.length > 0 && (
+                                                                                        <div className="rounded-[1.75rem] border border-purple-100 bg-purple-50/30 p-5">
+                                                                                            <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-purple-600">
+                                                                                                <BrainCircuit className="w-3.5 h-3.5" />
+                                                                                                举一反三
+                                                                                            </h4>
+                                                                                            <div className="mt-4 space-y-3">
+                                                                                                {drillFeedback.similar_patterns.map((pattern: any, i: number) => (
+                                                                                                    <div key={i} className="rounded-2xl border border-purple-100/80 bg-white/80 p-4">
+                                                                                                        <div className="text-sm text-stone-600">{pattern.chinese}</div>
+                                                                                                        <div className="mt-1 text-lg font-newsreader italic text-stone-900">→ {pattern.english}</div>
+                                                                                                        {pattern.point && <div className="mt-2 text-xs leading-5 text-purple-500">🎯 {pattern.point}</div>}
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </motion.div>
+                                                                            )}
+                                                                        </AnimatePresence>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="py-6 text-center text-sm text-stone-500">暂无可展示的解析内容。</div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="bg-white/90 p-6 rounded-[2rem] shadow-xl shadow-stone-200/50 border border-stone-100 backdrop-blur-sm">
+                                                                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                                                    <div>
+                                                                        <div className="flex items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-wider">
+                                                                            <Sparkles className="w-4 h-4 text-amber-500" />
+                                                                            Analysis On Demand
+                                                                        </div>
+                                                                        <p className="mt-2 text-sm font-medium text-stone-700">默认只出分。下面这部分解析改成按需生成。</p>
+                                                                        <p className="mt-1 text-xs text-stone-400">这样评分会更快，也不会每题都额外消耗 token。</p>
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={handleGenerateAnalysis}
+                                                                        disabled={isGeneratingAnalysis}
+                                                                        className="inline-flex items-center justify-center gap-2 rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60 min-h-11"
+                                                                    >
+                                                                        {isGeneratingAnalysis ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                                                                        生成解析
+                                                                    </button>
                                                                 </div>
                                                             </div>
-                                                            {mode !== "listening" && (
-                                                                <div className="mb-4 p-3 bg-stone-50 rounded-xl border border-stone-100">
-                                                                    <p className="text-[10px] text-stone-400 font-bold uppercase mb-1">Your Answer:</p>
-                                                                    <p className="text-base font-newsreader text-stone-700 italic">"{userTranslation}"</p>
-                                                                </div>
-                                                            )}
-                                                            {renderDiff()}
-                                                            {drillFeedback.feedback && (
-                                                                <div className="mt-4">
-                                                                    <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center gap-2"><Sparkles className="w-3 h-3" /> Coach's Analysis</h4>
-                                                                    <div className="space-y-2">
-                                                                        {Array.isArray(drillFeedback.feedback) ? drillFeedback.feedback.map((point: string, i: number) => (
-                                                                            <div key={i} className="flex gap-2 text-stone-600 leading-snug font-medium text-sm"><div className="w-1 h-1 rounded-full bg-indigo-400 mt-2 shrink-0" /><p>{point}</p></div>
-                                                                        )) : (
-                                                                            <div className="grid gap-3">
-                                                                                {drillFeedback.feedback.listening_tips && <div className="bg-amber-50 p-3 rounded-xl text-amber-800 text-xs"><strong className="block mb-0.5 text-amber-600">👂 Listening Tips</strong>{drillFeedback.feedback.listening_tips}</div>}
-                                                                                {drillFeedback.feedback.encouragement && <div className="italic text-stone-500 text-sm">"{drillFeedback.feedback.encouragement}"</div>}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-
-                                                            {/* Teaching Mode: Error Analysis */}
-                                                            {teachingMode && drillFeedback.error_analysis && drillFeedback.error_analysis.length > 0 && (
-                                                                <div className="mt-5">
-                                                                    <h4 className="text-xs font-bold text-rose-600 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                                                        <AlertTriangle className="w-3 h-3" /> 错误精讲
-                                                                    </h4>
-                                                                    <div className="space-y-2.5">
-                                                                        {drillFeedback.error_analysis.map((err: any, i: number) => (
-                                                                            <div key={i} className="bg-rose-50/60 border border-rose-100/50 rounded-xl p-3 space-y-1.5">
-                                                                                <div className="flex items-start gap-2">
-                                                                                    <span className="text-xs px-1.5 py-0.5 rounded bg-rose-200/60 text-rose-700 font-bold shrink-0">错误</span>
-                                                                                    <span className="text-sm text-stone-600 line-through">{err.error}</span>
-                                                                                </div>
-                                                                                <div className="flex items-start gap-2">
-                                                                                    <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-200/60 text-emerald-700 font-bold shrink-0">正确</span>
-                                                                                    <span className="text-sm text-stone-800 font-medium">{err.correction}</span>
-                                                                                </div>
-                                                                                <div className="text-xs text-stone-500 pl-1 border-l-2 border-amber-300 ml-1">
-                                                                                    📘 <strong>规则：</strong>{err.rule}
-                                                                                </div>
-                                                                                {err.tip && (
-                                                                                    <div className="text-xs text-indigo-600 bg-indigo-50/50 rounded-lg px-2 py-1">
-                                                                                        💡 {err.tip}
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-
-                                                            {/* Teaching Mode: Similar Patterns */}
-                                                            {teachingMode && drillFeedback.similar_patterns && drillFeedback.similar_patterns.length > 0 && (
-                                                                <div className="mt-5">
-                                                                    <h4 className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                                                        <BrainCircuit className="w-3 h-3" /> 举一反三
-                                                                    </h4>
-                                                                    <div className="space-y-2">
-                                                                        {drillFeedback.similar_patterns.map((pattern: any, i: number) => (
-                                                                            <div key={i} className="bg-purple-50/40 border border-purple-100/50 rounded-xl p-3">
-                                                                                <div className="text-sm text-stone-600 mb-1">{pattern.chinese}</div>
-                                                                                <div className="text-sm font-newsreader text-stone-900 font-medium italic">→ {pattern.english}</div>
-                                                                                {pattern.point && (
-                                                                                    <div className="text-[11px] text-purple-500 mt-1.5 font-medium">🎯 {pattern.point}</div>
-                                                                                )}
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </motion.div>
