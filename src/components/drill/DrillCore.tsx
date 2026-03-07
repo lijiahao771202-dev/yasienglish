@@ -2225,7 +2225,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         ) : drillData ? (
                             <AnimatePresence mode="popLayout" initial={false}>
                                 {!drillFeedback ? (
-                                    <motion.div key="question" initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.4, ease: "easeOut" }} className="absolute inset-0 overflow-hidden p-6 md:p-8 flex flex-col">
+                                    <motion.div key="question" initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.4, ease: "easeOut" }} className="absolute inset-0 overflow-y-auto custom-scrollbar p-6 md:p-8 pb-10 md:pb-12 flex flex-col">
                                         <div className="max-w-3xl mx-auto w-full space-y-4">
                                             {/* Source / Listening Area */}
                                             <div className="space-y-6 text-center w-full">
