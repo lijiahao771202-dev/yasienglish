@@ -163,6 +163,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [listeningElo, setListeningElo] = useState(600);
     const [listeningStreak, setListeningStreak] = useState(0);
     const [isEloLoaded, setIsEloLoaded] = useState(false); // Track if Elo has been loaded from DB
+    const eloRatingRef = useRef(600);
+    const listeningEloRef = useRef(600);
 
 
 
@@ -266,25 +268,39 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         // Reset States (Delayed for Animation)
                         setDeathAnim(isGamble ? 'shatter' : 'glitch');
 
-                        // Apply Penalty (Local & DB)
-                        setEloRating(current => {
-                            const newElo = Math.max(0, current - penalty);
-                            // Sync DB
-                            db.user_profile.orderBy('id').first().then(profile => {
-                                if (profile) {
-                                    db.user_profile.update(profile.id, {
-                                        elo_rating: newElo,
-                                        streak_count: 0
-                                    });
-                                }
+                        // Apply Penalty to the active mode pool (avoid cross-mode Elo pollution)
+                        const isListeningMode = mode === 'listening';
+
+                        const activeElo = isListeningMode ? listeningEloRef.current : eloRatingRef.current;
+                        const newElo = Math.max(0, activeElo - penalty);
+
+                        if (isListeningMode) {
+                            setListeningElo(newElo);
+                            setListeningStreak(0);
+                        } else {
+                            setEloRating(newElo);
+                            setStreakCount(0);
+                        }
+
+                        // Keep DB writes outside state updaters to avoid duplicate side effects in dev.
+                        db.user_profile.orderBy('id').first().then(profile => {
+                            if (!profile) return;
+                            db.user_profile.update(profile.id, {
+                                [isListeningMode ? 'listening_elo' : 'elo_rating']: newElo,
+                                [isListeningMode ? 'listening_streak' : 'streak_count']: 0
                             });
-                            return newElo;
+                            db.elo_history.add({
+                                mode: isListeningMode ? 'listening' : 'translation',
+                                elo: newElo,
+                                change: -penalty,
+                                timestamp: Date.now()
+                            });
                         });
 
                         // Show Notification
                         setLootDrop({
                             type: 'exp',
-                            amount: penalty,
+                            amount: -penalty,
                             rarity: 'common',
                             message: 'TIME UP! DEFEAT'
                         });
@@ -294,7 +310,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             setTheme('default');
                             setBossState(prev => ({ ...prev, active: false }));
                             setGambleState(prev => ({ ...prev, active: false, introAck: false, wager: null, doubleDownCount: 0 }));
-                            setStreakCount(0);
+                            if (mode === 'listening') {
+                                setListeningStreak(0);
+                            } else {
+                                setStreakCount(0);
+                            }
                             setDeathAnim(null);
                         }, 3000);
 
@@ -307,7 +327,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setFuseTime(100); // Reset if not in a timed mode
         }
         return () => clearInterval(interval);
-    }, [theme, isSubmittingDrill, bossState.introAck, gambleState.introAck, bossState.active, bossState.type, gambleState.active, gambleState.wager, lightningStarted]);
+    }, [theme, mode, isSubmittingDrill, bossState.introAck, gambleState.introAck, bossState.active, bossState.type, gambleState.active, gambleState.wager, lightningStarted]);
 
     // Shake Trigger
     useEffect(() => {
@@ -328,6 +348,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             return () => clearTimeout(timer);
         }
     }, [lootDrop]);
+
+    useEffect(() => {
+        eloRatingRef.current = eloRating;
+        listeningEloRef.current = listeningElo;
+    }, [eloRating, listeningElo]);
 
     // Cleanup: Stop ALL audio and abort requests when component unmounts
     useEffect(() => {
@@ -393,9 +418,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 setIsEloLoaded(true); // Mark Elo as loaded
             } else {
                 await db.user_profile.add({
-                    elo_rating: 1200,
+                    elo_rating: 600,
                     streak_count: 0,
-                    max_elo: 1200,
+                    max_elo: 600,
                     last_practice: Date.now()
                 });
                 setIsEloLoaded(true); // Mark Elo as loaded (new profile)
@@ -828,7 +853,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 fetch("/api/ai/teach", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ reference_english: prefetchedDrillData.reference_english }),
+                    body: JSON.stringify({
+                        chinese: prefetchedDrillData.chinese,
+                        reference_english: prefetchedDrillData.reference_english,
+                        elo: currentElo,
+                    }),
                 })
                     .then(res => res.json())
                     .then(data => setTeachingData(data))
@@ -1124,7 +1153,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     };
                 };
 
-                const result = calculateAdvancedElo(activeElo || 600, difficulty, data.score, activeStreak);
+                const result = calculateAdvancedElo(activeElo || 600, eloDifficulty.level, data.score, activeStreak);
                 let change = result.total;
                 let newStreak = activeStreak;
 
@@ -1631,34 +1660,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
         if (!drillData && !isGeneratingDrill) {
             handleGenerateDrill();
-
-            const roll = Math.random();
-            // 2% Chance for Boss (Higher Priority)
-            if (roll < 0.02) {
-                // Select Boss Type
-                const bossRoll = Math.random();
-                let type: 'blind' | 'lightning' | 'echo' | 'reaper' = 'blind';
-
-                if (bossRoll < 0.05) type = 'reaper';      // 5%
-                else if (bossRoll < 0.35) type = 'echo';     // 30%
-                else if (bossRoll < 0.60) type = 'lightning';// 25%
-                else type = 'blind';                         // 40%
-
-                setBossState({
-                    active: true,
-                    introAck: false,
-                    type,
-                    hp: type === 'reaper' ? 3 : undefined,
-                    maxHp: type === 'reaper' ? 3 : undefined
-                });
-                setTheme('boss');
-                setPlaybackSpeed(type === 'blind' ? 1.25 : 1.0); // Only Blind boss needs speed up
-            }
-            // 5% Chance for Gamble (Exclusive)
-            else if (roll < 0.07) {
-                setGambleState({ active: true, introAck: false, wager: null, doubleDownCount: 0 });
-                setTheme('crimson');
-            }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode, isEloLoaded]);
@@ -2569,10 +2570,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                         </div>
                                                     ) : (
                                                         <>
-                                                            {/* Premium Neumorphic Input Container */}
-                                                            <div className="relative group transition-all duration-500 bg-white/80 dark:bg-black/40 backdrop-blur-2xl border-2 border-white/60 dark:border-white/10 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] focus-within:border-indigo-200 focus-within:shadow-[0_10px_40px_rgba(99,102,241,0.1),inset_0_1px_0_rgba(255,255,255,1)] overflow-hidden">
-                                                                {/* Subtle inner noise texture */}
-                                                                <div className="absolute inset-0 opacity-[0.015] bg-[url('data:image/svg+xml,%3Csvg viewBox=%270 0 256 256%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter id=%27noise%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%274%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23noise)%27/%3E%3C/svg%3E')] pointer-events-none" />
+                                                            <div className="relative group overflow-hidden rounded-[1.75rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(247,244,238,0.96))] shadow-[0_14px_34px_rgba(15,23,42,0.05),inset_0_1px_0_rgba(255,255,255,0.9)] transition-all duration-300 hover:shadow-[0_18px_40px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] focus-within:border-indigo-200/80 focus-within:shadow-[0_18px_44px_rgba(99,102,241,0.10),inset_0_1px_0_rgba(255,255,255,1)]">
+                                                                <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/80 to-transparent" />
+                                                                <div className="absolute inset-0 opacity-[0.012] bg-[url('data:image/svg+xml,%3Csvg viewBox=%270 0 256 256%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter id=%27noise%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%274%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23noise)%27/%3E%3C/svg%3E')] pointer-events-none" />
                                                                 <GhostTextarea
                                                                     value={userTranslation}
                                                                     onChange={setUserTranslation}
@@ -2581,15 +2581,16 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     sourceText={drillData?.chinese}
                                                                     referenceAnswer={drillData?.reference_english}
                                                                     disabled={isSubmittingDrill}
+                                                                    className="min-h-[128px] px-5 pb-16 pt-5 text-[1.02rem] font-medium leading-8 tracking-[0.01em] text-stone-700 placeholder:text-stone-400/90 md:min-h-[144px] md:px-6 md:pb-16 md:pt-6 md:text-[1.08rem]"
                                                                 />
 
                                                                 {/* Bottom toolbar */}
-                                                                <div className="relative z-10 flex items-center justify-between px-6 pb-5 pt-0">
+                                                                <div className="relative z-10 flex items-center justify-between border-t border-stone-200/70 bg-white/55 px-3 pb-4 pt-3 backdrop-blur-sm md:px-6 md:pb-5">
                                                                     {/* Word count badge */}
                                                                     <div className={cn(
-                                                                        "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold font-sans tracking-wide transition-all duration-300",
+                                                                        "flex items-center gap-1 rounded-full px-2 py-1.5 text-[9px] font-bold font-sans tracking-[0.14em] transition-all duration-300 md:gap-1.5 md:px-3 md:text-[11px] md:tracking-[0.18em]",
                                                                         userTranslation.trim()
-                                                                            ? "bg-stone-100/90 text-stone-500 shadow-sm border border-stone-200/50"
+                                                                            ? "border border-stone-200/80 bg-white/90 text-stone-500 shadow-[0_6px_16px_rgba(15,23,42,0.05)]"
                                                                             : "bg-transparent text-stone-300"
                                                                     )}>
                                                                         <span className="tabular-nums">{userTranslation.trim() ? userTranslation.trim().split(/\s+/).length : 0}</span>
@@ -2597,17 +2598,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     </div>
 
                                                                     {/* Action buttons */}
-                                                                    <div className="flex items-center gap-2">
+                                                                    <div className="flex items-center gap-1 md:gap-2">
                                                                         <button
                                                                             onClick={handleMagicHint}
-                                                                            className="h-10 px-4 rounded-full bg-amber-50/80 text-amber-600 hover:bg-amber-100 hover:text-amber-700 flex items-center gap-1.5 transition-all font-bold text-xs border border-amber-200/50 hover:border-amber-300/70 hover:shadow-sm active:scale-95"
+                                                                            className="flex h-10 items-center gap-1 rounded-full border border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.95),rgba(254,243,199,0.82))] px-2.5 text-[11px] font-bold text-amber-700 shadow-[0_8px_18px_rgba(245,158,11,0.10)] transition-all hover:-translate-y-0.5 hover:border-amber-300 hover:text-amber-800 hover:shadow-[0_10px_22px_rgba(245,158,11,0.14)] active:scale-95 md:gap-1.5 md:px-4 md:text-xs"
                                                                             title="Auto-Complete Hint"
                                                                         >
                                                                             <Wand2 className="w-4 h-4" /> Hint
                                                                         </button>
                                                                         <button
                                                                             onClick={() => setIsTutorOpen(!isTutorOpen)}
-                                                                            className="w-10 h-10 rounded-full bg-stone-50/80 text-stone-400 hover:bg-indigo-50 hover:text-indigo-500 flex items-center justify-center transition-all border border-stone-200/50 hover:border-indigo-200/70 active:scale-95"
+                                                                            className="flex h-10 w-10 items-center justify-center rounded-full border border-stone-200/80 bg-white/88 text-stone-500 shadow-[0_6px_16px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-50/90 hover:text-indigo-600 active:scale-95"
                                                                             title="Ask AI Tutor"
                                                                         >
                                                                             <HelpCircle className="w-4 h-4" />
@@ -2616,11 +2617,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             onClick={handleSubmitDrill}
                                                                             disabled={!userTranslation.trim() || isSubmittingDrill}
                                                                             className={cn(
-                                                                                "h-10 px-6 rounded-full font-bold text-xs flex items-center gap-2 transition-all active:scale-95",
+                                                                                "flex h-10 items-center gap-1.5 rounded-full px-3 text-[11px] font-bold transition-all active:scale-95 md:gap-2 md:px-6 md:text-xs",
                                                                                 "disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100",
                                                                                 userTranslation.trim() && !isSubmittingDrill
-                                                                                    ? "bg-gradient-to-r from-stone-800 to-stone-900 border border-stone-600/50 text-white shadow-lg shadow-stone-900/20 hover:shadow-xl hover:shadow-stone-900/30 hover:-translate-y-0.5"
-                                                                                    : "bg-stone-200 text-stone-400 border border-stone-300/50"
+                                                                                    ? "border border-stone-700/50 bg-[linear-gradient(135deg,#292524_0%,#44403c_40%,#1c1917_100%)] text-white shadow-[0_12px_24px_rgba(28,25,23,0.24)] hover:-translate-y-0.5 hover:shadow-[0_16px_28px_rgba(28,25,23,0.30)]"
+                                                                                    : "border border-stone-300/60 bg-stone-200/90 text-stone-400"
                                                                             )}
                                                                         >
                                                                             {isSubmittingDrill ? <Sparkles className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
