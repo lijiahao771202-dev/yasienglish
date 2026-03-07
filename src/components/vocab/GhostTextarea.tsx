@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Sparkles } from 'lucide-react';
-import { getDeterministicPrediction } from '@/lib/predictHint';
+import { getAdaptivePredictionWordCount, getExactPrefixPrediction } from '@/lib/predictHint';
 
 interface GhostTextareaProps {
     value: string;
@@ -46,12 +46,13 @@ export function GhostTextarea({
             return "";
         }
 
+        const effectiveWordCount = getAdaptivePredictionWordCount(currentInputValue, predictionWordCount);
         const inputKey = currentInputValue.trim().toLowerCase().replace(/\s+/g, ' ');
         if (localCache.current[inputKey] !== undefined) {
             return localCache.current[inputKey];
         }
 
-        const deterministicPrediction = getDeterministicPrediction(currentInputValue, referenceAnswer, predictionWordCount);
+        const deterministicPrediction = getExactPrefixPrediction(currentInputValue, referenceAnswer, effectiveWordCount);
         if (deterministicPrediction) {
             localCache.current[inputKey] = deterministicPrediction;
             return deterministicPrediction;
@@ -73,7 +74,7 @@ export function GhostTextarea({
                         sourceText,
                         currentInput: currentInputValue,
                         referenceAnswer,
-                        predictionWordCount,
+                        predictionWordCount: effectiveWordCount,
                     }),
                     signal: abortControllerRef.current?.signal
                 });
@@ -86,7 +87,7 @@ export function GhostTextarea({
                 let aiSuggestion = data.prediction || "";
 
                 if (aiSuggestion) {
-                    const match = aiSuggestion.match(new RegExp(`^(\\s*\\S+){1,${predictionWordCount}}`));
+                    const match = aiSuggestion.match(new RegExp(`^(\\s*\\S+){1,${effectiveWordCount}}`));
                     aiSuggestion = match ? match[0] : aiSuggestion;
                 }
 
@@ -168,8 +169,12 @@ export function GhostTextarea({
         if (e.key === 'Tab' || e.key === 'ArrowRight') {
             if (ghostText) {
                 e.preventDefault();
-                onChange(value + ghostText);
+                const nextValue = value + ghostText;
+                onChange(nextValue);
                 setGhostText('');
+                window.requestAnimationFrame(() => {
+                    void triggerPrediction(nextValue);
+                });
             } else if (e.key === 'Tab' && !isPredicting && value.trim()) {
                 e.preventDefault();
                 triggerPrediction(value);
