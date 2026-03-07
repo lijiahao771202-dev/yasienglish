@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Loader2, Book, Volume2, Sparkles, Check, BookPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -52,11 +53,11 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
             if (isMounted && item) setIsSaved(true);
         });
 
-        // Auto-Play Audio (Instant Pronunciation) - Only once
+        // Auto-Play Audio (Instant Pronunciation) - Using Youdao for natural voice
         if (!audioPlayedRef.current) {
             audioPlayedRef.current = true;
-            const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${popup.word}&type=2`);
-            audio.play().catch(() => { }); // Silent catch for autoplay restrictions
+            const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(popup.word)}&type=2`);
+            audio.play().catch(() => { });
         }
 
         // Fetch Dictionary Definition
@@ -135,7 +136,10 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
         }
     };
 
-    return (
+    // Use portal to render at document.body level to avoid parent overflow clipping
+    if (typeof document === 'undefined') return null;
+
+    return createPortal(
         <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -144,11 +148,12 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
             ref={popupRef}
             style={{
                 position: 'fixed',
-                left: Math.min(Math.max(20, popup.x), window.innerWidth - 340), // Prevent overflow
-                top: popup.y,
-                transform: 'translateX(-50%)'
+                // Center popup on clicked word, clamp to viewport
+                left: Math.max(16, Math.min(popup.x - 160, window.innerWidth - 336)),
+                // Show below the word with some offset (+8px gap)
+                top: Math.min(popup.y + 8, window.innerHeight - 420),
             }}
-            className="z-[1000] w-[320px] rounded-2xl backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/40 overflow-hidden bg-white/80 ring-1 ring-black/5 text-left"
+            className="z-[9999] w-[320px] rounded-2xl backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/40 overflow-hidden bg-white/95 ring-1 ring-black/5 text-left"
         >
             {/* Header: Word & Audio */}
             <div className="bg-gradient-to-br from-amber-50/80 to-white/50 p-4 border-b border-white/50 relative">
@@ -169,8 +174,8 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${popup.word}&type=2`);
-                                audio.play().catch(err => console.error("Audio Error:", err));
+                                const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(popup.word)}&type=2`);
+                                audio.play().catch(() => { });
                             }}
                             className="p-2 rounded-full bg-amber-100/80 hover:bg-amber-200 text-amber-700 transition-colors shadow-sm"
                             title="Play Pronunciation"
@@ -279,6 +284,7 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                     )}
                 </div>
             </div>
-        </motion.div>
+        </motion.div>,
+        document.body
     );
 }

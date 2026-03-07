@@ -296,17 +296,48 @@ export function EloChart({ mode }: EloChartProps) {
 
     if (data.length < 2) {
         return (
-            <div className="h-64 flex flex-col items-center justify-center text-stone-400 gap-3 bg-white/40 rounded-3xl border border-white/40 backdrop-blur-sm">
-                <div className="relative">
-                    <TrendingUp className="w-12 h-12 opacity-30" />
-                    <motion.div
-                        animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
-                        transition={{ duration: 2, repeat: Infinity }}
-                        className="absolute -top-1 -right-1 w-4 h-4 bg-amber-400 rounded-full"
-                    />
+            <div className="flex flex-col bg-white/40 rounded-3xl border border-white/40 backdrop-blur-sm">
+                {/* Time Filter Tabs - Always visible */}
+                <div className="flex items-center gap-2 p-4 border-b border-stone-100/50">
+                    {[
+                        { key: 'today' as TimeFilter, label: '今日', icon: Clock },
+                        { key: 'week' as TimeFilter, label: '本周', icon: Calendar },
+                        { key: 'all' as TimeFilter, label: '历史', icon: History },
+                    ].map(({ key, label, icon: Icon }) => (
+                        <button
+                            key={key}
+                            onClick={() => setTimeFilter(key)}
+                            className={cn(
+                                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                                timeFilter === key
+                                    ? "bg-stone-800 text-white shadow-lg"
+                                    : "bg-stone-100 text-stone-500 hover:bg-stone-200"
+                            )}
+                        >
+                            <Icon className="w-3 h-3" />
+                            {label}
+                        </button>
+                    ))}
                 </div>
-                <p className="text-sm font-medium">Complete more drills to see your progress!</p>
-                <p className="text-xs text-stone-300">At least 2 drills needed for chart</p>
+                {/* Empty state message */}
+                <div className="h-48 flex flex-col items-center justify-center text-stone-400 gap-3 p-4">
+                    <div className="relative">
+                        <TrendingUp className="w-12 h-12 opacity-30" />
+                        <motion.div
+                            animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
+                            transition={{ duration: 2, repeat: Infinity }}
+                            className="absolute -top-1 -right-1 w-4 h-4 bg-amber-400 rounded-full"
+                        />
+                    </div>
+                    <p className="text-sm font-medium">
+                        {timeFilter === 'today' ? '今日暂无数据' :
+                            timeFilter === 'week' ? '本周暂无数据' : '完成更多练习以查看进度!'}
+                    </p>
+                    <p className="text-xs text-stone-300">
+                        {timeFilter === 'today' ? '完成练习后这里会显示今日曲线' :
+                            timeFilter === 'week' ? '完成练习后这里会显示本周曲线' : '至少需要2次练习才能显示图表'}
+                    </p>
+                </div>
             </div>
         );
     }

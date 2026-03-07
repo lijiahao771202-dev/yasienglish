@@ -14,6 +14,9 @@ import { DeathFX } from "./DeathFX";
 import { BossScoreReveal } from "./BossScoreReveal";
 import { RouletteOverlay } from "./RouletteOverlay";
 import { DrillDebug } from "../debug/DrillDebug";
+import { ScoringFlipCard } from "./ScoringFlipCard";
+import { TeachingCard } from "./TeachingCard";
+import { GhostTextarea } from "../vocab/GhostTextarea";
 
 // --- Interfaces ---
 
@@ -69,6 +72,10 @@ interface DrillFeedback {
         user_input?: string;
         feedback?: string;
     }[];
+    // Teaching mode enhanced fields
+    error_analysis?: Array<{ error: string; correction: string; rule: string; tip: string }>;
+    similar_patterns?: Array<{ chinese: string; english: string; point: string }>;
+    _error?: boolean;
 }
 
 interface DictionaryData {
@@ -104,8 +111,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // Audio & Dictionary State
     const [isPlaying, setIsPlaying] = useState(false);
     const [isAudioLoading, setIsAudioLoading] = useState(false);
+    const [isPrefetching, setIsPrefetching] = useState(false); // Track background audio prefetch
     const audioRef = useRef<HTMLAudioElement | null>(null);
-    const audioCache = useRef<Map<string, { url: string; marks?: any[] }>>(new Map());
+    const audioCache = useRef<Map<string, { url?: string; blob?: Blob; marks?: any[] }>>(new Map());
     const [currentAudioTime, setCurrentAudioTime] = useState(0);
 
     // Active Word Card
@@ -121,6 +129,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         startRecognition,
         stopRecognition,
         playRecording,
+        resetResult,
         engineMode,
         setEngineMode
     } = useWhisper();
@@ -130,6 +139,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [tutorQuery, setTutorQuery] = useState("");
     const [tutorAnswer, setTutorAnswer] = useState<string | null>(null);
     const [isAskingTutor, setIsAskingTutor] = useState(false);
+
+    // Teaching Mode State
+    const [teachingMode, setTeachingMode] = useState(false);
+    const [teachingData, setTeachingData] = useState<any>(null);
+    const [isLoadingTeaching, setIsLoadingTeaching] = useState(false);
+    const [teachingPanelOpen, setTeachingPanelOpen] = useState(false); // Floating panel visibility
 
     // UI State
     const [isBlindMode, setIsBlindMode] = useState(true);
@@ -405,6 +420,78 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     }, [drillData, mode, gambleState.active, gambleState.introAck, bossState.active, bossState.introAck]);
     */
 
+    // Pre-generate audio when drill loads (reduces playback delay)
+    useEffect(() => {
+        console.log('[Audio Prefetch] useEffect triggered, drillData?.reference_english:',
+            drillData?.reference_english?.substring(0, 30));
+
+        if (!drillData?.reference_english) {
+            console.log('[Audio Prefetch] Skipped - no reference_english');
+            return;
+        }
+
+        const textKey = "SENTENCE_" + drillData.reference_english;
+
+        // Skip if already cached
+        if (audioCache.current.has(textKey)) {
+            console.log('[Audio Prefetch] Already cached:', textKey.substring(0, 50));
+            return;
+        }
+
+        // Pre-fetch audio in background using reliable /api/tts endpoint
+        const prefetchAudio = async () => {
+            setIsPrefetching(true); // Show loading indicator
+            try {
+                console.log('[Audio Prefetch] Starting for:', textKey.substring(0, 50));
+
+                // Use the reliable non-streaming TTS endpoint
+                const response = await fetch("/api/tts", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        text: drillData.reference_english,
+                        voice: "en-US-JennyNeural",
+                        rate: "+0%"
+                    }),
+                });
+
+                if (!response.ok) throw new Error("TTS prefetch failed");
+
+                const data = await response.json();
+
+                if (!data.audio) {
+                    throw new Error("No audio in response");
+                }
+
+                // Convert base64 to blob
+                const base64Data = data.audio.split(',')[1];
+                const binaryString = atob(base64Data);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                const blob = new Blob([bytes], { type: 'audio/mpeg' });
+
+                console.log('[Audio Prefetch] Blob size:', blob.size, 'bytes');
+
+                if (blob.size < 100) {
+                    console.warn('[Audio Prefetch] Blob too small, skipping cache');
+                    return;
+                }
+
+                // Store the blob with word marks for highlighting
+                audioCache.current.set(textKey, { blob, marks: data.marks || [] });
+                console.log('[Audio Prefetch] Cached:', textKey.substring(0, 50));
+            } catch (error) {
+                console.error('[Audio Prefetch] Error:', error);
+            } finally {
+                setIsPrefetching(false); // Hide loading indicator
+            }
+        };
+
+        prefetchAudio();
+    }, [drillData?.reference_english]);
+
     const lastPlayTime = useRef(0);
 
     const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -441,8 +528,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 setIsAudioLoading(true);
                 setIsPlaying(false);
 
-                // Use streaming TTS API for faster playback
-                const response = await fetch("/api/tts-stream", {
+                // Use reliable /api/tts endpoint (non-streaming)
+                const response = await fetch("/api/tts", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
@@ -452,13 +539,22 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     }),
                 });
 
-                if (!response.ok) throw new Error("TTS stream failed");
+                if (!response.ok) throw new Error("TTS failed");
 
-                // Convert stream to blob for Audio playback
-                const blob = await response.blob();
-                const url = URL.createObjectURL(blob);
-                cached = { url, marks: [] };
-                audioCache.current.set(textKey, cached!);
+                const data = await response.json();
+                if (!data.audio) throw new Error("No audio in response");
+
+                // Convert base64 to blob
+                const base64Data = data.audio.split(',')[1];
+                const binaryString = atob(base64Data);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                const blob = new Blob([bytes], { type: 'audio/mpeg' });
+
+                cached = { blob, marks: data.marks || [] };
+                audioCache.current.set(textKey, cached);
                 setIsAudioLoading(false);
             }
 
@@ -467,8 +563,20 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 audioRef.current = null;
             }
 
-            const audio = new Audio(cached.url);
+            // Create fresh URL from cached blob (always use blob now)
+            const audioUrl = cached.blob
+                ? URL.createObjectURL(cached.blob)
+                : (cached.url || '');
+
+            console.log('[Audio Play] Creating audio from cache, blob size:', cached.blob?.size, 'url:', audioUrl.substring(0, 50));
+
+            const audio = new Audio(audioUrl);
             audioRef.current = audio;
+
+            // Add error handler
+            audio.onerror = (e) => {
+                console.error('[Audio Play] Error loading audio:', audio.error?.message, audio.error?.code);
+            };
 
             audio.onloadedmetadata = () => setAudioDuration(audio.duration * 1000);
             if (audio.duration && !isNaN(audio.duration)) setAudioDuration(audio.duration * 1000);
@@ -512,23 +620,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
     };
 
-    // --- Whisper Auto-Submit Logic ---
-    const [shouldAutoSubmit, setShouldAutoSubmit] = useState(false);
 
+    // --- Whisper Result Sync (No auto-submit - user must click confirm) ---
     useEffect(() => {
         if (mode === "listening" && whisperResult.isFinal && whisperResult.text) {
             setUserTranslation(whisperResult.text);
-            setShouldAutoSubmit(true);
+            // Note: User must click "Submit" button to confirm
         }
     }, [whisperResult, mode]);
-
-    useEffect(() => {
-        if (shouldAutoSubmit && userTranslation) {
-            handleSubmitDrill();
-            setShouldAutoSubmit(false);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [userTranslation, shouldAutoSubmit]);
 
     useEffect(() => {
         if (drillData?.reference_english && setContext) {
@@ -565,31 +664,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
     }, [drillFeedback]);
 
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.code === 'Space' && mode === 'listening' && !drillFeedback && !isSubmittingDrill) {
-                // Only hijack space if we are NOT typing in a textarea/input
-                if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-                    e.preventDefault(); // ALWAYS prevent scroll
-                    if (!whisperRecording) {
-                        startRecognition();
-                    }
-                }
-            }
-        };
-        const handleKeyUp = (e: KeyboardEvent) => {
-            if (e.code === 'Space' && mode === 'listening' && whisperRecording) {
-                e.preventDefault();
-                stopRecognition();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        window.addEventListener('keyup', handleKeyUp);
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-            window.removeEventListener('keyup', handleKeyUp);
-        };
-    }, [mode, drillFeedback, whisperRecording, isSubmittingDrill, startRecognition, stopRecognition]);
+    // --- Keyboard listeners removed - now using click-to-record UI ---
+    // Space key no longer triggers recording
 
     // --- Intro BGM Manager ---
     useEffect(() => {
@@ -737,6 +813,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setIsPlaying(false);
         setHasRatedDrill(false);
         setEloChange(null);
+        resetResult(); // Clear previous recording transcript
         if (audioRef.current) audioRef.current.pause();
 
         // --- PRE-CALCULATE BOSS/GAMBLE EVENTS ---
@@ -746,9 +823,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         let pendingBossState = null;
         let pendingGambleState = null;
 
-        if (!bossState.active && !gambleState.active) {
+        if (!bossState.active && !gambleState.active && mode === 'listening') {
             const roll = Math.random();
-            // 2% Chance for Boss
+            // 2% Chance for Boss (Listening Only)
             if (roll < 0.02) {
                 const bossRoll = Math.random();
                 let type: 'blind' | 'lightning' | 'echo' | 'reaper' = 'blind';
@@ -840,6 +917,39 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
             setDrillData(data);
 
+            // Fetch teaching content if teaching mode is ON and in translation mode
+            if (teachingMode && mode === 'translation' && data.chinese && data.reference_english) {
+                setTeachingPanelOpen(false);
+                setTeachingData(null);
+                setIsLoadingTeaching(true);
+                try {
+                    const teachRes = await fetch('/api/ai/teach', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chinese: data.chinese,
+                            reference_english: data.reference_english,
+                            elo: currentElo,
+                        }),
+                    });
+                    if (!signal.aborted) {
+                        const teachContent = await teachRes.json();
+                        if (!signal.aborted && !teachContent.error) {
+                            setTeachingData(teachContent);
+                            setTeachingPanelOpen(true); // Auto-open panel when data loads
+                        }
+                    }
+                } catch (err) {
+                    console.error('[Teaching] Failed to fetch teaching data:', err);
+                } finally {
+                    if (!signal.aborted) setIsLoadingTeaching(false);
+                }
+            } else {
+                setTeachingData(null);
+                setTeachingPanelOpen(false);
+                setIsLoadingTeaching(false);
+            }
+
             // Boss/Gamble states already applied BEFORE API call (no flicker)
         } catch (error) {
             if ((error as Error).name === 'AbortError') {
@@ -859,6 +969,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setIsSubmittingDrill(true);
 
         try {
+            // Use correct Elo based on mode
+            const activeElo = mode === 'listening' ? listeningElo : eloRating;
+
             const response = await fetch("/api/ai/score_translation", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -866,11 +979,27 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     user_translation: userTranslation,
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
-                    current_elo: eloRating || 600,
-                    mode
+                    current_elo: activeElo || 600,
+                    mode,
+                    teaching_mode: teachingMode,
                 }),
             });
             const data = await response.json();
+
+            // Guard: If API returned an error (no score), show error feedback
+            if (!response.ok || data.error || data.score === undefined || data.score === null) {
+                console.error("[DrillCore] Scoring API failed:", data.error || "No score returned");
+                setDrillFeedback({
+                    score: -1,
+                    judge_reasoning: "评分服务暂时不可用，请重试。",
+                    feedback: ["AI 评分接口超时或出错，请再试一次。"],
+                    improved_version: "",
+                    _error: true,
+                });
+                setIsSubmittingDrill(false);
+                return;
+            }
+
             setDrillFeedback(data);
 
             if (data.score !== undefined) {
@@ -1056,10 +1185,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     // Fever Logic
                     const newCombo = comboCount + 1;
                     setComboCount(newCombo);
-                    if (newCombo >= 3 && !feverMode) {
+                    if (newCombo >= 3 && !feverMode && mode === 'listening') {
                         setFeverMode(true);
-                        setTheme('fever');
-                        new Audio('https://assets.mixkit.co/sfx/preview/mixkit-futuristic-robotic-blip-hit-695.mp3').play().catch(() => { });
                         setTheme('fever');
                         new Audio('https://assets.mixkit.co/sfx/preview/mixkit-futuristic-robotic-blip-hit-695.mp3').play().catch(() => { });
                     }
@@ -1075,57 +1202,58 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         // Fever Break Sound
                         new Audio('https://assets.mixkit.co/sfx/preview/mixkit-game-over-dark-orchestra-633.mp3').play().catch(() => { });
                     }
+                }
 
-                    const newElo = Math.max(0, (activeElo || 600) + change);
+                // === Elo Update Logic (ALWAYS EXECUTED) ===
+                const newElo = Math.max(0, (activeElo || 600) + change);
 
-                    // Rank Change Detection
-                    const oldRank = getRank(activeElo || 600);
-                    const newRank = getRank(newElo);
-                    if (newRank.title !== oldRank.title && change > 0) {
-                        // Rank UP!
-                        setRankUp({ oldRank: oldRank, newRank: newRank });
-                        new Audio('https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3').play().catch(() => { });
-                    } else if (newRank.title !== oldRank.title && change < 0) {
-                        // Rank DOWN!
-                        setRankDown({ oldRank: oldRank, newRank: newRank });
-                        new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch(() => { });
-                    }
+                // Rank Change Detection
+                const oldRank = getRank(activeElo || 600);
+                const newRank = getRank(newElo);
+                if (newRank.title !== oldRank.title && change > 0) {
+                    // Rank UP!
+                    setRankUp({ oldRank: oldRank, newRank: newRank });
+                    new Audio('https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.mp3').play().catch(() => { });
+                } else if (newRank.title !== oldRank.title && change < 0) {
+                    // Rank DOWN!
+                    setRankDown({ oldRank: oldRank, newRank: newRank });
+                    new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch(() => { });
+                }
 
-                    // Update Local State
+                // Update Local State
+                if (isListening) {
+                    setListeningElo(newElo);
+                    setListeningStreak(newStreak);
+                } else {
+                    setEloRating(newElo);
+                    setStreakCount(newStreak);
+                }
+                setEloChange(change);
+
+                // Persist to DB
+                const profile = await db.user_profile.orderBy('id').first();
+                if (profile && profile.id) {
+                    const updateData: any = { last_practice: Date.now() };
+
                     if (isListening) {
-                        setListeningElo(newElo);
-                        setListeningStreak(newStreak);
+                        updateData.listening_elo = newElo;
+                        updateData.listening_streak = newStreak;
+                        updateData.listening_max_elo = Math.max(profile.listening_max_elo || 0, newElo);
                     } else {
-                        setEloRating(newElo);
-                        setStreakCount(newStreak);
+                        updateData.elo_rating = newElo;
+                        updateData.streak_count = newStreak;
+                        updateData.max_elo = Math.max(profile.max_elo, newElo);
                     }
-                    setEloChange(change);
 
-                    // Persist to DB
-                    const profile = await db.user_profile.orderBy('id').first();
-                    if (profile && profile.id) {
-                        const updateData: any = { last_practice: Date.now() };
+                    await db.user_profile.update(profile.id, updateData);
 
-                        if (isListening) {
-                            updateData.listening_elo = newElo;
-                            updateData.listening_streak = newStreak;
-                            updateData.listening_max_elo = Math.max(profile.listening_max_elo || 0, newElo);
-                        } else {
-                            updateData.elo_rating = newElo;
-                            updateData.streak_count = newStreak;
-                            updateData.max_elo = Math.max(profile.max_elo, newElo);
-                        }
-
-                        await db.user_profile.update(profile.id, updateData);
-
-                        // Record in History
-                        await db.elo_history.add({
-                            mode: isListening ? 'listening' : 'translation',
-                            elo: newElo,
-                            change: change,
-                            timestamp: Date.now()
-                        });
-                    }
+                    // Record in History
+                    await db.elo_history.add({
+                        mode: isListening ? 'listening' : 'translation',
+                        elo: newElo,
+                        change: change,
+                        timestamp: Date.now()
+                    });
                 }
             }
         } catch (error) {
@@ -1159,7 +1287,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     };
 
     const handleMagicHint = () => {
-        if (!drillData) return;
+        if (!drillData || !drillData.reference_english) return;
         const target = drillData.reference_english;
         const currentLength = userTranslation.length;
         const remaining = target.slice(currentLength);
@@ -1691,89 +1819,151 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         </div>
                     )}
 
-                    {/* Immersive Recording Overlay (Global Card Level) - Moved here to cover EVERYTHING including header */}
+                    {/* Recording indicator - simplified */}
                     <AnimatePresence>
                         {whisperRecording && (
                             <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
-                                transition={{ duration: 0.3 }}
-                                className="absolute inset-0 z-[100] pointer-events-none flex flex-col items-center justify-end pb-12 p-8 overflow-hidden"
+                                className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 bg-rose-500 text-white rounded-full shadow-lg"
                             >
-                                {/* Silky Liquid Edge Visualizer */}
-                                <div
-                                    className="absolute inset-0 pointer-events-none transition-all duration-200 ease-out will-change-[box-shadow,opacity]"
-                                    style={{
-                                        // Multi-layered internal glow
-                                        // Layer 1: Soft broad pink wash (Background ambience)
-                                        // Layer 2: Sharp edge definition (The "Liquid" rim)
-                                        boxShadow: `
-                                            inset 0 0 ${60 + audioLevel}px ${20 + audioLevel * 0.5}px rgba(244, 63, 94, ${0.1 + audioLevel / 500}),
-                                            inset 0 0 ${20 + audioLevel * 0.5}px rgba(244, 63, 94, ${0.2 + audioLevel / 300})
-                                        `,
-                                    }}
-                                >
-                                    {/* Corner Accents - Smoother Opacity */}
-                                    <div className="absolute top-0 left-0 w-full h-full opacity-50 mix-blend-overlay"
-                                        style={{
-                                            background: `radial-gradient(circle at center, transparent ${50 - (audioLevel / 10)}%, rgba(244, 63, 94, ${0.05 + (audioLevel / 1000)}) 100%)`
-                                        }}
-                                    />
-                                </div>
-
-                                {/* Tech Frame Markers */}
-                                <div className="absolute inset-4 opacity-30 pointer-events-none transition-all duration-300" style={{ transform: `scale(${1 + audioLevel / 1000})` }}>
-                                    <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-rose-400 rounded-tl-xl" />
-                                    <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-rose-400 rounded-tr-xl" />
-                                    <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-rose-400 rounded-bl-xl" />
-                                    <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-rose-400 rounded-br-xl" />
-                                </div>
-
-                                {/* Floating Glass Subtitle Container (Bottom anchored) */}
-                                <motion.div
-                                    initial={{ y: 20, opacity: 0, scale: 0.95 }}
-                                    animate={{ y: 0, opacity: 1, scale: 1 }}
-                                    className="relative z-10 max-w-2xl w-full flex flex-col items-center gap-4"
-                                >
-                                    {/* Organic Waveform - Now above/integrated */}
-                                    <div className="flex items-center justify-center gap-1.5 h-8">
-                                        {[...Array(16)].map((_, i) => (
-                                            <div
-                                                key={i}
-                                                className="w-1 rounded-full bg-gradient-to-t from-rose-400 to-rose-300 shadow-sm transition-all duration-75 ease-[cubic-bezier(0.4,0,0.2,1)]"
-                                                style={{
-                                                    height: `${4 + Math.random() * (audioLevel * 0.8 || 8)}px`,
-                                                    opacity: 0.6 + (audioLevel / 200)
-                                                }}
-                                            />
-                                        ))}
-                                    </div>
-
-                                    <div className="bg-white/30 backdrop-blur-md border border-white/40 shadow-xl shadow-rose-900/5 rounded-2xl px-6 py-4 flex items-center justify-center transition-all bg-gradient-to-b from-white/50 to-white/20">
-                                        <p className="text-lg md:text-xl font-sans font-medium text-stone-800 leading-snug text-center drop-shadow-sm">
-                                            {whisperResult.text || (
-                                                <span className="text-stone-500/80 animate-pulse italic">Listening...</span>
-                                            )}
-                                        </p>
-                                    </div>
-                                </motion.div>
+                                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                                <span className="text-sm font-bold">Recording...</span>
                             </motion.div>
                         )}
                     </AnimatePresence>
-                    {/* Header */}
-                    <div className="flex items-center justify-between p-4 md:p-6 border-b border-stone-100/50 shrink-0">
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-4">
-                                {/* Mode Badge Instead of Switcher */}
-                                <div className="px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider bg-stone-100 text-stone-500 border border-stone-200">
-                                    {mode === "translation" ? <><Globe className="w-3 h-3 inline-block mr-1.5" /> Translate Mode</> : <><Headphones className="w-3 h-3 inline-block mr-1.5" /> Listening Mode</>}
+                    {/* Header - Compact Info Bar */}
+                    <div className="flex items-center justify-between p-3 md:p-4 border-b border-stone-100/50 shrink-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* Unified Info Pill */}
+                            {drillData && (
+                                <div className="flex items-center bg-white/80 backdrop-blur-md rounded-full border border-stone-200 shadow-sm overflow-hidden">
+                                    {/* Rank Section */}
+                                    {(() => {
+                                        const rank = getRank(currentElo || 600);
+                                        return bossState.type === 'roulette_execution' ? (
+                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-red-950/80 text-red-200">
+                                                <Skull className="w-3.5 h-3.5 text-red-400" />
+                                                <span className="font-bold text-[10px] tracking-wider uppercase">处决模式</span>
+                                            </div>
+                                        ) : rouletteSession?.result === 'safe' ? (
+                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-950/80 text-amber-200">
+                                                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                                                <span className="font-bold text-[10px] tracking-wider uppercase">x{rouletteSession.multiplier}</span>
+                                            </div>
+                                        ) : (
+                                            <div className={cn("flex items-center gap-1.5 px-3 py-1.5", rank.color)}>
+                                                <rank.icon className="w-3.5 h-3.5" />
+                                                <span className="font-bold text-[10px] tracking-wider uppercase">{rank.title}</span>
+                                                <div className="w-px h-3 bg-current opacity-20" />
+                                                <span className="font-newsreader font-medium italic text-sm">{currentElo || 600}</span>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* Difficulty Section */}
+                                    {drillData?._difficultyMeta && (
+                                        <>
+                                            <div className="w-px h-5 bg-stone-200" />
+                                            <div className={cn(
+                                                "flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider",
+                                                drillData._difficultyMeta.status === 'MATCHED'
+                                                    ? "text-emerald-600 bg-emerald-50/50"
+                                                    : drillData._difficultyMeta.status === 'TOO_EASY'
+                                                        ? "text-amber-600 bg-amber-50/50"
+                                                        : "text-rose-600 bg-rose-50/50"
+                                            )}>
+                                                <span className="font-mono">{drillData._difficultyMeta.tier}</span>
+                                                <span className="opacity-40">|</span>
+                                                <span>{drillData._difficultyMeta.actualWordCount}词</span>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {/* Topic Section */}
+                                    {drillData?._topicMeta && (
+                                        <>
+                                            <div className="w-px h-5 bg-stone-200" />
+                                            <div className="flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold text-blue-600 bg-blue-50/50">
+                                                <span>📌</span>
+                                                <span className="max-w-[120px] truncate">{drillData._topicMeta.topic}</span>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
-                            </div>
+                            )}
+
+                            {/* Streak Counter - Separate for emphasis */}
+                            {currentStreak >= 2 && (
+                                <div className={cn(
+                                    "flex items-center gap-1 px-2.5 py-1 rounded-full border font-bold text-[10px] tracking-wider transition-all",
+                                    currentStreak >= 10
+                                        ? "bg-gradient-to-r from-orange-500/20 via-red-500/20 to-amber-500/20 border-orange-400/50 text-orange-400"
+                                        : currentStreak >= 5
+                                            ? "bg-amber-500/20 border-amber-400/50 text-amber-400"
+                                            : "bg-orange-50/80 border-orange-200 text-orange-500"
+                                )}>
+                                    <Flame className={cn(
+                                        "w-3 h-3",
+                                        currentStreak >= 5 ? "fill-current" : "fill-orange-400"
+                                    )} />
+                                    <span className="font-mono tabular-nums">{currentStreak}连</span>
+                                </div>
+                            )}
                         </div>
+                        {/* Teaching Mode Button - Only for Translation */}
+                        {mode === 'translation' && (
+                            <button
+                                onClick={() => {
+                                    if (!teachingMode) {
+                                        // First time enabling: turn on and auto-fetch if drill exists
+                                        setTeachingMode(true);
+                                        if (drillData && drillData.chinese && drillData.reference_english && !teachingData && !isLoadingTeaching) {
+                                            setIsLoadingTeaching(true);
+                                            fetch('/api/ai/teach', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({
+                                                    chinese: drillData.chinese,
+                                                    reference_english: drillData.reference_english,
+                                                    elo: eloRating || 600,
+                                                }),
+                                            })
+                                                .then(r => r.json())
+                                                .then(d => { if (!d.error) setTeachingData(d); })
+                                                .catch(() => { })
+                                                .finally(() => setIsLoadingTeaching(false));
+                                        }
+                                        setTeachingPanelOpen(true);
+                                    } else {
+                                        // Toggle panel open/close
+                                        setTeachingPanelOpen(!teachingPanelOpen);
+                                    }
+                                }}
+                                className={cn(
+                                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all border ml-2",
+                                    teachingMode && teachingPanelOpen
+                                        ? "bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm"
+                                        : teachingMode
+                                            ? "bg-indigo-50/50 border-indigo-100 text-indigo-400 hover:text-indigo-600"
+                                            : "bg-stone-50 border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300"
+                                )}
+                                title={teachingPanelOpen ? '收起教学面板' : '打开教学面板'}
+                            >
+                                <BookOpen className="w-3 h-3" />
+                                <span>教学</span>
+                                {teachingMode && (
+                                    <div className={cn(
+                                        "w-1.5 h-1.5 rounded-full",
+                                        isLoadingTeaching ? "bg-amber-400 animate-pulse" : "bg-emerald-400"
+                                    )} />
+                                )}
+                            </button>
+                        )}
                         {onClose && (
-                            <button onClick={onClose} className="w-10 h-10 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition-all group">
-                                <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
+                            <button onClick={onClose} className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition-all group ml-2">
+                                <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
                             </button>
                         )}
                     </div>
@@ -1792,177 +1982,94 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     </AnimatePresence>
 
                     {/* Content Body */}
-                    <div className="flex-1 relative overflow-hidden flex flex-col">
+                    <div className="flex-1 relative overflow-y-auto flex flex-col">
+
+                        {/* Scoring Flip Card Animation */}
+                        <ScoringFlipCard
+                            isScoring={isSubmittingDrill && !drillFeedback}
+                            userAnswer={userTranslation}
+                            mode={mode}
+                        />
 
 
                         {isGeneratingDrill && !drillData ? (
-                            <div className="h-full flex flex-col items-center justify-center space-y-6 animate-pulse mt-32">
-                                <div className="w-16 h-16 rounded-full border-4 border-stone-200 border-t-stone-800 animate-spin" />
-                                <p className="text-stone-400 font-newsreader italic text-xl">
-                                    {mode === "translation" ? "Crafting phrase..." : "Encoding audio stream..."}
-                                </p>
+                            <div className="h-full flex flex-col items-center justify-center relative overflow-hidden">
+                                {/* Gradient Background */}
+                                <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white to-purple-50/50" />
+
+                                {/* Floating Orbs */}
+                                <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                                    <motion.div
+                                        className="absolute w-64 h-64 rounded-full bg-gradient-to-br from-indigo-200/30 to-purple-200/30 blur-3xl"
+                                        animate={{ x: [0, 50, 0], y: [0, -30, 0] }}
+                                        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+                                        style={{ top: '10%', left: '10%' }}
+                                    />
+                                    <motion.div
+                                        className="absolute w-48 h-48 rounded-full bg-gradient-to-br from-purple-200/30 to-pink-200/30 blur-3xl"
+                                        animate={{ x: [0, -40, 0], y: [0, 40, 0] }}
+                                        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+                                        style={{ bottom: '20%', right: '15%' }}
+                                    />
+                                </div>
+
+                                {/* Main Content */}
+                                <div className="relative z-10 flex flex-col items-center space-y-8">
+                                    {/* Audio Waveform Animation */}
+                                    <div className="flex items-end justify-center gap-1.5 h-20">
+                                        {[0.4, 0.7, 1, 0.8, 0.5, 0.9, 0.6, 0.3, 0.7, 0.5, 0.8, 0.4].map((intensity, i) => (
+                                            <motion.div
+                                                key={i}
+                                                className="w-2 rounded-full bg-gradient-to-t from-indigo-600 to-purple-500 shadow-lg shadow-indigo-500/30"
+                                                animate={{
+                                                    height: [8, 60 * intensity, 8],
+                                                    opacity: [0.5, 1, 0.5]
+                                                }}
+                                                transition={{
+                                                    duration: 0.8 + (i * 0.05),
+                                                    repeat: Infinity,
+                                                    ease: "easeInOut",
+                                                    delay: i * 0.08
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+
+                                    {/* Loading Text */}
+                                    <div className="text-center space-y-2">
+                                        <p className="text-stone-700 font-medium text-lg">
+                                            {mode === "translation" ? "正在生成句子..." : "正在准备音频..."}
+                                        </p>
+                                        <p className="text-stone-400 text-sm">
+                                            {mode === "translation" ? "Crafting your phrase" : "Preparing audio stream"}
+                                        </p>
+                                    </div>
+
+                                    {/* Progress Dots */}
+                                    <div className="flex items-center gap-2">
+                                        {[0, 1, 2].map((i) => (
+                                            <motion.div
+                                                key={i}
+                                                className="w-2 h-2 rounded-full bg-indigo-500"
+                                                animate={{
+                                                    scale: [1, 1.5, 1],
+                                                    opacity: [0.3, 1, 0.3]
+                                                }}
+                                                transition={{
+                                                    duration: 1.2,
+                                                    repeat: Infinity,
+                                                    delay: i * 0.3
+                                                }}
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
                             </div>
                         ) : drillData ? (
                             <AnimatePresence mode="popLayout" initial={false}>
                                 {!drillFeedback ? (
-                                    <motion.div key="question" initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.4, ease: "easeOut" }} className="absolute inset-0 overflow-y-auto custom-scrollbar p-6 md:p-8 pb-32">
+                                    <motion.div key="question" initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.4, ease: "easeOut" }} className="absolute inset-0 overflow-hidden p-6 md:p-8 flex flex-col">
                                         <div className="max-w-3xl mx-auto w-full space-y-4">
-                                            {/* Elo Badge & Difficulty Header */}
-                                            <div className="flex justify-center items-center gap-4 mb-4 animate-in fade-in slide-in-from-top-4">
-                                                <div className="flex flex-col items-center group cursor-help relative animate-in fade-in slide-in-from-top-4 duration-700 delay-300">
-                                                    {bossState.type === 'roulette_execution' ? (
-                                                        /* EXECUTION MODE OVERRIDE */
-                                                        <div className="flex flex-col items-center">
-                                                            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full border shadow-lg transition-all bg-red-950/80 backdrop-blur-md border-red-500/50 text-red-200 animate-pulse">
-                                                                <Skull className="w-4 h-4 text-red-400" />
-                                                                <span className="font-bold text-xs tracking-wider uppercase">处决模式</span>
-                                                            </div>
-                                                            <div className="mt-1 text-[10px] text-red-400/80 font-mono tracking-tighter">— 答对以申请救赎 —</div>
-                                                        </div>
-                                                    ) : rouletteSession?.result === 'safe' ? (
-                                                        /* SURVIVAL MULTIPLIER OVERRIDE */
-                                                        <div className="flex flex-col items-center">
-                                                            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full border shadow-xl transition-all bg-amber-950/80 backdrop-blur-md border-amber-500/50 text-amber-200 ring-2 ring-amber-500/20">
-                                                                <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-                                                                <span className="font-bold text-xs tracking-wider uppercase">生死豪赌: x{rouletteSession.multiplier} 锁定</span>
-                                                            </div>
-                                                            <div className="mt-1 text-[10px] text-amber-400/80 font-mono tracking-tighter">— 指间生死，胜败百倍 —</div>
-                                                        </div>
-                                                    ) : (() => {
-                                                        const rank = getRank(currentElo || 600);
-                                                        return (
-                                                            <>
-                                                                <div className={cn("flex items-center gap-2 px-4 py-1.5 rounded-full border shadow-sm transition-all bg-white/50 backdrop-blur-md", rank.border, rank.color)}>
-                                                                    <rank.icon className="w-4 h-4" />
-                                                                    <span className="font-bold text-xs tracking-wider uppercase">{rank.title}</span>
-                                                                    <div className="w-px h-3 bg-current opacity-20 mx-1" />
-                                                                    <span className="font-newsreader font-medium italic text-lg">{currentElo || 600}</span>
-                                                                </div>
-
-                                                                <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-48 bg-white/90 backdrop-blur-xl rounded-xl shadow-xl border border-stone-100 p-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                                                                    {/* Difficulty Info injected into Tooltip */}
-                                                                    <div className="flex items-center justify-between mb-3 pb-3 border-b border-stone-100">
-                                                                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">DIFFICULTY</span>
-                                                                        <div className={cn("flex items-center gap-1 text-xs font-bold", eloDifficulty.color.split(' ')[0])}>
-                                                                            <span>{eloDifficulty.label}</span>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="text-xs font-bold text-stone-500 mb-1 flex justify-between">
-                                                                        <span>To {rank.nextRank?.title || "Max"}</span>
-                                                                        <span>{Math.round(rank.progress)}%</span>
-                                                                    </div>
-                                                                    <div className="h-1.5 w-full bg-stone-100 rounded-full overflow-hidden">
-                                                                        <div className={cn("h-full rounded-full transition-all duration-500", rank.bg.replace('bg-', 'bg-slate-400 '))} style={{ width: `${rank.progress}%`, backgroundColor: 'currentColor' }} />
-                                                                    </div>
-                                                                    <div className="text-[10px] text-stone-400 mt-2 text-center font-medium bg-stone-50 py-1 rounded-lg">{rank.distToNext > 0 ? `${rank.distToNext} pts to promote` : "Max Level Reached"}</div>
-                                                                </div>
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </div>
-
-                                                {/* Streak Counter with Fire Effect */}
-                                                {currentStreak >= 2 && (
-                                                    <motion.div
-                                                        initial={{ scale: 0, opacity: 0 }}
-                                                        animate={{ scale: 1, opacity: 1 }}
-                                                        className={cn(
-                                                            "relative flex items-center gap-1.5 px-3 py-1.5 rounded-full border font-bold text-xs tracking-wider transition-all",
-                                                            currentStreak >= 10
-                                                                ? "bg-gradient-to-r from-orange-500/20 via-red-500/20 to-amber-500/20 border-orange-400/50 text-orange-400 shadow-lg shadow-orange-500/30"
-                                                                : currentStreak >= 5
-                                                                    ? "bg-amber-500/20 border-amber-400/50 text-amber-400 shadow-md shadow-amber-500/20"
-                                                                    : "bg-orange-50/80 border-orange-200 text-orange-500"
-                                                        )}
-                                                    >
-                                                        {/* Fire Glow Background */}
-                                                        {currentStreak >= 5 && (
-                                                            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-orange-500/10 via-red-500/20 to-amber-500/10 animate-pulse" />
-                                                        )}
-
-                                                        {/* Fire Icon with Animation */}
-                                                        <motion.div
-                                                            animate={currentStreak >= 5 ? {
-                                                                scale: [1, 1.2, 1],
-                                                                rotate: [0, 5, -5, 0]
-                                                            } : {}}
-                                                            transition={{ repeat: Infinity, duration: 0.6 }}
-                                                            className="relative z-10"
-                                                        >
-                                                            <Flame className={cn(
-                                                                "w-4 h-4",
-                                                                currentStreak >= 10
-                                                                    ? "fill-orange-400 text-orange-300"
-                                                                    : currentStreak >= 5
-                                                                        ? "fill-amber-400 text-amber-300"
-                                                                        : "fill-orange-400 text-orange-500"
-                                                            )} />
-                                                        </motion.div>
-
-                                                        {/* Streak Number */}
-                                                        <span className="relative z-10 font-mono tabular-nums">
-                                                            {currentStreak}连
-                                                        </span>
-
-                                                        {/* Sparkle effect for high streaks */}
-                                                        {currentStreak >= 10 && (
-                                                            <>
-                                                                <motion.div
-                                                                    className="absolute -top-1 -right-1 w-2 h-2 bg-amber-400 rounded-full"
-                                                                    animate={{ scale: [0, 1, 0], opacity: [0, 1, 0] }}
-                                                                    transition={{ repeat: Infinity, duration: 1.5, delay: 0 }}
-                                                                />
-                                                                <motion.div
-                                                                    className="absolute -bottom-0.5 right-2 w-1.5 h-1.5 bg-orange-400 rounded-full"
-                                                                    animate={{ scale: [0, 1, 0], opacity: [0, 1, 0] }}
-                                                                    transition={{ repeat: Infinity, duration: 1.5, delay: 0.5 }}
-                                                                />
-                                                            </>
-                                                        )}
-                                                    </motion.div>
-                                                )}
-
-                                                <div className="h-4 w-[1px] bg-stone-200" />
-                                                <span className="text-stone-400 font-bold text-xs tracking-wider uppercase">{mode} Drill</span>
-
-                                                {/* Difficulty Verification Badge */}
-                                                {drillData?._difficultyMeta && (
-                                                    <>
-                                                        <div className="h-4 w-[1px] bg-stone-200" />
-                                                        <div className={cn(
-                                                            "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all",
-                                                            drillData._difficultyMeta.status === 'MATCHED'
-                                                                ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
-                                                                : drillData._difficultyMeta.status === 'TOO_EASY'
-                                                                    ? "bg-amber-50 text-amber-600 border border-amber-200"
-                                                                    : "bg-rose-50 text-rose-600 border border-rose-200"
-                                                        )}>
-                                                            <span className="font-mono">{drillData._difficultyMeta.tier}</span>
-                                                            <span className="opacity-50">|</span>
-                                                            <span>{drillData._difficultyMeta.actualWordCount}词</span>
-                                                            {drillData._difficultyMeta.status !== 'MATCHED' && (
-                                                                <span className="ml-0.5">
-                                                                    {drillData._difficultyMeta.status === 'TOO_EASY' ? '⚠️' : '🔥'}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </>
-                                                )}
-
-                                                {/* Topic Badge */}
-                                                {drillData?._topicMeta && (
-                                                    <>
-                                                        <div className="h-4 w-[1px] bg-stone-200" />
-                                                        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-200">
-                                                            <span>📌</span>
-                                                            <span>{drillData._topicMeta.topic}</span>
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </div>
-
-
                                             {/* Source / Listening Area */}
                                             <div className="space-y-6 text-center w-full">
                                                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative flex flex-col items-center gap-6 w-full">
@@ -1971,7 +2078,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             {/* Big Play Button */}
                                                             <button
                                                                 onClick={playAudio}
-                                                                disabled={isPlaying || (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)}
+                                                                disabled={isPlaying || isAudioLoading || (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)}
                                                                 className={cn(
                                                                     "group relative w-24 h-24 flex items-center justify-center transition-all duration-500 mb-8 mt-4",
                                                                     (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)
@@ -1982,7 +2089,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                 <div className={cn("absolute inset-0 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 blur-2xl transition-all duration-500", isPlaying ? "scale-125 opacity-100" : "scale-100 opacity-0 group-hover:opacity-100")} />
                                                                 <div className="absolute inset-0 rounded-full bg-white/60 dark:bg-white/10 backdrop-blur-2xl border border-white/50 dark:border-white/20 shadow-2xl shadow-indigo-500/10 transition-all duration-300 group-hover:bg-white/80 group-hover:border-white" />
                                                                 <div className="relative z-10 text-indigo-600 dark:text-indigo-300 drop-shadow-sm flex items-center justify-center">
-                                                                    {isPlaying ? (
+                                                                    {(isPrefetching || isAudioLoading) ? (
+                                                                        <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+                                                                    ) : isPlaying ? (
                                                                         <div className="flex items-center gap-1.5 h-10">
                                                                             {[0.4, 1, 0.6, 0.8, 0.5].map((h, i) => (
                                                                                 <motion.div key={i} animate={{ height: [10 * h, 30 * h, 10 * h] }} transition={{ duration: 0.6 + (i * 0.1), repeat: Infinity, ease: "easeInOut", repeatType: "mirror" }} className="w-1.5 bg-indigo-500 rounded-full" />
@@ -2033,32 +2142,30 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                                                                     {mode === 'listening' && (
                                                                         <>
-                                                                            <div className="w-px h-4 bg-stone-300 mx-2" />
+                                                                            <div className="w-px h-5 bg-stone-300 mx-2" />
 
-                                                                            {/* Server Status */}
-                                                                            <div
-                                                                                className={cn(
-                                                                                    "hidden md:flex items-center gap-1.5 px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-colors border",
-                                                                                    serverStatus === 'online' ? "bg-emerald-50 text-emerald-600 border-emerald-200" :
-                                                                                        serverStatus === 'offline' ? "bg-rose-50 text-rose-600 border-rose-200" :
-                                                                                            "bg-stone-50 text-stone-400 border-stone-200"
-                                                                                )}
-                                                                                title={serverStatus === 'online' ? "Local Whisper Engine Ready (Port 3002)" : "Local Engine Offline - Using Cloud Fallback"}
-                                                                            >
-                                                                                <div className={cn("w-1.5 h-1.5 rounded-full", serverStatus === 'online' ? "bg-emerald-500 animate-pulse" : "bg-rose-500")} />
-                                                                                {serverStatus === 'online' ? "LOCAL" : serverStatus === 'offline' ? "CLOUD" : "CHECK"}
-                                                                            </div>
-
-                                                                            {/* Engine Mode */}
+                                                                            {/* Engine Mode with Status Indicator */}
                                                                             <button
                                                                                 onClick={() => setEngineMode(engineMode === 'fast' ? 'precise' : 'fast')}
-                                                                                className={cn("px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all text-nowrap", engineMode === 'fast' ? "text-amber-600 bg-amber-100/50 hover:bg-amber-100" : "text-emerald-600 bg-emerald-100/50 hover:bg-emerald-100")}
+                                                                                className={cn(
+                                                                                    "relative px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all text-nowrap border",
+                                                                                    engineMode === 'fast'
+                                                                                        ? "text-amber-600 bg-amber-100/50 hover:bg-amber-100 border-amber-200"
+                                                                                        : "text-emerald-600 bg-emerald-100/50 hover:bg-emerald-100 border-emerald-200"
+                                                                                )}
+                                                                                title={`${engineMode === 'fast' ? 'Fast Mode' : 'Pro Mode'} • ${serverStatus === 'online' ? 'Local Whisper Ready' : 'Using Cloud'}`}
                                                                             >
+                                                                                {/* Status Dot */}
+                                                                                <div className={cn(
+                                                                                    "absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-white",
+                                                                                    serverStatus === 'online' ? "bg-emerald-500" : "bg-rose-500"
+                                                                                )} />
                                                                                 {engineMode === 'fast' ? <Zap className="w-3 h-3" /> : <BrainCircuit className="w-3 h-3" />}
                                                                                 {engineMode === 'fast' ? "FAST" : "PRO"}
                                                                             </button>
 
-                                                                            <div className="w-px h-4 bg-stone-300 mx-2" />
+                                                                            <div className="w-px h-5 bg-stone-300 mx-2" />
+
                                                                             {/* Refresh Button */}
                                                                             <button
                                                                                 onClick={() => handleGenerateDrill()}
@@ -2149,7 +2256,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                                                             {/* Text Reveal / Hint Area - Check Manual Toggle OR Boss Force */}
                                                             {!((bossState.active && bossState.type === 'blind') || isBlindMode) ? (
-                                                                <div className="relative w-full max-w-4xl mx-auto px-4 py-8 animate-in fade-in zoom-in-95 duration-500">
+                                                                <div className="relative w-full max-w-4xl mx-auto px-4 pt-12 pb-8 animate-in fade-in zoom-in-95 duration-500">
                                                                     <div className="text-center font-newsreader italic text-2xl md:text-3xl leading-relaxed text-stone-800 tracking-wide selection:bg-indigo-100">
                                                                         {((gambleState.active && gambleState.wager !== 'safe')) && !isSubmittingDrill ? (
                                                                             <div className={cn(
@@ -2168,8 +2275,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             </div>
                                                                         ) : renderInteractiveText(drillData.reference_english)}
                                                                     </div>
-                                                                    <p className="mt-8 text-stone-400 text-sm font-medium tracking-wide uppercase text-center border-t border-stone-100 pt-6 max-w-xs mx-auto">Translation</p>
-                                                                    {showChinese && <p className="mt-2 text-stone-500 text-lg text-center font-medium animate-in fade-in slide-in-from-top-2">{drillData.chinese}</p>}
+                                                                    {showChinese && <p className="mt-4 text-stone-500 text-lg text-center font-medium animate-in fade-in slide-in-from-top-2">{drillData.chinese}</p>}
                                                                 </div>
                                                             ) : (
                                                                 <div className="relative w-full max-w-2xl mx-auto px-4 py-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -2208,42 +2314,168 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                                             <div className="w-full max-w-xs mx-auto h-px bg-gradient-to-r from-transparent via-stone-200 to-transparent my-8" />
 
+                                            {/* Teaching Card removed - now in floating panel */}
+
                                             {/* Interactive Area */}
 
                                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="w-full space-y-6">
                                                 <div className="relative group">
                                                     {mode === "listening" ? (
-                                                        <div className="flex flex-col items-center justify-center gap-4 py-4 min-h-[160px]">
+                                                        <div className="flex flex-col items-center justify-center gap-4 py-2">
                                                             {whisperProcessing ? (
-                                                                <div className="flex flex-col items-center animate-pulse gap-4">
-                                                                    <div className="w-24 h-24 rounded-full bg-indigo-50 border-4 border-indigo-100 flex items-center justify-center"><RefreshCw className="w-8 h-8 text-indigo-400 animate-spin" /></div>
-                                                                    <p className="text-indigo-400 font-bold tracking-wide text-sm uppercase">Transcribing...</p>
+                                                                <div className="flex items-center gap-3 px-6 py-3 bg-indigo-50 rounded-full">
+                                                                    <RefreshCw className="w-5 h-5 text-indigo-500 animate-spin" />
+                                                                    <span className="text-indigo-600 font-bold text-sm">Transcribing...</span>
+                                                                </div>
+                                                            ) : whisperRecording ? (
+                                                                /* Recording State - Compact horizontal layout */
+                                                                <div className="flex items-center gap-4 px-6 py-3 bg-white/80 backdrop-blur-sm border border-stone-200 rounded-2xl shadow-sm">
+                                                                    {/* Mini Waveform */}
+                                                                    <div className="flex items-center gap-0.5 h-6">
+                                                                        {[...Array(8)].map((_, i) => (
+                                                                            <motion.div
+                                                                                key={i}
+                                                                                className="w-1 rounded-full bg-rose-500"
+                                                                                animate={{
+                                                                                    height: [4, 12 + Math.random() * 8, 4],
+                                                                                }}
+                                                                                transition={{
+                                                                                    duration: 0.4 + Math.random() * 0.2,
+                                                                                    repeat: Infinity,
+                                                                                    delay: i * 0.05
+                                                                                }}
+                                                                            />
+                                                                        ))}
+                                                                    </div>
+
+                                                                    {/* Real-time text */}
+                                                                    <p className="text-base font-newsreader text-stone-700 min-w-[150px] max-w-[300px] truncate">
+                                                                        {whisperResult.text || <span className="text-stone-400 italic">Listening...</span>}
+                                                                    </p>
+
+                                                                    {/* Stop Button */}
+                                                                    <button
+                                                                        onClick={stopRecognition}
+                                                                        className="w-10 h-10 rounded-full bg-rose-500 hover:bg-rose-600 flex items-center justify-center shadow-md transition-all hover:scale-105 active:scale-95 shrink-0"
+                                                                    >
+                                                                        <div className="w-4 h-4 bg-white rounded-sm" />
+                                                                    </button>
+                                                                </div>
+                                                            ) : whisperResult.text ? (
+                                                                /* Has Result - Compact confirm/retry */
+                                                                <div className="flex items-center gap-3 px-4 py-3 bg-white/80 backdrop-blur-sm border border-stone-200 rounded-2xl shadow-sm">
+                                                                    {/* Result text */}
+                                                                    <p className="text-base font-newsreader text-stone-800 max-w-[250px]">
+                                                                        {whisperResult.text}
+                                                                    </p>
+
+                                                                    {/* Action Buttons */}
+                                                                    <div className="flex items-center gap-2 shrink-0">
+                                                                        <button
+                                                                            onClick={startRecognition}
+                                                                            className="w-9 h-9 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center transition-all"
+                                                                            title="Re-record"
+                                                                        >
+                                                                            <RefreshCw className="w-4 h-4 text-stone-600" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setUserTranslation(whisperResult.text);
+                                                                                handleSubmitDrill();
+                                                                            }}
+                                                                            disabled={isSubmittingDrill}
+                                                                            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full font-bold text-sm shadow-md transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                                                                        >
+                                                                            {isSubmittingDrill ? <Sparkles className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                                                            {isSubmittingDrill ? "..." : "Submit"}
+                                                                        </button>
+                                                                    </div>
                                                                 </div>
                                                             ) : (
-                                                                <div className="relative">
-
-                                                                    {/* Passive Text Display (When not recording) */}
-                                                                    {/* Passive Text Display (Stable Layout) */}
-                                                                    {/* Passive Text Removed per user request */}
-                                                                </div>
+                                                                /* Idle State - Smaller mic button */
+                                                                <motion.button
+                                                                    onClick={startRecognition}
+                                                                    whileHover={{ scale: 1.08 }}
+                                                                    whileTap={{ scale: 0.95 }}
+                                                                    className="relative flex items-center gap-3 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full shadow-lg shadow-indigo-500/25 transition-all"
+                                                                >
+                                                                    {/* Pulse ring */}
+                                                                    <motion.div
+                                                                        className="absolute inset-0 rounded-full bg-indigo-500/20"
+                                                                        animate={{ scale: [1, 1.15], opacity: [0.4, 0] }}
+                                                                        transition={{ duration: 1.5, repeat: Infinity }}
+                                                                    />
+                                                                    <Mic className="w-5 h-5 text-white relative z-10" />
+                                                                    <span className="text-white font-bold text-sm relative z-10">Tap to Record</span>
+                                                                </motion.button>
                                                             )}
                                                         </div>
                                                     ) : (
                                                         <>
-                                                            <textarea
-                                                                value={userTranslation}
-                                                                onChange={(e) => setUserTranslation(e.target.value)}
-                                                                placeholder="Enter your English translation..."
-                                                                className="w-full min-h-[160px] p-6 text-xl font-newsreader bg-white/50 border border-stone-200 rounded-3xl focus:ring-4 ring-stone-100 focus:border-stone-400 transition-all resize-none placeholder:text-stone-300 text-stone-800 shadow-sm group-hover:shadow-md outline-none"
-                                                                spellCheck={false}
-                                                                autoFocus
-                                                            />
-                                                            <div className="absolute bottom-4 right-4 flex items-center gap-3">
-                                                                <button onClick={handleMagicHint} className="h-10 px-4 rounded-xl bg-amber-100/50 text-amber-700 hover:bg-amber-100 flex items-center gap-2 transition-all font-bold text-sm" title="Auto-Complete Hint"><Wand2 className="w-4 h-4" /> Hint</button>
-                                                                <button onClick={() => setIsTutorOpen(!isTutorOpen)} className="w-10 h-10 rounded-full bg-stone-100 text-stone-500 hover:bg-indigo-50 hover:text-indigo-600 flex items-center justify-center transition-all shadow-sm" title="Ask AI Tutor"><HelpCircle className="w-5 h-5" /></button>
-                                                                <button onClick={handleSubmitDrill} disabled={!userTranslation.trim() || isSubmittingDrill} className="bg-stone-900 hover:bg-black text-white px-6 py-2.5 rounded-xl font-bold shadow-xl shadow-stone-900/20 transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed hover:-translate-y-0.5 active:translate-y-0">
-                                                                    {isSubmittingDrill ? <Sparkles className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} {isSubmittingDrill ? "Checking..." : "Check"}
-                                                                </button>
+                                                            {/* Premium Neumorphic Input Container */}
+                                                            <div className="relative group transition-all duration-500 bg-white/80 dark:bg-black/40 backdrop-blur-2xl border-2 border-white/60 dark:border-white/10 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] focus-within:border-indigo-200 focus-within:shadow-[0_10px_40px_rgba(99,102,241,0.1),inset_0_1px_0_rgba(255,255,255,1)] overflow-hidden">
+                                                                {/* Subtle inner noise texture */}
+                                                                <div className="absolute inset-0 opacity-[0.015] bg-[url('data:image/svg+xml,%3Csvg viewBox=%270 0 256 256%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter id=%27noise%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%274%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23noise)%27/%3E%3C/svg%3E')] pointer-events-none" />
+                                                                <GhostTextarea
+                                                                    value={userTranslation}
+                                                                    onChange={setUserTranslation}
+                                                                    placeholder="Type your English translation here..."
+                                                                    predictionWordCount={2}
+                                                                    getPrediction={(current) => {
+                                                                        // Provide predicting hint based on actual reference answer
+                                                                        if (drillData?.reference_english && drillData.reference_english.toLowerCase().startsWith(current.toLowerCase())) {
+                                                                            return drillData.reference_english;
+                                                                        }
+                                                                        return "";
+                                                                    }}
+                                                                    disabled={isSubmittingDrill}
+                                                                />
+
+                                                                {/* Bottom toolbar */}
+                                                                <div className="relative z-10 flex items-center justify-between px-6 pb-5 pt-0">
+                                                                    {/* Word count badge */}
+                                                                    <div className={cn(
+                                                                        "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold font-sans tracking-wide transition-all duration-300",
+                                                                        userTranslation.trim()
+                                                                            ? "bg-stone-100/90 text-stone-500 shadow-sm border border-stone-200/50"
+                                                                            : "bg-transparent text-stone-300"
+                                                                    )}>
+                                                                        <span className="tabular-nums">{userTranslation.trim() ? userTranslation.trim().split(/\s+/).length : 0}</span>
+                                                                        <span>WORDS</span>
+                                                                    </div>
+
+                                                                    {/* Action buttons */}
+                                                                    <div className="flex items-center gap-2">
+                                                                        <button
+                                                                            onClick={handleMagicHint}
+                                                                            className="h-10 px-4 rounded-full bg-amber-50/80 text-amber-600 hover:bg-amber-100 hover:text-amber-700 flex items-center gap-1.5 transition-all font-bold text-xs border border-amber-200/50 hover:border-amber-300/70 hover:shadow-sm active:scale-95"
+                                                                            title="Auto-Complete Hint"
+                                                                        >
+                                                                            <Wand2 className="w-4 h-4" /> Hint
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => setIsTutorOpen(!isTutorOpen)}
+                                                                            className="w-10 h-10 rounded-full bg-stone-50/80 text-stone-400 hover:bg-indigo-50 hover:text-indigo-500 flex items-center justify-center transition-all border border-stone-200/50 hover:border-indigo-200/70 active:scale-95"
+                                                                            title="Ask AI Tutor"
+                                                                        >
+                                                                            <HelpCircle className="w-4 h-4" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={handleSubmitDrill}
+                                                                            disabled={!userTranslation.trim() || isSubmittingDrill}
+                                                                            className={cn(
+                                                                                "h-10 px-6 rounded-full font-bold text-xs flex items-center gap-2 transition-all active:scale-95",
+                                                                                "disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100",
+                                                                                userTranslation.trim() && !isSubmittingDrill
+                                                                                    ? "bg-gradient-to-r from-stone-800 to-stone-900 border border-stone-600/50 text-white shadow-lg shadow-stone-900/20 hover:shadow-xl hover:shadow-stone-900/30 hover:-translate-y-0.5"
+                                                                                    : "bg-stone-200 text-stone-400 border border-stone-300/50"
+                                                                            )}
+                                                                        >
+                                                                            {isSubmittingDrill ? <Sparkles className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                                                            {isSubmittingDrill ? "评分中..." : "Check"}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         </>
                                                     )}
@@ -2292,143 +2524,209 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                             />
                                         ) : (
                                             <motion.div key="feedback" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 20, opacity: 0 }} transition={{ duration: 0.4, ease: "easeOut" }} className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 md:p-6 pb-48">
-                                                <div className={cn("max-w-4xl mx-auto w-full space-y-4 transition-transform duration-100", drillFeedback.score <= 4 && "animate-[shake_0.5s_ease-in-out]")}>
-                                                    <div className="flex flex-col items-center gap-1">
-                                                        <div className={cn("text-5xl font-bold font-newsreader", drillFeedback.score >= 8 ? "text-emerald-600" : drillFeedback.score >= 6 ? "text-amber-500" : "text-rose-500")}>
-                                                            {drillFeedback.score}<span className="text-xl text-stone-300 font-normal">/10</span>
-                                                        </div>
-                                                        <p className="text-stone-500 font-medium text-xs uppercase tracking-wider">Accuracy Score</p>
-                                                        {eloChange !== null && eloChange !== 0 ? (
-                                                            <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150 mt-4 w-full max-w-sm">
-                                                                {/* Rank Progress Bar */}
-                                                                {(() => {
-                                                                    const rank = getRank(currentElo || 600);
-                                                                    return (
-                                                                        <div className="w-full mb-4">
-                                                                            <div className="flex justify-between text-xs font-bold text-stone-400 mb-1.5 uppercase tracking-wider">
-                                                                                <span className={rank.color.replace('bg-', 'text-')}>{rank.title}</span>
-                                                                                <span>{rank.nextRank?.title || "Max"}</span>
-                                                                            </div>
-                                                                            <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden shadow-inner">
-                                                                                <div
-                                                                                    className={cn("h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden", rank.bg.replace('bg-', 'bg-gradient-to-r from-transparent to-'))}
-                                                                                    style={{ width: `${Math.max(5, rank.progress)}%`, backgroundColor: 'currentColor' }}
-                                                                                >
-                                                                                    <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" />
+                                                {/* Error State: Show retry when API fails */}
+                                                {drillFeedback._error ? (
+                                                    <div className="flex flex-col items-center justify-center gap-4 py-16">
+                                                        <div className="text-4xl">⚠️</div>
+                                                        <p className="text-stone-600 font-medium text-center">评分服务暂时不可用</p>
+                                                        <p className="text-stone-400 text-sm text-center">AI 接口超时，请重试</p>
+                                                        <button
+                                                            onClick={() => {
+                                                                setDrillFeedback(null);
+                                                                setIsSubmittingDrill(false);
+                                                                handleSubmitDrill();
+                                                            }}
+                                                            className="mt-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-lg transition-all"
+                                                        >
+                                                            重新评分
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className={cn("max-w-4xl mx-auto w-full space-y-4 transition-transform duration-100", drillFeedback.score <= 4 && "animate-[shake_0.5s_ease-in-out]")}>
+                                                        <div className="flex flex-col items-center gap-1">
+                                                            <div className={cn("text-5xl font-bold font-newsreader", drillFeedback.score >= 8 ? "text-emerald-600" : drillFeedback.score >= 6 ? "text-amber-500" : "text-rose-500")}>
+                                                                {drillFeedback.score}<span className="text-xl text-stone-300 font-normal">/10</span>
+                                                            </div>
+                                                            <p className="text-stone-500 font-medium text-xs uppercase tracking-wider">Accuracy Score</p>
+                                                            {eloChange !== null && eloChange !== 0 ? (
+                                                                <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150 mt-4 w-full max-w-sm">
+                                                                    {/* Rank Progress Bar */}
+                                                                    {(() => {
+                                                                        const rank = getRank(currentElo || 600);
+                                                                        return (
+                                                                            <div className="w-full mb-4">
+                                                                                <div className="flex justify-between text-xs font-bold text-stone-400 mb-1.5 uppercase tracking-wider">
+                                                                                    <span className={rank.color.replace('bg-', 'text-')}>{rank.title}</span>
+                                                                                    <span>{rank.nextRank?.title || "Max"}</span>
                                                                                 </div>
+                                                                                <div className="h-2 w-full bg-stone-100 rounded-full overflow-hidden shadow-inner">
+                                                                                    <div
+                                                                                        className={cn("h-full rounded-full transition-all duration-1000 ease-out relative overflow-hidden", rank.bg.replace('bg-', 'bg-gradient-to-r from-transparent to-'))}
+                                                                                        style={{ width: `${Math.max(5, rank.progress)}%`, backgroundColor: 'currentColor' }}
+                                                                                    >
+                                                                                        <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" />
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="text-[10px] text-right text-stone-300 mt-1 font-mono">{Math.round(rank.progress)}% to promote</div>
                                                                             </div>
-                                                                            <div className="text-[10px] text-right text-stone-300 mt-1 font-mono">{Math.round(rank.progress)}% to promote</div>
-                                                                        </div>
-                                                                    );
-                                                                })()}
+                                                                        );
+                                                                    })()}
 
-                                                                {/* Elo Change Badge & Breakdown */}
-                                                                <div className="relative group/breakdown cursor-help">
-                                                                    <motion.div
-                                                                        initial={{ scale: 0.8, opacity: 0 }}
-                                                                        animate={{ scale: 1, opacity: 1 }}
-                                                                        transition={{ type: "spring", stiffness: 300, damping: 20 }}
-                                                                        className={cn(
-                                                                            "px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 shadow-md border transition-all hover:scale-105",
-                                                                            eloBreakdown?.streakBonus
-                                                                                ? "bg-gradient-to-r from-orange-500/90 via-amber-500/90 to-orange-500/90 text-white border-orange-400/50 shadow-orange-500/40 shadow-lg"
-                                                                                : eloChange > 0
-                                                                                    ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                                                                                    : "bg-rose-50 text-rose-600 border-rose-100"
-                                                                        )}
-                                                                    >
-                                                                        <TrendingUp className={cn("w-4 h-4", eloChange < 0 && "rotate-180")} />
-                                                                        <span>{eloChange > 0 ? "+" : ""}{eloChange} Elo</span>
+                                                                    {/* Elo Change Badge & Breakdown */}
+                                                                    <div className="relative group/breakdown cursor-help">
+                                                                        <motion.div
+                                                                            initial={{ scale: 0.8, opacity: 0 }}
+                                                                            animate={{ scale: 1, opacity: 1 }}
+                                                                            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                                                            className={cn(
+                                                                                "px-4 py-2 rounded-full text-sm font-bold flex items-center gap-2 shadow-md border transition-all hover:scale-105",
+                                                                                eloBreakdown?.streakBonus
+                                                                                    ? "bg-gradient-to-r from-orange-500/90 via-amber-500/90 to-orange-500/90 text-white border-orange-400/50 shadow-orange-500/40 shadow-lg"
+                                                                                    : eloChange > 0
+                                                                                        ? "bg-emerald-50 text-emerald-600 border-emerald-100"
+                                                                                        : "bg-rose-50 text-rose-600 border-rose-100"
+                                                                            )}
+                                                                        >
+                                                                            <TrendingUp className={cn("w-4 h-4", eloChange < 0 && "rotate-180")} />
+                                                                            <span>{eloChange > 0 ? "+" : ""}{eloChange} Elo</span>
 
-                                                                        {/* Streak Bonus Fire Effect */}
+                                                                            {/* Streak Bonus Fire Effect */}
+                                                                            {eloBreakdown?.streakBonus && (
+                                                                                <motion.div
+                                                                                    className="flex items-center gap-1 ml-1 pl-2 border-l border-white/30"
+                                                                                    animate={{ scale: [1, 1.1, 1] }}
+                                                                                    transition={{ repeat: Infinity, duration: 0.8 }}
+                                                                                >
+                                                                                    <Flame className="w-4 h-4 fill-yellow-300 text-yellow-200" />
+                                                                                    <span className="text-yellow-100 font-black">+{eloBreakdown.bonusChange}</span>
+                                                                                </motion.div>
+                                                                            )}
+                                                                        </motion.div>
+
+                                                                        {/* Streak Glow Effect */}
                                                                         {eloBreakdown?.streakBonus && (
                                                                             <motion.div
-                                                                                className="flex items-center gap-1 ml-1 pl-2 border-l border-white/30"
-                                                                                animate={{ scale: [1, 1.1, 1] }}
-                                                                                transition={{ repeat: Infinity, duration: 0.8 }}
-                                                                            >
-                                                                                <Flame className="w-4 h-4 fill-yellow-300 text-yellow-200" />
-                                                                                <span className="text-yellow-100 font-black">+{eloBreakdown.bonusChange}</span>
-                                                                            </motion.div>
+                                                                                className="absolute inset-0 rounded-full bg-gradient-to-r from-orange-500/30 via-amber-400/30 to-orange-500/30 blur-xl -z-10"
+                                                                                animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.1, 1] }}
+                                                                                transition={{ repeat: Infinity, duration: 1.5 }}
+                                                                            />
                                                                         )}
-                                                                    </motion.div>
 
-                                                                    {/* Streak Glow Effect */}
-                                                                    {eloBreakdown?.streakBonus && (
-                                                                        <motion.div
-                                                                            className="absolute inset-0 rounded-full bg-gradient-to-r from-orange-500/30 via-amber-400/30 to-orange-500/30 blur-xl -z-10"
-                                                                            animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.1, 1] }}
-                                                                            transition={{ repeat: Infinity, duration: 1.5 }}
-                                                                        />
-                                                                    )}
-
-                                                                    {/* Hover Breakdown */}
-                                                                    {eloBreakdown && (
-                                                                        <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 bg-white rounded-xl shadow-xl border border-stone-100 p-3 opacity-0 group-hover/breakdown:opacity-100 transition-opacity pointer-events-none z-50 text-xs">
-                                                                            <div className="space-y-1.5 ">
-                                                                                <div className="flex justify-between text-stone-500">
-                                                                                    <span>Base Performance</span>
-                                                                                    <span className="font-mono font-bold">{eloBreakdown.baseChange > 0 ? "+" : ""}{eloBreakdown.baseChange}</span>
-                                                                                </div>
-                                                                                {eloBreakdown.streakBonus && (
-                                                                                    <div className="flex justify-between text-orange-500 font-bold bg-orange-50 px-2 py-1 rounded-lg -mx-1">
-                                                                                        <span className="flex items-center gap-1"><Flame className="w-3 h-3 fill-orange-400" /> 连胜加成</span>
-                                                                                        <span className="font-mono">+{eloBreakdown.bonusChange}</span>
+                                                                        {/* Hover Breakdown */}
+                                                                        {eloBreakdown && (
+                                                                            <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-64 bg-white rounded-xl shadow-xl border border-stone-100 p-3 opacity-0 group-hover/breakdown:opacity-100 transition-opacity pointer-events-none z-50 text-xs">
+                                                                                <div className="space-y-1.5 ">
+                                                                                    <div className="flex justify-between text-stone-500">
+                                                                                        <span>Base Performance</span>
+                                                                                        <span className="font-mono font-bold">{eloBreakdown.baseChange > 0 ? "+" : ""}{eloBreakdown.baseChange}</span>
                                                                                     </div>
-                                                                                )}
-                                                                                <div className="w-full h-px bg-stone-100 my-1" />
-                                                                                <div className="flex justify-between text-stone-400 text-[10px] uppercase tracking-wider">
-                                                                                    <span>Difficulty</span>
-                                                                                    <span>{Math.round(eloBreakdown.difficultyElo)}</span>
+                                                                                    {eloBreakdown.streakBonus && (
+                                                                                        <div className="flex justify-between text-orange-500 font-bold bg-orange-50 px-2 py-1 rounded-lg -mx-1">
+                                                                                            <span className="flex items-center gap-1"><Flame className="w-3 h-3 fill-orange-400" /> 连胜加成</span>
+                                                                                            <span className="font-mono">+{eloBreakdown.bonusChange}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    <div className="w-full h-px bg-stone-100 my-1" />
+                                                                                    <div className="flex justify-between text-stone-400 text-[10px] uppercase tracking-wider">
+                                                                                        <span>Difficulty</span>
+                                                                                        <span>{Math.round(eloBreakdown.difficultyElo)}</span>
+                                                                                    </div>
                                                                                 </div>
                                                                             </div>
-                                                                        </div>
-                                                                    )}
+                                                                        )}
+                                                                    </div>
+
+                                                                    {drillFeedback.judge_reasoning && <p className="text-[10px] text-stone-400 mt-3 max-w-lg text-center leading-relaxed"><span className="font-bold text-stone-500 mr-1">AI Judge:</span>{drillFeedback.judge_reasoning}</p>}
                                                                 </div>
-
-                                                                {drillFeedback.judge_reasoning && <p className="text-[10px] text-stone-400 mt-3 max-w-lg text-center leading-relaxed"><span className="font-bold text-stone-500 mr-1">AI Judge:</span>{drillFeedback.judge_reasoning}</p>}
-                                                            </div>
-                                                        ) : (
-                                                            <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150 mt-1">
-                                                                <div className="px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm border bg-stone-50 text-stone-500 border-stone-200"><RefreshCw className="w-3 h-3" /> Practice Mode</div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="bg-white/90 p-6 rounded-[2rem] shadow-xl shadow-stone-200/50 border border-stone-100 backdrop-blur-sm">
-                                                        <div className="flex items-center justify-between mb-4">
-                                                            <div className="flex items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-wider"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Smart Revision</div>
-                                                            <div className="flex gap-2">
-                                                                {mode === 'listening' && (
-                                                                    <button onClick={playRecording} className="px-3 py-1.5 rounded-full bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center gap-1.5 transition-all text-[10px] font-bold" title="Play My Recording"><Mic className="w-3 h-3" /> Play Mine</button>
-                                                                )}
-                                                                <button onClick={playAudio} className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-all" title="Listen to Correct Version"><Volume2 className="w-4 h-4" /></button>
-                                                            </div>
+                                                            ) : null}
                                                         </div>
-                                                        {mode !== "listening" && (
-                                                            <div className="mb-4 p-3 bg-stone-50 rounded-xl border border-stone-100">
-                                                                <p className="text-[10px] text-stone-400 font-bold uppercase mb-1">Your Answer:</p>
-                                                                <p className="text-base font-newsreader text-stone-700 italic">"{userTranslation}"</p>
-                                                            </div>
-                                                        )}
-                                                        {renderDiff()}
-                                                        {drillFeedback.feedback && (
-                                                            <div className="mt-4 pt-4 border-t border-stone-100">
-                                                                <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center gap-2"><Sparkles className="w-3 h-3" /> Coach's Analysis</h4>
-                                                                <div className="space-y-2">
-                                                                    {Array.isArray(drillFeedback.feedback) ? drillFeedback.feedback.map((point: string, i: number) => (
-                                                                        <div key={i} className="flex gap-2 text-stone-600 leading-snug font-medium text-sm"><div className="w-1 h-1 rounded-full bg-indigo-400 mt-2 shrink-0" /><p>{point}</p></div>
-                                                                    )) : (
-                                                                        <div className="grid gap-3">
-                                                                            {drillFeedback.feedback.listening_tips && <div className="bg-amber-50 p-3 rounded-xl text-amber-800 text-xs"><strong className="block mb-0.5 text-amber-600">👂 Listening Tips</strong>{drillFeedback.feedback.listening_tips}</div>}
-                                                                            {drillFeedback.feedback.encouragement && <div className="italic text-stone-500 text-sm">"{drillFeedback.feedback.encouragement}"</div>}
-                                                                        </div>
+
+                                                        <div className="bg-white/90 p-6 rounded-[2rem] shadow-xl shadow-stone-200/50 border border-stone-100 backdrop-blur-sm">
+                                                            <div className="flex items-center justify-between mb-4">
+                                                                <div className="flex items-center gap-2 text-stone-400 text-xs font-bold uppercase tracking-wider"><CheckCircle2 className="w-4 h-4 text-emerald-500" /> Smart Revision</div>
+                                                                <div className="flex gap-2">
+                                                                    {mode === 'listening' && (
+                                                                        <button onClick={playRecording} className="px-3 py-1.5 rounded-full bg-rose-50 text-rose-600 hover:bg-rose-100 flex items-center gap-1.5 transition-all text-[10px] font-bold" title="Play My Recording"><Mic className="w-3 h-3" /> Play Mine</button>
                                                                     )}
+                                                                    <button onClick={playAudio} className="w-8 h-8 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100 flex items-center justify-center transition-all" title="Listen to Correct Version"><Volume2 className="w-4 h-4" /></button>
                                                                 </div>
                                                             </div>
-                                                        )}
+                                                            {mode !== "listening" && (
+                                                                <div className="mb-4 p-3 bg-stone-50 rounded-xl border border-stone-100">
+                                                                    <p className="text-[10px] text-stone-400 font-bold uppercase mb-1">Your Answer:</p>
+                                                                    <p className="text-base font-newsreader text-stone-700 italic">"{userTranslation}"</p>
+                                                                </div>
+                                                            )}
+                                                            {renderDiff()}
+                                                            {drillFeedback.feedback && (
+                                                                <div className="mt-4">
+                                                                    <h4 className="text-xs font-bold text-indigo-600 uppercase tracking-wider mb-2 flex items-center gap-2"><Sparkles className="w-3 h-3" /> Coach's Analysis</h4>
+                                                                    <div className="space-y-2">
+                                                                        {Array.isArray(drillFeedback.feedback) ? drillFeedback.feedback.map((point: string, i: number) => (
+                                                                            <div key={i} className="flex gap-2 text-stone-600 leading-snug font-medium text-sm"><div className="w-1 h-1 rounded-full bg-indigo-400 mt-2 shrink-0" /><p>{point}</p></div>
+                                                                        )) : (
+                                                                            <div className="grid gap-3">
+                                                                                {drillFeedback.feedback.listening_tips && <div className="bg-amber-50 p-3 rounded-xl text-amber-800 text-xs"><strong className="block mb-0.5 text-amber-600">👂 Listening Tips</strong>{drillFeedback.feedback.listening_tips}</div>}
+                                                                                {drillFeedback.feedback.encouragement && <div className="italic text-stone-500 text-sm">"{drillFeedback.feedback.encouragement}"</div>}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Teaching Mode: Error Analysis */}
+                                                            {teachingMode && drillFeedback.error_analysis && drillFeedback.error_analysis.length > 0 && (
+                                                                <div className="mt-5">
+                                                                    <h4 className="text-xs font-bold text-rose-600 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                                                        <AlertTriangle className="w-3 h-3" /> 错误精讲
+                                                                    </h4>
+                                                                    <div className="space-y-2.5">
+                                                                        {drillFeedback.error_analysis.map((err: any, i: number) => (
+                                                                            <div key={i} className="bg-rose-50/60 border border-rose-100/50 rounded-xl p-3 space-y-1.5">
+                                                                                <div className="flex items-start gap-2">
+                                                                                    <span className="text-xs px-1.5 py-0.5 rounded bg-rose-200/60 text-rose-700 font-bold shrink-0">错误</span>
+                                                                                    <span className="text-sm text-stone-600 line-through">{err.error}</span>
+                                                                                </div>
+                                                                                <div className="flex items-start gap-2">
+                                                                                    <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-200/60 text-emerald-700 font-bold shrink-0">正确</span>
+                                                                                    <span className="text-sm text-stone-800 font-medium">{err.correction}</span>
+                                                                                </div>
+                                                                                <div className="text-xs text-stone-500 pl-1 border-l-2 border-amber-300 ml-1">
+                                                                                    📘 <strong>规则：</strong>{err.rule}
+                                                                                </div>
+                                                                                {err.tip && (
+                                                                                    <div className="text-xs text-indigo-600 bg-indigo-50/50 rounded-lg px-2 py-1">
+                                                                                        💡 {err.tip}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Teaching Mode: Similar Patterns */}
+                                                            {teachingMode && drillFeedback.similar_patterns && drillFeedback.similar_patterns.length > 0 && (
+                                                                <div className="mt-5">
+                                                                    <h4 className="text-xs font-bold text-purple-600 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                                                        <BrainCircuit className="w-3 h-3" /> 举一反三
+                                                                    </h4>
+                                                                    <div className="space-y-2">
+                                                                        {drillFeedback.similar_patterns.map((pattern: any, i: number) => (
+                                                                            <div key={i} className="bg-purple-50/40 border border-purple-100/50 rounded-xl p-3">
+                                                                                <div className="text-sm text-stone-600 mb-1">{pattern.chinese}</div>
+                                                                                <div className="text-sm font-newsreader text-stone-900 font-medium italic">→ {pattern.english}</div>
+                                                                                {pattern.point && (
+                                                                                    <div className="text-[11px] text-purple-500 mt-1.5 font-medium">🎯 {pattern.point}</div>
+                                                                                )}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                )}
                                             </motion.div>
                                         )}
                                     </AnimatePresence>
@@ -2436,6 +2734,54 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             </AnimatePresence>
                         ) : null}
                     </div>
+
+                    {/* Floating Teaching Panel */}
+                    <AnimatePresence>
+                        {teachingPanelOpen && teachingMode && mode === 'translation' && (
+                            <>
+                                {/* Backdrop */}
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    onClick={() => setTeachingPanelOpen(false)}
+                                    className="absolute inset-0 bg-black/20 backdrop-blur-[2px] z-[100] rounded-[2.5rem]"
+                                />
+                                {/* Panel */}
+                                <motion.div
+                                    initial={{ x: '100%', opacity: 0 }}
+                                    animate={{ x: 0, opacity: 1 }}
+                                    exit={{ x: '100%', opacity: 0 }}
+                                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                                    className="absolute top-0 right-0 bottom-0 w-full max-w-md z-[101] flex flex-col bg-white/95 backdrop-blur-xl border-l border-stone-200/50 shadow-[-8px_0_40px_rgba(0,0,0,0.08)] rounded-r-[2.5rem] overflow-hidden"
+                                >
+                                    {/* Panel Header */}
+                                    <div className="flex items-center justify-between px-5 py-3 border-b border-stone-100/50 shrink-0">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center">
+                                                <BookOpen className="w-3.5 h-3.5 text-white" />
+                                            </div>
+                                            <span className="font-bold text-sm text-stone-700">📖 教学面板</span>
+                                        </div>
+                                        <button
+                                            onClick={() => setTeachingPanelOpen(false)}
+                                            className="w-7 h-7 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition-all"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                    {/* Panel Content */}
+                                    <div className="flex-1 overflow-y-auto p-4">
+                                        <TeachingCard
+                                            data={teachingData}
+                                            isLoading={isLoadingTeaching}
+                                            onReady={() => setTeachingPanelOpen(false)}
+                                        />
+                                    </div>
+                                </motion.div>
+                            </>
+                        )}
+                    </AnimatePresence>
 
                     {/* DEBUG CONTROLS */}
                     <div className="absolute bottom-4 left-4 z-[200] flex flex-col gap-2 opacity-30 hover:opacity-100 transition-opacity p-2 bg-black/50 rounded-xl backdrop-blur-md">

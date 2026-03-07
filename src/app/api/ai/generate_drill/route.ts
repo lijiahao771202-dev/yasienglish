@@ -42,15 +42,15 @@ export async function POST(req: NextRequest) {
         IMPORTANT: You MUST meet the word count for each level. Count your words!
         ` : `
         TRANSLATION SCALE (Focus on Grammar/Reading) - 400 Elo per tier:
-        - 0-400 (A1 新手): Simple SVO sentences, top 500 words.
-        - 400-800 (A2- 青铜): Compound sentences (and/but), daily topics, 1000 words.
-        - 800-1200 (A2+ 白银): Simple relative clauses (that/which), 1500 words.
-        - 1200-1600 (B1 黄金): Passive voice, complex relative clauses, 3000 words.
-        - 1600-2000 (B2 铂金): Abstract topics, conditionals, participle phrases, 5000 words.
-        - 2000-2400 (C1 钻石): Inversion, subjunctive mood, nuanced vocabulary, 7000 words.
-        - 2400-2800 (C2 大师): Independent absolute constructions, concessive clauses, 10000 words.
-        - 2800-3200 (C2+ 王者): Cleft sentences, garden-path syntax, rare literary vocabulary, 12000 words.
-        - 3200+ (☠️ 处决): EXTREME PUNISHMENT. Archaic expressions, legal/medical jargon, triple-nested clauses, only academic papers.
+        - 0-400 (A1 新手): Simple SVO sentences, top 500 words. 5-10 words.
+        - 400-800 (A2- 青铜): Compound sentences (and/but), daily topics, 1000 words. 8-15 words.
+        - 800-1200 (A2+ 白银): Simple relative clauses (that/which), 1500 words. 12-22 words.
+        - 1200-1600 (B1 黄金): Passive voice, one complex clause, 3000 words. 18-30 words.
+        - 1600-2000 (B2 铂金): Abstract topics, conditionals, participle phrases, 5000 words. 25-40 words.
+        - 2000-2400 (C1 钻石): Inversion, subjunctive mood, nuanced vocabulary, 7000 words. 35-55 words.
+        - 2400-2800 (C2 大师): Independent absolute constructions, concessive clauses, 10000 words. 50-70 words.
+        - 2800-3200 (C2+ 王者): Cleft sentences, garden-path syntax, rare literary vocabulary, 12000 words. 65-90 words.
+        - 3200+ (☠️ 处决): EXTREME PUNISHMENT. Archaic expressions, legal/medical jargon, triple-nested clauses. 80-120 words.
         `;
 
         let specificInstruction = "";
@@ -71,16 +71,16 @@ export async function POST(req: NextRequest) {
 
             specificInstruction += " ⚠️ CRITICAL: COUNT YOUR WORDS! If you exceed the limit, SHORTEN the sentence. The word limit is STRICT.";
         } else {
-            // TRANSLATION MODE: Word count per tier (STRICT with MINIMUM)
-            if (currentElo < 400) { targetTier = "新手"; specificInstruction = `TIER: ${targetTier} (A1). WORD COUNT: 8-15 words MINIMUM. Subject-Verb-Object only.`; }
-            else if (currentElo < 800) { targetTier = "青铜"; specificInstruction = `TIER: ${targetTier} (A2-). WORD COUNT: 15-25 words MINIMUM. Simple compound sentences.`; }
-            else if (currentElo < 1200) { targetTier = "白银"; specificInstruction = `TIER: ${targetTier} (A2+). WORD COUNT: 25-35 words MINIMUM. Simple relative clauses.`; }
-            else if (currentElo < 1600) { targetTier = "黄金"; specificInstruction = `TIER: ${targetTier} (B1). WORD COUNT: 35-50 words MINIMUM. Passive voice and complex clauses.`; }
-            else if (currentElo < 2000) { targetTier = "铂金"; specificInstruction = `TIER: ${targetTier} (B2). WORD COUNT: 50-70 words MINIMUM. Abstract concepts and conditionals.`; }
-            else if (currentElo < 2400) { targetTier = "钻石"; specificInstruction = `TIER: ${targetTier} (C1). WORD COUNT: 70-90 words MINIMUM. Inversion and subjunctive mood.`; }
-            else if (currentElo < 2800) { targetTier = "大师"; specificInstruction = `TIER: ${targetTier} (C2). WORD COUNT: 90-110 words MINIMUM. Native-level sophisticated expression.`; }
-            else if (currentElo < 3200) { targetTier = "王者"; specificInstruction = `TIER: ${targetTier} (C2+). WORD COUNT: 110-130 words MINIMUM. Rare literary vocabulary.`; }
-            else { targetTier = "处决"; specificInstruction = `TIER: ${targetTier} (PUNISHMENT). WORD COUNT: 130-150 words MINIMUM. Use archaic vocabulary, legal/medical jargon, triple-nested clauses.`; }
+            // TRANSLATION MODE: Word count per tier (BALANCED - focus on quality over length)
+            if (currentElo < 400) { targetTier = "新手"; specificInstruction = `TIER: ${targetTier} (A1). WORD COUNT: 5-8 words MAX. Use ONLY one simple sentence (Subject + Verb + Object). No adjective clauses. Top 300 daily words only. Example complexity: "I like eating apples."`; }
+            else if (currentElo < 800) { targetTier = "青铜"; specificInstruction = `TIER: ${targetTier} (A2-). WORD COUNT: 8-14 words MAX. ONE simple sentence, may use "and/but/so" to connect TWO short clauses. Daily life topics only. Example complexity: "I went to the store and bought some milk."`; }
+            else if (currentElo < 1200) { targetTier = "白银"; specificInstruction = `TIER: ${targetTier} (A2+). WORD COUNT: 10-18 words MAX. ONE main sentence. May have ONE simple clause (because/when/if). NO relative clauses (that/which). Common vocabulary. Example complexity: "I was happy because my friend came to visit me yesterday."`; }
+            else if (currentElo < 1600) { targetTier = "黄金"; specificInstruction = `TIER: ${targetTier} (B1). WORD COUNT: 15-25 words. May use ONE relative clause or passive voice. Keep sentence structure clear and linear.`; }
+            else if (currentElo < 2000) { targetTier = "铂金"; specificInstruction = `TIER: ${targetTier} (B2). WORD COUNT: 20-35 words. Abstract topics, conditionals, participle phrases allowed.`; }
+            else if (currentElo < 2400) { targetTier = "钻石"; specificInstruction = `TIER: ${targetTier} (C1). WORD COUNT: 30-50 words. Inversion, subjunctive mood, nuanced vocabulary.`; }
+            else if (currentElo < 2800) { targetTier = "大师"; specificInstruction = `TIER: ${targetTier} (C2). WORD COUNT: 45-65 words. Native-level sophisticated expression.`; }
+            else if (currentElo < 3200) { targetTier = "王者"; specificInstruction = `TIER: ${targetTier} (C2+). WORD COUNT: 60-85 words. Rare literary vocabulary, complex structures.`; }
+            else { targetTier = "处决"; specificInstruction = `TIER: ${targetTier} (PUNISHMENT). WORD COUNT: 80-120 words. Archaic vocabulary, legal/medical jargon, triple-nested clauses.`; }
         }
 
         // Put the MOST CRITICAL info at the TOP of the prompt
@@ -272,15 +272,15 @@ DO NOT generate content for a lower difficulty tier than requested.` },
                 if (elo < 3200) return { min: 24, max: 40, tier: "王者", cefr: "C2+" };
                 return { min: 35, max: 999, tier: "处决", cefr: "∞" };
             } else {
-                if (elo < 400) return { min: 8, max: 15, tier: "新手", cefr: "A1" };
-                if (elo < 800) return { min: 15, max: 25, tier: "青铜", cefr: "A2-" };
-                if (elo < 1200) return { min: 25, max: 35, tier: "白银", cefr: "A2+" };
-                if (elo < 1600) return { min: 35, max: 50, tier: "黄金", cefr: "B1" };
-                if (elo < 2000) return { min: 50, max: 70, tier: "铂金", cefr: "B2" };
-                if (elo < 2400) return { min: 70, max: 90, tier: "钻石", cefr: "C1" };
-                if (elo < 2800) return { min: 90, max: 110, tier: "大师", cefr: "C2" };
-                if (elo < 3200) return { min: 110, max: 130, tier: "王者", cefr: "C2+" };
-                return { min: 130, max: 150, tier: "处决", cefr: "∞" };
+                if (elo < 400) return { min: 4, max: 10, tier: "新手", cefr: "A1" };
+                if (elo < 800) return { min: 6, max: 16, tier: "青铜", cefr: "A2-" };
+                if (elo < 1200) return { min: 8, max: 20, tier: "白银", cefr: "A2+" };
+                if (elo < 1600) return { min: 12, max: 28, tier: "黄金", cefr: "B1" };
+                if (elo < 2000) return { min: 18, max: 40, tier: "铂金", cefr: "B2" };
+                if (elo < 2400) return { min: 25, max: 55, tier: "钻石", cefr: "C1" };
+                if (elo < 2800) return { min: 40, max: 70, tier: "大师", cefr: "C2" };
+                if (elo < 3200) return { min: 55, max: 90, tier: "王者", cefr: "C2+" };
+                return { min: 70, max: 130, tier: "处决", cefr: "∞" };
             }
         };
 

@@ -647,11 +647,9 @@ export default function TranslationPractice() {
                                     <textarea
                                         value={translation}
                                         onChange={(e) => setTranslation(e.target.value)}
-                                        placeholder="输入你的英文翻译..."
+                                        placeholder="在这里输入你的英文翻译..."
+                                        className="w-full h-40 p-5 text-lg font-serif bg-transparent border-2 border-transparent focus:border-indigo-400/50 rounded-2xl resize-none placeholder:text-slate-300 dark:placeholder:text-white/20 outline-none transition-all shadow-inner"
                                         disabled={loading}
-                                        className="w-full bg-white/50 dark:bg-black/20 border-2 border-transparent focus:border-indigo-400/50 rounded-2xl p-4 text-lg min-h-[120px]"
-                                        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), submitTranslation())}
-                                        autoFocus
                                     />
                                     <div className="mt-4 flex justify-end">
                                         <button onClick={submitTranslation} disabled={!translation.trim() || loading} className="px-6 py-3 bg-slate-900 text-white rounded-xl shadow-lg flex items-center gap-2 hover:scale-[1.02] transition-transform">
@@ -723,9 +721,7 @@ export default function TranslationPractice() {
                                         value={translation}
                                         onChange={(e) => setTranslation(e.target.value)}
                                         placeholder="Type the corrected sentence here..."
-                                        className="w-full bg-white/50 border-2 border-rose-100 focus:border-rose-400 rounded-2xl p-4 text-lg min-h-[100px]"
-                                        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleRetrySubmit())}
-                                        autoFocus
+                                        className="w-full h-32 p-4 text-lg font-serif bg-white/50 border-2 border-transparent focus:border-rose-400/50 rounded-2xl resize-none outline-none shadow-inner"
                                     />
 
                                     <button onClick={handleRetrySubmit} disabled={!translation.trim()} className="w-full py-3 bg-rose-600 text-white rounded-xl font-bold shadow-lg hover:bg-rose-700 transition-all flex items-center justify-center gap-2">
