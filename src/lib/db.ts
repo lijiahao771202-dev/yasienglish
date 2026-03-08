@@ -89,6 +89,7 @@ export class YasiDB extends Dexie {
         inventory?: {
             capsule?: number;
             hint_ticket?: number;
+            vocab_ticket?: number;
         };
     }>;
 
@@ -224,6 +225,37 @@ export class YasiDB extends Dexie {
                     ...existingInventory,
                     capsule: Math.max(0, capsule),
                     hint_ticket: Math.max(0, hintTicket),
+                };
+                profile.hints = Math.max(0, capsule); // compatibility mirror
+                if (profile.coins === undefined) profile.coins = 0;
+            });
+        });
+
+        // Version 11: Add vocab ticket inventory for keyword reveal tool.
+        this.version(11).stores({
+            user_profile: '++id'
+        }).upgrade(tx => {
+            return tx.table('user_profile').toCollection().modify(profile => {
+                const legacyCapsule = typeof profile.hints === 'number' ? profile.hints : 15;
+                const existingInventory = (profile.inventory && typeof profile.inventory === 'object')
+                    ? profile.inventory
+                    : {};
+
+                const capsule = typeof existingInventory.capsule === 'number'
+                    ? existingInventory.capsule
+                    : legacyCapsule;
+                const hintTicket = typeof existingInventory.hint_ticket === 'number'
+                    ? existingInventory.hint_ticket
+                    : 3;
+                const vocabTicket = typeof existingInventory.vocab_ticket === 'number'
+                    ? existingInventory.vocab_ticket
+                    : 2;
+
+                profile.inventory = {
+                    ...existingInventory,
+                    capsule: Math.max(0, capsule),
+                    hint_ticket: Math.max(0, hintTicket),
+                    vocab_ticket: Math.max(0, vocabTicket),
                 };
                 profile.hints = Math.max(0, capsule); // compatibility mirror
                 if (profile.coins === undefined) profile.coins = 0;

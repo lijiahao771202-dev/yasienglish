@@ -126,13 +126,14 @@ interface StreakTierVisual {
 }
 
 const STREAK_PARTICLE_POSITIONS = [12, 26, 39, 54, 68, 82, 90, 18, 47, 76];
-type ShopItemId = 'capsule' | 'hint_ticket';
+type ShopItemId = 'capsule' | 'hint_ticket' | 'vocab_ticket';
 
 type InventoryState = Record<ShopItemId, number>;
 
 const DEFAULT_INVENTORY: InventoryState = {
     capsule: 15,
     hint_ticket: 3,
+    vocab_ticket: 2,
 };
 
 const ITEM_CATALOG: Record<ShopItemId, { id: ShopItemId; name: string; price: number; icon: string; consumeAction: string; description: string; }> = {
@@ -152,6 +153,14 @@ const ITEM_CATALOG: Record<ShopItemId, { id: ShopItemId; name: string; price: nu
         consumeAction: 'Hint 全句参考',
         description: '用于显示完整参考句幽灵层',
     },
+    vocab_ticket: {
+        id: 'vocab_ticket',
+        name: '关键词提示券',
+        price: 20,
+        icon: '🧩',
+        consumeAction: '解锁底部关键词',
+        description: '用于显示本题关键词提示',
+    },
 };
 
 const normalizeInventory = (inventory: unknown, legacyCapsule?: number): InventoryState => {
@@ -162,10 +171,14 @@ const normalizeInventory = (inventory: unknown, legacyCapsule?: number): Invento
     const hintTicketValue = typeof rawInventory.hint_ticket === 'number'
         ? rawInventory.hint_ticket
         : DEFAULT_INVENTORY.hint_ticket;
+    const vocabTicketValue = typeof rawInventory.vocab_ticket === 'number'
+        ? rawInventory.vocab_ticket
+        : DEFAULT_INVENTORY.vocab_ticket;
 
     return {
         capsule: Math.max(0, capsuleValue),
         hint_ticket: Math.max(0, hintTicketValue),
+        vocab_ticket: Math.max(0, vocabTicketValue),
     };
 };
 
@@ -380,6 +393,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isHintShake, setIsHintShake] = useState(false);
     const [isHintLoading, setIsHintLoading] = useState(false);
     const [fullReferenceHint, setFullReferenceHint] = useState<{ version: number; text: string }>({ version: 0, text: '' });
+    const [isVocabHintRevealed, setIsVocabHintRevealed] = useState(false);
     const [showShopModal, setShowShopModal] = useState(false);
 
     const persistProfilePatch = useCallback((patch: Partial<{ coins: number; hints: number; inventory: InventoryState }>) => {
@@ -495,6 +509,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     const hasStartedRef = useRef(false);
     const hasPlayedEchoRef = useRef(false); // For Echo Beast (One-time audio)
+    const vocabHintRevealRef = useRef(false);
 
     // Track if Lightning mode audio has been played (for delayed countdown)
     const [lightningStarted, setLightningStarted] = useState(false);
@@ -629,6 +644,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         inventoryRef.current = inventory;
     }, [coins, inventory]);
 
+    useEffect(() => {
+        vocabHintRevealRef.current = isVocabHintRevealed;
+    }, [isVocabHintRevealed]);
+
     // Cleanup: Stop ALL audio and abort requests when component unmounts
     useEffect(() => {
         return () => {
@@ -652,6 +671,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const currentStreak = mode === 'listening' ? listeningStreak : streakCount;
     const capsuleCount = inventory.capsule;
     const hintTicketCount = inventory.hint_ticket;
+    const vocabTicketCount = inventory.vocab_ticket;
     const prefersReducedMotion = useReducedMotion();
     const [streakTransition, setStreakTransition] = useState<'surge' | 'cooldown' | null>(null);
     const [cooldownTier, setCooldownTier] = useState<StreakTier>(0);
@@ -1283,6 +1303,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setEloChange(null);
             setAssistsUsedInCurrentDrill(0);
             setIsHintLoading(false);
+            setIsVocabHintRevealed(false);
+            vocabHintRevealRef.current = false;
             resetResult();
             if (audioRef.current) audioRef.current.pause();
             hasPlayedEchoRef.current = false;
@@ -1331,6 +1353,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setEloChange(null);
         setAssistsUsedInCurrentDrill(0);
         setIsHintLoading(false);
+        setIsVocabHintRevealed(false);
+        vocabHintRevealRef.current = false;
         resetResult(); // Clear previous recording transcript
         if (audioRef.current) audioRef.current.pause();
 
@@ -2033,6 +2057,27 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setIsHintLoading(false);
         }
     };
+
+    const handleRevealVocabHint = useCallback(() => {
+        if (!drillData) return false;
+        const keywords = (drillData.target_english_vocab || drillData.key_vocab || []) as string[];
+        if (keywords.length === 0) return false;
+        if (vocabHintRevealRef.current) return true;
+
+        if (getItemCount('vocab_ticket') <= 0) {
+            setIsHintShake(true);
+            setTimeout(() => setIsHintShake(false), 500);
+            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: '关键词提示券不足，请先去商场购买' });
+            return false;
+        }
+
+        vocabHintRevealRef.current = true;
+        applyEconomyPatch({ itemDelta: { vocab_ticket: -1 } });
+        setAssistsUsedInCurrentDrill(prev => prev + 1);
+        setIsVocabHintRevealed(true);
+        setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: `已解锁 ${keywords.length} 个关键词提示` });
+        return true;
+    }, [applyEconomyPatch, drillData, getItemCount]);
 
     const handlePredictionRequest = useCallback(() => {
         if (getItemCount('capsule') <= 0) {
@@ -2933,6 +2978,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                         <span className="font-bold text-[11px] mt-0.5">🪄</span>
                                         <span className="font-mono font-bold text-xs tabular-nums">{hintTicketCount}</span>
                                     </div>
+
+                                    <div className="flex items-center gap-1.5 px-2.5 h-full bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100/70">
+                                        <span className="font-bold text-[11px] mt-0.5">🧩</span>
+                                        <span className="font-mono font-bold text-xs tabular-nums">{vocabTicketCount}</span>
+                                    </div>
                                 </div>
                             )}
 
@@ -3308,11 +3358,37 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             </h3>
 
                                                             {/* Keywords */}
-                                                            <div className="flex flex-wrap justify-center gap-3">
-                                                                {(drillData.target_english_vocab || drillData.key_vocab || []).map((vocab, i) => (
-                                                                    <span key={i} onClick={(e) => handleWordClick(e, vocab)} className="px-5 py-2 rounded-full bg-white border border-stone-200 text-stone-600 font-newsreader italic text-lg hover:bg-stone-50 hover:border-stone-300 hover:text-stone-900 cursor-pointer transition-all shadow-sm">{vocab}</span>
-                                                                ))}
-                                                            </div>
+                                                            {(() => {
+                                                                const keywords = (drillData.target_english_vocab || drillData.key_vocab || []) as string[];
+                                                                if (keywords.length === 0) return null;
+
+                                                                if (mode !== 'translation' || isVocabHintRevealed) {
+                                                                    return (
+                                                                        <div className="flex flex-wrap justify-center gap-3">
+                                                                            {keywords.map((vocab, i) => (
+                                                                                <span key={i} onClick={(e) => handleWordClick(e, vocab)} className="px-5 py-2 rounded-full bg-white border border-stone-200 text-stone-600 font-newsreader italic text-lg hover:bg-stone-50 hover:border-stone-300 hover:text-stone-900 cursor-pointer transition-all shadow-sm">{vocab}</span>
+                                                                            ))}
+                                                                        </div>
+                                                                    );
+                                                                }
+
+                                                                return (
+                                                                    <div className="flex flex-col items-center gap-2.5">
+                                                                        <div className="rounded-full border border-stone-200 bg-white/75 px-3 py-1 text-xs font-semibold text-stone-500">
+                                                                            已隐藏 {keywords.length} 个关键词
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={handleRevealVocabHint}
+                                                                            className={cn(
+                                                                                "rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-bold text-emerald-700 transition-all hover:-translate-y-0.5 hover:bg-emerald-100",
+                                                                                isHintShake && "animate-shake"
+                                                                            )}
+                                                                        >
+                                                                            显示关键词（消耗 1 🧩）
+                                                                        </button>
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                         </div>
                                                     )}
 
