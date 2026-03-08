@@ -91,6 +91,9 @@ export class YasiDB extends Dexie {
             hint_ticket?: number;
             vocab_ticket?: number;
         };
+        // Cosmetic Themes
+        owned_themes?: string[];
+        active_theme?: string;
     }>;
 
     constructor() {
@@ -259,6 +262,38 @@ export class YasiDB extends Dexie {
                 };
                 profile.hints = Math.max(0, capsule); // compatibility mirror
                 if (profile.coins === undefined) profile.coins = 0;
+            });
+        });
+
+        // Version 12: Cosmetic themes support
+        this.version(12).stores({
+            user_profile: '++id'
+        }).upgrade(tx => {
+            return tx.table('user_profile').toCollection().modify(profile => {
+                if (!Array.isArray(profile.owned_themes)) {
+                    profile.owned_themes = ['morning_coffee']; // Default free theme
+                }
+                if (!profile.active_theme) {
+                    profile.active_theme = 'morning_coffee';
+                }
+            });
+        });
+
+        // Version 14: Unlock the new ultra-premium themes for testing
+        this.version(14).stores({
+            user_profile: '++id'
+        }).upgrade(tx => {
+            return tx.table('user_profile').toCollection().modify(profile => {
+                profile.owned_themes = ['morning_coffee', 'sakura', 'golden_hour', 'obsidian_gold', 'holo_pearl', 'crimson_velvet'];
+            });
+        });
+
+        // Version 15: Swap out dark themes for high-contrast light themes testing
+        this.version(15).stores({
+            user_profile: '++id'
+        }).upgrade(tx => {
+            return tx.table('user_profile').toCollection().modify(profile => {
+                profile.owned_themes = ['morning_coffee', 'sakura', 'golden_hour', 'holo_pearl', 'cloud_nine', 'lilac_dream'];
             });
         });
     }
