@@ -182,6 +182,114 @@ const normalizeInventory = (inventory: unknown, legacyCapsule?: number): Invento
     };
 };
 
+// ===== COSMETIC THEMES =====
+type CosmeticThemeId = 'morning_coffee' | 'sakura' | 'golden_hour' | 'holo_pearl' | 'cloud_nine' | 'lilac_dream';
+
+interface CosmeticTheme {
+    id: CosmeticThemeId;
+    name: string;
+    icon: string;
+    price: number; // 0 = free
+    description: string;
+    preview: string; // short tagline for shop
+    // Visual tokens
+    bgClass: string;       // Background gradient CSS class
+    cardClass: string;     // Main card container class
+    textClass: string;     // Primary text color
+    mutedClass: string;    // Muted text color
+    headerBg: string;      // Header pill background
+    isDark: boolean;       // Dark mode flag for contrast adjustments
+}
+
+const COSMETIC_THEMES: Record<CosmeticThemeId, CosmeticTheme> = {
+    morning_coffee: {
+        id: 'morning_coffee',
+        name: '☕ Morning Coffee',
+        icon: '☕',
+        price: 0,
+        description: '温暖的咖啡色调，默认主题',
+        preview: '经典暖色玻璃拟态',
+        bgClass: 'bg-gradient-to-br from-slate-100 via-stone-50 to-blue-50',
+        cardClass: 'bg-white/70 backdrop-blur-2xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-white/30',
+        textClass: 'text-stone-900',
+        mutedClass: 'text-stone-500',
+        headerBg: 'bg-white/80',
+        isDark: false,
+    },
+    sakura: {
+        id: 'sakura',
+        name: '🌸 樱花漫步',
+        icon: '🌸',
+        price: 300,
+        description: '粉色日系温柔，飘落樱花瓣',
+        preview: '樱粉 + 花瓣粒子',
+        bgClass: 'bg-gradient-to-br from-[#fdf2f8] via-[#fce7f3] to-[#fff1f2]',
+        cardClass: 'bg-white/75 backdrop-blur-2xl border border-pink-200/60 shadow-[0_8px_32px_rgba(236,72,153,0.08),inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-pink-100/40',
+        textClass: 'text-pink-950',
+        mutedClass: 'text-pink-400',
+        headerBg: 'bg-white/80',
+        isDark: false,
+    },
+    golden_hour: {
+        id: 'golden_hour',
+        name: '🌅 黄金时刻',
+        icon: '🌅',
+        price: 300,
+        description: '日落暖光，液态玻璃流动',
+        preview: '琥珀暖金 + 流光溢彩',
+        bgClass: 'bg-gradient-to-br from-[#fff7ed] via-[#fef3c7] to-[#fff1f2]',
+        cardClass: 'bg-white/72 backdrop-blur-2xl border border-amber-200/50 shadow-[0_8px_32px_rgba(245,158,11,0.1),inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-amber-100/40',
+        textClass: 'text-amber-950',
+        mutedClass: 'text-amber-600/60',
+        headerBg: 'bg-white/80',
+        isDark: false,
+    },
+    holo_pearl: {
+        id: 'holo_pearl',
+        name: '✨ 全息珍珠',
+        icon: '✨',
+        price: 500,
+        description: '纯净洁白，泛起超现实全息光晕',
+        preview: '珍珠白板 + 全息流光',
+        bgClass: 'bg-[#fcfdfd]',
+        cardClass: 'bg-white/60 backdrop-blur-3xl border border-white/80 shadow-[0_15px_50px_rgba(0,0,0,0.04),inset_0_2px_4px_rgba(255,255,255,1)] ring-1 ring-white/50',
+        textClass: 'text-slate-800',
+        mutedClass: 'text-slate-400',
+        headerBg: 'bg-white/70',
+        isDark: false,
+    },
+    cloud_nine: {
+        id: 'cloud_nine',
+        name: '☁️ 云端漫步',
+        icon: '☁️',
+        price: 500,
+        description: '清透呼吸感，极简白蓝天空',
+        preview: '天青色 + 通透云朵呼吸',
+        bgClass: 'bg-gradient-to-br from-[#f0f9ff] via-[#e0f2fe] to-[#f8fafc]',
+        cardClass: 'bg-white/75 backdrop-blur-3xl border border-sky-200/50 shadow-[0_8px_32px_rgba(14,165,233,0.06),inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-sky-100/60',
+        textClass: 'text-cyan-950',
+        mutedClass: 'text-cyan-600/60',
+        headerBg: 'bg-white/80',
+        isDark: false,
+    },
+    lilac_dream: {
+        id: 'lilac_dream',
+        name: '🦄 丁香幻梦',
+        icon: '🦄',
+        price: 500,
+        description: '梦幻马卡龙紫粉，治愈流光',
+        preview: '淡紫色 + 柔和光谱交织',
+        bgClass: 'bg-gradient-to-br from-[#faf5ff] via-[#f3e8ff] to-[#fdf2f8]',
+        cardClass: 'bg-white/70 backdrop-blur-3xl border border-purple-200/50 shadow-[0_8px_32px_rgba(168,85,247,0.06),inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-purple-100/50',
+        textClass: 'text-purple-950',
+        mutedClass: 'text-purple-500/60',
+        headerBg: 'bg-white/80',
+        isDark: false,
+    },
+};
+
+const ALL_THEME_IDS = Object.keys(COSMETIC_THEMES) as CosmeticThemeId[];
+
 const getStreakTier = (streak: number): StreakTier => {
     if (streak >= 10) return 4;
     if (streak >= 7) return 3;
@@ -396,7 +504,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isVocabHintRevealed, setIsVocabHintRevealed] = useState(false);
     const [showShopModal, setShowShopModal] = useState(false);
 
-    const persistProfilePatch = useCallback((patch: Partial<{ coins: number; hints: number; inventory: InventoryState }>) => {
+    // Cosmetic Theme State
+    const [cosmeticTheme, setCosmeticTheme] = useState<CosmeticThemeId>('morning_coffee');
+    const [ownedThemes, setOwnedThemes] = useState<CosmeticThemeId[]>([...ALL_THEME_IDS]); // ALL UNLOCKED for testing
+    const activeCosmeticTheme = COSMETIC_THEMES[cosmeticTheme] || COSMETIC_THEMES.morning_coffee;
+
+    const persistProfilePatch = useCallback((patch: Partial<{ coins: number; hints: number; inventory: InventoryState; owned_themes: string[]; active_theme: string }>) => {
         if (Object.keys(patch).length === 0) return;
         db.user_profile.orderBy('id').first().then(profile => {
             if (profile?.id) {
@@ -570,10 +683,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         // Keep DB writes outside state updaters to avoid duplicate side effects in dev.
                         db.user_profile.orderBy('id').first().then(profile => {
                             if (!profile) return;
-                            db.user_profile.update(profile.id, {
+                            db.user_profile.update(profile.id!, {
                                 [isListeningMode ? 'listening_elo' : 'elo_rating']: newElo,
                                 [isListeningMode ? 'listening_streak' : 'streak_count']: 0
-                            });
+                            } as any);
                             db.elo_history.add({
                                 mode: isListeningMode ? 'listening' : 'translation',
                                 elo: newElo,
@@ -783,6 +896,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 setCoins(loadedCoins);
                 setInventory(loadedInventory);
 
+                // Load Cosmetic Themes — all unlocked for now
+                setOwnedThemes([...ALL_THEME_IDS]);
+                const loadedActive = (profile.active_theme && profile.active_theme in COSMETIC_THEMES) ? profile.active_theme as CosmeticThemeId : 'morning_coffee';
+                setCosmeticTheme(loadedActive);
+
                 setIsEloLoaded(true); // Mark Elo as loaded
             } else {
                 const initialInventory = { ...DEFAULT_INVENTORY };
@@ -801,6 +919,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 inventoryRef.current = initialInventory;
                 setCoins(0);
                 setInventory(initialInventory);
+                setOwnedThemes([...ALL_THEME_IDS]);
+                setCosmeticTheme('morning_coffee');
                 setIsEloLoaded(true); // Mark Elo as loaded (new profile)
             }
         };
@@ -1136,8 +1256,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         const reward = gachaRewards[index];
         setTimeout(() => {
             // Apply reward
-                switch (reward.type) {
-                    case 'capsule_1':
+            switch (reward.type) {
+                case 'capsule_1':
                     applyEconomyPatch({ itemDelta: { capsule: 1 } });
                     setLootDrop({ type: 'gem', amount: 1, rarity: 'rare', message: '💊 获得 1 个灵感胶囊！' });
                     break;
@@ -1197,10 +1317,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             // DB Sync
             db.user_profile.orderBy('id').first().then(profile => {
                 if (profile) {
-                    db.user_profile.update(profile.id, {
+                    db.user_profile.update(profile.id!, {
                         [isListening ? 'listening_elo' : 'elo_rating']: newElo,
                         [isListening ? 'listening_streak' : 'streak_count']: 0
-                    });
+                    } as any);
 
                     // Also record in history so the chart shows the drop
                     db.elo_history.add({
@@ -2105,6 +2225,25 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         return true;
     }, [applyEconomyPatch]);
 
+    const handleBuyTheme = useCallback((themeId: CosmeticThemeId) => {
+        const themeDef = COSMETIC_THEMES[themeId];
+        if (!themeDef || ownedThemes.includes(themeId)) return false;
+        if (coinsRef.current < themeDef.price) return false;
+
+        applyEconomyPatch({ coinsDelta: -themeDef.price });
+        const nextOwned = [...ownedThemes, themeId];
+        setOwnedThemes(nextOwned);
+        setCosmeticTheme(themeId);
+        persistProfilePatch({ owned_themes: nextOwned, active_theme: themeId });
+        return true;
+    }, [applyEconomyPatch, ownedThemes, persistProfilePatch]);
+
+    const handleSwitchTheme = useCallback((themeId: CosmeticThemeId) => {
+        if (!ownedThemes.includes(themeId)) return;
+        setCosmeticTheme(themeId);
+        persistProfilePatch({ active_theme: themeId });
+    }, [ownedThemes, persistProfilePatch]);
+
     // --- Interactive Renderers (Ported) ---
 
     const handleWordClick = (e: React.MouseEvent, word: string) => {
@@ -2567,35 +2706,88 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         )}
                         {theme === 'default' && (
                             <motion.div
-                                key="theme-default"
+                                key={`theme-cosmetic-${cosmeticTheme}`}
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
                                 transition={{ duration: 0.8 }}
-                                className="absolute inset-0 bg-gradient-to-br from-slate-100 via-stone-50 to-blue-50"
+                                className={cn("absolute inset-0", activeCosmeticTheme.bgClass)}
                             >
-                                {/* Animated gradient orbs - soft pastel */}
-                                <motion.div
-                                    className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-blue-300/30 rounded-full blur-[150px]"
-                                    animate={{ scale: [1, 1.15, 1], x: [0, 20, 0], y: [0, -20, 0] }}
-                                    transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-                                />
-                                <motion.div
-                                    className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-purple-300/25 rounded-full blur-[120px]"
-                                    animate={{ scale: [1.1, 1, 1.1], x: [0, -15, 0], y: [0, 15, 0] }}
-                                    transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-                                />
-                                <motion.div
-                                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-amber-200/20 rounded-full blur-[100px]"
-                                    animate={{ scale: [1, 1.2, 1] }}
-                                    transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-                                />
+                                {/* Morning Coffee orbs */}
+                                {cosmeticTheme === 'morning_coffee' && (
+                                    <>
+                                        <motion.div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-slate-200/50 rounded-full blur-[120px]" animate={{ scale: [1, 1.2, 1], x: [0, 50, 0], y: [0, -30, 0] }} transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }} />
+                                        <motion.div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-blue-100/40 rounded-full blur-[100px]" animate={{ scale: [1.1, 1, 1.1], x: [0, -40, 0] }} transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }} />
+                                        <motion.div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-stone-100/30 rounded-full blur-[150px]" animate={{ scale: [1, 1.3, 1], opacity: [0.5, 0.8, 0.5] }} transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }} />
+                                    </>
+                                )}
 
-                                {/* Subtle grid pattern */}
-                                <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.02)_1px,transparent_1px)] bg-[size:40px_40px]" />
+                                {/* Sakura petals + pink glow */}
+                                {cosmeticTheme === 'sakura' && (
+                                    <>
+                                        <motion.div className="absolute top-1/4 right-1/4 w-[500px] h-[500px] bg-pink-300/25 rounded-full blur-[150px]" animate={{ scale: [1, 1.15, 1], x: [0, -20, 0] }} transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }} />
+                                        <motion.div className="absolute bottom-1/3 left-1/3 w-[400px] h-[400px] bg-rose-200/20 rounded-full blur-[120px]" animate={{ scale: [1.1, 1, 1.1], y: [0, 15, 0] }} transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }} />
+                                        {/* Falling petals */}
+                                        {[...Array(8)].map((_, i) => (
+                                            <motion.div key={i} className="absolute text-pink-300/60 text-lg select-none pointer-events-none" style={{ left: `${8 + i * 12}%`, top: '-5%' }} animate={{ y: [0, 800], x: [0, Math.sin(i) * 60, 0], rotate: [0, 360 * (i % 2 === 0 ? 1 : -1)] }} transition={{ duration: 8 + i * 2, repeat: Infinity, delay: i * 1.5, ease: "linear" }} >🌸</motion.div>
+                                        ))}
+                                    </>
+                                )}
 
-                                {/* Noise texture for glass effect */}
+                                {/* Golden Hour — warm flowing orbs */}
+                                {cosmeticTheme === 'golden_hour' && (
+                                    <>
+                                        <motion.div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] bg-amber-300/25 rounded-full blur-[150px]" animate={{ scale: [1, 1.2, 1], x: [0, 30, 0], y: [0, -15, 0] }} transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }} />
+                                        <motion.div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] bg-rose-300/20 rounded-full blur-[130px]" animate={{ scale: [1.1, 1, 1.1], x: [0, -20, 0] }} transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }} />
+                                        <motion.div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] bg-orange-200/20 rounded-full blur-[110px]" animate={{ scale: [1, 1.3, 1], opacity: [0.15, 0.3, 0.15] }} transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }} />
+                                        {/* Warm light rays */}
+                                        <div className="absolute top-0 right-0 w-[60%] h-[60%] bg-[radial-gradient(ellipse_at_top_right,rgba(251,191,36,0.12),transparent_60%)]" />
+                                        <div className="absolute bottom-0 left-0 w-[40%] h-[40%] bg-[radial-gradient(ellipse_at_bottom_left,rgba(251,113,133,0.08),transparent_60%)]" />
+                                    </>
+                                )}
+
+                                {/* Cloud Nine — Ultra-clean white background with breathable cyan/blue pastel gradients */}
+                                {cosmeticTheme === 'cloud_nine' && (
+                                    <div className="absolute inset-0 overflow-hidden mix-blend-multiply opacity-50">
+                                        <motion.div className="absolute -top-[10%] -left-[10%] w-[70vw] h-[70vw] bg-sky-200/40 rounded-full blur-[120px]" animate={{ scale: [1, 1.1, 1], x: [0, 40, 0], y: [0, 30, 0] }} transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }} />
+                                        <motion.div className="absolute top-[20%] -right-[20%] w-[80vw] h-[80vw] bg-cyan-100/40 rounded-full blur-[130px]" animate={{ scale: [1.1, 1, 1.1], x: [0, -50, 0], y: [0, -30, 0] }} transition={{ duration: 22, repeat: Infinity, ease: "easeInOut" }} />
+                                        <motion.div className="absolute -bottom-[20%] left-[10%] w-[60vw] h-[60vw] bg-blue-100/40 rounded-full blur-[140px]" animate={{ scale: [1, 1.2, 1], x: [0, 30, 0], y: [0, -40, 0] }} transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }} />
+                                        {/* Subtle white noise overlay for physical texture */}
+                                        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.02] mix-blend-overlay" />
+                                    </div>
+                                )}
+
+                                {/* Lilac Dream — Dreamy pastel lavender/pink gradients */}
+                                {cosmeticTheme === 'lilac_dream' && (
+                                    <div className="absolute inset-0 overflow-hidden">
+                                        <motion.div className="absolute top-0 left-0 w-[60vw] h-[60vw] bg-fuchsia-300/15 rounded-full blur-[140px]" animate={{ scale: [1, 1.2, 1], x: [0, 50, 0], y: [0, 20, 0] }} transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }} />
+                                        <motion.div className="absolute top-[10%] right-[10%] w-[70vw] h-[70vw] bg-purple-300/15 rounded-full blur-[150px]" animate={{ scale: [1.1, 1, 1.1], x: [0, -40, 0], y: [0, -20, 0] }} transition={{ duration: 20, repeat: Infinity, ease: "easeInOut" }} />
+                                        <motion.div className="absolute bottom-0 left-[20%] w-[65vw] h-[65vw] bg-pink-300/15 rounded-full blur-[160px]" animate={{ scale: [1, 1.15, 1], x: [0, 30, 0], y: [0, -40, 0] }} transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }} />
+                                        {/* Floating soft light orbs */}
+                                        {[...Array(6)].map((_, i) => (
+                                            <motion.div
+                                                key={i}
+                                                className="absolute w-32 h-32 bg-white/20 rounded-full blur-[20px]"
+                                                style={{ left: `${20 + Math.random() * 60}%`, top: `${20 + Math.random() * 60}%` }}
+                                                animate={{
+                                                    opacity: [0.2, 0.5, 0.2],
+                                                    scale: [1, 1.5, 1],
+                                                    x: [0, (Math.random() - 0.5) * 100],
+                                                    y: [0, (Math.random() - 0.5) * 100],
+                                                }}
+                                                transition={{ duration: 8 + Math.random() * 8, repeat: Infinity, delay: Math.random() * 5, ease: "easeInOut" }}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Noise texture - universal */}
                                 <div className="absolute inset-0 opacity-[0.015] bg-[url('data:image/svg+xml,%3Csvg viewBox=%270 0 256 256%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter id=%27noise%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.8%27 numOctaves=%274%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23noise)%27/%3E%3C/svg%3E')]" />
+
+                                {/* Grid pattern for light themes */}
+                                {!activeCosmeticTheme.isDark && (
+                                    <div className="absolute inset-0 bg-[linear-gradient(rgba(0,0,0,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(0,0,0,0.02)_1px,transparent_1px)] bg-[size:40px_40px]" />
+                                )}
                             </motion.div>
                         )}
                     </AnimatePresence>
@@ -2608,7 +2800,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         theme === 'fever' ? "bg-[#0a0a12]/95 backdrop-blur-xl border border-orange-500/40 shadow-[0_0_80px_rgba(249,115,22,0.15),0_0_40px_rgba(251,146,60,0.1)] text-white ring-1 ring-orange-500/20" :
                             theme === 'boss' ? currentBoss.style :
                                 theme === 'crimson' ? "bg-[#1a0505]/95 border border-red-500/30 shadow-[0_0_60px_rgba(220,38,38,0.2)] text-red-50" :
-                                    "bg-white/70 backdrop-blur-2xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-white/30",
+                                    activeCosmeticTheme.cardClass,
                         canUseStreakAura && "will-change-transform",
                         shake && "animate-shake"
                     )}
@@ -2949,40 +3141,47 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                         {/* Right Side Actions & Ledger */}
                         <div className="flex items-center gap-2">
-                            {/* Hint Economy Ledger - Translation Only */}
+                            {/* Mobile/Desktop Status Bar - Unified */}
                             {mode === 'translation' && (
                                 <div className={cn(
-                                    "flex items-center bg-white/80 backdrop-blur-md rounded-full border border-stone-200 shadow-sm p-1 gap-1 h-9 transition-all",
+                                    "hidden md:flex items-center h-[38px] p-1 rounded-full bg-white/60 backdrop-blur-xl border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 shrink-0 transition-all",
                                     isHintShake && "animate-[shake_0.4s_ease-in-out] border-red-300 shadow-[0_0_18px_rgba(220,38,38,0.2)]"
                                 )}>
                                     {/* Coins */}
-                                    <div className="flex items-center gap-1 px-2.5 h-full bg-stone-50 rounded-full border border-stone-100">
-                                        <span className="text-amber-500 font-bold text-[11px] mt-0.5">✨</span>
-                                        <span className="font-mono font-bold text-xs text-stone-600 tabular-nums">{coins}</span>
+                                    <div className="flex items-center gap-1.5 px-3 h-full rounded-full transition-colors cursor-default hover:bg-white/60">
+                                        <span className="text-[13px] leading-none drop-shadow-sm mb-[1px]">✨</span>
+                                        <span className="font-mono font-bold text-[13px] text-stone-700 tabular-nums">{coins}</span>
                                     </div>
+
+                                    <div className="w-[1px] h-4 bg-stone-300/40 rounded-full mx-0.5"></div>
+
+                                    {/* Action items */}
+                                    <div className="flex items-center gap-0.5 h-full">
+                                        <div className="flex items-center gap-1.5 px-2.5 h-full rounded-full transition-colors cursor-default hover:bg-blue-50 text-blue-700/80">
+                                            <span className="text-[12px] leading-none mb-[1px]">💊</span>
+                                            <span className="font-mono font-semibold text-xs tabular-nums">{capsuleCount}</span>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 px-2.5 h-full rounded-full transition-colors cursor-default hover:bg-amber-50 text-amber-700/80">
+                                            <span className="text-[12px] leading-none mb-[1px]">🪄</span>
+                                            <span className="font-mono font-semibold text-xs tabular-nums">{hintTicketCount}</span>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 px-2.5 h-full rounded-full transition-colors cursor-default hover:bg-emerald-50 text-emerald-700/80">
+                                            <span className="text-[12px] leading-none mb-[1px]">🧩</span>
+                                            <span className="font-mono font-semibold text-xs tabular-nums">{vocabTicketCount}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="w-[1px] h-4 bg-stone-300/40 rounded-full mx-0.5"></div>
 
                                     <button
                                         onClick={() => setShowShopModal(true)}
-                                        className="group relative flex items-center justify-center h-full rounded-full bg-blue-50 px-2 text-blue-600 border border-blue-100/70 hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                                        className="group relative flex items-center justify-center h-full rounded-full bg-indigo-50/80 px-4 ml-0.5 text-indigo-600 hover:bg-indigo-500 hover:text-white hover:shadow-[0_4px_12px_rgba(99,102,241,0.25)] border border-transparent hover:border-indigo-400 transition-all duration-300"
                                         title="打开商场"
                                     >
-                                        <span className="font-bold text-[11px] tracking-wide">商场</span>
+                                        <span className="font-bold text-[12px] tracking-widest">商场</span>
                                     </button>
-
-                                    <div className="flex items-center gap-1.5 px-2.5 h-full bg-blue-50 text-blue-600 rounded-full border border-blue-100/50">
-                                        <span className="font-bold text-[11px] mt-0.5">💊</span>
-                                        <span className="font-mono font-bold text-xs tabular-nums">{capsuleCount}</span>
-                                    </div>
-
-                                    <div className="flex items-center gap-1.5 px-2.5 h-full bg-amber-50 text-amber-700 rounded-full border border-amber-100/70">
-                                        <span className="font-bold text-[11px] mt-0.5">🪄</span>
-                                        <span className="font-mono font-bold text-xs tabular-nums">{hintTicketCount}</span>
-                                    </div>
-
-                                    <div className="flex items-center gap-1.5 px-2.5 h-full bg-emerald-50 text-emerald-700 rounded-full border border-emerald-100/70">
-                                        <span className="font-bold text-[11px] mt-0.5">🧩</span>
-                                        <span className="font-mono font-bold text-xs tabular-nums">{vocabTicketCount}</span>
-                                    </div>
                                 </div>
                             )}
 
@@ -4664,7 +4863,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             animate={{ y: 0, opacity: 1, scale: 1 }}
                             exit={{ y: 12, opacity: 0, scale: 0.98 }}
                             transition={{ duration: 0.22, ease: "easeOut" }}
-                            className="w-full max-w-xl rounded-3xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,244,238,0.96))] shadow-[0_20px_60px_rgba(15,23,42,0.24)]"
+                            className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-3xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,244,238,0.96))] shadow-[0_20px_60px_rgba(15,23,42,0.24)]"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <div className="flex items-center justify-between px-5 py-4 border-b border-stone-200/80">
@@ -4718,6 +4917,97 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                         </div>
                                     );
                                 })}
+                            </div>
+
+                            {/* THEME GALLERY */}
+                            <div className="px-4 pb-2 pt-1">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <div className="h-px flex-1 bg-stone-200/80" />
+                                    <p className="text-[10px] font-black tracking-[0.25em] text-stone-400 uppercase">主题皮肤</p>
+                                    <div className="h-px flex-1 bg-stone-200/80" />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                                    {ALL_THEME_IDS.map((themeId) => {
+                                        const t = COSMETIC_THEMES[themeId];
+                                        const isOwned = ownedThemes.includes(themeId);
+                                        const isActive = cosmeticTheme === themeId;
+                                        const canAfford = coins >= t.price;
+
+                                        return (
+                                            <div
+                                                key={themeId}
+                                                className={cn(
+                                                    "relative rounded-2xl border p-3 flex flex-col gap-2 transition-all cursor-pointer",
+                                                    isActive
+                                                        ? "border-amber-400 bg-amber-50/80 shadow-[0_0_20px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/30"
+                                                        : isOwned
+                                                            ? "border-stone-200 bg-white/80 hover:border-stone-300 hover:shadow-md"
+                                                            : "border-stone-200/60 bg-stone-50/60"
+                                                )}
+                                                onClick={() => {
+                                                    if (isActive) return;
+                                                    if (isOwned) handleSwitchTheme(themeId);
+                                                }}
+                                            >
+                                                {/* Theme preview strip */}
+                                                <div className={cn(
+                                                    "h-10 rounded-xl overflow-hidden relative",
+                                                    t.bgClass
+                                                )}>
+                                                    {t.isDark && (
+                                                        <div className="absolute inset-0 flex items-center justify-center">
+                                                            <div className="w-6 h-6 bg-white/10 rounded-full blur-[8px]" />
+                                                        </div>
+                                                    )}
+                                                    {isActive && (
+                                                        <div className="absolute inset-0 flex items-center justify-center">
+                                                            <span className="text-[10px] font-black text-white/90 bg-black/30 px-2 py-0.5 rounded-full backdrop-blur-sm">使用中</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="space-y-1">
+                                                    <p className="text-xs font-bold text-stone-800 truncate">{t.name}</p>
+                                                    <p className="text-[10px] text-stone-500 leading-tight">{t.preview}</p>
+                                                </div>
+
+                                                {/* Action */}
+                                                {isActive ? (
+                                                    <div className="text-[10px] font-bold text-amber-600 text-center">✓ 当前主题</div>
+                                                ) : isOwned ? (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleSwitchTheme(themeId); }}
+                                                        className="w-full rounded-lg border border-stone-200 bg-white py-1.5 text-[10px] font-bold text-stone-700 hover:bg-stone-50 transition-colors"
+                                                    >
+                                                        切换使用
+                                                    </button>
+                                                ) : t.price === 0 ? (
+                                                    <div className="text-[10px] font-bold text-emerald-600 text-center">免费</div>
+                                                ) : (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            const success = handleBuyTheme(themeId);
+                                                            if (success) {
+                                                                setLootDrop({ type: 'theme', amount: 0, rarity: 'legendary', message: `🎨 解锁主题：${t.name}` });
+                                                            }
+                                                        }}
+                                                        disabled={!canAfford}
+                                                        className={cn(
+                                                            "w-full rounded-lg border py-1.5 text-[10px] font-bold transition-all",
+                                                            canAfford
+                                                                ? "bg-stone-900 text-white border-stone-800 hover:bg-stone-800"
+                                                                : "bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed"
+                                                        )}
+                                                    >
+                                                        {t.price} ✨ 解锁
+                                                    </button>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
 
                             <div className="px-5 pb-4 flex justify-end">
