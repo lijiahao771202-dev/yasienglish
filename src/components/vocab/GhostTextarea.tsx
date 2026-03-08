@@ -12,6 +12,13 @@ interface GhostTextareaProps {
     referenceAnswer?: string;
     predictionWordCount?: number;
     className?: string;
+    onPredictionRequest?: () => boolean;
+    onPredictionShown?: () => void;
+    predictionCostText?: string;
+    forcedGhostText?: string;
+    forcedGhostVersion?: number;
+    fullReferenceGhostText?: string;
+    fullReferenceGhostVersion?: number;
 }
 
 export function GhostTextarea({
@@ -22,16 +29,25 @@ export function GhostTextarea({
     sourceText,
     referenceAnswer,
     predictionWordCount = 2,
-    className
+    className,
+    onPredictionRequest,
+    onPredictionShown,
+    predictionCostText = "消耗 1 胶囊获取提示",
+    forcedGhostText,
+    forcedGhostVersion,
+    fullReferenceGhostText,
+    fullReferenceGhostVersion,
 }: GhostTextareaProps) {
     const [isFocused, setIsFocused] = useState(false);
     const [ghostText, setGhostText] = useState('');
+    const [fullReferenceGhost, setFullReferenceGhost] = useState('');
     const [isPredicting, setIsPredicting] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const localCache = useRef<Record<string, string>>({});
     const pendingInputRef = useRef<string | null>(null);
     const pendingPromiseRef = useRef<Promise<string> | null>(null);
+    const latestValueRef = useRef(value);
 
     const setGhostFromPrediction = (inputValue: string, suggestion: string) => {
         setGhostText(suggestion);
@@ -130,9 +146,43 @@ export function GhostTextarea({
         const aiSuggestion = await fetchPrediction(currentInputValue);
         if (textareaRef.current?.value === currentInputValue) {
             setGhostFromPrediction(currentInputValue, aiSuggestion);
+            if (aiSuggestion) {
+                onPredictionShown?.();
+            }
         }
         setIsPredicting(false);
     };
+
+    const requestPrediction = async (currentInputValue: string) => {
+        if (onPredictionRequest && !onPredictionRequest()) {
+            return;
+        }
+
+        await triggerPrediction(currentInputValue);
+    };
+
+    useEffect(() => {
+        latestValueRef.current = value;
+    }, [value]);
+
+    useEffect(() => {
+        if (forcedGhostVersion === undefined) return;
+        const suggestion = forcedGhostText || "";
+        setGhostFromPrediction(textareaRef.current?.value || latestValueRef.current, suggestion);
+        setFullReferenceGhost('');
+        setIsPredicting(false);
+    }, [forcedGhostVersion, forcedGhostText]);
+
+    useEffect(() => {
+        if (fullReferenceGhostVersion === undefined) return;
+        setFullReferenceGhost(fullReferenceGhostText || "");
+        setGhostText('');
+        setIsPredicting(false);
+        if (textareaRef.current) {
+            textareaRef.current.dataset.prevInput = '';
+            textareaRef.current.dataset.prevGhost = '';
+        }
+    }, [fullReferenceGhostVersion, fullReferenceGhostText]);
 
     useEffect(() => {
         const prevInput = textareaRef.current?.dataset.prevInput || "";
@@ -172,17 +222,32 @@ export function GhostTextarea({
                 const nextValue = value + ghostText;
                 onChange(nextValue);
                 setGhostText('');
-                window.requestAnimationFrame(() => {
-                    void triggerPrediction(nextValue);
-                });
+                setFullReferenceGhost('');
+            } else if (fullReferenceGhost && e.key === 'Tab') {
+                e.preventDefault();
+                onChange(fullReferenceGhost);
+                setFullReferenceGhost('');
             } else if (e.key === 'Tab' && !isPredicting && value.trim()) {
                 e.preventDefault();
-                triggerPrediction(value);
+                void requestPrediction(value);
             }
         }
     };
 
     const typographyClass = className || "p-6 text-xl font-medium font-sans leading-[1.8] tracking-[0.015em] min-h-[160px]";
+    const normalizedValue = value.trimStart().toLowerCase();
+    const normalizedReference = fullReferenceGhost.trimStart().toLowerCase();
+    const fullRefStartsWithValue = Boolean(
+        fullReferenceGhost &&
+        normalizedValue &&
+        normalizedReference.startsWith(normalizedValue)
+    );
+    const fullReferenceDisplay = fullReferenceGhost
+        ? (fullRefStartsWithValue
+            ? fullReferenceGhost.slice(value.trimStart().length)
+            : (value.trim() ? `\n${fullReferenceGhost}` : fullReferenceGhost))
+        : "";
+    const isHintGhostActive = Boolean(fullReferenceGhost);
 
     return (
         <div className="relative w-full flex flex-col group/ghost">
@@ -194,11 +259,22 @@ export function GhostTextarea({
                     )}
                     aria-hidden="true"
                 >
-                    <span className="opacity-0">{value}</span>
-                    {ghostText && (
-                        <span className="font-semibold text-indigo-500/32 dark:text-indigo-400/42 selection:bg-transparent">
-                            {ghostText}
-                        </span>
+                    {fullReferenceGhost ? (
+                        <>
+                            <span className="opacity-0">{value}</span>
+                            <span className="font-semibold text-amber-500/45 dark:text-amber-300/50 selection:bg-transparent">
+                                {fullReferenceDisplay}
+                            </span>
+                        </>
+                    ) : (
+                        <>
+                            <span className="opacity-0">{value}</span>
+                            {ghostText && (
+                                <span className="font-semibold text-indigo-500/32 dark:text-indigo-400/42 selection:bg-transparent">
+                                    {ghostText}
+                                </span>
+                            )}
+                        </>
                     )}
                 </div>
 
@@ -209,7 +285,7 @@ export function GhostTextarea({
                     onKeyDown={handleKeyDown}
                     onFocus={() => setIsFocused(true)}
                     onBlur={() => setIsFocused(false)}
-                    placeholder={placeholder}
+                    placeholder={fullReferenceGhost ? "" : placeholder}
                     disabled={disabled}
                     className={cn(
                         "relative z-10 w-full resize-none bg-transparent text-left outline-none opacity-100 mix-blend-normal transition-colors duration-200 antialiased caret-stone-900 selection:bg-indigo-100 selection:text-stone-900",
@@ -232,14 +308,20 @@ export function GhostTextarea({
                         <div className="flex items-center gap-2 rounded-full border border-indigo-100/80 bg-white/90 px-3 py-1.5 text-[11px] font-bold text-indigo-600 shadow-[0_8px_18px_rgba(99,102,241,0.12)] backdrop-blur-md">
                             <Sparkles className="w-3.5 h-3.5 animate-spin" /> AI 生成中...
                         </div>
-                    ) : ghostText ? (
-                        <div className="flex items-center gap-2 rounded-full border border-indigo-100/80 bg-white/92 px-3 py-1.5 text-[11px] font-bold text-indigo-600 shadow-[0_8px_18px_rgba(99,102,241,0.12)] backdrop-blur-md">
-                            按 <kbd className="bg-indigo-50 border border-indigo-100/80 rounded-md px-1.5 py-0.5 font-sans shadow-sm text-indigo-700">Tab</kbd> 采纳
-                        </div>
+                    ) : (ghostText || fullReferenceGhost) ? (
+                        isHintGhostActive ? (
+                            <div className="flex items-center gap-2 rounded-full border border-amber-200/80 bg-white/92 px-3 py-1.5 text-[11px] font-bold text-amber-700 shadow-[0_8px_18px_rgba(245,158,11,0.16)] backdrop-blur-md">
+                                Hint 参考已显示，按 <kbd className="bg-amber-50 border border-amber-200/80 rounded-md px-1.5 py-0.5 font-sans shadow-sm text-amber-700">Tab</kbd> 采纳
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-2 rounded-full border border-indigo-100/80 bg-white/92 px-3 py-1.5 text-[11px] font-bold text-indigo-600 shadow-[0_8px_18px_rgba(99,102,241,0.12)] backdrop-blur-md">
+                                按 <kbd className="bg-indigo-50 border border-indigo-100/80 rounded-md px-1.5 py-0.5 font-sans shadow-sm text-indigo-700">Tab</kbd> 采纳
+                            </div>
+                        )
                     ) : (
                         value.trim() && (
-                            <div className="flex items-center gap-2 rounded-full border border-stone-200/80 bg-white/92 px-3 py-1.5 text-[11px] font-bold text-stone-500 shadow-[0_8px_16px_rgba(15,23,42,0.06)] transition-all duration-300 pointer-events-auto cursor-pointer" onClick={() => triggerPrediction(value)}>
-                                <Sparkles className="w-3.5 h-3.5 text-amber-500" /> 按 <kbd className="bg-stone-50 border border-stone-200/80 rounded-md px-1.5 py-0.5 font-sans shadow-sm text-stone-600">Tab</kbd> 获取提示
+                            <div className="flex items-center gap-2 rounded-full border border-stone-200/80 bg-white/92 px-3 py-1.5 text-[11px] font-bold text-stone-500 shadow-[0_8px_16px_rgba(15,23,42,0.06)] transition-all duration-300 pointer-events-auto cursor-pointer" onClick={() => void requestPrediction(value)}>
+                                <Sparkles className="w-3.5 h-3.5 text-amber-500" /> 按 <kbd className="bg-stone-50 border border-stone-200/80 rounded-md px-1.5 py-0.5 font-sans shadow-sm text-stone-600">Tab</kbd> {predictionCostText}
                             </div>
                         )
                     )}

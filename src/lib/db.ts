@@ -83,6 +83,13 @@ export class YasiDB extends Dexie {
         listening_elo?: number;
         listening_streak?: number;
         listening_max_elo?: number;
+        // Hint Economy
+        coins?: number;
+        hints?: number;
+        inventory?: {
+            capsule?: number;
+            hint_ticket?: number;
+        };
     }>;
 
     constructor() {
@@ -154,6 +161,73 @@ export class YasiDB extends Dexie {
         // Version 6: Add Elo History
         this.version(6).stores({
             elo_history: '++id, mode, timestamp'
+        });
+
+        // Version 7: Add Coins and Hints to User Profile
+        this.version(7).stores({
+            user_profile: '++id'
+        }).upgrade(tx => {
+            return tx.table('user_profile').toCollection().modify(profile => {
+                if (profile.coins === undefined) {
+                    profile.coins = 0;
+                    profile.hints = 5; // Legacy default before v8
+                }
+            });
+        });
+
+        // Version 8: Raise default hints to 15 for fresh/default profiles
+        this.version(8).stores({
+            user_profile: '++id'
+        }).upgrade(tx => {
+            return tx.table('user_profile').toCollection().modify(profile => {
+                if (profile.hints === undefined) {
+                    profile.hints = 15;
+                    return;
+                }
+
+                // Upgrade untouched legacy defaults without overwriting earned/spent balances.
+                if (profile.hints === 5 && (profile.coins ?? 0) === 0) {
+                    profile.hints = 15;
+                }
+            });
+        });
+
+        // Version 9: Backfill legacy accounts that had already spent from the old 5-hint default.
+        this.version(9).stores({
+            user_profile: '++id'
+        }).upgrade(tx => {
+            return tx.table('user_profile').toCollection().modify(profile => {
+                if (profile.hints !== undefined && profile.hints <= 5) {
+                    profile.hints += 10;
+                }
+            });
+        });
+
+        // Version 10: Unified inventory model for extensible shop items.
+        this.version(10).stores({
+            user_profile: '++id'
+        }).upgrade(tx => {
+            return tx.table('user_profile').toCollection().modify(profile => {
+                const legacyCapsule = typeof profile.hints === 'number' ? profile.hints : 15;
+                const existingInventory = (profile.inventory && typeof profile.inventory === 'object')
+                    ? profile.inventory
+                    : {};
+
+                const capsule = typeof existingInventory.capsule === 'number'
+                    ? existingInventory.capsule
+                    : legacyCapsule;
+                const hintTicket = typeof existingInventory.hint_ticket === 'number'
+                    ? existingInventory.hint_ticket
+                    : 3;
+
+                profile.inventory = {
+                    ...existingInventory,
+                    capsule: Math.max(0, capsule),
+                    hint_ticket: Math.max(0, hintTicket),
+                };
+                profile.hints = Math.max(0, capsule); // compatibility mirror
+                if (profile.coins === undefined) profile.coins = 0;
+            });
         });
     }
 }
