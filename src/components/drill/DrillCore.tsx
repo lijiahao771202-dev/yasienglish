@@ -3133,46 +3133,52 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                         {/* Right Side Actions & Ledger */}
                         <div className="flex items-center gap-2">
-                            {/* Mobile/Desktop Status Bar - Unified */}
+                            {/* Mobile/Desktop Status Bar - Unified (Collapsible) */}
                             {mode === 'translation' && (
                                 <div className={cn(
-                                    "hidden md:flex items-center h-[38px] p-0.5 rounded-full bg-white/60 backdrop-blur-xl border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 shrink-0 transition-all",
+                                    "group hidden md:flex items-center h-[38px] p-0.5 rounded-full bg-white/60 backdrop-blur-xl border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 shrink-0 transition-all duration-300",
                                     isHintShake && "animate-[shake_0.4s_ease-in-out] border-red-300 shadow-[0_0_18px_rgba(220,38,38,0.2)]"
                                 )}>
-                                    {/* Coins */}
-                                    <div className="flex items-center gap-1 px-2.5 h-full rounded-full transition-colors cursor-default hover:bg-white/60">
-                                        <span className="text-[12px] leading-none drop-shadow-sm mb-[1px]">✨</span>
-                                        <span className="font-mono font-bold text-[12px] text-stone-700 tabular-nums">{coins}</span>
+                                    {/* Expandable Resources */}
+                                    <div className="flex items-center max-w-0 opacity-0 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] group-hover:max-w-[400px] group-hover:opacity-100">
+                                        <div className="flex items-center h-[34px] shrink-0">
+                                            {/* Coins */}
+                                            <div className="flex items-center gap-1 px-2.5 h-full rounded-full transition-colors cursor-default hover:bg-white/60">
+                                                <span className="text-[12px] leading-none drop-shadow-sm mb-[1px]">✨</span>
+                                                <span className="font-mono font-bold text-[12px] text-stone-700 tabular-nums">{coins}</span>
+                                            </div>
+
+                                            <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5"></div>
+
+                                            {/* Action items */}
+                                            <div className="flex items-center h-full">
+                                                <div className="flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-blue-50 text-blue-700/80">
+                                                    <span className="text-[11px] leading-none mb-[1px]">💊</span>
+                                                    <span className="font-mono font-semibold text-[11px] tabular-nums">{capsuleCount}</span>
+                                                </div>
+
+                                                <div className="flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-amber-50 text-amber-700/80">
+                                                    <span className="text-[11px] leading-none mb-[1px]">🪄</span>
+                                                    <span className="font-mono font-semibold text-[11px] tabular-nums">{hintTicketCount}</span>
+                                                </div>
+
+                                                <div className="flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-emerald-50 text-emerald-700/80">
+                                                    <span className="text-[11px] leading-none mb-[1px]">🧩</span>
+                                                    <span className="font-mono font-semibold text-[11px] tabular-nums">{vocabTicketCount}</span>
+                                                </div>
+                                            </div>
+
+                                            <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5 mr-1"></div>
+                                        </div>
                                     </div>
 
-                                    <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5"></div>
-
-                                    {/* Action items */}
-                                    <div className="flex items-center h-full">
-                                        <div className="flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-blue-50 text-blue-700/80">
-                                            <span className="text-[11px] leading-none mb-[1px]">💊</span>
-                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{capsuleCount}</span>
-                                        </div>
-
-                                        <div className="hidden lg:flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-amber-50 text-amber-700/80">
-                                            <span className="text-[11px] leading-none mb-[1px]">🪄</span>
-                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{hintTicketCount}</span>
-                                        </div>
-
-                                        <div className="hidden lg:flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-emerald-50 text-emerald-700/80">
-                                            <span className="text-[11px] leading-none mb-[1px]">🧩</span>
-                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{vocabTicketCount}</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5"></div>
-
+                                    {/* Shop Button - Always Visible */}
                                     <button
                                         onClick={() => setShowShopModal(true)}
-                                        className="group relative flex items-center justify-center h-full rounded-full bg-indigo-50/80 px-3 ml-0.5 text-indigo-600 hover:bg-indigo-500 hover:text-white hover:shadow-[0_4px_12px_rgba(99,102,241,0.25)] border border-transparent hover:border-indigo-400 transition-all duration-300"
+                                        className="relative flex items-center justify-center h-full min-w-[64px] rounded-full bg-indigo-50/80 px-4 text-indigo-600 hover:!bg-indigo-500 hover:!text-white hover:shadow-[0_4px_12px_rgba(99,102,241,0.25)] border border-transparent hover:!border-indigo-400 transition-all duration-300 shrink-0"
                                         title="打开商场"
                                     >
-                                        <span className="font-bold text-[11px] tracking-widest">商场</span>
+                                        <span className="font-bold text-[11px] tracking-widest leading-none mt-[1px]">商场</span>
                                     </button>
                                 </div>
                             )}
