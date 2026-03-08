@@ -3701,9 +3701,19 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                         </div>
                                                     ) : (
                                                         <>
-                                                            <div className="relative group overflow-hidden rounded-[1.75rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(247,244,238,0.96))] shadow-[0_14px_34px_rgba(15,23,42,0.05),inset_0_1px_0_rgba(255,255,255,0.9)] transition-all duration-300 hover:shadow-[0_18px_40px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.95)] focus-within:border-indigo-200/80 focus-within:shadow-[0_18px_44px_rgba(99,102,241,0.10),inset_0_1px_0_rgba(255,255,255,1)]">
-                                                                <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/80 to-transparent" />
-                                                                <div className="absolute inset-0 opacity-[0.012] bg-[url('data:image/svg+xml,%3Csvg viewBox=%270 0 256 256%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter id=%27noise%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%274%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23noise)%27/%3E%3C/svg%3E')] pointer-events-none" />
+                                                            <div className={cn(
+                                                                "relative group overflow-hidden rounded-[2rem] border border-black/5 bg-white/50 backdrop-blur-2xl shadow-[0_8px_32px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,1)] transition-all duration-300 hover:shadow-[0_14px_44px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-4",
+                                                                {
+                                                                    'morning_coffee': 'focus-within:border-indigo-300/80 focus-within:shadow-[0_14px_44px_rgba(99,102,241,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-indigo-500/10 focus-within:bg-white/70',
+                                                                    'sakura': 'focus-within:border-pink-300/80 focus-within:shadow-[0_14px_44px_rgba(236,72,153,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-pink-500/10 focus-within:bg-pink-50/50',
+                                                                    'golden_hour': 'focus-within:border-amber-300/80 focus-within:shadow-[0_14px_44px_rgba(245,158,11,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-amber-500/10 focus-within:bg-amber-50/50',
+                                                                    'holo_pearl': 'focus-within:border-fuchsia-300/80 focus-within:shadow-[0_14px_44px_rgba(192,38,211,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-fuchsia-500/10 focus-within:bg-fuchsia-50/50',
+                                                                    'cloud_nine': 'focus-within:border-cyan-300/80 focus-within:shadow-[0_14px_44px_rgba(6,182,212,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-cyan-500/10 focus-within:bg-cyan-50/50',
+                                                                    'lilac_dream': 'focus-within:border-purple-300/80 focus-within:shadow-[0_14px_44px_rgba(168,85,247,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-purple-500/10 focus-within:bg-purple-50/50',
+                                                                }[activeCosmeticTheme?.id || 'morning_coffee']
+                                                            )}>
+                                                                <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/60 to-transparent" />
+                                                                <div className="absolute inset-0 opacity-[0.015] bg-[url('data:image/svg+xml,%3Csvg viewBox=%270 0 256 256%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter id=%27noise%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%274%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23noise)%27/%3E%3C/svg%3E')] pointer-events-none mix-blend-overlay" />
                                                                 <GhostTextarea
                                                                     value={userTranslation}
                                                                     onChange={setUserTranslation}
@@ -3717,17 +3727,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     fullReferenceGhostText={fullReferenceHint.text}
                                                                     fullReferenceGhostVersion={fullReferenceHint.version}
                                                                     disabled={isSubmittingDrill}
-                                                                    className="font-work-sans min-h-[128px] px-5 pb-16 pt-5 text-[1.06rem] font-semibold leading-[1.9] tracking-[0.005em] text-stone-900 placeholder:text-stone-300/95 md:min-h-[144px] md:px-6 md:pb-16 md:pt-6 md:text-[1.12rem]"
+                                                                    className="font-work-sans min-h-[128px] px-5 pb-16 pt-5 text-[1.06rem] font-semibold leading-[1.9] tracking-[0.005em] text-stone-900 placeholder:text-stone-300/95 md:min-h-[144px] md:px-6 md:pb-16 md:pt-6 md:text-[1.12rem] bg-transparent"
                                                                 />
 
                                                                 {/* Bottom toolbar */}
-                                                                <div className="relative z-10 flex items-center justify-between border-t border-stone-200/70 bg-white/55 px-3 pb-4 pt-3 backdrop-blur-sm md:px-6 md:pb-5">
+                                                                <div className="relative z-10 flex items-center justify-between border-t border-black/[0.03] bg-white/20 px-3 pb-4 pt-3 backdrop-blur-md md:px-6 md:pb-5">
                                                                     {/* Word count badge */}
                                                                     <div className={cn(
                                                                         "flex items-center gap-1 rounded-full px-2 py-1.5 text-[9px] font-bold font-sans tracking-[0.14em] transition-all duration-300 md:gap-1.5 md:px-3 md:text-[11px] md:tracking-[0.18em]",
                                                                         userTranslation.trim()
                                                                             ? "border border-stone-200/80 bg-white/90 text-stone-500 shadow-[0_6px_16px_rgba(15,23,42,0.05)]"
-                                                                            : "bg-transparent text-stone-300"
+                                                                            : "bg-transparent text-stone-300 font-medium"
                                                                     )}>
                                                                         <span className="tabular-nums">{userTranslation.trim() ? userTranslation.trim().split(/\s+/).length : 0}</span>
                                                                         <span>WORDS</span>
