@@ -3007,7 +3007,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         <div className="flex items-center gap-2 flex-wrap">
                             {/* Unified Info Pill */}
                             {drillData && (
-                                <div className="flex items-center h-[38px] p-1 bg-white/60 backdrop-blur-xl rounded-full border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 overflow-hidden transition-all shrink-0">
+                                <div className="flex items-center h-[38px] px-0.5 bg-white/60 backdrop-blur-xl rounded-full border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 overflow-hidden transition-all shrink-0">
                                     {/* Rank Section */}
                                     {(() => {
                                         const rank = getRank(currentElo || 600);
@@ -3022,49 +3022,41 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                 <span className="font-bold text-[11px] tracking-wider uppercase drop-shadow-sm">x{rouletteSession.multiplier}</span>
                                             </div>
                                         ) : (
-                                            <div className={cn("flex items-center gap-1.5 px-3 h-full rounded-full", rank.color)}>
+                                            <div className={cn("flex items-center gap-1.5 px-2.5 h-full rounded-full", rank.color)}>
                                                 <rank.icon className="w-[14px] h-[14px]" />
                                                 <span className="font-bold text-[11px] tracking-wider uppercase drop-shadow-sm">{rank.title}</span>
-                                                <div className="w-[1px] h-3 bg-current opacity-20 ml-0.5 mr-0.5" />
+                                                <div className="w-[1px] h-3 bg-current opacity-20 mx-0.5" />
                                                 <span className="font-newsreader font-medium italic text-[13px]">{currentElo || 600}</span>
                                             </div>
                                         );
                                     })()}
 
-                                    {/* Difficulty Section */}
+                                    {/* Difficulty Section - Simplified to Word Count */}
                                     {drillData?._difficultyMeta && (
                                         <>
-                                            <div className="w-[1px] h-4 bg-stone-300/40 rounded-full mx-0.5" />
+                                            <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5" />
                                             <div className={cn(
-                                                "flex items-center gap-1 px-3 h-full rounded-full text-[11px] font-bold uppercase tracking-wider transition-colors",
+                                                "flex items-center px-2 h-full rounded-full text-[11px] font-bold transition-colors",
                                                 drillData._difficultyMeta.status === 'MATCHED'
                                                     ? "text-emerald-700/80 hover:bg-emerald-50"
                                                     : drillData._difficultyMeta.status === 'TOO_EASY'
                                                         ? "text-amber-700/80 hover:bg-amber-50"
                                                         : "text-rose-700/80 hover:bg-rose-50"
                                             )}>
-                                                <span className="font-mono">{drillData._difficultyMeta.tier}</span>
-                                                <span className="opacity-40">|</span>
                                                 <span>{drillData._difficultyMeta.actualWordCount}词</span>
                                             </div>
                                         </>
                                     )}
 
-                                    {/* Topic Section */}
+                                    {/* Topic Section - Simplified */}
                                     {drillData?._topicMeta && (
                                         <>
-                                            <div className="w-[1px] h-4 bg-stone-300/40 rounded-full mx-0.5" />
-                                            <div className="flex items-center gap-1.5 px-3 h-full rounded-full text-[11px] font-bold text-blue-700/80 transition-colors hover:bg-blue-50 cursor-pointer" title={drillData._topicMeta.subTopic || drillData._topicMeta.topic}>
+                                            <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5" />
+                                            <div className="flex items-center gap-1 px-2.5 h-full rounded-full text-[11px] font-bold text-blue-700/80 transition-colors hover:bg-blue-50 cursor-pointer" title={drillData._topicMeta.subTopic || drillData._topicMeta.topic}>
                                                 <span className="text-[12px] leading-none mb-[1px]">📌</span>
-                                                <span className="max-w-[80px] sm:max-w-[120px] truncate">{drillData._topicMeta.topic}</span>
-                                                {drillData._topicMeta.subTopic && (
-                                                    <>
-                                                        <span className="opacity-40 font-normal">·</span>
-                                                        <span className="max-w-[120px] sm:max-w-[150px] truncate opacity-80 font-medium hidden sm:inline">
-                                                            {drillData._topicMeta.subTopic}
-                                                        </span>
-                                                    </>
-                                                )}
+                                                <span className="max-w-[70px] sm:max-w-[140px] truncate opacity-90">
+                                                    {drillData._topicMeta.subTopic || drillData._topicMeta.topic}
+                                                </span>
                                             </div>
                                         </>
                                     )}
@@ -3144,43 +3136,43 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             {/* Mobile/Desktop Status Bar - Unified */}
                             {mode === 'translation' && (
                                 <div className={cn(
-                                    "hidden md:flex items-center h-[38px] p-1 rounded-full bg-white/60 backdrop-blur-xl border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 shrink-0 transition-all",
+                                    "hidden md:flex items-center h-[38px] p-0.5 rounded-full bg-white/60 backdrop-blur-xl border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 shrink-0 transition-all",
                                     isHintShake && "animate-[shake_0.4s_ease-in-out] border-red-300 shadow-[0_0_18px_rgba(220,38,38,0.2)]"
                                 )}>
                                     {/* Coins */}
-                                    <div className="flex items-center gap-1.5 px-3 h-full rounded-full transition-colors cursor-default hover:bg-white/60">
-                                        <span className="text-[13px] leading-none drop-shadow-sm mb-[1px]">✨</span>
-                                        <span className="font-mono font-bold text-[13px] text-stone-700 tabular-nums">{coins}</span>
+                                    <div className="flex items-center gap-1 px-2.5 h-full rounded-full transition-colors cursor-default hover:bg-white/60">
+                                        <span className="text-[12px] leading-none drop-shadow-sm mb-[1px]">✨</span>
+                                        <span className="font-mono font-bold text-[12px] text-stone-700 tabular-nums">{coins}</span>
                                     </div>
 
-                                    <div className="w-[1px] h-4 bg-stone-300/40 rounded-full mx-0.5"></div>
+                                    <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5"></div>
 
                                     {/* Action items */}
-                                    <div className="flex items-center gap-0.5 h-full">
-                                        <div className="flex items-center gap-1.5 px-2.5 h-full rounded-full transition-colors cursor-default hover:bg-blue-50 text-blue-700/80">
-                                            <span className="text-[12px] leading-none mb-[1px]">💊</span>
-                                            <span className="font-mono font-semibold text-xs tabular-nums">{capsuleCount}</span>
+                                    <div className="flex items-center h-full">
+                                        <div className="flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-blue-50 text-blue-700/80">
+                                            <span className="text-[11px] leading-none mb-[1px]">💊</span>
+                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{capsuleCount}</span>
                                         </div>
 
-                                        <div className="flex items-center gap-1.5 px-2.5 h-full rounded-full transition-colors cursor-default hover:bg-amber-50 text-amber-700/80">
-                                            <span className="text-[12px] leading-none mb-[1px]">🪄</span>
-                                            <span className="font-mono font-semibold text-xs tabular-nums">{hintTicketCount}</span>
+                                        <div className="hidden lg:flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-amber-50 text-amber-700/80">
+                                            <span className="text-[11px] leading-none mb-[1px]">🪄</span>
+                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{hintTicketCount}</span>
                                         </div>
 
-                                        <div className="flex items-center gap-1.5 px-2.5 h-full rounded-full transition-colors cursor-default hover:bg-emerald-50 text-emerald-700/80">
-                                            <span className="text-[12px] leading-none mb-[1px]">🧩</span>
-                                            <span className="font-mono font-semibold text-xs tabular-nums">{vocabTicketCount}</span>
+                                        <div className="hidden lg:flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-emerald-50 text-emerald-700/80">
+                                            <span className="text-[11px] leading-none mb-[1px]">🧩</span>
+                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{vocabTicketCount}</span>
                                         </div>
                                     </div>
 
-                                    <div className="w-[1px] h-4 bg-stone-300/40 rounded-full mx-0.5"></div>
+                                    <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5"></div>
 
                                     <button
                                         onClick={() => setShowShopModal(true)}
-                                        className="group relative flex items-center justify-center h-full rounded-full bg-indigo-50/80 px-4 ml-0.5 text-indigo-600 hover:bg-indigo-500 hover:text-white hover:shadow-[0_4px_12px_rgba(99,102,241,0.25)] border border-transparent hover:border-indigo-400 transition-all duration-300"
+                                        className="group relative flex items-center justify-center h-full rounded-full bg-indigo-50/80 px-3 ml-0.5 text-indigo-600 hover:bg-indigo-500 hover:text-white hover:shadow-[0_4px_12px_rgba(99,102,241,0.25)] border border-transparent hover:border-indigo-400 transition-all duration-300"
                                         title="打开商场"
                                     >
-                                        <span className="font-bold text-[12px] tracking-widest">商场</span>
+                                        <span className="font-bold text-[11px] tracking-widest">商场</span>
                                     </button>
                                 </div>
                             )}
