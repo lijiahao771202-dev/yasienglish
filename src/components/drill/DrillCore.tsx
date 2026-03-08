@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Sparkles, RefreshCw, Send, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -126,6 +126,48 @@ interface StreakTierVisual {
 }
 
 const STREAK_PARTICLE_POSITIONS = [12, 26, 39, 54, 68, 82, 90, 18, 47, 76];
+type ShopItemId = 'capsule' | 'hint_ticket';
+
+type InventoryState = Record<ShopItemId, number>;
+
+const DEFAULT_INVENTORY: InventoryState = {
+    capsule: 15,
+    hint_ticket: 3,
+};
+
+const ITEM_CATALOG: Record<ShopItemId, { id: ShopItemId; name: string; price: number; icon: string; consumeAction: string; description: string; }> = {
+    capsule: {
+        id: 'capsule',
+        name: '灵感胶囊',
+        price: 30,
+        icon: '💊',
+        consumeAction: 'Tab 预测提示',
+        description: '用于 Tab 智能续写提示',
+    },
+    hint_ticket: {
+        id: 'hint_ticket',
+        name: 'Hint 道具',
+        price: 50,
+        icon: '🪄',
+        consumeAction: 'Hint 全句参考',
+        description: '用于显示完整参考句幽灵层',
+    },
+};
+
+const normalizeInventory = (inventory: unknown, legacyCapsule?: number): InventoryState => {
+    const rawInventory = (inventory && typeof inventory === 'object') ? inventory as Partial<Record<ShopItemId, number>> : {};
+    const capsuleValue = typeof rawInventory.capsule === 'number'
+        ? rawInventory.capsule
+        : (typeof legacyCapsule === 'number' ? legacyCapsule : DEFAULT_INVENTORY.capsule);
+    const hintTicketValue = typeof rawInventory.hint_ticket === 'number'
+        ? rawInventory.hint_ticket
+        : DEFAULT_INVENTORY.hint_ticket;
+
+    return {
+        capsule: Math.max(0, capsuleValue),
+        hint_ticket: Math.max(0, hintTicketValue),
+    };
+};
 
 const getStreakTier = (streak: number): StreakTier => {
     if (streak >= 10) return 4;
@@ -329,6 +371,62 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isEloLoaded, setIsEloLoaded] = useState(false); // Track if Elo has been loaded from DB
     const eloRatingRef = useRef(600);
     const listeningEloRef = useRef(600);
+    const coinsRef = useRef(0);
+    const inventoryRef = useRef<InventoryState>({ ...DEFAULT_INVENTORY });
+
+    // Hint Economy State
+    const [coins, setCoins] = useState(0);
+    const [inventory, setInventory] = useState<InventoryState>({ ...DEFAULT_INVENTORY });
+    const [isHintShake, setIsHintShake] = useState(false);
+    const [isHintLoading, setIsHintLoading] = useState(false);
+    const [fullReferenceHint, setFullReferenceHint] = useState<{ version: number; text: string }>({ version: 0, text: '' });
+    const [showShopModal, setShowShopModal] = useState(false);
+
+    const persistProfilePatch = useCallback((patch: Partial<{ coins: number; hints: number; inventory: InventoryState }>) => {
+        if (Object.keys(patch).length === 0) return;
+        db.user_profile.orderBy('id').first().then(profile => {
+            if (profile?.id) {
+                db.user_profile.update(profile.id, patch);
+            }
+        });
+    }, []);
+
+    const getItemCount = useCallback((itemId: ShopItemId) => {
+        return inventoryRef.current[itemId] ?? 0;
+    }, []);
+
+    const applyEconomyPatch = useCallback(({
+        coinsDelta = 0,
+        itemDelta = {},
+    }: {
+        coinsDelta?: number;
+        itemDelta?: Partial<Record<ShopItemId, number>>;
+    }) => {
+        const nextCoins = Math.max(0, coinsRef.current + coinsDelta);
+        const nextInventory: InventoryState = { ...inventoryRef.current };
+
+        (Object.keys(itemDelta) as ShopItemId[]).forEach((itemId) => {
+            const delta = itemDelta[itemId] ?? 0;
+            if (!delta) return;
+            nextInventory[itemId] = Math.max(0, nextInventory[itemId] + delta);
+        });
+
+        coinsRef.current = nextCoins;
+        inventoryRef.current = nextInventory;
+        setCoins(nextCoins);
+        setInventory(nextInventory);
+
+        persistProfilePatch({
+            coins: nextCoins,
+            inventory: nextInventory,
+            hints: nextInventory.capsule, // compatibility mirror
+        });
+
+        return {
+            coins: nextCoins,
+            inventory: nextInventory,
+        };
+    }, [persistProfilePatch]);
 
 
 
@@ -386,6 +484,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // Visceral FX State
     const [shake, setShake] = useState(false);
     const [showDoubleDown, setShowDoubleDown] = useState(false); // Modal State
+    const [recentScores, setRecentScores] = useState<number[]>([]); // Track recent scores for bounties
+    const [assistsUsedInCurrentDrill, setAssistsUsedInCurrentDrill] = useState(0); // For Gacha eligibility
+
+    // Gacha State
+    const [showGacha, setShowGacha] = useState(false);
+    const [gachaRewards, setGachaRewards] = useState<{ type: 'capsule_1' | 'capsule_3' | 'shield', id: number }[]>([]);
+    const [selectedGachaIndex, setSelectedGachaIndex] = useState<number | null>(null);
+    const [hasActiveShield, setHasActiveShield] = useState(false);
 
     const hasStartedRef = useRef(false);
     const hasPlayedEchoRef = useRef(false); // For Echo Beast (One-time audio)
@@ -518,6 +624,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         listeningEloRef.current = listeningElo;
     }, [eloRating, listeningElo]);
 
+    useEffect(() => {
+        coinsRef.current = coins;
+        inventoryRef.current = inventory;
+    }, [coins, inventory]);
+
     // Cleanup: Stop ALL audio and abort requests when component unmounts
     useEffect(() => {
         return () => {
@@ -539,6 +650,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // Computed Elo based on Mode
     const currentElo = mode === 'listening' ? listeningElo : eloRating;
     const currentStreak = mode === 'listening' ? listeningStreak : streakCount;
+    const capsuleCount = inventory.capsule;
+    const hintTicketCount = inventory.hint_ticket;
     const prefersReducedMotion = useReducedMotion();
     const [streakTransition, setStreakTransition] = useState<'surge' | 'cooldown' | null>(null);
     const [cooldownTier, setCooldownTier] = useState<StreakTier>(0);
@@ -615,6 +728,18 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         };
     }, [currentStreak, mode, prefersReducedMotion]);
 
+    // --- Idle Coin Earning ---
+    useEffect(() => {
+        // Only earn coins while actively on the drill page (any mode)
+        const idleInterval = setInterval(() => {
+            applyEconomyPatch({ coinsDelta: 5 });
+            // Small popup could be added here, but silent is better for true background idle
+            setLootDrop({ type: 'exp', amount: 5, rarity: 'common', message: '时长摸鱼奖励 🐟' });
+        }, 5 * 60 * 1000); // 5 minutes
+
+        return () => clearInterval(idleInterval);
+    }, [applyEconomyPatch]);
+
     // --- Loading & Persistance ---
 
     useEffect(() => {
@@ -627,14 +752,35 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 // Load Listening Stats (Fallback if undefined post-migration in memory before reload)
                 setListeningElo(profile.listening_elo ?? 600);
                 setListeningStreak(profile.listening_streak ?? 0);
+                eloRatingRef.current = profile.elo_rating;
+                listeningEloRef.current = profile.listening_elo ?? 600;
+
+                // Load Hint Economy Stats
+                const loadedCoins = profile.coins ?? 0;
+                const loadedInventory = normalizeInventory(profile.inventory, profile.hints);
+                coinsRef.current = loadedCoins;
+                inventoryRef.current = loadedInventory;
+                setCoins(loadedCoins);
+                setInventory(loadedInventory);
+
                 setIsEloLoaded(true); // Mark Elo as loaded
             } else {
+                const initialInventory = { ...DEFAULT_INVENTORY };
                 await db.user_profile.add({
                     elo_rating: 600,
                     streak_count: 0,
                     max_elo: 600,
-                    last_practice: Date.now()
+                    last_practice: Date.now(),
+                    coins: 0,
+                    hints: initialInventory.capsule,
+                    inventory: initialInventory,
                 });
+                eloRatingRef.current = 600;
+                listeningEloRef.current = 600;
+                coinsRef.current = 0;
+                inventoryRef.current = initialInventory;
+                setCoins(0);
+                setInventory(initialInventory);
                 setIsEloLoaded(true); // Mark Elo as loaded (new profile)
             }
         };
@@ -962,6 +1108,36 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setShowRoulette(true);
     };
 
+    const handleGachaSelect = (index: number) => {
+        if (selectedGachaIndex !== null) return; // Already selected
+        setSelectedGachaIndex(index);
+        new Audio('https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3').play().catch(() => { });
+
+        const reward = gachaRewards[index];
+        setTimeout(() => {
+            // Apply reward
+                switch (reward.type) {
+                    case 'capsule_1':
+                    applyEconomyPatch({ itemDelta: { capsule: 1 } });
+                    setLootDrop({ type: 'gem', amount: 1, rarity: 'rare', message: '💊 获得 1 个灵感胶囊！' });
+                    break;
+                case 'capsule_3':
+                    applyEconomyPatch({ itemDelta: { capsule: 3 } });
+                    setLootDrop({ type: 'gem', amount: 3, rarity: 'legendary', message: '💊💊💊 获得 3 个灵感胶囊！' });
+                    break;
+                case 'shield':
+                    setHasActiveShield(true);
+                    setLootDrop({ type: 'gem', amount: 0, rarity: 'legendary', message: '🛡️ 获得免死金牌！下一次失误不扣分/断连！' });
+                    break;
+            }
+
+            // Close gacha after showing the reward
+            setTimeout(() => {
+                setShowGacha(false);
+            }, 2500);
+        }, 800); // Wait for card flip animation
+    };
+
     const handleRouletteComplete = (result: 'safe' | 'dead', bulletCount: number) => {
         setShowRoulette(false);
         console.log(`[Roulette] Result: ${result}, Bullets: ${bulletCount}`);
@@ -1031,6 +1207,53 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
     };
 
+    const prefetchNextDrill = (nextElo: number) => {
+        console.log("[Prefetch] Starting background prefetch for next drill...");
+        if (abortPrefetchRef.current) abortPrefetchRef.current.abort();
+        abortPrefetchRef.current = new AbortController();
+
+        let nextBossType: 'blind' | 'lightning' | 'echo' | 'reaper' | undefined = undefined;
+        if (mode === 'listening') {
+            const roll = Math.random();
+            if (roll < 0.02) {
+                const bossRoll = Math.random();
+                if (bossRoll < 0.35) nextBossType = 'blind';
+                else if (bossRoll < 0.65) nextBossType = 'echo';
+                else if (bossRoll < 0.85) nextBossType = 'lightning';
+                else nextBossType = 'reaper';
+            }
+        }
+
+        let targetTopic = context.articleTitle || context.topic;
+        if (!targetTopic || targetTopic.length === 0 || targetTopic === "日常闲聊" || targetTopic === "商务精英" || targetTopic === "学术先锋") {
+            const randomTopicObj = TOPICS[Math.floor(Math.random() * TOPICS.length)];
+            targetTopic = randomTopicObj.title;
+        }
+
+        fetch("/api/ai/generate_drill", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                articleTitle: targetTopic,
+                articleContent: context.articleContent || "",
+                difficulty: getEloDifficulty(nextElo).level,
+                eloRating: Math.max(0, nextElo),
+                mode,
+                bossType: nextBossType,
+                _t: Date.now()
+            }),
+            signal: abortPrefetchRef.current.signal,
+        }).then(res => res.json())
+            .then(data => {
+                if (!abortPrefetchRef.current?.signal.aborted) {
+                    console.log("[Prefetch] Background prefetch completed and stored!");
+                    setPrefetchedDrillData({ ...data, mode });
+                }
+            }).catch(err => {
+                if (err.name !== 'AbortError') console.error("[Prefetch] Error:", err);
+            });
+    };
+
     // --- Core Actions ---
 
     const handleGenerateDrill = async (targetDifficulty = difficulty, overrideBossType?: string) => {
@@ -1058,6 +1281,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setAnalysisError(null);
             setAnalysisDetailsOpen(false);
             setEloChange(null);
+            setAssistsUsedInCurrentDrill(0);
+            setIsHintLoading(false);
             resetResult();
             if (audioRef.current) audioRef.current.pause();
             hasPlayedEchoRef.current = false;
@@ -1104,6 +1329,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setAnalysisError(null);
         setAnalysisDetailsOpen(false);
         setEloChange(null);
+        setAssistsUsedInCurrentDrill(0);
+        setIsHintLoading(false);
         resetResult(); // Clear previous recording transcript
         if (audioRef.current) audioRef.current.pause();
 
@@ -1185,6 +1412,21 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 targetTopic = randomTopicObj.title;
             }
 
+            // --- RANDOM SURPRISE DROP ---
+            if (currentStreak > 0 && Math.random() < 0.05) { // 5% chance on new drill load (only if they aren't totally failing)
+                setTimeout(() => {
+                    const isCapsule = Math.random() < 0.2;
+                    if (isCapsule) {
+                        applyEconomyPatch({ itemDelta: { capsule: 1 } });
+                        setLootDrop({ type: 'gem', amount: 1, rarity: 'rare', message: '🎁 天降幸运！获得灵感胶囊！' });
+                    } else {
+                        const randomCoins = Math.floor(Math.random() * 20) + 5;
+                        applyEconomyPatch({ coinsDelta: randomCoins });
+                        setLootDrop({ type: 'gem', amount: randomCoins, rarity: 'common', message: '💸 走运了！捡到星光币！' });
+                    }
+                }, 1000); // 1 second after generation starts
+            }
+
             const response = await fetch("/api/ai/generate_drill", {
                 method: "POST",
                 headers: {
@@ -1263,7 +1505,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (!userTranslation.trim() || !drillData) return;
         setIsSubmittingDrill(true);
         let prefetchNextElo: number | null = null;
-        let prefetchedDifficultyLevel: string | null = null;
 
         try {
             // Use correct Elo based on mode
@@ -1381,6 +1622,15 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 const result = calculateAdvancedElo(activeElo || 600, eloDifficulty.level, data.score, activeStreak);
                 let change = result.total;
                 let newStreak = activeStreak;
+
+                // --- SHIELD CONSUMPTION ---
+                if (hasActiveShield && data.score < 6 && change < 0) {
+                    change = 0; // Negate penalty
+                    newStreak = activeStreak; // Protect streak
+                    setHasActiveShield(false);
+                    setLootDrop({ type: 'exp', amount: 0, rarity: 'rare', message: '🛡️ 护盾抵消了一次惩罚！' });
+                    new Audio('https://assets.mixkit.co/sfx/preview/mixkit-sci-fi-shield-force-field-power-up-2166.mp3').play().catch(() => { });
+                }
 
                 // --- GAMBLING LOGIC (Crimson Roulette) ---
                 // --- GAMBLING LOGIC (Crimson Roulette) ---
@@ -1529,7 +1779,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 // === Elo Update Logic (ALWAYS EXECUTED) ===
                 const newElo = Math.max(0, (activeElo || 600) + change);
                 prefetchNextElo = newElo;
-                prefetchedDifficultyLevel = getEloDifficulty(newElo).level;
 
                 // Rank Change Detection
                 const oldRank = getRank(activeElo || 600);
@@ -1554,10 +1803,111 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 }
                 setEloChange(change);
 
+                // --- Hint Economy Coin Accumulation ---
+                let earnedCoins = 0;
+
+                // Base salary based on score
+                if (data.score < 6) earnedCoins += 2;
+                else if (data.score <= 8) earnedCoins += 5;
+                else earnedCoins += 10;
+
+                // Streak bonuses
+                if (newStreak >= 10) earnedCoins += 20;
+                else if (newStreak >= 5) earnedCoins += 10;
+                else if (newStreak >= 3) earnedCoins += 5;
+
+                // Critical Hit (10% chance to 5x base reward)
+                let isCritical = false;
+                if (Math.random() < 0.1) {
+                    earnedCoins *= 5;
+                    isCritical = true;
+                    // Critical hit sound
+                    new Audio('https://assets.mixkit.co/sfx/preview/mixkit-coins-handling-735.mp3').play().catch(() => { });
+                }
+
+                // Total update
+                let finalCoins = coinsRef.current + earnedCoins;
+
+                // --- HIDDEN BOUNTIES ---
+                let bountyCoins = 0;
+                let bountyMessage = "";
+                let bountyRarity: 'rare' | 'legendary' = 'rare';
+
+                // 1. "破壁者" (Wallbreaker): Beat a significantly higher difficulty (expected score <= 0.3, actual >= 9.0)
+                if (result.breakdown.expectedScore <= 0.3 && data.score >= 9.0) {
+                    bountyCoins = 88;
+                    bountyMessage = "🏆 破壁者！越级挑战无伤通关！+88 ✨";
+                    bountyRarity = 'legendary';
+                }
+                // 2. "涅槃重生" (Phoenix): Recovering from two low scores (<6) with a perfect >9 score
+                else if (recentScores.length >= 2 && recentScores[recentScores.length - 1] < 6 && recentScores[recentScores.length - 2] < 6 && data.score >= 9.0) {
+                    bountyCoins = 100;
+                    bountyMessage = "🔥 涅槃重生！触底绝地反击！+100 ✨";
+                    bountyRarity = 'legendary';
+                }
+                // 3. "词汇刺客" (Vocabulary Assassin): Using advanced vocabulary perfectly (Perfect 10 with 20% flat chance)
+                else if (data.score === 10 && Math.random() < 0.2) {
+                    bountyCoins = 50;
+                    bountyMessage = "🥷 词汇刺客！母语级精准表达！+50 ✨";
+                    bountyRarity = 'legendary';
+                }
+
+                if (bountyCoins > 0) {
+                    earnedCoins += bountyCoins;
+                    finalCoins += bountyCoins;
+                    setLootDrop({ type: 'gem', amount: bountyCoins, rarity: bountyRarity, message: bountyMessage });
+                    new Audio('https://assets.mixkit.co/sfx/preview/mixkit-ethereal-fairy-win-sound-2019.mp3').play().catch(() => { });
+                }
+
+                // Show LootDrop for regular Coins (if no bounty and no boss loot)
+                const hasExistingLoot = bossState.type === 'reaper' && bossState.hp === 1 && data.score >= 9.0;
+
+                // --- GACHA TRIGGER ---
+                let gachaTriggered = false;
+                const isPerfectDrill = data.score >= 8.0 && assistsUsedInCurrentDrill === 0;
+                if (!hasExistingLoot && isPerfectDrill && mode === 'translation' && Math.random() < 0.3) {
+                    gachaTriggered = true;
+                    setTimeout(() => {
+                        const pools = ['capsule_1', 'capsule_1', 'capsule_1', 'capsule_3', 'shield'];
+                        const rewards = [];
+                        for (let i = 0; i < 3; i++) {
+                            rewards.push({
+                                id: i,
+                                type: pools[Math.floor(Math.random() * pools.length)] as 'capsule_1' | 'capsule_3' | 'shield'
+                            });
+                        }
+                        setGachaRewards(rewards);
+                        setSelectedGachaIndex(null);
+                        setShowGacha(true);
+                        // Intro Sound
+                        new Audio('https://assets.mixkit.co/sfx/preview/mixkit-ethereal-fairy-win-sound-2019.mp3').play().catch(() => { });
+                    }, bountyCoins > 0 ? 2500 : 1000); // delay so they see score first
+                }
+
+                if (!hasExistingLoot && !gachaTriggered && earnedCoins > 0 && bountyCoins === 0) {
+                    if (isCritical) {
+                        setLootDrop({ type: 'gem', amount: earnedCoins, rarity: 'legendary', message: '✨ 绝佳！打工薪水超级暴击！' });
+                    } else {
+                        // Regular popup for coins (commented out to avoid spam, we will just silently update Ledger unless they got a streak or large amount)
+                        if (earnedCoins >= 10) {
+                            setLootDrop({ type: 'exp', amount: earnedCoins, rarity: 'common', message: '💸 完美翻译，获得星光币！' });
+                        }
+                    }
+                }
+
+                finalCoins = applyEconomyPatch({
+                    coinsDelta: earnedCoins,
+                }).coins;
+                // Update recent scores array (keep last 5)
+                setRecentScores(prev => [...prev.slice(-4), data.score]);
+
                 // Persist to DB
                 const profile = await db.user_profile.orderBy('id').first();
                 if (profile && profile.id) {
-                    const updateData: any = { last_practice: Date.now() };
+                    const updateData: any = {
+                        last_practice: Date.now(),
+                        coins: finalCoins
+                    };
 
                     if (isListening) {
                         updateData.listening_elo = newElo;
@@ -1587,53 +1937,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
             // --- BACKGROUND PREFETCH LOGIC (Evaluation-time) ---
             // Only prefetch after a successful score produced a fresh Elo for the next question.
-            if (drillData && userTranslation.trim() && prefetchNextElo !== null && prefetchedDifficultyLevel) {
-                console.log("[Prefetch] Starting background prefetch for next drill...");
-                if (abortPrefetchRef.current) abortPrefetchRef.current.abort();
-                abortPrefetchRef.current = new AbortController();
-
-                // Determine if we are entering a boss/gamble state next
-                let nextBossType: any = undefined;
-                if (mode === 'listening') {
-                    const roll = Math.random();
-                    if (roll < 0.02) {
-                        const bossRoll = Math.random();
-                        if (bossRoll < 0.35) nextBossType = 'blind';
-                        else if (bossRoll < 0.65) nextBossType = 'echo';
-                        else if (bossRoll < 0.85) nextBossType = 'lightning';
-                        else nextBossType = 'reaper';
-                    }
-                }
-
-                let targetTopic = context.articleTitle || context.topic;
-                if (!targetTopic || targetTopic.length === 0 || targetTopic === "日常闲聊" || targetTopic === "商务精英" || targetTopic === "学术先锋") {
-                    const randomTopicObj = TOPICS[Math.floor(Math.random() * TOPICS.length)];
-                    targetTopic = randomTopicObj.title;
-                }
-
-                fetch("/api/ai/generate_drill", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        articleTitle: targetTopic,
-                        articleContent: context.articleContent || "",
-                        difficulty: prefetchedDifficultyLevel,
-                        eloRating: Math.max(0, prefetchNextElo),
-                        mode,
-                        bossType: nextBossType,
-                        _t: Date.now() // Cache buster
-                    }),
-                    signal: abortPrefetchRef.current.signal,
-                }).then(res => res.json())
-                    .then(data => {
-                        if (!abortPrefetchRef.current?.signal.aborted) {
-                            console.log("[Prefetch] Background prefetch completed and stored!");
-                            // Also store the generated mode so we can invalidate it if user switches mode
-                            setPrefetchedDrillData({ ...data, mode });
-                        }
-                    }).catch(err => {
-                        if (err.name !== 'AbortError') console.error("[Prefetch] Error:", err);
-                    });
+            if (drillData && userTranslation.trim() && prefetchNextElo !== null) {
+                prefetchNextDrill(prefetchNextElo);
             }
         }
     };
@@ -1700,22 +2005,60 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
     };
 
-    const handleMagicHint = () => {
+    const handleMagicHint = async () => {
         if (!drillData || !drillData.reference_english) return;
-        const target = drillData.reference_english;
-        const currentLength = userTranslation.length;
-        const remaining = target.slice(currentLength);
-        if (!remaining) return;
-
-        let nextChunk = "";
-        const words = remaining.split(" ");
-        if (words.length > 0) {
-            nextChunk = words.slice(0, 2).join(" ") + " ";
-        } else {
-            nextChunk = remaining;
+        if (isHintLoading) return;
+        if (getItemCount('hint_ticket') <= 0) {
+            setIsHintShake(true);
+            setTimeout(() => setIsHintShake(false), 500);
+            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: 'Hint 道具不足，请先去商场购买' });
+            return;
         }
-        setUserTranslation(prev => prev + (prev.endsWith(" ") ? "" : " ") + nextChunk);
+
+        setIsHintLoading(true);
+
+        try {
+            applyEconomyPatch({ itemDelta: { hint_ticket: -1 } });
+            setAssistsUsedInCurrentDrill(prev => prev + 1);
+            const fullReference = drillData.reference_english.trim();
+            setFullReferenceHint(prev => ({ version: prev.version + 1, text: fullReference }));
+
+            if (userTranslation.trim()) {
+                setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: '已显示完整参考句（不会覆盖你已输入内容）' });
+            }
+        } catch (error) {
+            console.error('[Hint] Failed to generate hint:', error);
+            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: '提示生成失败，请重试' });
+        } finally {
+            setIsHintLoading(false);
+        }
     };
+
+    const handlePredictionRequest = useCallback(() => {
+        if (getItemCount('capsule') <= 0) {
+            setIsHintShake(true);
+            setTimeout(() => setIsHintShake(false), 500);
+            return false;
+        }
+
+        return true;
+    }, [getItemCount]);
+
+    const handlePredictionShown = useCallback(() => {
+        applyEconomyPatch({ itemDelta: { capsule: -1 } });
+        setAssistsUsedInCurrentDrill(prev => prev + 1);
+    }, [applyEconomyPatch]);
+
+    const handleBuyItem = useCallback((itemId: ShopItemId) => {
+        const item = ITEM_CATALOG[itemId];
+        if (coinsRef.current < item.price) return false;
+
+        applyEconomyPatch({
+            coinsDelta: -item.price,
+            itemDelta: { [itemId]: 1 },
+        });
+        return true;
+    }, [applyEconomyPatch]);
 
     // --- Interactive Renderers (Ported) ---
 
@@ -2558,60 +2901,96 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                 </motion.div>
                             )}
                         </div>
-                        {/* Teaching Mode Button - Only for Translation */}
-                        {mode === 'translation' && (
-                            <button
-                                onClick={() => {
-                                    if (!teachingMode) {
-                                        // First time enabling: turn on and auto-fetch if drill exists
-                                        setTeachingMode(true);
-                                        if (drillData && drillData.chinese && drillData.reference_english && !teachingData && !isLoadingTeaching) {
-                                            setIsLoadingTeaching(true);
-                                            fetch('/api/ai/teach', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({
-                                                    chinese: drillData.chinese,
-                                                    reference_english: drillData.reference_english,
-                                                    elo: eloRating || 600,
-                                                }),
-                                            })
-                                                .then(r => r.json())
-                                                .then(d => { if (!d.error) setTeachingData(d); })
-                                                .catch(() => { })
-                                                .finally(() => setIsLoadingTeaching(false));
+
+                        {/* Right Side Actions & Ledger */}
+                        <div className="flex items-center gap-2">
+                            {/* Hint Economy Ledger - Translation Only */}
+                            {mode === 'translation' && (
+                                <div className={cn(
+                                    "flex items-center bg-white/80 backdrop-blur-md rounded-full border border-stone-200 shadow-sm p-1 gap-1 h-9 transition-all",
+                                    isHintShake && "animate-[shake_0.4s_ease-in-out] border-red-300 shadow-[0_0_18px_rgba(220,38,38,0.2)]"
+                                )}>
+                                    {/* Coins */}
+                                    <div className="flex items-center gap-1 px-2.5 h-full bg-stone-50 rounded-full border border-stone-100">
+                                        <span className="text-amber-500 font-bold text-[11px] mt-0.5">✨</span>
+                                        <span className="font-mono font-bold text-xs text-stone-600 tabular-nums">{coins}</span>
+                                    </div>
+
+                                    <button
+                                        onClick={() => setShowShopModal(true)}
+                                        className="group relative flex items-center justify-center h-full rounded-full bg-blue-50 px-2 text-blue-600 border border-blue-100/70 hover:bg-blue-100 hover:text-blue-700 transition-colors"
+                                        title="打开商场"
+                                    >
+                                        <span className="font-bold text-[11px] tracking-wide">商场</span>
+                                    </button>
+
+                                    <div className="flex items-center gap-1.5 px-2.5 h-full bg-blue-50 text-blue-600 rounded-full border border-blue-100/50">
+                                        <span className="font-bold text-[11px] mt-0.5">💊</span>
+                                        <span className="font-mono font-bold text-xs tabular-nums">{capsuleCount}</span>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 px-2.5 h-full bg-amber-50 text-amber-700 rounded-full border border-amber-100/70">
+                                        <span className="font-bold text-[11px] mt-0.5">🪄</span>
+                                        <span className="font-mono font-bold text-xs tabular-nums">{hintTicketCount}</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Teaching Mode Button - Only for Translation */}
+                            {mode === 'translation' && (
+                                <button
+                                    onClick={() => {
+                                        if (!teachingMode) {
+                                            // First time enabling: turn on and auto-fetch if drill exists
+                                            setTeachingMode(true);
+                                            if (drillData && drillData.chinese && drillData.reference_english && !teachingData && !isLoadingTeaching) {
+                                                setIsLoadingTeaching(true);
+                                                fetch('/api/ai/teach', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({
+                                                        chinese: drillData.chinese,
+                                                        reference_english: drillData.reference_english,
+                                                        elo: eloRating || 600,
+                                                    }),
+                                                })
+                                                    .then(r => r.json())
+                                                    .then(d => { if (!d.error) setTeachingData(d); })
+                                                    .catch(() => { })
+                                                    .finally(() => setIsLoadingTeaching(false));
+                                            }
+                                            setTeachingPanelOpen(true);
+                                        } else {
+                                            // Toggle panel open/close
+                                            setTeachingPanelOpen(!teachingPanelOpen);
                                         }
-                                        setTeachingPanelOpen(true);
-                                    } else {
-                                        // Toggle panel open/close
-                                        setTeachingPanelOpen(!teachingPanelOpen);
-                                    }
-                                }}
-                                className={cn(
-                                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold transition-all border ml-2",
-                                    teachingMode && teachingPanelOpen
-                                        ? "bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm"
-                                        : teachingMode
-                                            ? "bg-indigo-50/50 border-indigo-100 text-indigo-400 hover:text-indigo-600"
-                                            : "bg-stone-50 border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300"
-                                )}
-                                title={teachingPanelOpen ? '收起教学面板' : '打开教学面板'}
-                            >
-                                <BookOpen className="w-3 h-3" />
-                                <span>教学</span>
-                                {teachingMode && (
-                                    <div className={cn(
-                                        "w-1.5 h-1.5 rounded-full",
-                                        isLoadingTeaching ? "bg-amber-400 animate-pulse" : "bg-emerald-400"
-                                    )} />
-                                )}
-                            </button>
-                        )}
-                        {onClose && (
-                            <button onClick={onClose} className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition-all group ml-2">
-                                <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
-                            </button>
-                        )}
+                                    }}
+                                    className={cn(
+                                        "flex items-center gap-1.5 px-3 h-9 rounded-full text-[11px] font-bold transition-all border",
+                                        teachingMode && teachingPanelOpen
+                                            ? "bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm"
+                                            : teachingMode
+                                                ? "bg-indigo-50/50 border-indigo-100 text-indigo-400 hover:text-indigo-600"
+                                                : "bg-stone-50 border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300"
+                                    )}
+                                    title={teachingPanelOpen ? '收起教学面板' : '打开教学面板'}
+                                >
+                                    <BookOpen className="w-3.5 h-3.5" />
+                                    <span>教学</span>
+                                    {teachingMode && (
+                                        <div className={cn(
+                                            "w-1.5 h-1.5 rounded-full ml-0.5",
+                                            isLoadingTeaching ? "bg-amber-400 animate-pulse" : "bg-emerald-400"
+                                        )} />
+                                    )}
+                                </button>
+                            )}
+                            {onClose && (
+                                <button onClick={onClose} className="w-9 h-9 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition-all group shrink-0">
+                                    <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {/* Content Body */}
@@ -3056,6 +3435,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     predictionWordCount={3}
                                                                     sourceText={drillData?.chinese}
                                                                     referenceAnswer={drillData?.reference_english}
+                                                                    onPredictionRequest={handlePredictionRequest}
+                                                                    onPredictionShown={handlePredictionShown}
+                                                                    predictionCostText="消耗 1 胶囊获取提示"
+                                                                    fullReferenceGhostText={fullReferenceHint.text}
+                                                                    fullReferenceGhostVersion={fullReferenceHint.version}
                                                                     disabled={isSubmittingDrill}
                                                                     className="font-work-sans min-h-[128px] px-5 pb-16 pt-5 text-[1.06rem] font-semibold leading-[1.9] tracking-[0.005em] text-stone-900 placeholder:text-stone-300/95 md:min-h-[144px] md:px-6 md:pb-16 md:pt-6 md:text-[1.12rem]"
                                                                 />
@@ -3077,15 +3461,18 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     <div className="flex items-center gap-1 md:gap-2">
                                                                         <button
                                                                             onClick={handleMagicHint}
+                                                                            disabled={isHintLoading}
                                                                             className={cn(
-                                                                                "flex h-10 items-center gap-1 rounded-full border px-2.5 text-[11px] font-bold transition-all active:scale-95 md:gap-1.5 md:px-4 md:text-xs",
-                                                                                streakTier >= 2
-                                                                                    ? "border-orange-200/80 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(255,237,213,0.88))] text-orange-700 shadow-[0_10px_22px_rgba(249,115,22,0.12)] hover:-translate-y-0.5 hover:border-orange-300 hover:text-orange-800 hover:shadow-[0_14px_26px_rgba(249,115,22,0.18)]"
-                                                                                    : "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.95),rgba(254,243,199,0.82))] text-amber-700 shadow-[0_8px_18px_rgba(245,158,11,0.10)] hover:-translate-y-0.5 hover:border-amber-300 hover:text-amber-800 hover:shadow-[0_10px_22px_rgba(245,158,11,0.14)]"
+                                                                                "flex h-10 items-center justify-center gap-1 rounded-full border px-2.5 text-[11px] font-bold transition-all active:scale-95 md:gap-1.5 md:px-3 md:text-xs min-w-[80px]",
+                                                                                isHintLoading ? "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.95),rgba(254,243,199,0.82))] text-amber-600 opacity-85 cursor-wait" :
+                                                                                    (streakTier >= 2
+                                                                                        ? "border-orange-200/80 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(255,237,213,0.88))] text-orange-700 shadow-[0_10px_22px_rgba(249,115,22,0.12)] hover:-translate-y-0.5 hover:border-orange-300 hover:text-orange-800 hover:shadow-[0_14px_26px_rgba(249,115,22,0.18)]"
+                                                                                        : "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.95),rgba(254,243,199,0.82))] text-amber-700 shadow-[0_8px_18px_rgba(245,158,11,0.10)] hover:-translate-y-0.5 hover:border-amber-300 hover:text-amber-800 hover:shadow-[0_10px_22px_rgba(245,158,11,0.14)]")
                                                                             )}
                                                                             title="Auto-Complete Hint"
                                                                         >
-                                                                            <Wand2 className="w-4 h-4" /> Hint
+                                                                            <Wand2 className={cn("w-4 h-4 shrink-0", isHintLoading && "animate-spin")} />
+                                                                            <span>{isHintLoading ? "Hint..." : "Hint"}</span>
                                                                         </button>
                                                                         <button
                                                                             onClick={() => setIsTutorOpen(!isTutorOpen)}
@@ -4117,6 +4504,156 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         onComplete={handleRouletteComplete}
                         onCancel={() => setShowRoulette(false)}
                     />
+                )}
+            </AnimatePresence>
+
+            {/* GACHA OVERLAY */}
+            <AnimatePresence>
+                {showGacha && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 font-inter"
+                    >
+                        <motion.div
+                            initial={{ y: -50, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            className="text-center mb-12"
+                        >
+                            <h2 className="text-4xl font-black text-amber-400 mb-2 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]">完美通关！</h2>
+                            <p className="text-stone-300 font-medium tracking-widest text-lg">✨ 请翻开一张塔罗牌 ✨</p>
+                        </motion.div>
+
+                        <div className="flex gap-6 md:gap-8 items-center justify-center w-full max-w-3xl perspective-1000">
+                            {gachaRewards.map((reward, idx) => {
+                                const isSelected = selectedGachaIndex === idx;
+                                const isRevealed = selectedGachaIndex !== null;
+
+                                // Mapping reward types to UI
+                                const rewardUI = {
+                                    'capsule_1': { icon: '💊', title: '小胶囊', desc: '+1 灵感', color: 'text-amber-300', bg: 'from-amber-500/20 to-orange-500/20', border: 'border-amber-500/50' },
+                                    'capsule_3': { icon: '💊', title: '大满贯', desc: '+3 灵感', color: 'text-rose-400', bg: 'from-rose-500/20 to-pink-500/20', border: 'border-rose-500/50' },
+                                    'shield': { icon: '🛡️', title: '免死金牌', desc: '抵消1次惩罚', color: 'text-emerald-400', bg: 'from-emerald-500/20 to-teal-500/20', border: 'border-emerald-500/50' }
+                                }[reward.type];
+
+                                return (
+                                    <motion.div
+                                        key={idx}
+                                        onClick={() => handleGachaSelect(idx)}
+                                        className={cn(
+                                            "relative w-[100px] h-[140px] md:w-[140px] md:h-[200px] cursor-pointer transform-style-3d transition-all duration-700",
+                                            isRevealed ? (isSelected ? "rotate-y-180 scale-110 z-10" : "rotate-y-180 scale-90 opacity-40 grayscale") : "hover:-translate-y-4 hover:shadow-[0_0_30px_rgba(251,191,36,0.3)]"
+                                        )}
+                                    >
+                                        {/* Card Back */}
+                                        <div className="absolute inset-0 backface-hidden bg-stone-900 border-2 border-stone-700/80 rounded-2xl shadow-2xl flex flex-col items-center justify-center overflow-hidden">
+                                            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-30" />
+                                            <div className="absolute inset-2 border border-stone-700/50 rounded-xl" />
+                                            <div className="w-12 h-12 md:w-16 md:h-16 rounded-full border border-stone-600 flex items-center justify-center opacity-80 shadow-[0_0_15px_rgba(255,255,255,0.05)]">
+                                                <span className="text-2xl md:text-3xl filter grayscale">👁️</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Card Front */}
+                                        <div className="absolute inset-0 backface-hidden rotate-y-180 bg-stone-900 border-2 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center p-3 text-center overflow-hidden"
+                                            style={{ borderColor: isSelected ? 'rgba(251,191,36,0.8)' : 'rgba(87,83,78,0.5)' }}
+                                        >
+                                            <div className={cn("absolute inset-0 bg-gradient-to-br opacity-30", rewardUI.bg)} />
+                                            <div className={cn("absolute inset-1 border rounded-xl opacity-50", rewardUI.border)} />
+                                            <span className="text-3xl md:text-5xl mb-2 filter drop-shadow-md relative z-10">{rewardUI.icon}</span>
+                                            <h3 className={cn("font-black text-sm md:text-base relative z-10 tracking-widest", rewardUI.color)}>{rewardUI.title}</h3>
+                                            <p className="text-[10px] md:text-xs text-stone-400 font-bold mt-1 relative z-10">{rewardUI.desc}</p>
+                                        </div>
+                                    </motion.div>
+                                );
+                            })}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* SHOP MODAL */}
+            <AnimatePresence>
+                {showShopModal && mode === 'translation' && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[120] bg-black/55 backdrop-blur-sm p-4 flex items-center justify-center"
+                        onClick={() => setShowShopModal(false)}
+                    >
+                        <motion.div
+                            initial={{ y: 18, opacity: 0, scale: 0.98 }}
+                            animate={{ y: 0, opacity: 1, scale: 1 }}
+                            exit={{ y: 12, opacity: 0, scale: 0.98 }}
+                            transition={{ duration: 0.22, ease: "easeOut" }}
+                            className="w-full max-w-xl rounded-3xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,244,238,0.96))] shadow-[0_20px_60px_rgba(15,23,42,0.24)]"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-200/80">
+                                <div className="space-y-1">
+                                    <p className="text-sm font-black tracking-[0.2em] text-stone-700">商场</p>
+                                    <p className="text-xs text-stone-500">金币购买道具，立即生效</p>
+                                </div>
+                                <div className="flex items-center gap-2 rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1.5 text-amber-700">
+                                    <span className="text-sm">✨</span>
+                                    <span className="font-mono text-sm font-black tabular-nums">{coins}</span>
+                                </div>
+                            </div>
+
+                            <div className="p-4 space-y-3">
+                                {(Object.keys(ITEM_CATALOG) as ShopItemId[]).map((itemId) => {
+                                    const item = ITEM_CATALOG[itemId];
+                                    const itemCount = getItemCount(itemId);
+                                    const canBuy = coins >= item.price;
+                                    return (
+                                        <div key={item.id} className="rounded-2xl border border-stone-200/80 bg-white/85 p-4 flex items-center justify-between gap-4">
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-lg">{item.icon}</span>
+                                                    <p className="text-sm font-bold text-stone-800">{item.name}</p>
+                                                    <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-mono font-bold text-stone-600">
+                                                        x {itemCount}
+                                                    </span>
+                                                </div>
+                                                <p className="mt-1 text-xs text-stone-500">{item.description}</p>
+                                                <p className="mt-1 text-[11px] font-medium text-stone-400">用途：{item.consumeAction}</p>
+                                            </div>
+
+                                            <button
+                                                onClick={() => {
+                                                    const success = handleBuyItem(itemId);
+                                                    if (success) {
+                                                        setLootDrop({ type: 'gem', amount: 1, rarity: 'common', message: `已购买 ${item.name}` });
+                                                    }
+                                                }}
+                                                disabled={!canBuy}
+                                                className={cn(
+                                                    "shrink-0 rounded-full px-4 py-2 text-xs font-bold border transition-all",
+                                                    canBuy
+                                                        ? "bg-stone-900 text-white border-stone-800 hover:-translate-y-0.5 hover:bg-stone-800"
+                                                        : "bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed"
+                                                )}
+                                                title={canBuy ? `花费 ${item.price} ✨ 购买 1 个 ${item.name}` : `星光币不足 ${item.price} ✨`}
+                                            >
+                                                {item.price} ✨ 购买
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="px-5 pb-4 flex justify-end">
+                                <button
+                                    onClick={() => setShowShopModal(false)}
+                                    className="rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-50 transition-colors"
+                                >
+                                    关闭
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
                 )}
             </AnimatePresence>
 
