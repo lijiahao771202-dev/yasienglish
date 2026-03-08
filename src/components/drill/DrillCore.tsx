@@ -3727,7 +3727,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     fullReferenceGhostText={fullReferenceHint.text}
                                                                     fullReferenceGhostVersion={fullReferenceHint.version}
                                                                     disabled={isSubmittingDrill}
-                                                                    className="font-work-sans min-h-[128px] px-5 pb-16 pt-5 text-[1.06rem] font-semibold leading-[1.9] tracking-[0.005em] text-stone-900 placeholder:text-stone-300/95 md:min-h-[144px] md:px-6 md:pb-16 md:pt-6 md:text-[1.12rem] bg-transparent"
+                                                                    className="font-work-sans min-h-[128px] px-5 pb-16 pt-5 text-[1.06rem] font-medium leading-[1.9] tracking-[0.005em] text-stone-900 placeholder:text-stone-400/45 placeholder:font-normal placeholder:italic md:min-h-[144px] md:px-6 md:pb-16 md:pt-6 md:text-[1.12rem] bg-transparent"
                                                                 />
 
                                                                 {/* Bottom toolbar */}
@@ -3737,7 +3737,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         "flex items-center gap-1 rounded-full px-2 py-1.5 text-[9px] font-bold font-sans tracking-[0.14em] transition-all duration-300 md:gap-1.5 md:px-3 md:text-[11px] md:tracking-[0.18em]",
                                                                         userTranslation.trim()
                                                                             ? "border border-stone-200/80 bg-white/90 text-stone-500 shadow-[0_6px_16px_rgba(15,23,42,0.05)]"
-                                                                            : "bg-transparent text-stone-300 font-medium"
+                                                                            : "bg-transparent text-stone-400/60 font-medium"
                                                                     )}>
                                                                         <span className="tabular-nums">{userTranslation.trim() ? userTranslation.trim().split(/\s+/).length : 0}</span>
                                                                         <span>WORDS</span>
@@ -3749,11 +3749,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             onClick={handleMagicHint}
                                                                             disabled={isHintLoading}
                                                                             className={cn(
-                                                                                "flex h-10 items-center justify-center gap-1 rounded-full border px-2.5 text-[11px] font-bold transition-all active:scale-95 md:gap-1.5 md:px-3 md:text-xs min-w-[80px]",
-                                                                                isHintLoading ? "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.95),rgba(254,243,199,0.82))] text-amber-600 opacity-85 cursor-wait" :
-                                                                                    (streakTier >= 2
-                                                                                        ? "border-orange-200/80 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(255,237,213,0.88))] text-orange-700 shadow-[0_10px_22px_rgba(249,115,22,0.12)] hover:-translate-y-0.5 hover:border-orange-300 hover:text-orange-800 hover:shadow-[0_14px_26px_rgba(249,115,22,0.18)]"
-                                                                                        : "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.95),rgba(254,243,199,0.82))] text-amber-700 shadow-[0_8px_18px_rgba(245,158,11,0.10)] hover:-translate-y-0.5 hover:border-amber-300 hover:text-amber-800 hover:shadow-[0_10px_22px_rgba(245,158,11,0.14)]")
+                                                                                "flex h-10 items-center justify-center gap-1.5 rounded-full border px-3 text-[11px] font-bold transition-all hover:-translate-y-0.5 active:scale-95 md:px-4 md:text-xs min-w-[80px]",
+                                                                                isHintLoading
+                                                                                    ? "border-stone-200/80 bg-stone-100/50 text-stone-400 cursor-wait pointer-events-none"
+                                                                                    : {
+                                                                                        'morning_coffee': "border-indigo-200/80 bg-[linear-gradient(180deg,rgba(238,242,255,0.95),rgba(224,231,255,0.82))] text-indigo-700 shadow-[0_4px_12px_rgba(99,102,241,0.08)] hover:border-indigo-300 hover:text-indigo-800 hover:shadow-[0_8px_16px_rgba(99,102,241,0.12)]",
+                                                                                        'sakura': "border-pink-200/80 bg-[linear-gradient(180deg,rgba(253,242,248,0.95),rgba(252,231,243,0.82))] text-pink-700 shadow-[0_4px_12px_rgba(236,72,153,0.08)] hover:border-pink-300 hover:text-pink-800 hover:shadow-[0_8px_16px_rgba(236,72,153,0.12)]",
+                                                                                        'golden_hour': "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.95),rgba(254,243,199,0.82))] text-amber-700 shadow-[0_4px_12px_rgba(245,158,11,0.08)] hover:border-amber-300 hover:text-amber-800 hover:shadow-[0_8px_16px_rgba(245,158,11,0.12)]",
+                                                                                        'holo_pearl': "border-fuchsia-200/80 bg-[linear-gradient(180deg,rgba(253,244,255,0.95),rgba(250,232,255,0.82))] text-fuchsia-700 shadow-[0_4px_12px_rgba(192,38,211,0.08)] hover:border-fuchsia-300 hover:text-fuchsia-800 hover:shadow-[0_8px_16px_rgba(192,38,211,0.12)]",
+                                                                                        'cloud_nine': "border-cyan-200/80 bg-[linear-gradient(180deg,rgba(236,254,255,0.95),rgba(207,250,254,0.82))] text-cyan-700 shadow-[0_4px_12px_rgba(6,182,212,0.08)] hover:border-cyan-300 hover:text-cyan-800 hover:shadow-[0_8px_16px_rgba(6,182,212,0.12)]",
+                                                                                        'lilac_dream': "border-purple-200/80 bg-[linear-gradient(180deg,rgba(250,245,255,0.95),rgba(243,232,255,0.82))] text-purple-700 shadow-[0_4px_12px_rgba(168,85,247,0.08)] hover:border-purple-300 hover:text-purple-800 hover:shadow-[0_8px_16px_rgba(168,85,247,0.12)]",
+                                                                                    }[activeCosmeticTheme?.id || 'morning_coffee']
                                                                             )}
                                                                             title="Auto-Complete Hint"
                                                                         >
@@ -3762,7 +3768,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         </button>
                                                                         <button
                                                                             onClick={() => setIsTutorOpen(!isTutorOpen)}
-                                                                            className="flex h-10 w-10 items-center justify-center rounded-full border border-stone-200/80 bg-white/88 text-stone-500 shadow-[0_6px_16px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-indigo-50/90 hover:text-indigo-600 active:scale-95"
+                                                                            className={cn(
+                                                                                "flex h-10 w-10 items-center justify-center rounded-full border border-stone-200/80 bg-white/88 text-stone-500 shadow-[0_6px_16px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 active:scale-95",
+                                                                                {
+                                                                                    'morning_coffee': "hover:border-indigo-200 hover:bg-indigo-50/90 hover:text-indigo-600",
+                                                                                    'sakura': "hover:border-pink-200 hover:bg-pink-50/90 hover:text-pink-600",
+                                                                                    'golden_hour': "hover:border-amber-200 hover:bg-amber-50/90 hover:text-amber-600",
+                                                                                    'holo_pearl': "hover:border-fuchsia-200 hover:bg-fuchsia-50/90 hover:text-fuchsia-600",
+                                                                                    'cloud_nine': "hover:border-cyan-200 hover:bg-cyan-50/90 hover:text-cyan-600",
+                                                                                    'lilac_dream': "hover:border-purple-200 hover:bg-purple-50/90 hover:text-purple-600",
+                                                                                }[activeCosmeticTheme?.id || 'morning_coffee']
+                                                                            )}
                                                                             title="Ask AI Tutor"
                                                                         >
                                                                             <HelpCircle className="w-4 h-4" />
@@ -3771,22 +3787,25 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             onClick={handleSubmitDrill}
                                                                             disabled={!userTranslation.trim() || isSubmittingDrill}
                                                                             className={cn(
-                                                                                "flex h-10 items-center gap-1.5 rounded-full px-3 text-[11px] font-bold transition-all active:scale-95 md:gap-2 md:px-6 md:text-xs",
-                                                                                "disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100",
-                                                                                userTranslation.trim() && !isSubmittingDrill
-                                                                                    ? "text-white hover:-translate-y-0.5"
-                                                                                    : "border border-stone-300/60 bg-stone-200/90 text-stone-400"
+                                                                                "flex h-10 items-center justify-center gap-1.5 rounded-full px-4 text-[11px] font-bold transition-all md:px-5 md:text-sm",
+                                                                                "disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100",
+                                                                                (!userTranslation.trim() || isSubmittingDrill)
+                                                                                    ? "border border-stone-300/60 bg-white/50 text-stone-400 shadow-sm"
+                                                                                    : [
+                                                                                        "border text-white hover:-translate-y-0.5 active:scale-95 cursor-pointer",
+                                                                                        {
+                                                                                            'morning_coffee': "border-indigo-400/80 bg-[linear-gradient(180deg,rgba(99,102,241,0.9),rgba(79,70,229,0.95))] shadow-[0_8px_20px_rgba(99,102,241,0.25)] hover:shadow-[0_10px_24px_rgba(99,102,241,0.35)]",
+                                                                                            'sakura': "border-pink-400/80 bg-[linear-gradient(180deg,rgba(244,114,182,0.9),rgba(219,39,119,0.95))] shadow-[0_8px_20px_rgba(236,72,153,0.25)] hover:shadow-[0_10px_24px_rgba(236,72,153,0.35)]",
+                                                                                            'golden_hour': "border-amber-400/80 bg-[linear-gradient(180deg,rgba(245,158,11,0.9),rgba(217,119,6,0.95))] shadow-[0_8px_20px_rgba(245,158,11,0.25)] hover:shadow-[0_10px_24px_rgba(245,158,11,0.35)]",
+                                                                                            'holo_pearl': "border-fuchsia-400/80 bg-[linear-gradient(180deg,rgba(192,38,211,0.9),rgba(162,28,175,0.95))] shadow-[0_8px_20px_rgba(192,38,211,0.25)] hover:shadow-[0_10px_24px_rgba(192,38,211,0.35)]",
+                                                                                            'cloud_nine': "border-cyan-400/80 bg-[linear-gradient(180deg,rgba(6,182,212,0.9),rgba(8,145,178,0.95))] shadow-[0_8px_20px_rgba(6,182,212,0.25)] hover:shadow-[0_10px_24px_rgba(6,182,212,0.35)]",
+                                                                                            'lilac_dream': "border-purple-400/80 bg-[linear-gradient(180deg,rgba(168,85,247,0.9),rgba(147,51,234,0.95))] shadow-[0_8px_20px_rgba(168,85,247,0.25)] hover:shadow-[0_10px_24px_rgba(168,85,247,0.35)]",
+                                                                                        }[activeCosmeticTheme?.id || 'morning_coffee']
+                                                                                    ]
                                                                             )}
-                                                                            style={userTranslation.trim() && !isSubmittingDrill ? {
-                                                                                backgroundImage: streakVisual.checkGradient,
-                                                                                borderColor: streakVisual.checkBorder,
-                                                                                boxShadow: streakTransition === 'surge'
-                                                                                    ? `${streakVisual.checkShadow}, 0 0 0 2px ${streakVisual.badgeGlow}`
-                                                                                    : streakVisual.checkShadow,
-                                                                            } : undefined}
                                                                         >
                                                                             {isSubmittingDrill ? <Sparkles className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                                                            {isSubmittingDrill ? "评分中..." : "Check"}
+                                                                            {isSubmittingDrill ? "..." : "Check"}
                                                                         </button>
                                                                     </div>
                                                                 </div>
