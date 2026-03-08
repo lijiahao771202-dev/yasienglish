@@ -3007,26 +3007,26 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         <div className="flex items-center gap-2 flex-wrap">
                             {/* Unified Info Pill */}
                             {drillData && (
-                                <div className="flex items-center bg-white/80 backdrop-blur-md rounded-full border border-stone-200 shadow-sm overflow-hidden">
+                                <div className="flex items-center h-[38px] p-1 bg-white/60 backdrop-blur-xl rounded-full border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 overflow-hidden transition-all shrink-0">
                                     {/* Rank Section */}
                                     {(() => {
                                         const rank = getRank(currentElo || 600);
                                         return bossState.type === 'roulette_execution' ? (
-                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-red-950/80 text-red-200">
-                                                <Skull className="w-3.5 h-3.5 text-red-400" />
-                                                <span className="font-bold text-[10px] tracking-wider uppercase">处决模式</span>
+                                            <div className="flex items-center gap-1.5 px-3 h-full rounded-full bg-red-900/10 text-red-700/90">
+                                                <Skull className="w-[14px] h-[14px] text-red-500" />
+                                                <span className="font-bold text-[11px] tracking-wider uppercase drop-shadow-sm">处决模式</span>
                                             </div>
                                         ) : rouletteSession?.result === 'safe' ? (
-                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-950/80 text-amber-200">
-                                                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                                                <span className="font-bold text-[10px] tracking-wider uppercase">x{rouletteSession.multiplier}</span>
+                                            <div className="flex items-center gap-1.5 px-3 h-full rounded-full bg-amber-500/10 text-amber-700/90">
+                                                <Zap className="w-[14px] h-[14px] text-amber-500 fill-amber-500" />
+                                                <span className="font-bold text-[11px] tracking-wider uppercase drop-shadow-sm">x{rouletteSession.multiplier}</span>
                                             </div>
                                         ) : (
-                                            <div className={cn("flex items-center gap-1.5 px-3 py-1.5", rank.color)}>
-                                                <rank.icon className="w-3.5 h-3.5" />
-                                                <span className="font-bold text-[10px] tracking-wider uppercase">{rank.title}</span>
-                                                <div className="w-px h-3 bg-current opacity-20" />
-                                                <span className="font-newsreader font-medium italic text-sm">{currentElo || 600}</span>
+                                            <div className={cn("flex items-center gap-1.5 px-3 h-full rounded-full", rank.color)}>
+                                                <rank.icon className="w-[14px] h-[14px]" />
+                                                <span className="font-bold text-[11px] tracking-wider uppercase drop-shadow-sm">{rank.title}</span>
+                                                <div className="w-[1px] h-3 bg-current opacity-20 ml-0.5 mr-0.5" />
+                                                <span className="font-newsreader font-medium italic text-[13px]">{currentElo || 600}</span>
                                             </div>
                                         );
                                     })()}
@@ -3034,14 +3034,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     {/* Difficulty Section */}
                                     {drillData?._difficultyMeta && (
                                         <>
-                                            <div className="w-px h-5 bg-stone-200" />
+                                            <div className="w-[1px] h-4 bg-stone-300/40 rounded-full mx-0.5" />
                                             <div className={cn(
-                                                "flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider",
+                                                "flex items-center gap-1 px-3 h-full rounded-full text-[11px] font-bold uppercase tracking-wider transition-colors",
                                                 drillData._difficultyMeta.status === 'MATCHED'
-                                                    ? "text-emerald-600 bg-emerald-50/50"
+                                                    ? "text-emerald-700/80 hover:bg-emerald-50"
                                                     : drillData._difficultyMeta.status === 'TOO_EASY'
-                                                        ? "text-amber-600 bg-amber-50/50"
-                                                        : "text-rose-600 bg-rose-50/50"
+                                                        ? "text-amber-700/80 hover:bg-amber-50"
+                                                        : "text-rose-700/80 hover:bg-rose-50"
                                             )}>
                                                 <span className="font-mono">{drillData._difficultyMeta.tier}</span>
                                                 <span className="opacity-40">|</span>
@@ -3053,14 +3053,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     {/* Topic Section */}
                                     {drillData?._topicMeta && (
                                         <>
-                                            <div className="w-px h-5 bg-stone-200" />
-                                            <div className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold text-blue-600 bg-blue-50/50 rounded-full">
-                                                <span>📌</span>
-                                                <span className="max-w-[100px] sm:max-w-[120px] truncate">{drillData._topicMeta.topic}</span>
+                                            <div className="w-[1px] h-4 bg-stone-300/40 rounded-full mx-0.5" />
+                                            <div className="flex items-center gap-1.5 px-3 h-full rounded-full text-[11px] font-bold text-blue-700/80 transition-colors hover:bg-blue-50 cursor-pointer" title={drillData._topicMeta.subTopic || drillData._topicMeta.topic}>
+                                                <span className="text-[12px] leading-none mb-[1px]">📌</span>
+                                                <span className="max-w-[80px] sm:max-w-[120px] truncate">{drillData._topicMeta.topic}</span>
                                                 {drillData._topicMeta.subTopic && (
                                                     <>
                                                         <span className="opacity-40 font-normal">·</span>
-                                                        <span className="max-w-[150px] sm:max-w-[200px] truncate opacity-80 font-medium">
+                                                        <span className="max-w-[120px] sm:max-w-[150px] truncate opacity-80 font-medium hidden sm:inline">
                                                             {drillData._topicMeta.subTopic}
                                                         </span>
                                                     </>
@@ -3215,28 +3215,31 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                         }
                                     }}
                                     className={cn(
-                                        "flex items-center gap-1.5 px-3 h-9 rounded-full text-[11px] font-bold transition-all border",
+                                        "hidden sm:flex items-center gap-1.5 h-[38px] px-4 rounded-full font-bold text-[12px] transition-all duration-300 shrink-0 border shadow-[0_8px_24px_rgba(0,0,0,0.03)]",
                                         teachingMode && teachingPanelOpen
-                                            ? "bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm"
+                                            ? "bg-indigo-500 border-indigo-400 text-white shadow-[0_4px_16px_rgba(99,102,241,0.3)] ring-1 ring-indigo-400/50"
                                             : teachingMode
-                                                ? "bg-indigo-50/50 border-indigo-100 text-indigo-400 hover:text-indigo-600"
-                                                : "bg-stone-50 border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300"
+                                                ? "bg-indigo-50/80 border-indigo-200/50 text-indigo-500 hover:text-indigo-600 hover:bg-indigo-100/50 ring-1 ring-indigo-200/30"
+                                                : "bg-white/60 backdrop-blur-xl border-white/60 text-stone-500 hover:text-stone-700 hover:bg-white/80 ring-1 ring-stone-200/30"
                                     )}
                                     title={teachingPanelOpen ? '收起教学面板' : '打开教学面板'}
                                 >
-                                    <BookOpen className="w-3.5 h-3.5" />
-                                    <span>教学</span>
+                                    <BookOpen className={cn("w-[14px] h-[14px]", teachingMode && isLoadingTeaching && "animate-pulse")} />
+                                    <span className="tracking-wide text-[12px]">教学</span>
                                     {teachingMode && (
                                         <div className={cn(
                                             "w-1.5 h-1.5 rounded-full ml-0.5",
-                                            isLoadingTeaching ? "bg-amber-400 animate-pulse" : "bg-emerald-400"
+                                            isLoadingTeaching ? "bg-amber-400 animate-pulse" : "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]"
                                         )} />
                                     )}
                                 </button>
                             )}
                             {onClose && (
-                                <button onClick={onClose} className="w-9 h-9 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center transition-all group shrink-0">
-                                    <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
+                                <button
+                                    onClick={onClose}
+                                    className="w-[38px] h-[38px] rounded-full bg-white/60 backdrop-blur-xl border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 hover:bg-white/90 text-stone-500 flex items-center justify-center transition-all duration-300 group shrink-0"
+                                >
+                                    <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300 text-stone-600" />
                                 </button>
                             )}
                         </div>
