@@ -98,6 +98,19 @@ interface LootDrop {
     name?: string; // Optional for compatibility
 }
 
+type EconomyTargetId = 'coins' | ShopItemId;
+type EconomyFxKind = 'item_consume' | 'coin_gain' | 'item_purchase';
+type EconomyFxSource = 'tab' | 'hint' | 'vocab' | 'audio' | 'refresh' | 'reward' | 'shop';
+
+interface EconomyFxEvent {
+    id: number;
+    kind: EconomyFxKind;
+    itemId?: ShopItemId;
+    amount?: number;
+    message: string;
+    source?: EconomyFxSource;
+}
+
 type StreakTier = 0 | 1 | 2 | 3 | 4;
 
 interface StreakTierVisual {
@@ -126,15 +139,42 @@ interface StreakTierVisual {
 }
 
 const STREAK_PARTICLE_POSITIONS = [12, 26, 39, 54, 68, 82, 90, 18, 47, 76];
-type ShopItemId = 'capsule' | 'hint_ticket' | 'vocab_ticket' | 'audio_ticket';
+type ShopItemId = 'capsule' | 'hint_ticket' | 'vocab_ticket' | 'audio_ticket' | 'refresh_ticket';
 
 type InventoryState = Record<ShopItemId, number>;
+
+const ECONOMY_OVERLAY_ORIGIN_TOP = 38;
+const ECONOMY_COIN_RAIN = [
+    { x: -126, y: 72, delay: 0.02, rotate: -16, scale: 0.82 },
+    { x: -92, y: 92, delay: 0.05, rotate: -10, scale: 0.92 },
+    { x: -64, y: 112, delay: 0.08, rotate: -6, scale: 1 },
+    { x: -28, y: 82, delay: 0.03, rotate: 8, scale: 0.88 },
+    { x: 0, y: 104, delay: 0.1, rotate: -2, scale: 0.98 },
+    { x: 32, y: 86, delay: 0.06, rotate: 12, scale: 0.9 },
+    { x: 68, y: 116, delay: 0.12, rotate: 16, scale: 1.02 },
+    { x: 102, y: 74, delay: 0.04, rotate: 9, scale: 0.86 },
+    { x: 132, y: 98, delay: 0.09, rotate: 14, scale: 0.94 },
+    { x: -148, y: 116, delay: 0.14, rotate: -18, scale: 0.84 },
+    { x: -6, y: 136, delay: 0.16, rotate: -4, scale: 1.05 },
+    { x: 118, y: 128, delay: 0.18, rotate: 18, scale: 0.9 },
+    { x: -86, y: 136, delay: 0.2, rotate: -14, scale: 0.88 },
+    { x: 84, y: 146, delay: 0.22, rotate: 14, scale: 0.95 },
+] as const;
+
+const ECONOMY_COIN_ABSORB = [
+    { x: -44, y: 36, delay: 0.54 },
+    { x: -18, y: 54, delay: 0.62 },
+    { x: 0, y: 44, delay: 0.7 },
+    { x: 22, y: 58, delay: 0.78 },
+    { x: 46, y: 42, delay: 0.86 },
+] as const;
 
 const DEFAULT_INVENTORY: InventoryState = {
     capsule: 15,
     hint_ticket: 3,
     vocab_ticket: 2,
     audio_ticket: 2,
+    refresh_ticket: 2,
 };
 
 const ITEM_CATALOG: Record<ShopItemId, { id: ShopItemId; name: string; price: number; icon: string; consumeAction: string; description: string; }> = {
@@ -170,6 +210,26 @@ const ITEM_CATALOG: Record<ShopItemId, { id: ShopItemId; name: string; price: nu
         consumeAction: '播放参考句',
         description: '用于解锁本题参考句播放，支持重播和倍速',
     },
+    refresh_ticket: {
+        id: 'refresh_ticket',
+        name: '刷新卡',
+        price: 40,
+        icon: '🔄',
+        consumeAction: '重刷当前题目',
+        description: '用于丢弃当前题并立即刷新一题，不影响 Elo 和连胜',
+    },
+};
+
+const RANDOM_SCENARIO_TOPIC = "Random Scenario";
+
+const resolveScenarioTopic = (context: DrillCoreProps["context"]) => {
+    const targetTopic = context.articleTitle || context.topic;
+    if (context.type !== "scenario") return targetTopic;
+    if (!targetTopic || targetTopic.trim().length === 0 || targetTopic === RANDOM_SCENARIO_TOPIC) {
+        const randomTopicObj = TOPICS[Math.floor(Math.random() * TOPICS.length)];
+        return randomTopicObj.title;
+    }
+    return targetTopic;
 };
 
 const normalizeInventory = (inventory: unknown, legacyCapsule?: number): InventoryState => {
@@ -186,12 +246,16 @@ const normalizeInventory = (inventory: unknown, legacyCapsule?: number): Invento
     const audioTicketValue = typeof rawInventory.audio_ticket === 'number'
         ? rawInventory.audio_ticket
         : DEFAULT_INVENTORY.audio_ticket;
+    const refreshTicketValue = typeof rawInventory.refresh_ticket === 'number'
+        ? rawInventory.refresh_ticket
+        : DEFAULT_INVENTORY.refresh_ticket;
 
     return {
         capsule: Math.max(0, capsuleValue),
         hint_ticket: Math.max(0, hintTicketValue),
         vocab_ticket: Math.max(0, vocabTicketValue),
         audio_ticket: Math.max(0, audioTicketValue),
+        refresh_ticket: Math.max(0, refreshTicketValue),
     };
 };
 
@@ -212,6 +276,33 @@ interface CosmeticTheme {
     mutedClass: string;    // Muted text color
     headerBg: string;      // Header pill background
     isDark: boolean;       // Dark mode flag for contrast adjustments
+}
+
+interface CosmeticThemeUi {
+    ledgerClass: string;
+    toolbarClass: string;
+    inputShellClass: string;
+    textareaClass: string;
+    audioLockedClass: string;
+    audioUnlockedClass: string;
+    speedShellClass: string;
+    speedActiveClass: string;
+    speedIdleClass: string;
+    vocabButtonClass: string;
+    keywordChipClass: string;
+    wordBadgeActiveClass: string;
+    wordBadgeIdleClass: string;
+    hintButtonClass: string;
+    iconButtonClass: string;
+    checkButtonClass: string;
+    tutorPanelClass: string;
+    tutorAnswerClass: string;
+    tutorInputClass: string;
+    tutorSendClass: string;
+    analysisButtonClass: string;
+    nextButtonGradient: string;
+    nextButtonShadow: string;
+    nextButtonGlow: string;
 }
 
 const COSMETIC_THEMES: Record<CosmeticThemeId, CosmeticTheme> = {
@@ -298,6 +389,165 @@ const COSMETIC_THEMES: Record<CosmeticThemeId, CosmeticTheme> = {
         mutedClass: 'text-purple-500/60',
         headerBg: 'bg-white/80',
         isDark: false,
+    },
+};
+
+const COSMETIC_THEME_UI: Record<CosmeticThemeId, CosmeticThemeUi> = {
+    morning_coffee: {
+        ledgerClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.74),rgba(245,244,240,0.68))] border-stone-200/55 ring-stone-200/35 shadow-[0_10px_28px_rgba(120,113,108,0.08)]",
+        toolbarClass: "border-stone-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(245,244,240,0.74))] shadow-[0_10px_30px_rgba(120,113,108,0.08)]",
+        inputShellClass: "border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(248,246,242,0.68))] shadow-[0_10px_36px_rgba(120,113,108,0.08),inset_0_1px_0_rgba(255,255,255,0.98)] hover:shadow-[0_18px_46px_rgba(120,113,108,0.1),inset_0_1px_0_rgba(255,255,255,1)] focus-within:border-stone-300/80 focus-within:ring-[4px] focus-within:ring-stone-400/10",
+        textareaClass: "text-stone-900 placeholder:text-stone-400/55",
+        audioLockedClass: "border-amber-200/90 bg-[linear-gradient(180deg,rgba(255,250,238,0.98),rgba(252,236,214,0.9))] text-amber-800 shadow-[0_8px_22px_rgba(180,83,9,0.12)] hover:border-amber-300 hover:text-amber-900",
+        audioUnlockedClass: "border-stone-200/85 bg-[linear-gradient(180deg,rgba(247,244,238,0.98),rgba(231,229,228,0.92))] text-stone-700 shadow-[0_8px_22px_rgba(120,113,108,0.1)] hover:border-stone-300 hover:text-stone-900",
+        speedShellClass: "border-stone-200/85 bg-white/84 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)]",
+        speedActiveClass: "bg-stone-900 text-white shadow-[0_8px_16px_rgba(68,64,60,0.18)]",
+        speedIdleClass: "text-stone-500 hover:bg-stone-100 hover:text-stone-700",
+        vocabButtonClass: "border-emerald-200/80 bg-[linear-gradient(180deg,rgba(245,255,250,0.96),rgba(220,252,231,0.88))] text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100/90",
+        keywordChipClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(245,244,240,0.95))] border-stone-200 text-stone-700 hover:bg-stone-50 hover:border-stone-300 hover:text-stone-900 shadow-[0_8px_20px_rgba(120,113,108,0.08)]",
+        wordBadgeActiveClass: "border-stone-200/80 bg-white/92 text-stone-500 shadow-[0_6px_16px_rgba(120,113,108,0.05)]",
+        wordBadgeIdleClass: "bg-transparent text-stone-400/60",
+        hintButtonClass: "border-stone-200/80 bg-[linear-gradient(180deg,rgba(247,244,238,0.96),rgba(231,229,228,0.88))] text-stone-700 shadow-[0_6px_16px_rgba(120,113,108,0.08)] hover:border-stone-300 hover:text-stone-900 hover:shadow-[0_10px_20px_rgba(120,113,108,0.12)]",
+        iconButtonClass: "border-stone-200/80 bg-white/90 text-stone-500 shadow-[0_6px_16px_rgba(120,113,108,0.06)] hover:border-stone-300 hover:bg-stone-50 hover:text-stone-700",
+        checkButtonClass: "border-stone-500/80 bg-[linear-gradient(180deg,rgba(120,113,108,0.95),rgba(68,64,60,0.98))] text-white shadow-[0_10px_24px_rgba(68,64,60,0.28)] hover:shadow-[0_14px_30px_rgba(68,64,60,0.34)]",
+        tutorPanelClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,244,238,0.95))] border-stone-200/80 shadow-[0_18px_46px_rgba(120,113,108,0.14)]",
+        tutorAnswerClass: "bg-stone-50/85 text-stone-700",
+        tutorInputClass: "bg-white/88 border-stone-200 text-stone-700 focus:ring-stone-300",
+        tutorSendClass: "text-stone-600",
+        analysisButtonClass: "bg-stone-900 text-white hover:bg-stone-800",
+        nextButtonGradient: "linear-gradient(90deg, #78716c 0%, #57534e 100%)",
+        nextButtonShadow: "0 18px 34px -12px rgba(87,83,78,0.42)",
+        nextButtonGlow: "rgba(120,113,108,0.18)",
+    },
+    sakura: {
+        ledgerClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(252,231,243,0.66))] border-pink-200/60 ring-pink-100/40 shadow-[0_12px_30px_rgba(236,72,153,0.08)]",
+        toolbarClass: "border-pink-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(252,231,243,0.74))] shadow-[0_10px_30px_rgba(236,72,153,0.08)]",
+        inputShellClass: "border-pink-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(253,242,248,0.68))] shadow-[0_10px_36px_rgba(236,72,153,0.08),inset_0_1px_0_rgba(255,255,255,0.98)] hover:shadow-[0_18px_46px_rgba(236,72,153,0.1),inset_0_1px_0_rgba(255,255,255,1)] focus-within:border-pink-300/80 focus-within:ring-[4px] focus-within:ring-pink-400/12",
+        textareaClass: "text-pink-950 placeholder:text-pink-300/70",
+        audioLockedClass: "border-rose-200/90 bg-[linear-gradient(180deg,rgba(255,247,250,0.98),rgba(252,231,243,0.92))] text-rose-700 shadow-[0_8px_22px_rgba(236,72,153,0.12)] hover:border-rose-300 hover:text-rose-800",
+        audioUnlockedClass: "border-pink-200/85 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(253,242,248,0.92))] text-pink-700 shadow-[0_8px_22px_rgba(236,72,153,0.1)] hover:border-pink-300 hover:text-pink-800",
+        speedShellClass: "border-pink-200/80 bg-white/84 shadow-[inset_0_1px_0_rgba(255,255,255,0.94)]",
+        speedActiveClass: "bg-[linear-gradient(180deg,rgba(244,114,182,0.95),rgba(219,39,119,0.95))] text-white shadow-[0_8px_16px_rgba(236,72,153,0.18)]",
+        speedIdleClass: "text-pink-500 hover:bg-pink-50 hover:text-pink-700",
+        vocabButtonClass: "border-pink-200/80 bg-[linear-gradient(180deg,rgba(255,250,252,0.96),rgba(252,231,243,0.88))] text-pink-700 hover:border-pink-300 hover:bg-pink-100/90",
+        keywordChipClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(253,242,248,0.95))] border-pink-200 text-pink-700 hover:bg-pink-50 hover:border-pink-300 hover:text-pink-900 shadow-[0_8px_22px_rgba(236,72,153,0.08)]",
+        wordBadgeActiveClass: "border-pink-200/80 bg-white/92 text-pink-500 shadow-[0_6px_16px_rgba(236,72,153,0.05)]",
+        wordBadgeIdleClass: "bg-transparent text-pink-300/75",
+        hintButtonClass: "border-pink-200/80 bg-[linear-gradient(180deg,rgba(255,247,250,0.96),rgba(252,231,243,0.88))] text-pink-700 shadow-[0_6px_16px_rgba(236,72,153,0.08)] hover:border-pink-300 hover:text-pink-800 hover:shadow-[0_10px_20px_rgba(236,72,153,0.12)]",
+        iconButtonClass: "border-pink-200/80 bg-white/90 text-pink-500 shadow-[0_6px_16px_rgba(236,72,153,0.06)] hover:border-pink-300 hover:bg-pink-50/90 hover:text-pink-700",
+        checkButtonClass: "border-pink-400/80 bg-[linear-gradient(180deg,rgba(244,114,182,0.92),rgba(219,39,119,0.98))] text-white shadow-[0_10px_24px_rgba(236,72,153,0.26)] hover:shadow-[0_14px_30px_rgba(236,72,153,0.34)]",
+        tutorPanelClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(253,242,248,0.95))] border-pink-200/80 shadow-[0_18px_46px_rgba(236,72,153,0.14)]",
+        tutorAnswerClass: "bg-pink-50/85 text-pink-900",
+        tutorInputClass: "bg-white/88 border-pink-200 text-pink-800 focus:ring-pink-300",
+        tutorSendClass: "text-pink-500",
+        analysisButtonClass: "bg-[linear-gradient(180deg,rgba(244,114,182,0.95),rgba(219,39,119,0.98))] text-white hover:brightness-105",
+        nextButtonGradient: "linear-gradient(90deg, #f472b6 0%, #db2777 100%)",
+        nextButtonShadow: "0 18px 34px -12px rgba(236,72,153,0.42)",
+        nextButtonGlow: "rgba(244,114,182,0.22)",
+    },
+    golden_hour: {
+        ledgerClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(254,243,199,0.68))] border-amber-200/60 ring-amber-100/40 shadow-[0_12px_30px_rgba(245,158,11,0.09)]",
+        toolbarClass: "border-amber-200/70 bg-[linear-gradient(180deg,rgba(255,252,243,0.84),rgba(254,243,199,0.76))] shadow-[0_12px_32px_rgba(245,158,11,0.1)]",
+        inputShellClass: "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(255,247,237,0.68))] shadow-[0_12px_38px_rgba(245,158,11,0.1),inset_0_1px_0_rgba(255,255,255,0.98)] hover:shadow-[0_20px_48px_rgba(245,158,11,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:border-amber-300/85 focus-within:ring-[4px] focus-within:ring-amber-400/14",
+        textareaClass: "text-amber-950 placeholder:text-amber-400/65",
+        audioLockedClass: "border-amber-300/90 bg-[linear-gradient(180deg,rgba(255,251,235,0.98),rgba(254,243,199,0.92))] text-amber-700 shadow-[0_10px_24px_rgba(245,158,11,0.14)] hover:border-amber-400 hover:text-amber-800",
+        audioUnlockedClass: "border-orange-200/85 bg-[linear-gradient(180deg,rgba(255,247,237,0.98),rgba(254,215,170,0.9))] text-orange-700 shadow-[0_10px_24px_rgba(249,115,22,0.12)] hover:border-orange-300 hover:text-orange-800",
+        speedShellClass: "border-amber-200/80 bg-white/84 shadow-[inset_0_1px_0_rgba(255,255,255,0.94)]",
+        speedActiveClass: "bg-[linear-gradient(180deg,rgba(217,119,6,0.95),rgba(146,64,14,0.98))] text-white shadow-[0_8px_16px_rgba(180,83,9,0.2)]",
+        speedIdleClass: "text-amber-600 hover:bg-amber-50 hover:text-amber-800",
+        vocabButtonClass: "border-emerald-200/80 bg-[linear-gradient(180deg,rgba(245,255,250,0.96),rgba(220,252,231,0.88))] text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100/90",
+        keywordChipClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,247,237,0.95))] border-amber-200 text-amber-700 hover:bg-amber-50 hover:border-amber-300 hover:text-amber-900 shadow-[0_8px_24px_rgba(245,158,11,0.09)]",
+        wordBadgeActiveClass: "border-amber-200/80 bg-white/92 text-amber-600 shadow-[0_6px_16px_rgba(245,158,11,0.06)]",
+        wordBadgeIdleClass: "bg-transparent text-amber-400/70",
+        hintButtonClass: "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,251,235,0.96),rgba(254,243,199,0.88))] text-amber-700 shadow-[0_6px_16px_rgba(245,158,11,0.08)] hover:border-amber-300 hover:text-amber-800 hover:shadow-[0_10px_20px_rgba(245,158,11,0.14)]",
+        iconButtonClass: "border-amber-200/80 bg-white/90 text-amber-600 shadow-[0_6px_16px_rgba(245,158,11,0.06)] hover:border-amber-300 hover:bg-amber-50/90 hover:text-amber-800",
+        checkButtonClass: "border-amber-400/80 bg-[linear-gradient(180deg,rgba(251,191,36,0.95),rgba(217,119,6,0.98))] text-white shadow-[0_12px_26px_rgba(245,158,11,0.28)] hover:shadow-[0_16px_32px_rgba(245,158,11,0.36)]",
+        tutorPanelClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,247,237,0.95))] border-amber-200/80 shadow-[0_18px_46px_rgba(245,158,11,0.14)]",
+        tutorAnswerClass: "bg-amber-50/85 text-amber-950",
+        tutorInputClass: "bg-white/88 border-amber-200 text-amber-900 focus:ring-amber-300",
+        tutorSendClass: "text-amber-600",
+        analysisButtonClass: "bg-[linear-gradient(180deg,rgba(251,191,36,0.95),rgba(217,119,6,0.98))] text-white hover:brightness-105",
+        nextButtonGradient: "linear-gradient(90deg, #f59e0b 0%, #f97316 100%)",
+        nextButtonShadow: "0 18px 34px -12px rgba(245,158,11,0.46)",
+        nextButtonGlow: "rgba(251,191,36,0.24)",
+    },
+    holo_pearl: {
+        ledgerClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(243,232,255,0.48),rgba(224,231,255,0.52))] border-white/80 ring-fuchsia-100/30 shadow-[0_14px_36px_rgba(147,51,234,0.08)]",
+        toolbarClass: "border-white/80 bg-[linear-gradient(90deg,rgba(255,255,255,0.82),rgba(250,232,255,0.68),rgba(224,231,255,0.72),rgba(255,255,255,0.82))] shadow-[0_12px_34px_rgba(147,51,234,0.08)]",
+        inputShellClass: "border-white/85 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),rgba(248,250,252,0.68))] shadow-[0_12px_42px_rgba(147,51,234,0.08),inset_0_1px_0_rgba(255,255,255,1)] hover:shadow-[0_20px_52px_rgba(147,51,234,0.1),inset_0_1px_0_rgba(255,255,255,1)] focus-within:border-fuchsia-200/90 focus-within:ring-[4px] focus-within:ring-fuchsia-400/12",
+        textareaClass: "text-slate-800 placeholder:text-slate-400/65",
+        audioLockedClass: "border-fuchsia-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,232,255,0.9),rgba(224,231,255,0.92))] text-fuchsia-700 shadow-[0_10px_24px_rgba(192,38,211,0.12)] hover:border-fuchsia-300 hover:text-fuchsia-800",
+        audioUnlockedClass: "border-indigo-200/85 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(238,242,255,0.92),rgba(250,232,255,0.9))] text-indigo-700 shadow-[0_10px_24px_rgba(99,102,241,0.1)] hover:border-indigo-300 hover:text-indigo-800",
+        speedShellClass: "border-fuchsia-100/80 bg-white/84 shadow-[inset_0_1px_0_rgba(255,255,255,0.96)]",
+        speedActiveClass: "bg-[linear-gradient(135deg,rgba(236,72,153,0.95),rgba(99,102,241,0.95),rgba(192,38,211,0.96))] text-white shadow-[0_10px_18px_rgba(168,85,247,0.2)]",
+        speedIdleClass: "text-slate-500 hover:bg-fuchsia-50/80 hover:text-fuchsia-700",
+        vocabButtonClass: "border-teal-200/80 bg-[linear-gradient(180deg,rgba(240,253,250,0.96),rgba(204,251,241,0.88))] text-teal-700 hover:border-teal-300 hover:bg-teal-100/90",
+        keywordChipClass: "bg-[linear-gradient(90deg,rgba(255,255,255,0.98),rgba(250,232,255,0.9),rgba(224,231,255,0.92))] border-white/90 text-slate-700 hover:border-fuchsia-200 hover:text-fuchsia-800 shadow-[0_10px_26px_rgba(168,85,247,0.1)]",
+        wordBadgeActiveClass: "border-fuchsia-100/80 bg-white/92 text-fuchsia-600 shadow-[0_6px_16px_rgba(168,85,247,0.05)]",
+        wordBadgeIdleClass: "bg-transparent text-slate-400/70",
+        hintButtonClass: "border-fuchsia-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(250,232,255,0.88),rgba(224,231,255,0.88))] text-fuchsia-700 shadow-[0_6px_18px_rgba(168,85,247,0.08)] hover:border-fuchsia-300 hover:text-fuchsia-800 hover:shadow-[0_10px_22px_rgba(168,85,247,0.14)]",
+        iconButtonClass: "border-fuchsia-100/80 bg-white/92 text-fuchsia-600 shadow-[0_6px_16px_rgba(168,85,247,0.06)] hover:border-fuchsia-200 hover:bg-fuchsia-50/90 hover:text-fuchsia-700",
+        checkButtonClass: "border-fuchsia-300/80 bg-[linear-gradient(135deg,rgba(236,72,153,0.94),rgba(99,102,241,0.94),rgba(192,38,211,0.96))] text-white shadow-[0_12px_28px_rgba(168,85,247,0.26)] hover:shadow-[0_16px_34px_rgba(168,85,247,0.34)]",
+        tutorPanelClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96),rgba(250,232,255,0.94))] border-fuchsia-100/80 shadow-[0_20px_50px_rgba(168,85,247,0.14)]",
+        tutorAnswerClass: "bg-[linear-gradient(90deg,rgba(250,232,255,0.72),rgba(224,231,255,0.6))] text-slate-700",
+        tutorInputClass: "bg-white/88 border-fuchsia-100 text-slate-700 focus:ring-fuchsia-200",
+        tutorSendClass: "text-fuchsia-500",
+        analysisButtonClass: "bg-[linear-gradient(135deg,rgba(236,72,153,0.95),rgba(99,102,241,0.94),rgba(192,38,211,0.96))] text-white hover:brightness-105",
+        nextButtonGradient: "linear-gradient(90deg, #ec4899 0%, #6366f1 52%, #c026d3 100%)",
+        nextButtonShadow: "0 20px 36px -12px rgba(168,85,247,0.42)",
+        nextButtonGlow: "rgba(192,38,211,0.22)",
+    },
+    cloud_nine: {
+        ledgerClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.8),rgba(224,242,254,0.64))] border-sky-200/60 ring-sky-100/40 shadow-[0_12px_32px_rgba(14,165,233,0.07)]",
+        toolbarClass: "border-sky-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.84),rgba(224,242,254,0.74))] shadow-[0_10px_30px_rgba(14,165,233,0.08)]",
+        inputShellClass: "border-sky-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(240,249,255,0.7))] shadow-[0_12px_38px_rgba(14,165,233,0.08),inset_0_1px_0_rgba(255,255,255,1)] hover:shadow-[0_20px_48px_rgba(14,165,233,0.1),inset_0_1px_0_rgba(255,255,255,1)] focus-within:border-cyan-300/85 focus-within:ring-[4px] focus-within:ring-cyan-300/12",
+        textareaClass: "text-cyan-950 placeholder:text-cyan-400/65",
+        audioLockedClass: "border-cyan-200/90 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(224,242,254,0.92))] text-cyan-700 shadow-[0_8px_22px_rgba(6,182,212,0.1)] hover:border-cyan-300 hover:text-cyan-800",
+        audioUnlockedClass: "border-sky-200/85 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(224,242,254,0.9))] text-sky-700 shadow-[0_8px_22px_rgba(14,165,233,0.1)] hover:border-sky-300 hover:text-sky-800",
+        speedShellClass: "border-sky-200/80 bg-white/88 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]",
+        speedActiveClass: "bg-[linear-gradient(180deg,rgba(6,182,212,0.95),rgba(8,145,178,0.98))] text-white shadow-[0_8px_16px_rgba(6,182,212,0.18)]",
+        speedIdleClass: "text-cyan-600 hover:bg-cyan-50 hover:text-cyan-800",
+        vocabButtonClass: "border-emerald-200/80 bg-[linear-gradient(180deg,rgba(245,255,250,0.96),rgba(220,252,231,0.88))] text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100/90",
+        keywordChipClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,249,255,0.94))] border-sky-200 text-cyan-700 hover:bg-cyan-50 hover:border-cyan-300 hover:text-cyan-900 shadow-[0_8px_22px_rgba(14,165,233,0.08)]",
+        wordBadgeActiveClass: "border-sky-200/80 bg-white/92 text-cyan-600 shadow-[0_6px_16px_rgba(14,165,233,0.05)]",
+        wordBadgeIdleClass: "bg-transparent text-cyan-400/65",
+        hintButtonClass: "border-sky-200/80 bg-[linear-gradient(180deg,rgba(240,249,255,0.96),rgba(224,242,254,0.88))] text-cyan-700 shadow-[0_6px_16px_rgba(14,165,233,0.07)] hover:border-cyan-300 hover:text-cyan-800 hover:shadow-[0_10px_20px_rgba(14,165,233,0.12)]",
+        iconButtonClass: "border-sky-200/80 bg-white/92 text-cyan-600 shadow-[0_6px_16px_rgba(14,165,233,0.05)] hover:border-cyan-300 hover:bg-cyan-50/90 hover:text-cyan-800",
+        checkButtonClass: "border-cyan-400/80 bg-[linear-gradient(180deg,rgba(34,211,238,0.95),rgba(8,145,178,0.98))] text-white shadow-[0_12px_26px_rgba(6,182,212,0.24)] hover:shadow-[0_16px_32px_rgba(6,182,212,0.32)]",
+        tutorPanelClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,249,255,0.95))] border-sky-200/80 shadow-[0_18px_46px_rgba(14,165,233,0.12)]",
+        tutorAnswerClass: "bg-cyan-50/80 text-cyan-950",
+        tutorInputClass: "bg-white/88 border-sky-200 text-cyan-900 focus:ring-cyan-200",
+        tutorSendClass: "text-cyan-600",
+        analysisButtonClass: "bg-[linear-gradient(180deg,rgba(34,211,238,0.95),rgba(8,145,178,0.98))] text-white hover:brightness-105",
+        nextButtonGradient: "linear-gradient(90deg, #22d3ee 0%, #0891b2 100%)",
+        nextButtonShadow: "0 18px 34px -12px rgba(6,182,212,0.42)",
+        nextButtonGlow: "rgba(34,211,238,0.2)",
+    },
+    lilac_dream: {
+        ledgerClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.78),rgba(243,232,255,0.66))] border-purple-200/60 ring-purple-100/40 shadow-[0_12px_30px_rgba(168,85,247,0.08)]",
+        toolbarClass: "border-purple-200/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(243,232,255,0.74))] shadow-[0_10px_30px_rgba(168,85,247,0.08)]",
+        inputShellClass: "border-purple-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.74),rgba(250,245,255,0.68))] shadow-[0_12px_38px_rgba(168,85,247,0.08),inset_0_1px_0_rgba(255,255,255,1)] hover:shadow-[0_20px_48px_rgba(168,85,247,0.1),inset_0_1px_0_rgba(255,255,255,1)] focus-within:border-purple-300/85 focus-within:ring-[4px] focus-within:ring-purple-300/12",
+        textareaClass: "text-purple-950 placeholder:text-purple-400/65",
+        audioLockedClass: "border-purple-200/90 bg-[linear-gradient(180deg,rgba(250,245,255,0.98),rgba(243,232,255,0.92))] text-purple-700 shadow-[0_8px_22px_rgba(168,85,247,0.1)] hover:border-purple-300 hover:text-purple-800",
+        audioUnlockedClass: "border-fuchsia-200/85 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,232,255,0.92))] text-fuchsia-700 shadow-[0_8px_22px_rgba(217,70,239,0.1)] hover:border-fuchsia-300 hover:text-fuchsia-800",
+        speedShellClass: "border-purple-200/80 bg-white/84 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]",
+        speedActiveClass: "bg-[linear-gradient(180deg,rgba(168,85,247,0.95),rgba(147,51,234,0.98))] text-white shadow-[0_8px_16px_rgba(168,85,247,0.18)]",
+        speedIdleClass: "text-purple-500 hover:bg-purple-50 hover:text-purple-700",
+        vocabButtonClass: "border-violet-200/80 bg-[linear-gradient(180deg,rgba(245,243,255,0.96),rgba(237,233,254,0.88))] text-violet-700 hover:border-violet-300 hover:bg-violet-100/90",
+        keywordChipClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,245,255,0.94))] border-purple-200 text-purple-700 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-900 shadow-[0_8px_22px_rgba(168,85,247,0.08)]",
+        wordBadgeActiveClass: "border-purple-200/80 bg-white/92 text-purple-600 shadow-[0_6px_16px_rgba(168,85,247,0.05)]",
+        wordBadgeIdleClass: "bg-transparent text-purple-400/65",
+        hintButtonClass: "border-purple-200/80 bg-[linear-gradient(180deg,rgba(250,245,255,0.96),rgba(243,232,255,0.88))] text-purple-700 shadow-[0_6px_16px_rgba(168,85,247,0.08)] hover:border-purple-300 hover:text-purple-800 hover:shadow-[0_10px_20px_rgba(168,85,247,0.12)]",
+        iconButtonClass: "border-purple-200/80 bg-white/92 text-purple-600 shadow-[0_6px_16px_rgba(168,85,247,0.05)] hover:border-purple-300 hover:bg-purple-50/90 hover:text-purple-800",
+        checkButtonClass: "border-purple-400/80 bg-[linear-gradient(180deg,rgba(192,132,252,0.95),rgba(147,51,234,0.98))] text-white shadow-[0_12px_26px_rgba(168,85,247,0.24)] hover:shadow-[0_16px_32px_rgba(168,85,247,0.32)]",
+        tutorPanelClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(250,245,255,0.95))] border-purple-200/80 shadow-[0_18px_46px_rgba(168,85,247,0.14)]",
+        tutorAnswerClass: "bg-purple-50/82 text-purple-950",
+        tutorInputClass: "bg-white/88 border-purple-200 text-purple-900 focus:ring-purple-200",
+        tutorSendClass: "text-purple-600",
+        analysisButtonClass: "bg-[linear-gradient(180deg,rgba(192,132,252,0.95),rgba(147,51,234,0.98))] text-white hover:brightness-105",
+        nextButtonGradient: "linear-gradient(90deg, #c084fc 0%, #9333ea 100%)",
+        nextButtonShadow: "0 18px 34px -12px rgba(168,85,247,0.42)",
+        nextButtonGlow: "rgba(192,132,252,0.22)",
     },
 };
 
@@ -518,11 +768,26 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [showShopModal, setShowShopModal] = useState(false);
     const [shopFocusedItem, setShopFocusedItem] = useState<ShopItemId | null>(null);
     const [isTranslationAudioUnlocked, setIsTranslationAudioUnlocked] = useState(false);
+    const [economyFxQueue, setEconomyFxQueue] = useState<EconomyFxEvent[]>([]);
+    const [activeEconomyFx, setActiveEconomyFx] = useState<EconomyFxEvent | null>(null);
+    const [activeEconomyVector, setActiveEconomyVector] = useState<{ target: EconomyTargetId; x: number; y: number } | null>(null);
+    const [resourcePulseTarget, setResourcePulseTarget] = useState<EconomyTargetId | null>(null);
+    const battleShellRef = useRef<HTMLDivElement | null>(null);
+    const resourceTargetRefs = useRef<Record<EconomyTargetId, HTMLDivElement | null>>({
+        coins: null,
+        capsule: null,
+        hint_ticket: null,
+        vocab_ticket: null,
+        audio_ticket: null,
+        refresh_ticket: null,
+    });
+    const economyFxIdRef = useRef(0);
 
     // Cosmetic Theme State
     const [cosmeticTheme, setCosmeticTheme] = useState<CosmeticThemeId>('morning_coffee');
     const [ownedThemes, setOwnedThemes] = useState<CosmeticThemeId[]>([...ALL_THEME_IDS]); // ALL UNLOCKED for testing
     const activeCosmeticTheme = COSMETIC_THEMES[cosmeticTheme] || COSMETIC_THEMES.morning_coffee;
+    const activeCosmeticUi = COSMETIC_THEME_UI[cosmeticTheme] || COSMETIC_THEME_UI.morning_coffee;
 
     const persistProfilePatch = useCallback((patch: Partial<{ coins: number; hints: number; inventory: InventoryState; owned_themes: string[]; active_theme: string }>) => {
         if (Object.keys(patch).length === 0) return;
@@ -570,6 +835,181 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         };
     }, [persistProfilePatch]);
 
+    const pushEconomyFx = useCallback((event: Omit<EconomyFxEvent, 'id'>) => {
+        const nextEvent: EconomyFxEvent = {
+            ...event,
+            id: economyFxIdRef.current++,
+        };
+        setEconomyFxQueue(prev => [...prev, nextEvent]);
+    }, []);
+
+    const resolveEconomyTarget = useCallback((event: EconomyFxEvent): EconomyTargetId | null => {
+        if (event.kind === 'coin_gain') return 'coins';
+        return event.itemId ?? null;
+    }, []);
+
+    const computeEconomyVector = useCallback((targetId: EconomyTargetId | null) => {
+        if (!targetId) return null;
+
+        const shellRect = battleShellRef.current?.getBoundingClientRect();
+        const targetRect = resourceTargetRefs.current[targetId]?.getBoundingClientRect();
+
+        if (!shellRect || !targetRect) return null;
+
+        return {
+            target: targetId,
+            x: targetRect.left + targetRect.width / 2 - shellRect.left - shellRect.width / 2,
+            y: targetRect.top + targetRect.height / 2 - shellRect.top - ECONOMY_OVERLAY_ORIGIN_TOP,
+        };
+    }, []);
+
+    const getEconomyPulseClass = useCallback((targetId: EconomyTargetId) => {
+        if (resourcePulseTarget !== targetId) return "";
+
+        switch (targetId) {
+            case 'coins':
+                return "scale-[1.08] bg-amber-50/95 shadow-[0_0_24px_rgba(245,158,11,0.28)] ring-1 ring-amber-200/80";
+            case 'capsule':
+                return "scale-[1.08] bg-sky-50/95 shadow-[0_0_24px_rgba(59,130,246,0.2)] ring-1 ring-sky-200/80";
+            case 'hint_ticket':
+                return "scale-[1.08] bg-amber-50/95 shadow-[0_0_24px_rgba(251,191,36,0.24)] ring-1 ring-amber-200/80";
+            case 'vocab_ticket':
+                return "scale-[1.08] bg-emerald-50/95 shadow-[0_0_24px_rgba(16,185,129,0.22)] ring-1 ring-emerald-200/80";
+            case 'audio_ticket':
+                return "scale-[1.08] bg-indigo-50/95 shadow-[0_0_24px_rgba(99,102,241,0.24)] ring-1 ring-indigo-200/80";
+            case 'refresh_ticket':
+                return "scale-[1.08] bg-cyan-50/95 shadow-[0_0_24px_rgba(6,182,212,0.22)] ring-1 ring-cyan-200/80";
+            default:
+                return "";
+        }
+    }, [resourcePulseTarget]);
+
+    const getEconomyVisual = useCallback((event: EconomyFxEvent) => {
+        if (event.kind === 'coin_gain') {
+            return {
+                icon: <Gem className="h-4 w-4" />,
+                shellClass: "border-amber-300/90 bg-[linear-gradient(135deg,rgba(255,248,220,0.99),rgba(254,240,138,0.98)_48%,rgba(251,191,36,0.94)_100%)] text-amber-950 shadow-[0_24px_56px_rgba(245,158,11,0.28)] ring-1 ring-amber-200/80",
+                iconClass: "border-amber-200/80 bg-white/95 text-amber-500 shadow-[0_12px_28px_rgba(245,158,11,0.22)]",
+                chipClass: "border-amber-200/80 bg-white/75 text-amber-700",
+                flightClass: "border-amber-300/85 bg-gradient-to-br from-yellow-100 via-amber-100 to-orange-100 text-amber-600 shadow-[0_12px_26px_rgba(245,158,11,0.24)]",
+                shimmerClass: "from-transparent via-white/75 to-transparent",
+                accentClass: "bg-[radial-gradient(circle,rgba(251,191,36,0.48)_0%,rgba(251,191,36,0.12)_55%,transparent_75%)]",
+                pulseClass: "bg-[radial-gradient(circle,rgba(251,191,36,0.75)_0%,rgba(251,191,36,0.16)_56%,transparent_78%)]",
+            };
+        }
+
+        switch (event.itemId) {
+            case 'capsule':
+                return {
+                    icon: <span className="text-[15px] leading-none">💊</span>,
+                    shellClass: "border-sky-300/90 bg-[linear-gradient(135deg,rgba(239,246,255,0.99),rgba(186,230,253,0.98)_44%,rgba(251,191,36,0.2)_100%)] text-slate-950 shadow-[0_22px_54px_rgba(59,130,246,0.24)] ring-1 ring-sky-200/80",
+                    iconClass: "border-sky-200/80 bg-white/95 text-sky-500 shadow-[0_12px_28px_rgba(59,130,246,0.18)]",
+                    chipClass: "border-sky-200/80 bg-white/85 text-sky-700",
+                    flightClass: "border-sky-300/85 bg-gradient-to-br from-sky-100 via-blue-100 to-amber-50 text-sky-600 shadow-[0_12px_28px_rgba(59,130,246,0.22)]",
+                    shimmerClass: "from-transparent via-sky-100/70 to-transparent",
+                    accentClass: "bg-[radial-gradient(circle,rgba(96,165,250,0.42)_0%,rgba(96,165,250,0.14)_54%,transparent_74%)]",
+                    pulseClass: "bg-[radial-gradient(circle,rgba(59,130,246,0.72)_0%,rgba(59,130,246,0.16)_56%,transparent_78%)]",
+                };
+            case 'hint_ticket':
+                return {
+                    icon: <Wand2 className="h-4 w-4" />,
+                    shellClass: "border-yellow-300/90 bg-[linear-gradient(135deg,rgba(255,251,235,0.99),rgba(254,240,138,0.94)_44%,rgba(255,255,255,0.98)_100%)] text-stone-950 shadow-[0_24px_58px_rgba(245,158,11,0.24)] ring-1 ring-yellow-200/80",
+                    iconClass: "border-amber-200/80 bg-white/95 text-amber-500 shadow-[0_12px_28px_rgba(245,158,11,0.18)]",
+                    chipClass: "border-amber-200/85 bg-white/88 text-amber-700",
+                    flightClass: "border-yellow-300/80 bg-gradient-to-br from-amber-50 via-yellow-50 to-white text-amber-500 shadow-[0_12px_28px_rgba(245,158,11,0.2)]",
+                    shimmerClass: "from-transparent via-amber-100/80 to-transparent",
+                    accentClass: "bg-[radial-gradient(circle,rgba(251,191,36,0.42)_0%,rgba(251,191,36,0.14)_54%,transparent_76%)]",
+                    pulseClass: "bg-[radial-gradient(circle,rgba(251,191,36,0.75)_0%,rgba(251,191,36,0.16)_56%,transparent_78%)]",
+                };
+            case 'vocab_ticket':
+                return {
+                    icon: <span className="text-[15px] leading-none">🧩</span>,
+                    shellClass: "border-emerald-300/90 bg-[linear-gradient(135deg,rgba(236,253,245,0.99),rgba(167,243,208,0.96)_48%,rgba(255,255,255,0.98)_100%)] text-emerald-950 shadow-[0_22px_54px_rgba(16,185,129,0.22)] ring-1 ring-emerald-200/80",
+                    iconClass: "border-emerald-200/80 bg-white/95 text-emerald-500 shadow-[0_12px_26px_rgba(16,185,129,0.18)]",
+                    chipClass: "border-emerald-200/85 bg-white/88 text-emerald-700",
+                    flightClass: "border-emerald-300/85 bg-gradient-to-br from-emerald-50 via-green-50 to-white text-emerald-600 shadow-[0_12px_28px_rgba(16,185,129,0.2)]",
+                    shimmerClass: "from-transparent via-emerald-100/80 to-transparent",
+                    accentClass: "bg-[radial-gradient(circle,rgba(52,211,153,0.42)_0%,rgba(52,211,153,0.14)_54%,transparent_76%)]",
+                    pulseClass: "bg-[radial-gradient(circle,rgba(16,185,129,0.7)_0%,rgba(16,185,129,0.16)_56%,transparent_78%)]",
+                };
+            case 'audio_ticket':
+                return {
+                    icon: <Volume2 className="h-4 w-4" />,
+                    shellClass: "border-indigo-300/90 bg-[linear-gradient(135deg,rgba(238,242,255,0.99),rgba(199,210,254,0.97)_48%,rgba(255,255,255,0.98)_100%)] text-indigo-950 shadow-[0_24px_56px_rgba(99,102,241,0.24)] ring-1 ring-indigo-200/80",
+                    iconClass: "border-indigo-200/80 bg-white/95 text-indigo-500 shadow-[0_12px_28px_rgba(99,102,241,0.2)]",
+                    chipClass: "border-indigo-200/85 bg-white/88 text-indigo-700",
+                    flightClass: "border-indigo-300/85 bg-gradient-to-br from-indigo-50 via-violet-50 to-white text-indigo-600 shadow-[0_12px_28px_rgba(99,102,241,0.22)]",
+                    shimmerClass: "from-transparent via-indigo-100/75 to-transparent",
+                    accentClass: "bg-[radial-gradient(circle,rgba(129,140,248,0.38)_0%,rgba(129,140,248,0.12)_56%,transparent_76%)]",
+                    pulseClass: "bg-[radial-gradient(circle,rgba(99,102,241,0.72)_0%,rgba(99,102,241,0.16)_56%,transparent_78%)]",
+                };
+            case 'refresh_ticket':
+                return {
+                    icon: <RefreshCw className="h-4 w-4" />,
+                    shellClass: "border-cyan-300/90 bg-[linear-gradient(135deg,rgba(236,254,255,0.99),rgba(165,243,252,0.96)_48%,rgba(255,255,255,0.98)_100%)] text-cyan-950 shadow-[0_24px_56px_rgba(6,182,212,0.22)] ring-1 ring-cyan-200/80",
+                    iconClass: "border-cyan-200/80 bg-white/95 text-cyan-600 shadow-[0_12px_28px_rgba(6,182,212,0.18)]",
+                    chipClass: "border-cyan-200/85 bg-white/88 text-cyan-700",
+                    flightClass: "border-cyan-300/85 bg-gradient-to-br from-cyan-50 via-sky-50 to-white text-cyan-600 shadow-[0_12px_28px_rgba(6,182,212,0.2)]",
+                    shimmerClass: "from-transparent via-cyan-100/80 to-transparent",
+                    accentClass: "bg-[radial-gradient(circle,rgba(34,211,238,0.4)_0%,rgba(34,211,238,0.13)_56%,transparent_76%)]",
+                    pulseClass: "bg-[radial-gradient(circle,rgba(6,182,212,0.72)_0%,rgba(6,182,212,0.16)_56%,transparent_78%)]",
+                };
+            default:
+                return {
+                    icon: <Sparkles className="h-4 w-4" />,
+                    shellClass: "border-stone-200/80 bg-white/95 text-stone-900 shadow-[0_18px_42px_rgba(15,23,42,0.12)]",
+                    iconClass: "border-stone-200/70 bg-white/90 text-stone-600 shadow-[0_10px_24px_rgba(15,23,42,0.08)]",
+                    chipClass: "border-stone-200/80 bg-white/75 text-stone-700",
+                    flightClass: "border-stone-200/80 bg-white text-stone-600 shadow-[0_8px_20px_rgba(15,23,42,0.12)]",
+                    shimmerClass: "from-transparent via-white/75 to-transparent",
+                    accentClass: "bg-[radial-gradient(circle,rgba(148,163,184,0.22)_0%,rgba(148,163,184,0.08)_54%,transparent_74%)]",
+                    pulseClass: "bg-[radial-gradient(circle,rgba(148,163,184,0.52)_0%,rgba(148,163,184,0.14)_56%,transparent_78%)]",
+                };
+        }
+    }, []);
+
+    useEffect(() => {
+        if (activeEconomyFx || economyFxQueue.length === 0) return;
+
+        setActiveEconomyFx(economyFxQueue[0]);
+        setEconomyFxQueue(prev => prev.slice(1));
+    }, [activeEconomyFx, economyFxQueue]);
+
+    useEffect(() => {
+        if (!activeEconomyFx) {
+            setActiveEconomyVector(null);
+            return;
+        }
+
+        const targetId = resolveEconomyTarget(activeEconomyFx);
+        const rafId = requestAnimationFrame(() => {
+            setActiveEconomyVector(computeEconomyVector(targetId));
+        });
+
+        const pulseDelay = activeEconomyFx.kind === 'coin_gain' ? 1480 : activeEconomyFx.kind === 'item_purchase' ? 1180 : 1260;
+        const clearDelay = activeEconomyFx.kind === 'coin_gain' ? 2760 : activeEconomyFx.kind === 'item_purchase' ? 2080 : 2180;
+        const pulseTimeout = targetId
+            ? setTimeout(() => setResourcePulseTarget(targetId), pulseDelay)
+            : null;
+        const clearTimeoutId = setTimeout(() => {
+            setActiveEconomyFx(null);
+            setActiveEconomyVector(null);
+        }, clearDelay);
+
+        return () => {
+            cancelAnimationFrame(rafId);
+            if (pulseTimeout) clearTimeout(pulseTimeout);
+            clearTimeout(clearTimeoutId);
+        };
+    }, [activeEconomyFx, computeEconomyVector, resolveEconomyTarget]);
+
+    useEffect(() => {
+        if (!resourcePulseTarget) return;
+
+        const timeoutId = setTimeout(() => setResourcePulseTarget(null), 420);
+        return () => clearTimeout(timeoutId);
+    }, [resourcePulseTarget]);
+
 
 
     // Gamification State (Fever / Themes)
@@ -608,19 +1048,39 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // Server Status Check
     const [serverStatus, setServerStatus] = useState<'online' | 'offline' | 'checking'>('checking');
     useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const shouldProbeLocalWhisper =
+            window.location.hostname === 'localhost' &&
+            window.localStorage.getItem('probe_local_whisper') === '1';
+
+        if (!shouldProbeLocalWhisper) {
+            setServerStatus('offline');
+            return;
+        }
+
+        let isCancelled = false;
+
         const checkServer = async () => {
             try {
-                const res = await fetch('http://localhost:3002/health');
-                if (res.ok) setServerStatus('online');
-                else setServerStatus('offline');
-            } catch (e) {
-                setServerStatus('offline');
+                const res = await fetch('http://localhost:3002/health', { cache: 'no-store' });
+                if (!isCancelled) {
+                    setServerStatus(res.ok ? 'online' : 'offline');
+                }
+            } catch {
+                if (!isCancelled) {
+                    setServerStatus('offline');
+                }
             }
         };
+
         checkServer();
-        // Poll every 30s
-        const interval = setInterval(checkServer, 30000);
-        return () => clearInterval(interval);
+        const interval = window.setInterval(checkServer, 30000);
+
+        return () => {
+            isCancelled = true;
+            window.clearInterval(interval);
+        };
     }, []);
 
     // Visceral FX State
@@ -806,6 +1266,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const hintTicketCount = inventory.hint_ticket;
     const vocabTicketCount = inventory.vocab_ticket;
     const audioTicketCount = inventory.audio_ticket;
+    const refreshTicketCount = inventory.refresh_ticket;
     const prefersReducedMotion = useReducedMotion();
     const [streakTransition, setStreakTransition] = useState<'surge' | 'cooldown' | null>(null);
     const [cooldownTier, setCooldownTier] = useState<StreakTier>(0);
@@ -818,6 +1279,125 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const canUseStreakAura = activeStreakTier > 0 && (theme === 'default' || theme === 'fever');
     const canShowStreakParticles = canUseStreakAura && activeStreakTier >= 3 && !prefersReducedMotion;
     const activeParticleCount = Math.min(streakVisual.particleDensity, STREAK_PARTICLE_POSITIONS.length);
+    const activeEconomyVisual = activeEconomyFx ? getEconomyVisual(activeEconomyFx) : null;
+    const activeCoinTier = activeEconomyFx?.kind === 'coin_gain'
+        ? ((activeEconomyFx.amount ?? 0) >= 31 ? 'large' : (activeEconomyFx.amount ?? 0) >= 11 ? 'medium' : 'small')
+        : null;
+    const activeCoinRainCount = activeCoinTier === 'large' ? 14 : activeCoinTier === 'medium' ? 11 : 8;
+    const activeCoinAbsorbCount = activeCoinTier === 'large' ? 5 : activeCoinTier === 'medium' ? 4 : 3;
+    const activeEconomyChipLabel = activeEconomyFx?.kind === 'coin_gain'
+        ? `+${activeEconomyFx.amount ?? 0}`
+        : activeEconomyFx?.itemId
+            ? ITEM_CATALOG[activeEconomyFx.itemId].name
+            : '提示';
+    const translationKeywords = mode === 'translation' && drillData
+        ? ((drillData.target_english_vocab || drillData.key_vocab || []) as string[])
+        : [];
+    const hasTranslationKeywords = translationKeywords.length > 0;
+    const renderEconomyAccent = () => {
+        if (!activeEconomyFx || !activeEconomyVisual) return null;
+
+        if (activeEconomyFx.kind === 'coin_gain') {
+            return (
+                <div className="absolute inset-x-10 top-1/2 -translate-y-1/2 pointer-events-none">
+                    <motion.div
+                        className={cn("absolute left-0 top-1/2 h-10 w-10 -translate-y-1/2 rounded-full blur-xl", activeEconomyVisual.accentClass)}
+                        animate={{ scale: [0.92, 1.18, 0.98], opacity: [0.42, 0.82, 0.3] }}
+                        transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+                    />
+                    <motion.div
+                        className={cn("absolute right-4 top-1/2 h-12 w-20 -translate-y-1/2 rounded-full blur-xl", activeEconomyVisual.accentClass)}
+                        animate={{ scale: [0.88, 1.12, 0.94], opacity: [0.32, 0.68, 0.28] }}
+                        transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut", delay: 0.12 }}
+                    />
+                </div>
+            );
+        }
+
+        if (activeEconomyFx.itemId === 'capsule') {
+            return (
+                <motion.div
+                    className="absolute left-8 top-1/2 h-2 w-24 -translate-y-1/2 rounded-full bg-gradient-to-r from-transparent via-sky-300/65 to-transparent"
+                    animate={{ x: [-10, 18, -4], opacity: [0, 1, 0] }}
+                    transition={{ duration: 1.05, repeat: Infinity, ease: "easeInOut" }}
+                />
+            );
+        }
+
+        if (activeEconomyFx.itemId === 'hint_ticket') {
+            return (
+                <div className="absolute inset-y-0 right-8 flex items-center gap-1 pointer-events-none">
+                    {[0, 1, 2].map((index) => (
+                        <motion.div
+                            key={`hint-spark-${index}`}
+                            className="flex h-4 w-4 items-center justify-center rounded-full bg-white/70 text-amber-400 shadow-[0_6px_16px_rgba(251,191,36,0.22)]"
+                            animate={{ y: [0, -5, 0], scale: [0.92, 1.08, 0.94], opacity: [0.4, 1, 0.5] }}
+                            transition={{ duration: 0.9, repeat: Infinity, delay: index * 0.1, ease: "easeInOut" }}
+                        >
+                            <Sparkles className="h-2.5 w-2.5" />
+                        </motion.div>
+                    ))}
+                </div>
+            );
+        }
+
+        if (activeEconomyFx.itemId === 'vocab_ticket') {
+            return (
+                <div className="absolute inset-y-0 right-7 flex items-center gap-1.5 pointer-events-none">
+                    {['词', '块', '提示'].map((label, index) => (
+                        <motion.div
+                            key={`vocab-chip-${label}`}
+                            className="rounded-full border border-emerald-200/70 bg-white/80 px-2 py-0.5 text-[9px] font-black tracking-[0.18em] text-emerald-700 shadow-[0_6px_16px_rgba(16,185,129,0.12)]"
+                            animate={{ y: [2, -3, 2], rotate: [0, index === 1 ? -4 : 4, 0], opacity: [0.55, 1, 0.72] }}
+                            transition={{ duration: 1.1, repeat: Infinity, delay: index * 0.08, ease: "easeInOut" }}
+                        >
+                            {label}
+                        </motion.div>
+                    ))}
+                </div>
+            );
+        }
+
+        if (activeEconomyFx.itemId === 'audio_ticket') {
+            return (
+                <div className="absolute inset-y-0 right-8 flex items-center gap-1 pointer-events-none">
+                    {[10, 16, 12].map((height, index) => (
+                        <motion.div
+                            key={`audio-wave-${height}-${index}`}
+                            className="w-1.5 rounded-full bg-indigo-400/75"
+                            style={{ height }}
+                            animate={{ scaleY: [0.72, 1.18, 0.8], opacity: [0.45, 0.95, 0.52] }}
+                            transition={{ duration: 0.72, repeat: Infinity, delay: index * 0.08, ease: "easeInOut" }}
+                        />
+                    ))}
+                </div>
+            );
+        }
+
+        if (activeEconomyFx.itemId === 'refresh_ticket') {
+            return (
+                <div className="absolute inset-y-0 right-8 flex items-center gap-1.5 pointer-events-none">
+                    {[0, 1].map((index) => (
+                        <motion.div
+                            key={`refresh-ring-${index}`}
+                            className="h-6 w-6 rounded-full border border-cyan-300/60"
+                            animate={{ scale: [0.7, 1.2, 1.34], opacity: [0.5, 0.24, 0] }}
+                            transition={{ duration: 0.9, repeat: Infinity, delay: index * 0.18, ease: "easeOut" }}
+                        />
+                    ))}
+                    <motion.div
+                        className="absolute inset-y-0 right-1 flex items-center"
+                        animate={{ rotate: [0, 180, 360] }}
+                        transition={{ duration: 1.25, repeat: Infinity, ease: "linear" }}
+                    >
+                        <RefreshCw className="h-4 w-4 text-cyan-500/75" />
+                    </motion.div>
+                </div>
+            );
+        }
+
+        return null;
+    };
 
     // ELO-based auto-difficulty (unified 400 Elo per tier)
     const getEloDifficulty = (elo: number) => {
@@ -887,12 +1467,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         // Only earn coins while actively on the drill page (any mode)
         const idleInterval = setInterval(() => {
             applyEconomyPatch({ coinsDelta: 5 });
-            // Small popup could be added here, but silent is better for true background idle
-            setLootDrop({ type: 'exp', amount: 5, rarity: 'common', message: '时长摸鱼奖励 🐟' });
+            pushEconomyFx({ kind: 'coin_gain', amount: 5, message: '+5 星光币', source: 'reward' });
         }, 5 * 60 * 1000); // 5 minutes
 
         return () => clearInterval(idleInterval);
-    }, [applyEconomyPatch]);
+    }, [applyEconomyPatch, pushEconomyFx]);
 
     // --- Loading & Persistance ---
 
@@ -1153,8 +1732,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     useEffect(() => {
         if (drillData?.reference_english && setContext) {
             const keywords = drillData.target_english_vocab?.join(" ") || "";
+            const effectiveTopic = drillData._topicMeta?.topic || context.articleTitle || context.topic || 'General';
             // Simplified prompt for context
-            const prompt = `Topic: ${context.articleTitle || context.topic || 'General'}. Keywords: ${keywords}. Sentence: ${drillData.reference_english}`;
+            const prompt = `Topic: ${effectiveTopic}. Keywords: ${keywords}. Sentence: ${drillData.reference_english}`;
             setContext(prompt);
         }
     }, [drillData, context, setContext]);
@@ -1236,6 +1816,23 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         // Force immediate Drill Generation with Override
         handleGenerateDrill(undefined, type);
     };
+
+    const handleDebugEconomyFx = useCallback((
+        kind: EconomyFxKind,
+        options: { itemId?: ShopItemId; amount?: number; message: string; }
+    ) => {
+        pushEconomyFx({
+            kind,
+            itemId: options.itemId,
+            amount: options.amount,
+            message: options.message,
+            source: kind === 'coin_gain' ? 'reward' : kind === 'item_purchase' ? 'shop' : 'tab',
+        });
+    }, [pushEconomyFx]);
+
+    const handleDebugLootDrop = useCallback((options: LootDrop) => {
+        setLootDrop(options);
+    }, []);
 
     const debugTriggerRoulette = () => {
         // Show the interactive overlay instead of immediate generation
@@ -1358,11 +1955,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             }
         }
 
-        let targetTopic = context.articleTitle || context.topic;
-        if (!targetTopic || targetTopic.length === 0 || targetTopic === "日常闲聊" || targetTopic === "商务精英" || targetTopic === "学术先锋") {
-            const randomTopicObj = TOPICS[Math.floor(Math.random() * TOPICS.length)];
-            targetTopic = randomTopicObj.title;
-        }
+        const targetTopic = resolveScenarioTopic(context);
 
         fetch("/api/ai/generate_drill", {
             method: "POST",
@@ -1390,13 +1983,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     // --- Core Actions ---
 
-    const handleGenerateDrill = async (targetDifficulty = difficulty, overrideBossType?: string) => {
+    const handleGenerateDrill = async (targetDifficulty = difficulty, overrideBossType?: string, skipPrefetched = false) => {
         // Abort any pending generation or prefetch requests
         if (abortControllerRef.current) abortControllerRef.current.abort();
         if (abortPrefetchRef.current) abortPrefetchRef.current.abort();
 
         // If we have prefetched data ready AND it matches the current mode, consume it instantly
-        if (prefetchedDrillData && prefetchedDrillData.mode === mode && !overrideBossType) {
+        if (prefetchedDrillData && prefetchedDrillData.mode === mode && !overrideBossType && !skipPrefetched) {
             console.log("[Prefetch] Consuming prefetched drill data! Zero ms latency.");
             setDrillData(prefetchedDrillData);
             setPrefetchedDrillData(null); // Clear buffer
@@ -1548,11 +2141,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         try {
             console.log(`[DEBUG] Sending to API: bossType=${nextBossType}, eloRating=${currentElo}`);
             // --- DETERMINE TOPIC ---
-            let targetTopic = context.articleTitle || context.topic;
-            if (!targetTopic || targetTopic.length === 0 || targetTopic === "日常闲聊" || targetTopic === "商务精英" || targetTopic === "学术先锋") {
-                const randomTopicObj = TOPICS[Math.floor(Math.random() * TOPICS.length)];
-                targetTopic = randomTopicObj.title;
-            }
+            const targetTopic = resolveScenarioTopic(context);
 
             // --- RANDOM SURPRISE DROP ---
             if (currentStreak > 0 && Math.random() < 0.05) { // 5% chance on new drill load (only if they aren't totally failing)
@@ -1564,7 +2153,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     } else {
                         const randomCoins = Math.floor(Math.random() * 20) + 5;
                         applyEconomyPatch({ coinsDelta: randomCoins });
-                        setLootDrop({ type: 'gem', amount: randomCoins, rarity: 'common', message: '💸 走运了！捡到星光币！' });
+                        pushEconomyFx({ kind: 'coin_gain', amount: randomCoins, message: `+${randomCoins} 星光币`, source: 'reward' });
                     }
                 }, 1000); // 1 second after generation starts
             }
@@ -2030,10 +2619,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     if (isCritical) {
                         setLootDrop({ type: 'gem', amount: earnedCoins, rarity: 'legendary', message: '✨ 绝佳！打工薪水超级暴击！' });
                     } else {
-                        // Regular popup for coins (commented out to avoid spam, we will just silently update Ledger unless they got a streak or large amount)
-                        if (earnedCoins >= 10) {
-                            setLootDrop({ type: 'exp', amount: earnedCoins, rarity: 'common', message: '💸 完美翻译，获得星光币！' });
-                        }
+                        pushEconomyFx({ kind: 'coin_gain', amount: earnedCoins, message: `+${earnedCoins} 星光币`, source: 'reward' });
                     }
                 }
 
@@ -2135,7 +2721,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 body: JSON.stringify({
                     query: tutorQuery,
                     drillContext: drillData,
-                    articleTitle: context.articleTitle || context.topic
+                    articleTitle: drillData._topicMeta?.topic || context.articleTitle || context.topic
                 }),
             });
             const data = await response.json();
@@ -2173,10 +2759,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setAssistsUsedInCurrentDrill(prev => prev + 1);
             const fullReference = drillData.reference_english.trim();
             setFullReferenceHint(prev => ({ version: prev.version + 1, text: fullReference }));
-
-            if (userTranslation.trim()) {
-                setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: '已显示完整参考句（不会覆盖你已输入内容）' });
-            }
+            pushEconomyFx({ kind: 'item_consume', itemId: 'hint_ticket', amount: 1, message: '已消耗 1 Hint 道具', source: 'hint' });
         } catch (error) {
             console.error('[Hint] Failed to generate hint:', error);
             setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: '提示生成失败，请重试' });
@@ -2202,9 +2785,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         applyEconomyPatch({ itemDelta: { vocab_ticket: -1 } });
         setAssistsUsedInCurrentDrill(prev => prev + 1);
         setIsVocabHintRevealed(true);
-        setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: `已解锁 ${keywords.length} 个关键词提示` });
+        pushEconomyFx({ kind: 'item_consume', itemId: 'vocab_ticket', amount: 1, message: '已消耗 1 关键词券', source: 'vocab' });
         return true;
-    }, [applyEconomyPatch, drillData, getItemCount]);
+    }, [applyEconomyPatch, drillData, getItemCount, pushEconomyFx]);
 
     const handlePredictionRequest = useCallback(() => {
         if (getItemCount('capsule') <= 0) {
@@ -2219,7 +2802,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const handlePredictionShown = useCallback(() => {
         applyEconomyPatch({ itemDelta: { capsule: -1 } });
         setAssistsUsedInCurrentDrill(prev => prev + 1);
-    }, [applyEconomyPatch]);
+        pushEconomyFx({ kind: 'item_consume', itemId: 'capsule', amount: 1, message: '已消耗 1 胶囊', source: 'tab' });
+    }, [applyEconomyPatch, pushEconomyFx]);
 
     const handleTranslationReferencePlayback = async () => {
         if (mode !== 'translation' || !drillData?.reference_english || drillFeedback) {
@@ -2257,8 +2841,24 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             return;
         }
 
-        setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: '已解锁本题参考句播放，可反复播放和切换倍速' });
+        pushEconomyFx({ kind: 'item_consume', itemId: 'audio_ticket', amount: 1, message: '已消耗 1 朗读券', source: 'audio' });
     };
+
+    const handleRefreshDrill = useCallback(() => {
+        if (isGeneratingDrill || !drillData || !!drillFeedback) return false;
+        if (getItemCount('refresh_ticket') <= 0) {
+            setIsHintShake(true);
+            setTimeout(() => setIsHintShake(false), 500);
+            openShopForItem('refresh_ticket', '刷新卡不足，请先去商场购买');
+            return false;
+        }
+
+        applyEconomyPatch({ itemDelta: { refresh_ticket: -1 } });
+        pushEconomyFx({ kind: 'item_consume', itemId: 'refresh_ticket', amount: 1, message: '已消耗 1 刷新卡', source: 'refresh' });
+        setPrefetchedDrillData(null);
+        handleGenerateDrill(undefined, undefined, true);
+        return true;
+    }, [applyEconomyPatch, drillData, drillFeedback, getItemCount, handleGenerateDrill, isGeneratingDrill, openShopForItem, pushEconomyFx]);
 
     const handleBuyItem = useCallback((itemId: ShopItemId) => {
         const item = ITEM_CATALOG[itemId];
@@ -2268,8 +2868,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             coinsDelta: -item.price,
             itemDelta: { [itemId]: 1 },
         });
+        pushEconomyFx({ kind: 'item_purchase', itemId, amount: 1, message: `已购买 ${item.name}`, source: 'shop' });
         return true;
-    }, [applyEconomyPatch]);
+    }, [applyEconomyPatch, pushEconomyFx]);
 
     const handleBuyTheme = useCallback((themeId: CosmeticThemeId) => {
         const themeDef = COSMETIC_THEMES[themeId];
@@ -2669,7 +3270,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
 
     return (
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
             <motion.div
                 key="drill-core"
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -2841,6 +3442,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                 <motion.div
                     layout
+                    ref={battleShellRef}
                     className={cn(
                         "relative w-full max-w-5xl h-[85vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col transition-all duration-700",
                         theme === 'fever' ? "bg-[#0a0a12]/95 backdrop-blur-xl border border-orange-500/40 shadow-[0_0_80px_rgba(249,115,22,0.15),0_0_40px_rgba(251,146,60,0.1)] text-white ring-1 ring-orange-500/20" :
@@ -3098,11 +3700,24 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     {drillData?._topicMeta && (
                                         <>
                                             <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5" />
-                                            <div className="flex items-center gap-1 px-2.5 h-full rounded-full text-[11px] font-bold text-blue-700/80 transition-colors hover:bg-blue-50 cursor-pointer" title={drillData._topicMeta.subTopic || drillData._topicMeta.topic}>
+                                            <div
+                                                className="flex items-center gap-1 px-2.5 h-full rounded-full text-[11px] font-bold text-blue-700/80 transition-colors hover:bg-blue-50 cursor-pointer"
+                                                title={drillData._topicMeta.subTopic
+                                                    ? `${drillData._topicMeta.topic} · ${drillData._topicMeta.subTopic}`
+                                                    : drillData._topicMeta.topic}
+                                            >
                                                 <span className="text-[12px] leading-none mb-[1px]">📌</span>
-                                                <span className="max-w-[70px] sm:max-w-[140px] truncate opacity-90">
-                                                    {drillData._topicMeta.subTopic || drillData._topicMeta.topic}
+                                                <span className="max-w-[74px] sm:max-w-[96px] truncate opacity-95">
+                                                    {drillData._topicMeta.topic}
                                                 </span>
+                                                {drillData._topicMeta.subTopic && (
+                                                    <>
+                                                        <span className="hidden sm:inline opacity-30">·</span>
+                                                        <span className="hidden sm:inline max-w-[112px] truncate text-[10px] font-semibold opacity-60">
+                                                            {drillData._topicMeta.subTopic}
+                                                        </span>
+                                                    </>
+                                                )}
                                             </div>
                                         </>
                                     )}
@@ -3182,44 +3797,63 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             {/* Mobile/Desktop Status Bar - Unified (Collapsible) */}
                             {mode === 'translation' && (
                                 <div className={cn(
-                                    "group hidden md:flex items-center h-[38px] p-0.5 rounded-full bg-white/60 backdrop-blur-xl border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 shrink-0 transition-all duration-300",
+                                    "hidden md:flex items-center h-[38px] gap-1 p-0.5 rounded-full backdrop-blur-xl border ring-1 shrink-0 transition-all duration-300",
+                                    activeCosmeticUi.ledgerClass,
                                     isHintShake && "animate-[shake_0.4s_ease-in-out] border-red-300 shadow-[0_0_18px_rgba(220,38,38,0.2)]"
                                 )}>
-                                    {/* Expandable Resources */}
-                                    <div className="flex items-center max-w-0 opacity-0 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.19,1,0.22,1)] group-hover:max-w-[400px] group-hover:opacity-100">
-                                        <div className="flex items-center h-[34px] shrink-0">
-                                            {/* Coins */}
-                                            <div className="flex items-center gap-1 px-2.5 h-full rounded-full transition-colors cursor-default hover:bg-white/60">
-                                                <span className="text-[12px] leading-none drop-shadow-sm mb-[1px]">✨</span>
-                                                <span className="font-mono font-bold text-[12px] text-stone-700 tabular-nums">{coins}</span>
-                                            </div>
+                                    <div className="flex items-center h-[34px] shrink-0 gap-1 px-1">
+                                        <div
+                                            ref={(node) => { resourceTargetRefs.current.coins = node; }}
+                                            data-economy-target="coins"
+                                            className={cn("flex items-center gap-1 px-2.5 h-full rounded-full transition-all duration-300 cursor-default text-stone-700 hover:bg-white/70", getEconomyPulseClass('coins'))}
+                                        >
+                                            <span className="text-[12px] leading-none drop-shadow-sm mb-[1px]">✨</span>
+                                            <span className="font-mono font-bold text-[12px] tabular-nums">{coins}</span>
+                                        </div>
 
-                                            <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5"></div>
+                                        <div
+                                            ref={(node) => { resourceTargetRefs.current.capsule = node; }}
+                                            data-economy-target="capsule"
+                                            className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-blue-700/80 hover:bg-blue-50", getEconomyPulseClass('capsule'))}
+                                        >
+                                            <span className="text-[11px] leading-none mb-[1px]">💊</span>
+                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{capsuleCount}</span>
+                                        </div>
 
-                                            {/* Action items */}
-                                            <div className="flex items-center h-full">
-                                                <div className="flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-blue-50 text-blue-700/80">
-                                                    <span className="text-[11px] leading-none mb-[1px]">💊</span>
-                                                    <span className="font-mono font-semibold text-[11px] tabular-nums">{capsuleCount}</span>
-                                                </div>
+                                        <div
+                                            ref={(node) => { resourceTargetRefs.current.hint_ticket = node; }}
+                                            data-economy-target="hint_ticket"
+                                            className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-amber-700/80 hover:bg-amber-50", getEconomyPulseClass('hint_ticket'))}
+                                        >
+                                            <span className="text-[11px] leading-none mb-[1px]">🪄</span>
+                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{hintTicketCount}</span>
+                                        </div>
 
-                                                <div className="flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-amber-50 text-amber-700/80">
-                                                    <span className="text-[11px] leading-none mb-[1px]">🪄</span>
-                                                    <span className="font-mono font-semibold text-[11px] tabular-nums">{hintTicketCount}</span>
-                                                </div>
+                                        <div
+                                            ref={(node) => { resourceTargetRefs.current.vocab_ticket = node; }}
+                                            data-economy-target="vocab_ticket"
+                                            className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-emerald-700/80 hover:bg-emerald-50", getEconomyPulseClass('vocab_ticket'))}
+                                        >
+                                            <span className="text-[11px] leading-none mb-[1px]">🧩</span>
+                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{vocabTicketCount}</span>
+                                        </div>
 
-                                                <div className="flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-emerald-50 text-emerald-700/80">
-                                                    <span className="text-[11px] leading-none mb-[1px]">🧩</span>
-                                                    <span className="font-mono font-semibold text-[11px] tabular-nums">{vocabTicketCount}</span>
-                                                </div>
+                                        <div
+                                            ref={(node) => { resourceTargetRefs.current.audio_ticket = node; }}
+                                            data-economy-target="audio_ticket"
+                                            className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-indigo-700/80 hover:bg-indigo-50", getEconomyPulseClass('audio_ticket'))}
+                                        >
+                                            <span className="text-[11px] leading-none mb-[1px]">🔊</span>
+                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{audioTicketCount}</span>
+                                        </div>
 
-                                                <div className="flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-indigo-50 text-indigo-700/80">
-                                                    <span className="text-[11px] leading-none mb-[1px]">🔊</span>
-                                                    <span className="font-mono font-semibold text-[11px] tabular-nums">{audioTicketCount}</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5 mr-1"></div>
+                                        <div
+                                            ref={(node) => { resourceTargetRefs.current.refresh_ticket = node; }}
+                                            data-economy-target="refresh_ticket"
+                                            className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-cyan-700/80 hover:bg-cyan-50", getEconomyPulseClass('refresh_ticket'))}
+                                        >
+                                            <RefreshCw className="h-[11px] w-[11px]" />
+                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{refreshTicketCount}</span>
                                         </div>
                                     </div>
 
@@ -3229,12 +3863,36 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                             setShopFocusedItem(null);
                                             setShowShopModal(true);
                                         }}
-                                        className="relative flex items-center justify-center h-full min-w-[64px] rounded-full bg-indigo-50/80 px-4 text-indigo-600 hover:!bg-indigo-500 hover:!text-white hover:shadow-[0_4px_12px_rgba(99,102,241,0.25)] border border-transparent hover:!border-indigo-400 transition-all duration-300 shrink-0"
+                                        className={cn(
+                                            "relative flex items-center justify-center h-full min-w-[68px] rounded-full px-4 transition-all duration-300 shrink-0 border",
+                                            activeCosmeticUi.audioUnlockedClass
+                                        )}
                                         title="打开商场"
                                     >
                                         <span className="font-bold text-[11px] tracking-widest leading-none mt-[1px]">商场</span>
                                     </button>
                                 </div>
+                            )}
+
+                            {drillData && !drillFeedback && (
+                                <button
+                                    onClick={handleRefreshDrill}
+                                    disabled={isGeneratingDrill}
+                                    className={cn(
+                                        "hidden sm:flex items-center gap-2 h-[38px] px-4 rounded-full font-bold text-[12px] transition-all duration-300 disabled:opacity-50 shrink-0 border",
+                                        activeCosmeticUi.iconButtonClass
+                                    )}
+                                    title="刷新当前题目 · 消耗 1 张刷新卡"
+                                >
+                                    <RefreshCw className={cn("w-3.5 h-3.5", isGeneratingDrill && "animate-spin")} />
+                                    <span>换题</span>
+                                    <span className={cn(
+                                        "rounded-full px-2 py-0.5 text-[11px] font-mono font-black",
+                                        activeCosmeticUi.wordBadgeActiveClass
+                                    )}>
+                                        {refreshTicketCount}
+                                    </span>
+                                </button>
                             )}
 
                             {/* Teaching Mode Button - Only for Translation */}
@@ -3269,10 +3927,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     className={cn(
                                         "hidden sm:flex items-center gap-1.5 h-[38px] px-4 rounded-full font-bold text-[12px] transition-all duration-300 shrink-0 border shadow-[0_8px_24px_rgba(0,0,0,0.03)]",
                                         teachingMode && teachingPanelOpen
-                                            ? "bg-indigo-500 border-indigo-400 text-white shadow-[0_4px_16px_rgba(99,102,241,0.3)] ring-1 ring-indigo-400/50"
+                                            ? activeCosmeticUi.checkButtonClass
                                             : teachingMode
-                                                ? "bg-indigo-50/80 border-indigo-200/50 text-indigo-500 hover:text-indigo-600 hover:bg-indigo-100/50 ring-1 ring-indigo-200/30"
-                                                : "bg-white/60 backdrop-blur-xl border-white/60 text-stone-500 hover:text-stone-700 hover:bg-white/80 ring-1 ring-stone-200/30"
+                                                ? activeCosmeticUi.audioUnlockedClass
+                                                : activeCosmeticUi.iconButtonClass
                                     )}
                                     title={teachingPanelOpen ? '收起教学面板' : '打开教学面板'}
                                 >
@@ -3289,9 +3947,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             {onClose && (
                                 <button
                                     onClick={onClose}
-                                    className="w-[38px] h-[38px] rounded-full bg-white/60 backdrop-blur-xl border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 hover:bg-white/90 text-stone-500 flex items-center justify-center transition-all duration-300 group shrink-0"
+                                    className={cn(
+                                        "w-[38px] h-[38px] rounded-full flex items-center justify-center transition-all duration-300 group shrink-0 border",
+                                        activeCosmeticUi.iconButtonClass
+                                    )}
                                 >
-                                    <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300 text-stone-600" />
+                                    <X className="w-4 h-4 group-hover:rotate-90 transition-transform duration-300" />
                                 </button>
                             )}
                         </div>
@@ -3485,12 +4146,15 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                                                                             {/* Refresh Button */}
                                                                             <button
-                                                                                onClick={() => handleGenerateDrill()}
+                                                                                onClick={handleRefreshDrill}
                                                                                 disabled={isGeneratingDrill}
-                                                                                className="w-8 h-8 rounded-full text-stone-400 hover:text-stone-600 hover:bg-white flex items-center justify-center transition-all disabled:opacity-50"
-                                                                                title="New Question"
+                                                                                className="relative w-8 h-8 rounded-full text-cyan-500 hover:text-cyan-700 hover:bg-cyan-50 flex items-center justify-center transition-all disabled:opacity-50"
+                                                                                title="刷新当前题目 · 消耗 1 张刷新卡"
                                                                             >
                                                                                 <RefreshCw className={cn("w-3.5 h-3.5", isGeneratingDrill && "animate-spin")} />
+                                                                                <span className="absolute -right-1 -bottom-1 min-w-[14px] h-[14px] rounded-full bg-cyan-500 px-1 text-[9px] font-black leading-[14px] text-white shadow-[0_4px_10px_rgba(6,182,212,0.35)]">
+                                                                                    {refreshTicketCount}
+                                                                                </span>
                                                                             </button>
                                                                         </>
                                                                     )}
@@ -3606,21 +4270,24 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             )}
                                                         </div>
                                                     ) : (
-                                                        <div className="w-full py-8 md:py-10 flex flex-col items-center justify-center gap-5 md:gap-6">
-                                                            <h3 className="text-2xl md:text-4xl font-newsreader font-medium text-stone-900 leading-normal text-center max-w-4xl">
+                                                        <div className="w-full py-5 md:py-6 flex flex-col items-center justify-center gap-4 md:gap-5">
+                                                            <h3 className="max-w-4xl text-center font-newsreader text-2xl font-medium leading-[1.35] text-stone-900 md:text-[3rem]">
                                                                 {drillData.chinese}
                                                             </h3>
 
-                                                            <div className="w-full max-w-2xl px-4">
-                                                                <div className="flex flex-col items-center gap-2 rounded-[1.75rem] border border-stone-200/70 bg-white/70 px-3 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] backdrop-blur-xl md:flex-row md:justify-center md:gap-3 md:px-4">
+                                                            <div className="relative w-full max-w-3xl px-4">
+                                                                <div className={cn(
+                                                                    "flex flex-wrap items-center justify-center gap-2 rounded-full border px-2.5 py-2 backdrop-blur-xl",
+                                                                    activeCosmeticUi.toolbarClass
+                                                                )}>
                                                                     <button
                                                                         onClick={handleTranslationReferencePlayback}
                                                                         disabled={isAudioLoading}
                                                                         className={cn(
-                                                                            "flex min-h-11 min-w-[192px] items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 disabled:cursor-wait disabled:opacity-70",
+                                                                            "flex min-h-10 items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 disabled:cursor-wait disabled:opacity-70",
                                                                             isTranslationAudioUnlocked
-                                                                                ? "border-indigo-200/80 bg-[linear-gradient(180deg,rgba(238,242,255,0.96),rgba(224,231,255,0.88))] text-indigo-700 shadow-[0_6px_18px_rgba(99,102,241,0.12)] hover:-translate-y-0.5 hover:border-indigo-300 hover:text-indigo-800"
-                                                                                : "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,251,235,0.96),rgba(254,243,199,0.9))] text-amber-700 shadow-[0_6px_18px_rgba(245,158,11,0.12)] hover:-translate-y-0.5 hover:border-amber-300 hover:text-amber-800"
+                                                                                ? activeCosmeticUi.audioUnlockedClass
+                                                                                : activeCosmeticUi.audioLockedClass
                                                                         )}
                                                                         title={isTranslationAudioUnlocked ? "重播参考句" : "解锁本题参考句播放"}
                                                                     >
@@ -3640,7 +4307,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         </span>
                                                                     </button>
 
-                                                                    <div className="flex items-center gap-1 rounded-full border border-stone-200/80 bg-white/80 p-1">
+                                                                    <div className={cn("flex items-center gap-1 rounded-full border p-1", activeCosmeticUi.speedShellClass)}>
                                                                         {[1, 0.85, 0.7].map((speed) => (
                                                                             <button
                                                                                 key={`translation-speed-${speed}`}
@@ -3651,10 +4318,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                     }
                                                                                 }}
                                                                                 className={cn(
-                                                                                    "min-h-9 min-w-[56px] rounded-full px-3 text-xs font-bold transition-all duration-200",
+                                                                                    "min-h-8 min-w-[52px] rounded-full px-3 text-[11px] font-bold transition-all duration-200",
                                                                                     playbackSpeed === speed
-                                                                                        ? "bg-stone-900 text-white shadow-[0_8px_16px_rgba(15,23,42,0.12)]"
-                                                                                        : "text-stone-500 hover:bg-stone-100 hover:text-stone-700"
+                                                                                        ? activeCosmeticUi.speedActiveClass
+                                                                                        : activeCosmeticUi.speedIdleClass
                                                                                 )}
                                                                                 aria-label={`设置播放速度 ${speed}x`}
                                                                             >
@@ -3662,65 +4329,67 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             </button>
                                                                         ))}
                                                                     </div>
+
+                                                                    {(() => {
+                                                                        if (!hasTranslationKeywords || isVocabHintRevealed) return null;
+
+                                                                        return (
+                                                                            <button
+                                                                                onClick={handleRevealVocabHint}
+                                                                                className={cn(
+                                                                                    "flex min-h-10 items-center justify-center gap-2 rounded-full border px-4 py-2 text-xs font-bold transition-all hover:-translate-y-0.5",
+                                                                                    activeCosmeticUi.vocabButtonClass,
+                                                                                    isHintShake && "animate-shake"
+                                                                                )}
+                                                                            >
+                                                                                <span className="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-black text-emerald-600">
+                                                                                    {translationKeywords.length}
+                                                                                </span>
+                                                                                <span>显示关键词</span>
+                                                                                <span className="text-emerald-500">1 🧩</span>
+                                                                            </button>
+                                                                        );
+                                                                    })()}
                                                                 </div>
-                                                                <p className="mt-2 text-center text-[11px] font-medium tracking-[0.08em] text-stone-400">
-                                                                    {isTranslationAudioUnlocked
-                                                                        ? "本题已解锁参考句播放，可重复播放且不再额外扣券"
-                                                                        : `当前持有 ${audioTicketCount} 张朗读券，首次播放会计入辅助`}
-                                                                </p>
-                                                            </div>
-
-                                                            {/* Keywords */}
-                                                            {(() => {
-                                                                const keywords = (drillData.target_english_vocab || drillData.key_vocab || []) as string[];
-                                                                if (keywords.length === 0) return null;
-
-                                                                if (mode !== 'translation' || isVocabHintRevealed) {
-                                                                    return (
-                                                                        <div className="flex flex-wrap justify-center gap-3">
-                                                                            {keywords.map((vocab, i) => (
-                                                                                <span key={i} onClick={(e) => handleWordClick(e, vocab)} className="px-5 py-2 rounded-full bg-white border border-stone-200 text-stone-600 font-newsreader italic text-lg hover:bg-stone-50 hover:border-stone-300 hover:text-stone-900 cursor-pointer transition-all shadow-sm">{vocab}</span>
-                                                                            ))}
-                                                                        </div>
-                                                                    );
-                                                                }
-
-                                                                return (
-                                                                    <div className="flex flex-col items-center gap-2.5">
-                                                                        <div className="rounded-full border border-stone-200 bg-white/75 px-3 py-1 text-xs font-semibold text-stone-500">
-                                                                            已隐藏 {keywords.length} 个关键词
-                                                                        </div>
-                                                                        <button
-                                                                            onClick={handleRevealVocabHint}
-                                                                            className={cn(
-                                                                                "rounded-full border border-emerald-200 bg-emerald-50 px-4 py-1.5 text-xs font-bold text-emerald-700 transition-all hover:-translate-y-0.5 hover:bg-emerald-100",
-                                                                                isHintShake && "animate-shake"
+                                                                {hasTranslationKeywords && (
+                                                                    <div className="pointer-events-none absolute inset-x-4 top-full z-10 mt-4 flex justify-center">
+                                                                        <AnimatePresence initial={false}>
+                                                                            {isVocabHintRevealed && (
+                                                                                <motion.div
+                                                                                    initial={{ opacity: 0, y: -10, scale: 0.985 }}
+                                                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                                                    exit={{ opacity: 0, y: -8, scale: 0.985 }}
+                                                                                    transition={{ duration: 0.22, ease: "easeOut" }}
+                                                                                    className="pointer-events-auto flex max-w-3xl flex-wrap justify-center gap-3"
+                                                                                >
+                                                                                    {translationKeywords.map((vocab, i) => (
+                                                                                        <span key={`${vocab}-${i}`} onClick={(e) => handleWordClick(e, vocab)} className={cn("px-5 py-2 rounded-full border font-newsreader italic text-lg cursor-pointer transition-all", activeCosmeticUi.keywordChipClass)}>{vocab}</span>
+                                                                                    ))}
+                                                                                </motion.div>
                                                                             )}
-                                                                        >
-                                                                            显示关键词（消耗 1 🧩）
-                                                                        </button>
+                                                                        </AnimatePresence>
                                                                     </div>
-                                                                );
-                                                            })()}
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     )}
 
                                                     {/* Action Button - Only show if not waiting for user */}
                                                     <div className="flex justify-center mt-4 opacity-0 pointer-events-none h-0 overflow-hidden">
-                                                        <button onClick={() => handleGenerateDrill()} disabled={isGeneratingDrill} className="flex items-center gap-2 px-4 py-2 text-sm text-stone-400 hover:text-stone-600 hover:bg-stone-50 rounded-full transition-all disabled:opacity-50">
+                                                        <button onClick={handleRefreshDrill} disabled={isGeneratingDrill} className="flex items-center gap-2 px-4 py-2 text-sm text-cyan-500 hover:text-cyan-700 hover:bg-cyan-50 rounded-full transition-all disabled:opacity-50">
                                                             <RefreshCw className={cn("w-4 h-4", isGeneratingDrill && "animate-spin")} /> 换一题
                                                         </button>
                                                     </div>
                                                 </motion.div>
                                             </div>
 
-                                            <div className="w-full max-w-xs mx-auto h-px bg-gradient-to-r from-transparent via-stone-200 to-transparent my-5 md:my-6" />
+                                            <div className="my-3 h-px w-full max-w-xs mx-auto bg-gradient-to-r from-transparent via-stone-200 to-transparent md:my-4" />
 
                                             {/* Teaching Card removed - now in floating panel */}
 
                                             {/* Interactive Area */}
 
-                                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="w-full space-y-6">
+                                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="w-full space-y-4">
                                                 <div className="relative group">
                                                     {mode === "listening" ? (
                                                         <div className="flex flex-col items-center justify-center gap-4 py-2">
@@ -3815,15 +4484,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     ) : (
                                                         <>
                                                             <div className={cn(
-                                                                "relative group overflow-hidden rounded-[2rem] border border-black/5 bg-white/50 backdrop-blur-2xl shadow-[0_8px_32px_rgba(15,23,42,0.06),inset_0_1px_0_rgba(255,255,255,1)] transition-all duration-300 hover:shadow-[0_14px_44px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-4",
-                                                                {
-                                                                    'morning_coffee': 'focus-within:border-indigo-300/80 focus-within:shadow-[0_14px_44px_rgba(99,102,241,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-indigo-500/10 focus-within:bg-white/70',
-                                                                    'sakura': 'focus-within:border-pink-300/80 focus-within:shadow-[0_14px_44px_rgba(236,72,153,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-pink-500/10 focus-within:bg-pink-50/50',
-                                                                    'golden_hour': 'focus-within:border-amber-300/80 focus-within:shadow-[0_14px_44px_rgba(245,158,11,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-amber-500/10 focus-within:bg-amber-50/50',
-                                                                    'holo_pearl': 'focus-within:border-fuchsia-300/80 focus-within:shadow-[0_14px_44px_rgba(192,38,211,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-fuchsia-500/10 focus-within:bg-fuchsia-50/50',
-                                                                    'cloud_nine': 'focus-within:border-cyan-300/80 focus-within:shadow-[0_14px_44px_rgba(6,182,212,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-cyan-500/10 focus-within:bg-cyan-50/50',
-                                                                    'lilac_dream': 'focus-within:border-purple-300/80 focus-within:shadow-[0_14px_44px_rgba(168,85,247,0.12),inset_0_1px_0_rgba(255,255,255,1)] focus-within:ring-purple-500/10 focus-within:bg-purple-50/50',
-                                                                }[activeCosmeticTheme?.id || 'morning_coffee']
+                                                                "relative group overflow-hidden rounded-[2rem] border backdrop-blur-2xl transition-all duration-300",
+                                                                activeCosmeticUi.inputShellClass
                                                             )}>
                                                                 <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/60 to-transparent" />
                                                                 <div className="absolute inset-0 opacity-[0.015] bg-[url('data:image/svg+xml,%3Csvg viewBox=%270 0 256 256%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter id=%27noise%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%274%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23noise)%27/%3E%3C/svg%3E')] pointer-events-none mix-blend-overlay" />
@@ -3840,7 +4502,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     fullReferenceGhostText={fullReferenceHint.text}
                                                                     fullReferenceGhostVersion={fullReferenceHint.version}
                                                                     disabled={isSubmittingDrill}
-                                                                    className="font-work-sans min-h-[128px] px-5 pb-16 pt-5 text-[1.06rem] font-medium leading-[1.9] tracking-[0.005em] text-stone-900 placeholder:text-stone-400/45 placeholder:font-normal placeholder:italic md:min-h-[144px] md:px-6 md:pb-16 md:pt-6 md:text-[1.12rem] bg-transparent"
+                                                                    className={cn("font-work-sans min-h-[128px] px-5 pb-16 pt-5 text-[1.06rem] font-medium leading-[1.9] tracking-[0.005em] placeholder:font-normal placeholder:italic md:min-h-[144px] md:px-6 md:pb-16 md:pt-6 md:text-[1.12rem] bg-transparent", activeCosmeticUi.textareaClass)}
                                                                 />
 
                                                                 {/* Bottom toolbar */}
@@ -3849,8 +4511,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     <div className={cn(
                                                                         "flex items-center gap-1 rounded-full px-2 py-1.5 text-[9px] font-bold font-sans tracking-[0.14em] transition-all duration-300 md:gap-1.5 md:px-3 md:text-[11px] md:tracking-[0.18em]",
                                                                         userTranslation.trim()
-                                                                            ? "border border-stone-200/80 bg-white/90 text-stone-500 shadow-[0_6px_16px_rgba(15,23,42,0.05)]"
-                                                                            : "bg-transparent text-stone-400/60 font-medium"
+                                                                            ? activeCosmeticUi.wordBadgeActiveClass
+                                                                            : activeCosmeticUi.wordBadgeIdleClass
                                                                     )}>
                                                                         <span className="tabular-nums">{userTranslation.trim() ? userTranslation.trim().split(/\s+/).length : 0}</span>
                                                                         <span>WORDS</span>
@@ -3865,14 +4527,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                 "flex h-10 items-center justify-center gap-1.5 rounded-full border px-3 text-[11px] font-bold transition-all hover:-translate-y-0.5 active:scale-95 md:px-4 md:text-xs min-w-[80px]",
                                                                                 isHintLoading
                                                                                     ? "border-stone-200/80 bg-stone-100/50 text-stone-400 cursor-wait pointer-events-none"
-                                                                                    : {
-                                                                                        'morning_coffee': "border-indigo-200/80 bg-[linear-gradient(180deg,rgba(238,242,255,0.95),rgba(224,231,255,0.82))] text-indigo-700 shadow-[0_4px_12px_rgba(99,102,241,0.08)] hover:border-indigo-300 hover:text-indigo-800 hover:shadow-[0_8px_16px_rgba(99,102,241,0.12)]",
-                                                                                        'sakura': "border-pink-200/80 bg-[linear-gradient(180deg,rgba(253,242,248,0.95),rgba(252,231,243,0.82))] text-pink-700 shadow-[0_4px_12px_rgba(236,72,153,0.08)] hover:border-pink-300 hover:text-pink-800 hover:shadow-[0_8px_16px_rgba(236,72,153,0.12)]",
-                                                                                        'golden_hour': "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.95),rgba(254,243,199,0.82))] text-amber-700 shadow-[0_4px_12px_rgba(245,158,11,0.08)] hover:border-amber-300 hover:text-amber-800 hover:shadow-[0_8px_16px_rgba(245,158,11,0.12)]",
-                                                                                        'holo_pearl': "border-fuchsia-200/80 bg-[linear-gradient(180deg,rgba(253,244,255,0.95),rgba(250,232,255,0.82))] text-fuchsia-700 shadow-[0_4px_12px_rgba(192,38,211,0.08)] hover:border-fuchsia-300 hover:text-fuchsia-800 hover:shadow-[0_8px_16px_rgba(192,38,211,0.12)]",
-                                                                                        'cloud_nine': "border-cyan-200/80 bg-[linear-gradient(180deg,rgba(236,254,255,0.95),rgba(207,250,254,0.82))] text-cyan-700 shadow-[0_4px_12px_rgba(6,182,212,0.08)] hover:border-cyan-300 hover:text-cyan-800 hover:shadow-[0_8px_16px_rgba(6,182,212,0.12)]",
-                                                                                        'lilac_dream': "border-purple-200/80 bg-[linear-gradient(180deg,rgba(250,245,255,0.95),rgba(243,232,255,0.82))] text-purple-700 shadow-[0_4px_12px_rgba(168,85,247,0.08)] hover:border-purple-300 hover:text-purple-800 hover:shadow-[0_8px_16px_rgba(168,85,247,0.12)]",
-                                                                                    }[activeCosmeticTheme?.id || 'morning_coffee']
+                                                                                    : activeCosmeticUi.hintButtonClass
                                                                             )}
                                                                             title="Auto-Complete Hint"
                                                                         >
@@ -3882,15 +4537,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         <button
                                                                             onClick={() => setIsTutorOpen(!isTutorOpen)}
                                                                             className={cn(
-                                                                                "flex h-10 w-10 items-center justify-center rounded-full border border-stone-200/80 bg-white/88 text-stone-500 shadow-[0_6px_16px_rgba(15,23,42,0.04)] transition-all hover:-translate-y-0.5 active:scale-95",
-                                                                                {
-                                                                                    'morning_coffee': "hover:border-indigo-200 hover:bg-indigo-50/90 hover:text-indigo-600",
-                                                                                    'sakura': "hover:border-pink-200 hover:bg-pink-50/90 hover:text-pink-600",
-                                                                                    'golden_hour': "hover:border-amber-200 hover:bg-amber-50/90 hover:text-amber-600",
-                                                                                    'holo_pearl': "hover:border-fuchsia-200 hover:bg-fuchsia-50/90 hover:text-fuchsia-600",
-                                                                                    'cloud_nine': "hover:border-cyan-200 hover:bg-cyan-50/90 hover:text-cyan-600",
-                                                                                    'lilac_dream': "hover:border-purple-200 hover:bg-purple-50/90 hover:text-purple-600",
-                                                                                }[activeCosmeticTheme?.id || 'morning_coffee']
+                                                                                "flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:-translate-y-0.5 active:scale-95",
+                                                                                activeCosmeticUi.iconButtonClass
                                                                             )}
                                                                             title="Ask AI Tutor"
                                                                         >
@@ -3906,14 +4554,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                     ? "border border-stone-300/60 bg-white/50 text-stone-400 shadow-sm"
                                                                                     : [
                                                                                         "border text-white hover:-translate-y-0.5 active:scale-95 cursor-pointer",
-                                                                                        {
-                                                                                            'morning_coffee': "border-indigo-400/80 bg-[linear-gradient(180deg,rgba(99,102,241,0.9),rgba(79,70,229,0.95))] shadow-[0_8px_20px_rgba(99,102,241,0.25)] hover:shadow-[0_10px_24px_rgba(99,102,241,0.35)]",
-                                                                                            'sakura': "border-pink-400/80 bg-[linear-gradient(180deg,rgba(244,114,182,0.9),rgba(219,39,119,0.95))] shadow-[0_8px_20px_rgba(236,72,153,0.25)] hover:shadow-[0_10px_24px_rgba(236,72,153,0.35)]",
-                                                                                            'golden_hour': "border-amber-400/80 bg-[linear-gradient(180deg,rgba(245,158,11,0.9),rgba(217,119,6,0.95))] shadow-[0_8px_20px_rgba(245,158,11,0.25)] hover:shadow-[0_10px_24px_rgba(245,158,11,0.35)]",
-                                                                                            'holo_pearl': "border-fuchsia-400/80 bg-[linear-gradient(180deg,rgba(192,38,211,0.9),rgba(162,28,175,0.95))] shadow-[0_8px_20px_rgba(192,38,211,0.25)] hover:shadow-[0_10px_24px_rgba(192,38,211,0.35)]",
-                                                                                            'cloud_nine': "border-cyan-400/80 bg-[linear-gradient(180deg,rgba(6,182,212,0.9),rgba(8,145,178,0.95))] shadow-[0_8px_20px_rgba(6,182,212,0.25)] hover:shadow-[0_10px_24px_rgba(6,182,212,0.35)]",
-                                                                                            'lilac_dream': "border-purple-400/80 bg-[linear-gradient(180deg,rgba(168,85,247,0.9),rgba(147,51,234,0.95))] shadow-[0_8px_20px_rgba(168,85,247,0.25)] hover:shadow-[0_10px_24px_rgba(168,85,247,0.35)]",
-                                                                                        }[activeCosmeticTheme?.id || 'morning_coffee']
+                                                                                        activeCosmeticUi.checkButtonClass
                                                                                     ]
                                                                             )}
                                                                         >
@@ -3928,15 +4569,15 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     {/* AI Tutor Cloud */}
                                                     <AnimatePresence>
                                                         {isTutorOpen && (
-                                                            <motion.div initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 10 }} className="absolute bottom-20 right-0 w-80 bg-white rounded-2xl shadow-2xl border border-stone-100 p-4 z-20 flex flex-col gap-3">
-                                                                <div className="flex items-center justify-between pb-2 border-b border-stone-50">
-                                                                    <span className="text-xs font-bold text-indigo-500 flex items-center gap-1"><MessageCircle className="w-3 h-3" /> AI Tutor</span>
+                                                            <motion.div initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 10 }} className={cn("absolute bottom-20 right-0 w-80 rounded-2xl border p-4 z-20 flex flex-col gap-3", activeCosmeticUi.tutorPanelClass)}>
+                                                                <div className="flex items-center justify-between pb-2 border-b border-black/5">
+                                                                    <span className={cn("text-xs font-bold flex items-center gap-1", activeCosmeticUi.tutorSendClass)}><MessageCircle className="w-3 h-3" /> AI Tutor</span>
                                                                     <button onClick={() => setIsTutorOpen(false)} className="text-stone-400 hover:text-stone-600"><X className="w-3 h-3" /></button>
                                                                 </div>
-                                                                {tutorAnswer ? <div className="bg-indigo-50/50 p-3 rounded-lg text-sm text-stone-700 animate-in fade-in">{tutorAnswer}</div> : <p className="text-xs text-stone-400">Ask for a hint about vocab or grammar...</p>}
+                                                                {tutorAnswer ? <div className={cn("p-3 rounded-lg text-sm animate-in fade-in", activeCosmeticUi.tutorAnswerClass)}>{tutorAnswer}</div> : <p className="text-xs text-stone-400">Ask for a hint about vocab or grammar...</p>}
                                                                 <div className="relative">
-                                                                    <input type="text" value={tutorQuery} onChange={(e) => setTutorQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAskTutor()} placeholder="e.g. 'How do I start?'" className="w-full bg-stone-50 border border-stone-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-200" />
-                                                                    <button onClick={handleAskTutor} disabled={isAskingTutor || !tutorQuery.trim()} className="absolute right-2 top-1.5 text-indigo-500 disabled:opacity-30">{isAskingTutor ? <Sparkles className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}</button>
+                                                                    <input type="text" value={tutorQuery} onChange={(e) => setTutorQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAskTutor()} placeholder="e.g. 'How do I start?'" className={cn("w-full border rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)} />
+                                                                    <button onClick={handleAskTutor} disabled={isAskingTutor || !tutorQuery.trim()} className={cn("absolute right-2 top-1.5 disabled:opacity-30", activeCosmeticUi.tutorSendClass)}>{isAskingTutor ? <Sparkles className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}</button>
                                                                 </div>
                                                             </motion.div>
                                                         )}
@@ -4330,7 +4971,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     <button
                                                                         onClick={handleGenerateAnalysis}
                                                                         disabled={isGeneratingAnalysis}
-                                                                        className="inline-flex items-center justify-center gap-2 rounded-full bg-stone-900 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-60 min-h-11"
+                                                                        className={cn("inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 min-h-11", activeCosmeticUi.analysisButtonClass)}
                                                                     >
                                                                         {isGeneratingAnalysis ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
                                                                         生成解析
@@ -4413,8 +5054,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                         onClick={() => handleGenerateDrill()}
                                         className="group relative flex items-center gap-3 px-8 py-3.5 text-white rounded-full font-bold hover:scale-105 active:scale-95 transition-all text-sm md:text-base tracking-wide overflow-hidden"
                                         style={{
-                                            backgroundImage: streakVisual.nextGradient,
-                                            boxShadow: streakVisual.nextShadow,
+                                            backgroundImage: streakTier > 0 ? streakVisual.nextGradient : activeCosmeticUi.nextButtonGradient,
+                                            boxShadow: streakTier > 0 ? streakVisual.nextShadow : activeCosmeticUi.nextButtonShadow,
                                         }}
                                     >
                                         <span className="relative z-10 font-bold">Next Question</span>
@@ -4426,7 +5067,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                         {/* Glow Effect */}
                                         <div
                                             className="absolute inset-0 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity"
-                                            style={{ background: `radial-gradient(circle at center, ${streakTier > 0 ? streakVisual.badgeGlow : 'rgba(249,115,22,0.22)'}, transparent 70%)` }}
+                                            style={{ background: `radial-gradient(circle at center, ${streakTier > 0 ? streakVisual.badgeGlow : activeCosmeticUi.nextButtonGlow}, transparent 70%)` }}
                                         />
                                     </button>
                                 </div>
@@ -4659,6 +5300,107 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     CLICK TO START CHALLENGE
                                 </motion.p>
                             </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                    {activeEconomyFx && activeEconomyVisual && (
+                        <motion.div
+                            key={activeEconomyFx.id}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-[120] overflow-hidden pointer-events-none"
+                        >
+                            <motion.div
+                                initial={{ opacity: 0, y: -30, scale: 0.92 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: -18, scale: 0.98 }}
+                                transition={{ duration: 0.24, ease: "easeOut" }}
+                                className={cn(
+                                    "absolute left-1/2 top-4 z-10 flex min-w-[380px] items-center gap-4 rounded-[28px] border px-4 py-3.5 backdrop-blur-2xl",
+                                    "-translate-x-1/2 overflow-hidden",
+                                    activeEconomyVisual.shellClass
+                                )}
+                            >
+                                <div className={cn("relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border", activeEconomyVisual.iconClass)}>
+                                    {activeEconomyVisual.icon}
+                                </div>
+
+                                <div className="relative z-10 min-w-0 flex-1">
+                                    <div className="text-[10px] font-black uppercase tracking-[0.24em] text-stone-500/90">
+                                        {activeEconomyFx.kind === 'coin_gain' ? 'Coin Gain' : activeEconomyFx.kind === 'item_purchase' ? 'Store Update' : 'Assist Used'}
+                                    </div>
+                                    <div className="truncate text-[15px] font-black tracking-[0.01em]">
+                                        {activeEconomyFx.message}
+                                    </div>
+                                </div>
+
+                                <div className={cn("relative z-10 rounded-full border px-3.5 py-1.5 text-[11px] font-black uppercase tracking-[0.18em]", activeEconomyVisual.chipClass)}>
+                                    {activeEconomyChipLabel}
+                                </div>
+
+                                <motion.div
+                                    className={cn("absolute inset-y-2 left-[-22%] w-[44%] -skew-x-12 bg-gradient-to-r opacity-85 blur-sm", activeEconomyVisual.shimmerClass)}
+                                    animate={{ x: [0, 420] }}
+                                    transition={{ duration: 1.35, ease: "easeInOut" }}
+                                />
+                                {renderEconomyAccent()}
+                            </motion.div>
+
+                            {activeEconomyFx.kind !== 'coin_gain' && activeEconomyVector && (
+                                <motion.div
+                                    initial={{ opacity: 0, scale: 0.62, x: 0, y: 0 }}
+                                    animate={{ opacity: [0, 1, 1, 0], scale: [0.62, 1, 0.92, 0.82], x: [0, 0, activeEconomyVector.x], y: [0, 0, activeEconomyVector.y] }}
+                                    transition={{ duration: 1.14, times: [0, 0.16, 0.72, 1], ease: "easeInOut" }}
+                                    className="absolute left-1/2 z-20 -translate-x-1/2"
+                                    style={{ top: ECONOMY_OVERLAY_ORIGIN_TOP }}
+                                >
+                                    <div className={cn("relative flex h-9 w-9 items-center justify-center rounded-full border", activeEconomyVisual.flightClass)}>
+                                        {activeEconomyVisual.icon}
+                                        <motion.div
+                                            className={cn("absolute inset-0 rounded-full blur-xl", activeEconomyVisual.pulseClass)}
+                                            animate={{ opacity: [0.18, 0.5, 0], scale: [0.76, 1.15, 1.32] }}
+                                            transition={{ duration: 0.72, ease: "easeOut" }}
+                                        />
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            {activeEconomyFx.kind === 'coin_gain' && (
+                                <>
+                                    {ECONOMY_COIN_RAIN.slice(0, activeCoinRainCount).map((particle, index) => (
+                                        <motion.div
+                                            key={`coin-rain-${activeEconomyFx.id}-${index}`}
+                                            initial={{ opacity: 0, x: 0, y: 0, scale: 0.6 }}
+                                            animate={{ opacity: [0, 1, 0.78, 0], x: particle.x, y: particle.y, scale: [0.6, particle.scale, particle.scale * 0.94, particle.scale * 0.86], rotate: particle.rotate }}
+                                            transition={{ duration: 0.95, delay: particle.delay, ease: "easeOut" }}
+                                            className="absolute left-1/2 z-[5] -translate-x-1/2"
+                                            style={{ top: ECONOMY_OVERLAY_ORIGIN_TOP + 8 }}
+                                        >
+                                            <div className="flex h-5 w-5 items-center justify-center rounded-full border border-amber-200/80 bg-white/90 text-[11px] text-amber-500 shadow-[0_8px_18px_rgba(245,158,11,0.14)]">
+                                                ✨
+                                            </div>
+                                        </motion.div>
+                                    ))}
+
+                                    {activeEconomyVector && ECONOMY_COIN_ABSORB.slice(0, activeCoinAbsorbCount).map((particle, index) => (
+                                        <motion.div
+                                            key={`coin-absorb-${activeEconomyFx.id}-${index}`}
+                                            initial={{ opacity: 0, scale: 0.58, x: 0, y: 0 }}
+                                            animate={{ opacity: [0, 1, 1, 0], scale: [0.58, 0.96, 0.88, 0.72], x: [particle.x, particle.x, activeEconomyVector.x], y: [particle.y, particle.y + 16, activeEconomyVector.y] }}
+                                            transition={{ duration: 0.88, delay: particle.delay, times: [0, 0.2, 0.78, 1], ease: "easeInOut" }}
+                                            className="absolute left-1/2 z-[8] -translate-x-1/2"
+                                            style={{ top: ECONOMY_OVERLAY_ORIGIN_TOP + 2 }}
+                                        >
+                                            <div className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-amber-200/80 bg-white/95 text-[10px] text-amber-500 shadow-[0_8px_16px_rgba(245,158,11,0.14)]">
+                                                ✦
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -4913,10 +5655,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
             </motion.div>
             {/* DEBUGGER */}
-            {/* <DrillDebug onTriggerBoss={handleDebugBossTrigger} /> */}
+            {process.env.NODE_ENV !== 'production' && (
+                <DrillDebug
+                    key="debugger"
+                    onTriggerBoss={handleDebugBossTrigger}
+                    onTriggerEconomyFx={handleDebugEconomyFx}
+                    onTriggerLootDrop={handleDebugLootDrop}
+                />
+            )}
 
             {/* ROULETTE OVERLAY */}
-            <AnimatePresence>
+            <AnimatePresence key="roulette-overlay">
                 {showRoulette && (
                     <RouletteOverlay
                         onComplete={handleRouletteComplete}
@@ -4926,7 +5675,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             </AnimatePresence>
 
             {/* GACHA OVERLAY */}
-            <AnimatePresence>
+            <AnimatePresence key="gacha-overlay">
                 {showGacha && (
                     <motion.div
                         initial={{ opacity: 0 }}
@@ -4992,7 +5741,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             </AnimatePresence>
 
             {/* SHOP MODAL */}
-            <AnimatePresence>
+            <AnimatePresence key="shop-modal">
                 {showShopModal && mode === 'translation' && (
                     <motion.div
                         initial={{ opacity: 0 }}
@@ -5009,15 +5758,21 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             animate={{ y: 0, opacity: 1, scale: 1 }}
                             exit={{ y: 12, opacity: 0, scale: 0.98 }}
                             transition={{ duration: 0.22, ease: "easeOut" }}
-                            className="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-3xl border border-stone-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,244,238,0.96))] shadow-[0_20px_60px_rgba(15,23,42,0.24)]"
+                            className={cn(
+                                "w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-3xl shadow-[0_20px_60px_rgba(15,23,42,0.24)]",
+                                activeCosmeticTheme.cardClass
+                            )}
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <div className="flex items-center justify-between px-5 py-4 border-b border-stone-200/80">
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-white/55">
                                 <div className="space-y-1">
-                                    <p className="text-sm font-black tracking-[0.2em] text-stone-700">商场</p>
-                                    <p className="text-xs text-stone-500">金币购买道具，立即生效</p>
+                                    <p className={cn("text-sm font-black tracking-[0.2em]", activeCosmeticTheme.textClass)}>商场</p>
+                                    <p className={cn("text-xs", activeCosmeticTheme.mutedClass)}>金币购买道具，立即生效</p>
                                 </div>
-                                <div className="flex items-center gap-2 rounded-full border border-amber-200/80 bg-amber-50 px-3 py-1.5 text-amber-700">
+                                <div className={cn(
+                                    "flex items-center gap-2 rounded-full px-3 py-1.5 border",
+                                    activeCosmeticUi.audioLockedClass
+                                )}>
                                     <span className="text-sm">✨</span>
                                     <span className="font-mono text-sm font-black tabular-nums">{coins}</span>
                                 </div>
@@ -5032,36 +5787,37 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                         <div
                                             key={item.id}
                                             className={cn(
-                                                "rounded-2xl border bg-white/85 p-4 flex items-center justify-between gap-4 transition-all",
+                                                "rounded-2xl p-4 flex items-center justify-between gap-4 transition-all border",
+                                                activeCosmeticUi.tutorPanelClass,
                                                 shopFocusedItem === itemId
-                                                    ? "border-amber-300 shadow-[0_0_0_1px_rgba(251,191,36,0.25),0_16px_32px_rgba(245,158,11,0.12)] ring-2 ring-amber-200/70"
-                                                    : "border-stone-200/80"
+                                                    ? "ring-2 ring-white/70 shadow-[0_0_0_1px_rgba(255,255,255,0.75),0_18px_36px_rgba(15,23,42,0.12)]"
+                                                    : "hover:-translate-y-0.5"
                                             )}
                                         >
                                             <div className="min-w-0">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-lg">{item.icon}</span>
-                                                    <p className="text-sm font-bold text-stone-800">{item.name}</p>
-                                                    <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-mono font-bold text-stone-600">
+                                                    <p className={cn("text-sm font-bold", activeCosmeticTheme.textClass)}>{item.name}</p>
+                                                    <span className={cn(
+                                                        "rounded-full px-2 py-0.5 text-[10px] font-mono font-bold",
+                                                        activeCosmeticUi.wordBadgeActiveClass
+                                                    )}>
                                                         x {itemCount}
                                                     </span>
                                                 </div>
-                                                <p className="mt-1 text-xs text-stone-500">{item.description}</p>
-                                                <p className="mt-1 text-[11px] font-medium text-stone-400">用途：{item.consumeAction}</p>
+                                                <p className={cn("mt-1 text-xs", activeCosmeticTheme.mutedClass)}>{item.description}</p>
+                                                <p className={cn("mt-1 text-[11px] font-medium opacity-85", activeCosmeticTheme.mutedClass)}>用途：{item.consumeAction}</p>
                                             </div>
 
                                             <button
                                                 onClick={() => {
-                                                    const success = handleBuyItem(itemId);
-                                                    if (success) {
-                                                        setLootDrop({ type: 'gem', amount: 1, rarity: 'common', message: `已购买 ${item.name}` });
-                                                    }
+                                                    handleBuyItem(itemId);
                                                 }}
                                                 disabled={!canBuy}
                                                 className={cn(
                                                     "shrink-0 rounded-full px-4 py-2 text-xs font-bold border transition-all",
                                                     canBuy
-                                                        ? "bg-stone-900 text-white border-stone-800 hover:-translate-y-0.5 hover:bg-stone-800"
+                                                        ? cn(activeCosmeticUi.checkButtonClass, "hover:-translate-y-0.5")
                                                         : "bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed"
                                                 )}
                                                 title={canBuy ? `花费 ${item.price} ✨ 购买 1 个 ${item.name}` : `星光币不足 ${item.price} ✨`}
@@ -5076,14 +5832,15 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             {/* THEME GALLERY */}
                             <div className="px-4 pb-2 pt-1">
                                 <div className="flex items-center gap-2 mb-3">
-                                    <div className="h-px flex-1 bg-stone-200/80" />
-                                    <p className="text-[10px] font-black tracking-[0.25em] text-stone-400 uppercase">主题皮肤</p>
-                                    <div className="h-px flex-1 bg-stone-200/80" />
+                                    <div className={cn("h-px flex-1 opacity-70", activeCosmeticTheme.headerBg)} />
+                                    <p className={cn("text-[10px] font-black tracking-[0.25em] uppercase", activeCosmeticTheme.mutedClass)}>主题皮肤</p>
+                                    <div className={cn("h-px flex-1 opacity-70", activeCosmeticTheme.headerBg)} />
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
                                     {ALL_THEME_IDS.map((themeId) => {
                                         const t = COSMETIC_THEMES[themeId];
+                                        const previewUi = COSMETIC_THEME_UI[themeId];
                                         const isOwned = ownedThemes.includes(themeId);
                                         const isActive = cosmeticTheme === themeId;
                                         const canAfford = coins >= t.price;
@@ -5092,12 +5849,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                             <div
                                                 key={themeId}
                                                 className={cn(
-                                                    "relative rounded-2xl border p-3 flex flex-col gap-2 transition-all cursor-pointer",
+                                                    "relative rounded-2xl p-3 flex flex-col gap-2 transition-all cursor-pointer overflow-hidden border",
+                                                    previewUi.tutorPanelClass,
                                                     isActive
-                                                        ? "border-amber-400 bg-amber-50/80 shadow-[0_0_20px_rgba(245,158,11,0.15)] ring-1 ring-amber-400/30"
+                                                        ? "ring-2 ring-white/80 shadow-[0_0_28px_rgba(255,255,255,0.4),0_18px_34px_rgba(15,23,42,0.12)]"
                                                         : isOwned
-                                                            ? "border-stone-200 bg-white/80 hover:border-stone-300 hover:shadow-md"
-                                                            : "border-stone-200/60 bg-stone-50/60"
+                                                            ? "hover:-translate-y-0.5 hover:shadow-xl"
+                                                            : "opacity-80 saturate-75"
                                                 )}
                                                 onClick={() => {
                                                     if (isActive) return;
@@ -5106,38 +5864,64 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                             >
                                                 {/* Theme preview strip */}
                                                 <div className={cn(
-                                                    "h-10 rounded-xl overflow-hidden relative",
+                                                    "h-14 rounded-xl overflow-hidden relative p-2.5",
                                                     t.bgClass
                                                 )}>
-                                                    {t.isDark && (
-                                                        <div className="absolute inset-0 flex items-center justify-center">
-                                                            <div className="w-6 h-6 bg-white/10 rounded-full blur-[8px]" />
+                                                    <div className={cn(
+                                                        "absolute inset-2 rounded-xl border px-2 py-1.5 flex items-center justify-between gap-2",
+                                                        previewUi.toolbarClass
+                                                    )}>
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className={cn(
+                                                                "inline-flex min-w-[28px] items-center justify-center rounded-full px-2 py-1 text-[8px] font-black tracking-[0.18em] uppercase",
+                                                                previewUi.wordBadgeActiveClass
+                                                            )}>
+                                                                {t.icon}
+                                                            </span>
+                                                            <div className={cn(
+                                                                "hidden sm:flex h-4 w-8 items-center justify-center rounded-full text-[7px] font-bold",
+                                                                previewUi.iconButtonClass
+                                                            )}>
+                                                                UI
+                                                            </div>
                                                         </div>
-                                                    )}
+                                                        <div className={cn(
+                                                            "inline-flex h-5 min-w-[42px] items-center justify-center rounded-full px-2 text-[8px] font-black",
+                                                            previewUi.checkButtonClass
+                                                        )}>
+                                                            Check
+                                                        </div>
+                                                    </div>
                                                     {isActive && (
                                                         <div className="absolute inset-0 flex items-center justify-center">
-                                                            <span className="text-[10px] font-black text-white/90 bg-black/30 px-2 py-0.5 rounded-full backdrop-blur-sm">使用中</span>
+                                                            <span className={cn(
+                                                                "text-[10px] font-black px-2 py-0.5 rounded-full backdrop-blur-sm border",
+                                                                previewUi.wordBadgeActiveClass
+                                                            )}>使用中</span>
                                                         </div>
                                                     )}
                                                 </div>
 
                                                 <div className="space-y-1">
-                                                    <p className="text-xs font-bold text-stone-800 truncate">{t.name}</p>
-                                                    <p className="text-[10px] text-stone-500 leading-tight">{t.preview}</p>
+                                                    <p className={cn("text-xs font-bold truncate", t.textClass)}>{t.name}</p>
+                                                    <p className={cn("text-[10px] leading-tight", t.mutedClass)}>{t.preview}</p>
                                                 </div>
 
                                                 {/* Action */}
                                                 {isActive ? (
-                                                    <div className="text-[10px] font-bold text-amber-600 text-center">✓ 当前主题</div>
+                                                    <div className={cn("text-[10px] font-bold text-center", previewUi.tutorSendClass)}>✓ 当前主题</div>
                                                 ) : isOwned ? (
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); handleSwitchTheme(themeId); }}
-                                                        className="w-full rounded-lg border border-stone-200 bg-white py-1.5 text-[10px] font-bold text-stone-700 hover:bg-stone-50 transition-colors"
+                                                        className={cn(
+                                                            "w-full rounded-lg border py-1.5 text-[10px] font-bold transition-all",
+                                                            previewUi.iconButtonClass
+                                                        )}
                                                     >
                                                         切换使用
                                                     </button>
                                                 ) : t.price === 0 ? (
-                                                    <div className="text-[10px] font-bold text-emerald-600 text-center">免费</div>
+                                                    <div className={cn("text-[10px] font-bold text-center", previewUi.tutorSendClass)}>免费</div>
                                                 ) : (
                                                     <button
                                                         onClick={(e) => {
@@ -5151,7 +5935,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                         className={cn(
                                                             "w-full rounded-lg border py-1.5 text-[10px] font-bold transition-all",
                                                             canAfford
-                                                                ? "bg-stone-900 text-white border-stone-800 hover:bg-stone-800"
+                                                                ? previewUi.checkButtonClass
                                                                 : "bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed"
                                                         )}
                                                     >
@@ -5170,7 +5954,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                         setShowShopModal(false);
                                         setShopFocusedItem(null);
                                     }}
-                                    className="rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-50 transition-colors"
+                                    className={cn(
+                                        "rounded-full border px-4 py-2 text-xs font-bold transition-all",
+                                        activeCosmeticUi.iconButtonClass
+                                    )}
                                 >
                                     关闭
                                 </button>
