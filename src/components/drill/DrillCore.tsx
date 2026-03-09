@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Sparkles, RefreshCw, Send, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
@@ -1285,6 +1286,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         : null;
     const activeCoinRainCount = activeCoinTier === 'large' ? 14 : activeCoinTier === 'medium' ? 11 : 8;
     const activeCoinAbsorbCount = activeCoinTier === 'large' ? 5 : activeCoinTier === 'medium' ? 4 : 3;
+    const isShopEconomyFx = activeEconomyFx?.kind === 'item_purchase' && activeEconomyFx.source === 'shop' && showShopModal;
     const activeEconomyChipLabel = activeEconomyFx?.kind === 'coin_gain'
         ? `+${activeEconomyFx.amount ?? 0}`
         : activeEconomyFx?.itemId
@@ -1398,6 +1400,114 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
         return null;
     };
+
+    const economyFxOverlay = activeEconomyFx && activeEconomyVisual ? (
+        <motion.div
+            key={activeEconomyFx.id}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className={cn(
+                "overflow-visible pointer-events-none",
+                isShopEconomyFx
+                    ? "fixed inset-0 z-[220]"
+                    : "absolute inset-0 z-[120]"
+            )}
+        >
+            <motion.div
+                initial={{ opacity: 0, y: -30, scale: 0.92 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -18, scale: 0.98 }}
+                transition={{ duration: 0.24, ease: "easeOut" }}
+                className={cn(
+                    "absolute left-1/2 z-10 flex min-w-[380px] items-center gap-4 rounded-[28px] border px-4 py-3.5",
+                    isShopEconomyFx
+                        ? "top-6 shadow-[0_20px_60px_rgba(15,23,42,0.18)]"
+                        : "top-4 backdrop-blur-2xl",
+                    "-translate-x-1/2 overflow-hidden",
+                    activeEconomyVisual.shellClass,
+                    isShopEconomyFx && "backdrop-blur-none [backdrop-filter:none]"
+                )}
+            >
+                <div className={cn("relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border", activeEconomyVisual.iconClass)}>
+                    {activeEconomyVisual.icon}
+                </div>
+
+                <div className="relative z-10 min-w-0 flex-1">
+                    <div className="text-[10px] font-black uppercase tracking-[0.24em] text-stone-500/90">
+                        {activeEconomyFx.kind === 'coin_gain' ? 'Coin Gain' : activeEconomyFx.kind === 'item_purchase' ? 'Store Update' : 'Assist Used'}
+                    </div>
+                    <div className="truncate text-[15px] font-black tracking-[0.01em]">
+                        {activeEconomyFx.message}
+                    </div>
+                </div>
+
+                <div className={cn("relative z-10 rounded-full border px-3.5 py-1.5 text-[11px] font-black uppercase tracking-[0.18em]", activeEconomyVisual.chipClass)}>
+                    {activeEconomyChipLabel}
+                </div>
+
+                <motion.div
+                    className={cn("absolute inset-y-2 left-[-22%] w-[44%] -skew-x-12 bg-gradient-to-r opacity-85 blur-sm", activeEconomyVisual.shimmerClass)}
+                    animate={{ x: [0, 420] }}
+                    transition={{ duration: 1.35, ease: "easeInOut" }}
+                />
+                {renderEconomyAccent()}
+            </motion.div>
+
+            {activeEconomyFx.kind !== 'coin_gain' && activeEconomyVector && !isShopEconomyFx && (
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.62, x: 0, y: 0 }}
+                    animate={{ opacity: [0, 1, 1, 0], scale: [0.62, 1, 0.92, 0.82], x: [0, 0, activeEconomyVector.x], y: [0, 0, activeEconomyVector.y] }}
+                    transition={{ duration: 1.14, times: [0, 0.16, 0.72, 1], ease: "easeInOut" }}
+                    className="absolute left-1/2 z-20 -translate-x-1/2"
+                    style={{ top: ECONOMY_OVERLAY_ORIGIN_TOP }}
+                >
+                    <div className={cn("relative flex h-9 w-9 items-center justify-center rounded-full border", activeEconomyVisual.flightClass)}>
+                        {activeEconomyVisual.icon}
+                        <motion.div
+                            className={cn("absolute inset-0 rounded-full blur-xl", activeEconomyVisual.pulseClass)}
+                            animate={{ opacity: [0.18, 0.5, 0], scale: [0.76, 1.15, 1.32] }}
+                            transition={{ duration: 0.72, ease: "easeOut" }}
+                        />
+                    </div>
+                </motion.div>
+            )}
+
+            {activeEconomyFx.kind === 'coin_gain' && (
+                <>
+                    {ECONOMY_COIN_RAIN.slice(0, activeCoinRainCount).map((particle, index) => (
+                        <motion.div
+                            key={`coin-rain-${activeEconomyFx.id}-${index}`}
+                            initial={{ opacity: 0, x: 0, y: 0, scale: 0.6 }}
+                            animate={{ opacity: [0, 1, 0.78, 0], x: particle.x, y: particle.y, scale: [0.6, particle.scale, particle.scale * 0.94, particle.scale * 0.86], rotate: particle.rotate }}
+                            transition={{ duration: 0.95, delay: particle.delay, ease: "easeOut" }}
+                            className="absolute left-1/2 z-[5] -translate-x-1/2"
+                            style={{ top: ECONOMY_OVERLAY_ORIGIN_TOP + 8 }}
+                        >
+                            <div className="flex h-5 w-5 items-center justify-center rounded-full border border-amber-200/80 bg-white/90 text-[11px] text-amber-500 shadow-[0_8px_18px_rgba(245,158,11,0.14)]">
+                                ✨
+                            </div>
+                        </motion.div>
+                    ))}
+
+                    {activeEconomyVector && ECONOMY_COIN_ABSORB.slice(0, activeCoinAbsorbCount).map((particle, index) => (
+                        <motion.div
+                            key={`coin-absorb-${activeEconomyFx.id}-${index}`}
+                            initial={{ opacity: 0, scale: 0.58, x: 0, y: 0 }}
+                            animate={{ opacity: [0, 1, 1, 0], scale: [0.58, 0.96, 0.88, 0.72], x: [particle.x, particle.x, activeEconomyVector.x], y: [particle.y, particle.y + 16, activeEconomyVector.y] }}
+                            transition={{ duration: 0.88, delay: particle.delay, times: [0, 0.2, 0.78, 1], ease: "easeInOut" }}
+                            className="absolute left-1/2 z-[8] -translate-x-1/2"
+                            style={{ top: ECONOMY_OVERLAY_ORIGIN_TOP + 2 }}
+                        >
+                            <div className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-amber-200/80 bg-white/95 text-[10px] text-amber-500 shadow-[0_8px_16px_rgba(245,158,11,0.14)]">
+                                ✦
+                            </div>
+                        </motion.div>
+                    ))}
+                </>
+            )}
+        </motion.div>
+    ) : null;
 
     // ELO-based auto-difficulty (unified 400 Elo per tier)
     const getEloDifficulty = (elo: number) => {
@@ -3702,22 +3812,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                             <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5" />
                                             <div
                                                 className="flex items-center gap-1 px-2.5 h-full rounded-full text-[11px] font-bold text-blue-700/80 transition-colors hover:bg-blue-50 cursor-pointer"
-                                                title={drillData._topicMeta.subTopic
-                                                    ? `${drillData._topicMeta.topic} · ${drillData._topicMeta.subTopic}`
-                                                    : drillData._topicMeta.topic}
+                                                title={drillData._topicMeta.topic}
                                             >
                                                 <span className="text-[12px] leading-none mb-[1px]">📌</span>
-                                                <span className="max-w-[74px] sm:max-w-[96px] truncate opacity-95">
+                                                <span className="max-w-[108px] sm:max-w-[144px] truncate opacity-95">
                                                     {drillData._topicMeta.topic}
                                                 </span>
-                                                {drillData._topicMeta.subTopic && (
-                                                    <>
-                                                        <span className="hidden sm:inline opacity-30">·</span>
-                                                        <span className="hidden sm:inline max-w-[112px] truncate text-[10px] font-semibold opacity-60">
-                                                            {drillData._topicMeta.subTopic}
-                                                        </span>
-                                                    </>
-                                                )}
                                             </div>
                                         </>
                                     )}
@@ -3872,27 +3972,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                         <span className="font-bold text-[11px] tracking-widest leading-none mt-[1px]">商场</span>
                                     </button>
                                 </div>
-                            )}
-
-                            {drillData && !drillFeedback && (
-                                <button
-                                    onClick={handleRefreshDrill}
-                                    disabled={isGeneratingDrill}
-                                    className={cn(
-                                        "hidden sm:flex items-center gap-2 h-[38px] px-4 rounded-full font-bold text-[12px] transition-all duration-300 disabled:opacity-50 shrink-0 border",
-                                        activeCosmeticUi.iconButtonClass
-                                    )}
-                                    title="刷新当前题目 · 消耗 1 张刷新卡"
-                                >
-                                    <RefreshCw className={cn("w-3.5 h-3.5", isGeneratingDrill && "animate-spin")} />
-                                    <span>换题</span>
-                                    <span className={cn(
-                                        "rounded-full px-2 py-0.5 text-[11px] font-mono font-black",
-                                        activeCosmeticUi.wordBadgeActiveClass
-                                    )}>
-                                        {refreshTicketCount}
-                                    </span>
-                                </button>
                             )}
 
                             {/* Teaching Mode Button - Only for Translation */}
@@ -4350,6 +4429,25 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             </button>
                                                                         );
                                                                     })()}
+
+                                                                    <button
+                                                                        onClick={handleRefreshDrill}
+                                                                        disabled={isGeneratingDrill}
+                                                                        className={cn(
+                                                                            "relative flex h-10 w-10 items-center justify-center rounded-full border transition-all duration-200 hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-60",
+                                                                            activeCosmeticUi.iconButtonClass
+                                                                        )}
+                                                                        title="刷新当前题目 · 消耗 1 张刷新卡"
+                                                                        aria-label="刷新当前题目"
+                                                                    >
+                                                                        <RefreshCw className={cn("h-4 w-4", isGeneratingDrill && "animate-spin")} />
+                                                                        <span className={cn(
+                                                                            "absolute -right-1 -bottom-1 min-w-[15px] h-[15px] rounded-full px-1 text-[9px] font-black leading-[15px] shadow-sm",
+                                                                            activeCosmeticUi.wordBadgeActiveClass
+                                                                        )}>
+                                                                            {refreshTicketCount}
+                                                                        </span>
+                                                                    </button>
                                                                 </div>
                                                                 {hasTranslationKeywords && (
                                                                     <div className="pointer-events-none absolute inset-x-4 top-full z-10 mt-4 flex justify-center">
@@ -5305,105 +5403,15 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 </AnimatePresence>
 
                 <AnimatePresence>
-                    {activeEconomyFx && activeEconomyVisual && (
-                        <motion.div
-                            key={activeEconomyFx.id}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 z-[120] overflow-hidden pointer-events-none"
-                        >
-                            <motion.div
-                                initial={{ opacity: 0, y: -30, scale: 0.92 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: -18, scale: 0.98 }}
-                                transition={{ duration: 0.24, ease: "easeOut" }}
-                                className={cn(
-                                    "absolute left-1/2 top-4 z-10 flex min-w-[380px] items-center gap-4 rounded-[28px] border px-4 py-3.5 backdrop-blur-2xl",
-                                    "-translate-x-1/2 overflow-hidden",
-                                    activeEconomyVisual.shellClass
-                                )}
-                            >
-                                <div className={cn("relative z-10 flex h-11 w-11 shrink-0 items-center justify-center rounded-full border", activeEconomyVisual.iconClass)}>
-                                    {activeEconomyVisual.icon}
-                                </div>
-
-                                <div className="relative z-10 min-w-0 flex-1">
-                                    <div className="text-[10px] font-black uppercase tracking-[0.24em] text-stone-500/90">
-                                        {activeEconomyFx.kind === 'coin_gain' ? 'Coin Gain' : activeEconomyFx.kind === 'item_purchase' ? 'Store Update' : 'Assist Used'}
-                                    </div>
-                                    <div className="truncate text-[15px] font-black tracking-[0.01em]">
-                                        {activeEconomyFx.message}
-                                    </div>
-                                </div>
-
-                                <div className={cn("relative z-10 rounded-full border px-3.5 py-1.5 text-[11px] font-black uppercase tracking-[0.18em]", activeEconomyVisual.chipClass)}>
-                                    {activeEconomyChipLabel}
-                                </div>
-
-                                <motion.div
-                                    className={cn("absolute inset-y-2 left-[-22%] w-[44%] -skew-x-12 bg-gradient-to-r opacity-85 blur-sm", activeEconomyVisual.shimmerClass)}
-                                    animate={{ x: [0, 420] }}
-                                    transition={{ duration: 1.35, ease: "easeInOut" }}
-                                />
-                                {renderEconomyAccent()}
-                            </motion.div>
-
-                            {activeEconomyFx.kind !== 'coin_gain' && activeEconomyVector && (
-                                <motion.div
-                                    initial={{ opacity: 0, scale: 0.62, x: 0, y: 0 }}
-                                    animate={{ opacity: [0, 1, 1, 0], scale: [0.62, 1, 0.92, 0.82], x: [0, 0, activeEconomyVector.x], y: [0, 0, activeEconomyVector.y] }}
-                                    transition={{ duration: 1.14, times: [0, 0.16, 0.72, 1], ease: "easeInOut" }}
-                                    className="absolute left-1/2 z-20 -translate-x-1/2"
-                                    style={{ top: ECONOMY_OVERLAY_ORIGIN_TOP }}
-                                >
-                                    <div className={cn("relative flex h-9 w-9 items-center justify-center rounded-full border", activeEconomyVisual.flightClass)}>
-                                        {activeEconomyVisual.icon}
-                                        <motion.div
-                                            className={cn("absolute inset-0 rounded-full blur-xl", activeEconomyVisual.pulseClass)}
-                                            animate={{ opacity: [0.18, 0.5, 0], scale: [0.76, 1.15, 1.32] }}
-                                            transition={{ duration: 0.72, ease: "easeOut" }}
-                                        />
-                                    </div>
-                                </motion.div>
-                            )}
-
-                            {activeEconomyFx.kind === 'coin_gain' && (
-                                <>
-                                    {ECONOMY_COIN_RAIN.slice(0, activeCoinRainCount).map((particle, index) => (
-                                        <motion.div
-                                            key={`coin-rain-${activeEconomyFx.id}-${index}`}
-                                            initial={{ opacity: 0, x: 0, y: 0, scale: 0.6 }}
-                                            animate={{ opacity: [0, 1, 0.78, 0], x: particle.x, y: particle.y, scale: [0.6, particle.scale, particle.scale * 0.94, particle.scale * 0.86], rotate: particle.rotate }}
-                                            transition={{ duration: 0.95, delay: particle.delay, ease: "easeOut" }}
-                                            className="absolute left-1/2 z-[5] -translate-x-1/2"
-                                            style={{ top: ECONOMY_OVERLAY_ORIGIN_TOP + 8 }}
-                                        >
-                                            <div className="flex h-5 w-5 items-center justify-center rounded-full border border-amber-200/80 bg-white/90 text-[11px] text-amber-500 shadow-[0_8px_18px_rgba(245,158,11,0.14)]">
-                                                ✨
-                                            </div>
-                                        </motion.div>
-                                    ))}
-
-                                    {activeEconomyVector && ECONOMY_COIN_ABSORB.slice(0, activeCoinAbsorbCount).map((particle, index) => (
-                                        <motion.div
-                                            key={`coin-absorb-${activeEconomyFx.id}-${index}`}
-                                            initial={{ opacity: 0, scale: 0.58, x: 0, y: 0 }}
-                                            animate={{ opacity: [0, 1, 1, 0], scale: [0.58, 0.96, 0.88, 0.72], x: [particle.x, particle.x, activeEconomyVector.x], y: [particle.y, particle.y + 16, activeEconomyVector.y] }}
-                                            transition={{ duration: 0.88, delay: particle.delay, times: [0, 0.2, 0.78, 1], ease: "easeInOut" }}
-                                            className="absolute left-1/2 z-[8] -translate-x-1/2"
-                                            style={{ top: ECONOMY_OVERLAY_ORIGIN_TOP + 2 }}
-                                        >
-                                            <div className="flex h-[18px] w-[18px] items-center justify-center rounded-full border border-amber-200/80 bg-white/95 text-[10px] text-amber-500 shadow-[0_8px_16px_rgba(245,158,11,0.14)]">
-                                                ✦
-                                            </div>
-                                        </motion.div>
-                                    ))}
-                                </>
-                            )}
-                        </motion.div>
-                    )}
+                    {!isShopEconomyFx && economyFxOverlay}
                 </AnimatePresence>
+
+                {isShopEconomyFx && typeof window !== "undefined" && economyFxOverlay
+                    ? createPortal(
+                        <AnimatePresence>{economyFxOverlay}</AnimatePresence>,
+                        document.body
+                    )
+                    : null}
 
                 {/* Context-Aware Loot Overlay */}
                 <AnimatePresence>
