@@ -91,6 +91,7 @@ export class YasiDB extends Dexie {
             hint_ticket?: number;
             vocab_ticket?: number;
             audio_ticket?: number;
+            refresh_ticket?: number;
         };
         // Cosmetic Themes
         owned_themes?: string[];
@@ -314,6 +315,26 @@ export class YasiDB extends Dexie {
                 profile.inventory = {
                     ...existingInventory,
                     audio_ticket: Math.max(0, audioTicket),
+                };
+            });
+        });
+
+        // Version 17: Add refresh ticket inventory for rerolling the current drill.
+        this.version(17).stores({
+            user_profile: '++id'
+        }).upgrade(tx => {
+            return tx.table('user_profile').toCollection().modify(profile => {
+                const existingInventory = (profile.inventory && typeof profile.inventory === 'object')
+                    ? profile.inventory
+                    : {};
+
+                const refreshTicket = typeof existingInventory.refresh_ticket === 'number'
+                    ? existingInventory.refresh_ticket
+                    : 2;
+
+                profile.inventory = {
+                    ...existingInventory,
+                    refresh_ticket: Math.max(0, refreshTicket),
                 };
             });
         });
