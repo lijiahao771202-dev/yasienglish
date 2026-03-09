@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Sparkles, RefreshCw, Send, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame } from "lucide-react";
+import { Sparkles, RefreshCw, Send, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as Diff from 'diff';
@@ -126,7 +126,7 @@ interface StreakTierVisual {
 }
 
 const STREAK_PARTICLE_POSITIONS = [12, 26, 39, 54, 68, 82, 90, 18, 47, 76];
-type ShopItemId = 'capsule' | 'hint_ticket' | 'vocab_ticket';
+type ShopItemId = 'capsule' | 'hint_ticket' | 'vocab_ticket' | 'audio_ticket';
 
 type InventoryState = Record<ShopItemId, number>;
 
@@ -134,6 +134,7 @@ const DEFAULT_INVENTORY: InventoryState = {
     capsule: 15,
     hint_ticket: 3,
     vocab_ticket: 2,
+    audio_ticket: 2,
 };
 
 const ITEM_CATALOG: Record<ShopItemId, { id: ShopItemId; name: string; price: number; icon: string; consumeAction: string; description: string; }> = {
@@ -161,6 +162,14 @@ const ITEM_CATALOG: Record<ShopItemId, { id: ShopItemId; name: string; price: nu
         consumeAction: '解锁底部关键词',
         description: '用于显示本题关键词提示',
     },
+    audio_ticket: {
+        id: 'audio_ticket',
+        name: '朗读券',
+        price: 30,
+        icon: '🔊',
+        consumeAction: '播放参考句',
+        description: '用于解锁本题参考句播放，支持重播和倍速',
+    },
 };
 
 const normalizeInventory = (inventory: unknown, legacyCapsule?: number): InventoryState => {
@@ -174,11 +183,15 @@ const normalizeInventory = (inventory: unknown, legacyCapsule?: number): Invento
     const vocabTicketValue = typeof rawInventory.vocab_ticket === 'number'
         ? rawInventory.vocab_ticket
         : DEFAULT_INVENTORY.vocab_ticket;
+    const audioTicketValue = typeof rawInventory.audio_ticket === 'number'
+        ? rawInventory.audio_ticket
+        : DEFAULT_INVENTORY.audio_ticket;
 
     return {
         capsule: Math.max(0, capsuleValue),
         hint_ticket: Math.max(0, hintTicketValue),
         vocab_ticket: Math.max(0, vocabTicketValue),
+        audio_ticket: Math.max(0, audioTicketValue),
     };
 };
 
@@ -503,6 +516,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [fullReferenceHint, setFullReferenceHint] = useState<{ version: number; text: string }>({ version: 0, text: '' });
     const [isVocabHintRevealed, setIsVocabHintRevealed] = useState(false);
     const [showShopModal, setShowShopModal] = useState(false);
+    const [shopFocusedItem, setShopFocusedItem] = useState<ShopItemId | null>(null);
+    const [isTranslationAudioUnlocked, setIsTranslationAudioUnlocked] = useState(false);
 
     // Cosmetic Theme State
     const [cosmeticTheme, setCosmeticTheme] = useState<CosmeticThemeId>('morning_coffee');
@@ -623,6 +638,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const hasStartedRef = useRef(false);
     const hasPlayedEchoRef = useRef(false); // For Echo Beast (One-time audio)
     const vocabHintRevealRef = useRef(false);
+    const translationAudioUnlockRef = useRef(false);
 
     // Track if Lightning mode audio has been played (for delayed countdown)
     const [lightningStarted, setLightningStarted] = useState(false);
@@ -761,6 +777,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         vocabHintRevealRef.current = isVocabHintRevealed;
     }, [isVocabHintRevealed]);
 
+    useEffect(() => {
+        translationAudioUnlockRef.current = isTranslationAudioUnlocked;
+    }, [isTranslationAudioUnlocked]);
+
     // Cleanup: Stop ALL audio and abort requests when component unmounts
     useEffect(() => {
         return () => {
@@ -785,6 +805,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const capsuleCount = inventory.capsule;
     const hintTicketCount = inventory.hint_ticket;
     const vocabTicketCount = inventory.vocab_ticket;
+    const audioTicketCount = inventory.audio_ticket;
     const prefersReducedMotion = useReducedMotion();
     const [streakTransition, setStreakTransition] = useState<'surge' | 'cooldown' | null>(null);
     const [cooldownTier, setCooldownTier] = useState<StreakTier>(0);
@@ -947,77 +968,74 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     }, [drillData, mode, gambleState.active, gambleState.introAck, bossState.active, bossState.introAck]);
     */
 
-    // Pre-generate audio when drill loads (reduces playback delay)
-    useEffect(() => {
-        console.log('[Audio Prefetch] useEffect triggered, drillData?.reference_english:',
-            drillData?.reference_english?.substring(0, 30));
+    const fetchTtsAudio = useCallback(async (text: string) => {
+        const response = await fetch("/api/tts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                text,
+                voice: "en-US-JennyNeural",
+                rate: "+0%"
+            }),
+        });
 
-        if (!drillData?.reference_english) {
-            console.log('[Audio Prefetch] Skipped - no reference_english');
+        if (!response.ok) throw new Error("TTS request failed");
+
+        const data = await response.json();
+        if (!data.audio) throw new Error("No audio in response");
+
+        const base64Data = data.audio.split(',')[1];
+        const binaryString = atob(base64Data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: 'audio/mpeg' });
+
+        if (blob.size < 100) {
+            throw new Error("Generated audio blob too small");
+        }
+
+        return { blob, marks: data.marks || [] };
+    }, []);
+
+    // Pre-generate audio when listening drill loads (translation stays lazy-loaded)
+    useEffect(() => {
+        if (mode !== 'listening' || !drillData?.reference_english) {
+            setIsPrefetching(false);
             return;
         }
 
         const textKey = "SENTENCE_" + drillData.reference_english;
-
-        // Skip if already cached
         if (audioCache.current.has(textKey)) {
-            console.log('[Audio Prefetch] Already cached:', textKey.substring(0, 50));
             return;
         }
 
-        // Pre-fetch audio in background using reliable /api/tts endpoint
+        let isCancelled = false;
+
         const prefetchAudio = async () => {
-            setIsPrefetching(true); // Show loading indicator
+            setIsPrefetching(true);
             try {
-                console.log('[Audio Prefetch] Starting for:', textKey.substring(0, 50));
-
-                // Use the reliable non-streaming TTS endpoint
-                const response = await fetch("/api/tts", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        text: drillData.reference_english,
-                        voice: "en-US-JennyNeural",
-                        rate: "+0%"
-                    }),
-                });
-
-                if (!response.ok) throw new Error("TTS prefetch failed");
-
-                const data = await response.json();
-
-                if (!data.audio) {
-                    throw new Error("No audio in response");
-                }
-
-                // Convert base64 to blob
-                const base64Data = data.audio.split(',')[1];
-                const binaryString = atob(base64Data);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                const blob = new Blob([bytes], { type: 'audio/mpeg' });
-
-                console.log('[Audio Prefetch] Blob size:', blob.size, 'bytes');
-
-                if (blob.size < 100) {
-                    console.warn('[Audio Prefetch] Blob too small, skipping cache');
-                    return;
-                }
-
-                // Store the blob with word marks for highlighting
-                audioCache.current.set(textKey, { blob, marks: data.marks || [] });
-                console.log('[Audio Prefetch] Cached:', textKey.substring(0, 50));
+                const cachedAudio = await fetchTtsAudio(drillData.reference_english);
+                if (isCancelled) return;
+                audioCache.current.set(textKey, cachedAudio);
             } catch (error) {
-                console.error('[Audio Prefetch] Error:', error);
+                if (!isCancelled) {
+                    console.error('[Audio Prefetch] Error:', error);
+                }
             } finally {
-                setIsPrefetching(false); // Hide loading indicator
+                if (!isCancelled) {
+                    setIsPrefetching(false);
+                }
             }
         };
 
         prefetchAudio();
-    }, [drillData?.reference_english]);
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [drillData?.reference_english, fetchTtsAudio, mode]);
 
     const lastPlayTime = useRef(0);
 
@@ -1028,20 +1046,19 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     };
 
     const playAudio = async () => {
-        if (!drillData?.reference_english) return;
+        if (!drillData?.reference_english) return false;
 
         // Debounce (Prevent Double Click)
         const now = Date.now();
-        if (now - lastPlayTime.current < 500) return;
+        if (now - lastPlayTime.current < 500) return false;
         lastPlayTime.current = now;
 
         // Echo Beast Constraint: One-time playback
-        const isBlindMode = bossState.active && bossState.type === 'blind';
         if (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current) {
             // Audio "Broken" effect
             new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch(() => { });
             setShake(true);
-            return;
+            return false;
         }
 
         const textKey = "SENTENCE_" + drillData.reference_english;
@@ -1055,32 +1072,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 setIsAudioLoading(true);
                 setIsPlaying(false);
 
-                // Use reliable /api/tts endpoint (non-streaming)
-                const response = await fetch("/api/tts", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        text: drillData.reference_english,
-                        voice: "en-US-JennyNeural",
-                        rate: "+0%"
-                    }),
-                });
-
-                if (!response.ok) throw new Error("TTS failed");
-
-                const data = await response.json();
-                if (!data.audio) throw new Error("No audio in response");
-
-                // Convert base64 to blob
-                const base64Data = data.audio.split(',')[1];
-                const binaryString = atob(base64Data);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                const blob = new Blob([bytes], { type: 'audio/mpeg' });
-
-                cached = { blob, marks: data.marks || [] };
+                cached = await fetchTtsAudio(drillData.reference_english);
                 audioCache.current.set(textKey, cached);
                 setIsAudioLoading(false);
             }
@@ -1128,7 +1120,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch(() => { });
                     setShake(true);
                     setIsPlaying(false);
-                    return;
+                    return false;
                 }
                 hasPlayedEchoRef.current = true;
             }
@@ -1140,10 +1132,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             if (bossState.active && bossState.type === 'lightning') {
                 setLightningStarted(true);
             }
+            return true;
         } catch (error) {
             console.error("Audio chain failed", error);
             setIsPlaying(false);
             setIsAudioLoading(false);
+            return false;
         }
     };
 
@@ -1424,7 +1418,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setAssistsUsedInCurrentDrill(0);
             setIsHintLoading(false);
             setIsVocabHintRevealed(false);
+            setIsTranslationAudioUnlocked(false);
             vocabHintRevealRef.current = false;
+            translationAudioUnlockRef.current = false;
             resetResult();
             if (audioRef.current) audioRef.current.pause();
             hasPlayedEchoRef.current = false;
@@ -1474,7 +1470,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setAssistsUsedInCurrentDrill(0);
         setIsHintLoading(false);
         setIsVocabHintRevealed(false);
+        setIsTranslationAudioUnlocked(false);
         vocabHintRevealRef.current = false;
+        translationAudioUnlockRef.current = false;
         resetResult(); // Clear previous recording transcript
         if (audioRef.current) audioRef.current.pause();
 
@@ -2149,6 +2147,15 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
     };
 
+    const openShopForItem = useCallback((itemId: ShopItemId, message?: string) => {
+        setShopFocusedItem(itemId);
+        setShowShopModal(true);
+
+        if (message) {
+            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message });
+        }
+    }, []);
+
     const handleMagicHint = async () => {
         if (!drillData || !drillData.reference_english) return;
         if (isHintLoading) return;
@@ -2213,6 +2220,45 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         applyEconomyPatch({ itemDelta: { capsule: -1 } });
         setAssistsUsedInCurrentDrill(prev => prev + 1);
     }, [applyEconomyPatch]);
+
+    const handleTranslationReferencePlayback = async () => {
+        if (mode !== 'translation' || !drillData?.reference_english || drillFeedback) {
+            await playAudio();
+            return;
+        }
+
+        if (isAudioLoading) return;
+
+        if (translationAudioUnlockRef.current) {
+            await playAudio();
+            return;
+        }
+
+        if (getItemCount('audio_ticket') <= 0) {
+            setIsHintShake(true);
+            setTimeout(() => setIsHintShake(false), 500);
+            openShopForItem('audio_ticket', '朗读券不足，请先去商场购买');
+            return;
+        }
+
+        translationAudioUnlockRef.current = true;
+        setIsTranslationAudioUnlocked(true);
+        applyEconomyPatch({ itemDelta: { audio_ticket: -1 } });
+        setAssistsUsedInCurrentDrill(prev => prev + 1);
+
+        const played = await playAudio();
+
+        if (!played) {
+            translationAudioUnlockRef.current = false;
+            setIsTranslationAudioUnlocked(false);
+            applyEconomyPatch({ itemDelta: { audio_ticket: 1 } });
+            setAssistsUsedInCurrentDrill(prev => Math.max(0, prev - 1));
+            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: '参考句播放失败，已退还 1 张朗读券' });
+            return;
+        }
+
+        setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: '已解锁本题参考句播放，可反复播放和切换倍速' });
+    };
 
     const handleBuyItem = useCallback((itemId: ShopItemId) => {
         const item = ITEM_CATALOG[itemId];
@@ -3166,6 +3212,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     <span className="text-[11px] leading-none mb-[1px]">🧩</span>
                                                     <span className="font-mono font-semibold text-[11px] tabular-nums">{vocabTicketCount}</span>
                                                 </div>
+
+                                                <div className="flex items-center gap-1 px-2 h-full rounded-full transition-colors cursor-default hover:bg-indigo-50 text-indigo-700/80">
+                                                    <span className="text-[11px] leading-none mb-[1px]">🔊</span>
+                                                    <span className="font-mono font-semibold text-[11px] tabular-nums">{audioTicketCount}</span>
+                                                </div>
                                             </div>
 
                                             <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5 mr-1"></div>
@@ -3174,7 +3225,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                                     {/* Shop Button - Always Visible */}
                                     <button
-                                        onClick={() => setShowShopModal(true)}
+                                        onClick={() => {
+                                            setShopFocusedItem(null);
+                                            setShowShopModal(true);
+                                        }}
                                         className="relative flex items-center justify-center h-full min-w-[64px] rounded-full bg-indigo-50/80 px-4 text-indigo-600 hover:!bg-indigo-500 hover:!text-white hover:shadow-[0_4px_12px_rgba(99,102,241,0.25)] border border-transparent hover:!border-indigo-400 transition-all duration-300 shrink-0"
                                         title="打开商场"
                                     >
@@ -3556,6 +3610,65 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             <h3 className="text-2xl md:text-4xl font-newsreader font-medium text-stone-900 leading-normal text-center max-w-4xl">
                                                                 {drillData.chinese}
                                                             </h3>
+
+                                                            <div className="w-full max-w-2xl px-4">
+                                                                <div className="flex flex-col items-center gap-2 rounded-[1.75rem] border border-stone-200/70 bg-white/70 px-3 py-3 shadow-[0_10px_28px_rgba(15,23,42,0.05)] backdrop-blur-xl md:flex-row md:justify-center md:gap-3 md:px-4">
+                                                                    <button
+                                                                        onClick={handleTranslationReferencePlayback}
+                                                                        disabled={isAudioLoading}
+                                                                        className={cn(
+                                                                            "flex min-h-11 min-w-[192px] items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60 disabled:cursor-wait disabled:opacity-70",
+                                                                            isTranslationAudioUnlocked
+                                                                                ? "border-indigo-200/80 bg-[linear-gradient(180deg,rgba(238,242,255,0.96),rgba(224,231,255,0.88))] text-indigo-700 shadow-[0_6px_18px_rgba(99,102,241,0.12)] hover:-translate-y-0.5 hover:border-indigo-300 hover:text-indigo-800"
+                                                                                : "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,251,235,0.96),rgba(254,243,199,0.9))] text-amber-700 shadow-[0_6px_18px_rgba(245,158,11,0.12)] hover:-translate-y-0.5 hover:border-amber-300 hover:text-amber-800"
+                                                                        )}
+                                                                        title={isTranslationAudioUnlocked ? "重播参考句" : "解锁本题参考句播放"}
+                                                                    >
+                                                                        {isAudioLoading ? (
+                                                                            <RefreshCw className="h-4 w-4 animate-spin" />
+                                                                        ) : isTranslationAudioUnlocked ? (
+                                                                            <Volume2 className="h-4 w-4" />
+                                                                        ) : (
+                                                                            <Lock className="h-4 w-4" />
+                                                                        )}
+                                                                        <span>
+                                                                            {isAudioLoading
+                                                                                ? "正在生成音频..."
+                                                                                : isTranslationAudioUnlocked
+                                                                                    ? (isPlaying ? "播放中..." : "重播参考句")
+                                                                                    : "播放参考句 · 1 朗读券"}
+                                                                        </span>
+                                                                    </button>
+
+                                                                    <div className="flex items-center gap-1 rounded-full border border-stone-200/80 bg-white/80 p-1">
+                                                                        {[1, 0.85, 0.7].map((speed) => (
+                                                                            <button
+                                                                                key={`translation-speed-${speed}`}
+                                                                                onClick={() => {
+                                                                                    setPlaybackSpeed(speed);
+                                                                                    if (audioRef.current) {
+                                                                                        audioRef.current.playbackRate = speed;
+                                                                                    }
+                                                                                }}
+                                                                                className={cn(
+                                                                                    "min-h-9 min-w-[56px] rounded-full px-3 text-xs font-bold transition-all duration-200",
+                                                                                    playbackSpeed === speed
+                                                                                        ? "bg-stone-900 text-white shadow-[0_8px_16px_rgba(15,23,42,0.12)]"
+                                                                                        : "text-stone-500 hover:bg-stone-100 hover:text-stone-700"
+                                                                                )}
+                                                                                aria-label={`设置播放速度 ${speed}x`}
+                                                                            >
+                                                                                {speed}x
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                                <p className="mt-2 text-center text-[11px] font-medium tracking-[0.08em] text-stone-400">
+                                                                    {isTranslationAudioUnlocked
+                                                                        ? "本题已解锁参考句播放，可重复播放且不再额外扣券"
+                                                                        : `当前持有 ${audioTicketCount} 张朗读券，首次播放会计入辅助`}
+                                                                </p>
+                                                            </div>
 
                                                             {/* Keywords */}
                                                             {(() => {
@@ -4886,7 +4999,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 z-[120] bg-black/55 backdrop-blur-sm p-4 flex items-center justify-center"
-                        onClick={() => setShowShopModal(false)}
+                        onClick={() => {
+                            setShowShopModal(false);
+                            setShopFocusedItem(null);
+                        }}
                     >
                         <motion.div
                             initial={{ y: 18, opacity: 0, scale: 0.98 }}
@@ -4913,7 +5029,15 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     const itemCount = getItemCount(itemId);
                                     const canBuy = coins >= item.price;
                                     return (
-                                        <div key={item.id} className="rounded-2xl border border-stone-200/80 bg-white/85 p-4 flex items-center justify-between gap-4">
+                                        <div
+                                            key={item.id}
+                                            className={cn(
+                                                "rounded-2xl border bg-white/85 p-4 flex items-center justify-between gap-4 transition-all",
+                                                shopFocusedItem === itemId
+                                                    ? "border-amber-300 shadow-[0_0_0_1px_rgba(251,191,36,0.25),0_16px_32px_rgba(245,158,11,0.12)] ring-2 ring-amber-200/70"
+                                                    : "border-stone-200/80"
+                                            )}
+                                        >
                                             <div className="min-w-0">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-lg">{item.icon}</span>
@@ -5042,7 +5166,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                             <div className="px-5 pb-4 flex justify-end">
                                 <button
-                                    onClick={() => setShowShopModal(false)}
+                                    onClick={() => {
+                                        setShowShopModal(false);
+                                        setShopFocusedItem(null);
+                                    }}
                                     className="rounded-full border border-stone-200 bg-white px-4 py-2 text-xs font-bold text-stone-600 hover:bg-stone-50 transition-colors"
                                 >
                                     关闭

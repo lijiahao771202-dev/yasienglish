@@ -90,6 +90,7 @@ export class YasiDB extends Dexie {
             capsule?: number;
             hint_ticket?: number;
             vocab_ticket?: number;
+            audio_ticket?: number;
         };
         // Cosmetic Themes
         owned_themes?: string[];
@@ -294,6 +295,26 @@ export class YasiDB extends Dexie {
         }).upgrade(tx => {
             return tx.table('user_profile').toCollection().modify(profile => {
                 profile.owned_themes = ['morning_coffee', 'sakura', 'golden_hour', 'holo_pearl', 'cloud_nine', 'lilac_dream'];
+            });
+        });
+
+        // Version 16: Add audio ticket inventory for translation reference playback.
+        this.version(16).stores({
+            user_profile: '++id'
+        }).upgrade(tx => {
+            return tx.table('user_profile').toCollection().modify(profile => {
+                const existingInventory = (profile.inventory && typeof profile.inventory === 'object')
+                    ? profile.inventory
+                    : {};
+
+                const audioTicket = typeof existingInventory.audio_ticket === 'number'
+                    ? existingInventory.audio_ticket
+                    : 2;
+
+                profile.inventory = {
+                    ...existingInventory,
+                    audio_ticket: Math.max(0, audioTicket),
+                };
             });
         });
     }
