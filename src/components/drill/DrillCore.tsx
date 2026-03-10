@@ -20,6 +20,7 @@ import { TeachingCard } from "./TeachingCard";
 import { GhostTextarea } from "../vocab/GhostTextarea";
 import { TOPICS } from "../../app/battle/page";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
+import { getDrillSurfacePhase } from "@/lib/battleUiState";
 
 // --- Interfaces ---
 
@@ -3385,8 +3386,94 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     } as const;
 
     const currentBoss = BOSS_CONFIG[bossState.type] || BOSS_CONFIG['blind'];
+    const drillSurfacePhase = getDrillSurfacePhase({
+        isProfileLoaded: isEloLoaded,
+        isGeneratingDrill,
+        hasDrillData: !!drillData,
+    });
 
+    const renderDrillLoadingState = (title: string, subtitle: string, backgroundClass: string) => (
+        <div className="h-full flex flex-col items-center justify-center relative overflow-hidden">
+            <div className={cn("absolute inset-0", backgroundClass)} />
 
+            <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                <motion.div
+                    className="absolute w-64 h-64 rounded-full bg-gradient-to-br from-indigo-200/30 to-purple-200/30 blur-3xl"
+                    animate={{ x: [0, 50, 0], y: [0, -30, 0] }}
+                    transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+                    style={{ top: '10%', left: '10%' }}
+                />
+                <motion.div
+                    className="absolute w-48 h-48 rounded-full bg-gradient-to-br from-purple-200/30 to-pink-200/30 blur-3xl"
+                    animate={{ x: [0, -40, 0], y: [0, 40, 0] }}
+                    transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+                    style={{ bottom: '20%', right: '15%' }}
+                />
+            </div>
+
+            <div className="relative z-10 flex flex-col items-center space-y-8">
+                <div className="flex items-end justify-center gap-1.5 h-20">
+                    {[0.4, 0.7, 1, 0.8, 0.5, 0.9, 0.6, 0.3, 0.7, 0.5, 0.8, 0.4].map((intensity, i) => (
+                        <motion.div
+                            key={i}
+                            className="w-2 rounded-full bg-gradient-to-t from-indigo-600 to-purple-500 shadow-lg shadow-indigo-500/30"
+                            animate={{
+                                height: [8, 60 * intensity, 8],
+                                opacity: [0.5, 1, 0.5]
+                            }}
+                            transition={{
+                                duration: 0.8 + (i * 0.05),
+                                repeat: Infinity,
+                                ease: "easeInOut",
+                                delay: i * 0.08
+                            }}
+                        />
+                    ))}
+                </div>
+
+                <div className="text-center space-y-2">
+                    <p className="text-stone-700 font-medium text-lg">{title}</p>
+                    <p className="text-stone-400 text-sm">{subtitle}</p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {[0, 1, 2].map((i) => (
+                        <motion.div
+                            key={i}
+                            className="w-2 h-2 rounded-full bg-indigo-500"
+                            animate={{
+                                scale: [1, 1.5, 1],
+                                opacity: [0.3, 1, 0.3]
+                            }}
+                            transition={{
+                                duration: 1.2,
+                                repeat: Infinity,
+                                delay: i * 0.3
+                            }}
+                        />
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+
+    if (drillSurfacePhase === "bootstrap") {
+        return (
+            <AnimatePresence>
+                <motion.div
+                    key="drill-core-bootstrap"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/40 backdrop-blur-sm"
+                >
+                    <div className="relative w-full max-w-5xl h-[85vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(245,244,240,0.76))] backdrop-blur-2xl">
+                        {renderDrillLoadingState("正在载入战场...", "Restoring your profile and theme", "bg-gradient-to-br from-stone-50 via-white to-indigo-50/50")}
+                    </div>
+                </motion.div>
+            </AnimatePresence>
+        );
+    }
 
     return (
         <AnimatePresence>
@@ -4058,79 +4145,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         />
 
 
-                        {isGeneratingDrill && !drillData ? (
-                            <div className="h-full flex flex-col items-center justify-center relative overflow-hidden">
-                                {/* Gradient Background */}
-                                <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 via-white to-purple-50/50" />
-
-                                {/* Floating Orbs */}
-                                <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                                    <motion.div
-                                        className="absolute w-64 h-64 rounded-full bg-gradient-to-br from-indigo-200/30 to-purple-200/30 blur-3xl"
-                                        animate={{ x: [0, 50, 0], y: [0, -30, 0] }}
-                                        transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-                                        style={{ top: '10%', left: '10%' }}
-                                    />
-                                    <motion.div
-                                        className="absolute w-48 h-48 rounded-full bg-gradient-to-br from-purple-200/30 to-pink-200/30 blur-3xl"
-                                        animate={{ x: [0, -40, 0], y: [0, 40, 0] }}
-                                        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-                                        style={{ bottom: '20%', right: '15%' }}
-                                    />
-                                </div>
-
-                                {/* Main Content */}
-                                <div className="relative z-10 flex flex-col items-center space-y-8">
-                                    {/* Audio Waveform Animation */}
-                                    <div className="flex items-end justify-center gap-1.5 h-20">
-                                        {[0.4, 0.7, 1, 0.8, 0.5, 0.9, 0.6, 0.3, 0.7, 0.5, 0.8, 0.4].map((intensity, i) => (
-                                            <motion.div
-                                                key={i}
-                                                className="w-2 rounded-full bg-gradient-to-t from-indigo-600 to-purple-500 shadow-lg shadow-indigo-500/30"
-                                                animate={{
-                                                    height: [8, 60 * intensity, 8],
-                                                    opacity: [0.5, 1, 0.5]
-                                                }}
-                                                transition={{
-                                                    duration: 0.8 + (i * 0.05),
-                                                    repeat: Infinity,
-                                                    ease: "easeInOut",
-                                                    delay: i * 0.08
-                                                }}
-                                            />
-                                        ))}
-                                    </div>
-
-                                    {/* Loading Text */}
-                                    <div className="text-center space-y-2">
-                                        <p className="text-stone-700 font-medium text-lg">
-                                            {mode === "translation" ? "正在生成句子..." : "正在准备音频..."}
-                                        </p>
-                                        <p className="text-stone-400 text-sm">
-                                            {mode === "translation" ? "Crafting your phrase" : "Preparing audio stream"}
-                                        </p>
-                                    </div>
-
-                                    {/* Progress Dots */}
-                                    <div className="flex items-center gap-2">
-                                        {[0, 1, 2].map((i) => (
-                                            <motion.div
-                                                key={i}
-                                                className="w-2 h-2 rounded-full bg-indigo-500"
-                                                animate={{
-                                                    scale: [1, 1.5, 1],
-                                                    opacity: [0.3, 1, 0.3]
-                                                }}
-                                                transition={{
-                                                    duration: 1.2,
-                                                    repeat: Infinity,
-                                                    delay: i * 0.3
-                                                }}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
+                        {drillSurfacePhase === "loading" ? (
+                            renderDrillLoadingState(
+                                mode === "translation" ? "正在生成句子..." : "正在准备音频...",
+                                mode === "translation" ? "Crafting your phrase" : "Preparing audio stream",
+                                "bg-gradient-to-br from-indigo-50/50 via-white to-purple-50/50",
+                            )
                         ) : drillData ? (
                             <AnimatePresence mode="popLayout" initial={false}>
                                 {!drillFeedback ? (
