@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DrillCore } from "@/components/drill/DrillCore";
 import { Zap, Briefcase, Plane, GraduationCap, Coffee, Sword, Trophy, Flame, ChevronRight, Lock, Cpu, Heart, Utensils, Stethoscope, Headphones, Feather, Clapperboard, Music, Atom, Landmark } from "lucide-react";
@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { getRank } from "@/lib/rankUtils";
 import { db } from "@/lib/db";
 import { EloChart } from "@/components/battle/EloChart";
+import { BattleDrillSelection, shouldRefreshBattleChart } from "@/lib/battleUiState";
 
 export const TOPICS = [
     {
@@ -139,17 +140,14 @@ export const TOPICS = [
 ];
 
 export default function BattlePage() {
-    const [activeDrill, setActiveDrill] = useState<{ type: "scenario"; topic: string } | null>(null);
+    const [activeDrill, setActiveDrill] = useState<BattleDrillSelection | null>(null);
     const [eloRating, setEloRating] = useState(600); // Translation
     const [listeningElo, setListeningElo] = useState(600); // Listening
     const [streak, setStreak] = useState(0);
     const [battleMode, setBattleMode] = useState<'listening' | 'translation'>('listening');
     const [refreshCount, setRefreshCount] = useState(0);
 
-    useEffect(() => {
-        if (!activeDrill) {
-            setRefreshCount(prev => prev + 1);
-        }
+    const loadProfile = useCallback(() => {
         db.user_profile.orderBy('id').first().then(profile => {
             if (profile) {
                 setEloRating(profile.elo_rating || 600);
@@ -157,7 +155,20 @@ export default function BattlePage() {
                 setStreak(profile.streak_count);
             }
         });
-    }, [activeDrill]); // Refresh when drill closes
+    }, []);
+
+    useEffect(() => {
+        loadProfile();
+    }, [loadProfile]);
+
+    const handleCloseDrill = () => {
+        if (shouldRefreshBattleChart(activeDrill, null)) {
+            setRefreshCount(prev => prev + 1);
+        }
+
+        setActiveDrill(null);
+        loadProfile();
+    };
 
     const transRank = getRank(eloRating);
     const listenRank = getRank(listeningElo);
@@ -366,7 +377,7 @@ export default function BattlePage() {
                 {activeDrill && (
                     <DrillCore
                         context={activeDrill}
-                        onClose={() => setActiveDrill(null)}
+                        onClose={handleCloseDrill}
                         initialMode={battleMode}
                     />
                 )}
