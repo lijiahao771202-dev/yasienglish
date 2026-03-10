@@ -19,6 +19,7 @@ import { ScoringFlipCard } from "./ScoringFlipCard";
 import { TeachingCard } from "./TeachingCard";
 import { GhostTextarea } from "../vocab/GhostTextarea";
 import { TOPICS } from "../../app/battle/page";
+import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 
 // --- Interfaces ---
 
@@ -1509,8 +1510,31 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         </motion.div>
     ) : null;
 
-    // ELO-based auto-difficulty (unified 400 Elo per tier)
-    const getEloDifficulty = (elo: number) => {
+    // ELO-based auto-difficulty
+    const getEloDifficulty = (elo: number, drillMode: DrillMode) => {
+        if (drillMode === 'translation') {
+            const tier = getTranslationDifficultyTier(elo);
+            const colorMap: Record<string, string> = {
+                'Level 1': 'text-stone-500',
+                'Level 2': 'text-amber-600',
+                'Level 3': 'text-slate-500',
+                'Level 4': 'text-yellow-600',
+                'Level 5': 'text-cyan-600',
+                'Level 6': 'text-blue-500',
+                'Level 7': 'text-fuchsia-600',
+                'Level 8': 'text-purple-600',
+                'Level 9': 'text-red-500',
+            };
+
+            return {
+                level: tier.level,
+                label: `${tier.cefr} ${tier.tier}`,
+                cefr: tier.cefr,
+                color: colorMap[tier.level] || 'text-stone-500',
+                desc: tier.desc,
+            };
+        }
+
         if (elo < 400) return { level: 'Level 1', label: 'A1 新手', cefr: 'A1', color: 'text-stone-500', desc: '简单SVO句子' };
         if (elo < 800) return { level: 'Level 2', label: 'A2- 青铜', cefr: 'A2-', color: 'text-amber-600', desc: '日常复合句' };
         if (elo < 1200) return { level: 'Level 3', label: 'A2+ 白银', cefr: 'A2+', color: 'text-slate-500', desc: '简单从句' };
@@ -1521,7 +1545,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (elo < 3200) return { level: 'Level 8', label: 'C2+ 王者', cefr: 'C2+', color: 'text-purple-600', desc: '极限挑战' };
         return { level: 'Level 9', label: '☠️ 处决', cefr: '∞', color: 'text-red-500', desc: '惩罚级难度' };
     };
-    const eloDifficulty = getEloDifficulty(currentElo || 600);
+    const eloDifficulty = getEloDifficulty(currentElo || 600, mode);
 
     const [eloChange, setEloChange] = useState<number | null>(null);
     const [eloBreakdown, setEloBreakdown] = useState<{
@@ -2073,7 +2097,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             body: JSON.stringify({
                 articleTitle: targetTopic,
                 articleContent: context.articleContent || "",
-                difficulty: getEloDifficulty(nextElo).level,
+                difficulty: getEloDifficulty(nextElo, mode).level,
                 eloRating: Math.max(0, nextElo),
                 mode,
                 bossType: nextBossType,
@@ -2397,23 +2421,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 const activeStreak = isListening ? listeningStreak : streakCount;
 
                 // --- Advanced Elo Logic (UIUXProMax) ---
-                const getDifficultyElo = (level: string) => {
-                    switch (level) {
-                        case 'Level 1': return 200;   // 新手 (0-400 midpoint)
-                        case 'Level 2': return 600;   // 青铜 (400-800 midpoint)
-                        case 'Level 3': return 1000;  // 白银 (800-1200 midpoint)
-                        case 'Level 4': return 1400;  // 黄金 (1200-1600 midpoint)
-                        case 'Level 5': return 1800;  // 铂金 (1600-2000 midpoint)
-                        case 'Level 6': return 2200;  // 钻石 (2000-2400 midpoint)
-                        case 'Level 7': return 2600;  // 大师 (2400-2800 midpoint)
-                        case 'Level 8': return 3000;  // 王者 (2800-3200 midpoint)
-                        case 'Level 9': return 3400;  // 处决 (3200+ midpoint)
-                        default: return 600;
-                    }
-                };
-
-                const calculateAdvancedElo = (playerElo: number, diffLevel: string, actualScore: number, streak: number) => {
-                    const difficultyElo = getDifficultyElo(diffLevel);
+                const calculateAdvancedElo = (playerElo: number, difficultyElo: number, actualScore: number, streak: number) => {
                     const expectedScore = 1 / (1 + Math.pow(10, (difficultyElo - playerElo) / 400));
                     const normalizedScore = Math.max(0, Math.min(1, (actualScore - 3) / 7));
 
@@ -2460,7 +2468,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     };
                 };
 
-                const result = calculateAdvancedElo(activeElo || 600, eloDifficulty.level, data.score, activeStreak);
+                const challengeElo = drillData?._difficultyMeta?.requestedElo ?? activeElo ?? 600;
+                const result = calculateAdvancedElo(activeElo || 600, challengeElo, data.score, activeStreak);
                 let change = result.total;
                 let newStreak = activeStreak;
 
