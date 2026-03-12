@@ -206,6 +206,10 @@ function normalizeCollapsedEnglish(text: string): string {
         [/\bacademicpioneer\b/gi, "academic pioneer"],
         [/\bconcerthall\b/gi, "concert hall"],
         [/\bticketcounter\b/gi, "ticket counter"],
+        [/\bviewingexperience\b/gi, "viewing experience"],
+        [/\bmovie-watchingexperience\b/gi, "movie-watching experience"],
+        [/\bruiningtheentireviewingexperience\b/gi, "ruining the entire viewing experience"],
+        [/\btheentire\b/gi, "the entire"],
     ];
 
     for (const [pattern, replacement] of replacements) {
@@ -219,6 +223,27 @@ function normalizeCollapsedEnglish(text: string): string {
         .replace(/\b([a-z]{2,})tosomething\b/gi, "$1 to something");
 
     return normalized;
+}
+
+function normalizeListLayout(text: string): string {
+    if (!text) return text;
+
+    let normalized = text;
+    // Force line breaks before numbered markers when model outputs "1 ... 2 ... 3 ..."
+    normalized = normalized
+        .replace(/\s+([2-9][\.\)]\s+)/g, (match, marker, offset, source) => {
+            const prevSlice = source.slice(Math.max(0, offset - 4), offset);
+            if (/\n\s*$/.test(prevSlice)) return match;
+            return `\n${marker}`;
+        })
+        .replace(/(^|\n)\s*([0-9][\.\)])\s*/g, "$1$2 ");
+
+    // Ensure markdown list style if starts with "1."
+    if (/^\s*1[\.\)]\s+/m.test(normalized) && !/\n/.test(normalized.trim())) {
+        normalized = normalized.replace(/\s+([2-9][\.\)]\s+)/g, "\n$1");
+    }
+
+    return normalized.trim();
 }
 
 function normalizeMicroDrill(raw: unknown, fallback: TutorMicroDrill): TutorMicroDrill {
@@ -378,9 +403,9 @@ function collectQualityFlags(payload: TutorResponsePayload, ctx: PayloadBuildCon
 function applyQualityGuards(payload: TutorResponsePayload, ctx: PayloadBuildContext): { payload: TutorResponsePayload; shouldRetry: boolean } {
     const patched: TutorResponsePayload = {
         ...payload,
-        coach_cn: normalizeCollapsedEnglish(payload.coach_cn),
-        contrast: normalizeCollapsedEnglish(payload.contrast),
-        next_task: normalizeCollapsedEnglish(payload.next_task),
+        coach_cn: normalizeListLayout(normalizeCollapsedEnglish(payload.coach_cn)),
+        contrast: normalizeListLayout(normalizeCollapsedEnglish(payload.contrast)),
+        next_task: normalizeListLayout(normalizeCollapsedEnglish(payload.next_task)),
         direct_answer_en: normalizeCollapsedEnglish(payload.direct_answer_en),
         micro_drill: {
             prompt_cn: payload.micro_drill.prompt_cn,
@@ -402,7 +427,7 @@ function applyQualityGuards(payload: TutorResponsePayload, ctx: PayloadBuildCont
 
     if (needsDirect) {
         patched.direct_answer_en = inferDirectAnswerEn(ctx.question, ctx.improvedVersion, ctx.referenceEnglish);
-        patched.coach_cn = `先给你可直接用的说法：\`${patched.direct_answer_en}\`。\n${patched.coach_cn}`;
+        patched.coach_cn = normalizeListLayout(`先给你可直接用的说法：\`${patched.direct_answer_en}\`。\n${patched.coach_cn}`);
     }
 
     if (needsAnchor) {
