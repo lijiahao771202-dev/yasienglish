@@ -86,6 +86,14 @@ interface DrillFeedback {
 }
 
 type TutorQuestionType = "pattern" | "word_choice" | "example" | "unlock_answer" | "follow_up";
+type TutorUiSurface = "battle" | "score";
+type TutorIntent = "translate" | "grammar" | "lexical";
+type TutorAction = "ask" | "drill_check";
+
+interface TutorMicroDrill {
+    prompt_cn: string;
+    expected_pattern_en: string;
+}
 
 interface TutorStructuredResponse {
     coach_cn: string;
@@ -96,6 +104,13 @@ interface TutorStructuredResponse {
     full_answer?: string;
     answer_reason_cn?: string;
     teaching_point: string;
+    direct_answer_en?: string;
+    error_tags: string[];
+    micro_drill: TutorMicroDrill;
+    quality_flags: string[];
+    drill_feedback_cn?: string;
+    revised_sentence_en?: string;
+    next_micro_drill?: TutorMicroDrill;
 }
 
 interface TutorHistoryTurn extends TutorStructuredResponse {
@@ -832,6 +847,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [tutorPendingQuestion, setTutorPendingQuestion] = useState<string | null>(null);
     const [isAskingTutor, setIsAskingTutor] = useState(false);
     const tutorHistoryScrollRef = useRef<HTMLDivElement | null>(null);
+    const [microDrillInput, setMicroDrillInput] = useState("");
+    const [isCheckingMicroDrill, setIsCheckingMicroDrill] = useState(false);
+    const [isBattleDrillCollapsed, setIsBattleDrillCollapsed] = useState(true);
 
     // Teaching Mode State
     const [teachingMode, setTeachingMode] = useState(false);
@@ -2269,6 +2287,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setTutorPendingQuestion(null);
             setTutorQuery("");
             setIsTutorOpen(false);
+            setMicroDrillInput("");
+            setIsCheckingMicroDrill(false);
+            setIsBattleDrillCollapsed(true);
             setWordPopup(null);
             setIsPlaying(false);
             setHasRatedDrill(false);
@@ -2327,6 +2348,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setTutorPendingQuestion(null);
         setTutorQuery("");
         setIsTutorOpen(false);
+        setMicroDrillInput("");
+        setIsCheckingMicroDrill(false);
+        setIsBattleDrillCollapsed(true);
         setWordPopup(null);
         setIsPlaying(false);
         setHasRatedDrill(false);
@@ -2987,6 +3011,40 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         return "语序与自然表达";
     };
 
+    const buildFallbackMicroDrill = (teachingPoint: string): TutorMicroDrill => {
+        if (/时间/.test(teachingPoint)) {
+            return {
+                prompt_cn: "把“我到站后才发现票丢了”翻成英文，优先体现时间关系。",
+                expected_pattern_en: "It was only after ... that ...",
+            };
+        }
+        if (/词汇|搭配/.test(teachingPoint)) {
+            return {
+                prompt_cn: "用 spark / ignite 相关搭配重写一句“我们之间有了感觉”。",
+                expected_pattern_en: "A romantic spark ignited between ...",
+            };
+        }
+        return {
+            prompt_cn: "把“他开口前先深呼吸了一下”翻成英文，注意自然语序。",
+            expected_pattern_en: "Before ..., ...",
+        };
+    };
+
+    const inferTutorIntent = (questionType: TutorQuestionType, teachingPoint: string): TutorIntent => {
+        if (questionType === "word_choice" || /词汇|搭配/.test(teachingPoint)) return "lexical";
+        if (/语序|从句|时态|语法/.test(teachingPoint)) return "grammar";
+        return "translate";
+    };
+
+    const inferFocusSpan = (question: string) => {
+        const quoted = question.match(/[“"](.*?)[”"]/)?.[1]?.trim();
+        if (quoted) return quoted.slice(0, 40);
+        const englishWord = question.match(/[A-Za-z][A-Za-z'-]{2,}/)?.[0]?.trim();
+        if (englishWord) return englishWord;
+        const chinesePhrase = question.match(/[\u4e00-\u9fa5]{2,}/)?.[0]?.trim();
+        return chinesePhrase ? chinesePhrase.slice(0, 16) : "";
+    };
+
     const normalizeTutorResponse = (raw: unknown, fallbackTeachingPoint: string): TutorStructuredResponse => {
         const readString = (value: unknown) => typeof value === "string" ? value.trim() : "";
         const asObject = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
@@ -2995,6 +3053,23 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             .map((item) => readString(item))
             .filter(Boolean)
             .slice(0, 2);
+        const fallbackMicroDrill = buildFallbackMicroDrill(fallbackTeachingPoint);
+        const rawMicroDrill = asObject.micro_drill && typeof asObject.micro_drill === "object"
+            ? asObject.micro_drill as Record<string, unknown>
+            : {};
+        const rawNextMicroDrill = asObject.next_micro_drill && typeof asObject.next_micro_drill === "object"
+            ? asObject.next_micro_drill as Record<string, unknown>
+            : null;
+        const rawTags = Array.isArray(asObject.error_tags) ? asObject.error_tags : [];
+        const errorTags = rawTags
+            .map((item) => readString(item).toLowerCase())
+            .filter(Boolean)
+            .slice(0, 4);
+        const rawQualityFlags = Array.isArray(asObject.quality_flags) ? asObject.quality_flags : [];
+        const qualityFlags = rawQualityFlags
+            .map((item) => readString(item))
+            .filter(Boolean)
+            .slice(0, 6);
 
         return {
             coach_cn: readString(asObject.coach_cn) || "你已经抓住大意了。先修一个关键点，再继续完善句子。",
@@ -3005,6 +3080,21 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             full_answer: readString(asObject.full_answer) || undefined,
             answer_reason_cn: readString(asObject.answer_reason_cn) || undefined,
             teaching_point: readString(asObject.teaching_point) || fallbackTeachingPoint,
+            direct_answer_en: readString(asObject.direct_answer_en) || undefined,
+            error_tags: errorTags,
+            micro_drill: {
+                prompt_cn: readString(rawMicroDrill.prompt_cn) || fallbackMicroDrill.prompt_cn,
+                expected_pattern_en: readString(rawMicroDrill.expected_pattern_en) || fallbackMicroDrill.expected_pattern_en,
+            },
+            quality_flags: qualityFlags,
+            drill_feedback_cn: readString(asObject.drill_feedback_cn) || undefined,
+            revised_sentence_en: readString(asObject.revised_sentence_en) || undefined,
+            next_micro_drill: rawNextMicroDrill
+                ? {
+                    prompt_cn: readString(rawNextMicroDrill.prompt_cn) || fallbackMicroDrill.prompt_cn,
+                    expected_pattern_en: readString(rawNextMicroDrill.expected_pattern_en) || fallbackMicroDrill.expected_pattern_en,
+                }
+                : undefined,
         };
     };
 
@@ -3012,6 +3102,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         question?: string;
         questionType?: TutorQuestionType;
         forceReveal?: boolean;
+        uiSurface?: TutorUiSurface;
     }) => {
         const question = (options?.question ?? tutorQuery).trim();
         if (!question || !drillData) return;
@@ -3030,15 +3121,23 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         const outgoingHintLevel = shouldReveal
             ? Math.max(3, tutorHintLevel)
             : Math.min(4, tutorHintLevel + 1);
+        const outgoingSurface: TutorUiSurface = options?.uiSurface ?? "battle";
+        const outgoingIntent = inferTutorIntent(outgoingQuestionType, teachingPoint);
+        const outgoingFocusSpan = inferFocusSpan(question);
+        const fallbackMicroDrill = buildFallbackMicroDrill(teachingPoint);
 
         try {
             const response = await fetch("/api/ai/ask_tutor", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                    action: "ask" as TutorAction,
                     query: question,
                     hintLevel: outgoingHintLevel,
                     questionType: outgoingQuestionType,
+                    uiSurface: outgoingSurface,
+                    intent: outgoingIntent,
+                    focusSpan: outgoingFocusSpan,
                     userAttempt: userTranslation,
                     improvedVersion: drillFeedback?.improved_version,
                     score: drillFeedback?.score,
@@ -3078,6 +3177,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         full_answer: prev?.full_answer,
                         answer_reason_cn: prev?.answer_reason_cn,
                         teaching_point: prev?.teaching_point ?? teachingPoint,
+                        direct_answer_en: prev?.direct_answer_en,
+                        error_tags: prev?.error_tags ?? [],
+                        micro_drill: prev?.micro_drill ?? fallbackMicroDrill,
+                        quality_flags: prev?.quality_flags ?? [],
+                        drill_feedback_cn: prev?.drill_feedback_cn,
+                        revised_sentence_en: prev?.revised_sentence_en,
+                        next_micro_drill: prev?.next_micro_drill,
                     }));
                 };
 
@@ -3169,6 +3275,76 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setTutorPendingQuestion(null);
         } finally {
             setIsAskingTutor(false);
+        }
+    };
+
+    const handleCheckMicroDrill = async (uiSurface: TutorUiSurface) => {
+        const drillSentence = microDrillInput.trim();
+        if (!drillData || !drillSentence || isCheckingMicroDrill) return;
+
+        const teachingPoint = tutorResponse?.teaching_point || inferTeachingPoint();
+        const focusSpan = tutorResponse?.micro_drill?.expected_pattern_en || inferFocusSpan(drillSentence);
+        const feedbackQuestion = "请检查我的练习句子并给出更自然改写";
+        setIsCheckingMicroDrill(true);
+        setTutorPendingQuestion(`练习：${drillSentence}`);
+        setTutorAnswer("");
+
+        try {
+            const response = await fetch("/api/ai/ask_tutor", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "drill_check" as TutorAction,
+                    query: feedbackQuestion,
+                    drillInput: drillSentence,
+                    hintLevel: tutorHintLevel,
+                    questionType: "follow_up",
+                    uiSurface,
+                    intent: inferTutorIntent("follow_up", teachingPoint),
+                    focusSpan,
+                    userAttempt: userTranslation,
+                    improvedVersion: drillFeedback?.improved_version,
+                    score: drillFeedback?.score,
+                    recentTurns: tutorThread.slice(-4).map((item) => ({
+                        question: item.question,
+                        answer: item.coach_cn,
+                    })),
+                    teachingPoint,
+                    revealAnswer: false,
+                    drillContext: drillData,
+                    articleTitle: drillData._topicMeta?.topic || context.articleTitle || context.topic,
+                    stream: false,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error("练习批改失败");
+            }
+
+            const data = await response.json();
+            if (data?.error) {
+                throw new Error(data.error);
+            }
+
+            const normalized = normalizeTutorResponse(data, teachingPoint);
+            setTutorResponse(normalized);
+            setTutorAnswer(normalized.coach_cn);
+            setTutorThread((prev) => [
+                ...prev,
+                {
+                    question: `练习：${drillSentence}`,
+                    question_type: "follow_up" as TutorQuestionType,
+                    ...normalized,
+                },
+            ].slice(-6));
+            setTutorPendingQuestion(null);
+            setMicroDrillInput("");
+        } catch (error) {
+            console.error(error);
+            setTutorAnswer("练习批改暂时不可用，请稍后重试。");
+            setTutorPendingQuestion(null);
+        } finally {
+            setIsCheckingMicroDrill(false);
         }
     };
 
@@ -3934,6 +4110,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     }
 
     const showTutorExchange = renderableTutorTurns.length > 0;
+    const currentMicroDrill = tutorResponse?.next_micro_drill || tutorResponse?.micro_drill || buildFallbackMicroDrill(tutorResponse?.teaching_point || inferTeachingPoint());
 
     return (
         <AnimatePresence>
@@ -5202,7 +5379,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                 <div className="mt-2 flex flex-nowrap gap-1.5 overflow-x-auto pb-1 pr-1">
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => handleAskTutor({ question: "给我一个这题可复用的句型模板。", questionType: "pattern" })}
+                                                                        onClick={() => handleAskTutor({ question: "给我一个这题可复用的句型模板。", questionType: "pattern", uiSurface: "battle" })}
                                                                         disabled={isAskingTutor}
                                                                         className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
                                                                     >
@@ -5210,7 +5387,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     </button>
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => handleAskTutor({ question: "为什么这里不用更直译的词？请告诉我搭配差别。", questionType: "word_choice" })}
+                                                                        onClick={() => handleAskTutor({ question: "为什么这里不用更直译的词？请告诉我搭配差别。", questionType: "word_choice", uiSurface: "battle" })}
                                                                         disabled={isAskingTutor}
                                                                         className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
                                                                     >
@@ -5218,7 +5395,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     </button>
                                                                     <button
                                                                         type="button"
-                                                                        onClick={() => handleAskTutor({ question: "再给我一个同结构的例句让我模仿。", questionType: "example" })}
+                                                                        onClick={() => handleAskTutor({ question: "再给我一个同结构的例句让我模仿。", questionType: "example", uiSurface: "battle" })}
                                                                         disabled={isAskingTutor}
                                                                         className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
                                                                     >
@@ -5258,11 +5435,67 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     </div>
                                                                 ) : null}
 
+                                                                <div className="mt-2 rounded-xl border border-stone-200/70 bg-white/70 p-2.5">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setIsBattleDrillCollapsed((prev) => !prev)}
+                                                                        className="flex w-full items-center justify-between text-left"
+                                                                    >
+                                                                        <span className="text-xs font-semibold text-stone-700">来做 1 句小练习</span>
+                                                                        <ChevronRight className={cn("h-4 w-4 text-stone-500 transition-transform", !isBattleDrillCollapsed && "rotate-90")} />
+                                                                    </button>
+
+                                                                    {!isBattleDrillCollapsed && (
+                                                                        <div className="mt-2 space-y-2">
+                                                                            <div className="rounded-lg border border-stone-200/70 bg-white/80 p-2">
+                                                                                <p className="text-[11px] font-semibold text-stone-500">练习题</p>
+                                                                                <p className="mt-1 text-xs text-stone-700">{currentMicroDrill.prompt_cn}</p>
+                                                                                <p className="mt-1 text-[11px] text-indigo-700">目标结构：{currentMicroDrill.expected_pattern_en}</p>
+                                                                            </div>
+                                                                            <div className="flex flex-col gap-2 sm:flex-row">
+                                                                                <input
+                                                                                    type="text"
+                                                                                    value={microDrillInput}
+                                                                                    onChange={(e) => setMicroDrillInput(e.target.value)}
+                                                                                    placeholder="输入你的练习句子..."
+                                                                                    className={cn("h-10 flex-1 rounded-xl border px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)}
+                                                                                />
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleCheckMicroDrill("battle")}
+                                                                                    disabled={isCheckingMicroDrill || !microDrillInput.trim()}
+                                                                                    className={cn("inline-flex h-10 min-w-[92px] items-center justify-center gap-1 rounded-xl border border-transparent px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50", activeCosmeticUi.analysisButtonClass)}
+                                                                                >
+                                                                                    {isCheckingMicroDrill ? <Sparkles className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                                                                    {isCheckingMicroDrill ? "检查中" : "检查"}
+                                                                                </button>
+                                                                            </div>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleAskTutor({ question: "再给我一个同结构的小练习句子。", questionType: "example", uiSurface: "battle" })}
+                                                                                disabled={isAskingTutor || isCheckingMicroDrill}
+                                                                                className="inline-flex min-h-8 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                            >
+                                                                                再来一个同结构
+                                                                            </button>
+                                                                            {tutorResponse?.drill_feedback_cn && (
+                                                                                <div className="rounded-lg border border-emerald-200/70 bg-emerald-50/70 p-2">
+                                                                                    <p className="text-[11px] font-semibold text-emerald-700">练习反馈</p>
+                                                                                    <p className="mt-1 text-xs text-stone-700">{tutorResponse.drill_feedback_cn}</p>
+                                                                                    {tutorResponse.revised_sentence_en && (
+                                                                                        <p className="mt-1 text-xs text-indigo-700">建议改写：{tutorResponse.revised_sentence_en}</p>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
                                                                 <form
                                                                     className="mt-2 flex flex-col gap-2 sm:flex-row"
                                                                     onSubmit={(e) => {
                                                                         e.preventDefault();
-                                                                        handleAskTutor({ questionType: "follow_up" });
+                                                                        handleAskTutor({ questionType: "follow_up", uiSurface: "battle" });
                                                                     }}
                                                                 >
                                                                     <input
@@ -5286,7 +5519,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     <div className="mt-1 flex items-center justify-between gap-2">
                                                                         <button
                                                                             type="button"
-                                                                            onClick={() => handleAskTutor({ question: "我想看完整答案，并解释为什么这样说。", questionType: "unlock_answer", forceReveal: true })}
+                                                                            onClick={() => handleAskTutor({ question: "我想看完整答案，并解释为什么这样说。", questionType: "unlock_answer", forceReveal: true, uiSurface: "battle" })}
                                                                             disabled={isAskingTutor}
                                                                             className="inline-flex min-h-8 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:-translate-y-0.5 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                                                                         >
@@ -5331,6 +5564,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     setTutorNoProgressTurns(0);
                                                     setTutorPendingQuestion(null);
                                                     setIsTutorOpen(false);
+                                                    setMicroDrillInput("");
+                                                    setIsCheckingMicroDrill(false);
+                                                    setIsBattleDrillCollapsed(true);
                                                     setIsSubmittingDrill(false);
                                                     setWordPopup(null);
                                                     setAnalysisRequested(false);
@@ -5602,7 +5838,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                         <div className="mt-3 flex flex-wrap gap-2">
                                                                                             <button
                                                                                                 type="button"
-                                                                                                onClick={() => handleAskTutor({ question: "给我一个这题可复用的句型模板。", questionType: "pattern" })}
+                                                                                                onClick={() => handleAskTutor({ question: "给我一个这题可复用的句型模板。", questionType: "pattern", uiSurface: "score" })}
                                                                                                 disabled={isAskingTutor}
                                                                                                 className="inline-flex min-h-9 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
                                                                                             >
@@ -5610,7 +5846,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                             </button>
                                                                                             <button
                                                                                                 type="button"
-                                                                                                onClick={() => handleAskTutor({ question: "为什么这里不用更直译的词？请告诉我搭配差别。", questionType: "word_choice" })}
+                                                                                                onClick={() => handleAskTutor({ question: "为什么这里不用更直译的词？请告诉我搭配差别。", questionType: "word_choice", uiSurface: "score" })}
                                                                                                 disabled={isAskingTutor}
                                                                                                 className="inline-flex min-h-9 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
                                                                                             >
@@ -5618,7 +5854,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                             </button>
                                                                                             <button
                                                                                                 type="button"
-                                                                                                onClick={() => handleAskTutor({ question: "再给我一个同结构的例句让我模仿。", questionType: "example" })}
+                                                                                                onClick={() => handleAskTutor({ question: "再给我一个同结构的例句让我模仿。", questionType: "example", uiSurface: "score" })}
                                                                                                 disabled={isAskingTutor}
                                                                                                 className="inline-flex min-h-9 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
                                                                                             >
@@ -5629,6 +5865,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                         {tutorResponse ? (
                                                                                             <div className="mt-3 rounded-xl border border-stone-200/70 bg-white/80 p-3.5">
                                                                                                 <TutorMarkdown content={tutorResponse.coach_cn} className="text-sm text-stone-700" />
+                                                                                                {tutorResponse.direct_answer_en && (
+                                                                                                    <p className="mt-2 text-xs text-sky-700">
+                                                                                                        可直接用：<code className="rounded bg-sky-50 px-1 py-0.5">{tutorResponse.direct_answer_en}</code>
+                                                                                                    </p>
+                                                                                                )}
                                                                                                 <div className="mt-2 flex flex-wrap gap-1.5">
                                                                                                     {tutorResponse.pattern_en.map((pattern, idx) => (
                                                                                                         <span key={`${pattern}-${idx}`} className="rounded-full border border-indigo-200/80 bg-indigo-50/80 px-2.5 py-1 text-[11px] font-medium text-indigo-700">
@@ -5653,10 +5894,54 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                                         )}
                                                                                                     </div>
                                                                                                 )}
+                                                                                                {tutorResponse.quality_flags.length > 0 && (
+                                                                                                    <p className="mt-2 text-[11px] text-amber-600">系统修正: {tutorResponse.quality_flags.join(" / ")}</p>
+                                                                                                )}
                                                                                             </div>
                                                                                         ) : (
                                                                                             <p className="mt-3 text-xs text-stone-500">先问一个点，Tutor 会按“方向提示 → 模板 → 对比 → 迁移练习”给你逐层教学。</p>
                                                                                         )}
+
+                                                                                        <div className="mt-3 rounded-xl border border-stone-200/70 bg-white/75 p-3">
+                                                                                            <p className="text-xs font-semibold text-stone-700">小练习（即时纠错）</p>
+                                                                                            <p className="mt-1 text-xs text-stone-600">{currentMicroDrill.prompt_cn}</p>
+                                                                                            <p className="mt-1 text-[11px] text-indigo-700">目标结构：{currentMicroDrill.expected_pattern_en}</p>
+                                                                                            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                                                                                                <input
+                                                                                                    type="text"
+                                                                                                    value={microDrillInput}
+                                                                                                    onChange={(e) => setMicroDrillInput(e.target.value)}
+                                                                                                    placeholder="写一句英文练习..."
+                                                                                                    className={cn("h-10 flex-1 rounded-xl border px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)}
+                                                                                                />
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() => handleCheckMicroDrill("score")}
+                                                                                                    disabled={isCheckingMicroDrill || !microDrillInput.trim()}
+                                                                                                    className={cn("inline-flex h-10 min-w-[96px] items-center justify-center gap-1 rounded-xl border border-transparent px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50", activeCosmeticUi.analysisButtonClass)}
+                                                                                                >
+                                                                                                    {isCheckingMicroDrill ? <Sparkles className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                                                                                    {isCheckingMicroDrill ? "检查中" : "检查"}
+                                                                                                </button>
+                                                                                            </div>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => handleAskTutor({ question: "再给我一个同结构的小练习句子。", questionType: "example", uiSurface: "score" })}
+                                                                                                disabled={isAskingTutor || isCheckingMicroDrill}
+                                                                                                className="mt-2 inline-flex min-h-8 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                                            >
+                                                                                                再来一个同结构
+                                                                                            </button>
+                                                                                            {tutorResponse?.drill_feedback_cn && (
+                                                                                                <div className="mt-2 rounded-lg border border-emerald-200/70 bg-emerald-50/70 p-2.5">
+                                                                                                    <p className="text-[11px] font-semibold text-emerald-700">练习反馈</p>
+                                                                                                    <p className="mt-1 text-xs text-stone-700">{tutorResponse.drill_feedback_cn}</p>
+                                                                                                    {tutorResponse.revised_sentence_en && (
+                                                                                                        <p className="mt-1 text-xs text-indigo-700">建议改写：{tutorResponse.revised_sentence_en}</p>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
 
                                                                                         {tutorThread.length > 0 && (
                                                                                             <div className="mt-3 space-y-2">
@@ -5673,7 +5958,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                             className="mt-3 flex flex-col gap-2 sm:flex-row"
                                                                                             onSubmit={(e) => {
                                                                                                 e.preventDefault();
-                                                                                                handleAskTutor({ questionType: "follow_up" });
+                                                                                                handleAskTutor({ questionType: "follow_up", uiSurface: "score" });
                                                                                             }}
                                                                                         >
                                                                                             <input
@@ -5697,7 +5982,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                             <div className="mt-2 flex items-center justify-between gap-2">
                                                                                                 <button
                                                                                                     type="button"
-                                                                                                    onClick={() => handleAskTutor({ question: "我想看完整答案，并解释为什么这样说。", questionType: "unlock_answer", forceReveal: true })}
+                                                                                                    onClick={() => handleAskTutor({ question: "我想看完整答案，并解释为什么这样说。", questionType: "unlock_answer", forceReveal: true, uiSurface: "score" })}
                                                                                                     disabled={isAskingTutor}
                                                                                                     className="inline-flex min-h-9 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:-translate-y-0.5 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                                                                                                 >

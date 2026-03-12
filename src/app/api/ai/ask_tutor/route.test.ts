@@ -51,6 +51,11 @@ function buildRequest(
         query: string;
         hintLevel: number;
         questionType: string;
+        action: string;
+        uiSurface: string;
+        intent: string;
+        focusSpan: string;
+        drillInput: string;
         userAttempt: string;
         improvedVersion: string;
         score: number;
@@ -64,6 +69,11 @@ function buildRequest(
             query: "为什么这里用 ignite？",
             hintLevel: 1,
             questionType: "follow_up",
+            action: "ask",
+            uiSurface: "score",
+            intent: "lexical",
+            focusSpan: "ignite",
+            drillInput: "",
             userAttempt: "When I won the lottery, love started.",
             improvedVersion: "When I won the lottery, a romantic spark ignited between us.",
             score: 78,
@@ -102,6 +112,12 @@ describe("ask_tutor route", () => {
                     answer_revealed: true,
                     full_answer: "SHOULD_NOT_LEAK",
                     teaching_point: "词汇搭配与语气",
+                    direct_answer_en: "a romantic spark ignited between us",
+                    error_tags: ["word_choice", "collocation"],
+                    micro_drill: {
+                        prompt_cn: "把“我们之间有了感觉”用 spark/ignite 重写。",
+                        expected_pattern_en: "A romantic spark ignited between ...",
+                    },
                 })
             )
         );
@@ -117,6 +133,10 @@ describe("ask_tutor route", () => {
         expect(data.pattern_en.length).toBeGreaterThan(0);
         expect(data.contrast).toBeTruthy();
         expect(data.next_task).toBeTruthy();
+        expect(typeof data.direct_answer_en).toBe("string");
+        expect(Array.isArray(data.error_tags)).toBe(true);
+        expect(data.micro_drill?.prompt_cn).toBeTruthy();
+        expect(Array.isArray(data.quality_flags)).toBe(true);
     });
 
     it("reveals full answer when unlock is requested and falls back to improved version", async () => {
@@ -129,6 +149,12 @@ describe("ask_tutor route", () => {
                     next_task: "用 It was only after... that... 造句。",
                     answer_revealed: true,
                     teaching_point: "语序与自然表达",
+                    direct_answer_en: "a romantic spark ignited between us",
+                    error_tags: ["word_order"],
+                    micro_drill: {
+                        prompt_cn: "再写一句 only after 结构。",
+                        expected_pattern_en: "It was only after ... that ...",
+                    },
                 })
             )
         );
@@ -153,6 +179,12 @@ describe("ask_tutor route", () => {
                     next_task: "再改写一句包含 after 的句子。",
                     answer_revealed: false,
                     teaching_point: "时间从句",
+                    direct_answer_en: "It was only after ... that ...",
+                    error_tags: ["word_order", "grammar"],
+                    micro_drill: {
+                        prompt_cn: "把“他到家后才发现钥匙丢了”翻成英文。",
+                        expected_pattern_en: "It was only after ... that ...",
+                    },
                 }) +
                 "\n```"
             )
@@ -164,6 +196,7 @@ describe("ask_tutor route", () => {
         expect(response.status).toBe(200);
         expect(data.pattern_en.length).toBeLessThanOrEqual(2);
         expect(data.teaching_point).toBe("时间从句");
+        expect(data.micro_drill?.expected_pattern_en).toContain("It was only after");
     });
 
     it("supports SSE streaming mode and emits final structured payload", async () => {
@@ -174,7 +207,10 @@ describe("ask_tutor route", () => {
                 '"contrast":"中式直译偏硬，英文先主干更自然。",',
                 '"next_task":"用 When... 再写一句。",',
                 '"answer_revealed":false,',
-                '"teaching_point":"时间从句"}',
+                '"teaching_point":"时间从句",',
+                '"direct_answer_en":"When I won the lottery, a romantic spark ignited between us.",',
+                '"error_tags":["word_order"],',
+                '"micro_drill":{"prompt_cn":"再练一句时间从句。","expected_pattern_en":"When ..., ..."}}',
             ])
         );
 
@@ -186,5 +222,47 @@ describe("ask_tutor route", () => {
         expect(bodyText).toContain("event: chunk");
         expect(bodyText).toContain("event: final");
         expect(bodyText).toContain("\"coach_cn\":\"你方向是对的，先调语序。\"");
+        expect(bodyText).toContain("\"direct_answer_en\"");
+    });
+
+    it("supports drill_check action and returns drill feedback payload", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletion(
+                JSON.stringify({
+                    coach_cn: "你的句子方向正确，重点修动词搭配。",
+                    pattern_en: ["It was only after ... that ..."],
+                    contrast: "先主干后补充，避免中文直序。",
+                    next_task: "再写一句 only after 结构。",
+                    answer_revealed: false,
+                    teaching_point: "时间从句",
+                    direct_answer_en: "It was only after I arrived that I noticed the mistake.",
+                    error_tags: ["grammar", "word_order"],
+                    micro_drill: {
+                        prompt_cn: "把“我进门后才意识到出错了”翻成英文。",
+                        expected_pattern_en: "It was only after ... that ...",
+                    },
+                    drill_feedback_cn: "你用了 after 的方向对，但主句时态要统一。",
+                    revised_sentence_en: "It was only after I walked in that I realized I had made a mistake.",
+                    next_micro_drill: {
+                        prompt_cn: "再写一句 only after 结构，主题改成学习。",
+                        expected_pattern_en: "It was only after ... that ...",
+                    },
+                })
+            )
+        );
+
+        const response = await POST(buildRequest({
+            action: "drill_check",
+            query: "请检查我的练习句子",
+            drillInput: "After I came in, I just realized I made a mistake.",
+            stream: false,
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.drill_feedback_cn).toBeTruthy();
+        expect(data.revised_sentence_en).toBeTruthy();
+        expect(data.next_micro_drill?.prompt_cn).toBeTruthy();
+        expect(Array.isArray(data.quality_flags)).toBe(true);
     });
 });
