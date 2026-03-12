@@ -1,10 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { X, Loader2, Book, Volume2, Sparkles, Check, BookPlus } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { db } from "@/lib/db";
-import { createEmptyCard } from "@/lib/fsrs";
+import { motion } from "framer-motion";
+import { X, Loader2, Book, Volume2, Sparkles } from "lucide-react";
 
 export interface PopupState {
     word: string;
@@ -35,7 +32,6 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
     const [definition, setDefinition] = useState<DefinitionData | null>(null);
     const [isLoadingDict, setIsLoadingDict] = useState(false);
     const [isLoadingAI, setIsLoadingAI] = useState(false);
-    const [isSaved, setIsSaved] = useState(false);
     const popupRef = useRef<HTMLDivElement>(null);
 
     const audioPlayedRef = useRef(false);
@@ -46,12 +42,6 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
         setDefinition(null);
         setIsLoadingDict(true);
         setIsLoadingAI(false);
-        setIsSaved(false);
-
-        // Check DB
-        db.vocabulary.get(popup.word).then(item => {
-            if (isMounted && item) setIsSaved(true);
-        });
 
         // Auto-Play Audio (Instant Pronunciation) - Using Youdao for natural voice
         if (!audioPlayedRef.current) {
@@ -120,22 +110,6 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
         }
     };
 
-    const handleAddToVocab = async () => {
-        if (!definition) return;
-        try {
-            const card = createEmptyCard(popup.word);
-            card.definition = definition.dictionary_meaning?.definition || "";
-            card.translation = definition.dictionary_meaning?.translation || "";
-            card.context = popup.context;
-            card.example = definition.example || "";
-
-            await db.vocabulary.put(card as any);
-            setIsSaved(true);
-        } catch (err) {
-            console.error("Failed to save vocab:", err);
-        }
-    };
-
     // Use portal to render at document.body level to avoid parent overflow clipping
     if (typeof document === 'undefined') return null;
 
@@ -169,6 +143,9 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                                 </span>
                             </div>
                         )}
+                        <p className="text-[11px] mt-2 text-stone-500">
+                            Instant reading hint only, no wordbook saving.
+                        </p>
                     </div>
                     <div className="flex gap-1">
                         <button
@@ -181,19 +158,6 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                             title="Play Pronunciation"
                         >
                             <Volume2 className="w-4 h-4" />
-                        </button>
-                        <button
-                            onClick={handleAddToVocab}
-                            disabled={isSaved}
-                            className={cn(
-                                "p-2 rounded-full transition-colors shadow-sm",
-                                isSaved
-                                    ? "bg-green-100 text-green-600"
-                                    : "bg-white/80 hover:bg-amber-100 text-stone-500 hover:text-amber-600"
-                            )}
-                            title={isSaved ? "Saved to Vocabulary" : "Add to Vocabulary"}
-                        >
-                            {isSaved ? <Check className="w-4 h-4" /> : <BookPlus className="w-4 h-4" />}
                         </button>
                         <button
                             onClick={onClose}
@@ -273,13 +237,13 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                             {definition.example && (
                                 <div className="flex gap-2 items-start text-xs text-stone-500 italic pl-2 border-l-2 border-amber-200">
                                     <span className="shrink-0 mt-0.5">Eg.</span>
-                                    <span>"{definition.example}"</span>
+                                    <span>&ldquo;{definition.example}&rdquo;</span>
                                 </div>
                             )}
                         </div>
                     ) : (
                         <div className="text-xs text-stone-400 text-center py-1">
-                            Tap "Deep Analyze" to see meaning in this sentence.
+                            Tap Deep Analyze to see meaning in this sentence.
                         </div>
                     )}
                 </div>

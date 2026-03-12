@@ -1,20 +1,17 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Loader2, BookOpen, Volume2, Sparkles, Book, Globe, BookPlus, Check } from "lucide-react";
 import { ParagraphCard } from "./ParagraphCard";
 import { WordPopup } from "./WordPopup";
 import TEDVideoPlayer, { TEDVideoPlayerRef } from "./TEDVideoPlayer";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
 import { cn } from "@/lib/utils";
-import { db } from "@/lib/db";
-import { createEmptyCard } from "@/lib/fsrs";
 
 interface Block {
     type: 'paragraph' | 'header' | 'list' | 'image' | 'blockquote';
-    id: string; // Ensure ID is present
+    id?: string;
     content?: string;
     tag?: string;
     items?: string[];
@@ -42,20 +39,7 @@ interface PopupState {
     y: number;
 }
 
-interface DefinitionData {
-    context_meaning?: {
-        definition: string;
-        translation: string;
-    };
-    dictionary_meaning?: {
-        definition: string;
-        translation: string;
-    };
-    example?: string;
-    phonetic?: string;
-}
-
-export function ArticleDisplay({ title, content, byline, blocks, siteName, videoUrl, articleUrl, isEditMode }: ArticleDisplayProps) {
+export function ArticleDisplay({ title, content, byline, blocks, siteName, videoUrl, isEditMode }: ArticleDisplayProps) {
     const contentRef = useRef<HTMLDivElement>(null);
     const videoPlayerRef = useRef<TEDVideoPlayerRef>(null);
     // Generate IDs if missing (migration)
@@ -63,17 +47,13 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
         const initial = blocks || [];
         return initial.map(b => ({
             ...b,
-            id: (b as any).id || Math.random().toString(36).substr(2, 9)
+            id: b.id || Math.random().toString(36).substr(2, 9)
         }));
     });
     const [popup, setPopup] = useState<PopupState | null>(null);
-    const [definition, setDefinition] = useState<DefinitionData | null>(null);
-    const [isLoadingDict, setIsLoadingDict] = useState(false);
-    const [isLoadingAI, setIsLoadingAI] = useState(false);
     const [activeSpan, setActiveSpan] = useState<HTMLElement | null>(null);
 
-    const popupRef = useRef<HTMLDivElement>(null);
-    const { fontClass, fontSizeClass, isFocusMode } = useReadingSettings();
+    const { fontClass, isFocusMode } = useReadingSettings();
     const [lockedFocusIndex, setLockedFocusIndex] = useState<number | null>(null);
 
     // Reset lock when focus mode is toggled off
@@ -83,40 +63,23 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
 
     const isTED = siteName === 'TED' || siteName === 'YouTube';
 
-
-    // Handle click outside to close popup
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
-                setPopup(null);
-            }
-        };
+        if (popup || !activeSpan) return;
 
-        if (popup) {
-            document.addEventListener("mousedown", handleClickOutside);
-        } else {
-            // Cleanup active span when popup closes
-            if (activeSpan) {
-                try {
-                    // Revert the span: replace span with its children
-                    const parent = activeSpan.parentNode;
-                    if (parent) {
-                        while (activeSpan.firstChild) {
-                            parent.insertBefore(activeSpan.firstChild, activeSpan);
-                        }
-                        parent.removeChild(activeSpan);
-                        parent.normalize(); // Merge text nodes
-                    }
-                } catch (e) {
-                    console.warn("Failed to unwrap active span:", e);
+        try {
+            const parent = activeSpan.parentNode;
+            if (parent) {
+                while (activeSpan.firstChild) {
+                    parent.insertBefore(activeSpan.firstChild, activeSpan);
                 }
-                setActiveSpan(null);
+                parent.removeChild(activeSpan);
+                parent.normalize();
             }
+        } catch (e) {
+            console.warn("Failed to unwrap active span:", e);
+        } finally {
+            setActiveSpan(null);
         }
-
-        return () => {
-            document.removeEventListener("mousedown", handleClickOutside);
-        };
     }, [popup, activeSpan]);
 
     // Fallback for HTML content if no blocks (shouldn't happen with new API)
@@ -131,7 +94,7 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
         if (blocks) {
             setActiveBlocks(blocks.map(b => ({
                 ...b,
-                id: (b as any).id || Math.random().toString(36).substr(2, 9)
+                id: b.id || Math.random().toString(36).substr(2, 9)
             })));
         }
     }, [blocks]);
@@ -267,85 +230,6 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
         }
 
         setPopup({ word, context, x, y });
-        setDefinition(null);
-        setIsLoadingDict(true);
-        setIsLoadingAI(false);
-
-        // Fetch Dictionary Definition Immediately
-        try {
-            const response = await fetch("/api/dictionary", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ word }),
-            });
-            const data = await response.json();
-            if (data.definition) {
-                setDefinition(prev => ({
-                    ...prev,
-                    dictionary_meaning: {
-                        definition: data.definition,
-                        translation: data.translation
-                    }
-                }));
-            }
-        } catch (error) {
-            console.error("Dictionary error:", error);
-        } finally {
-            setIsLoadingDict(false);
-        }
-    };
-
-    const handleAnalyzeContext = async () => {
-        if (!popup) return;
-        setIsLoadingAI(true);
-        try {
-            const response = await fetch("/api/ai/define", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ word: popup.word, context: popup.context }),
-            });
-            const data = await response.json();
-            setDefinition(prev => ({
-                ...prev,
-                context_meaning: data.context_meaning,
-                example: data.example,
-                phonetic: data.phonetic
-            }));
-        } catch (error) {
-            console.error("AI error:", error);
-        } finally {
-            setIsLoadingAI(false);
-        }
-    };
-
-    const [isSaved, setIsSaved] = useState(false);
-
-    // Reset saved state when popup changes
-    useEffect(() => {
-        if (popup) {
-            // Check if already saved
-            db.vocabulary.get(popup.word).then(item => {
-                setIsSaved(!!item);
-            });
-        }
-    }, [popup]);
-
-    const handleAddToVocab = async () => {
-        if (!popup || !definition) return;
-
-        try {
-            const card = createEmptyCard(popup.word);
-            // Enrich with current definition data
-            card.definition = definition.dictionary_meaning?.definition || "";
-            card.translation = definition.dictionary_meaning?.translation || "";
-            card.context = popup.context;
-            card.example = definition.example || "";
-
-            await db.vocabulary.put(card as any);
-            setIsSaved(true);
-        } catch (err) {
-            console.error("Failed to save vocab:", err);
-        }
     };
 
     return (
