@@ -9,6 +9,11 @@ export interface DrillSurfacePhaseInput {
     hasDrillData: boolean;
 }
 
+export interface ShopInventoryDockInput {
+    hasHoverSupport: boolean;
+    isShopHovered: boolean;
+}
+
 export type DrillSurfacePhase = "bootstrap" | "loading" | "ready";
 
 export function shouldRefreshBattleChart(
@@ -36,4 +41,15 @@ export function getDrillSurfacePhase({
     }
 
     return "loading";
+}
+
+export function shouldExpandShopInventoryDock({
+    hasHoverSupport,
+    isShopHovered,
+}: ShopInventoryDockInput): boolean {
+    if (!hasHoverSupport) {
+        return true;
+    }
+
+    return isShopHovered;
 }

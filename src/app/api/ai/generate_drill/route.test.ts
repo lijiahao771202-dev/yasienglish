@@ -125,6 +125,12 @@ describe("generate_drill route", () => {
         const data = await response.json();
 
         expect(createCompletionMock).toHaveBeenCalledTimes(3);
+        expect(
+            createCompletionMock.mock.calls[1][0].messages[1].content,
+        ).toContain("Next attempt MUST stay within 7-11 words.");
+        expect(
+            createCompletionMock.mock.calls[1][0].messages[1].content,
+        ).toContain("remove any passive voice, relative clause, or extra modifier");
         expect(data._difficultyMeta.status).toBe("TOO_HARD");
         expect(data._difficultyMeta.isValid).toBe(false);
         expect(data._difficultyMeta.actualWordCount).toBe(13);

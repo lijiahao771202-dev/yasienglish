@@ -20,7 +20,7 @@ import { TeachingCard } from "./TeachingCard";
 import { GhostTextarea } from "../vocab/GhostTextarea";
 import { TOPICS } from "../../app/battle/page";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
-import { getDrillSurfacePhase } from "@/lib/battleUiState";
+import { getDrillSurfacePhase, shouldExpandShopInventoryDock } from "@/lib/battleUiState";
 
 // --- Interfaces ---
 
@@ -770,6 +770,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isVocabHintRevealed, setIsVocabHintRevealed] = useState(false);
     const [showShopModal, setShowShopModal] = useState(false);
     const [shopFocusedItem, setShopFocusedItem] = useState<ShopItemId | null>(null);
+    const [isShopDockHovered, setIsShopDockHovered] = useState(false);
+    const [shopDockHasHoverSupport, setShopDockHasHoverSupport] = useState(false);
     const [isTranslationAudioUnlocked, setIsTranslationAudioUnlocked] = useState(false);
     const [economyFxQueue, setEconomyFxQueue] = useState<EconomyFxEvent[]>([]);
     const [activeEconomyFx, setActiveEconomyFx] = useState<EconomyFxEvent | null>(null);
@@ -791,6 +793,29 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [ownedThemes, setOwnedThemes] = useState<CosmeticThemeId[]>([...ALL_THEME_IDS]); // ALL UNLOCKED for testing
     const activeCosmeticTheme = COSMETIC_THEMES[cosmeticTheme] || COSMETIC_THEMES.morning_coffee;
     const activeCosmeticUi = COSMETIC_THEME_UI[cosmeticTheme] || COSMETIC_THEME_UI.morning_coffee;
+    const isShopInventoryExpanded = shouldExpandShopInventoryDock({
+        hasHoverSupport: shopDockHasHoverSupport,
+        isShopHovered: isShopDockHovered,
+    });
+
+    useEffect(() => {
+        if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+
+        const hoverMediaQuery = window.matchMedia("(hover: hover) and (pointer: fine)");
+        const syncHoverSupport = () => {
+            setShopDockHasHoverSupport(hoverMediaQuery.matches);
+            if (!hoverMediaQuery.matches) {
+                setIsShopDockHovered(false);
+            }
+        };
+
+        syncHoverSupport();
+        hoverMediaQuery.addEventListener("change", syncHoverSupport);
+
+        return () => {
+            hoverMediaQuery.removeEventListener("change", syncHoverSupport);
+        };
+    }, []);
 
     const persistProfilePatch = useCallback((patch: Partial<{ coins: number; hints: number; inventory: InventoryState; owned_themes: string[]; active_theme: string }>) => {
         if (Object.keys(patch).length === 0) return;
@@ -3996,60 +4021,81 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     "hidden md:flex items-center h-[38px] gap-1 p-0.5 rounded-full backdrop-blur-xl border ring-1 shrink-0 transition-all duration-300",
                                     activeCosmeticUi.ledgerClass,
                                     isHintShake && "animate-[shake_0.4s_ease-in-out] border-red-300 shadow-[0_0_18px_rgba(220,38,38,0.2)]"
-                                )}>
-                                    <div className="flex items-center h-[34px] shrink-0 gap-1 px-1">
-                                        <div
-                                            ref={(node) => { resourceTargetRefs.current.coins = node; }}
-                                            data-economy-target="coins"
-                                            className={cn("flex items-center gap-1 px-2.5 h-full rounded-full transition-all duration-300 cursor-default text-stone-700 hover:bg-white/70", getEconomyPulseClass('coins'))}
-                                        >
-                                            <span className="text-[12px] leading-none drop-shadow-sm mb-[1px]">✨</span>
-                                            <span className="font-mono font-bold text-[12px] tabular-nums">{coins}</span>
-                                        </div>
+                                )}
+                                    onMouseEnter={() => {
+                                        if (shopDockHasHoverSupport) setIsShopDockHovered(true);
+                                    }}
+                                    onMouseLeave={() => {
+                                        if (shopDockHasHoverSupport) setIsShopDockHovered(false);
+                                    }}
+                                    onFocusCapture={() => setIsShopDockHovered(true)}
+                                    onBlurCapture={(event) => {
+                                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                                            setIsShopDockHovered(false);
+                                        }
+                                    }}
+                                >
+                                    <div
+                                        className={cn(
+                                            "overflow-hidden transition-all duration-300 ease-out",
+                                            isShopInventoryExpanded ? "max-w-[460px] opacity-100 mr-1" : "max-w-0 opacity-0 mr-0"
+                                        )}
+                                        aria-hidden={!isShopInventoryExpanded}
+                                    >
+                                        <div className="flex items-center h-[34px] shrink-0 gap-1 px-1">
+                                            <div
+                                                ref={(node) => { resourceTargetRefs.current.coins = node; }}
+                                                data-economy-target="coins"
+                                                className={cn("flex items-center gap-1 px-2.5 h-full rounded-full transition-all duration-300 cursor-default text-stone-700 hover:bg-white/70", getEconomyPulseClass('coins'))}
+                                            >
+                                                <span className="text-[12px] leading-none drop-shadow-sm mb-[1px]">✨</span>
+                                                <span className="font-mono font-bold text-[12px] tabular-nums">{coins}</span>
+                                            </div>
 
-                                        <div
-                                            ref={(node) => { resourceTargetRefs.current.capsule = node; }}
-                                            data-economy-target="capsule"
-                                            className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-blue-700/80 hover:bg-blue-50", getEconomyPulseClass('capsule'))}
-                                        >
-                                            <span className="text-[11px] leading-none mb-[1px]">💊</span>
-                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{capsuleCount}</span>
-                                        </div>
+                                            <div
+                                                ref={(node) => { resourceTargetRefs.current.capsule = node; }}
+                                                data-economy-target="capsule"
+                                                className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-blue-700/80 hover:bg-blue-50", getEconomyPulseClass('capsule'))}
+                                            >
+                                                <span className="text-[11px] leading-none mb-[1px]">💊</span>
+                                                <span className="font-mono font-semibold text-[11px] tabular-nums">{capsuleCount}</span>
+                                            </div>
 
-                                        <div
-                                            ref={(node) => { resourceTargetRefs.current.hint_ticket = node; }}
-                                            data-economy-target="hint_ticket"
-                                            className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-amber-700/80 hover:bg-amber-50", getEconomyPulseClass('hint_ticket'))}
-                                        >
-                                            <span className="text-[11px] leading-none mb-[1px]">🪄</span>
-                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{hintTicketCount}</span>
-                                        </div>
+                                            <div
+                                                ref={(node) => { resourceTargetRefs.current.hint_ticket = node; }}
+                                                data-economy-target="hint_ticket"
+                                                className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-amber-700/80 hover:bg-amber-50", getEconomyPulseClass('hint_ticket'))}
+                                            >
+                                                <span className="text-[11px] leading-none mb-[1px]">🪄</span>
+                                                <span className="font-mono font-semibold text-[11px] tabular-nums">{hintTicketCount}</span>
+                                            </div>
 
-                                        <div
-                                            ref={(node) => { resourceTargetRefs.current.vocab_ticket = node; }}
-                                            data-economy-target="vocab_ticket"
-                                            className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-emerald-700/80 hover:bg-emerald-50", getEconomyPulseClass('vocab_ticket'))}
-                                        >
-                                            <span className="text-[11px] leading-none mb-[1px]">🧩</span>
-                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{vocabTicketCount}</span>
-                                        </div>
+                                            <div
+                                                ref={(node) => { resourceTargetRefs.current.vocab_ticket = node; }}
+                                                data-economy-target="vocab_ticket"
+                                                className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-emerald-700/80 hover:bg-emerald-50", getEconomyPulseClass('vocab_ticket'))}
+                                            >
+                                                <span className="text-[11px] leading-none mb-[1px]">🧩</span>
+                                                <span className="font-mono font-semibold text-[11px] tabular-nums">{vocabTicketCount}</span>
+                                            </div>
 
-                                        <div
-                                            ref={(node) => { resourceTargetRefs.current.audio_ticket = node; }}
-                                            data-economy-target="audio_ticket"
-                                            className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-indigo-700/80 hover:bg-indigo-50", getEconomyPulseClass('audio_ticket'))}
-                                        >
-                                            <span className="text-[11px] leading-none mb-[1px]">🔊</span>
-                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{audioTicketCount}</span>
-                                        </div>
+                                            <div
+                                                ref={(node) => { resourceTargetRefs.current.audio_ticket = node; }}
+                                                data-economy-target="audio_ticket"
+                                                className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-indigo-700/80 hover:bg-indigo-50", getEconomyPulseClass('audio_ticket'))}
+                                            >
+                                                <span className="text-[11px] leading-none mb-[1px]">🔊</span>
+                                                <span className="font-mono font-semibold text-[11px] tabular-nums">{audioTicketCount}</span>
+                                            </div>
 
-                                        <div
-                                            ref={(node) => { resourceTargetRefs.current.refresh_ticket = node; }}
-                                            data-economy-target="refresh_ticket"
-                                            className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-cyan-700/80 hover:bg-cyan-50", getEconomyPulseClass('refresh_ticket'))}
-                                        >
-                                            <RefreshCw className="h-[11px] w-[11px]" />
-                                            <span className="font-mono font-semibold text-[11px] tabular-nums">{refreshTicketCount}</span>
+                                            <div
+                                                ref={(node) => { resourceTargetRefs.current.refresh_ticket = node; }}
+                                                data-economy-target="refresh_ticket"
+                                                className={cn("flex items-center gap-1 px-2 h-full rounded-full transition-all duration-300 cursor-default text-cyan-700/80 hover:bg-cyan-50", getEconomyPulseClass('refresh_ticket'))}
+                                            >
+                                                <RefreshCw className="h-[11px] w-[11px]" />
+                                                <span className="font-mono font-semibold text-[11px] tabular-nums">{refreshTicketCount}</span>
+                                            </div>
                                         </div>
                                     </div>
 

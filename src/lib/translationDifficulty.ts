@@ -130,8 +130,8 @@ export const TRANSLATION_DIFFICULTY_TIERS: TranslationDifficultyTier[] = [
                 promptInstruction: 'WORD COUNT: 11-13 words. Keep one clear sentence spine. You may use a slightly richer phrase, but do NOT stack multiple clauses.',
             },
             mid: {
-                scaleSummary: 'One passive voice OR one relative clause, not both.',
-                promptInstruction: 'WORD COUNT: 13-16 words. May use ONE passive voice OR ONE relative clause. Do not stack both together.',
+                scaleSummary: 'Keep one main sentence and richer phrasing without length-heavy structures.',
+                promptInstruction: 'WORD COUNT: 13-16 words. Keep ONE main sentence. Use slightly richer wording. Do NOT use passive voice. Do NOT use relative clauses. If the sentence risks going over 16 words, simplify it.',
             },
             exit: {
                 scaleSummary: 'One relative clause or one passive voice with still-linear structure.',
@@ -343,13 +343,19 @@ export function buildTranslationRetryInstruction(params: {
 }) {
     const { attempt, maxAttempts, actualWordCount, status, target } = params;
     const direction = status === 'TOO_EASY' ? 'too short / too easy' : 'too long / too hard';
+    const validationMin = Math.max(1, target.wordRange.min - target.tolerance);
+    const validationMax = target.wordRange.max + target.tolerance;
+    const correctiveInstruction = status === 'TOO_EASY'
+        ? `- Next attempt MUST stay within ${validationMin}-${validationMax} words.\n- Add one short detail or connector, but keep ONE clear sentence.`
+        : `- Next attempt MUST stay within ${validationMin}-${validationMax} words.\n- To shorten it, remove any passive voice, relative clause, or extra modifier.\n- Prefer a direct, linear sentence over a more elaborate structure.`;
 
     return `
 RETRY FEEDBACK (${attempt}/${maxAttempts}):
 - Previous attempt was ${direction}.
 - Previous word count: ${actualWordCount}
 - Target range for current Elo: ${target.wordRange.min}-${target.wordRange.max}
-- Validation range after tolerance: ${Math.max(1, target.wordRange.min - target.tolerance)}-${target.wordRange.max + target.tolerance}
+- Validation range after tolerance: ${validationMin}-${validationMax}
+${correctiveInstruction}
 - Keep the same topic and style, but regenerate a NEW sentence that matches the current Elo more closely.
 - Do NOT paraphrase the failed attempt. Start over.
 `.trim();

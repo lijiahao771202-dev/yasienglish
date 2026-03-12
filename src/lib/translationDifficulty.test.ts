@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+    buildTranslationRetryInstruction,
     getTranslationDifficultyTarget,
     validateTranslationDifficulty,
 } from "./translationDifficulty";
@@ -46,6 +47,15 @@ describe("translation difficulty targets", () => {
         expect(Math.abs(afterPromotion.wordRange.min - beforePromotion.wordRange.min)).toBeLessThanOrEqual(2);
         expect(Math.abs(afterPromotion.wordRange.max - beforePromotion.wordRange.max)).toBeLessThanOrEqual(2);
     });
+
+    it("keeps the 1400 band structurally conservative despite the higher target range", () => {
+        const target = getTranslationDifficultyTarget(1400);
+
+        expect(target.wordRange).toEqual({ min: 13, max: 16 });
+        expect(target.syntaxBand.promptInstruction).toContain("Keep ONE main sentence");
+        expect(target.syntaxBand.promptInstruction).toContain("Do NOT use passive voice");
+        expect(target.syntaxBand.promptInstruction).toContain("Do NOT use relative clauses");
+    });
 });
 
 describe("translation difficulty validation", () => {
@@ -66,5 +76,19 @@ describe("translation difficulty validation", () => {
         expect(validation.wordRange).toEqual({ min: 20, max: 24 });
         expect(validation.validationRange).toEqual({ min: 18, max: 26 });
         expect(validation.status).toBe("MATCHED");
+    });
+
+    it("builds a hard-limit retry instruction when a sentence is too long", () => {
+        const retryInstruction = buildTranslationRetryInstruction({
+            attempt: 1,
+            maxAttempts: 3,
+            actualWordCount: 19,
+            status: "TOO_HARD",
+            target: getTranslationDifficultyTarget(1400),
+        });
+
+        expect(retryInstruction).toContain("Previous attempt was too long / too hard.");
+        expect(retryInstruction).toContain("Next attempt MUST stay within 12-17 words.");
+        expect(retryInstruction).toContain("remove any passive voice, relative clause, or extra modifier");
     });
 });
