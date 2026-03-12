@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Newspaper, ChevronRight, ChevronLeft, FileText, BookOpen, Sword } from "lucide-react";
+import { Newspaper, ChevronRight, ChevronLeft, FileText, Sword } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ArticleItem } from "./RecommendedArticles";
 import { useUserStore } from "@/lib/store";
@@ -50,12 +49,8 @@ export function ArticleSidebar({ articles, currentUrl, onSelect, isOpen, setIsOp
                 </div>
 
                 {/* Navigation Links */}
-                <div className="px-4 py-2 flex gap-2 border-b border-stone-200/50">
-                    <a href="/vocab" className="flex-1 flex items-center justify-center gap-2 p-2 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors text-sm font-medium border border-emerald-100">
-                        <BookOpen className="w-4 h-4" />
-                        Vocabulary
-                    </a>
-                    <a href="/battle" className="flex-1 flex items-center justify-center gap-2 p-2 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors text-sm font-medium border border-indigo-100">
+                <div className="px-4 py-3 border-b border-stone-200/50">
+                    <a href="/battle" className="w-full flex items-center justify-center gap-2 p-2 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors text-sm font-medium border border-indigo-100">
                         <Sword className="w-4 h-4" />
                         Battle
                     </a>

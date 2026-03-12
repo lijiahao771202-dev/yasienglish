@@ -3416,89 +3416,184 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         isGeneratingDrill,
         hasDrillData: !!drillData,
     });
+    const loaderActive = drillSurfacePhase === "bootstrap" || drillSurfacePhase === "loading";
+    const [loaderTick, setLoaderTick] = useState(0);
 
-    const renderDrillLoadingState = (title: string, subtitle: string, backgroundClass: string) => (
-        <div className="h-full flex flex-col items-center justify-center relative overflow-hidden">
-            <div className={cn("absolute inset-0", backgroundClass)} />
+    useEffect(() => {
+        if (!loaderActive) {
+            setLoaderTick(0);
+            return;
+        }
 
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <motion.div
-                    className="absolute w-64 h-64 rounded-full bg-gradient-to-br from-indigo-200/30 to-purple-200/30 blur-3xl"
-                    animate={{ x: [0, 50, 0], y: [0, -30, 0] }}
-                    transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-                    style={{ top: '10%', left: '10%' }}
-                />
-                <motion.div
-                    className="absolute w-48 h-48 rounded-full bg-gradient-to-br from-purple-200/30 to-pink-200/30 blur-3xl"
-                    animate={{ x: [0, -40, 0], y: [0, 40, 0] }}
-                    transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-                    style={{ bottom: '20%', right: '15%' }}
-                />
-            </div>
+        const intervalId = window.setInterval(() => {
+            setLoaderTick((prev) => prev + 1);
+        }, 760);
 
-            <div className="relative z-10 flex flex-col items-center space-y-8">
-                <div className="flex items-end justify-center gap-1.5 h-20">
-                    {[0.4, 0.7, 1, 0.8, 0.5, 0.9, 0.6, 0.3, 0.7, 0.5, 0.8, 0.4].map((intensity, i) => (
-                        <motion.div
-                            key={i}
-                            className="w-2 rounded-full bg-gradient-to-t from-indigo-600 to-purple-500 shadow-lg shadow-indigo-500/30"
-                            animate={{
-                                height: [8, 60 * intensity, 8],
-                                opacity: [0.5, 1, 0.5]
-                            }}
-                            transition={{
-                                duration: 0.8 + (i * 0.05),
-                                repeat: Infinity,
-                                ease: "easeInOut",
-                                delay: i * 0.08
-                            }}
-                        />
-                    ))}
-                </div>
+        return () => window.clearInterval(intervalId);
+    }, [loaderActive]);
 
-                <div className="text-center space-y-2">
-                    <p className="text-stone-700 font-medium text-lg">{title}</p>
-                    <p className="text-stone-400 text-sm">{subtitle}</p>
-                </div>
+    type DrillLoadingVariant = DrillMode;
 
-                <div className="flex items-center gap-2">
-                    {[0, 1, 2].map((i) => (
-                        <motion.div
-                            key={i}
-                            className="w-2 h-2 rounded-full bg-indigo-500"
-                            animate={{
-                                scale: [1, 1.5, 1],
-                                opacity: [0.3, 1, 0.3]
-                            }}
-                            transition={{
-                                duration: 1.2,
-                                repeat: Infinity,
-                                delay: i * 0.3
-                            }}
-                        />
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
+    const renderDrillLoadingState = ({
+        title,
+        subtitle,
+        backgroundClass,
+        variant,
+    }: {
+        title: string;
+        subtitle: string;
+        backgroundClass: string;
+        variant: DrillLoadingVariant;
+    }) => {
+        const variantUi = variant === "listening"
+            ? {
+                mode: "Listening Mode",
+                icon: Headphones,
+                auraPrimary: "from-cyan-200/45 via-sky-200/35 to-transparent",
+                auraSecondary: "from-blue-200/35 via-cyan-100/30 to-transparent",
+                badgeClass: "border-cyan-200/80 bg-cyan-50/85 text-cyan-700",
+                dotClass: "bg-cyan-500",
+                coreGradient: "from-cyan-500 via-sky-500 to-blue-500",
+                progressGradient: "from-cyan-400 via-sky-500 to-cyan-500",
+                beamGradient: "from-transparent via-cyan-400/85 to-transparent",
+                haloGradient: "conic-gradient(from 90deg, rgba(34,211,238,0.08), rgba(14,165,233,0.55), rgba(59,130,246,0.08), rgba(14,165,233,0.55), rgba(34,211,238,0.08))",
+                stages: ["声纹预热", "降噪校准", "播放就绪"],
+                comfortCopy: "正在为你生成更清晰、稳定的听力挑战",
+                accentText: "text-cyan-700",
+            }
+            : variant === "translation"
+                ? {
+                    mode: "Translate Mode",
+                    icon: Globe,
+                    auraPrimary: "from-amber-200/45 via-orange-200/35 to-transparent",
+                    auraSecondary: "from-rose-200/35 via-orange-100/28 to-transparent",
+                    badgeClass: "border-amber-200/80 bg-amber-50/85 text-amber-700",
+                    dotClass: "bg-orange-500",
+                    coreGradient: "from-amber-500 via-orange-500 to-rose-500",
+                    progressGradient: "from-amber-400 via-orange-500 to-amber-500",
+                    beamGradient: "from-transparent via-orange-400/85 to-transparent",
+                    haloGradient: "conic-gradient(from 90deg, rgba(251,191,36,0.08), rgba(249,115,22,0.55), rgba(244,114,182,0.08), rgba(249,115,22,0.55), rgba(251,191,36,0.08))",
+                    stages: ["语义草拟", "语法校准", "句式润色"],
+                    comfortCopy: "正在为你打磨更自然、地道的表达难度",
+                    accentText: "text-amber-700",
+                }
+                : {
+                    mode: "Translate Mode",
+                    icon: Globe,
+                    auraPrimary: "from-amber-200/45 via-orange-200/35 to-transparent",
+                    auraSecondary: "from-rose-200/35 via-orange-100/28 to-transparent",
+                    badgeClass: "border-amber-200/80 bg-amber-50/85 text-amber-700",
+                    dotClass: "bg-orange-500",
+                    coreGradient: "from-amber-500 via-orange-500 to-rose-500",
+                    progressGradient: "from-amber-400 via-orange-500 to-amber-500",
+                    beamGradient: "from-transparent via-orange-400/85 to-transparent",
+                    haloGradient: "conic-gradient(from 90deg, rgba(251,191,36,0.08), rgba(249,115,22,0.55), rgba(244,114,182,0.08), rgba(249,115,22,0.55), rgba(251,191,36,0.08))",
+                    stages: ["语义草拟", "语法校准", "句式润色"],
+                    comfortCopy: "正在为你打磨更自然、地道的表达难度",
+                    accentText: "text-amber-700",
+                };
 
-    if (drillSurfacePhase === "bootstrap") {
+        const ModeIcon = variantUi.icon;
+        const stageIndex = Math.min(variantUi.stages.length - 1, Math.floor(loaderTick / 4));
+        const pseudoProgress = Math.round(18 + (1 - Math.exp(-loaderTick / 6)) * 74);
+
         return (
-            <AnimatePresence>
-                <motion.div
-                    key="drill-core-bootstrap"
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                    className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/40 backdrop-blur-sm"
-                >
-                    <div className="relative w-full max-w-5xl h-[85vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.82),rgba(245,244,240,0.76))] backdrop-blur-2xl">
-                        {renderDrillLoadingState("正在载入战场...", "Restoring your profile and theme", "bg-gradient-to-br from-stone-50 via-white to-indigo-50/50")}
+            <div className="h-full flex flex-col items-center justify-center relative overflow-hidden px-4">
+                <div className={cn("absolute inset-0", backgroundClass)} />
+                <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.07)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.07)_1px,transparent_1px)] bg-[size:46px_46px] opacity-30" />
+
+                <div className="pointer-events-none absolute inset-0 overflow-hidden">
+                    <motion.div
+                        className={cn("absolute -left-16 top-10 h-64 w-64 rounded-full bg-gradient-to-br blur-3xl", variantUi.auraPrimary)}
+                        animate={prefersReducedMotion ? { opacity: 0.32 } : { x: [0, 28, 0], y: [0, -16, 0], opacity: [0.28, 0.46, 0.28] }}
+                        transition={{ duration: 11, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
+                    />
+                    <motion.div
+                        className={cn("absolute -right-14 bottom-8 h-60 w-60 rounded-full bg-gradient-to-br blur-3xl", variantUi.auraSecondary)}
+                        animate={prefersReducedMotion ? { opacity: 0.3 } : { x: [0, -26, 0], y: [0, 20, 0], opacity: [0.26, 0.42, 0.26] }}
+                        transition={{ duration: 12, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
+                    />
+                </div>
+
+                <div className="relative z-10 w-full max-w-[560px] overflow-hidden rounded-[32px] border border-white/75 bg-white/74 p-7 shadow-[0_26px_80px_rgba(15,23,42,0.11)] backdrop-blur-[22px] md:p-9">
+                    <motion.div
+                        className="absolute inset-y-0 -left-24 w-24 bg-gradient-to-r from-transparent via-white/55 to-transparent"
+                        animate={prefersReducedMotion ? { x: 240 } : { x: [-120, 640] }}
+                        transition={{ duration: 4.4, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
+                    />
+
+                    <div className="relative mb-5 flex items-center justify-center">
+                        <span className={cn("inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold tracking-wide", variantUi.badgeClass)}>
+                            <ModeIcon className="h-3.5 w-3.5" />
+                            {variantUi.mode}
+                        </span>
                     </div>
-                </motion.div>
-            </AnimatePresence>
+
+                    <div className="relative mx-auto mb-7 h-28 w-28">
+                        <motion.div
+                            className="absolute inset-0 rounded-full border border-white/60 bg-white/35"
+                            animate={prefersReducedMotion ? { opacity: 0.88 } : { scale: [1, 1.08, 1], opacity: [0.35, 0.62, 0.35] }}
+                            transition={{ duration: 3, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
+                        />
+                        <motion.div
+                            className="absolute inset-0 rounded-full"
+                            style={{ background: variantUi.haloGradient }}
+                            animate={prefersReducedMotion ? { rotate: 0 } : { rotate: 360 }}
+                            transition={{ duration: 8.2, repeat: prefersReducedMotion ? 0 : Infinity, ease: "linear" }}
+                        />
+                        <div className="absolute inset-[10px] rounded-full border border-white/70 bg-white/80 backdrop-blur-sm" />
+                        <motion.div
+                            className={cn("absolute inset-[35px] rounded-full bg-gradient-to-br shadow-[0_0_24px_rgba(255,255,255,0.7)]", variantUi.coreGradient)}
+                            animate={prefersReducedMotion ? { scale: 1 } : { scale: [1, 1.18, 1], opacity: [0.72, 0.98, 0.72] }}
+                            transition={{ duration: 2.2, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
+                        />
+                    </div>
+
+                    <div className="relative text-center space-y-2">
+                        <p className="font-newsreader text-[30px] leading-none font-semibold tracking-tight text-stone-800">{title}</p>
+                        <p className="text-sm tracking-wide text-stone-500">{subtitle}</p>
+                        <p className="text-[11px] text-stone-400">{variantUi.comfortCopy}</p>
+                    </div>
+
+                    <div className="mt-5 flex items-center justify-between text-[11px] font-medium tracking-wide text-stone-500">
+                        <motion.span
+                            key={variantUi.stages[stageIndex]}
+                            initial={prefersReducedMotion ? false : { opacity: 0, y: 3 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.35, ease: "easeOut" }}
+                            className={variantUi.accentText}
+                        >
+                            {variantUi.stages[stageIndex]}
+                        </motion.span>
+                        <span className="tabular-nums text-stone-400">{pseudoProgress}%</span>
+                    </div>
+
+                    <div className="relative mx-auto mt-6 h-2.5 w-full max-w-[430px] overflow-hidden rounded-full bg-white/70 ring-1 ring-black/5">
+                        <div
+                            className={cn("absolute left-0 top-0 h-2.5 rounded-full bg-gradient-to-r transition-[width] duration-700 ease-out", variantUi.progressGradient)}
+                            style={{ width: `${pseudoProgress}%` }}
+                        />
+                        <motion.div
+                            className={cn("absolute left-0 top-0 h-2.5 w-20 bg-gradient-to-r", variantUi.beamGradient)}
+                            animate={prefersReducedMotion ? { x: 210 } : { x: [-95, 470] }}
+                            transition={{ duration: 2.8, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
+                        />
+                    </div>
+
+                    <div className="mt-5 flex items-center justify-center gap-2.5">
+                        {[0, 1, 2].map((i) => (
+                            <motion.span
+                                key={i}
+                                className={cn("h-2.5 w-2.5 rounded-full", variantUi.dotClass)}
+                                animate={prefersReducedMotion ? { opacity: 0.8 } : { scale: [0.9, 1.15, 0.9], opacity: [0.32, 0.95, 0.32] }}
+                                transition={{ duration: 1.15, repeat: prefersReducedMotion ? 0 : Infinity, delay: i * 0.18 }}
+                            />
+                        ))}
+                    </div>
+                </div>
+            </div>
         );
-    }
+    };
 
     return (
         <AnimatePresence>
@@ -4191,12 +4286,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         />
 
 
-                        {drillSurfacePhase === "loading" ? (
-                            renderDrillLoadingState(
-                                mode === "translation" ? "正在生成句子..." : "正在准备音频...",
-                                mode === "translation" ? "Crafting your phrase" : "Preparing audio stream",
-                                "bg-gradient-to-br from-indigo-50/50 via-white to-purple-50/50",
-                            )
+                        {drillSurfacePhase !== "ready" ? (
+                            renderDrillLoadingState({
+                                title: mode === "translation" ? "正在生成句子..." : "正在准备音频...",
+                                subtitle: mode === "translation" ? "Crafting your phrase" : "Preparing audio stream",
+                                backgroundClass: "bg-gradient-to-br from-stone-50 via-white to-slate-50/70",
+                                variant: mode,
+                            })
                         ) : drillData ? (
                             <AnimatePresence mode="popLayout" initial={false}>
                                 {!drillFeedback ? (
