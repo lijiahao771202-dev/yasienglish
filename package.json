@@ -37,6 +37,7 @@
     "react-dom": "19.2.3",
     "react-markdown": "^10.1.0",
     "recharts": "^3.7.0",
+    "remark-gfm": "^4.0.1",
     "rss-parser": "^3.13.0",
     "sherpa-onnx": "^1.12.21",
     "sherpa-onnx-node": "^1.12.21",

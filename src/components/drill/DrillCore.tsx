@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as Diff from 'diff';
 import confetti from 'canvas-confetti';
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { WordPopup, PopupState } from "../reading/WordPopup";
 import { useWhisper } from "@/hooks/useWhisper";
 import { db } from "@/lib/db";
@@ -81,6 +83,94 @@ interface DrillFeedback {
     error_analysis?: Array<{ error: string; correction: string; rule: string; tip: string }>;
     similar_patterns?: Array<{ chinese: string; english: string; point: string }>;
     _error?: boolean;
+}
+
+type TutorQuestionType = "pattern" | "word_choice" | "example" | "unlock_answer" | "follow_up";
+
+interface TutorStructuredResponse {
+    coach_cn: string;
+    pattern_en: string[];
+    contrast: string;
+    next_task: string;
+    answer_revealed: boolean;
+    full_answer?: string;
+    answer_reason_cn?: string;
+    teaching_point: string;
+}
+
+interface TutorHistoryTurn extends TutorStructuredResponse {
+    question: string;
+    question_type: TutorQuestionType;
+}
+
+function TutorMarkdown({ content, className }: { content: string; className?: string }) {
+    return (
+        <div className={cn("prose prose-sm max-w-none text-inherit leading-6", className)}>
+            <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                    p: ({ children }) => <p className="my-1 text-inherit">{children}</p>,
+                    h1: ({ children }) => <h1 className="mt-3 mb-1 text-xl font-bold text-stone-900">{children}</h1>,
+                    h2: ({ children }) => <h2 className="mt-3 mb-1 text-lg font-bold text-stone-900">{children}</h2>,
+                    h3: ({ children }) => <h3 className="mt-2.5 mb-1 text-base font-semibold text-stone-900">{children}</h3>,
+                    h4: ({ children }) => <h4 className="mt-2 mb-1 text-sm font-semibold text-stone-800">{children}</h4>,
+                    ul: ({ children }) => <ul className="my-1 list-disc pl-5">{children}</ul>,
+                    ol: ({ children }) => <ol className="my-1 list-decimal pl-5">{children}</ol>,
+                    li: ({ children }) => <li className="my-0.5">{children}</li>,
+                    blockquote: ({ children }) => (
+                        <blockquote className="my-2 rounded-r-lg border-l-4 border-sky-300 bg-sky-50/60 px-3 py-2 text-sky-900">
+                            {children}
+                        </blockquote>
+                    ),
+                    hr: () => <hr className="my-3 border-stone-200" />,
+                    strong: ({ children }) => (
+                        <strong className="rounded-[4px] bg-amber-100/85 px-1 py-0.5 font-semibold text-amber-900 underline decoration-amber-400 decoration-2 underline-offset-4">
+                            {children}
+                        </strong>
+                    ),
+                    em: ({ children }) => <em className="text-indigo-700 italic">{children}</em>,
+                    del: ({ children }) => <del className="text-stone-400 line-through">{children}</del>,
+                    a: ({ children, href }) => (
+                        <a href={href} target="_blank" rel="noreferrer" className="text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-800">
+                            {children}
+                        </a>
+                    ),
+                    pre: ({ children }) => (
+                        <pre className="my-2 overflow-x-auto rounded-xl border border-stone-200 bg-stone-900/95 p-3 text-xs text-stone-100">
+                            {children}
+                        </pre>
+                    ),
+                    code: ({ children, className: codeClassName, ...props }) => {
+                        const isInline = !String(codeClassName || "").includes("language-");
+                        if (isInline) {
+                            return (
+                                <code className="rounded bg-stone-100 px-1 py-0.5 text-[0.9em] text-stone-700">
+                                    {children}
+                                </code>
+                            );
+                        }
+                        return (
+                            <code className={cn("text-xs", codeClassName)} {...props}>
+                                {children}
+                            </code>
+                        );
+                    },
+                    table: ({ children }) => (
+                        <div className="my-2 overflow-x-auto rounded-xl border border-stone-200">
+                            <table className="min-w-full border-collapse text-left text-xs">{children}</table>
+                        </div>
+                    ),
+                    thead: ({ children }) => <thead className="bg-stone-100 text-stone-700">{children}</thead>,
+                    tbody: ({ children }) => <tbody className="bg-white">{children}</tbody>,
+                    tr: ({ children }) => <tr className="border-t border-stone-200">{children}</tr>,
+                    th: ({ children }) => <th className="px-2.5 py-2 font-semibold">{children}</th>,
+                    td: ({ children }) => <td className="px-2.5 py-2 text-stone-600">{children}</td>,
+                }}
+            >
+                {content}
+            </ReactMarkdown>
+        </div>
+    );
 }
 
 interface DictionaryData {
@@ -735,7 +825,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isTutorOpen, setIsTutorOpen] = useState(false);
     const [tutorQuery, setTutorQuery] = useState("");
     const [tutorAnswer, setTutorAnswer] = useState<string | null>(null);
+    const [tutorThread, setTutorThread] = useState<TutorHistoryTurn[]>([]);
+    const [tutorResponse, setTutorResponse] = useState<TutorStructuredResponse | null>(null);
+    const [tutorHintLevel, setTutorHintLevel] = useState(1);
+    const [tutorNoProgressTurns, setTutorNoProgressTurns] = useState(0);
+    const [tutorPendingQuestion, setTutorPendingQuestion] = useState<string | null>(null);
     const [isAskingTutor, setIsAskingTutor] = useState(false);
+    const tutorHistoryScrollRef = useRef<HTMLDivElement | null>(null);
 
     // Teaching Mode State
     const [teachingMode, setTeachingMode] = useState(false);
@@ -816,6 +912,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             hoverMediaQuery.removeEventListener("change", syncHoverSupport);
         };
     }, []);
+
+    useEffect(() => {
+        if (!isTutorOpen) return;
+        const container = tutorHistoryScrollRef.current;
+        if (!container) return;
+        container.scrollTop = container.scrollHeight;
+    }, [isTutorOpen, tutorPendingQuestion, tutorThread.length]);
 
     const persistProfilePatch = useCallback((patch: Partial<{ coins: number; hints: number; inventory: InventoryState; owned_themes: string[]; active_theme: string }>) => {
         if (Object.keys(patch).length === 0) return;
@@ -2159,6 +2262,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setDrillFeedback(null);
             setUserTranslation("");
             setTutorAnswer(null);
+            setTutorThread([]);
+            setTutorResponse(null);
+            setTutorHintLevel(1);
+            setTutorNoProgressTurns(0);
+            setTutorPendingQuestion(null);
+            setTutorQuery("");
             setIsTutorOpen(false);
             setWordPopup(null);
             setIsPlaying(false);
@@ -2211,6 +2320,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setDrillFeedback(null);
         setUserTranslation("");
         setTutorAnswer(null);
+        setTutorThread([]);
+        setTutorResponse(null);
+        setTutorHintLevel(1);
+        setTutorNoProgressTurns(0);
+        setTutorPendingQuestion(null);
+        setTutorQuery("");
         setIsTutorOpen(false);
         setWordPopup(null);
         setIsPlaying(false);
@@ -2855,24 +2970,203 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
     };
 
-    const handleAskTutor = async () => {
-        if (!tutorQuery.trim() || !drillData) return;
+    const inferTeachingPoint = () => {
+        const chinese = drillData?.chinese || "";
+        const english = drillFeedback?.improved_version || drillData?.reference_english || "";
+        const signal = `${chinese} ${english}`.toLowerCase();
+
+        if (/(如果|假如|除非|只要)/.test(chinese) || /\bif\b|\bunless\b|\bprovided\b/.test(signal)) {
+            return "条件句与逻辑关系";
+        }
+        if (/(当|后|之前|以后|时候|一.+就)/.test(chinese) || /\bwhen\b|\bafter\b|\bbefore\b|\bonce\b|\buntil\b/.test(signal)) {
+            return "时间从句与时序表达";
+        }
+        if (/\bignite\b|\bspark\b|\bbetween\b|\bromantic\b/.test(signal)) {
+            return "词汇搭配与语气";
+        }
+        return "语序与自然表达";
+    };
+
+    const normalizeTutorResponse = (raw: unknown, fallbackTeachingPoint: string): TutorStructuredResponse => {
+        const readString = (value: unknown) => typeof value === "string" ? value.trim() : "";
+        const asObject = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+        const rawPatterns = Array.isArray(asObject.pattern_en) ? asObject.pattern_en : [];
+        const patterns = rawPatterns
+            .map((item) => readString(item))
+            .filter(Boolean)
+            .slice(0, 2);
+
+        return {
+            coach_cn: readString(asObject.coach_cn) || "你已经抓住大意了。先修一个关键点，再继续完善句子。",
+            pattern_en: patterns.length > 0 ? patterns : ["When ..., ..."],
+            contrast: readString(asObject.contrast) || "中式表达常逐词直译，地道表达更强调信息重心与自然搭配。",
+            next_task: readString(asObject.next_task) || "请按模板重写一句，再发我继续纠正。",
+            answer_revealed: Boolean(asObject.answer_revealed),
+            full_answer: readString(asObject.full_answer) || undefined,
+            answer_reason_cn: readString(asObject.answer_reason_cn) || undefined,
+            teaching_point: readString(asObject.teaching_point) || fallbackTeachingPoint,
+        };
+    };
+
+    const handleAskTutor = async (options?: {
+        question?: string;
+        questionType?: TutorQuestionType;
+        forceReveal?: boolean;
+    }) => {
+        const question = (options?.question ?? tutorQuery).trim();
+        if (!question || !drillData) return;
         setIsAskingTutor(true);
+        setTutorPendingQuestion(question);
+        setTutorQuery("");
+        setTutorAnswer("");
+
+        const teachingPoint = tutorResponse?.teaching_point || inferTeachingPoint();
+        const requestedType = options?.questionType ?? "follow_up";
+        const unlockRequested = requestedType === "unlock_answer" || options?.forceReveal === true;
+        const nextNoProgressTurns = unlockRequested ? tutorNoProgressTurns : tutorNoProgressTurns + 1;
+        const autoReveal = !unlockRequested && nextNoProgressTurns >= 2;
+        const shouldReveal = unlockRequested || autoReveal;
+        const outgoingQuestionType: TutorQuestionType = shouldReveal ? "unlock_answer" : requestedType;
+        const outgoingHintLevel = shouldReveal
+            ? Math.max(3, tutorHintLevel)
+            : Math.min(4, tutorHintLevel + 1);
 
         try {
             const response = await fetch("/api/ai/ask_tutor", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    query: tutorQuery,
+                    query: question,
+                    hintLevel: outgoingHintLevel,
+                    questionType: outgoingQuestionType,
+                    userAttempt: userTranslation,
+                    improvedVersion: drillFeedback?.improved_version,
+                    score: drillFeedback?.score,
+                    recentTurns: tutorThread.slice(-4).map((item) => ({
+                        question: item.question,
+                        answer: item.coach_cn,
+                    })),
+                    teachingPoint,
+                    revealAnswer: shouldReveal,
                     drillContext: drillData,
-                    articleTitle: drillData._topicMeta?.topic || context.articleTitle || context.topic
+                    articleTitle: drillData._topicMeta?.topic || context.articleTitle || context.topic,
+                    stream: true,
                 }),
             });
-            const data = await response.json();
-            setTutorAnswer(data.answer);
+
+            if (!response.ok) {
+                throw new Error("Tutor 请求失败");
+            }
+
+            let normalized: TutorStructuredResponse | null = null;
+            const contentType = response.headers.get("content-type") || "";
+
+            if (contentType.includes("text/event-stream") && response.body) {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+                let streamedCoach = "";
+
+                const applyStreamingCoach = (coach: string) => {
+                    setTutorAnswer(coach);
+                    setTutorResponse((prev) => ({
+                        coach_cn: coach,
+                        pattern_en: prev?.pattern_en ?? [],
+                        contrast: prev?.contrast ?? "",
+                        next_task: prev?.next_task ?? "",
+                        answer_revealed: prev?.answer_revealed ?? false,
+                        full_answer: prev?.full_answer,
+                        answer_reason_cn: prev?.answer_reason_cn,
+                        teaching_point: prev?.teaching_point ?? teachingPoint,
+                    }));
+                };
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+
+                    let boundaryIndex = buffer.indexOf("\n\n");
+                    while (boundaryIndex !== -1) {
+                        const message = buffer.slice(0, boundaryIndex);
+                        buffer = buffer.slice(boundaryIndex + 2);
+                        boundaryIndex = buffer.indexOf("\n\n");
+
+                        let eventName = "message";
+                        let dataLine = "";
+                        for (const line of message.split("\n")) {
+                            if (line.startsWith("event:")) {
+                                eventName = line.slice(6).trim();
+                            } else if (line.startsWith("data:")) {
+                                dataLine += line.slice(5).trim();
+                            }
+                        }
+
+                        if (!dataLine || dataLine === "[DONE]") continue;
+
+                        if (eventName === "error") {
+                            throw new Error("Tutor stream failed");
+                        }
+
+                        if (eventName === "chunk") {
+                            try {
+                                const parsedChunk = JSON.parse(dataLine) as { coach_cn?: string };
+                                if (typeof parsedChunk.coach_cn === "string" && parsedChunk.coach_cn.trim()) {
+                                    streamedCoach = parsedChunk.coach_cn.trim();
+                                    applyStreamingCoach(streamedCoach);
+                                }
+                            } catch {
+                                continue;
+                            }
+                        }
+
+                        if (eventName === "final") {
+                            try {
+                                const parsedFinal = JSON.parse(dataLine);
+                                normalized = normalizeTutorResponse(parsedFinal, teachingPoint);
+                            } catch {
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                if (!normalized && streamedCoach) {
+                    normalized = normalizeTutorResponse(
+                        { coach_cn: streamedCoach, teaching_point: teachingPoint, answer_revealed: shouldReveal },
+                        teachingPoint
+                    );
+                }
+            } else {
+                const data = await response.json();
+                if (data?.error) {
+                    throw new Error(data.error);
+                }
+                normalized = normalizeTutorResponse(data, teachingPoint);
+            }
+
+            if (!normalized) {
+                throw new Error("暂时没有拿到回复，请再问一次。");
+            }
+
+            setTutorResponse(normalized);
+            setTutorAnswer(normalized.coach_cn);
+            setTutorThread((prev) => [
+                ...prev,
+                {
+                    question,
+                    question_type: outgoingQuestionType,
+                    ...normalized,
+                },
+            ].slice(-6));
+            setTutorHintLevel(outgoingHintLevel);
+            setTutorNoProgressTurns(normalized.answer_revealed ? 0 : nextNoProgressTurns);
+            setTutorPendingQuestion(null);
         } catch (error) {
             console.error(error);
+            setTutorAnswer("AI Tutor 暂时不可用，请稍后重试。");
+            setTutorPendingQuestion(null);
         } finally {
             setIsAskingTutor(false);
         }
@@ -3038,7 +3332,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     // --- Interactive Renderers (Ported) ---
 
-    const handleWordClick = (e: React.MouseEvent, word: string) => {
+    const handleWordClick = (e: React.MouseEvent, word: string, contextText?: string) => {
         e.stopPropagation();
         const cleanWord = word.replace(/[^a-zA-Z]/g, "").trim();
         if (!cleanWord) return;
@@ -3062,7 +3356,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         setWordPopup({
             word: cleanWord,
-            context: drillData?.reference_english || "",
+            context: contextText || drillData?.reference_english || "",
             x: rect.left + rect.width / 2,
             y: rect.bottom + 10
         });
@@ -3093,7 +3387,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             return (
                 <span key={i} className="relative inline-block">
                     <span
-                        onClick={(e) => handleWordClick(e, word)}
+                        onClick={(e) => handleWordClick(e, word, text)}
                         className={cn(
                             "cursor-pointer px-1.5 py-0.5 transition-all duration-300 rounded-lg mx-[1px] relative",
                             "hover:text-rose-600 hover:bg-rose-50/60 hover:scale-105",
@@ -3106,6 +3400,30 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         {word}
                     </span>
                     {" "}
+                </span>
+            );
+        });
+    };
+
+    const renderInteractiveCoachText = (text: string) => {
+        if (!text) return null;
+
+        return text.split(" ").map((word, i) => {
+            const clean = word.replace(/[^a-zA-Z]/g, "").trim();
+            const isActive = clean && wordPopup?.word?.toLowerCase() === clean.toLowerCase();
+
+            return (
+                <span key={`${word}-${i}`} className="inline-block">
+                    <span
+                        onClick={(e) => handleWordClick(e, word, text)}
+                        className={cn(
+                            "cursor-pointer rounded-lg px-1 py-0.5 transition-all duration-200",
+                            "hover:bg-indigo-100/80 hover:text-indigo-800",
+                            isActive ? "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200" : "text-indigo-900"
+                        )}
+                    >
+                        {word}
+                    </span>{" "}
                 </span>
             );
         });
@@ -3594,6 +3912,28 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             </div>
         );
     };
+
+    const renderableTutorTurns = tutorThread.map((turn) => ({
+        question: turn.question,
+        answer: turn.coach_cn,
+        pending: false,
+    }));
+
+    if (tutorPendingQuestion) {
+        renderableTutorTurns.push({
+            question: tutorPendingQuestion,
+            answer: tutorAnswer || "",
+            pending: true,
+        });
+    } else if (tutorAnswer && tutorThread.length === 0) {
+        renderableTutorTurns.push({
+            question: "",
+            answer: tutorAnswer,
+            pending: false,
+        });
+    }
+
+    const showTutorExchange = renderableTutorTurns.length > 0;
 
     return (
         <AnimatePresence>
@@ -4838,16 +5178,125 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     {/* AI Tutor Cloud */}
                                                     <AnimatePresence>
                                                         {isTutorOpen && (
-                                                            <motion.div initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: 10 }} className={cn("absolute bottom-20 right-0 w-80 rounded-2xl border p-4 z-20 flex flex-col gap-3", activeCosmeticUi.tutorPanelClass)}>
-                                                                <div className="flex items-center justify-between pb-2 border-b border-black/5">
-                                                                    <span className={cn("text-xs font-bold flex items-center gap-1", activeCosmeticUi.tutorSendClass)}><MessageCircle className="w-3 h-3" /> AI Tutor</span>
-                                                                    <button onClick={() => setIsTutorOpen(false)} className="text-stone-400 hover:text-stone-600"><X className="w-3 h-3" /></button>
+                                                            <motion.div
+                                                                initial={{ opacity: 0, scale: 0.94, y: 10 }}
+                                                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                                exit={{ opacity: 0, scale: 0.94, y: 8 }}
+                                                                className={cn("absolute bottom-20 right-0 z-20 flex w-[400px] max-w-[min(400px,calc(100vw-2rem))] max-h-[560px] flex-col overflow-hidden rounded-[1.4rem] border p-3 md:p-3.5", activeCosmeticUi.tutorPanelClass)}
+                                                            >
+                                                                <div className="flex items-center justify-between gap-3">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={cn("text-sm font-semibold flex items-center gap-1.5", activeCosmeticUi.tutorSendClass)}>
+                                                                            <MessageCircle className="w-4 h-4" />
+                                                                            AI Tutor
+                                                                        </span>
+                                                                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700">
+                                                                            {tutorResponse?.teaching_point || inferTeachingPoint()}
+                                                                        </span>
+                                                                    </div>
+                                                                    <button onClick={() => setIsTutorOpen(false)} className="rounded-md p-1 text-stone-400 hover:bg-white/70 hover:text-stone-600">
+                                                                        <X className="w-3.5 h-3.5" />
+                                                                    </button>
                                                                 </div>
-                                                                {tutorAnswer ? <div className={cn("p-3 rounded-lg text-sm animate-in fade-in", activeCosmeticUi.tutorAnswerClass)}>{tutorAnswer}</div> : <p className="text-xs text-stone-400">Ask for a hint about vocab or grammar...</p>}
-                                                                <div className="relative">
-                                                                    <input type="text" value={tutorQuery} onChange={(e) => setTutorQuery(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAskTutor()} placeholder="e.g. 'How do I start?'" className={cn("w-full border rounded-lg py-2 px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)} />
-                                                                    <button onClick={handleAskTutor} disabled={isAskingTutor || !tutorQuery.trim()} className={cn("absolute right-2 top-1.5 disabled:opacity-30", activeCosmeticUi.tutorSendClass)}>{isAskingTutor ? <Sparkles className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}</button>
+
+                                                                <div className="mt-2 flex flex-nowrap gap-1.5 overflow-x-auto pb-1 pr-1">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleAskTutor({ question: "给我一个这题可复用的句型模板。", questionType: "pattern" })}
+                                                                        disabled={isAskingTutor}
+                                                                        className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    >
+                                                                        给我模板
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleAskTutor({ question: "为什么这里不用更直译的词？请告诉我搭配差别。", questionType: "word_choice" })}
+                                                                        disabled={isAskingTutor}
+                                                                        className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    >
+                                                                        词汇对比
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleAskTutor({ question: "再给我一个同结构的例句让我模仿。", questionType: "example" })}
+                                                                        disabled={isAskingTutor}
+                                                                        className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    >
+                                                                        同结构例句
+                                                                    </button>
                                                                 </div>
+
+                                                                {showTutorExchange ? (
+                                                                    <div
+                                                                        ref={tutorHistoryScrollRef}
+                                                                        className="mt-2 max-h-[300px] space-y-2 overflow-y-auto pr-1"
+                                                                    >
+                                                                        {renderableTutorTurns.map((turn, idx) => (
+                                                                            <div
+                                                                                key={`${turn.question || "answer"}-${idx}`}
+                                                                                className={cn("rounded-xl border border-stone-200/70 bg-white/80 p-3 text-sm animate-in fade-in", activeCosmeticUi.tutorAnswerClass)}
+                                                                            >
+                                                                                {turn.question ? (
+                                                                                    <div className="rounded-lg border border-stone-200/80 bg-white/70 px-3 py-2">
+                                                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">你问</p>
+                                                                                        <p className="mt-1 text-sm text-stone-700">{turn.question}</p>
+                                                                                    </div>
+                                                                                ) : null}
+
+                                                                                <div className={cn(turn.question && "mt-2 border-t border-white/60 pt-2")}>
+                                                                                    {turn.answer ? (
+                                                                                        <TutorMarkdown content={turn.answer} />
+                                                                                    ) : turn.pending ? (
+                                                                                        <div className="flex items-center gap-2 text-stone-500">
+                                                                                            <Sparkles className="h-4 w-4 animate-spin" />
+                                                                                            <span>正在生成教学回答...</span>
+                                                                                        </div>
+                                                                                    ) : null}
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                ) : null}
+
+                                                                <form
+                                                                    className="mt-2 flex flex-col gap-2 sm:flex-row"
+                                                                    onSubmit={(e) => {
+                                                                        e.preventDefault();
+                                                                        handleAskTutor({ questionType: "follow_up" });
+                                                                    }}
+                                                                >
+                                                                    <input
+                                                                        type="text"
+                                                                        value={tutorQuery}
+                                                                        onChange={(e) => setTutorQuery(e.target.value)}
+                                                                        placeholder="继续追问这题..."
+                                                                        className={cn("h-11 flex-1 rounded-xl border px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)}
+                                                                    />
+                                                                    <button
+                                                                        type="submit"
+                                                                        disabled={isAskingTutor || !tutorQuery.trim()}
+                                                                        className={cn("inline-flex h-11 min-w-[105px] items-center justify-center gap-1.5 rounded-xl border border-transparent px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50", activeCosmeticUi.analysisButtonClass)}
+                                                                    >
+                                                                        {isAskingTutor ? <Sparkles className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
+                                                                        {isAskingTutor ? "思考中" : "提问"}
+                                                                    </button>
+                                                                </form>
+
+                                                                {!tutorResponse?.answer_revealed && (
+                                                                    <div className="mt-1 flex items-center justify-between gap-2">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleAskTutor({ question: "我想看完整答案，并解释为什么这样说。", questionType: "unlock_answer", forceReveal: true })}
+                                                                            disabled={isAskingTutor}
+                                                                            className="inline-flex min-h-8 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:-translate-y-0.5 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                        >
+                                                                            解锁完整答案
+                                                                        </button>
+                                                                        {tutorNoProgressTurns >= 1 && (
+                                                                            <span className="text-[11px] text-stone-500">再追问 1 轮会自动解锁</span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
                                                             </motion.div>
                                                         )}
                                                     </AnimatePresence>
@@ -4874,6 +5323,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                 onRetry={gambleState.active ? undefined : () => {
                                                     setDrillFeedback(null);
                                                     setUserTranslation("");
+                                                    setTutorQuery("");
+                                                    setTutorAnswer(null);
+                                                    setTutorThread([]);
+                                                    setTutorResponse(null);
+                                                    setTutorHintLevel(1);
+                                                    setTutorNoProgressTurns(0);
+                                                    setTutorPendingQuestion(null);
+                                                    setIsTutorOpen(false);
                                                     setIsSubmittingDrill(false);
                                                     setWordPopup(null);
                                                     setAnalysisRequested(false);
@@ -5116,9 +5573,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                                 {secondaryAdvice ? <p className="text-sm leading-6 text-stone-500">{secondaryAdvice}</p> : null}
                                                                                             </div>
                                                                                         ) : drillFeedback.improved_version ? (
-                                                                                            <p className="mt-4 text-[1.6rem] leading-tight text-indigo-900 font-newsreader">
-                                                                                                {drillFeedback.improved_version}
-                                                                                            </p>
+                                                                                            <div className="mt-4 space-y-2">
+                                                                                                <p className="text-[1.6rem] leading-tight font-newsreader">
+                                                                                                    {renderInteractiveCoachText(drillFeedback.improved_version)}
+                                                                                                </p>
+                                                                                                <p className="text-[11px] text-stone-400">点击单词可查看释义并加入生词本</p>
+                                                                                            </div>
                                                                                         ) : primaryAdvice ? (
                                                                                             <p className="mt-4 text-base leading-7 text-stone-700">{primaryAdvice}</p>
                                                                                         ) : (
@@ -5126,6 +5586,130 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                         )}
                                                                                     </div>
                                                                                 </div>
+
+                                                                                {mode === "translation" && (
+                                                                                    <div className={cn("mt-4 rounded-[1.4rem] border p-4 md:p-5", activeCosmeticUi.tutorPanelClass)}>
+                                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                                            <div className="flex flex-wrap items-center gap-2">
+                                                                                                <p className="text-sm font-semibold text-stone-800">继续提问 AI Tutor</p>
+                                                                                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700">
+                                                                                                    {tutorResponse?.teaching_point || inferTeachingPoint()}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                            <span className={cn("text-[11px] font-semibold", activeCosmeticUi.tutorSendClass)}>渐进引导 L{Math.min(4, tutorHintLevel)}</span>
+                                                                                        </div>
+
+                                                                                        <div className="mt-3 flex flex-wrap gap-2">
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => handleAskTutor({ question: "给我一个这题可复用的句型模板。", questionType: "pattern" })}
+                                                                                                disabled={isAskingTutor}
+                                                                                                className="inline-flex min-h-9 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                                            >
+                                                                                                给我模板
+                                                                                            </button>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => handleAskTutor({ question: "为什么这里不用更直译的词？请告诉我搭配差别。", questionType: "word_choice" })}
+                                                                                                disabled={isAskingTutor}
+                                                                                                className="inline-flex min-h-9 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                                            >
+                                                                                                为什么不用这个词
+                                                                                            </button>
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => handleAskTutor({ question: "再给我一个同结构的例句让我模仿。", questionType: "example" })}
+                                                                                                disabled={isAskingTutor}
+                                                                                                className="inline-flex min-h-9 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                                            >
+                                                                                                再来一个同结构例句
+                                                                                            </button>
+                                                                                        </div>
+
+                                                                                        {tutorResponse ? (
+                                                                                            <div className="mt-3 rounded-xl border border-stone-200/70 bg-white/80 p-3.5">
+                                                                                                <TutorMarkdown content={tutorResponse.coach_cn} className="text-sm text-stone-700" />
+                                                                                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                                                                                    {tutorResponse.pattern_en.map((pattern, idx) => (
+                                                                                                        <span key={`${pattern}-${idx}`} className="rounded-full border border-indigo-200/80 bg-indigo-50/80 px-2.5 py-1 text-[11px] font-medium text-indigo-700">
+                                                                                                            {pattern}
+                                                                                                        </span>
+                                                                                                    ))}
+                                                                                                </div>
+                                                                                                <p className="mt-2 text-xs leading-5 text-stone-500">
+                                                                                                    <span className="font-semibold text-stone-600">中式 vs 地道：</span>
+                                                                                                    {tutorResponse.contrast}
+                                                                                                </p>
+                                                                                                <p className="mt-2 text-xs leading-5 text-emerald-700">
+                                                                                                    <span className="font-semibold">下一步：</span>
+                                                                                                    {tutorResponse.next_task}
+                                                                                                </p>
+                                                                                                {tutorResponse.answer_revealed && tutorResponse.full_answer && (
+                                                                                                    <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
+                                                                                                        <p className="text-[11px] font-semibold text-emerald-700">完整答案（已解锁）</p>
+                                                                                                        <p className="mt-1 text-sm font-newsreader text-stone-800">{tutorResponse.full_answer}</p>
+                                                                                                        {tutorResponse.answer_reason_cn && (
+                                                                                                            <p className="mt-1 text-xs leading-5 text-stone-600">{tutorResponse.answer_reason_cn}</p>
+                                                                                                        )}
+                                                                                                    </div>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        ) : (
+                                                                                            <p className="mt-3 text-xs text-stone-500">先问一个点，Tutor 会按“方向提示 → 模板 → 对比 → 迁移练习”给你逐层教学。</p>
+                                                                                        )}
+
+                                                                                        {tutorThread.length > 0 && (
+                                                                                            <div className="mt-3 space-y-2">
+                                                                                                {tutorThread.slice(-2).map((item, idx) => (
+                                                                                                    <div key={`${item.question}-${idx}`} className="rounded-xl border border-stone-200/70 bg-white/80 p-3">
+                                                                                                        <p className="text-xs text-stone-500">你问：{item.question}</p>
+                                                                                                        <TutorMarkdown content={item.coach_cn} className={cn("mt-1 text-sm", activeCosmeticUi.tutorSendClass)} />
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                        )}
+
+                                                                                        <form
+                                                                                            className="mt-3 flex flex-col gap-2 sm:flex-row"
+                                                                                            onSubmit={(e) => {
+                                                                                                e.preventDefault();
+                                                                                                handleAskTutor({ questionType: "follow_up" });
+                                                                                            }}
+                                                                                        >
+                                                                                            <input
+                                                                                                type="text"
+                                                                                                value={tutorQuery}
+                                                                                                onChange={(e) => setTutorQuery(e.target.value)}
+                                                                                                placeholder="继续追问这题..."
+                                                                                                className={cn("h-11 flex-1 rounded-xl border px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)}
+                                                                                            />
+                                                                                            <button
+                                                                                                type="submit"
+                                                                                                disabled={isAskingTutor || !tutorQuery.trim()}
+                                                                                                className={cn("inline-flex h-11 min-w-[110px] items-center justify-center gap-1.5 rounded-xl border border-transparent px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50", activeCosmeticUi.analysisButtonClass)}
+                                                                                            >
+                                                                                                {isAskingTutor ? <Sparkles className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
+                                                                                                {isAskingTutor ? "思考中" : "继续提问"}
+                                                                                            </button>
+                                                                                        </form>
+
+                                                                                        {!tutorResponse?.answer_revealed && (
+                                                                                            <div className="mt-2 flex items-center justify-between gap-2">
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() => handleAskTutor({ question: "我想看完整答案，并解释为什么这样说。", questionType: "unlock_answer", forceReveal: true })}
+                                                                                                    disabled={isAskingTutor}
+                                                                                                    className="inline-flex min-h-9 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:-translate-y-0.5 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                                                >
+                                                                                                    我想看完整答案
+                                                                                                </button>
+                                                                                                {tutorNoProgressTurns >= 1 && (
+                                                                                                    <span className="text-[11px] text-stone-500">再追问 1 轮将自动解锁答案</span>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                )}
 
                                                                                 <div className="mt-4 rounded-[1.4rem] border border-stone-200/80 bg-stone-50/70 p-3.5">
                                                                                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

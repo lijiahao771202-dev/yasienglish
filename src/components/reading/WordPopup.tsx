@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
-import { X, Loader2, Book, Volume2, Sparkles } from "lucide-react";
+import { X, Loader2, Book, Volume2, Sparkles, Check, BookPlus } from "lucide-react";
+import { db, VocabItem } from "@/lib/db";
+import { createEmptyCard } from "@/lib/fsrs";
+import { cn } from "@/lib/utils";
 
 export interface PopupState {
     word: string;
@@ -32,9 +35,10 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
     const [definition, setDefinition] = useState<DefinitionData | null>(null);
     const [isLoadingDict, setIsLoadingDict] = useState(false);
     const [isLoadingAI, setIsLoadingAI] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [isSaved, setIsSaved] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
     const popupRef = useRef<HTMLDivElement>(null);
-
-    const audioPlayedRef = useRef(false);
 
     // Initial Load & Dictionary Search
     useEffect(() => {
@@ -42,13 +46,17 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
         setDefinition(null);
         setIsLoadingDict(true);
         setIsLoadingAI(false);
+        setIsSaving(false);
+        setIsSaved(false);
+        setSaveError(null);
+
+        db.vocabulary.get(popup.word).then(item => {
+            if (isMounted && item) setIsSaved(true);
+        });
 
         // Auto-Play Audio (Instant Pronunciation) - Using Youdao for natural voice
-        if (!audioPlayedRef.current) {
-            audioPlayedRef.current = true;
-            const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(popup.word)}&type=2`);
-            audio.play().catch(() => { });
-        }
+        const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(popup.word)}&type=2`);
+        audio.play().catch(() => { });
 
         // Fetch Dictionary Definition
         fetch("/api/dictionary", {
@@ -110,6 +118,69 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
         }
     };
 
+    const handleAddToVocab = async () => {
+        if (isSaved || isSaving) return;
+
+        setIsSaving(true);
+        setSaveError(null);
+
+        let aiDefinition = definition?.context_meaning;
+        let aiExample = definition?.example || "";
+        let aiPhonetic = definition?.phonetic;
+
+        try {
+            if (!aiDefinition) {
+                const response = await fetch("/api/ai/define", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        word: popup.word,
+                        context: popup.context || `Please explain the word "${popup.word}" for an IELTS learner.`,
+                    }),
+                });
+                const data = await response.json();
+                aiDefinition = data?.context_meaning;
+                aiExample = data?.example || aiExample;
+                aiPhonetic = data?.phonetic || aiPhonetic;
+
+                if (aiDefinition || aiExample || aiPhonetic) {
+                    setDefinition(prev => ({
+                        ...prev,
+                        context_meaning: aiDefinition || prev?.context_meaning,
+                        example: aiExample || prev?.example,
+                        phonetic: aiPhonetic || prev?.phonetic,
+                    }));
+                }
+            }
+
+            const base = createEmptyCard(popup.word);
+            const card: VocabItem = {
+                word: popup.word,
+                definition: aiDefinition?.definition || definition?.dictionary_meaning?.definition || "",
+                translation: aiDefinition?.translation || definition?.dictionary_meaning?.translation || "",
+                context: popup.context || "",
+                example: aiExample || "",
+                timestamp: base.timestamp ?? Date.now(),
+                stability: base.stability ?? 0,
+                difficulty: base.difficulty ?? 0,
+                elapsed_days: base.elapsed_days ?? 0,
+                scheduled_days: base.scheduled_days ?? 0,
+                reps: base.reps ?? 0,
+                state: base.state ?? 0,
+                last_review: base.last_review ?? 0,
+                due: base.due ?? Date.now(),
+            };
+
+            await db.vocabulary.put(card);
+            setIsSaved(true);
+        } catch (error) {
+            console.error("Failed to save vocab:", error);
+            setSaveError("保存失败，请重试");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     // Use portal to render at document.body level to avoid parent overflow clipping
     if (typeof document === 'undefined') return null;
 
@@ -143,9 +214,7 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                                 </span>
                             </div>
                         )}
-                        <p className="text-[11px] mt-2 text-stone-500">
-                            Instant reading hint only, no wordbook saving.
-                        </p>
+                        <p className="text-[11px] mt-2 text-stone-500">支持加入生词本，复习时自动进入记忆队列。</p>
                     </div>
                     <div className="flex gap-1">
                         <button
@@ -158,6 +227,25 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                             title="Play Pronunciation"
                         >
                             <Volume2 className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={handleAddToVocab}
+                            disabled={isSaved || isSaving}
+                            className={cn(
+                                "p-2 rounded-full transition-colors shadow-sm disabled:cursor-wait",
+                                isSaved
+                                    ? "bg-emerald-100 text-emerald-600"
+                                    : "bg-white/80 hover:bg-amber-100 text-stone-500 hover:text-amber-600"
+                            )}
+                            title={isSaved ? "已加入生词本" : "加入生词本"}
+                        >
+                            {isSaving ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : isSaved ? (
+                                <Check className="w-4 h-4" />
+                            ) : (
+                                <BookPlus className="w-4 h-4" />
+                            )}
                         </button>
                         <button
                             onClick={onClose}
@@ -201,6 +289,12 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
 
                 {/* AI Context Section */}
                 <div className="bg-stone-50/50 p-4 border-t border-stone-100/50">
+                    {saveError && (
+                        <div className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
+                            {saveError}
+                        </div>
+                    )}
+
                     <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2 text-xs font-bold text-amber-600/70 uppercase tracking-wider">
                             <Sparkles className="w-3 h-3" />
