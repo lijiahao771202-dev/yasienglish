@@ -19,14 +19,33 @@ import { RouletteOverlay } from "./RouletteOverlay";
 import { DrillDebug } from "../debug/DrillDebug";
 import { ScoringFlipCard } from "./ScoringFlipCard";
 import { TeachingCard } from "./TeachingCard";
+import { GuidedLearningOverlay } from "./GuidedLearningOverlay";
 import { GhostTextarea } from "../vocab/GhostTextarea";
 import { TOPICS } from "../../app/battle/page";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 import { getDrillSurfacePhase, shouldExpandShopInventoryDock } from "@/lib/battleUiState";
+import {
+    createGuidedClozeState,
+    createGuidedSessionState,
+    isGuidedAnswerCorrect,
+    revealGuidedClozeCurrentSlot,
+    revealGuidedCurrentSlot,
+    submitGuidedClozeInput,
+    submitGuidedChoiceSelection,
+    shouldBypassBattleRewards,
+    submitGuidedStepInput,
+    shouldAutoOpenGuidedChoices,
+    type GuidedAiHint,
+    type GuidedClozeState,
+    type GuidedModeStatus,
+    type GuidedScript,
+    type GuidedSessionState,
+} from "@/lib/guidedLearning";
 
 // --- Interfaces ---
 
 export type DrillMode = "translation" | "listening";
+type GuidedInnerMode = "teacher_guided" | "gestalt_cloze";
 
 export interface DrillCoreProps {
     // Context for generation
@@ -66,6 +85,19 @@ interface DrillData {
         subTopic?: string | null;
         isScenario: boolean;
     };
+}
+
+function getGuidedScriptKey(
+    drillData: Pick<DrillData, "chinese" | "reference_english" | "_topicMeta">,
+    elo: number,
+    contextTopic?: string,
+) {
+    return JSON.stringify({
+        chinese: drillData.chinese,
+        referenceEnglish: drillData.reference_english,
+        topic: drillData._topicMeta?.topic || contextTopic || "",
+        elo,
+    });
 }
 
 interface DrillFeedback {
@@ -129,9 +161,9 @@ function TutorMarkdown({ content, className }: { content: string; className?: st
                     h2: ({ children }) => <h2 className="mt-3 mb-1 text-lg font-bold text-stone-900">{children}</h2>,
                     h3: ({ children }) => <h3 className="mt-2.5 mb-1 text-base font-semibold text-stone-900">{children}</h3>,
                     h4: ({ children }) => <h4 className="mt-2 mb-1 text-sm font-semibold text-stone-800">{children}</h4>,
-                    ul: ({ children }) => <ul className="my-1 list-disc pl-5">{children}</ul>,
-                    ol: ({ children }) => <ol className="my-1 list-decimal pl-5">{children}</ol>,
-                    li: ({ children }) => <li className="my-0.5">{children}</li>,
+                    ul: ({ children }) => <ul className="my-1 list-disc space-y-1 pl-5 marker:text-stone-400">{children}</ul>,
+                    ol: ({ children }) => <ol className="my-1 list-decimal space-y-1 pl-5 marker:font-semibold marker:text-stone-500">{children}</ol>,
+                    li: ({ children }) => <li className="my-0.5 leading-7">{children}</li>,
                     blockquote: ({ children }) => (
                         <blockquote className="my-2 rounded-r-lg border-l-4 border-sky-300 bg-sky-50/60 px-3 py-2 text-sky-900">
                             {children}
@@ -857,6 +889,30 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isLoadingTeaching, setIsLoadingTeaching] = useState(false);
     const [teachingPanelOpen, setTeachingPanelOpen] = useState(false); // Floating panel visibility
 
+    // Guided Learning State
+    const [learningSession, setLearningSession] = useState(false);
+    const [guidedModeStatus, setGuidedModeStatus] = useState<GuidedModeStatus>("idle");
+    const [guidedScript, setGuidedScript] = useState<GuidedScript | null>(null);
+    const [guidedCurrentStepIndex, setGuidedCurrentStepIndex] = useState(0);
+    const [guidedCurrentAttemptCount, setGuidedCurrentAttemptCount] = useState(0);
+    const [guidedChoicesVisible, setGuidedChoicesVisible] = useState(false);
+    const [guidedRevealReady, setGuidedRevealReady] = useState(false);
+    const [guidedFilledFragments, setGuidedFilledFragments] = useState<Record<string, string>>({});
+    const [guidedLastFeedback, setGuidedLastFeedback] = useState<string | null>(null);
+    const [guidedInnerMode, setGuidedInnerMode] = useState<GuidedInnerMode>("teacher_guided");
+    const [guidedClozeState, setGuidedClozeState] = useState<GuidedClozeState | null>(null);
+    const [guidedInput, setGuidedInput] = useState("");
+    const [guidedAiHint, setGuidedAiHint] = useState<GuidedAiHint | null>(null);
+    const [isGuidedAiHintLoading, setIsGuidedAiHintLoading] = useState(false);
+    const [prefetchedGuidedScript, setPrefetchedGuidedScript] = useState<GuidedScript | null>(null);
+    const guidedCurrentStepIndexRef = useRef(0);
+    const guidedFilledFragmentsRef = useRef<Record<string, string>>({});
+    const guidedPrefetchAbortRef = useRef<AbortController | null>(null);
+    const guidedPrefetchKeyRef = useRef<string | null>(null);
+    const guidedPrefetchPromiseRef = useRef<Promise<GuidedScript> | null>(null);
+    const prefetchedGuidedScriptRef = useRef<GuidedScript | null>(null);
+    const guidedHintAbortRef = useRef<AbortController | null>(null);
+
     // UI State
     const [isBlindMode, setIsBlindMode] = useState(true);
     const [showChinese, setShowChinese] = useState(false);
@@ -937,6 +993,315 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (!container) return;
         container.scrollTop = container.scrollHeight;
     }, [isTutorOpen, tutorPendingQuestion, tutorThread.length]);
+
+    const getGuidedSessionSnapshot = useCallback((): GuidedSessionState => ({
+        status: guidedModeStatus,
+        currentStepIndex: guidedCurrentStepIndex,
+        currentAttemptCount: guidedCurrentAttemptCount,
+        guidedChoicesVisible,
+        revealReady: guidedRevealReady,
+        filledFragments: guidedFilledFragments,
+        lastFeedback: guidedLastFeedback,
+    }), [
+        guidedChoicesVisible,
+        guidedCurrentAttemptCount,
+        guidedCurrentStepIndex,
+        guidedFilledFragments,
+        guidedLastFeedback,
+        guidedRevealReady,
+        guidedModeStatus,
+    ]);
+
+    const applyGuidedSessionSnapshot = useCallback((nextState: GuidedSessionState) => {
+        setGuidedModeStatus(nextState.status);
+        setGuidedCurrentStepIndex(nextState.currentStepIndex);
+        guidedCurrentStepIndexRef.current = nextState.currentStepIndex;
+        setGuidedCurrentAttemptCount(nextState.currentAttemptCount);
+        setGuidedChoicesVisible(nextState.guidedChoicesVisible);
+        setGuidedRevealReady(nextState.revealReady);
+        setGuidedFilledFragments(nextState.filledFragments);
+        guidedFilledFragmentsRef.current = nextState.filledFragments;
+        setGuidedLastFeedback(nextState.lastFeedback);
+    }, []);
+
+    const resetGuidedLearningState = useCallback((keepLearningSession = false) => {
+        if (!keepLearningSession) {
+            setLearningSession(false);
+        }
+        setGuidedModeStatus("idle");
+        setGuidedScript(null);
+        setGuidedCurrentStepIndex(0);
+        guidedCurrentStepIndexRef.current = 0;
+        setGuidedCurrentAttemptCount(0);
+        setGuidedChoicesVisible(false);
+        setGuidedRevealReady(false);
+        setGuidedFilledFragments({});
+        guidedFilledFragmentsRef.current = {};
+        setGuidedLastFeedback(null);
+        setGuidedInnerMode("teacher_guided");
+        setGuidedClozeState(null);
+        setGuidedInput("");
+        setGuidedAiHint(null);
+        setIsGuidedAiHintLoading(false);
+    }, []);
+
+    useEffect(() => {
+        prefetchedGuidedScriptRef.current = prefetchedGuidedScript;
+    }, [prefetchedGuidedScript]);
+
+    const fetchGuidedScriptForDrill = useCallback(async (
+        targetDrillData: Pick<DrillData, "chinese" | "reference_english" | "_topicMeta">,
+        signal?: AbortSignal,
+    ) => {
+        const response = await fetch("/api/ai/guided_script", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                chinese: targetDrillData.chinese,
+                reference_english: targetDrillData.reference_english,
+                elo: eloRatingRef.current || 600,
+                topic: targetDrillData._topicMeta?.topic || context.articleTitle || context.topic,
+            }),
+            signal,
+        });
+        const data = await response.json();
+
+        if (!response.ok || data?.error) {
+            throw new Error(data?.error || "Failed to load guided script");
+        }
+
+        return data as GuidedScript;
+    }, [context.articleTitle, context.topic]);
+
+    const fetchGuidedHint = useCallback(async ({
+        slot,
+        attempt,
+        innerMode: targetInnerMode,
+        leftContext,
+        rightContext,
+        signal,
+    }: {
+        slot: GuidedScript["slots"][number];
+        attempt: number;
+        innerMode: GuidedInnerMode;
+        leftContext: string;
+        rightContext: string;
+        signal?: AbortSignal;
+    }) => {
+        if (!drillData) {
+            throw new Error("Missing drill data for guided hint");
+        }
+
+        const response = await fetch("/api/ai/guided_hint", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                chinese: drillData.chinese,
+                reference_english: drillData.reference_english,
+                answer_text: slot.answer_text,
+                hint_focus_cn: slot.hint_focus_cn || "",
+                left_context: leftContext,
+                right_context: rightContext,
+                attempt,
+                slot_kind: slot.slot_kind,
+                inner_mode: targetInnerMode,
+                has_multiple_choice: Boolean(slot.multiple_choice?.length),
+            }),
+            signal,
+        });
+
+        const data = await response.json();
+        if (!response.ok || data?.error || !data?.primary) {
+            throw new Error(data?.error || "Failed to load guided hint");
+        }
+
+        return data as GuidedAiHint;
+    }, [drillData]);
+
+    useEffect(() => {
+        if (mode !== "translation" || !drillData?.chinese || !drillData.reference_english) {
+            guidedPrefetchAbortRef.current?.abort();
+            guidedPrefetchAbortRef.current = null;
+            guidedPrefetchKeyRef.current = null;
+            guidedPrefetchPromiseRef.current = null;
+            setPrefetchedGuidedScript(null);
+            return;
+        }
+
+        const guidedKey = getGuidedScriptKey(
+            drillData,
+            eloRatingRef.current || 600,
+            context.articleTitle || context.topic,
+        );
+
+        if (guidedPrefetchKeyRef.current === guidedKey && (guidedPrefetchPromiseRef.current || prefetchedGuidedScriptRef.current)) {
+            return;
+        }
+
+        guidedPrefetchAbortRef.current?.abort();
+        const controller = new AbortController();
+        guidedPrefetchAbortRef.current = controller;
+        guidedPrefetchKeyRef.current = guidedKey;
+        setPrefetchedGuidedScript(null);
+
+        const prefetchPromise = fetchGuidedScriptForDrill(drillData, controller.signal)
+            .then((script) => {
+                if (controller.signal.aborted || guidedPrefetchKeyRef.current !== guidedKey) {
+                    return script;
+                }
+                setPrefetchedGuidedScript(script);
+                return script;
+            })
+            .catch((error) => {
+                if ((error as Error).name !== "AbortError") {
+                    console.error("[GuidedLearning] Prefetch failed", error);
+                }
+                throw error;
+            })
+            .finally(() => {
+                if (guidedPrefetchPromiseRef.current === prefetchPromise) {
+                    guidedPrefetchPromiseRef.current = null;
+                }
+            });
+
+        guidedPrefetchPromiseRef.current = prefetchPromise;
+
+        return () => {
+            controller.abort();
+        };
+    }, [
+        context.articleTitle,
+        context.topic,
+        drillData,
+        fetchGuidedScriptForDrill,
+        mode,
+    ]);
+
+    useEffect(() => {
+        if (guidedModeStatus !== "active" || !guidedScript) {
+            guidedHintAbortRef.current?.abort();
+            guidedHintAbortRef.current = null;
+            setGuidedAiHint(null);
+            setIsGuidedAiHintLoading(false);
+            return;
+        }
+
+        const slot = guidedInnerMode === "gestalt_cloze"
+            ? guidedScript.slots.find((item) => item.id === guidedClozeState?.blankSlotIds[guidedClozeState.currentBlankIndex])
+            : guidedScript.slots[guidedCurrentStepIndex];
+
+        if (!slot) {
+            setGuidedAiHint(null);
+            setIsGuidedAiHintLoading(false);
+            return;
+        }
+
+        const slotIndex = guidedScript.slots.findIndex((item) => item.id === slot.id);
+        const filledMap = guidedInnerMode === "gestalt_cloze"
+            ? (guidedClozeState?.filledFragments ?? {})
+            : guidedFilledFragments;
+
+        let leftContext = "";
+        let rightContext = "";
+
+        for (let index = slotIndex - 1; index >= 0; index -= 1) {
+            const visible = filledMap[guidedScript.slots[index]?.id ?? ""];
+            if (visible) {
+                leftContext = visible;
+                break;
+            }
+        }
+
+        for (let index = slotIndex + 1; index < guidedScript.slots.length; index += 1) {
+            const visible = filledMap[guidedScript.slots[index]?.id ?? ""];
+            if (visible) {
+                rightContext = visible;
+                break;
+            }
+        }
+
+        const attempt = guidedInnerMode === "gestalt_cloze"
+            ? Math.max(guidedClozeState?.currentAttemptCount ?? 0, guidedClozeState?.revealReady ? 3 : 0)
+            : Math.max(guidedCurrentAttemptCount, (guidedChoicesVisible || guidedRevealReady) ? 3 : 0);
+
+        const controller = new AbortController();
+        guidedHintAbortRef.current?.abort();
+        guidedHintAbortRef.current = controller;
+        setIsGuidedAiHintLoading(true);
+
+        fetchGuidedHint({
+            slot,
+            attempt,
+            innerMode: guidedInnerMode,
+            leftContext,
+            rightContext,
+            signal: controller.signal,
+        }).then((hint) => {
+            if (!controller.signal.aborted) {
+                setGuidedAiHint(hint);
+            }
+        }).catch((error) => {
+            if ((error as Error).name !== "AbortError") {
+                console.error("[GuidedLearning] Failed to load hint", error);
+                if (!controller.signal.aborted) {
+                    setGuidedAiHint({
+                        primary: "AI 提示生成失败了，再试一次或者先用选项排除。",
+                        secondary: null,
+                        rescue: null,
+                    });
+                }
+            }
+        }).finally(() => {
+            if (!controller.signal.aborted) {
+                setIsGuidedAiHintLoading(false);
+            }
+        });
+
+        return () => {
+            controller.abort();
+        };
+    }, [
+        fetchGuidedHint,
+        guidedClozeState,
+        guidedChoicesVisible,
+        guidedCurrentAttemptCount,
+        guidedCurrentStepIndex,
+        guidedFilledFragments,
+        guidedInnerMode,
+        guidedModeStatus,
+        guidedRevealReady,
+        guidedScript,
+    ]);
+
+    const isGuidedOverlayOpen = guidedModeStatus !== "idle";
+    const learningSessionActive = learningSession;
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (guidedModeStatus !== "active" || guidedInnerMode !== "teacher_guided" || !guidedScript || guidedChoicesVisible || guidedRevealReady) return;
+
+        const currentSlot = guidedScript.slots[guidedCurrentStepIndex];
+        if (!currentSlot?.multiple_choice?.length) return;
+
+        const timer = window.setTimeout(() => {
+            if (!shouldAutoOpenGuidedChoices(12000)) return;
+            setGuidedChoicesVisible(true);
+            setGuidedRevealReady(true);
+            setGuidedLastFeedback(currentSlot.idle_rescue_hint_cn ?? currentSlot.rescue_reason_cn ?? "卡住了就先用选项排除。");
+        }, 12000);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [
+        guidedChoicesVisible,
+        guidedCurrentStepIndex,
+        guidedInnerMode,
+        guidedInput,
+        guidedModeStatus,
+        guidedRevealReady,
+        guidedScript,
+    ]);
 
     const persistProfilePatch = useCallback((patch: Partial<{ coins: number; hints: number; inventory: InventoryState; owned_themes: string[]; active_theme: string }>) => {
         if (Object.keys(patch).length === 0) return;
@@ -2274,6 +2639,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             console.log("[Prefetch] Consuming prefetched drill data! Zero ms latency.");
             setDrillData(prefetchedDrillData);
             setPrefetchedDrillData(null); // Clear buffer
+            resetGuidedLearningState(false);
 
             // Reset UI states quickly
             setIsGeneratingDrill(false);
@@ -2338,6 +2704,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
         setIsGeneratingDrill(true);
         setDrillData(null);
+        resetGuidedLearningState(false);
         setDrillFeedback(null);
         setUserTranslation("");
         setTutorAnswer(null);
@@ -2531,8 +2898,243 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
     };
 
+    const handleStartGuidedLearning = useCallback(async () => {
+        if (mode !== "translation" || !drillData?.chinese || !drillData.reference_english) return;
+
+        setLearningSession(true);
+        setGuidedModeStatus("loading");
+        setGuidedScript(null);
+        setGuidedCurrentStepIndex(0);
+        guidedCurrentStepIndexRef.current = 0;
+        setGuidedCurrentAttemptCount(0);
+        setGuidedChoicesVisible(false);
+        setGuidedRevealReady(false);
+        setGuidedFilledFragments({});
+        guidedFilledFragmentsRef.current = {};
+        setGuidedLastFeedback(null);
+        setGuidedInnerMode("teacher_guided");
+        setGuidedClozeState(null);
+        setGuidedInput("");
+        setTeachingPanelOpen(false);
+        setIsTutorOpen(false);
+        setGuidedAiHint(null);
+
+        try {
+            const guidedKey = getGuidedScriptKey(
+                drillData,
+                eloRatingRef.current || 600,
+                context.articleTitle || context.topic,
+            );
+
+            let data = guidedPrefetchKeyRef.current === guidedKey
+                ? prefetchedGuidedScriptRef.current
+                : null;
+
+            if (!data) {
+                let pendingPromise = guidedPrefetchKeyRef.current === guidedKey
+                    ? guidedPrefetchPromiseRef.current
+                    : null;
+
+                if (!pendingPromise) {
+                    const controller = new AbortController();
+                    guidedPrefetchAbortRef.current?.abort();
+                    guidedPrefetchAbortRef.current = controller;
+                    guidedPrefetchKeyRef.current = guidedKey;
+
+                    pendingPromise = fetchGuidedScriptForDrill(drillData, controller.signal)
+                        .then((script) => {
+                            if (!controller.signal.aborted && guidedPrefetchKeyRef.current === guidedKey) {
+                                setPrefetchedGuidedScript(script);
+                            }
+                            return script;
+                        })
+                        .finally(() => {
+                            if (guidedPrefetchPromiseRef.current === pendingPromise) {
+                                guidedPrefetchPromiseRef.current = null;
+                            }
+                        });
+
+                    guidedPrefetchPromiseRef.current = pendingPromise;
+                }
+
+                data = await pendingPromise;
+            }
+
+            const refreshedState = createGuidedSessionState(data);
+            setGuidedScript(data);
+            applyGuidedSessionSnapshot(refreshedState);
+        } catch (error) {
+            console.error("[GuidedLearning] Failed to start", error);
+            resetGuidedLearningState(false);
+            if (typeof window !== "undefined") {
+                window.alert("AI 引导暂时不可用，请稍后再试。");
+            }
+        }
+    }, [
+        applyGuidedSessionSnapshot,
+        drillData,
+        fetchGuidedScriptForDrill,
+        context.articleTitle,
+        context.topic,
+        mode,
+        resetGuidedLearningState,
+    ]);
+
+    const handleSubmitGuidedInput = useCallback((inputOverride?: string) => {
+        if (!guidedScript) return;
+        if (guidedInnerMode === "gestalt_cloze") {
+            if (!guidedClozeState) return;
+            const nextClozeState = submitGuidedClozeInput(
+                guidedClozeState,
+                guidedScript,
+                inputOverride ?? guidedInput,
+            );
+            setGuidedClozeState(nextClozeState);
+            setGuidedInput("");
+            if (nextClozeState.currentBlankIndex >= nextClozeState.blankSlotIds.length) {
+                setGuidedModeStatus("complete");
+            }
+            return;
+        }
+
+        const nextState = submitGuidedStepInput(
+            getGuidedSessionSnapshot(),
+            guidedScript,
+            inputOverride ?? guidedInput,
+        );
+        applyGuidedSessionSnapshot(nextState);
+        setGuidedInput("");
+    }, [applyGuidedSessionSnapshot, getGuidedSessionSnapshot, guidedClozeState, guidedCurrentStepIndex, guidedInnerMode, guidedInput, guidedScript]);
+
+    const handleGuidedInputChange = useCallback((value: string) => {
+        setGuidedInput(value);
+
+        if (!guidedScript) return;
+
+        if (guidedInnerMode === "gestalt_cloze") {
+            const currentBlankSlotId = guidedClozeState?.blankSlotIds[guidedClozeState.currentBlankIndex];
+            const currentBlankSlot = guidedScript.slots.find((slot) => slot.id === currentBlankSlotId);
+            if (!currentBlankSlot) return;
+
+            if (isGuidedAnswerCorrect({
+                ...guidedScript,
+                slots: [currentBlankSlot],
+            } as GuidedScript, 0, value)) {
+                const nextClozeState = submitGuidedClozeInput(guidedClozeState!, guidedScript, value);
+                setGuidedClozeState(nextClozeState);
+                setGuidedInput("");
+                if (nextClozeState.currentBlankIndex >= nextClozeState.blankSlotIds.length) {
+                    setGuidedModeStatus("complete");
+                }
+            }
+            return;
+        }
+
+        if (isGuidedAnswerCorrect(guidedScript, guidedCurrentStepIndex, value)) {
+            const nextState = submitGuidedStepInput(
+                getGuidedSessionSnapshot(),
+                guidedScript,
+                value,
+            );
+            applyGuidedSessionSnapshot(nextState);
+            setGuidedInput("");
+            return;
+        }
+    }, [
+        applyGuidedSessionSnapshot,
+        guidedClozeState,
+        getGuidedSessionSnapshot,
+        guidedCurrentStepIndex,
+        guidedInnerMode,
+        guidedScript,
+    ]);
+
+    const handleReturnToBattleFromGuided = useCallback(() => {
+        if (guidedScript) {
+            setUserTranslation(guidedScript.summary.final_sentence);
+        }
+        resetGuidedLearningState(true);
+    }, [guidedScript, resetGuidedLearningState]);
+
+    const handleCloseGuidedLearning = useCallback(() => {
+        resetGuidedLearningState(false);
+        onClose?.();
+    }, [onClose, resetGuidedLearningState]);
+
+    const handleShowGuidedChoices = useCallback(() => {
+        if (guidedInnerMode !== "teacher_guided") return;
+        const currentSlot = guidedScript?.slots[guidedCurrentStepIndex];
+        if (!currentSlot?.multiple_choice?.length) return;
+        setGuidedChoicesVisible(true);
+        setGuidedRevealReady(true);
+        setGuidedLastFeedback(null);
+        setGuidedAiHint(null);
+    }, [guidedCurrentStepIndex, guidedInnerMode, guidedScript]);
+
+    const handleSelectGuidedChoice = useCallback((choiceText: string) => {
+        if (!guidedScript) return;
+        const nextState = submitGuidedChoiceSelection(
+            getGuidedSessionSnapshot(),
+            guidedScript,
+            choiceText,
+        );
+        applyGuidedSessionSnapshot(nextState);
+        setGuidedInput("");
+    }, [applyGuidedSessionSnapshot, getGuidedSessionSnapshot, guidedCurrentStepIndex, guidedScript]);
+
+    const handleRevealGuidedAnswer = useCallback(() => {
+        if (!guidedScript) return;
+
+        if (guidedInnerMode === "gestalt_cloze") {
+            if (!guidedClozeState) return;
+            const nextClozeState = revealGuidedClozeCurrentSlot(guidedClozeState, guidedScript);
+            setGuidedClozeState(nextClozeState);
+            setGuidedInput("");
+            if (nextClozeState.currentBlankIndex >= nextClozeState.blankSlotIds.length) {
+                setGuidedModeStatus("complete");
+            }
+            return;
+        }
+
+        const nextState = revealGuidedCurrentSlot(getGuidedSessionSnapshot(), guidedScript);
+        applyGuidedSessionSnapshot(nextState);
+        setGuidedInput("");
+    }, [applyGuidedSessionSnapshot, getGuidedSessionSnapshot, guidedClozeState, guidedInnerMode, guidedScript]);
+
+    const handleActivateGuidedRandomFill = useCallback(() => {
+        if (!guidedScript) return;
+        setGuidedInnerMode("gestalt_cloze");
+        setGuidedClozeState(createGuidedClozeState(guidedScript));
+        setGuidedInput("");
+        setGuidedLastFeedback(null);
+        setGuidedAiHint(null);
+        setGuidedChoicesVisible(false);
+        setGuidedRevealReady(false);
+    }, [guidedScript]);
+
+    const handleReturnToTeacherGuided = useCallback(() => {
+        setGuidedInnerMode("teacher_guided");
+        setGuidedInput("");
+        setGuidedChoicesVisible(false);
+        setGuidedRevealReady(false);
+        setGuidedLastFeedback(null);
+        setGuidedAiHint(null);
+    }, []);
+
+    const handleRefreshGuidedCloze = useCallback(() => {
+        if (!guidedScript) return;
+        setGuidedInnerMode("gestalt_cloze");
+        setGuidedClozeState(createGuidedClozeState(guidedScript));
+        setGuidedInput("");
+        setGuidedAiHint(null);
+        setGuidedRevealReady(false);
+    }, [guidedScript]);
+
     const handleSubmitDrill = async () => {
         if (!userTranslation.trim() || !drillData) return;
+        if (shouldBypassBattleRewards({ learningSession: learningSessionActive, guidedModeStatus })) {
+            return;
+        }
         setIsSubmittingDrill(true);
         let prefetchNextElo: number | null = null;
 
@@ -3358,6 +3960,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     }, []);
 
     const handleMagicHint = async () => {
+        if (learningSessionActive) return;
         if (!drillData || !drillData.reference_english) return;
         if (isHintLoading) return;
         if (getItemCount('hint_ticket') <= 0) {
@@ -3384,6 +3987,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     };
 
     const handleRevealVocabHint = useCallback(() => {
+        if (learningSessionActive) return false;
         if (!drillData) return false;
         const keywords = (drillData.target_english_vocab || drillData.key_vocab || []) as string[];
         if (keywords.length === 0) return false;
@@ -3402,9 +4006,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setIsVocabHintRevealed(true);
         pushEconomyFx({ kind: 'item_consume', itemId: 'vocab_ticket', amount: 1, message: '已消耗 1 关键词券', source: 'vocab' });
         return true;
-    }, [applyEconomyPatch, drillData, getItemCount, pushEconomyFx]);
+    }, [applyEconomyPatch, drillData, getItemCount, learningSessionActive, pushEconomyFx]);
 
     const handlePredictionRequest = useCallback(() => {
+        if (learningSessionActive) return false;
         if (getItemCount('capsule') <= 0) {
             setIsHintShake(true);
             setTimeout(() => setIsHintShake(false), 500);
@@ -3412,15 +4017,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
 
         return true;
-    }, [getItemCount]);
+    }, [getItemCount, learningSessionActive]);
 
     const handlePredictionShown = useCallback(() => {
+        if (learningSessionActive) return;
         applyEconomyPatch({ itemDelta: { capsule: -1 } });
         setAssistsUsedInCurrentDrill(prev => prev + 1);
         pushEconomyFx({ kind: 'item_consume', itemId: 'capsule', amount: 1, message: '已消耗 1 胶囊', source: 'tab' });
-    }, [applyEconomyPatch, pushEconomyFx]);
+    }, [applyEconomyPatch, learningSessionActive, pushEconomyFx]);
 
     const handleTranslationReferencePlayback = async () => {
+        if (learningSessionActive) return false;
         if (mode !== 'translation' || !drillData?.reference_english || drillFeedback) {
             await playAudio();
             return;
@@ -3460,6 +4067,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     };
 
     const handleRefreshDrill = useCallback(() => {
+        if (learningSessionActive) return false;
         if (isGeneratingDrill || !drillData || !!drillFeedback) return false;
         if (getItemCount('refresh_ticket') <= 0) {
             setIsHintShake(true);
@@ -3473,7 +4081,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setPrefetchedDrillData(null);
         handleGenerateDrill(undefined, undefined, true);
         return true;
-    }, [applyEconomyPatch, drillData, drillFeedback, getItemCount, handleGenerateDrill, isGeneratingDrill, openShopForItem, pushEconomyFx]);
+    }, [applyEconomyPatch, drillData, drillFeedback, getItemCount, handleGenerateDrill, isGeneratingDrill, learningSessionActive, openShopForItem, pushEconomyFx]);
 
     const handleBuyItem = useCallback((itemId: ShopItemId) => {
         const item = ITEM_CATALOG[itemId];
@@ -4728,8 +5336,23 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                 </div>
                             )}
 
+                            {mode === 'translation' && !learningSessionActive && (
+                                <button
+                                    onClick={handleStartGuidedLearning}
+                                    disabled={!drillData || !!drillFeedback || guidedModeStatus === "loading"}
+                                    className={cn(
+                                        "hidden sm:flex items-center gap-1.5 h-[38px] px-4 rounded-full font-bold text-[12px] transition-all duration-300 shrink-0 border shadow-[0_8px_24px_rgba(0,0,0,0.03)] disabled:opacity-50 disabled:cursor-not-allowed",
+                                        activeCosmeticUi.audioUnlockedClass
+                                    )}
+                                    title="打开引导学习模式"
+                                >
+                                    <Sparkles className={cn("w-[14px] h-[14px]", guidedModeStatus === "loading" && "animate-spin")} />
+                                    <span className="tracking-wide text-[12px]">引导学习</span>
+                                </button>
+                            )}
+
                             {/* Teaching Mode Button - Only for Translation */}
-                            {mode === 'translation' && (
+                            {mode === 'translation' && !learningSessionActive && (
                                 <button
                                     onClick={() => {
                                         if (!teachingMode) {
@@ -4776,6 +5399,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                         )} />
                                     )}
                                 </button>
+                            )}
+                            {mode === 'translation' && learningSessionActive && !isGuidedOverlayOpen && (
+                                <div className="hidden sm:flex items-center gap-2 h-[38px] px-4 rounded-full border border-amber-200 bg-amber-50 text-amber-700 text-[12px] font-bold">
+                                    <Sparkles className="w-[14px] h-[14px]" />
+                                    <span className="tracking-wide">学习态 · 本题不计分</span>
+                                </div>
                             )}
                             {onClose && (
                                 <button
@@ -5269,6 +5898,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                         </div>
                                                     ) : (
                                                         <>
+                                                            {learningSessionActive && !isGuidedOverlayOpen && (
+                                                                <div className="mb-4 rounded-[1.35rem] border border-amber-200/70 bg-amber-50/70 px-4 py-3 text-left">
+                                                                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-amber-600">Learning Session</p>
+                                                                    <p className="mt-2 text-sm leading-6 text-stone-600">
+                                                                        这题已经进入学习态，不再参与 Elo、连胜、金币或道具结算。你现在看到的是刚才学完后的参考句界面。
+                                                                    </p>
+                                                                </div>
+                                                            )}
                                                             <div className={cn(
                                                                 "relative group overflow-hidden rounded-[2rem] border backdrop-blur-2xl transition-all duration-300",
                                                                 activeCosmeticUi.inputShellClass
@@ -5287,7 +5924,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     predictionCostText="消耗 1 胶囊获取提示"
                                                                     fullReferenceGhostText={fullReferenceHint.text}
                                                                     fullReferenceGhostVersion={fullReferenceHint.version}
-                                                                    disabled={isSubmittingDrill}
+                                                                    disabled={isSubmittingDrill || learningSessionActive}
                                                                     className={cn("font-work-sans min-h-[128px] px-5 pb-16 pt-5 text-[1.06rem] font-medium leading-[1.9] tracking-[0.005em] placeholder:font-normal placeholder:italic md:min-h-[144px] md:px-6 md:pb-16 md:pt-6 md:text-[1.12rem] bg-transparent", activeCosmeticUi.textareaClass)}
                                                                 />
 
@@ -5308,7 +5945,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     <div className="flex items-center gap-1 md:gap-2">
                                                                         <button
                                                                             onClick={handleMagicHint}
-                                                                            disabled={isHintLoading}
+                                                                            disabled={isHintLoading || learningSessionActive}
                                                                             className={cn(
                                                                                 "flex h-10 items-center justify-center gap-1.5 rounded-full border px-3 text-[11px] font-bold transition-all hover:-translate-y-0.5 active:scale-95 md:px-4 md:text-xs min-w-[80px]",
                                                                                 isHintLoading
@@ -5321,7 +5958,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             <span>{isHintLoading ? "Hint..." : "Hint"}</span>
                                                                         </button>
                                                                         <button
-                                                                            onClick={() => setIsTutorOpen(!isTutorOpen)}
+                                                                            onClick={() => {
+                                                                                if (learningSessionActive) return;
+                                                                                setIsTutorOpen(!isTutorOpen);
+                                                                            }}
                                                                             className={cn(
                                                                                 "flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:-translate-y-0.5 active:scale-95",
                                                                                 activeCosmeticUi.iconButtonClass
@@ -5332,11 +5972,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         </button>
                                                                         <button
                                                                             onClick={handleSubmitDrill}
-                                                                            disabled={!userTranslation.trim() || isSubmittingDrill}
+                                                                            disabled={!userTranslation.trim() || isSubmittingDrill || learningSessionActive}
                                                                             className={cn(
                                                                                 "flex h-10 items-center justify-center gap-1.5 rounded-full px-4 text-[11px] font-bold transition-all md:px-5 md:text-sm",
                                                                                 "disabled:opacity-50 disabled:cursor-not-allowed disabled:scale-100",
-                                                                                (!userTranslation.trim() || isSubmittingDrill)
+                                                                                (!userTranslation.trim() || isSubmittingDrill || learningSessionActive)
                                                                                     ? "border border-stone-300/60 bg-white/50 text-stone-400 shadow-sm"
                                                                                     : [
                                                                                         "border text-white hover:-translate-y-0.5 active:scale-95 cursor-pointer",
@@ -5345,7 +5985,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             )}
                                                                         >
                                                                             {isSubmittingDrill ? <Sparkles className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                                                                            {isSubmittingDrill ? "..." : "Check"}
+                                                                            {learningSessionActive ? "学习态" : isSubmittingDrill ? "..." : "Check"}
                                                                         </button>
                                                                     </div>
                                                                 </div>
@@ -6127,9 +6767,34 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         ) : null}
                     </div>
 
+                    <GuidedLearningOverlay
+                        open={isGuidedOverlayOpen}
+                        status={guidedModeStatus}
+                        script={guidedScript}
+                        innerMode={guidedInnerMode}
+                        currentStepIndex={guidedCurrentStepIndex}
+                        currentAttemptCount={guidedCurrentAttemptCount}
+                        guidedChoicesVisible={guidedChoicesVisible}
+                        guidedRevealReady={guidedRevealReady}
+                        filledFragments={guidedFilledFragments}
+                        clozeState={guidedClozeState}
+                        currentInput={guidedInput}
+                        currentAiHint={guidedAiHint}
+                        isAiHintLoading={isGuidedAiHintLoading}
+                        onInputChange={handleGuidedInputChange}
+                        onSubmit={() => handleSubmitGuidedInput()}
+                        onShowChoices={handleShowGuidedChoices}
+                        onSelectChoice={handleSelectGuidedChoice}
+                        onRevealAnswer={handleRevealGuidedAnswer}
+                        onActivateRandomFill={guidedInnerMode === "gestalt_cloze" ? handleRefreshGuidedCloze : handleActivateGuidedRandomFill}
+                        onReturnToTeacherGuided={handleReturnToTeacherGuided}
+                        onReturnToBattle={handleReturnToBattleFromGuided}
+                        onCloseLearning={handleCloseGuidedLearning}
+                    />
+
                     {/* Floating Teaching Panel */}
                     <AnimatePresence>
-                        {teachingPanelOpen && teachingMode && mode === 'translation' && (
+                        {teachingPanelOpen && teachingMode && mode === 'translation' && !learningSessionActive && (
                             <>
                                 {/* Backdrop */}
                                 <motion.div
