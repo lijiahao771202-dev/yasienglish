@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
     getDrillSurfacePhase,
+    shouldExpandShopInventoryDock,
     shouldRefreshBattleChart,
 } from "./battleUiState";
 
@@ -58,5 +59,34 @@ describe("getDrillSurfacePhase", () => {
                 hasDrillData: true,
             }),
         ).toBe("ready");
+    });
+});
+
+describe("shouldExpandShopInventoryDock", () => {
+    it("keeps the inventory collapsed on desktop until the shop is hovered", () => {
+        expect(
+            shouldExpandShopInventoryDock({
+                hasHoverSupport: true,
+                isShopHovered: false,
+            }),
+        ).toBe(false);
+    });
+
+    it("expands the inventory on desktop while the shop area is hovered", () => {
+        expect(
+            shouldExpandShopInventoryDock({
+                hasHoverSupport: true,
+                isShopHovered: true,
+            }),
+        ).toBe(true);
+    });
+
+    it("keeps the inventory visible on touch devices without hover", () => {
+        expect(
+            shouldExpandShopInventoryDock({
+                hasHoverSupport: false,
+                isShopHovered: false,
+            }),
+        ).toBe(true);
     });
 });
