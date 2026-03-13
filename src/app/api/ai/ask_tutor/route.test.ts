@@ -28,7 +28,7 @@ function createCompletion(content: string) {
     };
 }
 
-function createStreamCompletion(chunks: string[]) {
+function createBrokenStreamCompletion(chunks: string[]) {
     async function* iterator() {
         for (const chunk of chunks) {
             yield {
@@ -41,6 +41,8 @@ function createStreamCompletion(chunks: string[]) {
                 ],
             };
         }
+
+        throw new Error("stream interrupted");
     }
 
     return iterator();
@@ -49,37 +51,37 @@ function createStreamCompletion(chunks: string[]) {
 function buildRequest(
     overrides: Partial<{
         query: string;
-        hintLevel: number;
         questionType: string;
         action: string;
         uiSurface: string;
         intent: string;
         focusSpan: string;
-        drillInput: string;
         userAttempt: string;
         improvedVersion: string;
         score: number;
         recentTurns: Array<{ question: string; answer: string }>;
+        recentMastery: string[];
         teachingPoint: string;
         stream: boolean;
-    }> = {}
+        revealAnswer: boolean;
+    }> = {},
 ) {
     return {
         json: async () => ({
             query: "为什么这里用 ignite？",
-            hintLevel: 1,
             questionType: "follow_up",
             action: "ask",
-            uiSurface: "score",
+            uiSurface: "battle",
             intent: "lexical",
             focusSpan: "ignite",
-            drillInput: "",
             userAttempt: "When I won the lottery, love started.",
             improvedVersion: "When I won the lottery, a romantic spark ignited between us.",
             score: 78,
             teachingPoint: "词汇搭配与语气",
             recentTurns: [],
+            recentMastery: [],
             stream: false,
+            revealAnswer: false,
             drillContext: {
                 chinese: "中彩票后我们之间擦出了爱情火花。",
                 reference_english: "When I won the lottery, a romantic spark ignited between us.",
@@ -101,203 +103,141 @@ describe("ask_tutor route", () => {
         vi.restoreAllMocks();
     });
 
-    it("returns structured fields and blocks full answer on first guidance turn", async () => {
+    it("returns battle responses without cards", async () => {
         createCompletionMock.mockResolvedValueOnce(
             createCompletion(
                 JSON.stringify({
-                    coach_cn: "你抓住了主要意思，再把动词搭配调自然。",
-                    pattern_en: ["When ..., ..."],
-                    contrast: "start love 是直译；spark ignited 更地道。",
-                    next_task: "用 When... 再写一句。",
-                    answer_revealed: true,
-                    full_answer: "SHOULD_NOT_LEAK",
+                    response_intent: "word_meaning",
+                    coach_markdown: "1. **ignite** 在这里更像“点燃、激起”。\n2. 你前面已经会 spark，这次只补 ignite 的动作感。",
+                    answer_revealed: false,
                     teaching_point: "词汇搭配与语气",
-                    direct_answer_en: "a romantic spark ignited between us",
                     error_tags: ["word_choice", "collocation"],
-                    micro_drill: {
-                        prompt_cn: "把“我们之间有了感觉”用 spark/ignite 重写。",
-                        expected_pattern_en: "A romantic spark ignited between ...",
-                    },
-                })
-            )
+                    quality_flags: [],
+                }),
+            ),
         );
 
-        const response = await POST(buildRequest({ hintLevel: 1, questionType: "follow_up" }));
+        const response = await POST(buildRequest());
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(data.answer_revealed).toBe(false);
-        expect(data.full_answer).toBeUndefined();
-        expect(data.coach_cn).toBeTruthy();
-        expect(Array.isArray(data.pattern_en)).toBe(true);
-        expect(data.pattern_en.length).toBeGreaterThan(0);
-        expect(data.contrast).toBeTruthy();
-        expect(data.next_task).toBeTruthy();
-        expect(typeof data.direct_answer_en).toBe("string");
-        expect(Array.isArray(data.error_tags)).toBe(true);
-        expect(data.micro_drill?.prompt_cn).toBeTruthy();
-        expect(Array.isArray(data.quality_flags)).toBe(true);
+        expect(data.cards).toBeUndefined();
+        expect(data.coach_markdown).toContain("你前面已经");
     });
 
-    it("reveals full answer when unlock is requested and falls back to improved version", async () => {
+    it("does not reveal full answer on ordinary battle follow-ups", async () => {
         createCompletionMock.mockResolvedValueOnce(
             createCompletion(
                 JSON.stringify({
-                    coach_cn: "你的句子方向对了，重点是搭配自然度。",
-                    pattern_en: ["It was only after ... that ..."],
-                    contrast: "直译容易平，搭配能拉开自然度。",
-                    next_task: "用 It was only after... that... 造句。",
+                    response_intent: "full_sentence",
+                    coach_markdown: "1. 你已经知道 intention 这个词。\n2. 这次只补“搞不懂”这个状态表达，不直接展开整句。",
                     answer_revealed: true,
+                    full_answer: "SHOULD_NOT_LEAK",
                     teaching_point: "语序与自然表达",
-                    direct_answer_en: "a romantic spark ignited between us",
-                    error_tags: ["word_order"],
-                    micro_drill: {
-                        prompt_cn: "再写一句 only after 结构。",
-                        expected_pattern_en: "It was only after ... that ...",
-                    },
-                })
-            )
+                    error_tags: ["grammar"],
+                    quality_flags: [],
+                }),
+            ),
         );
 
-        const response = await POST(buildRequest({ questionType: "unlock_answer", hintLevel: 2 }));
+        const response = await POST(buildRequest({
+            query: "搞不懂怎么翻译呢",
+            focusSpan: "搞不懂",
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.response_intent).toBe("partial_phrase");
+        expect(data.answer_revealed).toBe(false);
+        expect(data.full_answer).toBeUndefined();
+    });
+
+    it("reveals full answer only when unlock is explicitly requested", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletion(
+                JSON.stringify({
+                    response_intent: "unlock_answer",
+                    coach_markdown: "**这里先这样说：** `When I won the lottery, a romantic spark ignited between us.`",
+                    answer_revealed: true,
+                    full_answer: "When I won the lottery, a romantic spark ignited between us.",
+                    answer_reason_cn: "这里直接用 spark ignited between us 会更自然。",
+                    teaching_point: "语序与自然表达",
+                    error_tags: ["word_order"],
+                    quality_flags: [],
+                }),
+            ),
+        );
+
+        const response = await POST(buildRequest({ questionType: "unlock_answer", revealAnswer: true }));
         const data = await response.json();
 
         expect(response.status).toBe(200);
         expect(data.answer_revealed).toBe(true);
         expect(data.full_answer).toBe("When I won the lottery, a romantic spark ignited between us.");
-        expect(data.answer_reason_cn).toBeTruthy();
     });
 
-    it("parses fenced JSON and truncates pattern list to at most 2 examples", async () => {
+    it("repairs collapsed english inside markdown", async () => {
         createCompletionMock.mockResolvedValueOnce(
             createCompletion(
-                "```json\n" +
                 JSON.stringify({
-                    coach_cn: "先保主干，再放时间信息。",
-                    pattern_en: ["When ..., ...", "It was only after ... that ...", "This one should be dropped"],
-                    contrast: "中文常逐词对齐，英文先主干后修饰。",
-                    next_task: "再改写一句包含 after 的句子。",
+                    response_intent: "collocation",
+                    coach_markdown: "1. **break** 更自然，比如 `coffeebreak`。\n2. 在这个语境里，`anintensecompetitionbreak` 也会被修开。",
                     answer_revealed: false,
-                    teaching_point: "时间从句",
-                    direct_answer_en: "It was only after ... that ...",
-                    error_tags: ["word_order", "grammar"],
-                    micro_drill: {
-                        prompt_cn: "把“他到家后才发现钥匙丢了”翻成英文。",
-                        expected_pattern_en: "It was only after ... that ...",
-                    },
-                }) +
-                "\n```"
-            )
+                    teaching_point: "搭配辨析",
+                    error_tags: ["collocation"],
+                    quality_flags: [],
+                }),
+            ),
         );
 
-        const response = await POST(buildRequest({ hintLevel: 2, questionType: "pattern" }));
+        const response = await POST(buildRequest({
+            query: "间隙怎么搭配更自然",
+            focusSpan: "间隙",
+        }));
         const data = await response.json();
 
-        expect(response.status).toBe(200);
-        expect(data.pattern_en.length).toBeLessThanOrEqual(2);
-        expect(data.teaching_point).toBe("时间从句");
-        expect(data.micro_drill?.expected_pattern_en).toContain("It was only after");
+        expect(data.coach_markdown).toContain("coffee break");
+        expect(data.coach_markdown).toContain("an intense competition break");
+        expect(data.cards).toBeUndefined();
     });
 
-    it("supports SSE streaming mode and emits final structured payload", async () => {
+    it("uses the battle prompt without gradual hint wording or cards schema", async () => {
         createCompletionMock.mockResolvedValueOnce(
-            createStreamCompletion([
-                '{"coach_cn":"你方向是对的，先调语序。",',
-                '"pattern_en":["When ..., ..."],',
-                '"contrast":"中式直译偏硬，英文先主干更自然。",',
-                '"next_task":"用 When... 再写一句。",',
-                '"answer_revealed":false,',
-                '"teaching_point":"时间从句",',
-                '"direct_answer_en":"When I won the lottery, a romantic spark ignited between us.",',
-                '"error_tags":["word_order"],',
-                '"micro_drill":{"prompt_cn":"再练一句时间从句。","expected_pattern_en":"When ..., ..."}}',
-            ])
+            createCompletion(
+                JSON.stringify({
+                    response_intent: "word_meaning",
+                    coach_markdown: "1. **spare key** 就是备用钥匙。",
+                    answer_revealed: false,
+                    teaching_point: "词汇搭配与语气",
+                    error_tags: ["word_choice"],
+                    quality_flags: [],
+                }),
+            ),
+        );
+
+        await POST(buildRequest({
+            query: "备用钥匙什么意思",
+            focusSpan: "备用钥匙",
+        }));
+
+        const prompt = createCompletionMock.mock.calls[0]?.[0]?.messages?.[1]?.content ?? "";
+        expect(prompt).not.toContain("渐进引导");
+        expect(prompt).not.toContain("\"cards\"");
+        expect(prompt).toContain("Known knowledge to connect from");
+    });
+
+    it("recovers with a final payload when battle stream is interrupted", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createBrokenStreamCompletion([
+                '{"coach_markdown":"1. **先别逐词翻。**\\n2. 这次只补当前这个词块',
+            ]),
         );
 
         const response = await POST(buildRequest({ stream: true }));
-        const bodyText = await response.text();
+        const body = await response.text();
 
         expect(response.status).toBe(200);
-        expect(response.headers.get("content-type")).toContain("text/event-stream");
-        expect(bodyText).toContain("event: chunk");
-        expect(bodyText).toContain("event: final");
-        expect(bodyText).toContain("\"coach_cn\":\"你方向是对的，先调语序。\"");
-        expect(bodyText).toContain("\"direct_answer_en\"");
-    });
-
-    it("supports drill_check action and returns drill feedback payload", async () => {
-        createCompletionMock.mockResolvedValueOnce(
-            createCompletion(
-                JSON.stringify({
-                    coach_cn: "你的句子方向正确，重点修动词搭配。",
-                    pattern_en: ["It was only after ... that ..."],
-                    contrast: "先主干后补充，避免中文直序。",
-                    next_task: "再写一句 only after 结构。",
-                    answer_revealed: false,
-                    teaching_point: "时间从句",
-                    direct_answer_en: "It was only after I arrived that I noticed the mistake.",
-                    error_tags: ["grammar", "word_order"],
-                    micro_drill: {
-                        prompt_cn: "把“我进门后才意识到出错了”翻成英文。",
-                        expected_pattern_en: "It was only after ... that ...",
-                    },
-                    drill_feedback_cn: "你用了 after 的方向对，但主句时态要统一。",
-                    revised_sentence_en: "It was only after I walked in that I realized I had made a mistake.",
-                    next_micro_drill: {
-                        prompt_cn: "再写一句 only after 结构，主题改成学习。",
-                        expected_pattern_en: "It was only after ... that ...",
-                    },
-                })
-            )
-        );
-
-        const response = await POST(buildRequest({
-            action: "drill_check",
-            query: "请检查我的练习句子",
-            drillInput: "After I came in, I just realized I made a mistake.",
-            stream: false,
-        }));
-        const data = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(data.drill_feedback_cn).toBeTruthy();
-        expect(data.revised_sentence_en).toBeTruthy();
-        expect(data.next_micro_drill?.prompt_cn).toBeTruthy();
-        expect(Array.isArray(data.quality_flags)).toBe(true);
-    });
-
-    it("uses lightweight battle tutor prompt without score-only teaching sections", async () => {
-        createCompletionMock.mockResolvedValueOnce(
-            createCompletion(
-                JSON.stringify({
-                    coach_cn: "这里先用 `study the operating manual carefully` 就够了。",
-                    pattern_en: ["study/review the manual carefully"],
-                    answer_revealed: false,
-                    teaching_point: "词汇搭配与自然表达",
-                    direct_answer_en: "study the operating manual carefully",
-                    error_tags: ["word_choice"],
-                    micro_drill: {
-                        prompt_cn: "把“他认真看了说明书”翻成英文。",
-                        expected_pattern_en: "review the manual carefully",
-                    },
-                })
-            )
-        );
-
-        const response = await POST(buildRequest({
-            uiSurface: "battle",
-            query: "操作手册怎么翻译？",
-            intent: "translate",
-        }));
-        const data = await response.json();
-        const prompt = createCompletionMock.mock.calls[0]?.[0]?.messages?.[1]?.content as string;
-
-        expect(response.status).toBe(200);
-        expect(prompt).toContain('Surface: "battle"');
-        expect(prompt).toContain("不要写“中式 vs 地道”栏目");
-        expect(prompt).not.toContain('"contrast"');
-        expect(prompt).not.toContain('"next_task"');
-        expect(data.contrast).toBeUndefined();
-        expect(data.next_task).toBeUndefined();
+        expect(body).toContain("event: final");
+        expect(body).not.toContain("event: error");
     });
 });

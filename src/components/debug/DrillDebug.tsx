@@ -9,9 +9,10 @@ interface DrillDebugProps {
     onTriggerBoss: (type: string) => void;
     onTriggerEconomyFx: (kind: DebugEconomyKind, options: { itemId?: DebugItemId; amount?: number; message: string; }) => void;
     onTriggerLootDrop: (options: { type: 'gem' | 'exp' | 'theme'; amount: number; rarity: 'common' | 'rare' | 'legendary'; message: string; }) => void;
+    onTriggerGacha: () => void;
 }
 
-export function DrillDebug({ onTriggerBoss, onTriggerEconomyFx, onTriggerLootDrop }: DrillDebugProps) {
+export function DrillDebug({ onTriggerBoss, onTriggerEconomyFx, onTriggerLootDrop, onTriggerGacha }: DrillDebugProps) {
     const [isOpen, setIsOpen] = useState(false);
 
     const handleRoulette = () => {
@@ -86,6 +87,12 @@ export function DrillDebug({ onTriggerBoss, onTriggerEconomyFx, onTriggerLootDro
 
             <div className="pt-3 border-t border-stone-800">
                 <div className="text-[10px] text-stone-500 font-mono mb-2 uppercase tracking-tight text-center">Experimental Modes</div>
+                <button
+                    onClick={onTriggerGacha}
+                    className="mb-2 w-full rounded-lg border border-amber-700/35 bg-gradient-to-r from-amber-950/55 via-stone-900 to-orange-950/55 p-3 text-[10px] font-mono text-amber-100 transition-all hover:border-amber-400/60 hover:brightness-110 active:scale-95"
+                >
+                    Preview Gacha (5 Pick 1)
+                </button>
                 <button
                     onClick={handleRoulette}
                     className="group w-full p-3 bg-gradient-to-r from-stone-900 to-red-950 border border-red-900/20 hover:border-red-600/50 rounded-lg flex items-center justify-center gap-3 hover:brightness-125 active:scale-95 transition-all shadow-lg hover:shadow-red-900/20"

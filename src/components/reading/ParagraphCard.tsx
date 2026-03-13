@@ -10,7 +10,7 @@ import { useAnalysisStore } from "@/lib/analysis-store";
 import { SyntaxTreeView } from "./SyntaxTreeView";
 import { bionicText } from "@/lib/bionic";
 import { InlineGrammarHighlights } from "@/components/shared/InlineGrammarHighlights";
-import { type GrammarDisplayMode } from "@/lib/grammarHighlights";
+import { getGrammarHighlightColor, type GrammarDisplayMode } from "@/lib/grammarHighlights";
 import ReactMarkdown from "react-markdown";
 
 interface ParagraphCardProps {
@@ -863,7 +863,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                                                         </thead>
                                                                         <tbody className="bg-white divide-y divide-stone-200">
                                                                             {item.analysis_results.map((result: any, k: number) => {
-                                                                                const styleClass = getHighlightColor(result.point);
+                                                                                const styleClass = getGrammarHighlightColor(result.point);
                                                                                 // Extract border color for the underline and text color
                                                                                 const borderColor = styleClass.match(/border-\w+-\d+/)?.[0] || "border-stone-400";
                                                                                 const textColor = styleClass.match(/text-\w+-\d+/)?.[0] || "text-stone-700";
