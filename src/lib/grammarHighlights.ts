@@ -61,6 +61,27 @@ interface GrammarTypeMeta {
     displayPriority: number;
 }
 
+function matchesAnyPattern(value: string, patterns: RegExp[]): boolean {
+    return patterns.some((pattern) => pattern.test(value));
+}
+
+function mergeSegmentTranslations(...parts: Array<string | undefined>) {
+    const normalized = parts
+        .map((part) => part?.trim())
+        .filter((part): part is string => Boolean(part));
+
+    if (normalized.length === 0) {
+        return undefined;
+    }
+
+    return normalized.reduce((merged, current) => {
+        if (!merged) return current;
+        if (merged.includes(current)) return merged;
+        if (current.includes(merged)) return current;
+        return `${merged}${current}`;
+    }, "");
+}
+
 function findNextUnusedOccurrence(
     haystack: string,
     needle: string,
@@ -88,7 +109,9 @@ function findNextUnusedOccurrence(
 }
 
 function classifyGrammarType(type: string): GrammarTypeMeta {
+    const raw = type.trim();
     const t = type.trim().toLowerCase();
+    const englishToken = ` ${t.replace(/[_-]+/g, " ")} `;
 
     if (t.includes("main clause") || t.includes("主句")) {
         return { normalizedType: "主句", translatedLabel: "主句", layer: "structure", displayPriority: 20 };
@@ -112,35 +135,53 @@ function classifyGrammarType(type: string): GrammarTypeMeta {
         return { normalizedType: "虚拟语气", translatedLabel: "虚拟语气", layer: "structure", displayPriority: 22 };
     }
 
-    if (t.includes("subject") || t.includes("主语")) {
+    if (matchesAnyPattern(englishToken, [/\bsubject\b/, /\bsubject phrase\b/]) || raw.includes("主语")) {
         return { normalizedType: "主语", translatedLabel: "主语", layer: "core", displayPriority: 100 };
     }
-    if (t.includes("predicate") || t.includes("verb") || t.includes("谓语") || t.includes("动词")) {
+    if (
+        matchesAnyPattern(englishToken, [
+            /\bpredicate\b/,
+            /\bverb phrase\b/,
+            /\bmodal verb\b/,
+            /\bmodal verb phrase\b/,
+            /\bauxiliary verb\b/,
+            /\bauxiliary\b/,
+            /\bverb\b/,
+        ]) ||
+        raw.includes("谓语") ||
+        raw.includes("动词短语") ||
+        raw.includes("情态动词")
+    ) {
         return { normalizedType: "谓语", translatedLabel: "谓语", layer: "core", displayPriority: 99 };
     }
-    if (t.includes("object") || t.includes("宾语")) {
+    if (matchesAnyPattern(englishToken, [/\bobject\b/, /\bobject phrase\b/]) || raw.includes("宾语")) {
         return { normalizedType: "宾语", translatedLabel: "宾语", layer: "core", displayPriority: 98 };
     }
-    if (t.includes("complement") || t.includes("表语") || t.includes("补语")) {
-        return { normalizedType: t.includes("表语") ? "表语" : "补语", translatedLabel: t.includes("表语") ? "表语" : "补语", layer: t.includes("表语") ? "core" : "modifier", displayPriority: t.includes("表语") ? 97 : 64 };
+    if (matchesAnyPattern(englishToken, [/\bcomplement\b/, /\bsubject complement\b/, /\bpredicative\b/]) || raw.includes("表语") || raw.includes("补语")) {
+        return {
+            normalizedType: raw.includes("表语") || englishToken.includes(" predicative ") ? "表语" : "补语",
+            translatedLabel: raw.includes("表语") || englishToken.includes(" predicative ") ? "表语" : "补语",
+            layer: raw.includes("表语") || englishToken.includes(" predicative ") ? "core" : "modifier",
+            displayPriority: raw.includes("表语") || englishToken.includes(" predicative ") ? 97 : 64,
+        };
     }
 
-    if (t.includes("adjective") || t.includes("attributive") || t.includes("定语")) {
+    if (matchesAnyPattern(englishToken, [/\badjective\b/, /\battributive\b/, /\battribute\b/]) || raw.includes("定语")) {
         return { normalizedType: "定语", translatedLabel: "定语", layer: "modifier", displayPriority: 62 };
     }
-    if (t.includes("adverb") || t.includes("状语")) {
+    if (matchesAnyPattern(englishToken, [/\badverb\b/, /\badverbial\b/, /\btime adverbial\b/, /\bplace adverbial\b/]) || raw.includes("状语")) {
         return { normalizedType: "状语", translatedLabel: "状语", layer: "modifier", displayPriority: 61 };
     }
-    if (t.includes("appositive") || t.includes("同位语")) {
+    if (matchesAnyPattern(englishToken, [/\bappositive\b/]) || raw.includes("同位语")) {
         return { normalizedType: "同位语", translatedLabel: "同位语", layer: "modifier", displayPriority: 60 };
     }
-    if (t.includes("preposition") || t.includes("介词")) {
+    if (matchesAnyPattern(englishToken, [/\bpreposition\b/, /\bprepositional phrase\b/]) || raw.includes("介词")) {
         return { normalizedType: "介词短语", translatedLabel: "介词短语", layer: "modifier", displayPriority: 59 };
     }
 
     return {
-        normalizedType: type.trim() || "语法结构",
-        translatedLabel: type.trim() || "语法结构",
+        normalizedType: raw || "语法结构",
+        translatedLabel: raw || "语法结构",
         layer: "modifier",
         displayPriority: 40,
     };
@@ -148,6 +189,50 @@ function classifyGrammarType(type: string): GrammarTypeMeta {
 
 function toRangeKey(range: { start: number; end: number }) {
     return `${range.start}:${range.end}`;
+}
+
+function canMergeRanges(left: GrammarHighlightRange, right: GrammarHighlightRange, text: string) {
+    if (left.layer !== right.layer) return false;
+    if (left.normalizedType !== right.normalizedType) return false;
+    if (left.explanation !== right.explanation) return false;
+    if (left.end > right.start) return false;
+
+    const gap = text.slice(left.end, right.start);
+    return /^[\s-–—/]*$/.test(gap);
+}
+
+function mergeAdjacentRanges(text: string, ranges: GrammarHighlightRange[]): GrammarHighlightRange[] {
+    if (ranges.length <= 1) return ranges;
+
+    const sorted = [...ranges].sort((left, right) => {
+        if (left.start !== right.start) return left.start - right.start;
+        if (left.displayPriority !== right.displayPriority) {
+            return right.displayPriority - left.displayPriority;
+        }
+        return (right.end - right.start) - (left.end - left.start);
+    });
+
+    const merged: GrammarHighlightRange[] = [];
+
+    sorted.forEach((range) => {
+        const previous = merged[merged.length - 1];
+        if (!previous || !canMergeRanges(previous, range, text)) {
+            merged.push(range);
+            return;
+        }
+
+        merged[merged.length - 1] = {
+            ...previous,
+            end: range.end,
+            segmentTranslation: mergeSegmentTranslations(previous.segmentTranslation, range.segmentTranslation),
+            alternatives: [
+                ...(previous.alternatives ?? []),
+                ...(range.alternatives ?? []),
+            ],
+        };
+    });
+
+    return merged;
 }
 
 function createSegments(text: string, ranges: GrammarHighlightRange[]): GrammarTextSegment[] {
@@ -301,13 +386,13 @@ export function buildGrammarHighlightRanges(
         groupedByRange.set(key, [range]);
     });
 
-    return Array.from(groupedByRange.values())
+    const normalizedRanges = Array.from(groupedByRange.values())
         .map((ranges) => {
             const [primary, ...rest] = ranges.sort((left, right) => {
                 if (left.displayPriority !== right.displayPriority) {
                     return right.displayPriority - left.displayPriority;
                 }
-                return (left.end - left.start) - (right.end - right.start);
+                return (right.end - right.start) - (left.end - left.start);
             });
             if (!primary) {
                 throw new Error("Expected at least one highlight per range group");
@@ -330,8 +415,10 @@ export function buildGrammarHighlightRanges(
             if (left.displayPriority !== right.displayPriority) {
                 return right.displayPriority - left.displayPriority;
             }
-            return (left.end - left.start) - (right.end - right.start);
+            return (right.end - right.start) - (left.end - left.start);
         });
+
+    return mergeAdjacentRanges(text, normalizedRanges);
 }
 
 export function buildGrammarViewModel(
@@ -362,34 +449,34 @@ export function getGrammarHighlightColor(type: string): string {
     const t = meta.normalizedType.toLowerCase();
 
     if (t.includes("主句")) {
-        return "border-b-2 border-indigo-400/60 text-indigo-700 hover:bg-indigo-50/30 pb-0.5";
+        return "text-slate-700";
     }
     if (t.includes("主语")) {
-        return "border-b border-blue-400/40 text-blue-700 hover:bg-blue-50/30 pb-0.5";
+        return "text-teal-950";
     }
     if (t.includes("谓语")) {
-        return "border-b border-emerald-400/40 text-emerald-700 hover:bg-emerald-50/30 pb-0.5";
+        return "text-emerald-950";
     }
     if (t.includes("宾语") || t.includes("表语")) {
-        return "border-b border-rose-400/40 text-rose-700 hover:bg-rose-50/30 pb-0.5";
+        return "text-sky-950";
     }
     if (t.includes("定语")) {
-        return "border-b border-dashed border-sky-400/40 text-sky-700 hover:bg-sky-50/30 pb-0.5";
+        return "text-sky-900";
     }
     if (t.includes("状语")) {
-        return "border-b border-dashed border-amber-400/40 text-amber-700 hover:bg-amber-50/30 pb-0.5";
+        return "text-amber-950";
     }
     if (t.includes("补语")) {
-        return "border-b border-dashed border-violet-400/40 text-violet-700 hover:bg-violet-50/30 pb-0.5";
+        return "text-rose-950";
     }
     if (t.includes("同位语")) {
-        return "border-b border-dotted border-orange-400/40 text-orange-700 hover:bg-orange-50/30 pb-0.5";
+        return "text-orange-950";
     }
     if (t.includes("介词")) {
-        return "border-b border-stone-200 text-stone-600 hover:bg-stone-50/50 pb-0.5";
+        return "text-stone-700";
     }
     if (t.includes("从句") || t.includes("非谓语") || t.includes("倒装") || t.includes("虚拟")) {
-        return "border-l-2 border-stone-200/60 pl-1 text-stone-600 hover:bg-stone-50/30";
+        return "text-slate-800";
     }
 
     return "text-stone-600";

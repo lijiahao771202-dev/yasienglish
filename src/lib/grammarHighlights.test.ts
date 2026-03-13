@@ -125,4 +125,46 @@ describe("grammarHighlights", () => {
     it("returns unknown grammar labels as-is without recursive fallback", () => {
         expect(translateGrammarType("独立主格结构")).toBe("独立主格结构");
     });
+
+    it("treats verb and modal phrases as core structure in core mode", () => {
+        const text = "The team can finish the project tomorrow.";
+        const model = buildGrammarViewModel(text, [
+            {
+                sentence: text,
+                highlights: [
+                    { substring: "The team", type: "主语", explanation: "动作发出者", segment_translation: "这个团队" },
+                    { substring: "can finish", type: "modal verb phrase", explanation: "表示有能力完成", segment_translation: "能够完成" },
+                    { substring: "the project", type: "宾语", explanation: "动作对象", segment_translation: "这个项目" },
+                    { substring: "tomorrow", type: "时间状语", explanation: "补充时间信息", segment_translation: "明天" },
+                ],
+            },
+        ]);
+
+        expect(model.core.filter((segment) => segment.highlight).map((segment) => segment.highlight?.normalizedType)).toEqual([
+            "主语",
+            "谓语",
+            "宾语",
+        ]);
+        expect(model.core.some((segment) => segment.highlight?.normalizedType === "状语")).toBe(false);
+    });
+
+    it("merges contiguous highlights of the same role across whitespace", () => {
+        const text = "They acted in the Gulf region yesterday.";
+        const ranges = buildGrammarHighlightRanges(text, [
+            {
+                sentence: text,
+                highlights: [
+                    { substring: "in the", type: "介词短语", explanation: "补充地点信息", segment_translation: "在这个" },
+                    { substring: "Gulf region", type: "介词短语", explanation: "补充地点信息", segment_translation: "海湾地区" },
+                ],
+            },
+        ]);
+
+        expect(ranges).toHaveLength(1);
+        expect(ranges[0]).toMatchObject({
+            start: text.indexOf("in the"),
+            end: text.indexOf("Gulf region") + "Gulf region".length,
+            normalizedType: "介词短语",
+        });
+    });
 });

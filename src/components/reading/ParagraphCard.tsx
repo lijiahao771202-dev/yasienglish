@@ -10,7 +10,7 @@ import { useAnalysisStore } from "@/lib/analysis-store";
 import { SyntaxTreeView } from "./SyntaxTreeView";
 import { bionicText } from "@/lib/bionic";
 import { InlineGrammarHighlights } from "@/components/shared/InlineGrammarHighlights";
-import { getGrammarHighlightColor as getHighlightColor, type GrammarDisplayMode } from "@/lib/grammarHighlights";
+import { type GrammarDisplayMode } from "@/lib/grammarHighlights";
 import ReactMarkdown from "react-markdown";
 
 interface ParagraphCardProps {
@@ -748,7 +748,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: "auto" }}
-                            className="bg-orange-50 p-4 rounded-lg border border-orange-100 space-y-4 relative group/grammar"
+                            className="relative space-y-4 rounded-[28px] border border-[#eadcc0] bg-[linear-gradient(180deg,rgba(255,251,242,0.96),rgba(248,242,228,0.92))] p-5 shadow-[0_18px_45px_rgba(120,94,42,0.08)] ring-1 ring-white/70 group/grammar"
                         >
                             {/* Old hidden button removed */}
 
@@ -756,10 +756,10 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                 <div className="space-y-3">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2">
-                                            <h4 className="text-orange-700 font-bold text-sm">Grammar Analysis</h4>
+                                            <h4 className="font-newsreader text-xl font-semibold text-[#8a5d1f]">Grammar Analysis</h4>
                                             <button
                                                 onClick={() => handleGrammarAnalysis(true, "basic")}
-                                                className="p-1.5 hover:bg-orange-100 rounded-full text-orange-400 hover:text-orange-600 transition-colors"
+                                                className="rounded-full border border-[#e4d5b5] bg-white/80 p-1.5 text-[#b18747] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-[#8a5d1f]"
                                                 title="Regenerate Basic Analysis"
                                             >
                                                 <RotateCcw className="w-3 h-3" />
@@ -767,14 +767,14 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                         </div>
 
                                         <div className="flex items-center gap-2">
-                                            <div className="flex items-center rounded-full border border-orange-200 bg-white/80 p-0.5">
+                                            <div className="flex items-center rounded-full border border-[#dfcfab] bg-white/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                                                 <button
                                                     onClick={() => setGrammarDisplayMode("core")}
                                                     className={cn(
-                                                        "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                                                        "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
                                                         grammarDisplayMode === "core"
-                                                            ? "bg-orange-500 text-white"
-                                                            : "text-orange-600 hover:bg-orange-50",
+                                                            ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
+                                                            : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
                                                     )}
                                                 >
                                                     主干结构
@@ -782,10 +782,10 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                                 <button
                                                     onClick={() => setGrammarDisplayMode("full")}
                                                     className={cn(
-                                                        "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                                                        "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
                                                         grammarDisplayMode === "full"
-                                                            ? "bg-orange-500 text-white"
-                                                            : "text-orange-600 hover:bg-orange-50",
+                                                            ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
+                                                            : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
                                                     )}
                                                 >
                                                     完整分析
@@ -795,7 +795,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                             {showDeepAnalysis && grammarAnalysis.difficult_sentences[0].sentence_tree && (
                                                 <button
                                                     onClick={() => handleGrammarAnalysis(true, "deep")}
-                                                    className="p-1.5 hover:bg-orange-100 rounded-full text-orange-400 hover:text-orange-600 transition-colors"
+                                                    className="rounded-full border border-[#e4d5b5] bg-white/75 p-1.5 text-[#b18747] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-[#8a5d1f]"
                                                     title="Regenerate Deep Analysis"
                                                 >
                                                     <RotateCcw className="w-3 h-3" />
@@ -812,7 +812,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                                     }
                                                 }}
                                                 disabled={isAnalyzingGrammar}
-                                                className="text-xs font-medium text-orange-600 hover:text-orange-800 hover:bg-orange-100 px-2 py-1 rounded transition-colors flex items-center gap-1"
+                                                className="flex items-center gap-1 rounded-full border border-transparent px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] text-[#8a5d1f] transition-colors hover:border-[#e4d5b5] hover:bg-white/70 disabled:cursor-not-allowed disabled:opacity-70"
                                             >
                                                 {isAnalyzingGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                                                 {showDeepAnalysis ? "Hide Deep Analysis" : (grammarAnalysis.difficult_sentences[0].sentence_tree ? "Expand Deep Analysis" : "Analyze Deep Structure")}

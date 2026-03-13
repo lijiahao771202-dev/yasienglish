@@ -4374,15 +4374,15 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             <div className="mb-1 flex items-center justify-between gap-3">
                                 <p className="text-[10px] text-stone-400 font-sans font-bold uppercase">Standard Reference (参考答案)</p>
                                 {referenceGrammarAnalysis ? (
-                                    <div className="flex items-center rounded-full border border-stone-200 bg-white/80 p-0.5">
+                                    <div className="flex items-center rounded-full border border-[#dfcfab] bg-white/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                                         <button
                                             type="button"
                                             onClick={() => setReferenceGrammarDisplayMode("core")}
                                             className={cn(
-                                                "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                                                "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
                                                 referenceGrammarDisplayMode === "core"
-                                                    ? "bg-stone-900 text-white"
-                                                    : "text-stone-500 hover:bg-stone-50",
+                                                    ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
+                                                    : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
                                             )}
                                         >
                                             主干
@@ -4391,10 +4391,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                             type="button"
                                             onClick={() => setReferenceGrammarDisplayMode("full")}
                                             className={cn(
-                                                "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                                                "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
                                                 referenceGrammarDisplayMode === "full"
-                                                    ? "bg-stone-900 text-white"
-                                                    : "text-stone-500 hover:bg-stone-50",
+                                                    ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
+                                                    : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
                                             )}
                                         >
                                             完整分析
@@ -4403,23 +4403,27 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                 ) : null}
                             </div>
                             {isGeneratingGrammar ? (
-                                <div className="rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2 text-xs text-amber-700">
+                                <div className="rounded-[20px] border border-[#eadcc0] bg-[linear-gradient(180deg,rgba(255,250,241,0.96),rgba(249,243,228,0.92))] px-4 py-3 text-xs text-[#8a5d1f] shadow-[0_12px_28px_rgba(120,94,42,0.06)]">
                                     语法分析生成中...
                                 </div>
                             ) : referenceGrammarAnalysis ? (
-                                <p className="text-base font-newsreader text-stone-600 italic">
-                                    &ldquo;
-                                    <InlineGrammarHighlights
-                                        text={drillData.reference_english}
-                                        sentences={referenceGrammarAnalysis}
-                                        displayMode={referenceGrammarDisplayMode}
-                                        showSegmentTranslation
-                                        textClassName="leading-relaxed"
-                                    />
-                                    &rdquo;
-                                </p>
+                                <div className="rounded-[24px] border border-[#eadcc0] bg-[linear-gradient(180deg,rgba(255,252,245,0.98),rgba(249,244,231,0.94))] px-4 py-4 shadow-[0_18px_44px_rgba(120,94,42,0.08)]">
+                                    <p className="text-base font-newsreader text-stone-700 italic leading-relaxed md:text-[1.075rem]">
+                                        &ldquo;
+                                        <InlineGrammarHighlights
+                                            text={drillData.reference_english}
+                                            sentences={referenceGrammarAnalysis}
+                                            displayMode={referenceGrammarDisplayMode}
+                                            showSegmentTranslation
+                                            textClassName="leading-relaxed"
+                                        />
+                                        &rdquo;
+                                    </p>
+                                </div>
                             ) : (
-                                <p className="text-base font-newsreader text-stone-600 italic">"{drillData.reference_english}"</p>
+                                <div className="rounded-[24px] border border-[#eadcc0] bg-[linear-gradient(180deg,rgba(255,252,245,0.98),rgba(249,244,231,0.94))] px-4 py-4 shadow-[0_18px_44px_rgba(120,94,42,0.08)]">
+                                    <p className="text-base font-newsreader text-stone-700 italic leading-relaxed md:text-[1.075rem]">&ldquo;{drillData.reference_english}&rdquo;</p>
+                                </div>
                             )}
                             {grammarError ? (
                                 <p className="mt-2 text-xs text-stone-400">参考句语法分析暂时不可用，已回退到普通参考句显示。</p>
