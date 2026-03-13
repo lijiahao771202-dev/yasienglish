@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Sparkles, RefreshCw, Send, CheckCircle2, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock } from "lucide-react";
+import { Sparkles, RefreshCw, Send, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as Diff from 'diff';
@@ -16,9 +16,11 @@ import { getRank } from "@/lib/rankUtils";
 import { DeathFX } from "./DeathFX";
 import { BossScoreReveal } from "./BossScoreReveal";
 import { RouletteOverlay } from "./RouletteOverlay";
+import { GachaOverlay } from "./GachaOverlay";
 import { DrillDebug } from "../debug/DrillDebug";
 import { ScoringFlipCard } from "./ScoringFlipCard";
 import { TeachingCard } from "./TeachingCard";
+import { TranslationAnalysisJourney } from "./TranslationAnalysisJourney";
 import { GuidedLearningOverlay } from "./GuidedLearningOverlay";
 import { GhostTextarea } from "../vocab/GhostTextarea";
 import { InlineGrammarHighlights } from "../shared/InlineGrammarHighlights";
@@ -47,6 +49,12 @@ import {
     type GuidedScript,
     type GuidedSessionState,
 } from "@/lib/guidedLearning";
+import {
+    buildGachaPack,
+    getGachaRewardEconomy,
+    shouldTriggerGacha,
+    type GachaCard,
+} from "./gacha";
 
 // --- Interfaces ---
 
@@ -111,6 +119,30 @@ interface DrillFeedback {
     feedback?: any; // Can be string[] or object with listening_tips
     judge_reasoning?: string;
     improved_version?: string;
+    diagnosis_summary_cn?: string;
+    chinglish_vs_natural?: {
+        chinglish: string;
+        natural: string;
+        reason_cn: string;
+    };
+    common_pitfall?: {
+        pitfall_cn: string;
+        wrong_example: string;
+        right_example: string;
+        why_cn: string;
+    };
+    phrase_synonyms?: Array<{
+        source_phrase: string;
+        alternatives: string[];
+        nuance_cn: string;
+    }>;
+    transfer_pattern?: {
+        template: string;
+        example_cn: string;
+        example_en: string;
+        tip_cn: string;
+    };
+    memory_hook_cn?: string;
     segments?: {
         word: string;
         status: "correct" | "phonetic_error" | "missing" | "typo" | "user_extra" | "variation";
@@ -136,8 +168,8 @@ interface TutorMicroDrill {
 interface TutorStructuredResponse {
     coach_cn: string;
     pattern_en: string[];
-    contrast: string;
-    next_task: string;
+    contrast?: string;
+    next_task?: string;
     answer_revealed: boolean;
     full_answer?: string;
     answer_reason_cn?: string;
@@ -246,7 +278,7 @@ interface LootDrop {
 
 type EconomyTargetId = 'coins' | ShopItemId;
 type EconomyFxKind = 'item_consume' | 'coin_gain' | 'item_purchase';
-type EconomyFxSource = 'tab' | 'hint' | 'vocab' | 'audio' | 'refresh' | 'reward' | 'shop';
+type EconomyFxSource = 'tab' | 'hint' | 'vocab' | 'audio' | 'refresh' | 'reward' | 'shop' | 'gacha';
 
 interface EconomyFxEvent {
     id: number;
@@ -845,6 +877,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isGeneratingAnalysis, setIsGeneratingAnalysis] = useState(false);
     const [analysisError, setAnalysisError] = useState<string | null>(null);
     const [analysisDetailsOpen, setAnalysisDetailsOpen] = useState(false);
+    const [fullAnalysisRequested, setFullAnalysisRequested] = useState(false);
+    const [isGeneratingFullAnalysis, setIsGeneratingFullAnalysis] = useState(false);
+    const [fullAnalysisError, setFullAnalysisError] = useState<string | null>(null);
+    const [fullAnalysisOpen, setFullAnalysisOpen] = useState(false);
+    const [fullAnalysisData, setFullAnalysisData] = useState<DrillFeedback | null>(null);
     const [isGeneratingGrammar, setIsGeneratingGrammar] = useState(false);
     const [grammarError, setGrammarError] = useState<string | null>(null);
     const [referenceGrammarAnalysis, setReferenceGrammarAnalysis] = useState<GrammarSentenceAnalysis[] | null>(null);
@@ -880,6 +917,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     // Ask Tutor State
     const [isTutorOpen, setIsTutorOpen] = useState(false);
+    const [activeTutorSurface, setActiveTutorSurface] = useState<TutorUiSurface>("battle");
     const [tutorQuery, setTutorQuery] = useState("");
     const [tutorAnswer, setTutorAnswer] = useState<string | null>(null);
     const [tutorThread, setTutorThread] = useState<TutorHistoryTurn[]>([]);
@@ -892,6 +930,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [microDrillInput, setMicroDrillInput] = useState("");
     const [isCheckingMicroDrill, setIsCheckingMicroDrill] = useState(false);
     const [isBattleDrillCollapsed, setIsBattleDrillCollapsed] = useState(true);
+    const [isScoreDrillCollapsed, setIsScoreDrillCollapsed] = useState(true);
 
     // Teaching Mode State
     const [teachingMode, setTeachingMode] = useState(false);
@@ -1540,13 +1579,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [shake, setShake] = useState(false);
     const [showDoubleDown, setShowDoubleDown] = useState(false); // Modal State
     const [recentScores, setRecentScores] = useState<number[]>([]); // Track recent scores for bounties
-    const [assistsUsedInCurrentDrill, setAssistsUsedInCurrentDrill] = useState(0); // For Gacha eligibility
 
     // Gacha State
     const [showGacha, setShowGacha] = useState(false);
-    const [gachaRewards, setGachaRewards] = useState<{ type: 'capsule_1' | 'capsule_3' | 'shield', id: number }[]>([]);
-    const [selectedGachaIndex, setSelectedGachaIndex] = useState<number | null>(null);
-    const [hasActiveShield, setHasActiveShield] = useState(false);
+    const [gachaCards, setGachaCards] = useState<GachaCard[]>([]);
+    const [selectedGachaCardId, setSelectedGachaCardId] = useState<string | null>(null);
+    const [gachaClaimTarget, setGachaClaimTarget] = useState<{ x: number; y: number; target: EconomyTargetId; } | null>(null);
 
     const hasStartedRef = useRef(false);
     const hasPlayedEchoRef = useRef(false); // For Echo Beast (One-time audio)
@@ -1739,10 +1777,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const activeCoinRainCount = activeCoinTier === 'large' ? 14 : activeCoinTier === 'medium' ? 11 : 8;
     const activeCoinAbsorbCount = activeCoinTier === 'large' ? 5 : activeCoinTier === 'medium' ? 4 : 3;
     const isShopEconomyFx = activeEconomyFx?.kind === 'item_purchase' && activeEconomyFx.source === 'shop' && showShopModal;
+    const isGachaEconomyFx = activeEconomyFx?.source === 'gacha';
     const activeEconomyChipLabel = activeEconomyFx?.kind === 'coin_gain'
         ? `+${activeEconomyFx.amount ?? 0}`
         : activeEconomyFx?.itemId
-            ? ITEM_CATALOG[activeEconomyFx.itemId].name
+            ? (isGachaEconomyFx ? 'Lucky Draw' : ITEM_CATALOG[activeEconomyFx.itemId].name)
             : '提示';
     const translationKeywords = mode === 'translation' && drillData
         ? ((drillData.target_english_vocab || drillData.key_vocab || []) as string[])
@@ -1887,7 +1926,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                 <div className="relative z-10 min-w-0 flex-1">
                     <div className="text-[10px] font-black uppercase tracking-[0.24em] text-stone-500/90">
-                        {activeEconomyFx.kind === 'coin_gain' ? 'Coin Gain' : activeEconomyFx.kind === 'item_purchase' ? 'Store Update' : 'Assist Used'}
+                        {activeEconomyFx.kind === 'coin_gain'
+                            ? (isGachaEconomyFx ? 'Lucky Draw' : 'Coin Gain')
+                            : activeEconomyFx.kind === 'item_purchase'
+                                ? (isGachaEconomyFx ? 'Lucky Draw' : 'Store Update')
+                                : 'Assist Used'}
                     </div>
                     <div className="truncate text-[15px] font-black tracking-[0.01em]">
                         {activeEconomyFx.message}
@@ -2424,35 +2467,51 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setShowRoulette(true);
     };
 
-    const handleGachaSelect = (index: number) => {
-        if (selectedGachaIndex !== null) return; // Already selected
-        setSelectedGachaIndex(index);
+    const getGachaClaimTarget = useCallback((card: GachaCard) => {
+        const targetId: EconomyTargetId = card.rewardType === 'coins' ? 'coins' : card.rewardType;
+        const targetRect = resourceTargetRefs.current[targetId]?.getBoundingClientRect();
+
+        if (!targetRect) return null;
+
+        return {
+            target: targetId,
+            x: targetRect.left + targetRect.width / 2,
+            y: targetRect.top + targetRect.height / 2,
+        };
+    }, []);
+
+    const handleGachaSelect = useCallback((cardId: string) => {
+        if (selectedGachaCardId !== null) return;
+
+        const reward = gachaCards.find((card) => card.id === cardId);
+        if (!reward) return;
+
+        setSelectedGachaCardId(cardId);
+        setGachaCards((prev) => prev.map((card) => ({
+            ...card,
+            selected: card.id === cardId,
+            revealed: card.id === cardId,
+        })));
+        setGachaClaimTarget(getGachaClaimTarget(reward));
         new Audio('https://assets.mixkit.co/sfx/preview/mixkit-software-interface-start-2574.mp3').play().catch(() => { });
 
-        const reward = gachaRewards[index];
-        setTimeout(() => {
-            // Apply reward
-            switch (reward.type) {
-                case 'capsule_1':
-                    applyEconomyPatch({ itemDelta: { capsule: 1 } });
-                    setLootDrop({ type: 'gem', amount: 1, rarity: 'rare', message: '💊 获得 1 个灵感胶囊！' });
-                    break;
-                case 'capsule_3':
-                    applyEconomyPatch({ itemDelta: { capsule: 3 } });
-                    setLootDrop({ type: 'gem', amount: 3, rarity: 'legendary', message: '💊💊💊 获得 3 个灵感胶囊！' });
-                    break;
-                case 'shield':
-                    setHasActiveShield(true);
-                    setLootDrop({ type: 'gem', amount: 0, rarity: 'legendary', message: '🛡️ 获得免死金牌！下一次失误不扣分/断连！' });
-                    break;
-            }
+        const economyReward = getGachaRewardEconomy(reward);
+        applyEconomyPatch({
+            coinsDelta: economyReward.coinsDelta,
+            itemDelta: economyReward.itemDelta,
+        });
+        pushEconomyFx({
+            ...economyReward.fx,
+            source: 'gacha',
+        });
+    }, [applyEconomyPatch, gachaCards, getGachaClaimTarget, pushEconomyFx, selectedGachaCardId]);
 
-            // Close gacha after showing the reward
-            setTimeout(() => {
-                setShowGacha(false);
-            }, 2500);
-        }, 800); // Wait for card flip animation
-    };
+    const handleGachaComplete = useCallback(() => {
+        setShowGacha(false);
+        setGachaCards([]);
+        setSelectedGachaCardId(null);
+        setGachaClaimTarget(null);
+    }, []);
 
     const handleRouletteComplete = (result: 'safe' | 'dead', bulletCount: number) => {
         setShowRoulette(false);
@@ -2569,6 +2628,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // --- Core Actions ---
 
     const handleGenerateDrill = async (targetDifficulty = difficulty, overrideBossType?: string, skipPrefetched = false) => {
+        if (showGacha) return;
         // Abort any pending generation or prefetch requests
         if (abortControllerRef.current) abortControllerRef.current.abort();
         if (abortPrefetchRef.current) abortPrefetchRef.current.abort();
@@ -2595,6 +2655,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setMicroDrillInput("");
             setIsCheckingMicroDrill(false);
             setIsBattleDrillCollapsed(true);
+            setIsScoreDrillCollapsed(true);
             setWordPopup(null);
             setIsPlaying(false);
             setHasRatedDrill(false);
@@ -2602,12 +2663,16 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setIsGeneratingAnalysis(false);
             setAnalysisError(null);
             setAnalysisDetailsOpen(false);
+            setFullAnalysisRequested(false);
+            setIsGeneratingFullAnalysis(false);
+            setFullAnalysisError(null);
+            setFullAnalysisOpen(false);
+            setFullAnalysisData(null);
             setIsGeneratingGrammar(false);
             setGrammarError(null);
             setReferenceGrammarAnalysis(null);
             setReferenceGrammarDisplayMode("core");
             setEloChange(null);
-            setAssistsUsedInCurrentDrill(0);
             setIsHintLoading(false);
             setIsVocabHintRevealed(false);
             setIsTranslationAudioUnlocked(false);
@@ -2661,6 +2726,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setMicroDrillInput("");
         setIsCheckingMicroDrill(false);
         setIsBattleDrillCollapsed(true);
+        setIsScoreDrillCollapsed(true);
         setWordPopup(null);
         setIsPlaying(false);
         setHasRatedDrill(false);
@@ -2668,12 +2734,16 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setIsGeneratingAnalysis(false);
         setAnalysisError(null);
         setAnalysisDetailsOpen(false);
+        setFullAnalysisRequested(false);
+        setIsGeneratingFullAnalysis(false);
+        setFullAnalysisError(null);
+        setFullAnalysisOpen(false);
+        setFullAnalysisData(null);
         setIsGeneratingGrammar(false);
         setGrammarError(null);
         setReferenceGrammarAnalysis(null);
         setReferenceGrammarDisplayMode("core");
         setEloChange(null);
-        setAssistsUsedInCurrentDrill(0);
         setIsHintLoading(false);
         setIsVocabHintRevealed(false);
         setIsTranslationAudioUnlocked(false);
@@ -3128,6 +3198,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     }, [guidedScript]);
 
     const handleSubmitDrill = async () => {
+        if (showGacha) return;
         if (!userTranslation.trim() || !drillData) return;
         if (shouldBypassBattleRewards({ learningSession: learningSessionActive, guidedModeStatus })) {
             return;
@@ -3171,10 +3242,16 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setAnalysisRequested(false);
             setAnalysisError(null);
             setAnalysisDetailsOpen(false);
+            setFullAnalysisRequested(false);
+            setIsGeneratingFullAnalysis(false);
+            setFullAnalysisError(null);
+            setFullAnalysisOpen(false);
+            setFullAnalysisData(null);
             setIsGeneratingGrammar(false);
             setGrammarError(null);
             setReferenceGrammarAnalysis(null);
             setReferenceGrammarDisplayMode("core");
+            setIsScoreDrillCollapsed(true);
 
             if (data.score !== undefined) {
                 if (hasRatedDrill) {
@@ -3240,15 +3317,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 const result = calculateAdvancedElo(activeElo || 600, challengeElo, data.score, activeStreak);
                 let change = result.total;
                 let newStreak = activeStreak;
-
-                // --- SHIELD CONSUMPTION ---
-                if (hasActiveShield && data.score < 6 && change < 0) {
-                    change = 0; // Negate penalty
-                    newStreak = activeStreak; // Protect streak
-                    setHasActiveShield(false);
-                    setLootDrop({ type: 'exp', amount: 0, rarity: 'rare', message: '🛡️ 护盾抵消了一次惩罚！' });
-                    new Audio('https://assets.mixkit.co/sfx/preview/mixkit-sci-fi-shield-force-field-power-up-2166.mp3').play().catch(() => { });
-                }
 
                 // --- GAMBLING LOGIC (Crimson Roulette) ---
                 // --- GAMBLING LOGIC (Crimson Roulette) ---
@@ -3482,20 +3550,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                 // --- GACHA TRIGGER ---
                 let gachaTriggered = false;
-                const isPerfectDrill = data.score >= 8.0 && assistsUsedInCurrentDrill === 0;
-                if (!hasExistingLoot && isPerfectDrill && mode === 'translation' && Math.random() < 0.3) {
+                if (!hasExistingLoot && shouldTriggerGacha({
+                    mode,
+                    score: data.score,
+                    learningSession: learningSessionActive,
+                    roll: Math.random(),
+                })) {
                     gachaTriggered = true;
                     setTimeout(() => {
-                        const pools = ['capsule_1', 'capsule_1', 'capsule_1', 'capsule_3', 'shield'];
-                        const rewards = [];
-                        for (let i = 0; i < 3; i++) {
-                            rewards.push({
-                                id: i,
-                                type: pools[Math.floor(Math.random() * pools.length)] as 'capsule_1' | 'capsule_3' | 'shield'
-                            });
-                        }
-                        setGachaRewards(rewards);
-                        setSelectedGachaIndex(null);
+                        setGachaCards(buildGachaPack());
+                        setSelectedGachaCardId(null);
+                        setGachaClaimTarget(null);
                         setShowGacha(true);
                         // Intro Sound
                         new Audio('https://assets.mixkit.co/sfx/preview/mixkit-ethereal-fairy-win-sound-2019.mp3').play().catch(() => { });
@@ -3565,47 +3630,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setIsGeneratingAnalysis(true);
         setAnalysisError(null);
         setAnalysisDetailsOpen(false);
-        setGrammarError(null);
-        setReferenceGrammarAnalysis(null);
-        setReferenceGrammarDisplayMode("core");
-
-        const shouldAnalyzeReferenceGrammar = mode === "translation" && drillData.reference_english.trim().length > 0;
-        let grammarPromise: Promise<void> | null = null;
-
-        if (shouldAnalyzeReferenceGrammar) {
-            setIsGeneratingGrammar(true);
-            grammarPromise = fetch("/api/ai/grammar", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    text: drillData.reference_english,
-                    mode: "basic",
-                }),
-            })
-                .then(async (response) => {
-                    const data = await response.json();
-                    if (!response.ok || data.error) {
-                        throw new Error(data.error || "语法分析生成失败");
-                    }
-
-                    const sentences = Array.isArray(data?.difficult_sentences)
-                        ? data.difficult_sentences as GrammarSentenceAnalysis[]
-                        : [];
-
-                    setReferenceGrammarAnalysis(sentences);
-                })
-                .catch((error) => {
-                    const message = error instanceof Error ? error.message : "语法分析生成失败";
-                    setGrammarError(message);
-                    setReferenceGrammarAnalysis(null);
-                    setReferenceGrammarDisplayMode("core");
-                })
-                .finally(() => {
-                    setIsGeneratingGrammar(false);
-                });
-        } else {
-            setIsGeneratingGrammar(false);
-        }
+        setFullAnalysisRequested(false);
+        setIsGeneratingFullAnalysis(false);
+        setFullAnalysisError(null);
+        setFullAnalysisOpen(false);
+        setFullAnalysisData(null);
 
         try {
             const activeElo = mode === 'listening' ? listeningEloRef.current : eloRatingRef.current;
@@ -3620,6 +3649,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     score: drillFeedback.score,
                     mode,
                     teaching_mode: teachingMode,
+                    detail_level: "basic",
                 }),
             });
             const data = await analysisResponse.json();
@@ -3629,14 +3659,94 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             }
 
             setDrillFeedback(prev => prev ? { ...prev, ...data } : prev);
-            if (grammarPromise) {
-                await grammarPromise;
-            }
         } catch (error) {
             const message = error instanceof Error ? error.message : "解析生成失败";
             setAnalysisError(message);
         } finally {
             setIsGeneratingAnalysis(false);
+        }
+    };
+
+    const handleGenerateFullAnalysis = async () => {
+        if (!drillData || !drillFeedback || mode !== "translation" || isGeneratingFullAnalysis) return;
+
+        setFullAnalysisRequested(true);
+        setIsGeneratingFullAnalysis(true);
+        setFullAnalysisError(null);
+
+        try {
+            const activeElo = eloRatingRef.current;
+            const analysisResponse = await fetch("/api/ai/analyze_drill", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    user_translation: userTranslation,
+                    reference_english: drillData.reference_english,
+                    original_chinese: drillData.chinese,
+                    current_elo: activeElo || 600,
+                    score: drillFeedback.score,
+                    mode,
+                    teaching_mode: teachingMode,
+                    detail_level: "full",
+                }),
+            });
+            const data = await analysisResponse.json();
+
+            if (!analysisResponse.ok || data.error) {
+                throw new Error(data.error || "完整解析生成失败");
+            }
+
+            setFullAnalysisData(data);
+            setFullAnalysisOpen(true);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "完整解析生成失败";
+            setFullAnalysisError(message);
+        } finally {
+            setIsGeneratingFullAnalysis(false);
+        }
+    };
+
+    const handleGenerateReferenceGrammar = async () => {
+        if (
+            !drillData ||
+            mode !== "translation" ||
+            !drillData.reference_english.trim() ||
+            isGeneratingGrammar
+        ) {
+            return;
+        }
+
+        setIsGeneratingGrammar(true);
+        setGrammarError(null);
+        setReferenceGrammarDisplayMode("core");
+
+        try {
+            const response = await fetch("/api/ai/grammar", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    text: drillData.reference_english,
+                    mode: "basic",
+                }),
+            });
+            const data = await response.json();
+
+            if (!response.ok || data.error) {
+                throw new Error(data.error || "语法分析生成失败");
+            }
+
+            const sentences = Array.isArray(data?.difficult_sentences)
+                ? data.difficult_sentences as GrammarSentenceAnalysis[]
+                : [];
+
+            setReferenceGrammarAnalysis(sentences);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "语法分析生成失败";
+            setGrammarError(message);
+            setReferenceGrammarAnalysis(null);
+            setReferenceGrammarDisplayMode("core");
+        } finally {
+            setIsGeneratingGrammar(false);
         }
     };
 
@@ -3720,8 +3830,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         return {
             coach_cn: readString(asObject.coach_cn) || "你已经抓住大意了。先修一个关键点，再继续完善句子。",
             pattern_en: patterns.length > 0 ? patterns : ["When ..., ..."],
-            contrast: readString(asObject.contrast) || "中式表达常逐词直译，地道表达更强调信息重心与自然搭配。",
-            next_task: readString(asObject.next_task) || "请按模板重写一句，再发我继续纠正。",
+            contrast: readString(asObject.contrast) || undefined,
+            next_task: readString(asObject.next_task) || undefined,
             answer_revealed: Boolean(asObject.answer_revealed),
             full_answer: readString(asObject.full_answer) || undefined,
             answer_reason_cn: readString(asObject.answer_reason_cn) || undefined,
@@ -3743,6 +3853,28 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 : undefined,
         };
     };
+
+    const resetTutorState = useCallback(() => {
+        setTutorQuery("");
+        setTutorAnswer(null);
+        setTutorThread([]);
+        setTutorResponse(null);
+        setTutorHintLevel(1);
+        setTutorNoProgressTurns(0);
+        setTutorPendingQuestion(null);
+        setMicroDrillInput("");
+        setIsCheckingMicroDrill(false);
+        setIsBattleDrillCollapsed(true);
+        setIsScoreDrillCollapsed(true);
+    }, []);
+
+    const openTutorModal = useCallback((surface: TutorUiSurface) => {
+        if (activeTutorSurface !== surface) {
+            resetTutorState();
+        }
+        setActiveTutorSurface(surface);
+        setIsTutorOpen(true);
+    }, [activeTutorSurface, resetTutorState]);
 
     const handleAskTutor = async (options?: {
         question?: string;
@@ -4018,7 +4150,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
         try {
             applyEconomyPatch({ itemDelta: { hint_ticket: -1 } });
-            setAssistsUsedInCurrentDrill(prev => prev + 1);
             const fullReference = drillData.reference_english.trim();
             setFullReferenceHint(prev => ({ version: prev.version + 1, text: fullReference }));
             pushEconomyFx({ kind: 'item_consume', itemId: 'hint_ticket', amount: 1, message: '已消耗 1 Hint 道具', source: 'hint' });
@@ -4046,7 +4177,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
         vocabHintRevealRef.current = true;
         applyEconomyPatch({ itemDelta: { vocab_ticket: -1 } });
-        setAssistsUsedInCurrentDrill(prev => prev + 1);
         setIsVocabHintRevealed(true);
         pushEconomyFx({ kind: 'item_consume', itemId: 'vocab_ticket', amount: 1, message: '已消耗 1 关键词券', source: 'vocab' });
         return true;
@@ -4066,7 +4196,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const handlePredictionShown = useCallback(() => {
         if (learningSessionActive) return;
         applyEconomyPatch({ itemDelta: { capsule: -1 } });
-        setAssistsUsedInCurrentDrill(prev => prev + 1);
         pushEconomyFx({ kind: 'item_consume', itemId: 'capsule', amount: 1, message: '已消耗 1 胶囊', source: 'tab' });
     }, [applyEconomyPatch, learningSessionActive, pushEconomyFx]);
 
@@ -4094,7 +4223,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         translationAudioUnlockRef.current = true;
         setIsTranslationAudioUnlocked(true);
         applyEconomyPatch({ itemDelta: { audio_ticket: -1 } });
-        setAssistsUsedInCurrentDrill(prev => prev + 1);
 
         const played = await playAudio();
 
@@ -4102,7 +4230,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             translationAudioUnlockRef.current = false;
             setIsTranslationAudioUnlocked(false);
             applyEconomyPatch({ itemDelta: { audio_ticket: 1 } });
-            setAssistsUsedInCurrentDrill(prev => Math.max(0, prev - 1));
             setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: '参考句播放失败，已退还 1 张朗读券' });
             return;
         }
@@ -4516,6 +4643,424 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         return "本题解析已生成。";
     };
 
+    const renderTranslationReferenceSentence = () => {
+        if (!drillData) return null;
+
+        if (referenceGrammarAnalysis) {
+            return (
+                <>
+                    &ldquo;
+                    <InlineGrammarHighlights
+                        text={drillData.reference_english}
+                        sentences={referenceGrammarAnalysis}
+                        displayMode={referenceGrammarDisplayMode}
+                        showSegmentTranslation
+                        textClassName="leading-relaxed"
+                    />
+                    &rdquo;
+                </>
+            );
+        }
+
+        return <>&ldquo;{drillData.reference_english}&rdquo;</>;
+    };
+
+    const renderTranslationTutorModal = () => {
+        if (mode !== "translation" || !drillData || !isTutorOpen) return null;
+        const tutorSurface: TutorUiSurface = activeTutorSurface;
+        if (tutorSurface === "score" && !hasRatedDrill) return null;
+        const isScoreSurface = tutorSurface === "score";
+
+        return (
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[120] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm"
+                onClick={() => setIsTutorOpen(false)}
+            >
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.96, y: 18 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96, y: 12 }}
+                    transition={{ duration: 0.22, ease: "easeOut" }}
+                    onClick={(e) => e.stopPropagation()}
+                    className={cn("w-full max-w-[680px] max-h-[min(84vh,760px)] overflow-hidden rounded-[2rem] border p-4 shadow-[0_30px_90px_rgba(15,23,42,0.22)] md:p-5", activeCosmeticUi.tutorPanelClass)}
+                >
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className={cn("text-sm font-semibold flex items-center gap-1.5", activeCosmeticUi.tutorSendClass)}>
+                                    <MessageCircle className="w-4 h-4" />
+                                    {isScoreSurface ? "AI Tutor 追问" : "AI Tutor"}
+                                </span>
+                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700">
+                                    {tutorResponse?.teaching_point || inferTeachingPoint()}
+                                </span>
+                            </div>
+                            <p className="mt-2 text-xs leading-5 text-stone-500">
+                                {isScoreSurface
+                                    ? "想继续追问搭配、句型、迁移练习时，在这里集中完成，不再打断评分页主布局。"
+                                    : "翻译过程中卡住时，只在这里问当前词、搭配或句型，不再混进评分讲评。"}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className={cn("hidden text-[11px] font-semibold sm:inline", activeCosmeticUi.tutorSendClass)}>渐进引导 L{Math.min(4, tutorHintLevel)}</span>
+                            <button type="button" onClick={() => setIsTutorOpen(false)} className="rounded-full border border-stone-200 bg-white/80 p-2 text-stone-500 transition-all hover:bg-white hover:text-stone-700">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-nowrap gap-2 overflow-x-auto pb-1 pr-1">
+                        <button
+                            type="button"
+                            onClick={() => handleAskTutor({ question: "给我一个这题可复用的句型模板。", questionType: "pattern", uiSurface: tutorSurface })}
+                            disabled={isAskingTutor}
+                            className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            给我模板
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleAskTutor({
+                                question: isScoreSurface
+                                    ? "为什么这里不用更直译的词？请告诉我搭配差别。"
+                                    : "这里更自然的说法是什么？只告诉我这个词或搭配怎么用。",
+                                questionType: "word_choice",
+                                uiSurface: tutorSurface,
+                            })}
+                            disabled={isAskingTutor}
+                            className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            {isScoreSurface ? "词汇对比" : "搭配怎么用"}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleAskTutor({ question: "再给我一个同结构的例句让我模仿。", questionType: "example", uiSurface: tutorSurface })}
+                            disabled={isAskingTutor}
+                            className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            同结构例句
+                        </button>
+                    </div>
+
+                    <div className="mt-4 max-h-[calc(min(84vh,760px)-13rem)] overflow-y-auto pr-1">
+                        {tutorPendingQuestion ? (
+                            <div className="mb-3 rounded-xl border border-stone-200/70 bg-white/80 p-3">
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">正在追问</p>
+                                <p className="mt-1 text-sm text-stone-700">{tutorPendingQuestion}</p>
+                                <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
+                                    <Sparkles className="h-3.5 w-3.5 animate-spin" />
+                                    <span>正在生成教学回答...</span>
+                                </div>
+                            </div>
+                        ) : null}
+                        {tutorResponse ? (
+                            <div className="rounded-xl border border-stone-200/70 bg-white/80 p-3.5">
+                                <TutorMarkdown content={tutorResponse.coach_cn} className="text-sm text-stone-700" />
+                                {tutorResponse.direct_answer_en && (
+                                    <p className="mt-2 text-xs text-sky-700">
+                                        可直接用：<code className="rounded bg-sky-50 px-1 py-0.5">{tutorResponse.direct_answer_en}</code>
+                                    </p>
+                                )}
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {tutorResponse.pattern_en.map((pattern, idx) => (
+                                        <span key={`${pattern}-${idx}`} className="rounded-full border border-indigo-200/80 bg-indigo-50/80 px-2.5 py-1 text-[11px] font-medium text-indigo-700">
+                                            {pattern}
+                                        </span>
+                                    ))}
+                                </div>
+                                {isScoreSurface && tutorResponse.contrast && (
+                                    <p className="mt-2 text-xs leading-5 text-stone-500">
+                                        <span className="font-semibold text-stone-600">中式 vs 地道：</span>
+                                        {tutorResponse.contrast}
+                                    </p>
+                                )}
+                                {isScoreSurface && tutorResponse.next_task && (
+                                    <p className="mt-2 text-xs leading-5 text-emerald-700">
+                                        <span className="font-semibold">下一步：</span>
+                                        {tutorResponse.next_task}
+                                    </p>
+                                )}
+                                {tutorResponse.answer_revealed && tutorResponse.full_answer && (
+                                    <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
+                                        <p className="text-[11px] font-semibold text-emerald-700">完整答案（已解锁）</p>
+                                        <p className="mt-1 text-sm font-newsreader text-stone-800">{tutorResponse.full_answer}</p>
+                                        {tutorResponse.answer_reason_cn && (
+                                            <p className="mt-1 text-xs leading-5 text-stone-600">{tutorResponse.answer_reason_cn}</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ) : tutorAnswer ? (
+                            <div className="rounded-xl border border-stone-200/70 bg-white/80 p-3.5">
+                                <TutorMarkdown content={tutorAnswer} className="text-sm text-stone-700" />
+                            </div>
+                        ) : (
+                            <p className="text-xs text-stone-500">
+                                {isScoreSurface
+                                    ? "先问一个点，Tutor 会按“方向提示 → 模板 → 对比 → 迁移练习”给你逐层教学。"
+                                    : "先问一个具体卡点，比如某个词、搭配或语序；这里不会给你整套评分讲评。"}
+                            </p>
+                        )}
+
+                        {isScoreSurface && tutorThread.length > 0 && (
+                            <div className="mt-3 space-y-2">
+                                {tutorThread.slice(-2).map((item, idx) => (
+                                    <div key={`${item.question}-${idx}`} className="rounded-xl border border-stone-200/70 bg-white/80 p-3">
+                                        <p className="text-xs text-stone-500">你问：{item.question}</p>
+                                        <TutorMarkdown content={item.coach_cn} className={cn("mt-1 text-sm", activeCosmeticUi.tutorSendClass)} />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    <form
+                        className="mt-4 flex flex-col gap-2 sm:flex-row"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            handleAskTutor({ questionType: "follow_up", uiSurface: tutorSurface });
+                        }}
+                    >
+                        <input
+                            type="text"
+                            value={tutorQuery}
+                            onChange={(e) => setTutorQuery(e.target.value)}
+                            placeholder={isScoreSurface ? "继续追问这题..." : "继续问这个词、搭配或句型..."}
+                            className={cn("h-11 flex-1 rounded-xl border px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)}
+                        />
+                        <button
+                            type="submit"
+                            disabled={isAskingTutor || !tutorQuery.trim()}
+                            className={cn("inline-flex h-11 min-w-[110px] items-center justify-center gap-1.5 rounded-xl border border-transparent px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50", activeCosmeticUi.analysisButtonClass)}
+                        >
+                            {isAskingTutor ? <Sparkles className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
+                            {isAskingTutor ? "思考中" : "继续提问"}
+                        </button>
+                    </form>
+
+                    {!tutorResponse?.answer_revealed && (
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                            <button
+                                type="button"
+                                onClick={() => handleAskTutor({ question: "我想看完整答案，并解释为什么这样说。", questionType: "unlock_answer", forceReveal: true, uiSurface: tutorSurface })}
+                                disabled={isAskingTutor}
+                                className="inline-flex min-h-9 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:-translate-y-0.5 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {isScoreSurface ? "我想看完整答案" : "我想看参考表达"}
+                            </button>
+                            {isScoreSurface && tutorNoProgressTurns >= 1 && (
+                                <span className="text-[11px] text-stone-500">再追问 1 轮将自动解锁答案</span>
+                            )}
+                        </div>
+                    )}
+                </motion.div>
+            </motion.div>
+        );
+    };
+
+    const renderScoreTutorFloatingButton = () => {
+        if (mode !== "translation" || !drillFeedback || !hasRatedDrill || drillFeedback._error || isTutorOpen) return null;
+
+        return (
+            <button
+                type="button"
+                onClick={() => openTutorModal("score")}
+                className="fixed bottom-24 right-5 z-[95] inline-flex min-h-12 items-center gap-2 rounded-full border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.96),rgba(254,243,199,0.92))] px-4 py-3 text-sm font-semibold text-amber-900 shadow-[0_18px_36px_rgba(217,119,6,0.22)] backdrop-blur-xl transition-all hover:-translate-y-1 hover:shadow-[0_22px_42px_rgba(217,119,6,0.28)] md:bottom-8 md:right-8"
+                aria-label="打开 AI Tutor 追问弹窗"
+            >
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-amber-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                    <MessageCircle className="h-4 w-4" />
+                </span>
+                <span className="flex flex-col items-start leading-tight">
+                    <span>AI Tutor</span>
+                    <span className="text-[11px] font-medium text-amber-700">继续追问</span>
+                </span>
+            </button>
+        );
+    };
+
+    const renderTranslationAnalysisDetails = () => {
+        const details = fullAnalysisData;
+        if (!details) return null;
+
+        return (
+            <div className="space-y-4">
+                {details.diagnosis_summary_cn ? (
+                    <div className="rounded-[1.75rem] border border-stone-100 bg-white/90 p-5 shadow-[0_12px_30px_rgba(28,25,23,0.04)]">
+                        <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                            核心判断
+                        </h4>
+                        <p className="mt-3 text-sm leading-7 text-stone-600">{details.diagnosis_summary_cn}</p>
+                    </div>
+                ) : null}
+
+                {details.chinglish_vs_natural ? (
+                    <div className="rounded-[1.75rem] border border-orange-100 bg-orange-50/40 p-5">
+                        <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-orange-600">
+                            <Sparkles className="w-3.5 h-3.5" />
+                            中式对比
+                        </h4>
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                            <div className="rounded-2xl border border-rose-100/80 bg-white/85 p-4">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-500">Chinglish</p>
+                                <p className="mt-2 font-newsreader text-lg italic text-rose-700">{details.chinglish_vs_natural.chinglish}</p>
+                            </div>
+                            <div className="rounded-2xl border border-emerald-100/80 bg-white/85 p-4">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-600">Natural</p>
+                                <p className="mt-2 font-newsreader text-lg italic text-emerald-800">{details.chinglish_vs_natural.natural}</p>
+                            </div>
+                        </div>
+                        <p className="mt-3 text-sm leading-7 text-stone-600">{details.chinglish_vs_natural.reason_cn}</p>
+                    </div>
+                ) : null}
+
+                {details.common_pitfall ? (
+                    <div className="rounded-[1.75rem] border border-rose-100 bg-rose-50/40 p-5">
+                        <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-rose-600">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            易错提醒
+                        </h4>
+                        <p className="mt-3 text-sm leading-7 text-stone-600">{details.common_pitfall.pitfall_cn}</p>
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                            <div className="rounded-2xl border border-rose-100/80 bg-white/85 p-4">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-500">Wrong</p>
+                                <p className="mt-2 font-newsreader text-lg italic text-rose-700">{details.common_pitfall.wrong_example}</p>
+                            </div>
+                            <div className="rounded-2xl border border-emerald-100/80 bg-white/85 p-4">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-600">Right</p>
+                                <p className="mt-2 font-newsreader text-lg italic text-emerald-800">{details.common_pitfall.right_example}</p>
+                            </div>
+                        </div>
+                        <p className="mt-3 text-sm leading-7 text-stone-600">{details.common_pitfall.why_cn}</p>
+                    </div>
+                ) : null}
+
+                {details.phrase_synonyms && details.phrase_synonyms.length > 0 ? (
+                    <div className="rounded-[1.75rem] border border-sky-100 bg-sky-50/40 p-5">
+                        <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-600">
+                            <BookOpen className="w-3.5 h-3.5" />
+                            短语同义替换
+                        </h4>
+                        <div className="mt-4 space-y-3">
+                            {details.phrase_synonyms.map((item, i: number) => (
+                                <div key={`${item.source_phrase}-${i}`} className="rounded-2xl border border-sky-100/80 bg-white/85 p-4">
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-500">Source Phrase</p>
+                                    <p className="mt-2 font-newsreader text-lg italic text-stone-900">{item.source_phrase}</p>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {item.alternatives.map((alternative, altIndex) => (
+                                            <span key={`${alternative}-${altIndex}`} className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                                                {alternative}
+                                            </span>
+                                        ))}
+                                    </div>
+                                    <p className="mt-3 text-sm leading-6 text-stone-600">{item.nuance_cn}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
+
+                {details.transfer_pattern ? (
+                    <div className="rounded-[1.75rem] border border-emerald-100 bg-emerald-50/35 p-5">
+                        <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-600">
+                            <Sparkles className="w-3.5 h-3.5" />
+                            可迁移句型
+                        </h4>
+                        <div className="mt-4 rounded-2xl border border-emerald-100/80 bg-white/85 p-4">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-emerald-500">Template</p>
+                            <p className="mt-2 font-newsreader text-lg italic text-stone-900">{details.transfer_pattern.template}</p>
+                            <div className="mt-4 grid gap-3 md:grid-cols-2">
+                                <div>
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400">中文场景</p>
+                                    <p className="mt-1 text-sm text-stone-700">{details.transfer_pattern.example_cn}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-400">英文套用</p>
+                                    <p className="mt-1 font-newsreader text-base italic text-stone-900">{details.transfer_pattern.example_en}</p>
+                                </div>
+                            </div>
+                            <p className="mt-3 text-sm leading-6 text-stone-600">{details.transfer_pattern.tip_cn}</p>
+                        </div>
+                    </div>
+                ) : null}
+
+                {details.memory_hook_cn ? (
+                    <div className="rounded-[1.75rem] border border-amber-100 bg-amber-50/50 p-5">
+                        <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-700">
+                            <Sparkles className="w-3.5 h-3.5" />
+                            一句记忆法
+                        </h4>
+                        <p className="mt-3 text-sm leading-7 text-stone-700">{details.memory_hook_cn}</p>
+                    </div>
+                ) : null}
+
+                {teachingMode && details.error_analysis && details.error_analysis.length > 0 ? (
+                    <div className="rounded-[1.75rem] border border-rose-100 bg-rose-50/40 p-5">
+                        <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-rose-600">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            错误精讲
+                        </h4>
+                        <div className="mt-4 space-y-3">
+                            {details.error_analysis.map((err, i: number) => (
+                                <div key={i} className="rounded-2xl border border-rose-100/80 bg-white/80 p-4">
+                                    <div className="flex items-start gap-2">
+                                        <span className="rounded bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">错误</span>
+                                        <span className="text-sm text-stone-600 line-through">{err.error}</span>
+                                    </div>
+                                    <div className="mt-2 flex items-start gap-2">
+                                        <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">正确</span>
+                                        <span className="text-sm font-medium text-stone-800">{err.correction}</span>
+                                    </div>
+                                    <div className="mt-3 border-l-2 border-amber-300 pl-3 text-xs leading-6 text-stone-500">
+                                        <strong>规则：</strong>{err.rule}
+                                    </div>
+                                    {err.tip ? <div className="mt-3 rounded-xl bg-indigo-50 px-3 py-2 text-xs leading-5 text-indigo-600">💡 {err.tip}</div> : null}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
+
+                {teachingMode && details.similar_patterns && details.similar_patterns.length > 0 ? (
+                    <div className="rounded-[1.75rem] border border-purple-100 bg-purple-50/30 p-5">
+                        <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-purple-600">
+                            <BrainCircuit className="w-3.5 h-3.5" />
+                            举一反三
+                        </h4>
+                        <div className="mt-4 space-y-3">
+                            {details.similar_patterns.map((pattern, i: number) => (
+                                <div key={i} className="rounded-2xl border border-purple-100/80 bg-white/80 p-4">
+                                    <div className="text-sm text-stone-600">{pattern.chinese}</div>
+                                    <div className="mt-1 text-lg font-newsreader italic text-stone-900">→ {pattern.english}</div>
+                                    {pattern.point && <div className="mt-2 text-xs leading-5 text-purple-500">🎯 {pattern.point}</div>}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
+
+                {!details.diagnosis_summary_cn && details.feedback ? (
+                    <div className="rounded-[1.75rem] border border-stone-100 bg-white/90 p-5 shadow-[0_12px_30px_rgba(28,25,23,0.04)]">
+                        <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-500">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                            补充说明
+                        </h4>
+                        <div className="mt-4 space-y-3">
+                            {Array.isArray(details.feedback) ? details.feedback.map((point: string, i: number) => (
+                                <div key={i} className="flex gap-2 text-sm leading-7 text-stone-600"><div className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" /><p>{point}</p></div>
+                            )) : null}
+                        </div>
+                    </div>
+                ) : null}
+
+            </div>
+        );
+    };
+
     const hasDetailedAnalysis = Boolean(
             drillFeedback && (
                 drillFeedback.segments ||
@@ -4795,29 +5340,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             </div>
         );
     };
-
-    const renderableTutorTurns = tutorThread.map((turn) => ({
-        question: turn.question,
-        answer: turn.coach_cn,
-        pending: false,
-    }));
-
-    if (tutorPendingQuestion) {
-        renderableTutorTurns.push({
-            question: tutorPendingQuestion,
-            answer: tutorAnswer || "",
-            pending: true,
-        });
-    } else if (tutorAnswer && tutorThread.length === 0) {
-        renderableTutorTurns.push({
-            question: "",
-            answer: tutorAnswer,
-            pending: false,
-        });
-    }
-
-    const showTutorExchange = renderableTutorTurns.length > 0;
-    const currentMicroDrill = tutorResponse?.next_micro_drill || tutorResponse?.micro_drill || buildFallbackMicroDrill(tutorResponse?.teaching_point || inferTeachingPoint());
 
     return (
         <AnimatePresence>
@@ -6059,7 +6581,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         <button
                                                                             onClick={() => {
                                                                                 if (learningSessionActive) return;
-                                                                                setIsTutorOpen(!isTutorOpen);
+                                                                                openTutorModal("battle");
                                                                             }}
                                                                             className={cn(
                                                                                 "flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:-translate-y-0.5 active:scale-95",
@@ -6091,187 +6613,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             </div>
                                                         </>
                                                     )}
-                                                    {/* AI Tutor Cloud */}
-                                                    <AnimatePresence>
-                                                        {isTutorOpen && (
-                                                            <motion.div
-                                                                initial={{ opacity: 0, scale: 0.94, y: 10 }}
-                                                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                                exit={{ opacity: 0, scale: 0.94, y: 8 }}
-                                                                className={cn("absolute bottom-20 right-0 z-20 flex w-[400px] max-w-[min(400px,calc(100vw-2rem))] max-h-[560px] flex-col overflow-hidden rounded-[1.4rem] border p-3 md:p-3.5", activeCosmeticUi.tutorPanelClass)}
-                                                            >
-                                                                <div className="flex items-center justify-between gap-3">
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className={cn("text-sm font-semibold flex items-center gap-1.5", activeCosmeticUi.tutorSendClass)}>
-                                                                            <MessageCircle className="w-4 h-4" />
-                                                                            AI Tutor
-                                                                        </span>
-                                                                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700">
-                                                                            {tutorResponse?.teaching_point || inferTeachingPoint()}
-                                                                        </span>
-                                                                    </div>
-                                                                    <button onClick={() => setIsTutorOpen(false)} className="rounded-md p-1 text-stone-400 hover:bg-white/70 hover:text-stone-600">
-                                                                        <X className="w-3.5 h-3.5" />
-                                                                    </button>
-                                                                </div>
-
-                                                                <div className="mt-2 flex flex-nowrap gap-1.5 overflow-x-auto pb-1 pr-1">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleAskTutor({ question: "给我一个这题可复用的句型模板。", questionType: "pattern", uiSurface: "battle" })}
-                                                                        disabled={isAskingTutor}
-                                                                        className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
-                                                                    >
-                                                                        给我模板
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleAskTutor({ question: "为什么这里不用更直译的词？请告诉我搭配差别。", questionType: "word_choice", uiSurface: "battle" })}
-                                                                        disabled={isAskingTutor}
-                                                                        className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
-                                                                    >
-                                                                        词汇对比
-                                                                    </button>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => handleAskTutor({ question: "再给我一个同结构的例句让我模仿。", questionType: "example", uiSurface: "battle" })}
-                                                                        disabled={isAskingTutor}
-                                                                        className="inline-flex min-h-8 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
-                                                                    >
-                                                                        同结构例句
-                                                                    </button>
-                                                                </div>
-
-                                                                {showTutorExchange ? (
-                                                                    <div
-                                                                        ref={tutorHistoryScrollRef}
-                                                                        className="mt-2 max-h-[300px] space-y-2 overflow-y-auto pr-1"
-                                                                    >
-                                                                        {renderableTutorTurns.map((turn, idx) => (
-                                                                            <div
-                                                                                key={`${turn.question || "answer"}-${idx}`}
-                                                                                className={cn("rounded-xl border border-stone-200/70 bg-white/80 p-3 text-sm animate-in fade-in", activeCosmeticUi.tutorAnswerClass)}
-                                                                            >
-                                                                                {turn.question ? (
-                                                                                    <div className="rounded-lg border border-stone-200/80 bg-white/70 px-3 py-2">
-                                                                                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">你问</p>
-                                                                                        <p className="mt-1 text-sm text-stone-700">{turn.question}</p>
-                                                                                    </div>
-                                                                                ) : null}
-
-                                                                                <div className={cn(turn.question && "mt-2 border-t border-white/60 pt-2")}>
-                                                                                    {turn.answer ? (
-                                                                                        <TutorMarkdown content={turn.answer} />
-                                                                                    ) : turn.pending ? (
-                                                                                        <div className="flex items-center gap-2 text-stone-500">
-                                                                                            <Sparkles className="h-4 w-4 animate-spin" />
-                                                                                            <span>正在生成教学回答...</span>
-                                                                                        </div>
-                                                                                    ) : null}
-                                                                                </div>
-                                                                            </div>
-                                                                        ))}
-                                                                    </div>
-                                                                ) : null}
-
-                                                                <div className="mt-2 rounded-xl border border-stone-200/70 bg-white/70 p-2.5">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => setIsBattleDrillCollapsed((prev) => !prev)}
-                                                                        className="flex w-full items-center justify-between text-left"
-                                                                    >
-                                                                        <span className="text-xs font-semibold text-stone-700">来做 1 句小练习</span>
-                                                                        <ChevronRight className={cn("h-4 w-4 text-stone-500 transition-transform", !isBattleDrillCollapsed && "rotate-90")} />
-                                                                    </button>
-
-                                                                    {!isBattleDrillCollapsed && (
-                                                                        <div className="mt-2 space-y-2">
-                                                                            <div className="rounded-lg border border-stone-200/70 bg-white/80 p-2">
-                                                                                <p className="text-[11px] font-semibold text-stone-500">练习题</p>
-                                                                                <p className="mt-1 text-xs text-stone-700">{currentMicroDrill.prompt_cn}</p>
-                                                                                <p className="mt-1 text-[11px] text-indigo-700">目标结构：{currentMicroDrill.expected_pattern_en}</p>
-                                                                            </div>
-                                                                            <div className="flex flex-col gap-2 sm:flex-row">
-                                                                                <input
-                                                                                    type="text"
-                                                                                    value={microDrillInput}
-                                                                                    onChange={(e) => setMicroDrillInput(e.target.value)}
-                                                                                    placeholder="输入你的练习句子..."
-                                                                                    className={cn("h-10 flex-1 rounded-xl border px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)}
-                                                                                />
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() => handleCheckMicroDrill("battle")}
-                                                                                    disabled={isCheckingMicroDrill || !microDrillInput.trim()}
-                                                                                    className={cn("inline-flex h-10 min-w-[92px] items-center justify-center gap-1 rounded-xl border border-transparent px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50", activeCosmeticUi.analysisButtonClass)}
-                                                                                >
-                                                                                    {isCheckingMicroDrill ? <Sparkles className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                                                                                    {isCheckingMicroDrill ? "检查中" : "检查"}
-                                                                                </button>
-                                                                            </div>
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={() => handleAskTutor({ question: "再给我一个同结构的小练习句子。", questionType: "example", uiSurface: "battle" })}
-                                                                                disabled={isAskingTutor || isCheckingMicroDrill}
-                                                                                className="inline-flex min-h-8 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
-                                                                            >
-                                                                                再来一个同结构
-                                                                            </button>
-                                                                            {tutorResponse?.drill_feedback_cn && (
-                                                                                <div className="rounded-lg border border-emerald-200/70 bg-emerald-50/70 p-2">
-                                                                                    <p className="text-[11px] font-semibold text-emerald-700">练习反馈</p>
-                                                                                    <p className="mt-1 text-xs text-stone-700">{tutorResponse.drill_feedback_cn}</p>
-                                                                                    {tutorResponse.revised_sentence_en && (
-                                                                                        <p className="mt-1 text-xs text-indigo-700">建议改写：{tutorResponse.revised_sentence_en}</p>
-                                                                                    )}
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-
-                                                                <form
-                                                                    className="mt-2 flex flex-col gap-2 sm:flex-row"
-                                                                    onSubmit={(e) => {
-                                                                        e.preventDefault();
-                                                                        handleAskTutor({ questionType: "follow_up", uiSurface: "battle" });
-                                                                    }}
-                                                                >
-                                                                    <input
-                                                                        type="text"
-                                                                        value={tutorQuery}
-                                                                        onChange={(e) => setTutorQuery(e.target.value)}
-                                                                        placeholder="继续追问这题..."
-                                                                        className={cn("h-11 flex-1 rounded-xl border px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)}
-                                                                    />
-                                                                    <button
-                                                                        type="submit"
-                                                                        disabled={isAskingTutor || !tutorQuery.trim()}
-                                                                        className={cn("inline-flex h-11 min-w-[105px] items-center justify-center gap-1.5 rounded-xl border border-transparent px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50", activeCosmeticUi.analysisButtonClass)}
-                                                                    >
-                                                                        {isAskingTutor ? <Sparkles className="w-4 h-4 animate-spin" /> : <ArrowRight className="w-4 h-4" />}
-                                                                        {isAskingTutor ? "思考中" : "提问"}
-                                                                    </button>
-                                                                </form>
-
-                                                                {!tutorResponse?.answer_revealed && (
-                                                                    <div className="mt-1 flex items-center justify-between gap-2">
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => handleAskTutor({ question: "我想看完整答案，并解释为什么这样说。", questionType: "unlock_answer", forceReveal: true, uiSurface: "battle" })}
-                                                                            disabled={isAskingTutor}
-                                                                            className="inline-flex min-h-8 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:-translate-y-0.5 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                                                        >
-                                                                            解锁完整答案
-                                                                        </button>
-                                                                        {tutorNoProgressTurns >= 1 && (
-                                                                            <span className="text-[11px] text-stone-500">再追问 1 轮会自动解锁</span>
-                                                                        )}
-                                                                    </div>
-                                                                )}
-                                                            </motion.div>
-                                                        )}
-                                                    </AnimatePresence>
                                                 </div>
                                             </motion.div>
                                         </div>
@@ -6306,12 +6647,18 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     setMicroDrillInput("");
                                                     setIsCheckingMicroDrill(false);
                                                     setIsBattleDrillCollapsed(true);
+                                                    setIsScoreDrillCollapsed(true);
                                                     setIsSubmittingDrill(false);
                                                     setWordPopup(null);
                                                     setAnalysisRequested(false);
                                                     setIsGeneratingAnalysis(false);
                                                     setAnalysisError(null);
                                                     setAnalysisDetailsOpen(false);
+                                                    setFullAnalysisRequested(false);
+                                                    setIsGeneratingFullAnalysis(false);
+                                                    setFullAnalysisError(null);
+                                                    setFullAnalysisOpen(false);
+                                                    setFullAnalysisData(null);
                                                     setIsGeneratingGrammar(false);
                                                     setGrammarError(null);
                                                     setReferenceGrammarAnalysis(null);
@@ -6334,6 +6681,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                 setIsGeneratingAnalysis(false);
                                                                 setAnalysisError(null);
                                                                 setAnalysisDetailsOpen(false);
+                                                                setFullAnalysisRequested(false);
+                                                                setIsGeneratingFullAnalysis(false);
+                                                                setFullAnalysisError(null);
+                                                                setFullAnalysisOpen(false);
+                                                                setFullAnalysisData(null);
                                                                 setIsGeneratingGrammar(false);
                                                                 setGrammarError(null);
                                                                 setReferenceGrammarAnalysis(null);
@@ -6486,6 +6838,32 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         </button>
                                                                     </div>
                                                                 ) : hasDetailedAnalysis ? (
+                                                                    mode === "translation" ? (
+                                                                        <TranslationAnalysisJourney
+                                                                            analysisLead={analysisLead}
+                                                                            analysisHighlights={analysisHighlights}
+                                                                            userTranslation={userTranslation}
+                                                                            improvedVersionNode={drillFeedback.improved_version ? (
+                                                                                <>{renderInteractiveCoachText(drillFeedback.improved_version)}</>
+                                                                            ) : null}
+                                                                            referenceSentenceNode={renderTranslationReferenceSentence()}
+                                                                            isGeneratingGrammar={isGeneratingGrammar}
+                                                                            grammarError={grammarError}
+                                                                            grammarButtonLabel={referenceGrammarAnalysis ? "重新生成语法分析" : "生成语法分析"}
+                                                                            hasGrammarAnalysis={Boolean(referenceGrammarAnalysis)}
+                                                                            grammarDisplayMode={referenceGrammarDisplayMode}
+                                                                            onGenerateGrammar={handleGenerateReferenceGrammar}
+                                                                            onGrammarDisplayModeChange={setReferenceGrammarDisplayMode}
+                                                                            onPlayReferenceAudio={playAudio}
+                                                                            hasFullAnalysis={fullAnalysisRequested && Boolean(fullAnalysisData)}
+                                                                            isGeneratingFullAnalysis={isGeneratingFullAnalysis}
+                                                                            fullAnalysisError={fullAnalysisError}
+                                                                            fullAnalysisOpen={fullAnalysisOpen}
+                                                                            onGenerateFullAnalysis={handleGenerateFullAnalysis}
+                                                                            onToggleFullAnalysis={() => setFullAnalysisOpen(prev => !prev)}
+                                                                            fullAnalysisContent={renderTranslationAnalysisDetails()}
+                                                                        />
+                                                                    ) : (
                                                                     <div className="space-y-4">
                                                                         <div className="overflow-hidden rounded-[2rem] border border-stone-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(251,250,248,0.94))] shadow-[0_18px_40px_rgba(28,25,23,0.06)]">
                                                                             <div className="p-6 md:p-7">
@@ -6570,178 +6948,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                     </div>
                                                                                 </div>
 
-                                                                                {mode === "translation" && (
-                                                                                    <div className={cn("mt-4 rounded-[1.4rem] border p-4 md:p-5", activeCosmeticUi.tutorPanelClass)}>
-                                                                                        <div className="flex flex-wrap items-center justify-between gap-2">
-                                                                                            <div className="flex flex-wrap items-center gap-2">
-                                                                                                <p className="text-sm font-semibold text-stone-800">继续提问 AI Tutor</p>
-                                                                                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700">
-                                                                                                    {tutorResponse?.teaching_point || inferTeachingPoint()}
-                                                                                                </span>
-                                                                                            </div>
-                                                                                            <span className={cn("text-[11px] font-semibold", activeCosmeticUi.tutorSendClass)}>渐进引导 L{Math.min(4, tutorHintLevel)}</span>
-                                                                                        </div>
-
-                                                                                        <div className="mt-3 flex flex-wrap gap-2">
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={() => handleAskTutor({ question: "给我一个这题可复用的句型模板。", questionType: "pattern", uiSurface: "score" })}
-                                                                                                disabled={isAskingTutor}
-                                                                                                className="inline-flex min-h-9 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
-                                                                                            >
-                                                                                                给我模板
-                                                                                            </button>
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={() => handleAskTutor({ question: "为什么这里不用更直译的词？请告诉我搭配差别。", questionType: "word_choice", uiSurface: "score" })}
-                                                                                                disabled={isAskingTutor}
-                                                                                                className="inline-flex min-h-9 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
-                                                                                            >
-                                                                                                为什么不用这个词
-                                                                                            </button>
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={() => handleAskTutor({ question: "再给我一个同结构的例句让我模仿。", questionType: "example", uiSurface: "score" })}
-                                                                                                disabled={isAskingTutor}
-                                                                                                className="inline-flex min-h-9 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
-                                                                                            >
-                                                                                                再来一个同结构例句
-                                                                                            </button>
-                                                                                        </div>
-
-                                                                                        {tutorResponse ? (
-                                                                                            <div className="mt-3 rounded-xl border border-stone-200/70 bg-white/80 p-3.5">
-                                                                                                <TutorMarkdown content={tutorResponse.coach_cn} className="text-sm text-stone-700" />
-                                                                                                {tutorResponse.direct_answer_en && (
-                                                                                                    <p className="mt-2 text-xs text-sky-700">
-                                                                                                        可直接用：<code className="rounded bg-sky-50 px-1 py-0.5">{tutorResponse.direct_answer_en}</code>
-                                                                                                    </p>
-                                                                                                )}
-                                                                                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                                                                                    {tutorResponse.pattern_en.map((pattern, idx) => (
-                                                                                                        <span key={`${pattern}-${idx}`} className="rounded-full border border-indigo-200/80 bg-indigo-50/80 px-2.5 py-1 text-[11px] font-medium text-indigo-700">
-                                                                                                            {pattern}
-                                                                                                        </span>
-                                                                                                    ))}
-                                                                                                </div>
-                                                                                                <p className="mt-2 text-xs leading-5 text-stone-500">
-                                                                                                    <span className="font-semibold text-stone-600">中式 vs 地道：</span>
-                                                                                                    {tutorResponse.contrast}
-                                                                                                </p>
-                                                                                                <p className="mt-2 text-xs leading-5 text-emerald-700">
-                                                                                                    <span className="font-semibold">下一步：</span>
-                                                                                                    {tutorResponse.next_task}
-                                                                                                </p>
-                                                                                                {tutorResponse.answer_revealed && tutorResponse.full_answer && (
-                                                                                                    <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
-                                                                                                        <p className="text-[11px] font-semibold text-emerald-700">完整答案（已解锁）</p>
-                                                                                                        <p className="mt-1 text-sm font-newsreader text-stone-800">{tutorResponse.full_answer}</p>
-                                                                                                        {tutorResponse.answer_reason_cn && (
-                                                                                                            <p className="mt-1 text-xs leading-5 text-stone-600">{tutorResponse.answer_reason_cn}</p>
-                                                                                                        )}
-                                                                                                    </div>
-                                                                                                )}
-                                                                                                {tutorResponse.quality_flags.length > 0 && (
-                                                                                                    <p className="mt-2 text-[11px] text-amber-600">系统修正: {tutorResponse.quality_flags.join(" / ")}</p>
-                                                                                                )}
-                                                                                            </div>
-                                                                                        ) : (
-                                                                                            <p className="mt-3 text-xs text-stone-500">先问一个点，Tutor 会按“方向提示 → 模板 → 对比 → 迁移练习”给你逐层教学。</p>
-                                                                                        )}
-
-                                                                                        <div className="mt-3 rounded-xl border border-stone-200/70 bg-white/75 p-3">
-                                                                                            <p className="text-xs font-semibold text-stone-700">小练习（即时纠错）</p>
-                                                                                            <p className="mt-1 text-xs text-stone-600">{currentMicroDrill.prompt_cn}</p>
-                                                                                            <p className="mt-1 text-[11px] text-indigo-700">目标结构：{currentMicroDrill.expected_pattern_en}</p>
-                                                                                            <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                                                                                                <input
-                                                                                                    type="text"
-                                                                                                    value={microDrillInput}
-                                                                                                    onChange={(e) => setMicroDrillInput(e.target.value)}
-                                                                                                    placeholder="写一句英文练习..."
-                                                                                                    className={cn("h-10 flex-1 rounded-xl border px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)}
-                                                                                                />
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    onClick={() => handleCheckMicroDrill("score")}
-                                                                                                    disabled={isCheckingMicroDrill || !microDrillInput.trim()}
-                                                                                                    className={cn("inline-flex h-10 min-w-[96px] items-center justify-center gap-1 rounded-xl border border-transparent px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50", activeCosmeticUi.analysisButtonClass)}
-                                                                                                >
-                                                                                                    {isCheckingMicroDrill ? <Sparkles className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                                                                                                    {isCheckingMicroDrill ? "检查中" : "检查"}
-                                                                                                </button>
-                                                                                            </div>
-                                                                                            <button
-                                                                                                type="button"
-                                                                                                onClick={() => handleAskTutor({ question: "再给我一个同结构的小练习句子。", questionType: "example", uiSurface: "score" })}
-                                                                                                disabled={isAskingTutor || isCheckingMicroDrill}
-                                                                                                className="mt-2 inline-flex min-h-8 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
-                                                                                            >
-                                                                                                再来一个同结构
-                                                                                            </button>
-                                                                                            {tutorResponse?.drill_feedback_cn && (
-                                                                                                <div className="mt-2 rounded-lg border border-emerald-200/70 bg-emerald-50/70 p-2.5">
-                                                                                                    <p className="text-[11px] font-semibold text-emerald-700">练习反馈</p>
-                                                                                                    <p className="mt-1 text-xs text-stone-700">{tutorResponse.drill_feedback_cn}</p>
-                                                                                                    {tutorResponse.revised_sentence_en && (
-                                                                                                        <p className="mt-1 text-xs text-indigo-700">建议改写：{tutorResponse.revised_sentence_en}</p>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                            )}
-                                                                                        </div>
-
-                                                                                        {tutorThread.length > 0 && (
-                                                                                            <div className="mt-3 space-y-2">
-                                                                                                {tutorThread.slice(-2).map((item, idx) => (
-                                                                                                    <div key={`${item.question}-${idx}`} className="rounded-xl border border-stone-200/70 bg-white/80 p-3">
-                                                                                                        <p className="text-xs text-stone-500">你问：{item.question}</p>
-                                                                                                        <TutorMarkdown content={item.coach_cn} className={cn("mt-1 text-sm", activeCosmeticUi.tutorSendClass)} />
-                                                                                                    </div>
-                                                                                                ))}
-                                                                                            </div>
-                                                                                        )}
-
-                                                                                        <form
-                                                                                            className="mt-3 flex flex-col gap-2 sm:flex-row"
-                                                                                            onSubmit={(e) => {
-                                                                                                e.preventDefault();
-                                                                                                handleAskTutor({ questionType: "follow_up", uiSurface: "score" });
-                                                                                            }}
-                                                                                        >
-                                                                                            <input
-                                                                                                type="text"
-                                                                                                value={tutorQuery}
-                                                                                                onChange={(e) => setTutorQuery(e.target.value)}
-                                                                                                placeholder="继续追问这题..."
-                                                                                                className={cn("h-11 flex-1 rounded-xl border px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)}
-                                                                                            />
-                                                                                            <button
-                                                                                                type="submit"
-                                                                                                disabled={isAskingTutor || !tutorQuery.trim()}
-                                                                                                className={cn("inline-flex h-11 min-w-[110px] items-center justify-center gap-1.5 rounded-xl border border-transparent px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50", activeCosmeticUi.analysisButtonClass)}
-                                                                                            >
-                                                                                                {isAskingTutor ? <Sparkles className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
-                                                                                                {isAskingTutor ? "思考中" : "继续提问"}
-                                                                                            </button>
-                                                                                        </form>
-
-                                                                                        {!tutorResponse?.answer_revealed && (
-                                                                                            <div className="mt-2 flex items-center justify-between gap-2">
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    onClick={() => handleAskTutor({ question: "我想看完整答案，并解释为什么这样说。", questionType: "unlock_answer", forceReveal: true, uiSurface: "score" })}
-                                                                                                    disabled={isAskingTutor}
-                                                                                                    className="inline-flex min-h-9 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:-translate-y-0.5 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                                                                                >
-                                                                                                    我想看完整答案
-                                                                                                </button>
-                                                                                                {tutorNoProgressTurns >= 1 && (
-                                                                                                    <span className="text-[11px] text-stone-500">再追问 1 轮将自动解锁答案</span>
-                                                                                                )}
-                                                                                            </div>
-                                                                                        )}
-                                                                                    </div>
-                                                                                )}
+                                                                                {null}
 
                                                                                 <div className="mt-4 rounded-[1.4rem] border border-stone-200/80 bg-stone-50/70 p-3.5">
                                                                                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -6838,6 +7045,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             )}
                                                                         </AnimatePresence>
                                                                     </div>
+                                                                    )
                                                                 ) : (
                                                                     <div className="py-6 text-center text-sm text-stone-500">暂无可展示的解析内容。</div>
                                                                 )}
@@ -7226,6 +7434,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     )
                     : null}
 
+                <AnimatePresence>
+                    {renderScoreTutorFloatingButton()}
+                    {renderTranslationTutorModal()}
+                </AnimatePresence>
+
                 {/* Context-Aware Loot Overlay */}
                 <AnimatePresence>
                     {lootDrop && (
@@ -7498,66 +7711,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             {/* GACHA OVERLAY */}
             <AnimatePresence key="gacha-overlay">
                 {showGacha && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 font-inter"
-                    >
-                        <motion.div
-                            initial={{ y: -50, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            className="text-center mb-12"
-                        >
-                            <h2 className="text-4xl font-black text-amber-400 mb-2 drop-shadow-[0_0_15px_rgba(251,191,36,0.5)]">完美通关！</h2>
-                            <p className="text-stone-300 font-medium tracking-widest text-lg">✨ 请翻开一张塔罗牌 ✨</p>
-                        </motion.div>
-
-                        <div className="flex gap-6 md:gap-8 items-center justify-center w-full max-w-3xl perspective-1000">
-                            {gachaRewards.map((reward, idx) => {
-                                const isSelected = selectedGachaIndex === idx;
-                                const isRevealed = selectedGachaIndex !== null;
-
-                                // Mapping reward types to UI
-                                const rewardUI = {
-                                    'capsule_1': { icon: '💊', title: '小胶囊', desc: '+1 灵感', color: 'text-amber-300', bg: 'from-amber-500/20 to-orange-500/20', border: 'border-amber-500/50' },
-                                    'capsule_3': { icon: '💊', title: '大满贯', desc: '+3 灵感', color: 'text-rose-400', bg: 'from-rose-500/20 to-pink-500/20', border: 'border-rose-500/50' },
-                                    'shield': { icon: '🛡️', title: '免死金牌', desc: '抵消1次惩罚', color: 'text-emerald-400', bg: 'from-emerald-500/20 to-teal-500/20', border: 'border-emerald-500/50' }
-                                }[reward.type];
-
-                                return (
-                                    <motion.div
-                                        key={idx}
-                                        onClick={() => handleGachaSelect(idx)}
-                                        className={cn(
-                                            "relative w-[100px] h-[140px] md:w-[140px] md:h-[200px] cursor-pointer transform-style-3d transition-all duration-700",
-                                            isRevealed ? (isSelected ? "rotate-y-180 scale-110 z-10" : "rotate-y-180 scale-90 opacity-40 grayscale") : "hover:-translate-y-4 hover:shadow-[0_0_30px_rgba(251,191,36,0.3)]"
-                                        )}
-                                    >
-                                        {/* Card Back */}
-                                        <div className="absolute inset-0 backface-hidden bg-stone-900 border-2 border-stone-700/80 rounded-2xl shadow-2xl flex flex-col items-center justify-center overflow-hidden">
-                                            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-30" />
-                                            <div className="absolute inset-2 border border-stone-700/50 rounded-xl" />
-                                            <div className="w-12 h-12 md:w-16 md:h-16 rounded-full border border-stone-600 flex items-center justify-center opacity-80 shadow-[0_0_15px_rgba(255,255,255,0.05)]">
-                                                <span className="text-2xl md:text-3xl filter grayscale">👁️</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Card Front */}
-                                        <div className="absolute inset-0 backface-hidden rotate-y-180 bg-stone-900 border-2 rounded-2xl shadow-[0_0_40px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center p-3 text-center overflow-hidden"
-                                            style={{ borderColor: isSelected ? 'rgba(251,191,36,0.8)' : 'rgba(87,83,78,0.5)' }}
-                                        >
-                                            <div className={cn("absolute inset-0 bg-gradient-to-br opacity-30", rewardUI.bg)} />
-                                            <div className={cn("absolute inset-1 border rounded-xl opacity-50", rewardUI.border)} />
-                                            <span className="text-3xl md:text-5xl mb-2 filter drop-shadow-md relative z-10">{rewardUI.icon}</span>
-                                            <h3 className={cn("font-black text-sm md:text-base relative z-10 tracking-widest", rewardUI.color)}>{rewardUI.title}</h3>
-                                            <p className="text-[10px] md:text-xs text-stone-400 font-bold mt-1 relative z-10">{rewardUI.desc}</p>
-                                        </div>
-                                    </motion.div>
-                                );
-                            })}
-                        </div>
-                    </motion.div>
+                    <GachaOverlay
+                        cards={gachaCards}
+                        selectedCardId={selectedGachaCardId}
+                        claimTarget={gachaClaimTarget}
+                        onSelect={handleGachaSelect}
+                        onComplete={handleGachaComplete}
+                    />
                 )}
             </AnimatePresence>
 
