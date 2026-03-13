@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import axios from "axios";
 import { useUserStore } from "@/lib/store";
 import { useEffect } from "react";
+import { resolveDailyArticleCandidate } from "@/lib/dailyArticle";
 
 interface ArticleData {
     title: string;
@@ -87,24 +88,25 @@ function ReadingPageContent() {
                     // Fetch feed list
                     const feedRes = await axios.get('/api/feed?category=news');
                     if (feedRes.data && feedRes.data.length > 0) {
-                        // FIX: Use .link or .url depending on feed structure (API returns .link)
-                        const dailyUrl = feedRes.data[0].link || feedRes.data[0].url;
+                        const resolved = await resolveDailyArticleCandidate({
+                            items: feedRes.data,
+                            getExistingArticle: async (candidateUrl) => {
+                                return db.articles.get({ url: candidateUrl });
+                            },
+                            parseArticle: async (candidateUrl) => {
+                                console.log("Downloading new daily article:", candidateUrl);
+                                const parseRes = await axios.post("/api/parse", { url: candidateUrl });
+                                return parseRes.data;
+                            },
+                            onParseFailure: (candidateUrl, parseError) => {
+                                console.warn("Daily article parse failed, trying next candidate:", candidateUrl, parseError);
+                            },
+                        });
 
-                        if (!dailyUrl) {
-                            console.error("Daily article missing URL", feedRes.data[0]);
-                            return;
-                        }
-
-                        // Check if we already have it
-                        const existing = await db.articles.get({ url: dailyUrl });
-                        if (!existing) {
-                            console.log("Downloading new daily article:", dailyUrl);
-                            // Download and cache
-                            const parseRes = await axios.post("/api/parse", { url: dailyUrl });
-                            const articleData = { ...parseRes.data, url: dailyUrl };
-
+                        if (resolved && resolved.source === "parsed") {
+                            const articleData = { ...resolved.articleData, url: resolved.url };
                             await db.articles.put({
-                                url: dailyUrl,
+                                url: resolved.url,
                                 title: articleData.title,
                                 content: articleData.content,
                                 textContent: articleData.textContent,
@@ -116,6 +118,8 @@ function ReadingPageContent() {
                             });
 
                             console.log("Daily article saved.");
+                        } else if (!resolved) {
+                            console.warn("No parseable daily article candidate found.");
                         }
                     }
                     localStorage.setItem('last_daily_fetch_date', today);
@@ -413,4 +417,3 @@ export default function ReadingPage() {
         </ReadingSettingsProvider>
     );
 }
-
