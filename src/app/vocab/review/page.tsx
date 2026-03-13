@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Check, RotateCw, BookOpen, Volume2 } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { saveVocabulary } from '@/lib/user-repository';
 
 export default function ReviewPage() {
     // Session State
@@ -51,7 +52,7 @@ export default function ReviewPage() {
         const updatedCard = scheduleCard(currentCard, rating);
 
         // Save to DB
-        await db.vocabulary.put(updatedCard);
+        await saveVocabulary(updatedCard);
 
         // Move to next
         setIsRevealed(false);

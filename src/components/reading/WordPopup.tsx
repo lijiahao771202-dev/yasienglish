@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { X, Loader2, Book, Volume2, Sparkles, Check, BookPlus } from "lucide-react";
 import { db, VocabItem } from "@/lib/db";
 import { createEmptyCard } from "@/lib/fsrs";
+import { saveVocabulary } from "@/lib/user-repository";
 import { cn } from "@/lib/utils";
 
 export interface PopupState {
@@ -171,7 +172,7 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                 due: base.due ?? Date.now(),
             };
 
-            await db.vocabulary.put(card);
+            await saveVocabulary(card);
             setIsSaved(true);
         } catch (error) {
             console.error("Failed to save vocab:", error);

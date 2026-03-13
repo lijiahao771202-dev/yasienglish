@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import { db, VocabItem } from './db';
+import { VocabItem } from './db';
+import {
+    loadLocalUserData,
+    markArticleAsRead,
+    saveVocabulary,
+    saveWritingHistory,
+} from './user-repository';
 
 // Removed local VocabularyItem interface in favor of db.ts export
 
@@ -32,7 +38,7 @@ export const useUserStore = create<UserState>((set, get) => ({
     addVocabulary: async (item) => {
         set((state) => ({ vocabulary: [...state.vocabulary, item] }));
         try {
-            await db.vocabulary.put(item);
+            await saveVocabulary(item);
         } catch (e) {
             console.error("Failed to save vocabulary", e);
         }
@@ -42,7 +48,7 @@ export const useUserStore = create<UserState>((set, get) => ({
         // Optimistic update (we might need the ID from DB though, but for now push)
         set((state) => ({ writingHistory: [item, ...state.writingHistory] }));
         try {
-            await db.writing_history.add(item);
+            await saveWritingHistory(item);
         } catch (e) {
             console.error("Failed to save writing history", e);
         }
@@ -53,7 +59,7 @@ export const useUserStore = create<UserState>((set, get) => ({
 
         set((state) => ({ readArticleUrls: [...state.readArticleUrls, url] }));
         try {
-            await db.read_articles.put({ url, timestamp: Date.now() });
+            await markArticleAsRead(url);
         } catch (e) {
             console.error("Failed to mark article as read", e);
         }
@@ -61,16 +67,12 @@ export const useUserStore = create<UserState>((set, get) => ({
 
     loadUserData: async () => {
         try {
-            const [vocab, history, readArticles] = await Promise.all([
-                db.vocabulary.toArray(),
-                db.writing_history.orderBy('timestamp').reverse().toArray(),
-                db.read_articles.toArray()
-            ]);
+            const { vocabulary, writingHistory, readArticleUrls } = await loadLocalUserData();
 
             set({
-                vocabulary: vocab,
-                writingHistory: history,
-                readArticleUrls: readArticles.map(r => r.url)
+                vocabulary,
+                writingHistory,
+                readArticleUrls,
             });
         } catch (e) {
             console.error("Failed to load user data", e);
