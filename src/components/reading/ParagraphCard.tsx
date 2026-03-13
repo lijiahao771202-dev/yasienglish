@@ -10,7 +10,7 @@ import { useAnalysisStore } from "@/lib/analysis-store";
 import { SyntaxTreeView } from "./SyntaxTreeView";
 import { bionicText } from "@/lib/bionic";
 import { InlineGrammarHighlights } from "@/components/shared/InlineGrammarHighlights";
-import { getGrammarHighlightColor as getHighlightColor } from "@/lib/grammarHighlights";
+import { getGrammarHighlightColor as getHighlightColor, type GrammarDisplayMode } from "@/lib/grammarHighlights";
 import ReactMarkdown from "react-markdown";
 
 interface ParagraphCardProps {
@@ -45,6 +45,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
     // Local visibility state
     const [showTranslation, setShowTranslation] = useState(false);
     const [showGrammar, setShowGrammar] = useState(false);
+    const [grammarDisplayMode, setGrammarDisplayMode] = useState<GrammarDisplayMode>("core");
 
     const [isTranslating, setIsTranslating] = useState(false);
     const [isAnalyzingGrammar, setIsAnalyzingGrammar] = useState(false);
@@ -242,7 +243,11 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
             if (mode === "deep" && !hasDeepData) {
                 // proceed to fetch
             } else {
-                setShowGrammar(!showGrammar); // Toggle visibility
+                const nextShowGrammar = !showGrammar;
+                setShowGrammar(nextShowGrammar);
+                if (nextShowGrammar) {
+                    setGrammarDisplayMode("core");
+                }
                 return;
             }
         }
@@ -253,6 +258,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
         }
 
         setShowGrammar(true);
+        setGrammarDisplayMode("core");
         if (mode === "deep") setShowDeepAnalysis(true);
 
         setIsAnalyzingGrammar(true);
@@ -594,7 +600,9 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                         <InlineGrammarHighlights
                             text={text}
                             sentences={grammarAnalysis.difficult_sentences || []}
+                            displayMode={grammarDisplayMode}
                             showSentenceMarkers
+                            showSegmentTranslation
                         />
                     ) : (
                         // Karaoke Effect Logic (Character-based for smoothness)
@@ -759,6 +767,30 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                         </div>
 
                                         <div className="flex items-center gap-2">
+                                            <div className="flex items-center rounded-full border border-orange-200 bg-white/80 p-0.5">
+                                                <button
+                                                    onClick={() => setGrammarDisplayMode("core")}
+                                                    className={cn(
+                                                        "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                                                        grammarDisplayMode === "core"
+                                                            ? "bg-orange-500 text-white"
+                                                            : "text-orange-600 hover:bg-orange-50",
+                                                    )}
+                                                >
+                                                    主干结构
+                                                </button>
+                                                <button
+                                                    onClick={() => setGrammarDisplayMode("full")}
+                                                    className={cn(
+                                                        "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                                                        grammarDisplayMode === "full"
+                                                            ? "bg-orange-500 text-white"
+                                                            : "text-orange-600 hover:bg-orange-50",
+                                                    )}
+                                                >
+                                                    完整分析
+                                                </button>
+                                            </div>
                                             {/* Deep Analysis Controls */}
                                             {showDeepAnalysis && grammarAnalysis.difficult_sentences[0].sentence_tree && (
                                                 <button

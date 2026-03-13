@@ -26,7 +26,7 @@ import { TOPICS } from "../../app/battle/page";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 import { getDrillSurfacePhase, shouldExpandShopInventoryDock } from "@/lib/battleUiState";
 import { buildGuidedHintCacheKey, fetchGuidedHintWithRetry } from "@/lib/guidedHintClient";
-import { type GrammarSentenceAnalysis } from "@/lib/grammarHighlights";
+import { type GrammarDisplayMode, type GrammarSentenceAnalysis } from "@/lib/grammarHighlights";
 import {
     buildFallbackGuidedScript,
     buildGuidedClozeHint,
@@ -848,6 +848,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isGeneratingGrammar, setIsGeneratingGrammar] = useState(false);
     const [grammarError, setGrammarError] = useState<string | null>(null);
     const [referenceGrammarAnalysis, setReferenceGrammarAnalysis] = useState<GrammarSentenceAnalysis[] | null>(null);
+    const [referenceGrammarDisplayMode, setReferenceGrammarDisplayMode] = useState<GrammarDisplayMode>("core");
 
     // Audio & Dictionary State
     const [isPlaying, setIsPlaying] = useState(false);
@@ -2604,6 +2605,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setIsGeneratingGrammar(false);
             setGrammarError(null);
             setReferenceGrammarAnalysis(null);
+            setReferenceGrammarDisplayMode("core");
             setEloChange(null);
             setAssistsUsedInCurrentDrill(0);
             setIsHintLoading(false);
@@ -2669,6 +2671,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setIsGeneratingGrammar(false);
         setGrammarError(null);
         setReferenceGrammarAnalysis(null);
+        setReferenceGrammarDisplayMode("core");
         setEloChange(null);
         setAssistsUsedInCurrentDrill(0);
         setIsHintLoading(false);
@@ -3171,6 +3174,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setIsGeneratingGrammar(false);
             setGrammarError(null);
             setReferenceGrammarAnalysis(null);
+            setReferenceGrammarDisplayMode("core");
 
             if (data.score !== undefined) {
                 if (hasRatedDrill) {
@@ -3563,6 +3567,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setAnalysisDetailsOpen(false);
         setGrammarError(null);
         setReferenceGrammarAnalysis(null);
+        setReferenceGrammarDisplayMode("core");
 
         const shouldAnalyzeReferenceGrammar = mode === "translation" && drillData.reference_english.trim().length > 0;
         let grammarPromise: Promise<void> | null = null;
@@ -3593,6 +3598,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     const message = error instanceof Error ? error.message : "语法分析生成失败";
                     setGrammarError(message);
                     setReferenceGrammarAnalysis(null);
+                    setReferenceGrammarDisplayMode("core");
                 })
                 .finally(() => {
                     setIsGeneratingGrammar(false);
@@ -4365,7 +4371,37 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             </div>
                         )}
                         <div>
-                            <p className="text-[10px] text-stone-400 font-sans font-bold uppercase mb-1">Standard Reference (参考答案)</p>
+                            <div className="mb-1 flex items-center justify-between gap-3">
+                                <p className="text-[10px] text-stone-400 font-sans font-bold uppercase">Standard Reference (参考答案)</p>
+                                {referenceGrammarAnalysis ? (
+                                    <div className="flex items-center rounded-full border border-stone-200 bg-white/80 p-0.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => setReferenceGrammarDisplayMode("core")}
+                                            className={cn(
+                                                "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                                                referenceGrammarDisplayMode === "core"
+                                                    ? "bg-stone-900 text-white"
+                                                    : "text-stone-500 hover:bg-stone-50",
+                                            )}
+                                        >
+                                            主干
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setReferenceGrammarDisplayMode("full")}
+                                            className={cn(
+                                                "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                                                referenceGrammarDisplayMode === "full"
+                                                    ? "bg-stone-900 text-white"
+                                                    : "text-stone-500 hover:bg-stone-50",
+                                            )}
+                                        >
+                                            完整分析
+                                        </button>
+                                    </div>
+                                ) : null}
+                            </div>
                             {isGeneratingGrammar ? (
                                 <div className="rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2 text-xs text-amber-700">
                                     语法分析生成中...
@@ -4376,6 +4412,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     <InlineGrammarHighlights
                                         text={drillData.reference_english}
                                         sentences={referenceGrammarAnalysis}
+                                        displayMode={referenceGrammarDisplayMode}
+                                        showSegmentTranslation
                                         textClassName="leading-relaxed"
                                     />
                                     &rdquo;
@@ -6273,6 +6311,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     setIsGeneratingGrammar(false);
                                                     setGrammarError(null);
                                                     setReferenceGrammarAnalysis(null);
+                                                    setReferenceGrammarDisplayMode("core");
                                                 }}
                                             />
                                         ) : (
@@ -6294,6 +6333,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                 setIsGeneratingGrammar(false);
                                                                 setGrammarError(null);
                                                                 setReferenceGrammarAnalysis(null);
+                                                                setReferenceGrammarDisplayMode("core");
                                                                 handleSubmitDrill();
                                                             }}
                                                             className="mt-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-lg transition-all"
