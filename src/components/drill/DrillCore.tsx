@@ -21,10 +21,16 @@ import { ScoringFlipCard } from "./ScoringFlipCard";
 import { TeachingCard } from "./TeachingCard";
 import { GuidedLearningOverlay } from "./GuidedLearningOverlay";
 import { GhostTextarea } from "../vocab/GhostTextarea";
+import { InlineGrammarHighlights } from "../shared/InlineGrammarHighlights";
 import { TOPICS } from "../../app/battle/page";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 import { getDrillSurfacePhase, shouldExpandShopInventoryDock } from "@/lib/battleUiState";
+import { buildGuidedHintCacheKey, fetchGuidedHintWithRetry } from "@/lib/guidedHintClient";
+import { type GrammarSentenceAnalysis } from "@/lib/grammarHighlights";
 import {
+    buildFallbackGuidedScript,
+    buildGuidedClozeHint,
+    buildGuidedHintLines,
     createGuidedClozeState,
     createGuidedSessionState,
     isGuidedAnswerCorrect,
@@ -839,6 +845,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isGeneratingAnalysis, setIsGeneratingAnalysis] = useState(false);
     const [analysisError, setAnalysisError] = useState<string | null>(null);
     const [analysisDetailsOpen, setAnalysisDetailsOpen] = useState(false);
+    const [isGeneratingGrammar, setIsGeneratingGrammar] = useState(false);
+    const [grammarError, setGrammarError] = useState<string | null>(null);
+    const [referenceGrammarAnalysis, setReferenceGrammarAnalysis] = useState<GrammarSentenceAnalysis[] | null>(null);
 
     // Audio & Dictionary State
     const [isPlaying, setIsPlaying] = useState(false);
@@ -912,6 +921,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const guidedPrefetchPromiseRef = useRef<Promise<GuidedScript> | null>(null);
     const prefetchedGuidedScriptRef = useRef<GuidedScript | null>(null);
     const guidedHintAbortRef = useRef<AbortController | null>(null);
+    const guidedHintCacheRef = useRef<Map<string, GuidedAiHint>>(new Map());
+    const guidedHintPromiseRef = useRef<Map<string, Promise<GuidedAiHint>>>(new Map());
+    const guidedAiHintRequestCountRef = useRef(0);
 
     // UI State
     const [isBlindMode, setIsBlindMode] = useState(true);
@@ -1028,6 +1040,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (!keepLearningSession) {
             setLearningSession(false);
         }
+        guidedHintAbortRef.current?.abort();
         setGuidedModeStatus("idle");
         setGuidedScript(null);
         setGuidedCurrentStepIndex(0);
@@ -1043,11 +1056,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setGuidedInput("");
         setGuidedAiHint(null);
         setIsGuidedAiHintLoading(false);
+        guidedAiHintRequestCountRef.current = 0;
     }, []);
-
-    useEffect(() => {
-        prefetchedGuidedScriptRef.current = prefetchedGuidedScript;
-    }, [prefetchedGuidedScript]);
 
     const fetchGuidedScriptForDrill = useCallback(async (
         targetDrillData: Pick<DrillData, "chinese" | "reference_english" | "_topicMeta">,
@@ -1079,6 +1089,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         innerMode: targetInnerMode,
         leftContext,
         rightContext,
+        localHint,
+        manualRequest,
+        requestCount,
         signal,
     }: {
         slot: GuidedScript["slots"][number];
@@ -1086,6 +1099,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         innerMode: GuidedInnerMode;
         leftContext: string;
         rightContext: string;
+        localHint?: string;
+        manualRequest?: boolean;
+        requestCount?: number;
         signal?: AbortSignal;
     }) => {
         if (!drillData) {
@@ -1106,6 +1122,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 slot_kind: slot.slot_kind,
                 inner_mode: targetInnerMode,
                 has_multiple_choice: Boolean(slot.multiple_choice?.length),
+                local_hint: localHint,
+                manual_request: Boolean(manualRequest),
+                request_count: requestCount ?? 0,
             }),
             signal,
         });
@@ -1118,160 +1137,79 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         return data as GuidedAiHint;
     }, [drillData]);
 
-    useEffect(() => {
-        if (mode !== "translation" || !drillData?.chinese || !drillData.reference_english) {
-            guidedPrefetchAbortRef.current?.abort();
-            guidedPrefetchAbortRef.current = null;
-            guidedPrefetchKeyRef.current = null;
-            guidedPrefetchPromiseRef.current = null;
-            setPrefetchedGuidedScript(null);
-            return;
-        }
-
-        const guidedKey = getGuidedScriptKey(
-            drillData,
-            eloRatingRef.current || 600,
-            context.articleTitle || context.topic,
-        );
-
-        if (guidedPrefetchKeyRef.current === guidedKey && (guidedPrefetchPromiseRef.current || prefetchedGuidedScriptRef.current)) {
-            return;
-        }
-
-        guidedPrefetchAbortRef.current?.abort();
-        const controller = new AbortController();
-        guidedPrefetchAbortRef.current = controller;
-        guidedPrefetchKeyRef.current = guidedKey;
-        setPrefetchedGuidedScript(null);
-
-        const prefetchPromise = fetchGuidedScriptForDrill(drillData, controller.signal)
-            .then((script) => {
-                if (controller.signal.aborted || guidedPrefetchKeyRef.current !== guidedKey) {
-                    return script;
-                }
-                setPrefetchedGuidedScript(script);
-                return script;
-            })
-            .catch((error) => {
-                if ((error as Error).name !== "AbortError") {
-                    console.error("[GuidedLearning] Prefetch failed", error);
-                }
-                throw error;
-            })
-            .finally(() => {
-                if (guidedPrefetchPromiseRef.current === prefetchPromise) {
-                    guidedPrefetchPromiseRef.current = null;
-                }
-            });
-
-        guidedPrefetchPromiseRef.current = prefetchPromise;
-
-        return () => {
-            controller.abort();
-        };
-    }, [
-        context.articleTitle,
-        context.topic,
-        drillData,
-        fetchGuidedScriptForDrill,
-        mode,
-    ]);
-
-    useEffect(() => {
-        if (guidedModeStatus !== "active" || !guidedScript) {
-            guidedHintAbortRef.current?.abort();
-            guidedHintAbortRef.current = null;
-            setGuidedAiHint(null);
-            setIsGuidedAiHintLoading(false);
-            return;
-        }
-
-        const slot = guidedInnerMode === "gestalt_cloze"
-            ? guidedScript.slots.find((item) => item.id === guidedClozeState?.blankSlotIds[guidedClozeState.currentBlankIndex])
-            : guidedScript.slots[guidedCurrentStepIndex];
-
-        if (!slot) {
-            setGuidedAiHint(null);
-            setIsGuidedAiHintLoading(false);
-            return;
-        }
-
-        const slotIndex = guidedScript.slots.findIndex((item) => item.id === slot.id);
-        const filledMap = guidedInnerMode === "gestalt_cloze"
-            ? (guidedClozeState?.filledFragments ?? {})
-            : guidedFilledFragments;
-
-        let leftContext = "";
-        let rightContext = "";
-
-        for (let index = slotIndex - 1; index >= 0; index -= 1) {
-            const visible = filledMap[guidedScript.slots[index]?.id ?? ""];
-            if (visible) {
-                leftContext = visible;
-                break;
-            }
-        }
-
-        for (let index = slotIndex + 1; index < guidedScript.slots.length; index += 1) {
-            const visible = filledMap[guidedScript.slots[index]?.id ?? ""];
-            if (visible) {
-                rightContext = visible;
-                break;
-            }
-        }
-
-        const attempt = guidedInnerMode === "gestalt_cloze"
-            ? Math.max(guidedClozeState?.currentAttemptCount ?? 0, guidedClozeState?.revealReady ? 3 : 0)
-            : Math.max(guidedCurrentAttemptCount, (guidedChoicesVisible || guidedRevealReady) ? 3 : 0);
-
-        const controller = new AbortController();
-        guidedHintAbortRef.current?.abort();
-        guidedHintAbortRef.current = controller;
-        setIsGuidedAiHintLoading(true);
-
-        fetchGuidedHint({
-            slot,
+    const loadGuidedHint = useCallback(async ({
+        guidedKey,
+        slot,
+        attempt,
+        innerMode: targetInnerMode,
+        leftContext,
+        rightContext,
+        localHint,
+        manualRequest,
+        requestCount,
+        signal,
+    }: {
+        guidedKey: string;
+        slot: GuidedScript["slots"][number];
+        attempt: number;
+        innerMode: GuidedInnerMode;
+        leftContext: string;
+        rightContext: string;
+        localHint?: string;
+        manualRequest?: boolean;
+        requestCount?: number;
+        signal?: AbortSignal;
+    }) => {
+        const hintKey = buildGuidedHintCacheKey({
+            guidedKey,
+            slotId: manualRequest ? `${slot.id}:manual` : slot.id,
+            innerMode: targetInnerMode,
             attempt,
-            innerMode: guidedInnerMode,
-            leftContext,
+            requestCount: requestCount ?? 0,
+            leftContext: `${leftContext}|${localHint || ""}`,
             rightContext,
-            signal: controller.signal,
-        }).then((hint) => {
-            if (!controller.signal.aborted) {
-                setGuidedAiHint(hint);
-            }
-        }).catch((error) => {
-            if ((error as Error).name !== "AbortError") {
-                console.error("[GuidedLearning] Failed to load hint", error);
-                if (!controller.signal.aborted) {
-                    setGuidedAiHint({
-                        primary: "AI 提示生成失败了，再试一次或者先用选项排除。",
-                        secondary: null,
-                        rescue: null,
-                    });
-                }
-            }
-        }).finally(() => {
-            if (!controller.signal.aborted) {
-                setIsGuidedAiHintLoading(false);
-            }
         });
 
-        return () => {
-            controller.abort();
-        };
-    }, [
-        fetchGuidedHint,
-        guidedClozeState,
-        guidedChoicesVisible,
-        guidedCurrentAttemptCount,
-        guidedCurrentStepIndex,
-        guidedFilledFragments,
-        guidedInnerMode,
-        guidedModeStatus,
-        guidedRevealReady,
-        guidedScript,
-    ]);
+        const cached = guidedHintCacheRef.current.get(hintKey);
+        if (cached) {
+            return cached;
+        }
+
+        const pending = guidedHintPromiseRef.current.get(hintKey);
+        if (pending) {
+            return pending;
+        }
+
+        const requestPromise = fetchGuidedHintWithRetry(
+            () => fetchGuidedHint({
+                slot,
+                attempt,
+                innerMode: targetInnerMode,
+                leftContext,
+                rightContext,
+                localHint,
+                manualRequest,
+                requestCount,
+                signal,
+            }),
+            3,
+        ).then((hint) => {
+            guidedHintCacheRef.current.set(hintKey, hint);
+            return hint;
+        }).finally(() => {
+            guidedHintPromiseRef.current.delete(hintKey);
+        });
+
+        guidedHintPromiseRef.current.set(hintKey, requestPromise);
+        return requestPromise;
+    }, [fetchGuidedHint]);
+
+    useEffect(() => {
+        guidedHintAbortRef.current?.abort();
+        setGuidedAiHint(null);
+        setIsGuidedAiHintLoading(false);
+        guidedAiHintRequestCountRef.current = 0;
+    }, [guidedCurrentStepIndex, guidedInnerMode, guidedClozeState?.currentBlankIndex, guidedScript?.summary.final_sentence]);
 
     const isGuidedOverlayOpen = guidedModeStatus !== "idle";
     const learningSessionActive = learningSession;
@@ -2663,6 +2601,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setIsGeneratingAnalysis(false);
             setAnalysisError(null);
             setAnalysisDetailsOpen(false);
+            setIsGeneratingGrammar(false);
+            setGrammarError(null);
+            setReferenceGrammarAnalysis(null);
             setEloChange(null);
             setAssistsUsedInCurrentDrill(0);
             setIsHintLoading(false);
@@ -2725,6 +2666,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setIsGeneratingAnalysis(false);
         setAnalysisError(null);
         setAnalysisDetailsOpen(false);
+        setIsGeneratingGrammar(false);
+        setGrammarError(null);
+        setReferenceGrammarAnalysis(null);
         setEloChange(null);
         setAssistsUsedInCurrentDrill(0);
         setIsHintLoading(false);
@@ -2898,12 +2842,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
     };
 
-    const handleStartGuidedLearning = useCallback(async () => {
+    const handleStartGuidedLearning = useCallback(() => {
         if (mode !== "translation" || !drillData?.chinese || !drillData.reference_english) return;
 
+        const localGuidedScript = buildFallbackGuidedScript({
+            chinese: drillData.chinese,
+            referenceEnglish: drillData.reference_english,
+        });
+
         setLearningSession(true);
-        setGuidedModeStatus("loading");
-        setGuidedScript(null);
+        setGuidedModeStatus("active");
+        setGuidedScript(localGuidedScript);
         setGuidedCurrentStepIndex(0);
         guidedCurrentStepIndexRef.current = 0;
         setGuidedCurrentAttemptCount(0);
@@ -2918,66 +2867,111 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setTeachingPanelOpen(false);
         setIsTutorOpen(false);
         setGuidedAiHint(null);
+        applyGuidedSessionSnapshot(createGuidedSessionState(localGuidedScript));
+    }, [
+        applyGuidedSessionSnapshot,
+        buildFallbackGuidedScript,
+        drillData,
+        mode,
+    ]);
+
+    const handleRequestGuidedAiHint = useCallback(async () => {
+        if (!guidedScript || !drillData) return;
+
+        const slot = guidedInnerMode === "gestalt_cloze"
+            ? guidedScript.slots.find((item) => item.id === guidedClozeState?.blankSlotIds[guidedClozeState.currentBlankIndex])
+            : guidedScript.slots[guidedCurrentStepIndex];
+        if (!slot) return;
+
+        const slotIndex = guidedScript.slots.findIndex((item) => item.id === slot.id);
+        const filledMap = guidedInnerMode === "gestalt_cloze"
+            ? (guidedClozeState?.filledFragments ?? {})
+            : guidedFilledFragments;
+
+        let leftContext = "";
+        let rightContext = "";
+
+        for (let index = slotIndex - 1; index >= 0; index -= 1) {
+            const visible = filledMap[guidedScript.slots[index]?.id ?? ""];
+            if (visible) {
+                leftContext = visible;
+                break;
+            }
+        }
+
+        for (let index = slotIndex + 1; index < guidedScript.slots.length; index += 1) {
+            const visible = filledMap[guidedScript.slots[index]?.id ?? ""];
+            if (visible) {
+                rightContext = visible;
+                break;
+            }
+        }
+
+        const localHint = guidedInnerMode === "gestalt_cloze"
+            ? buildGuidedClozeHint(guidedScript, guidedClozeState ?? createGuidedClozeState(guidedScript))?.primary ?? ""
+            : buildGuidedHintLines(guidedScript, getGuidedSessionSnapshot())?.primary ?? "";
+        const attempt = guidedInnerMode === "gestalt_cloze"
+            ? Math.max(guidedClozeState?.currentAttemptCount ?? 0, guidedClozeState?.revealReady ? 3 : 0)
+            : Math.max(guidedCurrentAttemptCount, (guidedChoicesVisible || guidedRevealReady) ? 3 : 0);
+        const guidedKey = getGuidedScriptKey(
+            drillData,
+            eloRatingRef.current || 600,
+            context.articleTitle || context.topic,
+        );
+        const requestCount = guidedAiHintRequestCountRef.current + 1;
+        guidedAiHintRequestCountRef.current = requestCount;
+
+        const controller = new AbortController();
+        guidedHintAbortRef.current?.abort();
+        guidedHintAbortRef.current = controller;
+        setIsGuidedAiHintLoading(true);
 
         try {
-            const guidedKey = getGuidedScriptKey(
-                drillData,
-                eloRatingRef.current || 600,
-                context.articleTitle || context.topic,
-            );
-
-            let data = guidedPrefetchKeyRef.current === guidedKey
-                ? prefetchedGuidedScriptRef.current
-                : null;
-
-            if (!data) {
-                let pendingPromise = guidedPrefetchKeyRef.current === guidedKey
-                    ? guidedPrefetchPromiseRef.current
-                    : null;
-
-                if (!pendingPromise) {
-                    const controller = new AbortController();
-                    guidedPrefetchAbortRef.current?.abort();
-                    guidedPrefetchAbortRef.current = controller;
-                    guidedPrefetchKeyRef.current = guidedKey;
-
-                    pendingPromise = fetchGuidedScriptForDrill(drillData, controller.signal)
-                        .then((script) => {
-                            if (!controller.signal.aborted && guidedPrefetchKeyRef.current === guidedKey) {
-                                setPrefetchedGuidedScript(script);
-                            }
-                            return script;
-                        })
-                        .finally(() => {
-                            if (guidedPrefetchPromiseRef.current === pendingPromise) {
-                                guidedPrefetchPromiseRef.current = null;
-                            }
-                        });
-
-                    guidedPrefetchPromiseRef.current = pendingPromise;
-                }
-
-                data = await pendingPromise;
+            const hint = await loadGuidedHint({
+                guidedKey,
+                slot,
+                attempt,
+                innerMode: guidedInnerMode,
+                leftContext,
+                rightContext,
+                localHint,
+                manualRequest: true,
+                requestCount,
+                signal: controller.signal,
+            });
+            if (!controller.signal.aborted) {
+                setGuidedAiHint(hint);
             }
-
-            const refreshedState = createGuidedSessionState(data);
-            setGuidedScript(data);
-            applyGuidedSessionSnapshot(refreshedState);
         } catch (error) {
-            console.error("[GuidedLearning] Failed to start", error);
-            resetGuidedLearningState(false);
-            if (typeof window !== "undefined") {
-                window.alert("AI 引导暂时不可用，请稍后再试。");
+            if ((error as Error).name !== "AbortError") {
+                console.error("[GuidedLearning] Manual AI hint failed", error);
+                if (!controller.signal.aborted) {
+                    setGuidedAiHint({
+                        primary: "AI 老师这次没接上，你可以再点一次，我会重新换一种更具体的讲法。",
+                        secondary: null,
+                        rescue: null,
+                    });
+                }
+            }
+        } finally {
+            if (!controller.signal.aborted) {
+                setIsGuidedAiHintLoading(false);
             }
         }
     }, [
-        applyGuidedSessionSnapshot,
-        drillData,
-        fetchGuidedScriptForDrill,
         context.articleTitle,
         context.topic,
-        mode,
-        resetGuidedLearningState,
+        drillData,
+        getGuidedSessionSnapshot,
+        guidedChoicesVisible,
+        guidedClozeState,
+        guidedCurrentAttemptCount,
+        guidedCurrentStepIndex,
+        guidedFilledFragments,
+        guidedInnerMode,
+        guidedRevealReady,
+        guidedScript,
+        loadGuidedHint,
     ]);
 
     const handleSubmitGuidedInput = useCallback((inputOverride?: string) => {
@@ -3174,6 +3168,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setAnalysisRequested(false);
             setAnalysisError(null);
             setAnalysisDetailsOpen(false);
+            setIsGeneratingGrammar(false);
+            setGrammarError(null);
+            setReferenceGrammarAnalysis(null);
 
             if (data.score !== undefined) {
                 if (hasRatedDrill) {
@@ -3564,10 +3561,49 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setIsGeneratingAnalysis(true);
         setAnalysisError(null);
         setAnalysisDetailsOpen(false);
+        setGrammarError(null);
+        setReferenceGrammarAnalysis(null);
+
+        const shouldAnalyzeReferenceGrammar = mode === "translation" && drillData.reference_english.trim().length > 0;
+        let grammarPromise: Promise<void> | null = null;
+
+        if (shouldAnalyzeReferenceGrammar) {
+            setIsGeneratingGrammar(true);
+            grammarPromise = fetch("/api/ai/grammar", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    text: drillData.reference_english,
+                    mode: "basic",
+                }),
+            })
+                .then(async (response) => {
+                    const data = await response.json();
+                    if (!response.ok || data.error) {
+                        throw new Error(data.error || "语法分析生成失败");
+                    }
+
+                    const sentences = Array.isArray(data?.difficult_sentences)
+                        ? data.difficult_sentences as GrammarSentenceAnalysis[]
+                        : [];
+
+                    setReferenceGrammarAnalysis(sentences);
+                })
+                .catch((error) => {
+                    const message = error instanceof Error ? error.message : "语法分析生成失败";
+                    setGrammarError(message);
+                    setReferenceGrammarAnalysis(null);
+                })
+                .finally(() => {
+                    setIsGeneratingGrammar(false);
+                });
+        } else {
+            setIsGeneratingGrammar(false);
+        }
 
         try {
             const activeElo = mode === 'listening' ? listeningEloRef.current : eloRatingRef.current;
-            const response = await fetch("/api/ai/analyze_drill", {
+            const analysisResponse = await fetch("/api/ai/analyze_drill", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -3580,14 +3616,16 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     teaching_mode: teachingMode,
                 }),
             });
+            const data = await analysisResponse.json();
 
-            const data = await response.json();
-
-            if (!response.ok || data.error) {
+            if (!analysisResponse.ok || data.error) {
                 throw new Error(data.error || "解析生成失败");
             }
 
             setDrillFeedback(prev => prev ? { ...prev, ...data } : prev);
+            if (grammarPromise) {
+                await grammarPromise;
+            }
         } catch (error) {
             const message = error instanceof Error ? error.message : "解析生成失败";
             setAnalysisError(message);
@@ -4328,7 +4366,26 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         )}
                         <div>
                             <p className="text-[10px] text-stone-400 font-sans font-bold uppercase mb-1">Standard Reference (参考答案)</p>
-                            <p className="text-base font-newsreader text-stone-600 italic">"{drillData.reference_english}"</p>
+                            {isGeneratingGrammar ? (
+                                <div className="rounded-xl border border-amber-100 bg-amber-50/60 px-3 py-2 text-xs text-amber-700">
+                                    语法分析生成中...
+                                </div>
+                            ) : referenceGrammarAnalysis ? (
+                                <p className="text-base font-newsreader text-stone-600 italic">
+                                    &ldquo;
+                                    <InlineGrammarHighlights
+                                        text={drillData.reference_english}
+                                        sentences={referenceGrammarAnalysis}
+                                        textClassName="leading-relaxed"
+                                    />
+                                    &rdquo;
+                                </p>
+                            ) : (
+                                <p className="text-base font-newsreader text-stone-600 italic">"{drillData.reference_english}"</p>
+                            )}
+                            {grammarError ? (
+                                <p className="mt-2 text-xs text-stone-400">参考句语法分析暂时不可用，已回退到普通参考句显示。</p>
+                            ) : null}
                         </div>
                     </div>
                 </div>
@@ -4418,13 +4475,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     };
 
     const hasDetailedAnalysis = Boolean(
-        drillFeedback && (
-            drillFeedback.segments ||
-            drillFeedback.feedback ||
-            drillFeedback.improved_version ||
-            (drillFeedback.error_analysis && drillFeedback.error_analysis.length > 0) ||
-            (drillFeedback.similar_patterns && drillFeedback.similar_patterns.length > 0)
-        )
+            drillFeedback && (
+                drillFeedback.segments ||
+                drillFeedback.feedback ||
+                drillFeedback.improved_version ||
+                (drillFeedback.error_analysis && drillFeedback.error_analysis.length > 0) ||
+                (drillFeedback.similar_patterns && drillFeedback.similar_patterns.length > 0)
+            )
     );
     const analysisHighlights = hasDetailedAnalysis ? getAnalysisHighlights() : [];
     const analysisLead = getAnalysisLead();
@@ -6213,6 +6270,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     setIsGeneratingAnalysis(false);
                                                     setAnalysisError(null);
                                                     setAnalysisDetailsOpen(false);
+                                                    setIsGeneratingGrammar(false);
+                                                    setGrammarError(null);
+                                                    setReferenceGrammarAnalysis(null);
                                                 }}
                                             />
                                         ) : (
@@ -6231,6 +6291,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                 setIsGeneratingAnalysis(false);
                                                                 setAnalysisError(null);
                                                                 setAnalysisDetailsOpen(false);
+                                                                setIsGeneratingGrammar(false);
+                                                                setGrammarError(null);
+                                                                setReferenceGrammarAnalysis(null);
                                                                 handleSubmitDrill();
                                                             }}
                                                             className="mt-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-lg transition-all"
@@ -6786,6 +6849,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         onShowChoices={handleShowGuidedChoices}
                         onSelectChoice={handleSelectGuidedChoice}
                         onRevealAnswer={handleRevealGuidedAnswer}
+                        onRequestAiHint={handleRequestGuidedAiHint}
                         onActivateRandomFill={guidedInnerMode === "gestalt_cloze" ? handleRefreshGuidedCloze : handleActivateGuidedRandomFill}
                         onReturnToTeacherGuided={handleReturnToTeacherGuided}
                         onReturnToBattle={handleReturnToBattleFromGuided}

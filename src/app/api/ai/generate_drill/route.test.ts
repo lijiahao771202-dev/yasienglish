@@ -188,4 +188,28 @@ describe("generate_drill route", () => {
         expect(data._difficultyMeta.actualWordCount).toBe(2);
         expect(data._difficultyMeta.status).toBe("TOO_EASY");
     });
+
+    it("treats the topic as background direction instead of forcing explicit topic words", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletionPayload({
+                chinese: "我差点错过最后一班车。",
+                target_english_vocab: ["missed", "last"],
+                reference_english: "I almost missed the last train home.",
+                _scenario_topic: "深夜回家路上",
+                _ai_difficulty_report: {
+                    tier: "白银",
+                    cefr: "A2+",
+                    word_count: "7",
+                    target_range: "7-11",
+                },
+            }),
+        );
+
+        await POST(buildRequest({ articleTitle: "环球旅行", articleContent: "" }));
+
+        const prompt = createCompletionMock.mock.calls[0][0].messages[1].content as string;
+        expect(prompt).toContain("Treat the topic as background direction");
+        expect(prompt).toContain("Do NOT explicitly repeat the topic label");
+        expect(prompt).toContain("Avoid the most obvious keywords");
+    });
 });

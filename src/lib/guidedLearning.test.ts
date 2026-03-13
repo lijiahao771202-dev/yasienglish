@@ -202,14 +202,14 @@ describe("guidedLearning template flow", () => {
         expect(fallback.slots[1]?.micro_rule_cn).toContain("先把动作立住");
     });
 
-    it("merges phrase-style expressions into one slot when the expression should be learned as a block", () => {
+    it("keeps every word as its own slot instead of merging phrase-style expressions", () => {
         const fallback = buildFallbackGuidedScript({
             chinese: "我昨天一直在找我的钥匙。",
             referenceEnglish: "I looked for my keys yesterday.",
         });
 
-        expect(fallback.slots.some((slot) => slot.slot_kind === "phrase")).toBe(true);
-        expect(fallback.slots.find((slot) => slot.slot_kind === "phrase")?.answer_text).toBe("looked for");
+        expect(fallback.slots.every((slot) => slot.slot_kind === "word")).toBe(true);
+        expect(fallback.slots.map((slot) => slot.answer_text)).toEqual(["I", "looked", "for", "my", "keys", "yesterday"]);
     });
 
     it("arms manual reveal instead of auto-filling after three wrong attempts when no rescue choices exist", () => {

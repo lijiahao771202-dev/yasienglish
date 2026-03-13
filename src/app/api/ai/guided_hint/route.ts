@@ -15,6 +15,9 @@ export async function POST(req: NextRequest) {
             slot_kind = "word",
             inner_mode = "teacher_guided",
             has_multiple_choice = false,
+            local_hint = "",
+            manual_request = false,
+            request_count = 0,
         } = await req.json();
 
         if (!chinese || !reference_english || !answer_text) {
@@ -34,6 +37,9 @@ Slot kind: "${slot_kind}"
 Mode: "${inner_mode}"
 Attempt count: ${attempt}
 Has multiple choice rescue: ${has_multiple_choice ? "yes" : "no"}
+Current local hint already shown: "${local_hint || "(none)"}"
+Manual AI request: ${manual_request ? "yes" : "no"}
+Manual AI request count: ${request_count}
 
 Return strict JSON only:
 {
@@ -47,11 +53,14 @@ Rules:
 - Sound like a patient teacher, not a system notice.
 - Never say vague filler like "先补当前这一小块", "不要一下子想整句", "只处理当前空位".
 - The hint must mention either the exact Chinese focus, or visible left/right context.
+- If manual_request is yes, your hint must be noticeably stronger and smarter than the local hint already shown.
+- If manual_request is yes, do not just paraphrase the local hint. Narrow the range harder.
+- If manual_request is yes and request_count is higher, make the clue even sharper than before.
 - attempt 0: give only a concrete first clue. Do not reveal the answer.
 - attempt 1: be more specific than attempt 0. Still do not reveal the answer.
 - attempt 2: make the clue clearly stronger. You may give first letter, tense, word form, collocation, or whether it is a phrase.
 - attempt 3 or above: do NOT auto-reveal the answer. Instead, give a rescue-style hint that tells the learner they can use options or manually reveal this blank if needed.
-- If slot_kind is "phrase", guide the learner to think of the whole expression, not isolated words.
+- For harder manual hints, it is good to mention likely word family, tense, collocation, first letter, or what kind of wrong guess to avoid.
 - Keep it short: primary required; secondary/rescue optional.
 `.trim();
 

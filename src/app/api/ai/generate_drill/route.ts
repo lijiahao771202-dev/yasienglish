@@ -79,7 +79,7 @@ DO NOT generate content for a lower difficulty tier than requested.`
                 ],
                 model: "deepseek-chat",
                 response_format: { type: "json_object" },
-                temperature: 0.7,
+                temperature: 0.95,
             });
         } catch (error) {
             lastError = error as Error;
@@ -195,6 +195,12 @@ Task:
                         : `Create a Chinese source sentence for the user to translate into English.`}
 3. Ensure the target English line matches Elo ${currentElo}.
 
+Topic handling rules:
+- Treat the topic as background direction, not as a keyword that must appear in the sentence.
+- Do NOT explicitly repeat the topic label unless it is naturally necessary.
+- Avoid the most obvious keywords normally associated with the topic when possible.
+- Stay within the topic range by choosing a believable sub-situation, not by naming the topic itself.
+
 Constraint: ${difficultyPrompt}
 ${retryInstruction ? `\n${retryInstruction}\n` : ""}
 Context: ${scenarioContext}
@@ -231,6 +237,9 @@ CRITICAL VARIETY INSTRUCTIONS:
 - DO NOT repeat common phrases.
 - Pick a DIFFERENT aspect of the topic than the most obvious one.
 - Be CREATIVE and SURPRISING while staying on topic.
+- Treat the topic as background direction, not as a keyword that must appear in the sentence.
+- Do NOT explicitly repeat the topic label unless it is naturally necessary.
+- Avoid the most obvious keywords normally associated with the topic when possible.
 
 Task:
 1. Identify the core theme and 2-3 vocabulary words.

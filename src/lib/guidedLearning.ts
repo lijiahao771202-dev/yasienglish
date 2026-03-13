@@ -148,21 +148,6 @@ const COMMON_VERBS = new Set([
     "have", "has", "had", "make", "made", "missed", "found", "noticed",
     "discovered", "announced", "announcing", "disconnect", "disconnected",
 ]);
-const PHRASE_PATTERNS = [
-    ["looked", "for"],
-    ["look", "for"],
-    ["looking", "for"],
-    ["find", "out"],
-    ["found", "out"],
-    ["according", "to"],
-    ["due", "to"],
-    ["such", "as"],
-    ["instead", "of"],
-    ["at", "least"],
-    ["at", "first"],
-    ["a", "lot", "of"],
-    ["in", "front", "of"],
-] as const;
 const DEFAULT_CLOZE_KEEP_RATIO = 0.5;
 
 function normalizeGuidedAnswer(value: string) {
@@ -209,48 +194,14 @@ function leaksAnswer(text: string, answerText: string) {
 }
 
 function buildSentenceUnits(pieces: SentencePiece[]): SentenceUnit[] {
-    const units: SentenceUnit[] = [];
-
-    for (let index = 0; index < pieces.length; index += 1) {
-        let matchedPattern: readonly string[] | null = null;
-
-        for (const pattern of PHRASE_PATTERNS) {
-            const candidateWords = pieces
-                .slice(index, index + pattern.length)
-                .map((piece) => normalizeGuidedAnswer(piece.word));
-
-            if (
-                candidateWords.length === pattern.length
-                && pattern.every((word, patternIndex) => candidateWords[patternIndex] === normalizeGuidedAnswer(word))
-            ) {
-                matchedPattern = pattern;
-                break;
-            }
-        }
-
-        if (matchedPattern) {
-            const groupedPieces = pieces.slice(index, index + matchedPattern.length);
-            units.push({
-                prefix: groupedPieces[0]?.prefix ?? "",
-                answerText: groupedPieces.map((piece) => piece.word).join(" "),
-                suffix: groupedPieces[groupedPieces.length - 1]?.suffix ?? "",
-                slotKind: "phrase",
-                words: groupedPieces.map((piece) => piece.word),
-            });
-            index += matchedPattern.length - 1;
-            continue;
-        }
-
-        units.push({
-            prefix: pieces[index]?.prefix ?? "",
-            answerText: pieces[index]?.word ?? "",
-            suffix: pieces[index]?.suffix ?? "",
-            slotKind: "word",
-            words: [pieces[index]?.word ?? ""],
-        });
-    }
-
-    return units.filter((unit) => unit.answerText.trim().length > 0);
+    return pieces.map((piece) => ({
+            prefix: piece.prefix,
+            answerText: piece.word,
+            suffix: piece.suffix,
+            slotKind: "word" as GuidedSlotKind,
+            words: [piece.word],
+        }))
+        .filter((unit) => unit.answerText.trim().length > 0);
 }
 
 function pickUniqueChoices(answerText: string, candidates: string[]) {

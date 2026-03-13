@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { Fragment, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { BookOpen, Sparkles, X } from "lucide-react";
 
 import {
+    buildGuidedClozeHint,
     buildGuidedClozeTokens,
+    buildGuidedHintLines,
     buildGuidedTemplateTokens,
     type GuidedAiHint,
     type GuidedClozeState,
@@ -15,6 +17,41 @@ import {
 import { cn } from "@/lib/utils";
 
 type GuidedInnerMode = "teacher_guided" | "gestalt_cloze";
+
+function escapeRegExp(value: string) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function renderHintWithBlurredAnswer(text: string, answerText?: string, className?: string) {
+    if (!answerText?.trim()) {
+        return <p className={className}>{text}</p>;
+    }
+
+    const matcher = new RegExp(`(${escapeRegExp(answerText)})`, "gi");
+    const parts = text.split(matcher);
+
+    return (
+        <p className={className}>
+            {parts.map((part, index) => {
+                if (part.toLowerCase() !== answerText.toLowerCase()) {
+                    return <Fragment key={`${part}-${index}`}>{part}</Fragment>;
+                }
+
+                return (
+                    <span
+                        key={`${part}-${index}`}
+                        className="group/answer mx-0.5 inline-flex rounded-md bg-white/70 px-1.5 py-0.5 align-baseline ring-1 ring-sky-200/80 backdrop-blur-sm"
+                        title="悬停查看这个词"
+                    >
+                        <span className="blur-[5px] transition duration-200 group-hover/answer:blur-0">
+                            {part}
+                        </span>
+                    </span>
+                );
+            })}
+        </p>
+    );
+}
 
 interface GuidedLearningOverlayProps {
     open: boolean;
@@ -35,6 +72,7 @@ interface GuidedLearningOverlayProps {
     onShowChoices: () => void;
     onSelectChoice: (choiceText: string) => void;
     onRevealAnswer: () => void;
+    onRequestAiHint: () => void;
     onActivateRandomFill: () => void;
     onReturnToTeacherGuided: () => void;
     onReturnToBattle: () => void;
@@ -60,6 +98,7 @@ export function GuidedLearningOverlay({
     onShowChoices,
     onSelectChoice,
     onRevealAnswer,
+    onRequestAiHint,
     onActivateRandomFill,
     onReturnToTeacherGuided,
     onReturnToBattle,
@@ -78,6 +117,20 @@ export function GuidedLearningOverlay({
         ? buildGuidedClozeTokens(script, clozeState, currentInput)
         : [];
     const templateTokens = innerMode === "gestalt_cloze" ? clozeTokens : teacherTokens;
+    const teacherHintLines = script
+        ? buildGuidedHintLines(script, {
+            status,
+            currentStepIndex,
+            currentAttemptCount,
+            guidedChoicesVisible,
+            revealReady: guidedRevealReady,
+            filledFragments,
+            lastFeedback: null,
+        })
+        : null;
+    const clozeHint = script && clozeState
+        ? buildGuidedClozeHint(script, { ...clozeState, lastFeedback: null })
+        : null;
     const clozeAttemptCount = clozeState?.currentAttemptCount ?? 0;
     const clozeRevealReady = clozeState?.revealReady ?? false;
     const isSummary = status === "complete";
@@ -104,9 +157,9 @@ export function GuidedLearningOverlay({
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 16, scale: 0.97 }}
                         transition={{ type: "spring", stiffness: 280, damping: 28 }}
-                        className="absolute inset-0 z-[111] flex items-center justify-center p-4 md:p-8"
+                        className="absolute inset-0 z-[111] flex min-h-0 items-center justify-center p-4 md:p-8"
                     >
-                        <div className="flex h-full max-h-[900px] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.95))] shadow-[0_30px_90px_rgba(15,23,42,0.22)]">
+                        <div className="flex h-full min-h-0 max-h-[900px] w-full max-w-4xl flex-col overflow-y-auto overscroll-contain rounded-[2rem] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.95))] shadow-[0_30px_90px_rgba(15,23,42,0.22)]">
                             <div className="border-b border-stone-200/70 px-5 py-4 md:px-7">
                                 <div className="flex items-start justify-between gap-4">
                                     <div>
@@ -226,23 +279,44 @@ export function GuidedLearningOverlay({
                                                 ))}
                                             </div>
 
-                                            {innerMode === "teacher_guided" && currentSlot ? (
+                                            {innerMode === "teacher_guided" && currentSlot && teacherHintLines ? (
                                                 <div className="mt-4 rounded-[1rem] border border-white/70 bg-white/92 px-4 py-3">
                                                     <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-500">
                                                         老师现在这样带你想
                                                     </p>
                                                     <p className="mt-2 text-base font-semibold leading-7 text-stone-900">
-                                                        {currentAiHint?.primary || (isAiHintLoading ? "老师正在组织这一步的提示……" : "老师正在组织这一步的提示……")}
+                                                        {teacherHintLines.primary}
                                                     </p>
-                                                    {currentAiHint?.secondary ? (
+                                                    {teacherHintLines.secondary ? (
                                                         <p className="mt-2 text-sm leading-6 text-stone-600">
-                                                            {currentAiHint.secondary}
+                                                            {teacherHintLines.secondary}
                                                         </p>
                                                     ) : null}
-                                                    {(guidedChoicesVisible || guidedRevealReady) && currentAiHint?.rescue ? (
+                                                    {(guidedChoicesVisible || guidedRevealReady) && teacherHintLines.rescue ? (
                                                         <p className="mt-2 text-sm font-medium leading-6 text-amber-700">
-                                                            {currentAiHint.rescue}
+                                                            {teacherHintLines.rescue}
                                                         </p>
+                                                    ) : null}
+                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={onRequestAiHint}
+                                                            className="inline-flex min-h-10 items-center justify-center rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 transition-all hover:-translate-y-0.5 hover:border-sky-300"
+                                                        >
+                                                            {isAiHintLoading ? "AI 老师正在补充…" : "AI 老师再讲清楚一点"}
+                                                        </button>
+                                                    </div>
+                                                    {currentAiHint ? (
+                                                        <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
+                                                            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-sky-600">AI 老师补充</p>
+                                                            {renderHintWithBlurredAnswer(currentAiHint.primary, currentSlot.answer_text, "mt-2 text-sm font-medium leading-6 text-stone-800")}
+                                                            {currentAiHint.secondary ? (
+                                                                renderHintWithBlurredAnswer(currentAiHint.secondary, currentSlot.answer_text, "mt-2 text-sm leading-6 text-stone-600")
+                                                            ) : null}
+                                                            {currentAiHint.rescue ? (
+                                                                renderHintWithBlurredAnswer(currentAiHint.rescue, currentSlot.answer_text, "mt-2 text-sm leading-6 text-amber-700")
+                                                            ) : null}
+                                                        </div>
                                                     ) : null}
 
                                                     {currentSlot.multiple_choice?.length || guidedRevealReady ? (
@@ -281,21 +355,42 @@ export function GuidedLearningOverlay({
                                                 </div>
                                             ) : null}
 
-                                            {innerMode === "gestalt_cloze" ? (
+                                            {innerMode === "gestalt_cloze" && clozeHint ? (
                                                 <div className="mt-4 rounded-[1rem] border border-white/70 bg-white/92 px-4 py-3">
                                                     <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-500">
                                                         顺着整句往回推
                                                     </p>
                                                     <p className="mt-2 text-base font-semibold leading-7 text-stone-900">
-                                                        {currentAiHint?.primary || (isAiHintLoading ? "老师正在根据你现在这格重新想提示……" : "老师正在根据你现在这格重新想提示……")}
+                                                        {clozeHint.primary}
                                                     </p>
-                                                    {currentAiHint?.secondary ? (
-                                                        <p className="mt-2 text-sm leading-6 text-stone-600">{currentAiHint.secondary}</p>
+                                                    {clozeHint.secondary ? (
+                                                        <p className="mt-2 text-sm leading-6 text-stone-600">{clozeHint.secondary}</p>
                                                     ) : null}
-                                                    {clozeAttemptCount >= 2 && currentAiHint?.rescue ? (
+                                                    {clozeAttemptCount >= 2 && clozeHint.rescue ? (
                                                         <p className="mt-2 text-sm font-medium leading-6 text-amber-700">
-                                                            {currentAiHint.rescue}
+                                                            {clozeHint.rescue}
                                                         </p>
+                                                    ) : null}
+                                                    <div className="mt-3 flex flex-wrap gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={onRequestAiHint}
+                                                            className="inline-flex min-h-10 items-center justify-center rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 transition-all hover:-translate-y-0.5 hover:border-sky-300"
+                                                        >
+                                                            {isAiHintLoading ? "AI 老师正在补充…" : "AI 给我更强线索"}
+                                                        </button>
+                                                    </div>
+                                                    {currentAiHint ? (
+                                                        <div className="mt-3 rounded-2xl border border-sky-100 bg-sky-50/70 p-3">
+                                                            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-sky-600">AI 老师补充</p>
+                                                            {renderHintWithBlurredAnswer(currentAiHint.primary, currentSlot?.answer_text, "mt-2 text-sm font-medium leading-6 text-stone-800")}
+                                                            {currentAiHint.secondary ? (
+                                                                renderHintWithBlurredAnswer(currentAiHint.secondary, currentSlot?.answer_text, "mt-2 text-sm leading-6 text-stone-600")
+                                                            ) : null}
+                                                            {currentAiHint.rescue ? (
+                                                                renderHintWithBlurredAnswer(currentAiHint.rescue, currentSlot?.answer_text, "mt-2 text-sm leading-6 text-amber-700")
+                                                            ) : null}
+                                                        </div>
                                                     ) : null}
                                                     {clozeRevealReady ? (
                                                         <div className="mt-3">
@@ -315,7 +410,7 @@ export function GuidedLearningOverlay({
                                 ) : null}
                             </div>
 
-                            <div className="flex-1 overflow-y-auto px-5 py-5 md:px-7 md:py-6">
+                            <div className="flex-1 min-h-0 px-5 py-5 touch-pan-y md:px-7 md:py-6">
                                     {status === "loading" || !script ? (
                                         <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-4 text-center">
                                             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
