@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { db, VocabItem } from '@/lib/db';
+import { deleteVocabulary, saveVocabulary } from '@/lib/user-repository';
 import { useLiveQuery } from 'dexie-react-hooks';
 import Link from 'next/link';
 import { ArrowRight, BookOpen, Brain, Clock, Loader2, Plus, Search, Trash2 } from 'lucide-react';
@@ -27,7 +28,7 @@ export default function VocabDashboard() {
     // Delete handler
     const handleDelete = async (word: string) => {
         if (confirm(`Delete "${word}"?`)) {
-            await db.vocabulary.delete(word);
+            await deleteVocabulary(word);
         }
     };
 
@@ -81,7 +82,7 @@ export default function VocabDashboard() {
                 due: base.due ?? Date.now(),
             };
 
-            await db.vocabulary.put(card);
+            await saveVocabulary(card);
             setManualWord("");
             setAddWordFeedback({ type: "success", text: `已加入：${word}` });
         } catch (error) {

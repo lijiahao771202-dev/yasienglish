@@ -1,5 +1,14 @@
 import Dexie, { Table } from 'dexie';
 
+export type SyncStatus = 'synced' | 'pending' | 'error';
+
+export interface SyncTracked {
+    user_id?: string;
+    remote_id?: string;
+    updated_at?: string;
+    sync_status?: SyncStatus;
+}
+
 export interface AICacheItem {
     id?: number;
     key: string; // Unique identifier (e.g., text content or hash)
@@ -17,10 +26,16 @@ export interface FeedCacheItem {
 export interface ReadArticleItem {
     url: string;
     timestamp: number;
+    read_at?: number;
+    remote_id?: string;
+    updated_at?: string;
+    sync_status?: SyncStatus;
+    user_id?: string;
 }
 
-export interface VocabItem {
+export interface VocabItem extends SyncTracked {
     word: string;
+    word_key?: string;
     definition: string;
     translation: string;
     context: string;
@@ -37,7 +52,7 @@ export interface VocabItem {
     due: number;
 }
 
-export interface WritingEntry {
+export interface WritingEntry extends SyncTracked {
     id?: number;
     articleTitle: string;
     content: string;
@@ -59,10 +74,58 @@ export interface CachedArticle {
 
 export interface EloHistoryItem {
     id?: number;
+    remote_id?: string;
+    user_id?: string;
     mode: 'translation' | 'listening';
     elo: number;
     change: number;
     timestamp: number;
+    source?: string;
+    updated_at?: string;
+    sync_status?: SyncStatus;
+}
+
+export interface InventoryState {
+    capsule?: number;
+    hint_ticket?: number;
+    vocab_ticket?: number;
+    audio_ticket?: number;
+    refresh_ticket?: number;
+}
+
+export interface LocalUserProfile extends SyncTracked {
+    id?: number;
+    elo_rating: number;
+    streak_count: number;
+    max_elo: number;
+    last_practice: number;
+    listening_elo?: number;
+    listening_streak?: number;
+    listening_max_elo?: number;
+    coins?: number;
+    hints?: number;
+    inventory?: InventoryState;
+    owned_themes?: string[];
+    active_theme?: string;
+}
+
+export interface SyncOutboxItem {
+    id?: number;
+    entity: 'profile' | 'vocabulary' | 'writing_history' | 'read_articles';
+    operation: 'upsert' | 'delete' | 'settle';
+    payload: any;
+    record_key: string;
+    created_at: number;
+    updated_at: number;
+    attempts: number;
+    last_error?: string;
+    sync_status: SyncStatus;
+}
+
+export interface SyncMetaItem {
+    key: string;
+    value: any;
+    updated_at: number;
 }
 
 export class YasiDB extends Dexie {
@@ -73,30 +136,9 @@ export class YasiDB extends Dexie {
     writing_history!: Table<WritingEntry>;
     articles!: Table<CachedArticle>;
     elo_history!: Table<EloHistoryItem, number>;
-    user_profile!: Table<{
-        id?: number;
-        elo_rating: number;
-        streak_count: number;
-        max_elo: number;
-        last_practice: number;
-        // Listening Stats (Optional for backward compatibility)
-        listening_elo?: number;
-        listening_streak?: number;
-        listening_max_elo?: number;
-        // Hint Economy
-        coins?: number;
-        hints?: number;
-        inventory?: {
-            capsule?: number;
-            hint_ticket?: number;
-            vocab_ticket?: number;
-            audio_ticket?: number;
-            refresh_ticket?: number;
-        };
-        // Cosmetic Themes
-        owned_themes?: string[];
-        active_theme?: string;
-    }>;
+    user_profile!: Table<LocalUserProfile>;
+    sync_outbox!: Table<SyncOutboxItem, number>;
+    sync_meta!: Table<SyncMetaItem, string>;
 
     constructor() {
         super('YasiDB');
@@ -336,6 +378,50 @@ export class YasiDB extends Dexie {
                     ...existingInventory,
                     refresh_ticket: Math.max(0, refreshTicket),
                 };
+            });
+        });
+
+        // Version 18: Add sync metadata and outbox for Supabase persistence.
+        this.version(18).stores({
+            ai_cache: '++id, &key, type, timestamp',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            const now = new Date().toISOString();
+
+            await tx.table('vocabulary').toCollection().modify((item: VocabItem) => {
+                item.word_key = item.word_key || item.word.trim().toLowerCase();
+                item.updated_at = item.updated_at || now;
+                item.sync_status = item.sync_status || 'pending';
+            });
+
+            await tx.table('writing_history').toCollection().modify((item: WritingEntry) => {
+                item.updated_at = item.updated_at || now;
+                item.sync_status = item.sync_status || 'pending';
+            });
+
+            await tx.table('read_articles').toCollection().modify((item: ReadArticleItem) => {
+                item.read_at = item.read_at || item.timestamp;
+                item.updated_at = item.updated_at || now;
+                item.sync_status = item.sync_status || 'pending';
+            });
+
+            await tx.table('elo_history').toCollection().modify((item: EloHistoryItem) => {
+                item.updated_at = item.updated_at || now;
+                item.sync_status = item.sync_status || 'pending';
+                item.source = item.source || 'legacy_local';
+            });
+
+            await tx.table('user_profile').toCollection().modify((item: LocalUserProfile) => {
+                item.updated_at = item.updated_at || now;
+                item.sync_status = item.sync_status || 'pending';
             });
         });
     }

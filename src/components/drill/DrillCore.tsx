@@ -27,6 +27,7 @@ import {
 } from "./AiTeacherConversation";
 import { GhostTextarea } from "../vocab/GhostTextarea";
 import { InlineGrammarHighlights } from "../shared/InlineGrammarHighlights";
+import { LottieJsonPlayer } from "../shared/LottieJsonPlayer";
 import { TOPICS } from "../../app/battle/page";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 import { getDrillSurfacePhase, shouldExpandShopInventoryDock } from "@/lib/battleUiState";
@@ -58,6 +59,8 @@ import {
     shouldTriggerGacha,
     type GachaCard,
 } from "./gacha";
+import sphereSplitterAnimation from "@/assets/lottie/sphere-splitter.json";
+import { loadLocalProfile, saveProfilePatch, saveWritingHistory, settleBattle } from "@/lib/user-repository";
 
 // --- Interfaces ---
 
@@ -1174,10 +1177,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     const persistProfilePatch = useCallback((patch: Partial<{ coins: number; hints: number; inventory: InventoryState; owned_themes: string[]; active_theme: string }>) => {
         if (Object.keys(patch).length === 0) return;
-        db.user_profile.orderBy('id').first().then(profile => {
-            if (profile?.id) {
-                db.user_profile.update(profile.id, patch);
-            }
+        saveProfilePatch({
+            coins: patch.coins,
+            inventory: patch.inventory,
+            owned_themes: patch.owned_themes,
+            active_theme: patch.active_theme,
+        }).catch((error) => {
+            console.error("Failed to sync profile patch", error);
         });
     }, []);
 
@@ -1538,19 +1544,23 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             setStreakCount(0);
                         }
 
-                        // Keep DB writes outside state updaters to avoid duplicate side effects in dev.
-                        db.user_profile.orderBy('id').first().then(profile => {
+                        loadLocalProfile().then((profile) => {
                             if (!profile) return;
-                            db.user_profile.update(profile.id!, {
-                                [isListeningMode ? 'listening_elo' : 'elo_rating']: newElo,
-                                [isListeningMode ? 'listening_streak' : 'streak_count']: 0
-                            } as any);
-                            db.elo_history.add({
+                            const maxElo = isListeningMode
+                                ? Math.max(profile.listening_max_elo || 600, newElo)
+                                : Math.max(profile.max_elo, newElo);
+
+                            return settleBattle({
                                 mode: isListeningMode ? 'listening' : 'translation',
-                                elo: newElo,
+                                eloAfter: newElo,
                                 change: -penalty,
-                                timestamp: Date.now()
+                                streak: 0,
+                                maxElo,
+                                coins: profile.coins ?? 0,
+                                source: 'timeout_penalty',
                             });
+                        }).catch((error) => {
+                            console.error("Failed to sync timeout penalty", error);
                         });
 
                         // Show Notification
@@ -2023,15 +2033,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 setIsEloLoaded(true); // Mark Elo as loaded
             } else {
                 const initialInventory = { ...DEFAULT_INVENTORY };
-                await db.user_profile.add({
-                    elo_rating: 600,
-                    streak_count: 0,
-                    max_elo: 600,
-                    last_practice: Date.now(),
-                    coins: 0,
-                    hints: initialInventory.capsule,
-                    inventory: initialInventory,
-                });
                 eloRatingRef.current = 600;
                 listeningEloRef.current = 600;
                 coinsRef.current = 0;
@@ -2447,22 +2448,23 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             if (isListening) setListeningElo(newElo);
             else setEloRating(newElo);
 
-            // DB Sync
-            db.user_profile.orderBy('id').first().then(profile => {
-                if (profile) {
-                    db.user_profile.update(profile.id!, {
-                        [isListening ? 'listening_elo' : 'elo_rating']: newElo,
-                        [isListening ? 'listening_streak' : 'streak_count']: 0
-                    } as any);
+            loadLocalProfile().then((profile) => {
+                if (!profile) return;
+                const maxElo = isListening
+                    ? Math.max(profile.listening_max_elo || 600, newElo)
+                    : Math.max(profile.max_elo, newElo);
 
-                    // Also record in history so the chart shows the drop
-                    db.elo_history.add({
-                        mode: isListening ? 'listening' : 'translation',
-                        elo: newElo,
-                        change: -penalty,
-                        timestamp: Date.now()
-                    });
-                }
+                return settleBattle({
+                    mode: isListening ? 'listening' : 'translation',
+                    eloAfter: newElo,
+                    change: -penalty,
+                    streak: 0,
+                    maxElo,
+                    coins: profile.coins ?? 0,
+                    source: 'roulette_penalty',
+                });
+            }).catch((error) => {
+                console.error("Failed to sync roulette penalty", error);
             });
 
             setRouletteSession({ active: true, result: 'dead', multiplier: 1, bullets: bulletCount });
@@ -3466,32 +3468,32 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 // Update recent scores array (keep last 5)
                 setRecentScores(prev => [...prev.slice(-4), data.score]);
 
-                // Persist to DB
-                const profile = await db.user_profile.orderBy('id').first();
-                if (profile && profile.id) {
-                    const updateData: any = {
-                        last_practice: Date.now(),
-                        coins: finalCoins
-                    };
+                const profile = await loadLocalProfile();
+                if (profile) {
+                    const maxElo = isListening
+                        ? Math.max(profile.listening_max_elo || 600, newElo)
+                        : Math.max(profile.max_elo, newElo);
 
-                    if (isListening) {
-                        updateData.listening_elo = newElo;
-                        updateData.listening_streak = newStreak;
-                        updateData.listening_max_elo = Math.max(profile.listening_max_elo || 0, newElo);
-                    } else {
-                        updateData.elo_rating = newElo;
-                        updateData.streak_count = newStreak;
-                        updateData.max_elo = Math.max(profile.max_elo, newElo);
-                    }
-
-                    await db.user_profile.update(profile.id, updateData);
-
-                    // Record in History
-                    await db.elo_history.add({
+                    await settleBattle({
                         mode: isListening ? 'listening' : 'translation',
-                        elo: newElo,
-                        change: change,
-                        timestamp: Date.now()
+                        eloAfter: newElo,
+                        change,
+                        streak: newStreak,
+                        maxElo,
+                        coins: finalCoins,
+                        inventory: inventoryRef.current,
+                        ownedThemes: ownedThemes,
+                        activeTheme: cosmeticTheme,
+                        source: learningSessionActive ? 'guided_session' : 'battle',
+                    });
+                }
+
+                if (context.type === 'article' && mode === 'translation' && userTranslation.trim()) {
+                    await saveWritingHistory({
+                        articleTitle: drillData._topicMeta?.topic || context.articleTitle || context.topic || 'General',
+                        content: userTranslation.trim(),
+                        score: data.score,
+                        timestamp: Date.now(),
                     });
                 }
             }
@@ -4931,14 +4933,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 progressGradient: "from-cyan-400 via-sky-500 to-cyan-500",
                 beamGradient: "from-transparent via-cyan-400/85 to-transparent",
                 bounceGradients: [
-                    "linear-gradient(180deg, rgba(241,252,255,0.98) 0%, rgba(153,226,255,0.94) 52%, rgba(56,189,248,0.92) 100%)",
-                    "linear-gradient(180deg, rgba(236,254,255,0.98) 0%, rgba(125,211,252,0.94) 54%, rgba(14,165,233,0.92) 100%)",
-                    "linear-gradient(180deg, rgba(240,249,255,0.98) 0%, rgba(147,197,253,0.94) 55%, rgba(59,130,246,0.92) 100%)",
+                    "linear-gradient(180deg, rgba(239,252,255,0.99) 0%, rgba(174,239,255,0.95) 44%, rgba(86,210,255,0.92) 100%)",
+                    "linear-gradient(180deg, rgba(238,252,255,0.99) 0%, rgba(150,231,255,0.95) 46%, rgba(59,130,246,0.92) 100%)",
+                    "linear-gradient(180deg, rgba(241,249,255,0.99) 0%, rgba(186,230,253,0.95) 46%, rgba(14,165,233,0.92) 100%)",
+                    "linear-gradient(180deg, rgba(247,254,255,0.99) 0%, rgba(125,211,252,0.95) 48%, rgba(37,99,235,0.92) 100%)",
                 ],
                 bounceGlow: "radial-gradient(circle, rgba(125,211,252,0.34) 0%, rgba(186,230,253,0.12) 52%, transparent 74%)",
                 loaderShell: "linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(240,249,255,0.72) 100%)",
                 loaderBase: "linear-gradient(90deg, rgba(207,250,254,0.2) 0%, rgba(125,211,252,0.48) 48%, rgba(59,130,246,0.22) 100%)",
                 sparkleClass: "bg-cyan-200/90",
+                attackGradient: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(125,211,252,0.92) 45%, rgba(59,130,246,0.9) 100%)",
+                attackStroke: "rgba(103,232,249,0.95)",
                 stages: ["声纹预热", "降噪校准", "播放就绪"],
                 comfortCopy: "正在为你生成更清晰、稳定的听力挑战",
                 accentText: "text-cyan-700",
@@ -4953,14 +4958,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     progressGradient: "from-amber-400 via-orange-500 to-amber-500",
                     beamGradient: "from-transparent via-orange-400/85 to-transparent",
                     bounceGradients: [
-                        "linear-gradient(180deg, rgba(255,250,244,0.99) 0%, rgba(255,219,198,0.94) 44%, rgba(255,176,143,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(255,248,241,0.99) 0%, rgba(255,228,208,0.95) 42%, rgba(255,166,154,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(255,251,240,0.99) 0%, rgba(255,233,194,0.95) 46%, rgba(255,190,138,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(255,251,245,0.99) 0%, rgba(255,227,210,0.95) 42%, rgba(255,179,151,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(255,249,243,0.99) 0%, rgba(255,220,196,0.95) 44%, rgba(255,151,138,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(255,252,245,0.99) 0%, rgba(255,233,204,0.95) 46%, rgba(255,188,136,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(255,248,242,0.99) 0%, rgba(255,214,202,0.95) 44%, rgba(251,146,60,0.92) 100%)",
                     ],
                     bounceGlow: "radial-gradient(circle, rgba(255,205,171,0.4) 0%, rgba(255,225,205,0.18) 44%, transparent 76%)",
                     loaderShell: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,247,241,0.78) 100%)",
                     loaderBase: "linear-gradient(90deg, rgba(255,220,203,0.22) 0%, rgba(255,196,162,0.5) 50%, rgba(255,210,184,0.24) 100%)",
                     sparkleClass: "bg-rose-200/90",
+                    attackGradient: "linear-gradient(180deg, rgba(255,255,255,0.97) 0%, rgba(255,220,203,0.94) 38%, rgba(251,146,60,0.92) 100%)",
+                    attackStroke: "rgba(255,214,188,0.95)",
                     stages: ["语义草拟", "语法校准", "句式润色"],
                     comfortCopy: "正在为你打磨更自然、地道的表达难度",
                     accentText: "text-amber-700",
@@ -4974,14 +4982,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     progressGradient: "from-amber-400 via-orange-500 to-amber-500",
                     beamGradient: "from-transparent via-orange-400/85 to-transparent",
                     bounceGradients: [
-                        "linear-gradient(180deg, rgba(255,250,244,0.99) 0%, rgba(255,219,198,0.94) 44%, rgba(255,176,143,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(255,248,241,0.99) 0%, rgba(255,228,208,0.95) 42%, rgba(255,166,154,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(255,251,240,0.99) 0%, rgba(255,233,194,0.95) 46%, rgba(255,190,138,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(255,251,245,0.99) 0%, rgba(255,227,210,0.95) 42%, rgba(255,179,151,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(255,249,243,0.99) 0%, rgba(255,220,196,0.95) 44%, rgba(255,151,138,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(255,252,245,0.99) 0%, rgba(255,233,204,0.95) 46%, rgba(255,188,136,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(255,248,242,0.99) 0%, rgba(255,214,202,0.95) 44%, rgba(251,146,60,0.92) 100%)",
                     ],
                     bounceGlow: "radial-gradient(circle, rgba(255,205,171,0.4) 0%, rgba(255,225,205,0.18) 44%, transparent 76%)",
                     loaderShell: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,247,241,0.78) 100%)",
                     loaderBase: "linear-gradient(90deg, rgba(255,220,203,0.22) 0%, rgba(255,196,162,0.5) 50%, rgba(255,210,184,0.24) 100%)",
                     sparkleClass: "bg-rose-200/90",
+                    attackGradient: "linear-gradient(180deg, rgba(255,255,255,0.97) 0%, rgba(255,220,203,0.94) 38%, rgba(251,146,60,0.92) 100%)",
+                    attackStroke: "rgba(255,214,188,0.95)",
                     stages: ["语义草拟", "语法校准", "句式润色"],
                     comfortCopy: "正在为你打磨更自然、地道的表达难度",
                     accentText: "text-amber-700",
@@ -4990,7 +5001,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         const ModeIcon = variantUi.icon;
         const stageIndex = Math.min(variantUi.stages.length - 1, Math.floor(loaderTick / 4));
         const pseudoProgress = Math.round(18 + (1 - Math.exp(-loaderTick / 6)) * 74);
-
         return (
             <div className="h-full flex flex-col items-center justify-center relative overflow-hidden px-4">
                 <div className={cn("absolute inset-0", backgroundClass)} />
@@ -5023,82 +5033,23 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         </span>
                     </div>
 
-                    <div className="relative mx-auto mb-7 flex h-36 w-full max-w-[300px] items-end justify-center">
+                    <div className="relative mx-auto mb-7 flex h-44 w-full max-w-[320px] items-end justify-center">
                         <motion.div
-                            className="absolute inset-x-8 bottom-2 h-20 rounded-full blur-3xl"
+                            className="absolute inset-x-8 bottom-1 h-24 rounded-full blur-3xl"
                             style={{ background: variantUi.bounceGlow }}
                             animate={prefersReducedMotion ? { opacity: 0.55 } : { opacity: [0.34, 0.7, 0.34], scale: [0.94, 1.08, 0.94] }}
                             transition={{ duration: 2.6, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
                         />
                         <div
-                            className="absolute inset-x-3 bottom-3 h-24 rounded-[30px] border border-white/75 shadow-[0_22px_55px_rgba(255,214,188,0.18),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl"
+                            className="absolute inset-x-2 bottom-2 h-28 rounded-[34px] border border-white/80 shadow-[0_24px_60px_rgba(255,214,188,0.18),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl"
                             style={{ backgroundImage: variantUi.loaderShell }}
                         />
-                        <motion.div
-                            className="absolute inset-x-14 bottom-8 h-3 rounded-full blur-md"
-                            style={{ backgroundImage: variantUi.loaderBase }}
-                            animate={prefersReducedMotion ? { opacity: 0.8 } : { opacity: [0.55, 0.95, 0.55], scaleX: [0.96, 1.04, 0.96] }}
-                            transition={{ duration: 2.2, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
-                        />
-                        <motion.div
-                            className={cn("absolute left-9 top-4 h-2.5 w-2.5 rounded-full blur-[0.5px]", variantUi.sparkleClass)}
-                            animate={prefersReducedMotion ? { opacity: 0.7 } : { opacity: [0.35, 0.95, 0.35], y: [0, -4, 0], scale: [0.85, 1.15, 0.85] }}
-                            transition={{ duration: 1.8, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
-                        />
-                        <motion.div
-                            className={cn("absolute right-11 top-8 h-2 w-2 rotate-45 rounded-[4px] blur-[0.4px]", variantUi.sparkleClass)}
-                            animate={prefersReducedMotion ? { opacity: 0.62 } : { opacity: [0.2, 0.82, 0.2], y: [0, -3, 0], scale: [0.8, 1, 0.8] }}
-                            transition={{ duration: 2.1, repeat: prefersReducedMotion ? 0 : Infinity, delay: 0.3, ease: "easeInOut" }}
-                        />
-                        <div className="relative flex items-end justify-center gap-4 px-6 pb-5">
-                            {variantUi.bounceGradients.map((gradient, index) => {
-                                const isCenterDot = index === 1;
-
-                                return (
-                                    <div
-                                        key={gradient}
-                                        className={cn("relative flex items-end justify-center", isCenterDot ? "h-24 w-16" : "h-20 w-14")}
-                                    >
-                                        <motion.span
-                                            className="absolute bottom-[3px] h-3 rounded-full bg-stone-900/10 blur-[1.5px]"
-                                            style={{ width: isCenterDot ? 34 : 30 }}
-                                            animate={
-                                                prefersReducedMotion
-                                                    ? { opacity: 0.16, scaleX: 1 }
-                                                    : { opacity: [0.16, 0.05, 0.16], scaleX: [1, 0.64, 1] }
-                                            }
-                                            transition={{ duration: 1.35, repeat: prefersReducedMotion ? 0 : Infinity, delay: index * 0.16, ease: "easeInOut" }}
-                                        />
-                                        <motion.div
-                                            className={cn(
-                                                "absolute bottom-4 overflow-hidden rounded-[20px] border border-white/80 shadow-[0_18px_34px_rgba(255,214,188,0.22),inset_0_1px_0_rgba(255,255,255,0.92)]",
-                                                isCenterDot ? "h-12 w-12" : "h-10 w-10"
-                                            )}
-                                            style={{
-                                                backgroundImage: gradient,
-                                                boxShadow: isCenterDot
-                                                    ? "0 14px 32px rgba(255,183,156,0.28), inset 0 1px 0 rgba(255,255,255,0.9)"
-                                                    : "0 12px 28px rgba(255,195,170,0.24), inset 0 1px 0 rgba(255,255,255,0.88)",
-                                            }}
-                                            animate={
-                                                prefersReducedMotion
-                                                    ? { y: 0, scaleX: 1, scaleY: 1, rotate: 0 }
-                                                    : {
-                                                        y: [0, -26, 0],
-                                                        scaleX: [1.06, 0.94, 1.09, 1.06],
-                                                        scaleY: [0.92, 1.09, 0.88, 0.92],
-                                                        rotate: [0, index === 1 ? 0 : index === 0 ? -4 : 4, 0],
-                                                    }
-                                            }
-                                            transition={{ duration: 1.35, repeat: prefersReducedMotion ? 0 : Infinity, delay: index * 0.16, ease: [0.32, 0.72, 0, 1] }}
-                                        >
-                                            <span className="absolute inset-x-[16%] top-[12%] h-[36%] rounded-full bg-white/70 blur-[2px]" />
-                                            <span className="absolute left-[18%] top-[18%] h-[22%] w-[22%] rounded-full bg-white/85 blur-[1px]" />
-                                            <span className="absolute inset-x-[24%] bottom-[12%] h-[16%] rounded-full bg-white/18 blur-[1px]" />
-                                        </motion.div>
-                                    </div>
-                                );
-                            })}
+                        <div className="absolute inset-x-4 -top-2 -bottom-4 overflow-visible">
+                            <LottieJsonPlayer
+                                animationData={sphereSplitterAnimation}
+                                speed={1}
+                                className="h-full w-full scale-[1.12]"
+                            />
                         </div>
                     </div>
 
