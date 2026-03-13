@@ -7,8 +7,6 @@ import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as Diff from 'diff';
 import confetti from 'canvas-confetti';
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { WordPopup, PopupState } from "../reading/WordPopup";
 import { useWhisper } from "@/hooks/useWhisper";
 import { db } from "@/lib/db";
@@ -22,6 +20,11 @@ import { ScoringFlipCard } from "./ScoringFlipCard";
 import { TeachingCard } from "./TeachingCard";
 import { TranslationAnalysisJourney } from "./TranslationAnalysisJourney";
 import { GuidedLearningOverlay } from "./GuidedLearningOverlay";
+import {
+    AiTeacherConversation,
+    type TutorHistoryTurn,
+    type TutorStructuredResponse,
+} from "./AiTeacherConversation";
 import { GhostTextarea } from "../vocab/GhostTextarea";
 import { InlineGrammarHighlights } from "../shared/InlineGrammarHighlights";
 import { TOPICS } from "../../app/battle/page";
@@ -156,107 +159,8 @@ interface DrillFeedback {
 }
 
 type TutorQuestionType = "pattern" | "word_choice" | "example" | "unlock_answer" | "follow_up";
-type TutorUiSurface = "battle" | "score";
 type TutorIntent = "translate" | "grammar" | "lexical";
-type TutorAction = "ask" | "drill_check";
-
-interface TutorMicroDrill {
-    prompt_cn: string;
-    expected_pattern_en: string;
-}
-
-interface TutorStructuredResponse {
-    coach_cn: string;
-    pattern_en: string[];
-    contrast?: string;
-    next_task?: string;
-    answer_revealed: boolean;
-    full_answer?: string;
-    answer_reason_cn?: string;
-    teaching_point: string;
-    direct_answer_en?: string;
-    error_tags: string[];
-    micro_drill: TutorMicroDrill;
-    quality_flags: string[];
-    drill_feedback_cn?: string;
-    revised_sentence_en?: string;
-    next_micro_drill?: TutorMicroDrill;
-}
-
-interface TutorHistoryTurn extends TutorStructuredResponse {
-    question: string;
-    question_type: TutorQuestionType;
-}
-
-function TutorMarkdown({ content, className }: { content: string; className?: string }) {
-    return (
-        <div className={cn("prose prose-sm max-w-none text-inherit leading-6", className)}>
-            <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                    p: ({ children }) => <p className="my-1 text-inherit">{children}</p>,
-                    h1: ({ children }) => <h1 className="mt-3 mb-1 text-xl font-bold text-stone-900">{children}</h1>,
-                    h2: ({ children }) => <h2 className="mt-3 mb-1 text-lg font-bold text-stone-900">{children}</h2>,
-                    h3: ({ children }) => <h3 className="mt-2.5 mb-1 text-base font-semibold text-stone-900">{children}</h3>,
-                    h4: ({ children }) => <h4 className="mt-2 mb-1 text-sm font-semibold text-stone-800">{children}</h4>,
-                    ul: ({ children }) => <ul className="my-1 list-disc space-y-1 pl-5 marker:text-stone-400">{children}</ul>,
-                    ol: ({ children }) => <ol className="my-1 list-decimal space-y-1 pl-5 marker:font-semibold marker:text-stone-500">{children}</ol>,
-                    li: ({ children }) => <li className="my-0.5 leading-7">{children}</li>,
-                    blockquote: ({ children }) => (
-                        <blockquote className="my-2 rounded-r-lg border-l-4 border-sky-300 bg-sky-50/60 px-3 py-2 text-sky-900">
-                            {children}
-                        </blockquote>
-                    ),
-                    hr: () => <hr className="my-3 border-stone-200" />,
-                    strong: ({ children }) => (
-                        <strong className="rounded-[4px] bg-amber-100/85 px-1 py-0.5 font-semibold text-amber-900 underline decoration-amber-400 decoration-2 underline-offset-4">
-                            {children}
-                        </strong>
-                    ),
-                    em: ({ children }) => <em className="text-indigo-700 italic">{children}</em>,
-                    del: ({ children }) => <del className="text-stone-400 line-through">{children}</del>,
-                    a: ({ children, href }) => (
-                        <a href={href} target="_blank" rel="noreferrer" className="text-sky-700 underline decoration-sky-300 underline-offset-2 hover:text-sky-800">
-                            {children}
-                        </a>
-                    ),
-                    pre: ({ children }) => (
-                        <pre className="my-2 overflow-x-auto rounded-xl border border-stone-200 bg-stone-900/95 p-3 text-xs text-stone-100">
-                            {children}
-                        </pre>
-                    ),
-                    code: ({ children, className: codeClassName, ...props }) => {
-                        const isInline = !String(codeClassName || "").includes("language-");
-                        if (isInline) {
-                            return (
-                                <code className="rounded bg-stone-100 px-1 py-0.5 text-[0.9em] text-stone-700">
-                                    {children}
-                                </code>
-                            );
-                        }
-                        return (
-                            <code className={cn("text-xs", codeClassName)} {...props}>
-                                {children}
-                            </code>
-                        );
-                    },
-                    table: ({ children }) => (
-                        <div className="my-2 overflow-x-auto rounded-xl border border-stone-200">
-                            <table className="min-w-full border-collapse text-left text-xs">{children}</table>
-                        </div>
-                    ),
-                    thead: ({ children }) => <thead className="bg-stone-100 text-stone-700">{children}</thead>,
-                    tbody: ({ children }) => <tbody className="bg-white">{children}</tbody>,
-                    tr: ({ children }) => <tr className="border-t border-stone-200">{children}</tr>,
-                    th: ({ children }) => <th className="px-2.5 py-2 font-semibold">{children}</th>,
-                    td: ({ children }) => <td className="px-2.5 py-2 text-stone-600">{children}</td>,
-                }}
-            >
-                {content}
-            </ReactMarkdown>
-        </div>
-    );
-}
+type TutorAction = "ask";
 
 interface DictionaryData {
     word: string;
@@ -917,20 +821,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     // Ask Tutor State
     const [isTutorOpen, setIsTutorOpen] = useState(false);
-    const [activeTutorSurface, setActiveTutorSurface] = useState<TutorUiSurface>("battle");
     const [tutorQuery, setTutorQuery] = useState("");
     const [tutorAnswer, setTutorAnswer] = useState<string | null>(null);
     const [tutorThread, setTutorThread] = useState<TutorHistoryTurn[]>([]);
     const [tutorResponse, setTutorResponse] = useState<TutorStructuredResponse | null>(null);
-    const [tutorHintLevel, setTutorHintLevel] = useState(1);
-    const [tutorNoProgressTurns, setTutorNoProgressTurns] = useState(0);
     const [tutorPendingQuestion, setTutorPendingQuestion] = useState<string | null>(null);
     const [isAskingTutor, setIsAskingTutor] = useState(false);
-    const tutorHistoryScrollRef = useRef<HTMLDivElement | null>(null);
-    const [microDrillInput, setMicroDrillInput] = useState("");
-    const [isCheckingMicroDrill, setIsCheckingMicroDrill] = useState(false);
-    const [isBattleDrillCollapsed, setIsBattleDrillCollapsed] = useState(true);
-    const [isScoreDrillCollapsed, setIsScoreDrillCollapsed] = useState(true);
+    const [tutorRecentMastery, setTutorRecentMastery] = useState<string[]>([]);
+    const tutorConversationRef = useRef<HTMLDivElement | null>(null);
 
     // Teaching Mode State
     const [teachingMode, setTeachingMode] = useState(false);
@@ -1038,13 +936,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             hoverMediaQuery.removeEventListener("change", syncHoverSupport);
         };
     }, []);
-
-    useEffect(() => {
-        if (!isTutorOpen) return;
-        const container = tutorHistoryScrollRef.current;
-        if (!container) return;
-        container.scrollTop = container.scrollHeight;
-    }, [isTutorOpen, tutorPendingQuestion, tutorThread.length]);
 
     const getGuidedSessionSnapshot = useCallback((): GuidedSessionState => ({
         status: guidedModeStatus,
@@ -2462,6 +2353,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setLootDrop(options);
     }, []);
 
+    const handleDebugGacha = useCallback(() => {
+        setGachaCards(buildGachaPack());
+        setSelectedGachaCardId(null);
+        setGachaClaimTarget(null);
+        setShowGacha(true);
+    }, []);
+
     const debugTriggerRoulette = () => {
         // Show the interactive overlay instead of immediate generation
         setShowRoulette(true);
@@ -2647,15 +2545,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setTutorAnswer(null);
             setTutorThread([]);
             setTutorResponse(null);
-            setTutorHintLevel(1);
-            setTutorNoProgressTurns(0);
             setTutorPendingQuestion(null);
             setTutorQuery("");
             setIsTutorOpen(false);
-            setMicroDrillInput("");
-            setIsCheckingMicroDrill(false);
-            setIsBattleDrillCollapsed(true);
-            setIsScoreDrillCollapsed(true);
             setWordPopup(null);
             setIsPlaying(false);
             setHasRatedDrill(false);
@@ -2718,15 +2610,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setTutorAnswer(null);
         setTutorThread([]);
         setTutorResponse(null);
-        setTutorHintLevel(1);
-        setTutorNoProgressTurns(0);
         setTutorPendingQuestion(null);
         setTutorQuery("");
         setIsTutorOpen(false);
-        setMicroDrillInput("");
-        setIsCheckingMicroDrill(false);
-        setIsBattleDrillCollapsed(true);
-        setIsScoreDrillCollapsed(true);
         setWordPopup(null);
         setIsPlaying(false);
         setHasRatedDrill(false);
@@ -3251,7 +3137,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setGrammarError(null);
             setReferenceGrammarAnalysis(null);
             setReferenceGrammarDisplayMode("core");
-            setIsScoreDrillCollapsed(true);
 
             if (data.score !== undefined) {
                 if (hasRatedDrill) {
@@ -3767,25 +3652,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         return "语序与自然表达";
     };
 
-    const buildFallbackMicroDrill = (teachingPoint: string): TutorMicroDrill => {
-        if (/时间/.test(teachingPoint)) {
-            return {
-                prompt_cn: "把“我到站后才发现票丢了”翻成英文，优先体现时间关系。",
-                expected_pattern_en: "It was only after ... that ...",
-            };
-        }
-        if (/词汇|搭配/.test(teachingPoint)) {
-            return {
-                prompt_cn: "用 spark / ignite 相关搭配重写一句“我们之间有了感觉”。",
-                expected_pattern_en: "A romantic spark ignited between ...",
-            };
-        }
-        return {
-            prompt_cn: "把“他开口前先深呼吸了一下”翻成英文，注意自然语序。",
-            expected_pattern_en: "Before ..., ...",
-        };
-    };
-
     const inferTutorIntent = (questionType: TutorQuestionType, teachingPoint: string): TutorIntent => {
         if (questionType === "word_choice" || /词汇|搭配/.test(teachingPoint)) return "lexical";
         if (/语序|从句|时态|语法/.test(teachingPoint)) return "grammar";
@@ -3804,18 +3670,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const normalizeTutorResponse = (raw: unknown, fallbackTeachingPoint: string): TutorStructuredResponse => {
         const readString = (value: unknown) => typeof value === "string" ? value.trim() : "";
         const asObject = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-        const rawPatterns = Array.isArray(asObject.pattern_en) ? asObject.pattern_en : [];
-        const patterns = rawPatterns
-            .map((item) => readString(item))
-            .filter(Boolean)
-            .slice(0, 2);
-        const fallbackMicroDrill = buildFallbackMicroDrill(fallbackTeachingPoint);
-        const rawMicroDrill = asObject.micro_drill && typeof asObject.micro_drill === "object"
-            ? asObject.micro_drill as Record<string, unknown>
-            : {};
-        const rawNextMicroDrill = asObject.next_micro_drill && typeof asObject.next_micro_drill === "object"
-            ? asObject.next_micro_drill as Record<string, unknown>
-            : null;
         const rawTags = Array.isArray(asObject.error_tags) ? asObject.error_tags : [];
         const errorTags = rawTags
             .map((item) => readString(item).toLowerCase())
@@ -3828,62 +3682,52 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             .slice(0, 6);
 
         return {
-            coach_cn: readString(asObject.coach_cn) || "你已经抓住大意了。先修一个关键点，再继续完善句子。",
-            pattern_en: patterns.length > 0 ? patterns : ["When ..., ..."],
-            contrast: readString(asObject.contrast) || undefined,
-            next_task: readString(asObject.next_task) || undefined,
+            coach_markdown:
+                readString(asObject.coach_markdown) ||
+                readString(asObject.coach_cn) ||
+                "1. **先保主干意思**。\n2. 这次只补一个关键表达点。\n3. 先把这一点说顺，再决定要不要看整句。",
+            response_intent: readString(asObject.response_intent) as TutorStructuredResponse["response_intent"],
             answer_revealed: Boolean(asObject.answer_revealed),
             full_answer: readString(asObject.full_answer) || undefined,
             answer_reason_cn: readString(asObject.answer_reason_cn) || undefined,
             teaching_point: readString(asObject.teaching_point) || fallbackTeachingPoint,
-            direct_answer_en: readString(asObject.direct_answer_en) || undefined,
             error_tags: errorTags,
-            micro_drill: {
-                prompt_cn: readString(rawMicroDrill.prompt_cn) || fallbackMicroDrill.prompt_cn,
-                expected_pattern_en: readString(rawMicroDrill.expected_pattern_en) || fallbackMicroDrill.expected_pattern_en,
-            },
             quality_flags: qualityFlags,
-            drill_feedback_cn: readString(asObject.drill_feedback_cn) || undefined,
-            revised_sentence_en: readString(asObject.revised_sentence_en) || undefined,
-            next_micro_drill: rawNextMicroDrill
-                ? {
-                    prompt_cn: readString(rawNextMicroDrill.prompt_cn) || fallbackMicroDrill.prompt_cn,
-                    expected_pattern_en: readString(rawNextMicroDrill.expected_pattern_en) || fallbackMicroDrill.expected_pattern_en,
-                }
-                : undefined,
         };
     };
 
-    const resetTutorState = useCallback(() => {
-        setTutorQuery("");
-        setTutorAnswer(null);
-        setTutorThread([]);
-        setTutorResponse(null);
-        setTutorHintLevel(1);
-        setTutorNoProgressTurns(0);
-        setTutorPendingQuestion(null);
-        setMicroDrillInput("");
-        setIsCheckingMicroDrill(false);
-        setIsBattleDrillCollapsed(true);
-        setIsScoreDrillCollapsed(true);
+    const openTutorModal = useCallback(() => {
+        setIsTutorOpen(true);
     }, []);
 
-    const openTutorModal = useCallback((surface: TutorUiSurface) => {
-        if (activeTutorSurface !== surface) {
-            resetTutorState();
-        }
-        setActiveTutorSurface(surface);
-        setIsTutorOpen(true);
-    }, [activeTutorSurface, resetTutorState]);
+    useEffect(() => {
+        if (!isTutorOpen) return;
+
+        const frame = window.requestAnimationFrame(() => {
+            const container = tutorConversationRef.current;
+            if (!container) return;
+            container.scrollTo({
+                top: container.scrollHeight,
+                behavior: tutorThread.length > 0 ? "smooth" : "auto",
+            });
+        });
+
+        return () => window.cancelAnimationFrame(frame);
+    }, [isTutorOpen, tutorPendingQuestion, tutorThread.length]);
 
     const handleAskTutor = async (options?: {
         question?: string;
         questionType?: TutorQuestionType;
         forceReveal?: boolean;
-        uiSurface?: TutorUiSurface;
     }) => {
         const question = (options?.question ?? tutorQuery).trim();
         if (!question || !drillData) return;
+        if (coinsRef.current < 10) {
+            setTutorAnswer("AI Teacher 每次提问会消耗 10 星光币。你当前星光币不够了。");
+            setTutorPendingQuestion(null);
+            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: 'AI Teacher 提问需要 10 星光币' });
+            return;
+        }
         setIsAskingTutor(true);
         setTutorPendingQuestion(question);
         setTutorQuery("");
@@ -3892,28 +3736,22 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         const teachingPoint = tutorResponse?.teaching_point || inferTeachingPoint();
         const requestedType = options?.questionType ?? "follow_up";
         const unlockRequested = requestedType === "unlock_answer" || options?.forceReveal === true;
-        const nextNoProgressTurns = unlockRequested ? tutorNoProgressTurns : tutorNoProgressTurns + 1;
-        const autoReveal = !unlockRequested && nextNoProgressTurns >= 2;
-        const shouldReveal = unlockRequested || autoReveal;
+        const shouldReveal = unlockRequested;
         const outgoingQuestionType: TutorQuestionType = shouldReveal ? "unlock_answer" : requestedType;
-        const outgoingHintLevel = shouldReveal
-            ? Math.max(3, tutorHintLevel)
-            : Math.min(4, tutorHintLevel + 1);
-        const outgoingSurface: TutorUiSurface = options?.uiSurface ?? "battle";
         const outgoingIntent = inferTutorIntent(outgoingQuestionType, teachingPoint);
         const outgoingFocusSpan = inferFocusSpan(question);
-        const fallbackMicroDrill = buildFallbackMicroDrill(teachingPoint);
 
         try {
+            applyEconomyPatch({ coinsDelta: -10 });
+            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: 'AI Teacher 提问 -10 星光币' });
             const response = await fetch("/api/ai/ask_tutor", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     action: "ask" as TutorAction,
                     query: question,
-                    hintLevel: outgoingHintLevel,
                     questionType: outgoingQuestionType,
-                    uiSurface: outgoingSurface,
+                    uiSurface: "battle",
                     intent: outgoingIntent,
                     focusSpan: outgoingFocusSpan,
                     userAttempt: userTranslation,
@@ -3921,8 +3759,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     score: drillFeedback?.score,
                     recentTurns: tutorThread.slice(-4).map((item) => ({
                         question: item.question,
-                        answer: item.coach_cn,
+                        answer: item.coach_markdown,
                     })),
+                    recentMastery: tutorRecentMastery,
                     teachingPoint,
                     revealAnswer: shouldReveal,
                     drillContext: drillData,
@@ -3947,21 +3786,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 const applyStreamingCoach = (coach: string) => {
                     setTutorAnswer(coach);
                     setTutorResponse((prev) => ({
-                        coach_cn: coach,
-                        pattern_en: prev?.pattern_en ?? [],
-                        contrast: prev?.contrast ?? "",
-                        next_task: prev?.next_task ?? "",
+                        coach_markdown: coach,
+                        response_intent: prev?.response_intent,
                         answer_revealed: prev?.answer_revealed ?? false,
                         full_answer: prev?.full_answer,
                         answer_reason_cn: prev?.answer_reason_cn,
                         teaching_point: prev?.teaching_point ?? teachingPoint,
-                        direct_answer_en: prev?.direct_answer_en,
                         error_tags: prev?.error_tags ?? [],
-                        micro_drill: prev?.micro_drill ?? fallbackMicroDrill,
                         quality_flags: prev?.quality_flags ?? [],
-                        drill_feedback_cn: prev?.drill_feedback_cn,
-                        revised_sentence_en: prev?.revised_sentence_en,
-                        next_micro_drill: prev?.next_micro_drill,
                     }));
                 };
 
@@ -3990,14 +3822,23 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         if (!dataLine || dataLine === "[DONE]") continue;
 
                         if (eventName === "error") {
-                            throw new Error("Tutor stream failed");
+                            if (streamedCoach) {
+                                normalized = normalizeTutorResponse(
+                                    { coach_markdown: streamedCoach, teaching_point: teachingPoint, answer_revealed: shouldReveal },
+                                    teachingPoint
+                                );
+                                continue;
+                            }
+                            setTutorAnswer("AI Teacher 刚才的流式讲解中断了。你可以直接再问一次，或者换个更具体的卡点来问。");
+                            setTutorPendingQuestion(null);
+                            continue;
                         }
 
                         if (eventName === "chunk") {
                             try {
-                                const parsedChunk = JSON.parse(dataLine) as { coach_cn?: string };
-                                if (typeof parsedChunk.coach_cn === "string" && parsedChunk.coach_cn.trim()) {
-                                    streamedCoach = parsedChunk.coach_cn.trim();
+                                const parsedChunk = JSON.parse(dataLine) as { coach_markdown?: string };
+                                if (typeof parsedChunk.coach_markdown === "string" && parsedChunk.coach_markdown.trim()) {
+                                    streamedCoach = parsedChunk.coach_markdown.trim();
                                     applyStreamingCoach(streamedCoach);
                                 }
                             } catch {
@@ -4018,7 +3859,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                 if (!normalized && streamedCoach) {
                     normalized = normalizeTutorResponse(
-                        { coach_cn: streamedCoach, teaching_point: teachingPoint, answer_revealed: shouldReveal },
+                        { coach_markdown: streamedCoach, teaching_point: teachingPoint, answer_revealed: shouldReveal },
                         teachingPoint
                     );
                 }
@@ -4035,7 +3876,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             }
 
             setTutorResponse(normalized);
-            setTutorAnswer(normalized.coach_cn);
+            setTutorAnswer(normalized.coach_markdown);
+            rememberTutorMastery(normalized, outgoingFocusSpan);
             setTutorThread((prev) => [
                 ...prev,
                 {
@@ -4044,87 +3886,66 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     ...normalized,
                 },
             ].slice(-6));
-            setTutorHintLevel(outgoingHintLevel);
-            setTutorNoProgressTurns(normalized.answer_revealed ? 0 : nextNoProgressTurns);
             setTutorPendingQuestion(null);
         } catch (error) {
             console.error(error);
-            setTutorAnswer("AI Tutor 暂时不可用，请稍后重试。");
+            setTutorAnswer("AI Teacher 暂时不可用，请稍后重试。");
             setTutorPendingQuestion(null);
+            applyEconomyPatch({ coinsDelta: 10 });
+            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: 'AI Teacher 提问失败，已退还 10 星光币' });
         } finally {
             setIsAskingTutor(false);
         }
     };
 
-    const handleCheckMicroDrill = async (uiSurface: TutorUiSurface) => {
-        const drillSentence = microDrillInput.trim();
-        if (!drillData || !drillSentence || isCheckingMicroDrill) return;
-
-        const teachingPoint = tutorResponse?.teaching_point || inferTeachingPoint();
-        const focusSpan = tutorResponse?.micro_drill?.expected_pattern_en || inferFocusSpan(drillSentence);
-        const feedbackQuestion = "请检查我的练习句子并给出更自然改写";
-        setIsCheckingMicroDrill(true);
-        setTutorPendingQuestion(`练习：${drillSentence}`);
-        setTutorAnswer("");
+    const handlePlayTutorCardAudio = useCallback(async (text: string) => {
+        const normalizedText = text.trim();
+        if (!normalizedText) return;
 
         try {
-            const response = await fetch("/api/ai/ask_tutor", {
+            const response = await fetch("/api/tts", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    action: "drill_check" as TutorAction,
-                    query: feedbackQuestion,
-                    drillInput: drillSentence,
-                    hintLevel: tutorHintLevel,
-                    questionType: "follow_up",
-                    uiSurface,
-                    intent: inferTutorIntent("follow_up", teachingPoint),
-                    focusSpan,
-                    userAttempt: userTranslation,
-                    improvedVersion: drillFeedback?.improved_version,
-                    score: drillFeedback?.score,
-                    recentTurns: tutorThread.slice(-4).map((item) => ({
-                        question: item.question,
-                        answer: item.coach_cn,
-                    })),
-                    teachingPoint,
-                    revealAnswer: false,
-                    drillContext: drillData,
-                    articleTitle: drillData._topicMeta?.topic || context.articleTitle || context.topic,
-                    stream: false,
-                }),
+                body: JSON.stringify({ text: normalizedText }),
             });
-
-            if (!response.ok) {
-                throw new Error("练习批改失败");
-            }
-
             const data = await response.json();
-            if (data?.error) {
-                throw new Error(data.error);
+            if (!response.ok || !data?.audio) {
+                throw new Error("播放失败");
             }
 
-            const normalized = normalizeTutorResponse(data, teachingPoint);
-            setTutorResponse(normalized);
-            setTutorAnswer(normalized.coach_cn);
-            setTutorThread((prev) => [
-                ...prev,
-                {
-                    question: `练习：${drillSentence}`,
-                    question_type: "follow_up" as TutorQuestionType,
-                    ...normalized,
-                },
-            ].slice(-6));
-            setTutorPendingQuestion(null);
-            setMicroDrillInput("");
+            if (audioRef.current) {
+                audioRef.current.pause();
+                audioRef.current = null;
+            }
+
+            const nextAudio = new Audio(data.audio);
+            audioRef.current = nextAudio;
+            await nextAudio.play();
         } catch (error) {
-            console.error(error);
-            setTutorAnswer("练习批改暂时不可用，请稍后重试。");
-            setTutorPendingQuestion(null);
-        } finally {
-            setIsCheckingMicroDrill(false);
+            console.error("[AI Teacher] audio playback failed", error);
         }
-    };
+    }, []);
+
+    const rememberTutorMastery = useCallback((response: TutorStructuredResponse, focusSpan: string) => {
+        const additions: string[] = [];
+
+        if (focusSpan.trim()) additions.push(focusSpan.trim());
+        if (response.teaching_point.trim()) additions.push(response.teaching_point.trim());
+
+        setTutorRecentMastery((prev) => {
+            const seen = new Set<string>();
+            const merged = [...prev, ...additions]
+                .map((item) => item.trim())
+                .filter((item) => item && item.length <= 24)
+                .filter((item) => {
+                    if (seen.has(item)) return false;
+                    seen.add(item);
+                    return true;
+                });
+
+            return merged.slice(-8);
+        });
+    }, []);
 
     const openShopForItem = useCallback((itemId: ShopItemId, message?: string) => {
         setShopFocusedItem(itemId);
@@ -4667,9 +4488,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     const renderTranslationTutorModal = () => {
         if (mode !== "translation" || !drillData || !isTutorOpen) return null;
-        const tutorSurface: TutorUiSurface = activeTutorSurface;
-        if (tutorSurface === "score" && !hasRatedDrill) return null;
-        const isScoreSurface = tutorSurface === "score";
 
         return (
             <motion.div
@@ -4692,30 +4510,25 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             <div className="flex flex-wrap items-center gap-2">
                                 <span className={cn("text-sm font-semibold flex items-center gap-1.5", activeCosmeticUi.tutorSendClass)}>
                                     <MessageCircle className="w-4 h-4" />
-                                    {isScoreSurface ? "AI Tutor 追问" : "AI Tutor"}
+                                    AI Teacher
                                 </span>
                                 <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700">
                                     {tutorResponse?.teaching_point || inferTeachingPoint()}
                                 </span>
                             </div>
                             <p className="mt-2 text-xs leading-5 text-stone-500">
-                                {isScoreSurface
-                                    ? "想继续追问搭配、句型、迁移练习时，在这里集中完成，不再打断评分页主布局。"
-                                    : "翻译过程中卡住时，只在这里问当前词、搭配或句型，不再混进评分讲评。"}
+                                翻译过程中卡住时，把它当老师来问：先从你已经会的点出发，再帮你补当前词、搭配或句型。
                             </p>
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span className={cn("hidden text-[11px] font-semibold sm:inline", activeCosmeticUi.tutorSendClass)}>渐进引导 L{Math.min(4, tutorHintLevel)}</span>
-                            <button type="button" onClick={() => setIsTutorOpen(false)} className="rounded-full border border-stone-200 bg-white/80 p-2 text-stone-500 transition-all hover:bg-white hover:text-stone-700">
-                                <X className="w-4 h-4" />
-                            </button>
-                        </div>
+                        <button type="button" onClick={() => setIsTutorOpen(false)} className="rounded-full border border-stone-200 bg-white/80 p-2 text-stone-500 transition-all hover:bg-white hover:text-stone-700">
+                            <X className="w-4 h-4" />
+                        </button>
                     </div>
 
                     <div className="mt-4 flex flex-nowrap gap-2 overflow-x-auto pb-1 pr-1">
                         <button
                             type="button"
-                            onClick={() => handleAskTutor({ question: "给我一个这题可复用的句型模板。", questionType: "pattern", uiSurface: tutorSurface })}
+                            onClick={() => handleAskTutor({ question: "给我一个这题可复用的句型模板。", questionType: "pattern" })}
                             disabled={isAskingTutor}
                             className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
                         >
@@ -4724,20 +4537,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         <button
                             type="button"
                             onClick={() => handleAskTutor({
-                                question: isScoreSurface
-                                    ? "为什么这里不用更直译的词？请告诉我搭配差别。"
-                                    : "这里更自然的说法是什么？只告诉我这个词或搭配怎么用。",
+                                question: "这里更自然的说法是什么？只告诉我这个词或搭配怎么用。",
                                 questionType: "word_choice",
-                                uiSurface: tutorSurface,
                             })}
                             disabled={isAskingTutor}
                             className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
                         >
-                            {isScoreSurface ? "词汇对比" : "搭配怎么用"}
+                            搭配怎么用
                         </button>
                         <button
                             type="button"
-                            onClick={() => handleAskTutor({ question: "再给我一个同结构的例句让我模仿。", questionType: "example", uiSurface: tutorSurface })}
+                            onClick={() => handleAskTutor({ question: "再给我一个同结构的例句让我模仿。", questionType: "example" })}
                             disabled={isAskingTutor}
                             className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
                         >
@@ -4745,75 +4555,19 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         </button>
                     </div>
 
-                    <div className="mt-4 max-h-[calc(min(84vh,760px)-13rem)] overflow-y-auto pr-1">
-                        {tutorPendingQuestion ? (
-                            <div className="mb-3 rounded-xl border border-stone-200/70 bg-white/80 p-3">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-stone-400">正在追问</p>
-                                <p className="mt-1 text-sm text-stone-700">{tutorPendingQuestion}</p>
-                                <div className="mt-2 flex items-center gap-2 text-xs text-stone-500">
-                                    <Sparkles className="h-3.5 w-3.5 animate-spin" />
-                                    <span>正在生成教学回答...</span>
-                                </div>
-                            </div>
-                        ) : null}
-                        {tutorResponse ? (
-                            <div className="rounded-xl border border-stone-200/70 bg-white/80 p-3.5">
-                                <TutorMarkdown content={tutorResponse.coach_cn} className="text-sm text-stone-700" />
-                                {tutorResponse.direct_answer_en && (
-                                    <p className="mt-2 text-xs text-sky-700">
-                                        可直接用：<code className="rounded bg-sky-50 px-1 py-0.5">{tutorResponse.direct_answer_en}</code>
-                                    </p>
-                                )}
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                    {tutorResponse.pattern_en.map((pattern, idx) => (
-                                        <span key={`${pattern}-${idx}`} className="rounded-full border border-indigo-200/80 bg-indigo-50/80 px-2.5 py-1 text-[11px] font-medium text-indigo-700">
-                                            {pattern}
-                                        </span>
-                                    ))}
-                                </div>
-                                {isScoreSurface && tutorResponse.contrast && (
-                                    <p className="mt-2 text-xs leading-5 text-stone-500">
-                                        <span className="font-semibold text-stone-600">中式 vs 地道：</span>
-                                        {tutorResponse.contrast}
-                                    </p>
-                                )}
-                                {isScoreSurface && tutorResponse.next_task && (
-                                    <p className="mt-2 text-xs leading-5 text-emerald-700">
-                                        <span className="font-semibold">下一步：</span>
-                                        {tutorResponse.next_task}
-                                    </p>
-                                )}
-                                {tutorResponse.answer_revealed && tutorResponse.full_answer && (
-                                    <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/70 p-3">
-                                        <p className="text-[11px] font-semibold text-emerald-700">完整答案（已解锁）</p>
-                                        <p className="mt-1 text-sm font-newsreader text-stone-800">{tutorResponse.full_answer}</p>
-                                        {tutorResponse.answer_reason_cn && (
-                                            <p className="mt-1 text-xs leading-5 text-stone-600">{tutorResponse.answer_reason_cn}</p>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        ) : tutorAnswer ? (
-                            <div className="rounded-xl border border-stone-200/70 bg-white/80 p-3.5">
-                                <TutorMarkdown content={tutorAnswer} className="text-sm text-stone-700" />
-                            </div>
+                    <div ref={tutorConversationRef} className="mt-4 max-h-[calc(min(84vh,760px)-13rem)] overflow-y-auto pr-1">
+                        {tutorThread.length || tutorPendingQuestion || tutorAnswer ? (
+                            <AiTeacherConversation
+                                turns={tutorThread}
+                                pendingQuestion={tutorPendingQuestion}
+                                pendingAnswer={tutorPendingQuestion ? tutorAnswer : null}
+                                fallbackAnswer={!tutorThread.length ? tutorAnswer : null}
+                                onPlayCardAudio={handlePlayTutorCardAudio}
+                            />
                         ) : (
                             <p className="text-xs text-stone-500">
-                                {isScoreSurface
-                                    ? "先问一个点，Tutor 会按“方向提示 → 模板 → 对比 → 迁移练习”给你逐层教学。"
-                                    : "先问一个具体卡点，比如某个词、搭配或语序；这里不会给你整套评分讲评。"}
+                                先问一个具体卡点，比如某个词、搭配或语序；老师会先接住你已经会的，再补新的。
                             </p>
-                        )}
-
-                        {isScoreSurface && tutorThread.length > 0 && (
-                            <div className="mt-3 space-y-2">
-                                {tutorThread.slice(-2).map((item, idx) => (
-                                    <div key={`${item.question}-${idx}`} className="rounded-xl border border-stone-200/70 bg-white/80 p-3">
-                                        <p className="text-xs text-stone-500">你问：{item.question}</p>
-                                        <TutorMarkdown content={item.coach_cn} className={cn("mt-1 text-sm", activeCosmeticUi.tutorSendClass)} />
-                                    </div>
-                                ))}
-                            </div>
                         )}
                     </div>
 
@@ -4821,14 +4575,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         className="mt-4 flex flex-col gap-2 sm:flex-row"
                         onSubmit={(e) => {
                             e.preventDefault();
-                            handleAskTutor({ questionType: "follow_up", uiSurface: tutorSurface });
+                            handleAskTutor({ questionType: "follow_up" });
                         }}
                     >
                         <input
                             type="text"
                             value={tutorQuery}
                             onChange={(e) => setTutorQuery(e.target.value)}
-                            placeholder={isScoreSurface ? "继续追问这题..." : "继续问这个词、搭配或句型..."}
+                            placeholder="继续问这个词、搭配或句型..."
                             className={cn("h-11 flex-1 rounded-xl border px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)}
                         />
                         <button
@@ -4842,43 +4596,19 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     </form>
 
                     {!tutorResponse?.answer_revealed && (
-                        <div className="mt-2 flex items-center justify-between gap-2">
+                        <div className="mt-2 flex items-center justify-start gap-2">
                             <button
                                 type="button"
-                                onClick={() => handleAskTutor({ question: "我想看完整答案，并解释为什么这样说。", questionType: "unlock_answer", forceReveal: true, uiSurface: tutorSurface })}
+                                onClick={() => handleAskTutor({ question: "我想看参考表达，并解释为什么这样说。", questionType: "unlock_answer", forceReveal: true })}
                                 disabled={isAskingTutor}
                                 className="inline-flex min-h-9 items-center justify-center rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:-translate-y-0.5 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                {isScoreSurface ? "我想看完整答案" : "我想看参考表达"}
+                                我想看参考表达
                             </button>
-                            {isScoreSurface && tutorNoProgressTurns >= 1 && (
-                                <span className="text-[11px] text-stone-500">再追问 1 轮将自动解锁答案</span>
-                            )}
                         </div>
                     )}
                 </motion.div>
             </motion.div>
-        );
-    };
-
-    const renderScoreTutorFloatingButton = () => {
-        if (mode !== "translation" || !drillFeedback || !hasRatedDrill || drillFeedback._error || isTutorOpen) return null;
-
-        return (
-            <button
-                type="button"
-                onClick={() => openTutorModal("score")}
-                className="fixed bottom-24 right-5 z-[95] inline-flex min-h-12 items-center gap-2 rounded-full border border-amber-200/80 bg-[linear-gradient(135deg,rgba(255,251,235,0.96),rgba(254,243,199,0.92))] px-4 py-3 text-sm font-semibold text-amber-900 shadow-[0_18px_36px_rgba(217,119,6,0.22)] backdrop-blur-xl transition-all hover:-translate-y-1 hover:shadow-[0_22px_42px_rgba(217,119,6,0.28)] md:bottom-8 md:right-8"
-                aria-label="打开 AI Tutor 追问弹窗"
-            >
-                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/80 text-amber-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-                    <MessageCircle className="h-4 w-4" />
-                </span>
-                <span className="flex flex-col items-start leading-tight">
-                    <span>AI Tutor</span>
-                    <span className="text-[11px] font-medium text-amber-700">继续追问</span>
-                </span>
-            </button>
         );
     };
 
@@ -5198,11 +4928,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 auraPrimary: "from-cyan-200/45 via-sky-200/35 to-transparent",
                 auraSecondary: "from-blue-200/35 via-cyan-100/30 to-transparent",
                 badgeClass: "border-cyan-200/80 bg-cyan-50/85 text-cyan-700",
-                dotClass: "bg-cyan-500",
-                coreGradient: "from-cyan-500 via-sky-500 to-blue-500",
                 progressGradient: "from-cyan-400 via-sky-500 to-cyan-500",
                 beamGradient: "from-transparent via-cyan-400/85 to-transparent",
-                haloGradient: "conic-gradient(from 90deg, rgba(34,211,238,0.08), rgba(14,165,233,0.55), rgba(59,130,246,0.08), rgba(14,165,233,0.55), rgba(34,211,238,0.08))",
+                bounceGradients: [
+                    "linear-gradient(180deg, rgba(241,252,255,0.98) 0%, rgba(153,226,255,0.94) 52%, rgba(56,189,248,0.92) 100%)",
+                    "linear-gradient(180deg, rgba(236,254,255,0.98) 0%, rgba(125,211,252,0.94) 54%, rgba(14,165,233,0.92) 100%)",
+                    "linear-gradient(180deg, rgba(240,249,255,0.98) 0%, rgba(147,197,253,0.94) 55%, rgba(59,130,246,0.92) 100%)",
+                ],
+                bounceGlow: "radial-gradient(circle, rgba(125,211,252,0.34) 0%, rgba(186,230,253,0.12) 52%, transparent 74%)",
+                loaderShell: "linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(240,249,255,0.72) 100%)",
+                loaderBase: "linear-gradient(90deg, rgba(207,250,254,0.2) 0%, rgba(125,211,252,0.48) 48%, rgba(59,130,246,0.22) 100%)",
+                sparkleClass: "bg-cyan-200/90",
                 stages: ["声纹预热", "降噪校准", "播放就绪"],
                 comfortCopy: "正在为你生成更清晰、稳定的听力挑战",
                 accentText: "text-cyan-700",
@@ -5214,11 +4950,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     auraPrimary: "from-amber-200/45 via-orange-200/35 to-transparent",
                     auraSecondary: "from-rose-200/35 via-orange-100/28 to-transparent",
                     badgeClass: "border-amber-200/80 bg-amber-50/85 text-amber-700",
-                    dotClass: "bg-orange-500",
-                    coreGradient: "from-amber-500 via-orange-500 to-rose-500",
                     progressGradient: "from-amber-400 via-orange-500 to-amber-500",
                     beamGradient: "from-transparent via-orange-400/85 to-transparent",
-                    haloGradient: "conic-gradient(from 90deg, rgba(251,191,36,0.08), rgba(249,115,22,0.55), rgba(244,114,182,0.08), rgba(249,115,22,0.55), rgba(251,191,36,0.08))",
+                    bounceGradients: [
+                        "linear-gradient(180deg, rgba(255,250,244,0.99) 0%, rgba(255,219,198,0.94) 44%, rgba(255,176,143,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(255,248,241,0.99) 0%, rgba(255,228,208,0.95) 42%, rgba(255,166,154,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(255,251,240,0.99) 0%, rgba(255,233,194,0.95) 46%, rgba(255,190,138,0.92) 100%)",
+                    ],
+                    bounceGlow: "radial-gradient(circle, rgba(255,205,171,0.4) 0%, rgba(255,225,205,0.18) 44%, transparent 76%)",
+                    loaderShell: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,247,241,0.78) 100%)",
+                    loaderBase: "linear-gradient(90deg, rgba(255,220,203,0.22) 0%, rgba(255,196,162,0.5) 50%, rgba(255,210,184,0.24) 100%)",
+                    sparkleClass: "bg-rose-200/90",
                     stages: ["语义草拟", "语法校准", "句式润色"],
                     comfortCopy: "正在为你打磨更自然、地道的表达难度",
                     accentText: "text-amber-700",
@@ -5229,11 +4971,17 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     auraPrimary: "from-amber-200/45 via-orange-200/35 to-transparent",
                     auraSecondary: "from-rose-200/35 via-orange-100/28 to-transparent",
                     badgeClass: "border-amber-200/80 bg-amber-50/85 text-amber-700",
-                    dotClass: "bg-orange-500",
-                    coreGradient: "from-amber-500 via-orange-500 to-rose-500",
                     progressGradient: "from-amber-400 via-orange-500 to-amber-500",
                     beamGradient: "from-transparent via-orange-400/85 to-transparent",
-                    haloGradient: "conic-gradient(from 90deg, rgba(251,191,36,0.08), rgba(249,115,22,0.55), rgba(244,114,182,0.08), rgba(249,115,22,0.55), rgba(251,191,36,0.08))",
+                    bounceGradients: [
+                        "linear-gradient(180deg, rgba(255,250,244,0.99) 0%, rgba(255,219,198,0.94) 44%, rgba(255,176,143,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(255,248,241,0.99) 0%, rgba(255,228,208,0.95) 42%, rgba(255,166,154,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(255,251,240,0.99) 0%, rgba(255,233,194,0.95) 46%, rgba(255,190,138,0.92) 100%)",
+                    ],
+                    bounceGlow: "radial-gradient(circle, rgba(255,205,171,0.4) 0%, rgba(255,225,205,0.18) 44%, transparent 76%)",
+                    loaderShell: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,247,241,0.78) 100%)",
+                    loaderBase: "linear-gradient(90deg, rgba(255,220,203,0.22) 0%, rgba(255,196,162,0.5) 50%, rgba(255,210,184,0.24) 100%)",
+                    sparkleClass: "bg-rose-200/90",
                     stages: ["语义草拟", "语法校准", "句式润色"],
                     comfortCopy: "正在为你打磨更自然、地道的表达难度",
                     accentText: "text-amber-700",
@@ -5275,24 +5023,83 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         </span>
                     </div>
 
-                    <div className="relative mx-auto mb-7 h-28 w-28">
+                    <div className="relative mx-auto mb-7 flex h-36 w-full max-w-[300px] items-end justify-center">
                         <motion.div
-                            className="absolute inset-0 rounded-full border border-white/60 bg-white/35"
-                            animate={prefersReducedMotion ? { opacity: 0.88 } : { scale: [1, 1.08, 1], opacity: [0.35, 0.62, 0.35] }}
-                            transition={{ duration: 3, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
+                            className="absolute inset-x-8 bottom-2 h-20 rounded-full blur-3xl"
+                            style={{ background: variantUi.bounceGlow }}
+                            animate={prefersReducedMotion ? { opacity: 0.55 } : { opacity: [0.34, 0.7, 0.34], scale: [0.94, 1.08, 0.94] }}
+                            transition={{ duration: 2.6, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
+                        />
+                        <div
+                            className="absolute inset-x-3 bottom-3 h-24 rounded-[30px] border border-white/75 shadow-[0_22px_55px_rgba(255,214,188,0.18),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl"
+                            style={{ backgroundImage: variantUi.loaderShell }}
                         />
                         <motion.div
-                            className="absolute inset-0 rounded-full"
-                            style={{ background: variantUi.haloGradient }}
-                            animate={prefersReducedMotion ? { rotate: 0 } : { rotate: 360 }}
-                            transition={{ duration: 8.2, repeat: prefersReducedMotion ? 0 : Infinity, ease: "linear" }}
-                        />
-                        <div className="absolute inset-[10px] rounded-full border border-white/70 bg-white/80 backdrop-blur-sm" />
-                        <motion.div
-                            className={cn("absolute inset-[35px] rounded-full bg-gradient-to-br shadow-[0_0_24px_rgba(255,255,255,0.7)]", variantUi.coreGradient)}
-                            animate={prefersReducedMotion ? { scale: 1 } : { scale: [1, 1.18, 1], opacity: [0.72, 0.98, 0.72] }}
+                            className="absolute inset-x-14 bottom-8 h-3 rounded-full blur-md"
+                            style={{ backgroundImage: variantUi.loaderBase }}
+                            animate={prefersReducedMotion ? { opacity: 0.8 } : { opacity: [0.55, 0.95, 0.55], scaleX: [0.96, 1.04, 0.96] }}
                             transition={{ duration: 2.2, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
                         />
+                        <motion.div
+                            className={cn("absolute left-9 top-4 h-2.5 w-2.5 rounded-full blur-[0.5px]", variantUi.sparkleClass)}
+                            animate={prefersReducedMotion ? { opacity: 0.7 } : { opacity: [0.35, 0.95, 0.35], y: [0, -4, 0], scale: [0.85, 1.15, 0.85] }}
+                            transition={{ duration: 1.8, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
+                        />
+                        <motion.div
+                            className={cn("absolute right-11 top-8 h-2 w-2 rotate-45 rounded-[4px] blur-[0.4px]", variantUi.sparkleClass)}
+                            animate={prefersReducedMotion ? { opacity: 0.62 } : { opacity: [0.2, 0.82, 0.2], y: [0, -3, 0], scale: [0.8, 1, 0.8] }}
+                            transition={{ duration: 2.1, repeat: prefersReducedMotion ? 0 : Infinity, delay: 0.3, ease: "easeInOut" }}
+                        />
+                        <div className="relative flex items-end justify-center gap-4 px-6 pb-5">
+                            {variantUi.bounceGradients.map((gradient, index) => {
+                                const isCenterDot = index === 1;
+
+                                return (
+                                    <div
+                                        key={gradient}
+                                        className={cn("relative flex items-end justify-center", isCenterDot ? "h-24 w-16" : "h-20 w-14")}
+                                    >
+                                        <motion.span
+                                            className="absolute bottom-[3px] h-3 rounded-full bg-stone-900/10 blur-[1.5px]"
+                                            style={{ width: isCenterDot ? 34 : 30 }}
+                                            animate={
+                                                prefersReducedMotion
+                                                    ? { opacity: 0.16, scaleX: 1 }
+                                                    : { opacity: [0.16, 0.05, 0.16], scaleX: [1, 0.64, 1] }
+                                            }
+                                            transition={{ duration: 1.35, repeat: prefersReducedMotion ? 0 : Infinity, delay: index * 0.16, ease: "easeInOut" }}
+                                        />
+                                        <motion.div
+                                            className={cn(
+                                                "absolute bottom-4 overflow-hidden rounded-[20px] border border-white/80 shadow-[0_18px_34px_rgba(255,214,188,0.22),inset_0_1px_0_rgba(255,255,255,0.92)]",
+                                                isCenterDot ? "h-12 w-12" : "h-10 w-10"
+                                            )}
+                                            style={{
+                                                backgroundImage: gradient,
+                                                boxShadow: isCenterDot
+                                                    ? "0 14px 32px rgba(255,183,156,0.28), inset 0 1px 0 rgba(255,255,255,0.9)"
+                                                    : "0 12px 28px rgba(255,195,170,0.24), inset 0 1px 0 rgba(255,255,255,0.88)",
+                                            }}
+                                            animate={
+                                                prefersReducedMotion
+                                                    ? { y: 0, scaleX: 1, scaleY: 1, rotate: 0 }
+                                                    : {
+                                                        y: [0, -26, 0],
+                                                        scaleX: [1.06, 0.94, 1.09, 1.06],
+                                                        scaleY: [0.92, 1.09, 0.88, 0.92],
+                                                        rotate: [0, index === 1 ? 0 : index === 0 ? -4 : 4, 0],
+                                                    }
+                                            }
+                                            transition={{ duration: 1.35, repeat: prefersReducedMotion ? 0 : Infinity, delay: index * 0.16, ease: [0.32, 0.72, 0, 1] }}
+                                        >
+                                            <span className="absolute inset-x-[16%] top-[12%] h-[36%] rounded-full bg-white/70 blur-[2px]" />
+                                            <span className="absolute left-[18%] top-[18%] h-[22%] w-[22%] rounded-full bg-white/85 blur-[1px]" />
+                                            <span className="absolute inset-x-[24%] bottom-[12%] h-[16%] rounded-full bg-white/18 blur-[1px]" />
+                                        </motion.div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
 
                     <div className="relative text-center space-y-2">
@@ -5324,17 +5131,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             animate={prefersReducedMotion ? { x: 210 } : { x: [-95, 470] }}
                             transition={{ duration: 2.8, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
                         />
-                    </div>
-
-                    <div className="mt-5 flex items-center justify-center gap-2.5">
-                        {[0, 1, 2].map((i) => (
-                            <motion.span
-                                key={i}
-                                className={cn("h-2.5 w-2.5 rounded-full", variantUi.dotClass)}
-                                animate={prefersReducedMotion ? { opacity: 0.8 } : { scale: [0.9, 1.15, 0.9], opacity: [0.32, 0.95, 0.32] }}
-                                transition={{ duration: 1.15, repeat: prefersReducedMotion ? 0 : Infinity, delay: i * 0.18 }}
-                            />
-                        ))}
                     </div>
                 </div>
             </div>
@@ -6581,13 +6377,13 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         <button
                                                                             onClick={() => {
                                                                                 if (learningSessionActive) return;
-                                                                                openTutorModal("battle");
+                                                                                openTutorModal();
                                                                             }}
                                                                             className={cn(
                                                                                 "flex h-10 w-10 items-center justify-center rounded-full border transition-all hover:-translate-y-0.5 active:scale-95",
                                                                                 activeCosmeticUi.iconButtonClass
                                                                             )}
-                                                                            title="Ask AI Tutor"
+                                                                            title="Ask AI Teacher"
                                                                         >
                                                                             <HelpCircle className="w-4 h-4" />
                                                                         </button>
@@ -6640,14 +6436,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     setTutorAnswer(null);
                                                     setTutorThread([]);
                                                     setTutorResponse(null);
-                                                    setTutorHintLevel(1);
-                                                    setTutorNoProgressTurns(0);
                                                     setTutorPendingQuestion(null);
                                                     setIsTutorOpen(false);
-                                                    setMicroDrillInput("");
-                                                    setIsCheckingMicroDrill(false);
-                                                    setIsBattleDrillCollapsed(true);
-                                                    setIsScoreDrillCollapsed(true);
                                                     setIsSubmittingDrill(false);
                                                     setWordPopup(null);
                                                     setAnalysisRequested(false);
@@ -7435,7 +7225,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     : null}
 
                 <AnimatePresence>
-                    {renderScoreTutorFloatingButton()}
                     {renderTranslationTutorModal()}
                 </AnimatePresence>
 
@@ -7695,6 +7484,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     onTriggerBoss={handleDebugBossTrigger}
                     onTriggerEconomyFx={handleDebugEconomyFx}
                     onTriggerLootDrop={handleDebugLootDrop}
+                    onTriggerGacha={handleDebugGacha}
                 />
             )}
 
