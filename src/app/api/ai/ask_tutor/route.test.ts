@@ -265,4 +265,39 @@ describe("ask_tutor route", () => {
         expect(data.next_micro_drill?.prompt_cn).toBeTruthy();
         expect(Array.isArray(data.quality_flags)).toBe(true);
     });
+
+    it("uses lightweight battle tutor prompt without score-only teaching sections", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletion(
+                JSON.stringify({
+                    coach_cn: "这里先用 `study the operating manual carefully` 就够了。",
+                    pattern_en: ["study/review the manual carefully"],
+                    answer_revealed: false,
+                    teaching_point: "词汇搭配与自然表达",
+                    direct_answer_en: "study the operating manual carefully",
+                    error_tags: ["word_choice"],
+                    micro_drill: {
+                        prompt_cn: "把“他认真看了说明书”翻成英文。",
+                        expected_pattern_en: "review the manual carefully",
+                    },
+                })
+            )
+        );
+
+        const response = await POST(buildRequest({
+            uiSurface: "battle",
+            query: "操作手册怎么翻译？",
+            intent: "translate",
+        }));
+        const data = await response.json();
+        const prompt = createCompletionMock.mock.calls[0]?.[0]?.messages?.[1]?.content as string;
+
+        expect(response.status).toBe(200);
+        expect(prompt).toContain('Surface: "battle"');
+        expect(prompt).toContain("不要写“中式 vs 地道”栏目");
+        expect(prompt).not.toContain('"contrast"');
+        expect(prompt).not.toContain('"next_task"');
+        expect(data.contrast).toBeUndefined();
+        expect(data.next_task).toBeUndefined();
+    });
 });

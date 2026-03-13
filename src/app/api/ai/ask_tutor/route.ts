@@ -19,8 +19,8 @@ interface TutorMicroDrill {
 interface TutorResponsePayload {
     coach_cn: string;
     pattern_en: string[];
-    contrast: string;
-    next_task: string;
+    contrast?: string;
+    next_task?: string;
     answer_revealed: boolean;
     full_answer?: string;
     answer_reason_cn?: string;
@@ -46,6 +46,7 @@ interface PayloadBuildContext {
     question: string;
     questionType: TutorQuestionType;
     action: TutorAction;
+    uiSurface: TutorUiSurface;
     teachingPoint: string;
     improvedVersion: string;
     referenceEnglish: string;
@@ -325,11 +326,15 @@ function normalizeErrorTags(raw: unknown, fallback: string[]): string[] {
 
 function buildFallbackPayload(ctx: PayloadBuildContext): TutorResponsePayload {
     const fallbackMicroDrill = inferMicroDrill(ctx.teachingPoint);
+    const isScoreSurface = ctx.uiSurface === "score";
+
     return {
-        coach_cn: "你已经抓住了核心意思。先保留**主干结构**，再只修 1-2 个最关键的**表达点**。",
+        coach_cn: isScoreSurface
+            ? "你已经抓住了核心意思。先保留**主干结构**，再只修 1-2 个最关键的**表达点**。"
+            : "先别整句重写，先把你卡住的这个**词/搭配/语序**点问清楚，我只帮你修最关键的一处。",
         pattern_en: ["When ..., ...", "It was only after ... that ..."],
-        contrast: "中式常逐词直译，地道表达更强调主干先行与信息重心。",
-        next_task: "请按一个模板重写一句，只改一个关键点再发我。",
+        contrast: isScoreSurface ? "中式常逐词直译，地道表达更强调主干先行与信息重心。" : undefined,
+        next_task: isScoreSurface ? "请按一个模板重写一句，只改一个关键点再发我。" : undefined,
         answer_revealed: false,
         teaching_point: ctx.teachingPoint,
         direct_answer_en: inferDirectAnswerEn(ctx.question, ctx.improvedVersion, ctx.referenceEnglish),
@@ -352,8 +357,12 @@ function buildResponsePayload(parsed: Partial<TutorResponsePayload> | null, ctx:
                 .filter(Boolean)
                 .slice(0, 2)
             : fallback.pattern_en,
-        contrast: normalizeCollapsedEnglish(safeString(parsed?.contrast) || fallback.contrast),
-        next_task: normalizeCollapsedEnglish(safeString(parsed?.next_task) || fallback.next_task),
+        contrast: ctx.uiSurface === "score"
+            ? normalizeCollapsedEnglish(safeString(parsed?.contrast) || fallback.contrast || "")
+            : undefined,
+        next_task: ctx.uiSurface === "score"
+            ? normalizeCollapsedEnglish(safeString(parsed?.next_task) || fallback.next_task || "")
+            : undefined,
         answer_revealed: ctx.allowRevealAnswer,
         teaching_point: safeString(parsed?.teaching_point) || fallback.teaching_point,
         direct_answer_en: normalizeCollapsedEnglish(safeString(parsed?.direct_answer_en) || fallback.direct_answer_en),
@@ -387,7 +396,12 @@ function buildResponsePayload(parsed: Partial<TutorResponsePayload> | null, ctx:
 function collectQualityFlags(payload: TutorResponsePayload, ctx: PayloadBuildContext): string[] {
     const flags: string[] = [];
     const requiresDirect = requiresDirectAnswer(ctx.question);
-    const combinedText = `${payload.coach_cn}\n${payload.contrast}\n${payload.next_task}\n${payload.direct_answer_en}`;
+    const combinedText = [
+        payload.coach_cn,
+        payload.contrast,
+        payload.next_task,
+        payload.direct_answer_en,
+    ].filter(Boolean).join("\n");
     const anchors = gatherAnchors(ctx.chineseSource, ctx.userAttempt);
 
     if (requiresDirect && !payload.direct_answer_en) flags.push("missing_direct_answer");
@@ -404,8 +418,8 @@ function applyQualityGuards(payload: TutorResponsePayload, ctx: PayloadBuildCont
     const patched: TutorResponsePayload = {
         ...payload,
         coach_cn: normalizeListLayout(normalizeCollapsedEnglish(payload.coach_cn)),
-        contrast: normalizeListLayout(normalizeCollapsedEnglish(payload.contrast)),
-        next_task: normalizeListLayout(normalizeCollapsedEnglish(payload.next_task)),
+        contrast: payload.contrast ? normalizeListLayout(normalizeCollapsedEnglish(payload.contrast)) : undefined,
+        next_task: payload.next_task ? normalizeListLayout(normalizeCollapsedEnglish(payload.next_task)) : undefined,
         direct_answer_en: normalizeCollapsedEnglish(payload.direct_answer_en),
         micro_drill: {
             prompt_cn: payload.micro_drill.prompt_cn,
@@ -552,6 +566,39 @@ ${repairMode ? '6) REPAIR MODE: 这次回复必须补齐之前缺失字段，不
         `;
     }
 
+    if (uiSurface === "battle") {
+        return `
+${baseContext}
+
+Output STRICT JSON ONLY with this exact schema:
+{
+  "coach_cn": "中文即时辅导，不超过3句，只回答当前卡点，不要展开成长篇讲评",
+  "pattern_en": ["英文模板1","英文模板2(可选)"],
+  "answer_revealed": false,
+  "full_answer": "仅当允许公开答案时提供",
+  "answer_reason_cn": "仅当公开答案时提供，解释为什么这样说",
+  "teaching_point": "和本题一致的教学点",
+  "direct_answer_en": "如果用户问'怎么翻译'或明显卡住，必须给一句可直接用的表达",
+  "error_tags": ["word_choice","word_order"],
+  "micro_drill": { "prompt_cn": "一句可立即练习的题干", "expected_pattern_en": "目标结构模板" }
+}
+
+Rules:
+1) 这是翻译过程中的求助弹窗，不要写评分讲评，不要写“中式 vs 地道”栏目，不要写“下一步”栏目。
+2) 第一行必须直接回答用户当前卡点，不要空泛开场。
+3) 只解决 1 个最关键问题，避免一次讲太多。
+4) pattern_en 只保留 1-2 个短模板。
+5) If Allow full answer now is NO, set answer_revealed to false and DO NOT provide full_answer.
+6) If Allow full answer now is YES, you may provide full_answer + answer_reason_cn.
+7) If user asks "怎么翻译/英文怎么说", first sentence MUST give one direct translation in backticks, then explain.
+8) Must anchor explanation to this exact drill: reference at least one phrase from Chinese sentence or user attempt.
+9) English phrases must use normal spaces. Never output collapsed tokens.
+10) Always include micro_drill with prompt_cn + expected_pattern_en.
+11) error_tags 只用: word_choice, word_order, grammar, register, collocation, tense。
+${repairMode ? '12) REPAIR MODE: 这次回复必须补齐之前缺失字段，并强制贴合当前题目上下文。' : ""}
+        `;
+    }
+
     return `
 ${baseContext}
 
@@ -672,6 +719,7 @@ export async function POST(req: NextRequest) {
             question: normalizedQuestion,
             questionType: normalizedQuestionType,
             action: normalizedAction,
+            uiSurface: normalizedSurface,
             teachingPoint: normalizedTeachingPoint,
             improvedVersion: normalizedImprovedVersion,
             referenceEnglish,
