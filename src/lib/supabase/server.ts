@@ -1,3 +1,4 @@
+import type { User } from "@supabase/supabase-js";
 import { createServerClient as createSupabaseServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
@@ -26,4 +27,24 @@ export async function createServerClient() {
             },
         },
     );
+}
+
+export async function getServerUserSafely(): Promise<{ user: User | null; error: Error | null }> {
+    try {
+        const supabase = await createServerClient();
+        const {
+            data: { user },
+            error,
+        } = await supabase.auth.getUser();
+
+        return {
+            user,
+            error: error ?? null,
+        };
+    } catch (error) {
+        return {
+            user: null,
+            error: error instanceof Error ? error : new Error("Failed to read Supabase auth session."),
+        };
+    }
 }

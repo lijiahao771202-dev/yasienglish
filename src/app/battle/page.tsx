@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DrillCore } from "@/components/drill/DrillCore";
-import { Zap, Briefcase, Plane, GraduationCap, Coffee, Sword, Trophy, Flame, ChevronRight, Lock, Cpu, Heart, Utensils, Stethoscope, Headphones, Feather, Clapperboard, Music, Atom, Landmark } from "lucide-react";
+import { Zap, Briefcase, Plane, GraduationCap, Coffee, Sword, Trophy, Flame, ChevronRight, Lock, Cpu, Heart, Utensils, Stethoscope, Headphones, Feather, Clapperboard, Music, Atom, Landmark, House } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRank } from "@/lib/rankUtils";
 import { db } from "@/lib/db";
@@ -185,6 +186,13 @@ export default function BattlePage() {
                 {/* Header Section */}
                 <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-8 mb-16">
                     <div>
+                        <Link
+                            href="/"
+                            className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/72 px-4 py-2 text-sm font-semibold text-stone-600 shadow-lg shadow-stone-200/50 backdrop-blur-xl transition hover:-translate-y-0.5 hover:text-stone-900"
+                        >
+                            <House className="h-4 w-4" />
+                            返回欢迎页
+                        </Link>
                         <motion.h1
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}

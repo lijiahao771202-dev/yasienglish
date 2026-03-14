@@ -7,6 +7,7 @@ import {
     type EloHistoryItem,
     type LocalUserProfile,
     type ReadArticleItem,
+    type SyncOutboxItem,
     type VocabItem,
     type WritingEntry,
 } from "@/lib/db";
@@ -14,8 +15,16 @@ import {
     buildProfilePatch,
     createDefaultLocalProfile,
     createLocalVocabularyItem,
+    DEFAULT_AVATAR_PRESET,
+    DEFAULT_BASE_ELO,
+    DEFAULT_FREE_THEME,
+    DEFAULT_INVENTORY,
+    DEFAULT_LEARNING_PREFERENCES,
+    DEFAULT_PROFILE_USERNAME,
+    DEFAULT_STARTING_COINS,
     normalizeInventory,
     normalizeWordKey,
+    type RemoteProfileRow,
     toLocalEloHistoryItem,
     toLocalProfile,
     toLocalReadArticle,
@@ -26,14 +35,17 @@ import {
     toRemoteVocabularyRow,
     toRemoteWritingEntry,
     upsertLocalProfile,
+    normalizeAvatarPreset,
+    normalizeLearningPreferences,
+    normalizeProfileBio,
+    normalizeProfileUsername,
     type RemoteEloHistoryRow,
-    type RemoteProfileRow,
     type RemoteReadArticleRow,
     type RemoteVocabularyRow,
     type RemoteWritingHistoryRow,
 } from "@/lib/user-sync";
 
-type SyncEntity = "profile" | "vocabulary" | "writing_history" | "read_articles";
+type SyncEntity = "profile" | "vocabulary" | "writing_history" | "read_articles" | "elo_history";
 
 interface OutboxPayload {
     entity: SyncEntity;
@@ -47,6 +59,21 @@ interface SupabaseMutationResult {
         message?: string;
     } | null;
 }
+
+interface RemoteSyncOptions {
+    pullSnapshot?: boolean;
+    forcePull?: boolean;
+}
+
+interface BootstrapResult {
+    usedLocalCache: boolean;
+}
+
+const REMOTE_PULL_INTERVAL_MS = 5 * 60 * 1000;
+
+let backgroundSyncPromise: Promise<void> | null = null;
+let pendingBackgroundPull = false;
+let pendingForcedPull = false;
 
 function nowIso() {
     return new Date().toISOString();
@@ -103,6 +130,103 @@ async function hasLegacyLocalData() {
     return Boolean(profile || vocabCount || historyCount || readCount || eloCount);
 }
 
+export async function hasUsableLocalCache(userId: string) {
+    const activeUserId = await getActiveUserId();
+    if (activeUserId && activeUserId !== userId) {
+        return false;
+    }
+
+    return hasLegacyLocalData();
+}
+
+async function getRemoteLatestUpdatedAt(userId: string) {
+    const supabase = createBrowserClientSingleton();
+    const responses = await Promise.all([
+        supabase.from("profiles").select("updated_at").eq("user_id", userId).single(),
+        supabase.from("vocabulary").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("writing_history").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("read_articles").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("elo_history").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+
+    const timestamps = responses.flatMap((response) => {
+        if (response.error || !response.data) {
+            return [];
+        }
+
+        const row = Array.isArray(response.data) ? response.data[0] : response.data;
+        const updatedAt = typeof row?.updated_at === "string" ? Date.parse(row.updated_at) : Number.NaN;
+        return Number.isFinite(updatedAt) ? [updatedAt] : [];
+    });
+
+    return timestamps.length ? Math.max(...timestamps) : null;
+}
+
+async function shouldPullRemoteSnapshot(userId: string, forcePull = false) {
+    if (forcePull) return true;
+
+    const remoteLatestAt = await getRemoteLatestUpdatedAt(userId);
+    await db.sync_meta.put({
+        key: "last_remote_seen_at",
+        value: remoteLatestAt,
+        updated_at: Date.now(),
+    });
+
+    if (!remoteLatestAt) {
+        return false;
+    }
+
+    const lastPullMeta = await db.sync_meta.get("last_remote_pull_at");
+    const lastPullAt = typeof lastPullMeta?.value === "number" ? lastPullMeta.value : null;
+
+    if (!lastPullAt) return true;
+    if (remoteLatestAt > lastPullAt) return true;
+    return Date.now() - lastPullAt >= REMOTE_PULL_INTERVAL_MS;
+}
+
+async function markLocalOutboxItemSynced(item: Pick<SyncOutboxItem, "entity" | "operation" | "record_key">) {
+    const syncedPatch = {
+        sync_status: "synced" as const,
+        updated_at: nowIso(),
+    };
+
+    if (item.entity === "profile") {
+        const profile = await db.user_profile.orderBy("id").first();
+        if (profile?.id) {
+            await db.user_profile.update(profile.id, syncedPatch);
+        }
+        return;
+    }
+
+    if (item.entity === "vocabulary" && item.operation !== "delete") {
+        const vocab = await db.vocabulary.where("word_key").equals(item.record_key).first();
+        if (vocab) {
+            await db.vocabulary.update(vocab.word, syncedPatch);
+        }
+        return;
+    }
+
+    if (item.entity === "writing_history") {
+        const entry = await db.writing_history.where("remote_id").equals(item.record_key).first();
+        if (entry?.id) {
+            await db.writing_history.update(entry.id, syncedPatch);
+        }
+        return;
+    }
+
+    if (item.entity === "read_articles") {
+        await db.read_articles.update(item.record_key, syncedPatch);
+        return;
+    }
+
+    if (item.entity === "elo_history") {
+        const history = await db.elo_history.where("remote_id").equals(item.record_key).first();
+        if (history?.id) {
+            await db.elo_history.update(history.id, syncedPatch);
+        }
+    }
+}
+
 async function ensureRemoteProfile(userId: string) {
     const supabase = createBrowserClientSingleton();
     const { data } = await supabase
@@ -116,34 +240,46 @@ async function ensureRemoteProfile(userId: string) {
     }
 
     const localProfile = await db.user_profile.orderBy("id").first();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+    const metadata = user?.user_metadata ?? {};
     const nextProfile = localProfile
         ? {
             user_id: userId,
             translation_elo: localProfile.elo_rating,
-            listening_elo: localProfile.listening_elo ?? 600,
+            listening_elo: localProfile.listening_elo ?? DEFAULT_BASE_ELO,
             streak_count: localProfile.streak_count,
             listening_streak: localProfile.listening_streak ?? 0,
             max_translation_elo: localProfile.max_elo,
-            max_listening_elo: localProfile.listening_max_elo ?? 600,
-            coins: localProfile.coins ?? 0,
+            max_listening_elo: localProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
+            coins: localProfile.coins ?? DEFAULT_STARTING_COINS,
             inventory: normalizeInventory(localProfile.inventory, localProfile.hints),
-            owned_themes: localProfile.owned_themes ?? ["morning_coffee"],
-            active_theme: localProfile.active_theme ?? "morning_coffee",
+            owned_themes: localProfile.owned_themes ?? [DEFAULT_FREE_THEME],
+            active_theme: localProfile.active_theme ?? DEFAULT_FREE_THEME,
+            username: normalizeProfileUsername(localProfile.username ?? (typeof metadata.username === "string" ? metadata.username : DEFAULT_PROFILE_USERNAME)),
+            avatar_preset: normalizeAvatarPreset(localProfile.avatar_preset ?? (typeof metadata.avatar_preset === "string" ? metadata.avatar_preset : DEFAULT_AVATAR_PRESET)),
+            bio: normalizeProfileBio(localProfile.bio),
+            learning_preferences: normalizeLearningPreferences(localProfile.learning_preferences ?? DEFAULT_LEARNING_PREFERENCES),
             last_practice_at: new Date(localProfile.last_practice).toISOString(),
             updated_at: localProfile.updated_at || nowIso(),
         }
         : {
             user_id: userId,
-            translation_elo: 600,
-            listening_elo: 600,
+            translation_elo: DEFAULT_BASE_ELO,
+            listening_elo: DEFAULT_BASE_ELO,
             streak_count: 0,
             listening_streak: 0,
-            max_translation_elo: 600,
-            max_listening_elo: 600,
-            coins: 0,
-            inventory: normalizeInventory(),
-            owned_themes: ["morning_coffee"],
-            active_theme: "morning_coffee",
+            max_translation_elo: DEFAULT_BASE_ELO,
+            max_listening_elo: DEFAULT_BASE_ELO,
+            coins: DEFAULT_STARTING_COINS,
+            inventory: { ...DEFAULT_INVENTORY },
+            owned_themes: [DEFAULT_FREE_THEME],
+            active_theme: DEFAULT_FREE_THEME,
+            username: normalizeProfileUsername(typeof metadata.username === "string" ? metadata.username : DEFAULT_PROFILE_USERNAME),
+            avatar_preset: normalizeAvatarPreset(typeof metadata.avatar_preset === "string" ? metadata.avatar_preset : DEFAULT_AVATAR_PRESET),
+            bio: "",
+            learning_preferences: DEFAULT_LEARNING_PREFERENCES,
             last_practice_at: nowIso(),
             updated_at: nowIso(),
         };
@@ -258,6 +394,10 @@ async function migrateLegacyData(userId: string) {
             inventory: normalizeInventory(profile.inventory, profile.hints),
             owned_themes: profile.owned_themes,
             active_theme: profile.active_theme,
+            username: profile.username,
+            avatar_preset: profile.avatar_preset,
+            bio: profile.bio,
+            learning_preferences: profile.learning_preferences,
         });
 
         if (Object.keys(patch).length > 0) {
@@ -417,9 +557,17 @@ export async function flushOutbox() {
                 if (error) throw error;
             }
 
+            if (item.entity === "elo_history") {
+                const { error } = await supabase
+                    .from("elo_history")
+                    .upsert(item.payload);
+                if (error) throw error;
+            }
+
             if (item.id) {
                 await db.sync_outbox.delete(item.id);
             }
+            await markLocalOutboxItemSynced(item);
         } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown sync error";
             if (item.id) {
@@ -435,21 +583,18 @@ export async function flushOutbox() {
         }
     }
 
+    await db.sync_meta.put({
+        key: "last_successful_sync_at",
+        value: Date.now(),
+        updated_at: Date.now(),
+    });
+
     setPhase("synced");
 }
 
-export async function bootstrapUserSession(userId: string) {
+async function syncRemoteMirror(userId: string, options: RemoteSyncOptions = {}) {
     requireOnline();
-    const syncStore = useSyncStatusStore.getState();
-    syncStore.setPhase("bootstrapping");
-    syncStore.setReady(false);
 
-    const activeUserId = await getActiveUserId();
-    if (activeUserId && activeUserId !== userId) {
-        await clearCoreTables();
-    }
-
-    await setActiveUserId(userId);
     await ensureRemoteProfile(userId);
 
     const migrationMeta = await db.sync_meta.get(`migration:${userId}`);
@@ -458,16 +603,100 @@ export async function bootstrapUserSession(userId: string) {
     }
 
     await flushOutbox();
-    await pullRemoteSnapshot(userId);
+
+    const shouldAttemptPull = Boolean(options.forcePull || options.pullSnapshot);
+    if (shouldAttemptPull && await shouldPullRemoteSnapshot(userId, Boolean(options.forcePull))) {
+        await pullRemoteSnapshot(userId);
+        await db.sync_meta.put({
+            key: "last_remote_pull_at",
+            value: Date.now(),
+            updated_at: Date.now(),
+        });
+    }
 
     await db.sync_meta.put({
         key: "last_bootstrap_at",
         value: Date.now(),
         updated_at: Date.now(),
     });
+    await db.sync_meta.put({
+        key: "last_successful_sync_at",
+        value: Date.now(),
+        updated_at: Date.now(),
+    });
 
+    const syncStore = useSyncStatusStore.getState();
     syncStore.setPhase("synced");
     syncStore.setReady(true);
+}
+
+export function scheduleBackgroundSync(options: RemoteSyncOptions = {}) {
+    pendingBackgroundPull = pendingBackgroundPull || Boolean(options.pullSnapshot);
+    pendingForcedPull = pendingForcedPull || Boolean(options.forcePull);
+
+    if (backgroundSyncPromise) {
+        return backgroundSyncPromise;
+    }
+
+    backgroundSyncPromise = (async () => {
+        try {
+            while (true) {
+                const pullSnapshot = pendingBackgroundPull;
+                const forcePull = pendingForcedPull;
+                pendingBackgroundPull = false;
+                pendingForcedPull = false;
+
+                const userId = await getActiveUserId();
+                if (!userId) {
+                    break;
+                }
+
+                await syncRemoteMirror(userId, { pullSnapshot, forcePull });
+
+                if (!pendingBackgroundPull && !pendingForcedPull) {
+                    break;
+                }
+            }
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to sync your cloud backup.";
+            useSyncStatusStore.getState().setPhase("error", message);
+        } finally {
+            backgroundSyncPromise = null;
+            if (pendingBackgroundPull || pendingForcedPull) {
+                scheduleBackgroundSync();
+            }
+        }
+    })();
+
+    return backgroundSyncPromise;
+}
+
+export async function bootstrapUserSession(userId: string): Promise<BootstrapResult> {
+    const syncStore = useSyncStatusStore.getState();
+
+    const activeUserId = await getActiveUserId();
+    if (activeUserId && activeUserId !== userId) {
+        await clearCoreTables();
+    }
+
+    await setActiveUserId(userId);
+    const canUseLocalCache = await hasUsableLocalCache(userId);
+
+    syncStore.setPhase(canUseLocalCache ? "syncing" : "bootstrapping");
+    syncStore.setReady(canUseLocalCache);
+
+    if (canUseLocalCache) {
+        void scheduleBackgroundSync({ pullSnapshot: true });
+        return { usedLocalCache: true };
+    }
+
+    await syncRemoteMirror(userId, { pullSnapshot: true, forcePull: true });
+    return { usedLocalCache: false };
+}
+
+export function syncNow() {
+    useSyncStatusStore.getState().setPhase("syncing");
+    return scheduleBackgroundSync({ pullSnapshot: true, forcePull: true });
 }
 
 export async function loadLocalUserData() {
@@ -504,8 +733,8 @@ export async function saveVocabulary(item: VocabItem) {
         recordKey: nextItem.word_key || normalizeWordKey(nextItem.word),
         payload: toRemoteVocabularyRow(userId, nextItem),
     });
-    await flushOutbox();
-    await db.vocabulary.update(nextItem.word, { sync_status: "synced" });
+    useSyncStatusStore.getState().setPhase("syncing");
+    void scheduleBackgroundSync();
 }
 
 export async function deleteVocabulary(word: string) {
@@ -520,7 +749,8 @@ export async function deleteVocabulary(word: string) {
         recordKey: wordKey,
         payload: { user_id: userId, word_key: wordKey },
     });
-    await flushOutbox();
+    useSyncStatusStore.getState().setPhase("syncing");
+    void scheduleBackgroundSync();
 }
 
 export async function saveWritingHistory(entry: WritingEntry) {
@@ -543,7 +773,8 @@ export async function saveWritingHistory(entry: WritingEntry) {
         recordKey: remoteId,
         payload: toRemoteWritingEntry(userId, nextEntry),
     });
-    await flushOutbox();
+    useSyncStatusStore.getState().setPhase("syncing");
+    void scheduleBackgroundSync();
 }
 
 export async function markArticleAsRead(url: string) {
@@ -570,11 +801,18 @@ export async function markArticleAsRead(url: string) {
         recordKey: url,
         payload: toRemoteReadArticle(userId, nextItem),
     });
-    await flushOutbox();
-    await db.read_articles.update(url, { sync_status: "synced" });
+    useSyncStatusStore.getState().setPhase("syncing");
+    void scheduleBackgroundSync();
 }
 
-export async function saveProfilePatch(patch: Partial<Pick<LocalUserProfile, "coins" | "inventory" | "owned_themes" | "active_theme">>) {
+export async function saveProfilePatch(
+    patch: Partial<
+        Pick<
+            LocalUserProfile,
+            "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
+        >
+    >,
+) {
     const profile = await db.user_profile.orderBy("id").first();
     if (!profile?.id) throw new Error("Local profile not initialized.");
 
@@ -592,8 +830,8 @@ export async function saveProfilePatch(patch: Partial<Pick<LocalUserProfile, "co
         recordKey: "profile",
         payload: nextPatch,
     });
-    await flushOutbox();
-    await db.user_profile.update(profile.id, { sync_status: "synced" });
+    useSyncStatusStore.getState().setPhase("syncing");
+    void scheduleBackgroundSync();
 }
 
 export async function settleBattle(payload: {
@@ -608,43 +846,81 @@ export async function settleBattle(payload: {
     activeTheme?: string | null;
     source?: string;
 }) {
-    requireOnline();
+    const userId = await getActiveUserId();
     const profile = await db.user_profile.orderBy("id").first();
-    if (!profile?.id) throw new Error("Local profile not initialized.");
+    if (!profile?.id || !userId) throw new Error("Local profile not initialized.");
 
-    const response = await fetch("/api/profile/settle", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-    });
+    const nextUpdatedAt = nowIso();
+    const nextInventory = payload.inventory
+        ? normalizeInventory(payload.inventory, profile.hints)
+        : normalizeInventory(profile.inventory, profile.hints);
+    const nextOwnedThemes = payload.ownedThemes ?? profile.owned_themes ?? [DEFAULT_FREE_THEME];
+    const nextActiveTheme = payload.activeTheme ?? profile.active_theme ?? DEFAULT_FREE_THEME;
+    const isListening = payload.mode === "listening";
 
-    if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to settle battle.");
-    }
+    const localProfile: LocalUserProfile = {
+        ...profile,
+        user_id: userId,
+        remote_id: userId,
+        elo_rating: isListening ? profile.elo_rating : payload.eloAfter,
+        streak_count: isListening ? profile.streak_count : payload.streak,
+        max_elo: isListening ? profile.max_elo : payload.maxElo,
+        listening_elo: isListening ? payload.eloAfter : (profile.listening_elo ?? DEFAULT_BASE_ELO),
+        listening_streak: isListening ? payload.streak : (profile.listening_streak ?? 0),
+        listening_max_elo: isListening ? payload.maxElo : (profile.listening_max_elo ?? DEFAULT_BASE_ELO),
+        coins: payload.coins ?? profile.coins ?? DEFAULT_STARTING_COINS,
+        inventory: nextInventory,
+        hints: nextInventory.capsule,
+        owned_themes: nextOwnedThemes,
+        active_theme: nextActiveTheme,
+        last_practice: Date.now(),
+        updated_at: nextUpdatedAt,
+        sync_status: "pending",
+    };
 
-    const { profile: remoteProfile } = await response.json() as { profile: RemoteProfileRow };
-    const localProfile = toLocalProfile(remoteProfile);
-    await db.user_profile.update(profile.id, {
+    await db.user_profile.put({
         ...localProfile,
         id: profile.id,
     });
 
     const localHistory: EloHistoryItem = {
         remote_id: crypto.randomUUID(),
-        user_id: localProfile.user_id,
+        user_id: userId,
         mode: payload.mode,
         elo: payload.eloAfter,
         change: payload.change,
         timestamp: Date.now(),
         source: payload.source || "battle",
-        updated_at: nowIso(),
-        sync_status: "synced",
+        updated_at: nextUpdatedAt,
+        sync_status: "pending",
     };
 
     await db.elo_history.add(localHistory);
-    useSyncStatusStore.getState().setPhase("synced");
+    await queueOutboxItem({
+        entity: "profile",
+        operation: "upsert",
+        recordKey: "profile",
+        payload: {
+            translation_elo: localProfile.elo_rating,
+            listening_elo: localProfile.listening_elo ?? DEFAULT_BASE_ELO,
+            streak_count: localProfile.streak_count,
+            listening_streak: localProfile.listening_streak ?? 0,
+            max_translation_elo: localProfile.max_elo,
+            max_listening_elo: localProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
+            coins: localProfile.coins ?? DEFAULT_STARTING_COINS,
+            inventory: nextInventory,
+            owned_themes: nextOwnedThemes,
+            active_theme: nextActiveTheme,
+            last_practice_at: new Date(localProfile.last_practice).toISOString(),
+        },
+    });
+    await queueOutboxItem({
+        entity: "elo_history",
+        operation: "upsert",
+        recordKey: localHistory.remote_id!,
+        payload: toRemoteEloHistoryRow(userId, localHistory),
+    });
+    useSyncStatusStore.getState().setPhase("syncing");
+    void scheduleBackgroundSync();
     return localProfile;
 }

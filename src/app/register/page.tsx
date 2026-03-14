@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
 
 import { AuthShell } from "@/components/auth/AuthShell";
-import { LoginForm } from "@/components/auth/LoginForm";
+import { RegisterForm } from "@/components/auth/RegisterForm";
 import { getAuthPageErrorMessage } from "@/lib/auth-errors";
 import { APP_HOME_PATH } from "@/lib/auth-routing";
 import { getServerUserSafely } from "@/lib/supabase/server";
 
-export default async function LoginPage({
+export default async function RegisterPage({
     searchParams,
 }: {
     searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -21,18 +21,18 @@ export default async function LoginPage({
 
     return (
         <AuthShell
-            badge="sign in"
-            title="Sign in"
-            description="邮箱密码登录后，Yasi 会先从云端恢复你的词汇、Elo、写作和阅读进度，再把这一台设备的本地体验重新点亮。"
+            badge="sign up"
+            title="Create account"
+            description="用户名、邮箱和密码就够了。注册完成后直接进入首页，把同一套情绪化体验和同步能力绑定到你的账号里。"
             alert={getAuthPageErrorMessage(errorCode)}
-            footerLabel="No account?"
-            footerCta="Sign up"
-            footerHref="/register"
-            secondaryText="Need help?"
-            secondaryLabel="Forgot password"
+            footerLabel="Already in?"
+            footerCta="Sign in"
+            footerHref="/login"
+            secondaryText="Need recovery?"
+            secondaryLabel="Password help"
             secondaryHref="/forgot-password"
         >
-            <LoginForm />
+            <RegisterForm />
         </AuthShell>
     );
 }

@@ -7,6 +7,10 @@ function getIndexNames(tableName: string) {
 }
 
 describe("Dexie schema regressions", () => {
+    it("keeps the ai_cache compound key+type index for analysis cache lookups", () => {
+        expect(getIndexNames("ai_cache")).toContain("[key+type]");
+    });
+
     it("keeps the due index on vocabulary for review queries", () => {
         expect(getIndexNames("vocabulary")).toContain("due");
     });
