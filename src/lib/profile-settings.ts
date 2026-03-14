@@ -36,6 +36,10 @@ export function normalizeProfileBio(bio?: string | null) {
     return bio?.trim().slice(0, 280) ?? "";
 }
 
+export function normalizeProfileDeepSeekApiKey(apiKey?: string | null) {
+    return apiKey?.trim().slice(0, 200) ?? "";
+}
+
 export function normalizeLearningPreferences(
     preferences?: Partial<LearningPreferences> | null,
 ): LearningPreferences {

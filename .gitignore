@@ -16,6 +16,8 @@
 # next.js
 /.next/
 /out/
+/dist-electron/
+/dist-desktop/
 
 # production
 /build
@@ -49,4 +51,3 @@ next-env.d.ts
 # large model files
 /public/sherpa/
 *.onnx
-

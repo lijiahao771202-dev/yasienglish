@@ -34,6 +34,7 @@ describe("ProfileSettingsPanel", () => {
                         username: "Luna",
                         avatar_preset: "bubble-bear",
                         bio: "Practice makes flow.",
+                        deepseek_api_key: "",
                         learning_preferences: {
                             target_mode: "read",
                             english_level: "B1",
@@ -49,6 +50,7 @@ describe("ProfileSettingsPanel", () => {
 
         const username = container.querySelector<HTMLInputElement>("#username");
         const bio = container.querySelector<HTMLTextAreaElement>("#bio");
+        const deepSeekApiKey = container.querySelector<HTMLInputElement>("#deepseek-api-key");
         const targetMode = container.querySelector<HTMLSelectElement>("#target-mode");
         const englishLevel = container.querySelector<HTMLSelectElement>("#english-level");
         const dailyGoal = container.querySelector<HTMLInputElement>("#daily-goal");
@@ -56,13 +58,14 @@ describe("ProfileSettingsPanel", () => {
         const avatar = container.querySelector<HTMLButtonElement>('button[data-avatar-id="mint-orbit"]');
         const profileForm = container.querySelector<HTMLFormElement>('form[data-form="profile"]');
 
-        if (!username || !bio || !targetMode || !englishLevel || !dailyGoal || !uiTheme || !avatar || !profileForm) {
+        if (!username || !bio || !deepSeekApiKey || !targetMode || !englishLevel || !dailyGoal || !uiTheme || !avatar || !profileForm) {
             throw new Error("Missing profile inputs");
         }
 
         await act(async () => {
             setInputValue(username, "Nova");
             setInputValue(bio, "A sweeter dashboard helps me stay with it.");
+            setInputValue(deepSeekApiKey, "sk-user-123");
             setInputValue(targetMode, "battle");
             setInputValue(englishLevel, "C1");
             setInputValue(dailyGoal, "45");
@@ -78,6 +81,7 @@ describe("ProfileSettingsPanel", () => {
             username: "Nova",
             avatar_preset: "mint-orbit",
             bio: "A sweeter dashboard helps me stay with it.",
+            deepseek_api_key: "sk-user-123",
             learning_preferences: {
                 target_mode: "battle",
                 english_level: "C1",

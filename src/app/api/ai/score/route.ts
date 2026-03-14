@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { transcribeWithLocalWhisper } from '@/lib/local-whisper';
+
+export const runtime = "nodejs";
+
 // Helper to normalize text for comparison
 function normalize(text: string): string[] {
     return text.toLowerCase()
@@ -52,25 +56,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Missing audio or text' }, { status: 400 });
         }
 
-        // 1. Send to local Whisper Server (same as useWhisper.ts)
+        // 1. Transcribe with bundled local Whisper runtime.
         const arrayBuffer = await audioFile.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-
-        const whisperRes = await fetch('http://localhost:3002/transcribe', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/octet-stream',
-            },
-            body: buffer,
-        });
-
-        if (!whisperRes.ok) {
-            const errorText = await whisperRes.text();
-            console.error('Whisper server failed:', whisperRes.status, errorText);
-            throw new Error(`Whisper server failed: ${whisperRes.status}`);
-        }
-
-        const whisperData = await whisperRes.json();
+        const whisperData = await transcribeWithLocalWhisper(buffer);
         const transcript = whisperData.text || "";
 
         // 2. Advanced Scoring with LCS

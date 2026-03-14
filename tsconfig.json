@@ -30,5 +30,12 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    ".next/cache",
+    ".next/standalone",
+    "dist-electron",
+    "dist-desktop",
+    "coverage"
+  ]
 }

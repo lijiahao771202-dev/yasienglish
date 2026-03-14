@@ -13,12 +13,14 @@ interface ProfileSettingsPanelProps {
         username: string;
         avatar_preset: string;
         bio: string;
+        deepseek_api_key: string;
         learning_preferences: LearningPreferences;
     };
     onSave: (payload: {
         username: string;
         avatar_preset: string;
         bio: string;
+        deepseek_api_key: string;
         learning_preferences: LearningPreferences;
     }) => Promise<void>;
     onChangePassword: (password: string) => Promise<void>;
@@ -33,6 +35,7 @@ export function ProfileSettingsPanel({
     const [username, setUsername] = useState(initialProfile.username);
     const [avatarPreset, setAvatarPreset] = useState(initialProfile.avatar_preset);
     const [bio, setBio] = useState(initialProfile.bio);
+    const [deepSeekApiKey, setDeepSeekApiKey] = useState(initialProfile.deepseek_api_key);
     const [targetMode, setTargetMode] = useState(initialProfile.learning_preferences.target_mode);
     const [englishLevel, setEnglishLevel] = useState(initialProfile.learning_preferences.english_level);
     const [dailyGoal, setDailyGoal] = useState(String(initialProfile.learning_preferences.daily_goal_minutes));
@@ -54,6 +57,7 @@ export function ProfileSettingsPanel({
                 username,
                 avatar_preset: avatarPreset,
                 bio,
+                deepseek_api_key: deepSeekApiKey,
                 learning_preferences: {
                     target_mode: targetMode,
                     english_level: englishLevel,
@@ -132,6 +136,25 @@ export function ProfileSettingsPanel({
                             rows={4}
                             className="w-full rounded-[1.2rem] border border-indigo-100 bg-white px-4 py-3 text-sm text-slate-900 shadow-[0_20px_25px_-22px_rgba(99,102,241,0.95)] outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
                         />
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                        <label htmlFor="deepseek-api-key" className="text-sm font-medium text-slate-700">
+                            DeepSeek API Key
+                        </label>
+                        <input
+                            id="deepseek-api-key"
+                            type="password"
+                            autoComplete="off"
+                            spellCheck={false}
+                            value={deepSeekApiKey}
+                            onChange={(event) => setDeepSeekApiKey(event.target.value)}
+                            placeholder="sk-..."
+                            className="h-12 w-full rounded-[1.2rem] border border-indigo-100 bg-white px-4 text-sm text-slate-900 shadow-[0_20px_25px_-22px_rgba(99,102,241,0.95)] outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                        />
+                        <p className="text-xs leading-5 text-slate-500">
+                            填你自己的 DeepSeek key 后，AI 讲解和评分会优先走你的额度。留空则继续使用系统默认配置。
+                        </p>
                     </div>
 
                     <div className="space-y-2">
