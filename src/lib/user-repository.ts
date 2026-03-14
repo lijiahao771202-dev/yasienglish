@@ -260,6 +260,7 @@ async function ensureRemoteProfile(userId: string) {
             username: normalizeProfileUsername(localProfile.username ?? (typeof metadata.username === "string" ? metadata.username : DEFAULT_PROFILE_USERNAME)),
             avatar_preset: normalizeAvatarPreset(localProfile.avatar_preset ?? (typeof metadata.avatar_preset === "string" ? metadata.avatar_preset : DEFAULT_AVATAR_PRESET)),
             bio: normalizeProfileBio(localProfile.bio),
+            deepseek_api_key: localProfile.deepseek_api_key ?? "",
             learning_preferences: normalizeLearningPreferences(localProfile.learning_preferences ?? DEFAULT_LEARNING_PREFERENCES),
             last_practice_at: new Date(localProfile.last_practice).toISOString(),
             updated_at: localProfile.updated_at || nowIso(),
@@ -279,6 +280,7 @@ async function ensureRemoteProfile(userId: string) {
             username: normalizeProfileUsername(typeof metadata.username === "string" ? metadata.username : DEFAULT_PROFILE_USERNAME),
             avatar_preset: normalizeAvatarPreset(typeof metadata.avatar_preset === "string" ? metadata.avatar_preset : DEFAULT_AVATAR_PRESET),
             bio: "",
+            deepseek_api_key: "",
             learning_preferences: DEFAULT_LEARNING_PREFERENCES,
             last_practice_at: nowIso(),
             updated_at: nowIso(),
@@ -397,6 +399,7 @@ async function migrateLegacyData(userId: string) {
             username: profile.username,
             avatar_preset: profile.avatar_preset,
             bio: profile.bio,
+            deepseek_api_key: profile.deepseek_api_key,
             learning_preferences: profile.learning_preferences,
         });
 
@@ -810,6 +813,7 @@ export async function saveProfilePatch(
         Pick<
             LocalUserProfile,
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
+            | "deepseek_api_key"
         >
     >,
 ) {

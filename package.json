@@ -2,12 +2,20 @@
   "name": "yasienglish",
   "version": "0.1.0",
   "private": true,
+  "description": "Yasi English learning desktop app",
+  "author": "Yasi",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "desktop:prepare": "node scripts/prepare-electron-bundle.mjs",
+    "desktop:bundle": "npm run build && npm run desktop:prepare",
+    "desktop:build": "npm run desktop:bundle && electron-builder --mac dmg zip",
+    "desktop:build:mac": "npm run desktop:bundle && electron-builder --mac dmg zip",
+    "desktop:build:win": "npm run desktop:bundle && electron-builder --win nsis zip"
   },
   "dependencies": {
     "@andresaya/edge-tts": "^1.8.0",
@@ -63,10 +71,52 @@
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
+    "electron": "^41.0.2",
+    "electron-builder": "^26.8.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.0.18"
+  },
+  "build": {
+    "appId": "com.yasi.desktop",
+    "productName": "Yasi",
+    "asar": true,
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist-electron/server",
+        "to": "server"
+      }
+    ],
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "electronDist": "node_modules/electron/dist",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "mac": {
+      "category": "public.app-category.education",
+      "icon": "electron/assets/icon.icns",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "icon": "electron/assets/icon.ico",
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    }
   }
 }

@@ -1,12 +1,5 @@
-
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
-
-// Initialize OpenAI client
-const openai = new OpenAI({
-    apiKey: process.env.DEEPSEEK_API_KEY,
-    baseURL: "https://api.deepseek.com",
-});
+import { createDeepSeekClientForCurrentUser } from "@/lib/deepseek";
 
 export async function POST(req: Request) {
     try {
@@ -44,7 +37,8 @@ Selected Text:
 Analyze the selected text.
 `;
 
-        const completion = await openai.chat.completions.create({
+        const deepseek = await createDeepSeekClientForCurrentUser();
+        const completion = await deepseek.chat.completions.create({
             model: "deepseek-chat",
             messages: [
                 { role: "system", content: systemPrompt },

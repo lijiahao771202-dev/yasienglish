@@ -14,6 +14,7 @@ import {
     DEFAULT_PROFILE_USERNAME,
     type LearningPreferences,
     normalizeAvatarPreset,
+    normalizeProfileDeepSeekApiKey,
     normalizeLearningPreferences,
     normalizeProfileBio,
     normalizeProfileUsername,
@@ -24,6 +25,7 @@ export {
     DEFAULT_LEARNING_PREFERENCES,
     DEFAULT_PROFILE_USERNAME,
     normalizeAvatarPreset,
+    normalizeProfileDeepSeekApiKey,
     normalizeLearningPreferences,
     normalizeProfileBio,
     normalizeProfileUsername,
@@ -44,6 +46,7 @@ export interface RemoteProfileRow {
     username?: string;
     avatar_preset?: string;
     bio?: string;
+    deepseek_api_key?: string;
     learning_preferences?: LearningPreferences;
     updated_at: string;
     last_practice_at: string;
@@ -149,6 +152,7 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
         username: DEFAULT_PROFILE_USERNAME,
         avatar_preset: DEFAULT_AVATAR_PRESET,
         bio: "",
+        deepseek_api_key: "",
         learning_preferences: DEFAULT_LEARNING_PREFERENCES,
         updated_at: new Date(now).toISOString(),
         sync_status: "pending",
@@ -176,6 +180,7 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
         username: normalizeProfileUsername(remote.username),
         avatar_preset: normalizeAvatarPreset(remote.avatar_preset),
         bio: normalizeProfileBio(remote.bio),
+        deepseek_api_key: normalizeProfileDeepSeekApiKey(remote.deepseek_api_key),
         learning_preferences: normalizeLearningPreferences(remote.learning_preferences),
         updated_at: remote.updated_at,
         sync_status: "synced",
@@ -187,6 +192,7 @@ export function buildProfilePatch(
         Pick<
             LocalUserProfile,
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
+            | "deepseek_api_key"
         >
     >,
 ) {
@@ -199,6 +205,7 @@ export function buildProfilePatch(
     if (patch.username !== undefined) nextPatch.username = normalizeProfileUsername(patch.username);
     if (patch.avatar_preset !== undefined) nextPatch.avatar_preset = normalizeAvatarPreset(patch.avatar_preset);
     if (patch.bio !== undefined) nextPatch.bio = normalizeProfileBio(patch.bio);
+    if (patch.deepseek_api_key !== undefined) nextPatch.deepseek_api_key = normalizeProfileDeepSeekApiKey(patch.deepseek_api_key);
     if (patch.learning_preferences !== undefined) {
         nextPatch.learning_preferences = normalizeLearningPreferences(patch.learning_preferences);
     }

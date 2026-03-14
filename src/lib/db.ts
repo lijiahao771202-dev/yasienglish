@@ -111,6 +111,7 @@ export interface LocalUserProfile extends SyncTracked {
     username?: string;
     avatar_preset?: string;
     bio?: string;
+    deepseek_api_key?: string;
     learning_preferences?: LearningPreferences;
 }
 
@@ -516,6 +517,26 @@ export class YasiDB extends Dexie {
                 key: 'economy_reset_2026_03_14',
                 value: true,
                 updated_at: nowMs,
+            });
+        });
+
+        // Version 22: add per-user DeepSeek API key storage for profile sync.
+        this.version(22).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                if (typeof profile.deepseek_api_key !== 'string') {
+                    profile.deepseek_api_key = '';
+                }
             });
         });
     }

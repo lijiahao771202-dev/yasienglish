@@ -1,13 +1,9 @@
-
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
+import { createDeepSeekClientForCurrentUser } from "@/lib/deepseek";
 
 export async function POST(req: Request) {
-    const openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY || process.env.DEEPSEEK_API_KEY,
-        baseURL: process.env.OPENAI_BASE_URL || "https://api.deepseek.com",
-    });
     try {
+        const openai = await createDeepSeekClientForCurrentUser();
         const { action, text, context } = await req.json();
 
         if (action === 'generate') {

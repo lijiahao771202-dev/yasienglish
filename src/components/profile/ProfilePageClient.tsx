@@ -82,6 +82,7 @@ export function ProfilePageClient() {
                             username: profile.username || DEFAULT_PROFILE_USERNAME,
                             avatar_preset: profile.avatar_preset || DEFAULT_AVATAR_PRESET,
                             bio: profile.bio || "",
+                            deepseek_api_key: profile.deepseek_api_key || "",
                             learning_preferences: profile.learning_preferences || DEFAULT_LEARNING_PREFERENCES,
                         }}
                         onSave={async (payload) => {

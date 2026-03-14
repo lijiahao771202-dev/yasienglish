@@ -1,6 +1,17 @@
-
 import { NextResponse } from 'next/server';
 import OpenAI from 'openai';
+
+import { getLocalWhisperHealth, transcribeWithLocalWhisper } from '@/lib/local-whisper';
+
+export const runtime = "nodejs";
+
+export async function GET() {
+    const health = getLocalWhisperHealth();
+    return NextResponse.json({
+        ready: health.ready,
+        mode: health.ready ? "local" : "cloud",
+    });
+}
 
 export async function POST(req: Request) {
     // Intelligent Configuration for Whisper
@@ -50,31 +61,16 @@ export async function POST(req: Request) {
 
         console.log(`[Transcribe] Processing file: ${file.name}, size: ${file.size}, type: ${file.type}, prompt_len: ${prompt?.length || 0}`);
 
-        // PRIORITY 1: Try Local Whisper Server (localhost:3002)
+        // PRIORITY 1: Try bundled local Whisper runtime
         try {
-            console.log('[Transcribe] Attempting Local Whisper (port 3002)...');
             const arrayBuffer = await file.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
-
-            // Note: whisper-server.js expects raw body or similar? 
-            // Checking score/route.ts: it sends 'body: buffer'.
-            // Let's replicate score/route.ts logic exactly.
-
-            const localRes = await fetch('http://localhost:3002/transcribe', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/octet-stream' },
-                body: buffer,
-            });
-
-            if (localRes.ok) {
-                const localData = await localRes.json();
-                console.log('[Transcribe] Local Whisper Success:', localData.text?.slice(0, 50));
-                return NextResponse.json({ text: localData.text });
-            } else {
-                console.warn('[Transcribe] Local Whisper returned Error:', await localRes.text());
+            const localData = await transcribeWithLocalWhisper(buffer, prompt || undefined);
+            if (localData.text) {
+                return NextResponse.json({ text: localData.text, mode: "local" });
             }
         } catch (localErr) {
-            console.warn('[Transcribe] Local Whisper unavailable, falling back to OpenAI Cloud.');
+            console.warn('[Transcribe] Local Whisper unavailable, falling back to OpenAI Cloud.', localErr);
         }
 
         // PRIORITY 2: OpenAI Cloud (Fallback)
@@ -85,7 +81,7 @@ export async function POST(req: Request) {
             prompt: prompt || undefined, // Inject context
         });
 
-        return NextResponse.json({ text: transcription.text });
+        return NextResponse.json({ text: transcription.text, mode: "cloud" });
 
     } catch (error: any) {
         console.error('Transcription error details:', error);

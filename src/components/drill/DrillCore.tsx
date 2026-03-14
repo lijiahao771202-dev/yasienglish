@@ -1446,9 +1446,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     useEffect(() => {
         if (typeof window === 'undefined') return;
 
+        const isLocalDesktopHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const shouldProbeLocalWhisper =
-            window.location.hostname === 'localhost' &&
-            window.localStorage.getItem('probe_local_whisper') === '1';
+            isLocalDesktopHost
+            || window.localStorage.getItem('probe_local_whisper') === '1';
 
         if (!shouldProbeLocalWhisper) {
             setServerStatus('offline');
@@ -1459,9 +1460,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
         const checkServer = async () => {
             try {
-                const res = await fetch('http://localhost:3002/health', { cache: 'no-store' });
+                const res = await fetch('/api/ai/transcribe', { cache: 'no-store' });
                 if (!isCancelled) {
-                    setServerStatus(res.ok ? 'online' : 'offline');
+                    const data = await res.json().catch(() => ({ ready: false }));
+                    setServerStatus(res.ok && data.ready ? 'online' : 'offline');
                 }
             } catch {
                 if (!isCancelled) {

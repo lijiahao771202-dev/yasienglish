@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createDeepSeekClientForCurrentUser } from "@/lib/deepseek";
 
 export async function POST(req: NextRequest) {
     try {
@@ -28,29 +29,21 @@ export async function POST(req: NextRequest) {
         }
         `;
 
-        const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.DEEPSEEK_API_KEY}`
-            },
-            body: JSON.stringify({
-                model: "deepseek-chat",
-                messages: [
-                    { role: "system", content: "You are a helpful AI English coach." },
-                    { role: "user", content: prompt }
-                ],
-                temperature: 0.7,
-                response_format: { type: "json_object" }
-            })
+        const deepseek = await createDeepSeekClientForCurrentUser();
+        const completion = await deepseek.chat.completions.create({
+            model: "deepseek-chat",
+            messages: [
+                { role: "system", content: "You are a helpful AI English coach." },
+                { role: "user", content: prompt },
+            ],
+            temperature: 0.7,
+            response_format: { type: "json_object" },
         });
 
-        if (!response.ok) {
-            throw new Error('DeepSeek API failed');
+        const content = completion.choices[0].message.content;
+        if (!content) {
+            throw new Error("No content received from DeepSeek");
         }
-
-        const data = await response.json();
-        const content = data.choices[0].message.content;
         const feedback = JSON.parse(content);
 
         return NextResponse.json(feedback);
