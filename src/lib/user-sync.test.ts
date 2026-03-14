@@ -4,6 +4,9 @@ import {
     buildProfilePatch,
     createDefaultLocalProfile,
     createLocalVocabularyItem,
+    DEFAULT_AVATAR_PRESET,
+    DEFAULT_LEARNING_PREFERENCES,
+    DEFAULT_PROFILE_USERNAME,
     normalizeWordKey,
     toLocalProfile,
 } from "./user-sync";
@@ -17,9 +20,24 @@ describe("user sync helpers", () => {
         const profile = createDefaultLocalProfile("user-1");
 
         expect(profile.user_id).toBe("user-1");
-        expect(profile.elo_rating).toBe(600);
-        expect(profile.listening_elo).toBe(600);
+        expect(profile.elo_rating).toBe(400);
+        expect(profile.listening_elo).toBe(400);
+        expect(profile.max_elo).toBe(400);
+        expect(profile.listening_max_elo).toBe(400);
+        expect(profile.coins).toBe(500);
+        expect(profile.inventory).toEqual({
+            capsule: 10,
+            hint_ticket: 10,
+            vocab_ticket: 10,
+            audio_ticket: 10,
+            refresh_ticket: 10,
+        });
+        expect(profile.owned_themes).toEqual(["morning_coffee"]);
+        expect(profile.active_theme).toBe("morning_coffee");
         expect(profile.hints).toBe(profile.inventory?.capsule);
+        expect(profile.username).toBe(DEFAULT_PROFILE_USERNAME);
+        expect(profile.avatar_preset).toBe(DEFAULT_AVATAR_PRESET);
+        expect(profile.learning_preferences).toEqual(DEFAULT_LEARNING_PREFERENCES);
         expect(profile.sync_status).toBe("pending");
     });
 
@@ -41,6 +59,15 @@ describe("user sync helpers", () => {
             },
             owned_themes: ["morning_coffee", "sakura"],
             active_theme: "sakura",
+            username: "Luna",
+            avatar_preset: "peach-spark",
+            bio: "Practice makes flow.",
+            learning_preferences: {
+                target_mode: "battle",
+                english_level: "B2",
+                daily_goal_minutes: 35,
+                ui_theme_preference: "bubblegum_pop",
+            },
             updated_at: "2026-03-13T12:00:00.000Z",
             last_practice_at: "2026-03-13T11:59:00.000Z",
         });
@@ -48,6 +75,10 @@ describe("user sync helpers", () => {
         expect(localProfile.elo_rating).toBe(900);
         expect(localProfile.listening_elo).toBe(720);
         expect(localProfile.hints).toBe(18);
+        expect(localProfile.username).toBe("Luna");
+        expect(localProfile.avatar_preset).toBe("peach-spark");
+        expect(localProfile.bio).toBe("Practice makes flow.");
+        expect(localProfile.learning_preferences?.target_mode).toBe("battle");
         expect(localProfile.sync_status).toBe("synced");
     });
 
@@ -55,11 +86,29 @@ describe("user sync helpers", () => {
         const patch = buildProfilePatch({
             coins: 42,
             active_theme: "golden_hour",
+            username: "Nova",
+            avatar_preset: "mint-orbit",
+            bio: "Focused and playful.",
+            learning_preferences: {
+                target_mode: "vocab",
+                english_level: "C1",
+                daily_goal_minutes: 45,
+                ui_theme_preference: "starlight_arcade",
+            },
         });
 
         expect(patch).toEqual({
             coins: 42,
             active_theme: "golden_hour",
+            username: "Nova",
+            avatar_preset: "mint-orbit",
+            bio: "Focused and playful.",
+            learning_preferences: {
+                target_mode: "vocab",
+                english_level: "C1",
+                daily_goal_minutes: 45,
+                ui_theme_preference: "starlight_arcade",
+            },
         });
     });
 

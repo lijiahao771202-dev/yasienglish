@@ -1,22 +1,22 @@
 "use client";
 
-import Link from "next/link";
-import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, useMemo, useState } from "react";
 
-import { APP_HOME_PATH } from "@/lib/auth-routing";
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 
 const fieldLabelClassName = "text-[0.82rem] font-medium text-[#716b78]";
 const fieldInputClassName = "h-14 w-full rounded-[1rem] border border-[#d9dfea] bg-white px-4 text-[15px] text-[#18141e] shadow-[0_12px_24px_-24px_rgba(15,23,42,0.55)] outline-none transition placeholder:text-[#b5b0bd] focus:border-[#8ab2db] focus:ring-2 focus:ring-[#d7e8fb]";
 const primaryButtonClassName = "inline-flex h-14 w-full cursor-pointer items-center justify-center rounded-[1rem] bg-[#18141e] text-sm font-semibold text-white shadow-[0_26px_36px_-26px_rgba(15,23,42,0.92)] transition hover:bg-[#27212f] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#18141e] disabled:cursor-not-allowed disabled:opacity-60";
 
-export function LoginForm() {
-    const router = useRouter();
+export function ForgotPasswordForm() {
     const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
-    const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
+    const [status, setStatus] = useState<"idle" | "loading" | "sent" | "error">("idle");
     const [message, setMessage] = useState("");
+
+    const redirectTo = useMemo(() => {
+        if (typeof window === "undefined") return "";
+        return `${window.location.origin}/auth/callback?next=%2Freset-password`;
+    }, []);
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -25,17 +25,17 @@ export function LoginForm() {
 
         try {
             const supabase = createBrowserClientSingleton();
-            const { error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
+            const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                redirectTo,
             });
 
             if (error) throw error;
 
-            router.replace(APP_HOME_PATH);
+            setStatus("sent");
+            setMessage("重置密码链接已经发出，请去邮箱继续。");
         } catch (error) {
             setStatus("error");
-            setMessage(error instanceof Error ? error.message : "登录失败，请重试。");
+            setMessage(error instanceof Error ? error.message : "发送失败，请稍后再试。");
         }
     };
 
@@ -43,45 +43,25 @@ export function LoginForm() {
         <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-2.5">
                 <label htmlFor="email" className={fieldLabelClassName}>
-                    邮箱
+                    注册邮箱
                 </label>
                 <input
                     id="email"
                     type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
-                    placeholder="you@example.com"
+                    placeholder="you@yasi.app"
                     required
                     autoComplete="email"
                     className={fieldInputClassName}
                 />
             </div>
-            <div className="space-y-2.5">
-                <div className="flex items-center justify-between gap-4">
-                    <label htmlFor="password" className={fieldLabelClassName}>
-                        密码
-                    </label>
-                    <Link href="/forgot-password" className="text-[0.8rem] font-semibold text-[#4b8fd2] transition hover:text-[#236fc4]">
-                        忘记密码？
-                    </Link>
-                </div>
-                <input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="••••••••"
-                    required
-                    autoComplete="current-password"
-                    className={fieldInputClassName}
-                />
-            </div>
             <button
                 type="submit"
-                disabled={status === "loading" || !email || !password}
+                disabled={status === "loading" || !email}
                 className={primaryButtonClassName}
             >
-                {status === "loading" ? "Signing in..." : "Sign in"}
+                {status === "loading" ? "Sending..." : "Send reset link"}
             </button>
             {message ? (
                 <p className={`text-sm ${status === "error" ? "text-rose-600" : "text-emerald-600"}`}>

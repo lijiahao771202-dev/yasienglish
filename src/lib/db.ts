@@ -1,4 +1,5 @@
 import Dexie, { Table } from 'dexie';
+import type { LearningPreferences } from "@/lib/profile-settings";
 
 export type SyncStatus = 'synced' | 'pending' | 'error';
 
@@ -107,11 +108,15 @@ export interface LocalUserProfile extends SyncTracked {
     inventory?: InventoryState;
     owned_themes?: string[];
     active_theme?: string;
+    username?: string;
+    avatar_preset?: string;
+    bio?: string;
+    learning_preferences?: LearningPreferences;
 }
 
 export interface SyncOutboxItem {
     id?: number;
-    entity: 'profile' | 'vocabulary' | 'writing_history' | 'read_articles';
+    entity: 'profile' | 'vocabulary' | 'writing_history' | 'read_articles' | 'elo_history';
     operation: 'upsert' | 'delete' | 'settle';
     payload: any;
     record_key: string;
@@ -422,6 +427,95 @@ export class YasiDB extends Dexie {
             await tx.table('user_profile').toCollection().modify((item: LocalUserProfile) => {
                 item.updated_at = item.updated_at || now;
                 item.sync_status = item.sync_status || 'pending';
+            });
+        });
+
+        // Version 19: Add profile identity and learning preference fields.
+        this.version(19).stores({
+            ai_cache: '++id, &key, type, timestamp',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            const {
+                DEFAULT_AVATAR_PRESET,
+                DEFAULT_LEARNING_PREFERENCES,
+                DEFAULT_PROFILE_USERNAME,
+            } = await import("@/lib/profile-settings");
+
+            await tx.table('user_profile').toCollection().modify((item: LocalUserProfile) => {
+                item.username = item.username || DEFAULT_PROFILE_USERNAME;
+                item.avatar_preset = item.avatar_preset || DEFAULT_AVATAR_PRESET;
+                item.bio = item.bio || '';
+                item.learning_preferences = item.learning_preferences || DEFAULT_LEARNING_PREFERENCES;
+            });
+        });
+
+        // Version 20: allow one cache entry per text+analysis type instead of per text only.
+        this.version(20).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        });
+
+        // Version 21: reset Elo/economy defaults and remove legacy premium theme unlocks.
+        this.version(21).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            const nowMs = Date.now();
+            const nowIso = new Date(nowMs).toISOString();
+            const resetInventory = {
+                capsule: 10,
+                hint_ticket: 10,
+                vocab_ticket: 10,
+                audio_ticket: 10,
+                refresh_ticket: 10,
+            };
+
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                profile.elo_rating = 400;
+                profile.streak_count = 0;
+                profile.max_elo = 400;
+                profile.listening_elo = 400;
+                profile.listening_streak = 0;
+                profile.listening_max_elo = 400;
+                profile.coins = 500;
+                profile.hints = resetInventory.capsule;
+                profile.inventory = { ...resetInventory };
+                profile.owned_themes = ['morning_coffee'];
+                profile.active_theme = 'morning_coffee';
+                profile.updated_at = nowIso;
+                profile.sync_status = 'pending';
+            });
+
+            await tx.table('elo_history').clear();
+            await tx.table('sync_outbox').filter((item: SyncOutboxItem) => item.entity === 'profile' || item.entity === 'elo_history').delete();
+            await tx.table('sync_meta').put({
+                key: 'economy_reset_2026_03_14',
+                value: true,
+                updated_at: nowMs,
             });
         });
     }

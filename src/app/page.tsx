@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { HomeConsole } from "@/components/home/HomeConsole";
 
 export default function Home() {
-  redirect("/read");
+    return <HomeConsole />;
 }

@@ -8,6 +8,26 @@ import {
     type VocabItem,
     type WritingEntry,
 } from "./db";
+import {
+    DEFAULT_AVATAR_PRESET,
+    DEFAULT_LEARNING_PREFERENCES,
+    DEFAULT_PROFILE_USERNAME,
+    type LearningPreferences,
+    normalizeAvatarPreset,
+    normalizeLearningPreferences,
+    normalizeProfileBio,
+    normalizeProfileUsername,
+} from "./profile-settings";
+
+export {
+    DEFAULT_AVATAR_PRESET,
+    DEFAULT_LEARNING_PREFERENCES,
+    DEFAULT_PROFILE_USERNAME,
+    normalizeAvatarPreset,
+    normalizeLearningPreferences,
+    normalizeProfileBio,
+    normalizeProfileUsername,
+} from "./profile-settings";
 
 export interface RemoteProfileRow {
     user_id: string;
@@ -21,6 +41,10 @@ export interface RemoteProfileRow {
     inventory: InventoryState;
     owned_themes: string[];
     active_theme: string;
+    username?: string;
+    avatar_preset?: string;
+    bio?: string;
+    learning_preferences?: LearningPreferences;
     updated_at: string;
     last_practice_at: string;
 }
@@ -79,12 +103,15 @@ export interface RemoteEloHistoryRow {
     updated_at: string;
 }
 
-const DEFAULT_INVENTORY: Required<InventoryState> = {
-    capsule: 15,
-    hint_ticket: 3,
-    vocab_ticket: 2,
-    audio_ticket: 2,
-    refresh_ticket: 2,
+export const DEFAULT_BASE_ELO = 400;
+export const DEFAULT_STARTING_COINS = 500;
+export const DEFAULT_FREE_THEME = "morning_coffee";
+export const DEFAULT_INVENTORY: Required<InventoryState> = {
+    capsule: 10,
+    hint_ticket: 10,
+    vocab_ticket: 10,
+    audio_ticket: 10,
+    refresh_ticket: 10,
 };
 
 export function normalizeWordKey(word: string) {
@@ -107,18 +134,22 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
 
     return {
         user_id: userId,
-        elo_rating: 600,
+        elo_rating: DEFAULT_BASE_ELO,
         streak_count: 0,
-        max_elo: 600,
+        max_elo: DEFAULT_BASE_ELO,
         last_practice: now,
-        listening_elo: 600,
+        listening_elo: DEFAULT_BASE_ELO,
         listening_streak: 0,
-        listening_max_elo: 600,
-        coins: 0,
+        listening_max_elo: DEFAULT_BASE_ELO,
+        coins: DEFAULT_STARTING_COINS,
         hints: inventory.capsule,
         inventory,
-        owned_themes: ["morning_coffee"],
-        active_theme: "morning_coffee",
+        owned_themes: [DEFAULT_FREE_THEME],
+        active_theme: DEFAULT_FREE_THEME,
+        username: DEFAULT_PROFILE_USERNAME,
+        avatar_preset: DEFAULT_AVATAR_PRESET,
+        bio: "",
+        learning_preferences: DEFAULT_LEARNING_PREFERENCES,
         updated_at: new Date(now).toISOString(),
         sync_status: "pending",
     };
@@ -142,18 +173,35 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
         inventory,
         owned_themes: remote.owned_themes,
         active_theme: remote.active_theme,
+        username: normalizeProfileUsername(remote.username),
+        avatar_preset: normalizeAvatarPreset(remote.avatar_preset),
+        bio: normalizeProfileBio(remote.bio),
+        learning_preferences: normalizeLearningPreferences(remote.learning_preferences),
         updated_at: remote.updated_at,
         sync_status: "synced",
     };
 }
 
-export function buildProfilePatch(patch: Partial<Pick<LocalUserProfile, "coins" | "inventory" | "owned_themes" | "active_theme">>) {
+export function buildProfilePatch(
+    patch: Partial<
+        Pick<
+            LocalUserProfile,
+            "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
+        >
+    >,
+) {
     const nextPatch: Record<string, unknown> = {};
 
     if (patch.coins !== undefined) nextPatch.coins = patch.coins;
     if (patch.inventory !== undefined) nextPatch.inventory = patch.inventory;
     if (patch.owned_themes !== undefined) nextPatch.owned_themes = patch.owned_themes;
     if (patch.active_theme !== undefined) nextPatch.active_theme = patch.active_theme;
+    if (patch.username !== undefined) nextPatch.username = normalizeProfileUsername(patch.username);
+    if (patch.avatar_preset !== undefined) nextPatch.avatar_preset = normalizeAvatarPreset(patch.avatar_preset);
+    if (patch.bio !== undefined) nextPatch.bio = normalizeProfileBio(patch.bio);
+    if (patch.learning_preferences !== undefined) {
+        nextPatch.learning_preferences = normalizeLearningPreferences(patch.learning_preferences);
+    }
 
     return nextPatch;
 }
@@ -320,7 +368,10 @@ export async function upsertLocalProfile(
     };
 
     if (existing?.id) {
-        await db.user_profile.update(existing.id, nextProfile);
+        await db.user_profile.put({
+            ...nextProfile,
+            id: existing.id,
+        });
         return;
     }
 

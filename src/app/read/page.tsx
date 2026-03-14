@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { UrlInput } from "@/components/reading/UrlInput";
 import { ArticleDisplay } from "@/components/reading/ArticleDisplay";
@@ -7,7 +8,7 @@ import { AudioPlayer } from "@/components/shadowing/AudioPlayer";
 import { WritingEditor } from "@/components/writing/WritingEditor";
 import { RecommendedArticles, ArticleItem } from "@/components/reading/RecommendedArticles";
 import { ArticleSidebar } from "@/components/reading/ArticleSidebar";
-import { PenTool, ArrowLeft, Palette, Check, Edit3, Flashlight, Eye } from "lucide-react";
+import { PenTool, ArrowLeft, House, Palette, Check, Edit3, Flashlight, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import axios from "axios";
 import { useUserStore } from "@/lib/store";
@@ -65,25 +66,8 @@ function ReadingPageContent() {
             const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
             const lastFetchDate = localStorage.getItem('last_daily_fetch_date');
 
-            // 1. Try to restore last reading session first
-            const lastArticle = await db.articles.orderBy('timestamp').last();
-            if (lastArticle && !article) {
-                console.log("Restoring last article:", lastArticle.title);
-                setArticle({
-                    title: lastArticle.title,
-                    content: lastArticle.content,
-                    textContent: lastArticle.textContent,
-                    byline: lastArticle.byline,
-                    siteName: lastArticle.siteName,
-                    blocks: lastArticle.blocks,
-                    url: lastArticle.url
-                });
-                setCurrentUrl(lastArticle.url);
-            }
-
-            // 2. Daily Fetch Check
+            // Warm the local cache without hijacking the picker UI.
             if (lastFetchDate !== today) {
-                console.log("Triggering daily article fetch...");
                 try {
                     // Fetch feed list
                     const feedRes = await axios.get('/api/feed?category=news');
@@ -94,13 +78,10 @@ function ReadingPageContent() {
                                 return db.articles.get({ url: candidateUrl });
                             },
                             parseArticle: async (candidateUrl) => {
-                                console.log("Downloading new daily article:", candidateUrl);
                                 const parseRes = await axios.post("/api/parse", { url: candidateUrl });
                                 return parseRes.data;
                             },
-                            onParseFailure: (candidateUrl, parseError) => {
-                                console.warn("Daily article parse failed, trying next candidate:", candidateUrl, parseError);
-                            },
+                            onParseFailure: () => undefined,
                         });
 
                         if (resolved && resolved.source === "parsed") {
@@ -116,15 +97,11 @@ function ReadingPageContent() {
                                 image: articleData.image,
                                 timestamp: Date.now()
                             });
-
-                            console.log("Daily article saved.");
-                        } else if (!resolved) {
-                            console.warn("No parseable daily article candidate found.");
                         }
                     }
                     localStorage.setItem('last_daily_fetch_date', today);
-                } catch (err) {
-                    console.error("Daily fetch failed:", err);
+                } catch {
+                    // Background warming should fail silently and keep the picker usable.
                 }
             }
         };
@@ -138,7 +115,6 @@ function ReadingPageContent() {
     const [currentUrl, setCurrentUrl] = useState<string>("");
 
     const handleUrlSubmit = async (url: string) => {
-        console.log('handleUrlSubmit called with:', url);
         setIsLoading(true);
         setError(null);
         setCurrentUrl(url);
@@ -148,7 +124,6 @@ function ReadingPageContent() {
             const cached = await db.articles.get({ url });
 
             if (cached) {
-                console.log("Loaded from cache:", cached.title);
                 setArticle({
                     title: cached.title,
                     content: cached.content,
@@ -168,7 +143,6 @@ function ReadingPageContent() {
 
             const response = await axios.post("/api/parse", { url });
             const finalUrl = response.data.url || url;
-            console.log('Setting article with URL:', finalUrl);
 
             const articleData = { ...response.data, url: finalUrl };
             setArticle(articleData);
@@ -217,8 +191,15 @@ function ReadingPageContent() {
             {/* Floating Navigation Dock */}
             <nav className="fixed top-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-500">
                 <div className="glass-panel bg-white/70 backdrop-blur-xl rounded-full px-2 py-1.5 flex items-center gap-1 shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/50 ring-1 ring-black/5">
+                    <Link
+                        href="/"
+                        className="w-10 h-10 flex items-center justify-center rounded-full text-stone-500 hover:text-stone-900 hover:bg-white/80 transition-all group"
+                        title="Back to Welcome"
+                    >
+                        <House className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />
+                    </Link>
 
-                    {/* Home / Back */}
+                    {/* Article List Back */}
                     {article && (
                         <button
                             onClick={() => {
@@ -228,7 +209,7 @@ function ReadingPageContent() {
                                 setIsEditMode(false);
                             }}
                             className="w-10 h-10 flex items-center justify-center rounded-full text-stone-500 hover:text-stone-900 hover:bg-white/80 transition-all group"
-                            title="Back to Home"
+                            title="Back to Article Picker"
                         >
                             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
                         </button>

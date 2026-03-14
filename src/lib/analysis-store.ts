@@ -24,7 +24,9 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
         }));
         // 2. Update DB
         try {
+            const existing = await db.ai_cache.where("[key+type]").equals([text, "translation"]).first();
             await db.ai_cache.put({
+                id: existing?.id,
                 key: text,
                 type: 'translation',
                 data: translation,
@@ -42,7 +44,9 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
         }));
         // 2. Update DB
         try {
+            const existing = await db.ai_cache.where("[key+type]").equals([text, "grammar"]).first();
             await db.ai_cache.put({
+                id: existing?.id,
                 key: text,
                 type: 'grammar',
                 data: analysis,
@@ -58,8 +62,8 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
         if (get().translations[text] && get().grammarAnalyses[text]) return;
 
         try {
-            const translationItem = await db.ai_cache.where({ key: text, type: 'translation' }).first();
-            const grammarItem = await db.ai_cache.where({ key: text, type: 'grammar' }).first();
+            const translationItem = await db.ai_cache.where("[key+type]").equals([text, "translation"]).first();
+            const grammarItem = await db.ai_cache.where("[key+type]").equals([text, "grammar"]).first();
 
             set((state) => ({
                 translations: translationItem ? { ...state.translations, [text]: translationItem.data } : state.translations,

@@ -15,7 +15,6 @@ import { DeathFX } from "./DeathFX";
 import { BossScoreReveal } from "./BossScoreReveal";
 import { RouletteOverlay } from "./RouletteOverlay";
 import { GachaOverlay } from "./GachaOverlay";
-import { DrillDebug } from "../debug/DrillDebug";
 import { ScoringFlipCard } from "./ScoringFlipCard";
 import { TeachingCard } from "./TeachingCard";
 import { TranslationAnalysisJourney } from "./TranslationAnalysisJourney";
@@ -255,11 +254,11 @@ const ECONOMY_COIN_ABSORB = [
 ] as const;
 
 const DEFAULT_INVENTORY: InventoryState = {
-    capsule: 15,
-    hint_ticket: 3,
-    vocab_ticket: 2,
-    audio_ticket: 2,
-    refresh_ticket: 2,
+    capsule: 10,
+    hint_ticket: 10,
+    vocab_ticket: 10,
+    audio_ticket: 10,
+    refresh_ticket: 10,
 };
 
 const ITEM_CATALOG: Record<ShopItemId, { id: ShopItemId; name: string; price: number; icon: string; consumeAction: string; description: string; }> = {
@@ -637,6 +636,14 @@ const COSMETIC_THEME_UI: Record<CosmeticThemeId, CosmeticThemeUi> = {
 };
 
 const ALL_THEME_IDS = Object.keys(COSMETIC_THEMES) as CosmeticThemeId[];
+const DEFAULT_BASE_ELO = 400;
+const DEFAULT_STARTING_COINS = 500;
+const DEFAULT_FREE_THEME: CosmeticThemeId = "morning_coffee";
+
+const normalizeOwnedThemes = (ownedThemes?: string[] | null): CosmeticThemeId[] => {
+    const validThemes = (ownedThemes ?? []).filter((themeId): themeId is CosmeticThemeId => themeId in COSMETIC_THEMES);
+    return validThemes.length ? Array.from(new Set(validThemes)) : [DEFAULT_FREE_THEME];
+};
 
 const getStreakTier = (streak: number): StreakTier => {
     if (streak >= 10) return 4;
@@ -873,19 +880,19 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
 
     // Elo State
-    const [eloRating, setEloRating] = useState(600); // Translation Elo
+    const [eloRating, setEloRating] = useState(DEFAULT_BASE_ELO); // Translation Elo
     const [streakCount, setStreakCount] = useState(0);
 
-    const [listeningElo, setListeningElo] = useState(600);
+    const [listeningElo, setListeningElo] = useState(DEFAULT_BASE_ELO);
     const [listeningStreak, setListeningStreak] = useState(0);
     const [isEloLoaded, setIsEloLoaded] = useState(false); // Track if Elo has been loaded from DB
-    const eloRatingRef = useRef(600);
-    const listeningEloRef = useRef(600);
-    const coinsRef = useRef(0);
+    const eloRatingRef = useRef(DEFAULT_BASE_ELO);
+    const listeningEloRef = useRef(DEFAULT_BASE_ELO);
+    const coinsRef = useRef(DEFAULT_STARTING_COINS);
     const inventoryRef = useRef<InventoryState>({ ...DEFAULT_INVENTORY });
 
     // Hint Economy State
-    const [coins, setCoins] = useState(0);
+    const [coins, setCoins] = useState(DEFAULT_STARTING_COINS);
     const [inventory, setInventory] = useState<InventoryState>({ ...DEFAULT_INVENTORY });
     const [isHintShake, setIsHintShake] = useState(false);
     const [isHintLoading, setIsHintLoading] = useState(false);
@@ -913,8 +920,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     // Cosmetic Theme State
     const [cosmeticTheme, setCosmeticTheme] = useState<CosmeticThemeId>('morning_coffee');
-    const [ownedThemes, setOwnedThemes] = useState<CosmeticThemeId[]>([...ALL_THEME_IDS]); // ALL UNLOCKED for testing
-    const activeCosmeticTheme = COSMETIC_THEMES[cosmeticTheme] || COSMETIC_THEMES.morning_coffee;
+    const [ownedThemes, setOwnedThemes] = useState<CosmeticThemeId[]>([DEFAULT_FREE_THEME]);
+    const activeCosmeticTheme = COSMETIC_THEMES[cosmeticTheme] || COSMETIC_THEMES[DEFAULT_FREE_THEME];
     const activeCosmeticUi = COSMETIC_THEME_UI[cosmeticTheme] || COSMETIC_THEME_UI.morning_coffee;
     const isShopInventoryExpanded = shouldExpandShopInventoryDock({
         hasHoverSupport: shopDockHasHoverSupport,
@@ -1003,7 +1010,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             body: JSON.stringify({
                 chinese: targetDrillData.chinese,
                 reference_english: targetDrillData.reference_english,
-                elo: eloRatingRef.current || 600,
+                elo: eloRatingRef.current || DEFAULT_BASE_ELO,
                 topic: targetDrillData._topicMeta?.topic || context.articleTitle || context.topic,
             }),
             signal,
@@ -1547,7 +1554,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         loadLocalProfile().then((profile) => {
                             if (!profile) return;
                             const maxElo = isListeningMode
-                                ? Math.max(profile.listening_max_elo || 600, newElo)
+                                ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
                                 : Math.max(profile.max_elo, newElo);
 
                             return settleBattle({
@@ -1556,7 +1563,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                 change: -penalty,
                                 streak: 0,
                                 maxElo,
-                                coins: profile.coins ?? 0,
+                                coins: profile.coins ?? DEFAULT_STARTING_COINS,
                                 source: 'timeout_penalty',
                             });
                         }).catch((error) => {
@@ -1940,7 +1947,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (elo < 3200) return { level: 'Level 8', label: 'C2+ 王者', cefr: 'C2+', color: 'text-purple-600', desc: '极限挑战' };
         return { level: 'Level 9', label: '☠️ 处决', cefr: '∞', color: 'text-red-500', desc: '惩罚级难度' };
     };
-    const eloDifficulty = getEloDifficulty(currentElo || 600, mode);
+    const eloDifficulty = getEloDifficulty(currentElo || DEFAULT_BASE_ELO, mode);
 
     const [eloChange, setEloChange] = useState<number | null>(null);
     const [eloBreakdown, setEloBreakdown] = useState<{
@@ -2012,35 +2019,45 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 setStreakCount(profile.streak_count);
 
                 // Load Listening Stats (Fallback if undefined post-migration in memory before reload)
-                setListeningElo(profile.listening_elo ?? 600);
+                setListeningElo(profile.listening_elo ?? DEFAULT_BASE_ELO);
                 setListeningStreak(profile.listening_streak ?? 0);
                 eloRatingRef.current = profile.elo_rating;
-                listeningEloRef.current = profile.listening_elo ?? 600;
+                listeningEloRef.current = profile.listening_elo ?? DEFAULT_BASE_ELO;
 
                 // Load Hint Economy Stats
-                const loadedCoins = profile.coins ?? 0;
+                const loadedCoins = profile.coins ?? DEFAULT_STARTING_COINS;
                 const loadedInventory = normalizeInventory(profile.inventory, profile.hints);
                 coinsRef.current = loadedCoins;
                 inventoryRef.current = loadedInventory;
                 setCoins(loadedCoins);
                 setInventory(loadedInventory);
 
-                // Load Cosmetic Themes — all unlocked for now
-                setOwnedThemes([...ALL_THEME_IDS]);
-                const loadedActive = (profile.active_theme && profile.active_theme in COSMETIC_THEMES) ? profile.active_theme as CosmeticThemeId : 'morning_coffee';
+                const loadedOwnedThemes = normalizeOwnedThemes(profile.owned_themes);
+                setOwnedThemes(loadedOwnedThemes);
+                const loadedActive = (
+                    profile.active_theme
+                    && loadedOwnedThemes.includes(profile.active_theme as CosmeticThemeId)
+                    && profile.active_theme in COSMETIC_THEMES
+                )
+                    ? profile.active_theme as CosmeticThemeId
+                    : DEFAULT_FREE_THEME;
                 setCosmeticTheme(loadedActive);
 
                 setIsEloLoaded(true); // Mark Elo as loaded
             } else {
                 const initialInventory = { ...DEFAULT_INVENTORY };
-                eloRatingRef.current = 600;
-                listeningEloRef.current = 600;
-                coinsRef.current = 0;
+                setEloRating(DEFAULT_BASE_ELO);
+                setStreakCount(0);
+                setListeningElo(DEFAULT_BASE_ELO);
+                setListeningStreak(0);
+                eloRatingRef.current = DEFAULT_BASE_ELO;
+                listeningEloRef.current = DEFAULT_BASE_ELO;
+                coinsRef.current = DEFAULT_STARTING_COINS;
                 inventoryRef.current = initialInventory;
-                setCoins(0);
+                setCoins(DEFAULT_STARTING_COINS);
                 setInventory(initialInventory);
-                setOwnedThemes([...ALL_THEME_IDS]);
-                setCosmeticTheme('morning_coffee');
+                setOwnedThemes([DEFAULT_FREE_THEME]);
+                setCosmeticTheme(DEFAULT_FREE_THEME);
                 setIsEloLoaded(true); // Mark Elo as loaded (new profile)
             }
         };
@@ -2433,7 +2450,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             const penalty = 50;
             const isListening = mode === 'listening';
             const activeElo = isListening ? listeningElo : eloRating;
-            const newElo = Math.max(0, (activeElo || 600) - penalty);
+            const newElo = Math.max(0, (activeElo || DEFAULT_BASE_ELO) - penalty);
 
             setEloChange(-penalty);
             setLootDrop({
@@ -2451,7 +2468,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             loadLocalProfile().then((profile) => {
                 if (!profile) return;
                 const maxElo = isListening
-                    ? Math.max(profile.listening_max_elo || 600, newElo)
+                    ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
                     : Math.max(profile.max_elo, newElo);
 
                 return settleBattle({
@@ -2460,7 +2477,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     change: -penalty,
                     streak: 0,
                     maxElo,
-                    coins: profile.coins ?? 0,
+                    coins: profile.coins ?? DEFAULT_STARTING_COINS,
                     source: 'roulette_penalty',
                 });
             }).catch((error) => {
@@ -2876,7 +2893,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             : Math.max(guidedCurrentAttemptCount, (guidedChoicesVisible || guidedRevealReady) ? 3 : 0);
         const guidedKey = getGuidedScriptKey(
             drillData,
-            eloRatingRef.current || 600,
+            eloRatingRef.current || DEFAULT_BASE_ELO,
             context.articleTitle || context.topic,
         );
         const requestCount = guidedAiHintRequestCountRef.current + 1;
@@ -3105,7 +3122,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     user_translation: userTranslation,
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
-                    current_elo: activeElo || 600,
+                    current_elo: activeElo || DEFAULT_BASE_ELO,
                     mode,
                     teaching_mode: teachingMode,
                 }),
@@ -3200,8 +3217,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     };
                 };
 
-                const challengeElo = drillData?._difficultyMeta?.requestedElo ?? activeElo ?? 600;
-                const result = calculateAdvancedElo(activeElo || 600, challengeElo, data.score, activeStreak);
+                const challengeElo = drillData?._difficultyMeta?.requestedElo ?? activeElo ?? DEFAULT_BASE_ELO;
+                const result = calculateAdvancedElo(activeElo || DEFAULT_BASE_ELO, challengeElo, data.score, activeStreak);
                 let change = result.total;
                 let newStreak = activeStreak;
 
@@ -3350,11 +3367,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 }
 
                 // === Elo Update Logic (ALWAYS EXECUTED) ===
-                const newElo = Math.max(0, (activeElo || 600) + change);
+                const newElo = Math.max(0, (activeElo || DEFAULT_BASE_ELO) + change);
                 prefetchNextElo = newElo;
 
                 // Rank Change Detection
-                const oldRank = getRank(activeElo || 600);
+                const oldRank = getRank(activeElo || DEFAULT_BASE_ELO);
                 const newRank = getRank(newElo);
                 if (newRank.title !== oldRank.title && change > 0) {
                     // Rank UP!
@@ -3471,7 +3488,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 const profile = await loadLocalProfile();
                 if (profile) {
                     const maxElo = isListening
-                        ? Math.max(profile.listening_max_elo || 600, newElo)
+                        ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
                         : Math.max(profile.max_elo, newElo);
 
                     await settleBattle({
@@ -3532,7 +3549,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     user_translation: userTranslation,
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
-                    current_elo: activeElo || 600,
+                    current_elo: activeElo || DEFAULT_BASE_ELO,
                     score: drillFeedback.score,
                     mode,
                     teaching_mode: teachingMode,
@@ -3570,7 +3587,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     user_translation: userTranslation,
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
-                    current_elo: activeElo || 600,
+                    current_elo: activeElo || DEFAULT_BASE_ELO,
                     score: drillFeedback.score,
                     mode,
                     teaching_mode: teachingMode,
@@ -5477,7 +5494,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                 <div className="flex items-center h-[38px] px-0.5 bg-white/60 backdrop-blur-xl rounded-full border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 overflow-hidden transition-all shrink-0">
                                     {/* Rank Section */}
                                     {(() => {
-                                        const rank = getRank(currentElo || 600);
+                                        const rank = getRank(currentElo || DEFAULT_BASE_ELO);
                                         return bossState.type === 'roulette_execution' ? (
                                             <div className="flex items-center gap-1.5 px-3 h-full rounded-full bg-red-900/10 text-red-700/90">
                                                 <Skull className="w-[14px] h-[14px] text-red-500" />
@@ -5493,7 +5510,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                 <rank.icon className="w-[14px] h-[14px]" />
                                                 <span className="font-bold text-[11px] tracking-wider uppercase drop-shadow-sm">{rank.title}</span>
                                                 <div className="w-[1px] h-3 bg-current opacity-20 mx-0.5" />
-                                                <span className="font-newsreader font-medium italic text-[13px]">{currentElo || 600}</span>
+                                                <span className="font-newsreader font-medium italic text-[13px]">{currentElo || DEFAULT_BASE_ELO}</span>
                                             </div>
                                         );
                                     })()}
@@ -5734,7 +5751,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     body: JSON.stringify({
                                                         chinese: drillData.chinese,
                                                         reference_english: drillData.reference_english,
-                                                        elo: eloRating || 600,
+                                                        elo: eloRating || DEFAULT_BASE_ELO,
                                                     }),
                                                 })
                                                     .then(r => r.json())
@@ -6452,7 +6469,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                 <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150 mt-4 w-full max-w-sm">
                                                                     {/* Rank Progress Bar */}
                                                                     {(() => {
-                                                                        const rank = getRank(currentElo || 600);
+                                                                        const rank = getRank(currentElo || DEFAULT_BASE_ELO);
                                                                         return (
                                                                             <div className="w-full mb-4">
                                                                                 <div className="flex justify-between text-xs font-bold text-stone-400 mb-1.5 uppercase tracking-wider">
@@ -7428,16 +7445,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 </AnimatePresence>
 
             </motion.div>
-            {/* DEBUGGER */}
-            {process.env.NODE_ENV !== 'production' && (
-                <DrillDebug
-                    key="debugger"
-                    onTriggerBoss={handleDebugBossTrigger}
-                    onTriggerEconomyFx={handleDebugEconomyFx}
-                    onTriggerLootDrop={handleDebugLootDrop}
-                    onTriggerGacha={handleDebugGacha}
-                />
-            )}
 
             {/* ROULETTE OVERLAY */}
             <AnimatePresence key="roulette-overlay">

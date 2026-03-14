@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
 
 import { AuthShell } from "@/components/auth/AuthShell";
-import { LoginForm } from "@/components/auth/LoginForm";
+import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
 import { getAuthPageErrorMessage } from "@/lib/auth-errors";
 import { APP_HOME_PATH } from "@/lib/auth-routing";
 import { getServerUserSafely } from "@/lib/supabase/server";
 
-export default async function LoginPage({
+export default async function ForgotPasswordPage({
     searchParams,
 }: {
     searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -21,18 +21,18 @@ export default async function LoginPage({
 
     return (
         <AuthShell
-            badge="sign in"
-            title="Sign in"
-            description="邮箱密码登录后，Yasi 会先从云端恢复你的词汇、Elo、写作和阅读进度，再把这一台设备的本地体验重新点亮。"
+            badge="recover"
+            title="Recover access"
+            description="我们会把重置链接发到你的邮箱，点开以后就能进入新的密码设置页。流程走完后，你会回到自己的主页。"
             alert={getAuthPageErrorMessage(errorCode)}
-            footerLabel="No account?"
-            footerCta="Sign up"
-            footerHref="/register"
-            secondaryText="Need help?"
-            secondaryLabel="Forgot password"
-            secondaryHref="/forgot-password"
+            footerLabel="Remembered it?"
+            footerCta="Back to sign in"
+            footerHref="/login"
+            secondaryText="Need an account?"
+            secondaryLabel="Sign up first"
+            secondaryHref="/register"
         >
-            <LoginForm />
+            <ForgotPasswordForm />
         </AuthShell>
     );
 }
