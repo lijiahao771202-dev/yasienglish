@@ -13,9 +13,9 @@
     "test:unit": "vitest run",
     "desktop:prepare": "node scripts/prepare-electron-bundle.mjs",
     "desktop:bundle": "npm run build && npm run desktop:prepare",
-    "desktop:build": "npm run desktop:bundle && electron-builder --mac dmg zip",
-    "desktop:build:mac": "npm run desktop:bundle && electron-builder --mac dmg zip",
-    "desktop:build:win": "npm run desktop:bundle && electron-builder --win nsis zip"
+    "desktop:build": "npm run desktop:bundle && electron-builder --publish never --mac dmg zip",
+    "desktop:build:mac": "npm run desktop:bundle && electron-builder --publish never --mac dmg zip",
+    "desktop:build:win": "npm run desktop:bundle && electron-builder --publish never --win nsis zip"
   },
   "dependencies": {
     "@andresaya/edge-tts": "^1.8.0",
