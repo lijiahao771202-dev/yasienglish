@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, Play, Square, RotateCcw, Volume2, Loader2, X, Eye, EyeOff, CheckCircle2, AlertCircle, Sparkles, Lightbulb, Repeat } from 'lucide-react';
+import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { cn } from '@/lib/utils';
-import { WaveformVisualizer } from './WaveformVisualizer';
+import { SpeechModelStatusPanel } from '@/components/speech/SpeechModelStatusPanel';
 
 interface SpeakingPanelProps {
     text: string;
@@ -23,183 +24,63 @@ export function SpeakingPanel({
     isBlind,
     onToggleBlind
 }: SpeakingPanelProps) {
-    const [isRecording, setIsRecording] = useState(false);
-    const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-    const [isProcessing, setIsProcessing] = useState(false);
     const [reviewResults, setReviewResults] = useState<any>(null);
     const [aiFeedback, setAiFeedback] = useState<any>(null);
     const [isAiLoading, setIsAiLoading] = useState(false);
     const [showReview, setShowReview] = useState(false);
     const [recordingDuration, setRecordingDuration] = useState(0);
-    const [stream, setStream] = useState<MediaStream | null>(null);
     const [isEchoMode, setIsEchoMode] = useState(false);
     const [isBlindChallenge, setIsBlindChallenge] = useState(false);
-
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const chunksRef = useRef<Blob[]>([]);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
-    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const lastAnalyzedTranscriptRef = useRef<string | null>(null);
+    const {
+        isAvailable,
+        canRecord,
+        isRecording,
+        isProcessing,
+        result,
+        audioBlob,
+        audioLevel,
+        error,
+        modelProgress,
+        startRecognition,
+        stopRecognition,
+        playRecording,
+        resetResult,
+        downloadModel,
+    } = useSpeechInput();
 
     // Cleanup on unmount
     useEffect(() => {
         return () => {
             if (timerRef.current) clearInterval(timerRef.current);
-            if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current = null;
-            }
         };
     }, []);
 
-    const startRecording = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            setStream(stream);
-            const mediaRecorder = new MediaRecorder(stream);
-            mediaRecorderRef.current = mediaRecorder;
-            chunksRef.current = [];
-
-            mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) {
-                    chunksRef.current.push(e.data);
-                }
-            };
-
-            mediaRecorder.onstop = async () => {
-                const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-                setAudioBlob(blob);
-                onRecordingComplete(blob);
-
-                setIsProcessing(true);
-                try {
-                    const formData = new FormData();
-                    formData.append('audio', blob);
-                    formData.append('text', text);
-
-                    const res = await fetch('/api/ai/score', {
-                        method: 'POST',
-                        body: formData
-                    });
-
-                    if (!res.ok) throw new Error('Scoring failed');
-
-                    const data = await res.json();
-                    setReviewResults(data);
-                    setShowReview(true);
-
-                    // Blind Challenge Logic: Auto-unblur if score is high
-                    if (isBlindChallenge && data.score >= 80 && isBlind) {
-                        onToggleBlind(); // Unblur
-                    }
-
-                    // Trigger AI Coach
-                    setIsAiLoading(true);
-                    try {
-                        const aiRes = await fetch('/api/ai/coach', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ originalText: text, transcript: data.transcript })
-                        });
-                        const aiData = await aiRes.json();
-                        setAiFeedback(aiData);
-                    } catch (e) {
-                        console.error("AI Coach error", e);
-                    } finally {
-                        setIsAiLoading(false);
-                    }
-
-                } catch (err) {
-                    console.error("Scoring error:", err);
-                    // Fallback or error state
-                } finally {
-                    setIsProcessing(false);
-                }
-
-                // Stop all tracks
-                stream.getTracks().forEach(track => track.stop());
-            };
-
-            mediaRecorder.start();
-            setIsRecording(true);
-            setRecordingDuration(0);
-
-            timerRef.current = setInterval(() => {
-                setRecordingDuration(prev => prev + 1);
-            }, 1000);
-
-        } catch (err) {
-            console.error("Error accessing microphone:", err);
-            alert("Could not access microphone. Please check permissions.");
-        }
-    };
-
-    const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-            if (timerRef.current) clearInterval(timerRef.current);
-            setStream(null); // Clear stream to stop visualization
-        }
-    };
-
     const handleToggleRecording = () => {
         if (isRecording) {
-            stopRecording();
+            stopRecognition();
         } else {
-            startRecording();
-        }
-    };
-
-    const playRecording = () => {
-        if (audioBlob) {
-            if (audioRef.current) {
-                audioRef.current.pause(); // Stop existing playback
-            }
-            const url = URL.createObjectURL(audioBlob);
-            const audio = new Audio(url);
-            audioRef.current = audio;
-            audio.play();
-            audio.onended = () => {
-                audioRef.current = null;
-            };
+            setShowReview(false);
+            setReviewResults(null);
+            setAiFeedback(null);
+            setRecordingDuration(0);
+            void startRecognition();
         }
     };
 
     const seekToWord = (index: number, totalWords: number) => {
-        if (audioRef.current && audioBlob) {
-            // Estimate time based on word position (linear interpolation)
-            // In a real app, we'd use actual timestamps from Whisper
-            const duration = audioRef.current.duration;
-            if (duration && isFinite(duration)) {
-                const targetTime = (index / totalWords) * duration;
-                audioRef.current.currentTime = targetTime;
-                audioRef.current.play();
-            } else {
-                // If duration is not available yet (e.g. not loaded), play first then seek
-                playRecording();
-                setTimeout(() => {
-                    if (audioRef.current) {
-                        const d = audioRef.current.duration;
-                        const t = (index / totalWords) * d;
-                        audioRef.current.currentTime = t;
-                    }
-                }, 100);
-            }
-        } else if (audioBlob) {
+        if (audioBlob) {
             playRecording();
-            // Seek after a short delay to allow audio to load
-            setTimeout(() => {
-                seekToWord(index, totalWords);
-            }, 100);
         }
     };
 
     const handleReset = () => {
-        setAudioBlob(null);
         setShowReview(false);
         setReviewResults(null);
         setAiFeedback(null);
         setRecordingDuration(0);
+        resetResult();
     };
 
     const formatTime = (seconds: number) => {
@@ -207,6 +88,75 @@ export function SpeakingPanel({
         const secs = seconds % 60;
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
+
+    useEffect(() => {
+        if (!isRecording) {
+            if (timerRef.current) clearInterval(timerRef.current);
+            return;
+        }
+
+        timerRef.current = setInterval(() => {
+            setRecordingDuration((prev) => prev + 1);
+        }, 1000);
+
+        return () => {
+            if (timerRef.current) clearInterval(timerRef.current);
+        };
+    }, [isRecording]);
+
+    useEffect(() => {
+        if (!audioBlob) return;
+        onRecordingComplete(audioBlob);
+    }, [audioBlob, onRecordingComplete]);
+
+    useEffect(() => {
+        if (!result.isFinal || !result.text || result.text === lastAnalyzedTranscriptRef.current) {
+            return;
+        }
+
+        lastAnalyzedTranscriptRef.current = result.text;
+        const run = async () => {
+            setReviewResults(null);
+            setShowReview(false);
+            setIsAiLoading(false);
+            try {
+                const formData = new FormData();
+                formData.append("text", text);
+                formData.append("transcript", result.text);
+                const response = await fetch("/api/ai/score", {
+                    method: "POST",
+                    body: formData,
+                });
+                if (!response.ok) {
+                    throw new Error("Scoring failed");
+                }
+                const data = await response.json();
+                setReviewResults(data);
+                setShowReview(true);
+
+                if (isBlindChallenge && data.score >= 80 && isBlind) {
+                    onToggleBlind();
+                }
+
+                setIsAiLoading(true);
+                try {
+                    const aiResponse = await fetch('/api/ai/coach', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ originalText: text, transcript: data.transcript }),
+                    });
+                    const aiData = await aiResponse.json();
+                    setAiFeedback(aiData);
+                } finally {
+                    setIsAiLoading(false);
+                }
+            } catch (analysisError) {
+                console.error("Scoring error:", analysisError);
+            }
+        };
+
+        void run();
+    }, [isBlind, isBlindChallenge, onToggleBlind, result.isFinal, result.text, text]);
 
     // Echo Mode Logic
     useEffect(() => {
@@ -385,7 +335,7 @@ export function SpeakingPanel({
                             </div>
                         </motion.div>
                     ) : (
-                        <div className="mb-6 text-center py-4">
+                        <div className="mb-6 space-y-4 text-center py-4">
                             <p className="text-stone-400 text-sm">
                                 {isRecording
                                     ? "请大声朗读..."
@@ -393,6 +343,21 @@ export function SpeakingPanel({
                                         ? "正在分析您的发音..."
                                         : "先听原音，然后录音。"}
                             </p>
+                            {result.text ? (
+                                <div className="rounded-2xl border border-stone-100 bg-stone-50/70 px-4 py-3 text-left">
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-400">Final Transcript</p>
+                                    <p className="mt-2 text-sm text-stone-700">{result.text}</p>
+                                </div>
+                            ) : null}
+                            {error ? (
+                                <p className="text-sm text-rose-500">{error}</p>
+                            ) : null}
+                            {!canRecord && isAvailable ? (
+                                <SpeechModelStatusPanel
+                                    progress={modelProgress}
+                                    onDownload={downloadModel}
+                                />
+                            ) : null}
                         </div>
                     )}
                 </AnimatePresence>
@@ -431,19 +396,28 @@ export function SpeakingPanel({
 
                     {/* Center: Main Record Button or Visualizer */}
                     <div className="flex flex-col items-center gap-2 shrink-0">
-                        {isRecording && stream ? (
-                            <div className="w-48 h-12">
-                                <WaveformVisualizer stream={stream} isRecording={isRecording} />
+                        {isRecording ? (
+                            <div className="flex h-12 items-end gap-1.5 rounded-full bg-stone-50 px-4 py-2 shadow-inner">
+                                {Array.from({ length: 12 }).map((_, index) => (
+                                    <div
+                                        key={index}
+                                        className="w-1.5 rounded-full bg-amber-500 transition-all duration-150"
+                                        style={{
+                                            height: `${Math.max(18, 12 + audioLevel * 36 + ((index % 3) * 6))}px`,
+                                            opacity: 0.42 + audioLevel * 0.58,
+                                        }}
+                                    />
+                                ))}
                             </div>
                         ) : null}
 
                         <button
                             onClick={handleToggleRecording}
-                            disabled={isProcessing}
+                            disabled={isProcessing || (!canRecord && !isRecording)}
                             className={cn(
                                 "flex items-center justify-center w-12 h-12 rounded-full transition-all shadow-lg hover:scale-105 active:scale-95 border-2 border-white/50",
                                 isRecording ? "bg-red-500 shadow-red-500/30" : "bg-amber-500 shadow-amber-500/30",
-                                isProcessing && "opacity-50 cursor-not-allowed"
+                                (isProcessing || (!canRecord && !isRecording)) && "opacity-50 cursor-not-allowed"
                             )}
                         >
                             {isRecording ? (

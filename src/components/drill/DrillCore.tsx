@@ -8,7 +8,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as Diff from 'diff';
 import confetti from 'canvas-confetti';
 import { WordPopup, PopupState } from "../reading/WordPopup";
-import { useWhisper } from "@/hooks/useWhisper";
+import { useSpeechInput } from "@/hooks/useSpeechInput";
 import { db } from "@/lib/db";
 import { getRank } from "@/lib/rankUtils";
 import { DeathFX } from "./DeathFX";
@@ -27,8 +27,11 @@ import {
 import { GhostTextarea } from "../vocab/GhostTextarea";
 import { InlineGrammarHighlights } from "../shared/InlineGrammarHighlights";
 import { LottieJsonPlayer } from "../shared/LottieJsonPlayer";
-import { TOPICS } from "../../app/battle/page";
+import { SpeechModelStatusPanel } from "../speech/SpeechModelStatusPanel";
+import { TOPICS } from "@/lib/battle-topics";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
+import { buildTranslationHighlights, normalizeTranslationForComparison } from "@/lib/translation-diff";
+import { requestTtsPayload } from "@/lib/tts-client";
 import { getDrillSurfacePhase, shouldExpandShopInventoryDock } from "@/lib/battleUiState";
 import { buildGuidedHintCacheKey, fetchGuidedHintWithRetry } from "@/lib/guidedHintClient";
 import { type GrammarDisplayMode, type GrammarSentenceAnalysis } from "@/lib/grammarHighlights";
@@ -814,20 +817,24 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // Active Word Card
     const [wordPopup, setWordPopup] = useState<PopupState | null>(null);
 
-    // Whisper Integration
+    // Speech Input Integration
     const {
+        isAvailable: speechInputAvailable,
+        canRecord: speechInputReady,
+        unavailableReason: speechInputUnavailableReason,
         isRecording: whisperRecording,
         isProcessing: whisperProcessing,
         result: whisperResult,
-        audioLevel,
+        audioLevel: speechInputLevel,
+        error: speechInputError,
+        modelProgress: speechModelProgress,
         setContext,
         startRecognition,
         stopRecognition,
         playRecording,
         resetResult,
-        engineMode,
-        setEngineMode
-    } = useWhisper();
+        downloadModel: downloadSpeechModel,
+    } = useSpeechInput();
 
     // Ask Tutor State
     const [isTutorOpen, setIsTutorOpen] = useState(false);
@@ -1441,46 +1448,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         bullets: number;
     } | null>(null);
 
-    // Server Status Check
-    const [serverStatus, setServerStatus] = useState<'online' | 'offline' | 'checking'>('checking');
-    useEffect(() => {
-        if (typeof window === 'undefined') return;
-
-        const isLocalDesktopHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const shouldProbeLocalWhisper =
-            isLocalDesktopHost
-            || window.localStorage.getItem('probe_local_whisper') === '1';
-
-        if (!shouldProbeLocalWhisper) {
-            setServerStatus('offline');
-            return;
-        }
-
-        let isCancelled = false;
-
-        const checkServer = async () => {
-            try {
-                const res = await fetch('/api/ai/transcribe', { cache: 'no-store' });
-                if (!isCancelled) {
-                    const data = await res.json().catch(() => ({ ready: false }));
-                    setServerStatus(res.ok && data.ready ? 'online' : 'offline');
-                }
-            } catch {
-                if (!isCancelled) {
-                    setServerStatus('offline');
-                }
-            }
-        };
-
-        checkServer();
-        const interval = window.setInterval(checkServer, 30000);
-
-        return () => {
-            isCancelled = true;
-            window.clearInterval(interval);
-        };
-    }, []);
-
     // Visceral FX State
     const [shake, setShake] = useState(false);
     const [showDoubleDown, setShowDoubleDown] = useState(false); // Modal State
@@ -2087,28 +2054,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     */
 
     const fetchTtsAudio = useCallback(async (text: string) => {
-        const response = await fetch("/api/tts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                text,
-                voice: "en-US-JennyNeural",
-                rate: "+0%"
-            }),
-        });
-
-        if (!response.ok) throw new Error("TTS request failed");
-
-        const data = await response.json();
-        if (!data.audio) throw new Error("No audio in response");
-
-        const base64Data = data.audio.split(',')[1];
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
-        const blob = new Blob([bytes], { type: 'audio/mpeg' });
+        const data = await requestTtsPayload(text, "en-US-JennyNeural", "+0%");
+        const blobResponse = await fetch(data.audio);
+        const blob = await blobResponse.blob();
 
         if (blob.size < 100) {
             throw new Error("Generated audio blob too small");
@@ -2197,8 +2145,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
             if (audioRef.current) {
                 audioRef.current.pause();
+                audioRef.current.src = '';
                 audioRef.current = null;
             }
+            setIsPlaying(false);
+            setCurrentAudioTime(0);
 
             // Create fresh URL from cached blob (always use blob now)
             const audioUrl = cached.blob
@@ -2213,6 +2164,19 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             // Add error handler
             audio.onerror = (e) => {
                 console.error('[Audio Play] Error loading audio:', audio.error?.message, audio.error?.code);
+                setIsPlaying(false);
+                setIsAudioLoading(false);
+            };
+
+            audio.onplay = () => {
+                setIsPlaying(true);
+                setIsAudioLoading(false);
+            };
+
+            audio.onpause = () => {
+                if (!audio.ended) {
+                    setIsPlaying(false);
+                }
             };
 
             audio.onloadedmetadata = () => setAudioDuration(audio.duration * 1000);
@@ -2244,7 +2208,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             }
 
             await audio.play();
-            setIsPlaying(true);
+            setIsPlaying(!audio.paused);
 
             // Start Lightning countdown when audio plays
             if (bossState.active && bossState.type === 'lightning') {
@@ -2563,6 +2527,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setIsGeneratingDrill(false);
             setDrillFeedback(null);
             setUserTranslation("");
+            setFullReferenceHint((prev) => ({ version: prev.version + 1, text: "" }));
             setTutorAnswer(null);
             setTutorThread([]);
             setTutorResponse(null);
@@ -2628,6 +2593,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         resetGuidedLearningState(false);
         setDrillFeedback(null);
         setUserTranslation("");
+        setFullReferenceHint((prev) => ({ version: prev.version + 1, text: "" }));
         setTutorAnswer(null);
         setTutorThread([]);
         setTutorResponse(null);
@@ -3104,9 +3070,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setGuidedRevealReady(false);
     }, [guidedScript]);
 
-    const handleSubmitDrill = async () => {
+    const handleSubmitDrill = async (submittedTranslation?: string) => {
         if (showGacha) return;
-        if (!userTranslation.trim() || !drillData) return;
+        const translationToScore = (submittedTranslation ?? userTranslation).trim();
+        if (!translationToScore || !drillData) return;
         if (shouldBypassBattleRewards({ learningSession: learningSessionActive, guidedModeStatus })) {
             return;
         }
@@ -3121,7 +3088,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    user_translation: userTranslation,
+                    user_translation: translationToScore,
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
                     current_elo: activeElo || DEFAULT_BASE_ELO,
@@ -3924,15 +3891,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (!normalizedText) return;
 
         try {
-            const response = await fetch("/api/tts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: normalizedText }),
-            });
-            const data = await response.json();
-            if (!response.ok || !data?.audio) {
-                throw new Error("播放失败");
-            }
+            const data = await requestTtsPayload(normalizedText);
 
             if (audioRef.current) {
                 audioRef.current.pause();
@@ -4283,9 +4242,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             );
         }
 
-        const normalize = (str: string) => str.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ").trim();
-        const cleanUser = mode === "listening" ? normalize(userTranslation) : userTranslation;
-        const cleanTarget = mode === "listening" ? normalize(drillData.reference_english) : drillData.reference_english;
+        const cleanUser = normalizeTranslationForComparison(userTranslation);
+        const cleanTarget = normalizeTranslationForComparison(drillData.reference_english);
         const diffs = Diff.diffWords(cleanUser, cleanTarget);
 
         const elements = [];
@@ -4439,41 +4397,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 });
         }
 
-        const normalize = (str: string) => str.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "").replace(/\s{2,}/g, " ").trim();
-        const cleanUser = mode === "listening" ? normalize(userTranslation) : userTranslation;
-        const cleanTarget = mode === "listening" ? normalize(drillData.reference_english) : drillData.reference_english;
-        const diffs = Diff.diffWords(cleanUser, cleanTarget);
-        const highlights: Array<{ kind: string; before: string; after: string; note: string }> = [];
-
-        for (let i = 0; i < diffs.length; i++) {
-            const part = diffs[i];
-            if (part.removed) {
-                let correction = "";
-                if (i + 1 < diffs.length && diffs[i + 1].added) {
-                    correction = diffs[i + 1].value.trim();
-                    i++;
-                }
-                highlights.push({
-                    kind: correction ? "关键改错" : "多余表达",
-                    before: part.value.trim(),
-                    after: correction || "删除这部分",
-                    note: correction ? "这里需要替换成更准确的形式。" : "这部分在标准表达里不需要。",
-                });
-            } else if (part.added) {
-                highlights.push({
-                    kind: "缺失内容",
-                    before: "未写出",
-                    after: part.value.trim(),
-                    note: "这部分需要补上才完整。",
-                });
-            }
-
-            if (highlights.length >= 3) {
-                break;
-            }
-        }
-
-        return highlights;
+        return buildTranslationHighlights(userTranslation, drillData.reference_english);
     };
 
     const getAnalysisLead = () => {
@@ -5905,28 +5829,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         <>
                                                                             <div className="w-px h-5 bg-stone-300 mx-2" />
 
-                                                                            {/* Engine Mode with Status Indicator */}
-                                                                            <button
-                                                                                onClick={() => setEngineMode(engineMode === 'fast' ? 'precise' : 'fast')}
-                                                                                className={cn(
-                                                                                    "relative px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all text-nowrap border",
-                                                                                    engineMode === 'fast'
-                                                                                        ? "text-amber-600 bg-amber-100/50 hover:bg-amber-100 border-amber-200"
-                                                                                        : "text-emerald-600 bg-emerald-100/50 hover:bg-emerald-100 border-emerald-200"
-                                                                                )}
-                                                                                title={`${engineMode === 'fast' ? 'Fast Mode' : 'Pro Mode'} • ${serverStatus === 'online' ? 'Local Whisper Ready' : 'Using Cloud'}`}
-                                                                            >
-                                                                                {/* Status Dot */}
-                                                                                <div className={cn(
-                                                                                    "absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-white",
-                                                                                    serverStatus === 'online' ? "bg-emerald-500" : "bg-rose-500"
-                                                                                )} />
-                                                                                {engineMode === 'fast' ? <Zap className="w-3 h-3" /> : <BrainCircuit className="w-3 h-3" />}
-                                                                                {engineMode === 'fast' ? "FAST" : "PRO"}
-                                                                            </button>
-
-                                                                            <div className="w-px h-5 bg-stone-300 mx-2" />
-
                                                                             {/* Refresh Button */}
                                                                             <button
                                                                                 onClick={handleRefreshDrill}
@@ -6206,25 +6108,27 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     {/* Mini Waveform */}
                                                                     <div className="flex items-center gap-0.5 h-6">
                                                                         {[...Array(8)].map((_, i) => (
-                                                                            <motion.div
+                                                                            <div
                                                                                 key={i}
                                                                                 className="w-1 rounded-full bg-rose-500"
-                                                                                animate={{
-                                                                                    height: [4, 12 + Math.random() * 8, 4],
-                                                                                }}
-                                                                                transition={{
-                                                                                    duration: 0.4 + Math.random() * 0.2,
-                                                                                    repeat: Infinity,
-                                                                                    delay: i * 0.05
+                                                                                style={{
+                                                                                    height: `${Math.max(8, 8 + speechInputLevel * 20 + ((i % 3) * 4))}px`,
+                                                                                    opacity: 0.45 + speechInputLevel * 0.55,
                                                                                 }}
                                                                             />
                                                                         ))}
                                                                     </div>
 
-                                                                    {/* Real-time text */}
-                                                                    <p className="text-base font-newsreader text-stone-700 min-w-[150px] max-w-[300px] truncate">
-                                                                        {whisperResult.text || <span className="text-stone-400 italic">Listening...</span>}
-                                                                    </p>
+                                                                    <div className="min-w-[180px] max-w-[340px]">
+                                                                        <p className="text-base font-newsreader text-stone-700 truncate">
+                                                                            {whisperResult.text || <span className="text-stone-400 italic">Listening...</span>}
+                                                                        </p>
+                                                                        {!whisperResult.text ? (
+                                                                            <p className="mt-1 text-[11px] text-stone-400">
+                                                                                {speechInputUnavailableReason}
+                                                                            </p>
+                                                                        ) : null}
+                                                                    </div>
 
                                                                     {/* Stop Button */}
                                                                     <button
@@ -6245,7 +6149,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                     {/* Action Buttons */}
                                                                     <div className="flex items-center gap-2 shrink-0">
                                                                         <button
-                                                                            onClick={startRecognition}
+                                                                            onClick={() => void startRecognition()}
                                                                             className="w-9 h-9 rounded-full bg-stone-100 hover:bg-stone-200 flex items-center justify-center transition-all"
                                                                             title="Re-record"
                                                                         >
@@ -6253,8 +6157,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         </button>
                                                                         <button
                                                                             onClick={() => {
-                                                                                setUserTranslation(whisperResult.text);
-                                                                                handleSubmitDrill();
+                                                                                const recognizedText = whisperResult.text;
+                                                                                setUserTranslation(recognizedText);
+                                                                                handleSubmitDrill(recognizedText);
                                                                             }}
                                                                             disabled={isSubmittingDrill}
                                                                             className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full font-bold text-sm shadow-md transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
@@ -6264,13 +6169,22 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         </button>
                                                                     </div>
                                                                 </div>
+                                                            ) : !speechInputReady && speechInputAvailable ? (
+                                                                <div className="w-full max-w-md">
+                                                                    <SpeechModelStatusPanel
+                                                                        progress={speechModelProgress}
+                                                                        onDownload={downloadSpeechModel}
+                                                                        compact
+                                                                    />
+                                                                </div>
                                                             ) : (
                                                                 /* Idle State - Smaller mic button */
                                                                 <motion.button
-                                                                    onClick={startRecognition}
+                                                                    onClick={() => void startRecognition()}
+                                                                    disabled={!speechInputAvailable || !speechInputReady}
                                                                     whileHover={{ scale: 1.08 }}
                                                                     whileTap={{ scale: 0.95 }}
-                                                                    className="relative flex items-center gap-3 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full shadow-lg shadow-indigo-500/25 transition-all"
+                                                                    className="relative flex items-center gap-3 px-5 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full shadow-lg shadow-indigo-500/25 transition-all disabled:cursor-not-allowed disabled:opacity-40"
                                                                 >
                                                                     {/* Pulse ring */}
                                                                     <motion.div
@@ -6279,9 +6193,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         transition={{ duration: 1.5, repeat: Infinity }}
                                                                     />
                                                                     <Mic className="w-5 h-5 text-white relative z-10" />
-                                                                    <span className="text-white font-bold text-sm relative z-10">Tap to Record</span>
+                                                                    <span className="text-white font-bold text-sm relative z-10">
+                                                                        {speechInputAvailable ? "Tap to Record" : "桌面端可用"}
+                                                                    </span>
                                                                 </motion.button>
                                                             )}
+                                                            {speechInputError ? (
+                                                                <p className="text-sm text-rose-500">{speechInputError}</p>
+                                                            ) : null}
                                                         </div>
                                                     ) : (
                                                         <>
@@ -6300,6 +6219,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                 <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-white/60 to-transparent" />
                                                                 <div className="absolute inset-0 opacity-[0.015] bg-[url('data:image/svg+xml,%3Csvg viewBox=%270 0 256 256%27 xmlns=%27http://www.w3.org/2000/svg%27%3E%3Cfilter id=%27noise%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.9%27 numOctaves=%274%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23noise)%27/%3E%3C/svg%3E')] pointer-events-none mix-blend-overlay" />
                                                                 <GhostTextarea
+                                                                    key={drillData?.reference_english || drillData?.chinese || "drill-input"}
                                                                     value={userTranslation}
                                                                     onChange={setUserTranslation}
                                                                     placeholder="Type your English translation here..."
@@ -6358,7 +6278,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             <HelpCircle className="w-4 h-4" />
                                                                         </button>
                                                                         <button
-                                                                            onClick={handleSubmitDrill}
+                                                                            onClick={() => {
+                                                                                void handleSubmitDrill();
+                                                                            }}
                                                                             disabled={!userTranslation.trim() || isSubmittingDrill || learningSessionActive}
                                                                             className={cn(
                                                                                 "flex h-10 items-center justify-center gap-1.5 rounded-full px-4 text-[11px] font-bold transition-all md:px-5 md:text-sm",

@@ -1,12 +1,46 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import os from "os";
 import { EdgeTTS } from "@andresaya/edge-tts";
+
+async function collectSynthesis(
+    tts: EdgeTTS,
+    text: string,
+    voice: string,
+    rate?: string,
+) {
+    let timeoutId: NodeJS.Timeout | null = null;
+    const generationPromise = (async () => {
+        const audioChunks: Uint8Array[] = [];
+
+        for await (const chunk of tts.synthesizeStream(text, voice, {
+            outputFormat: "audio-24khz-48kbitrate-mono-mp3",
+            ...(rate ? { rate } : {}),
+        })) {
+            audioChunks.push(chunk);
+        }
+
+        return Buffer.concat(audioChunks.map((chunk) => Buffer.from(chunk)));
+    })();
+
+    try {
+        return await Promise.race([
+            generationPromise,
+            new Promise<Buffer>((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    reject(new Error("Edge TTS request timed out"));
+                }, 12000);
+            }),
+        ]);
+    } finally {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+    }
+}
 
 export async function POST(req: Request) {
     let step = "Init";
-    let tempFile = "";
 
     try {
         const { text, voice = "en-US-JennyNeural", rate = "+0%" } = await req.json();
@@ -18,46 +52,40 @@ export async function POST(req: Request) {
         step = "Setup";
         const tts = new EdgeTTS();
 
-        // Create a temp file path
-        const tempDir = os.tmpdir();
-        const fileName = `tts-${Date.now()}-${Math.random().toString(36).substring(7)}.mp3`;
-        tempFile = path.join(tempDir, fileName);
+        step = "Generating";
+        let audioBuffer: Buffer;
 
-        // EdgeTTS Generation with Fallback
         try {
-            step = "Generating (Faster)";
-            await tts.synthesize(text, voice, {
-                rate: rate,
-                outputFormat: "audio-24khz-48kbitrate-mono-mp3"
-            });
+            audioBuffer = await collectSynthesis(tts, text, voice, rate);
         } catch (initialError) {
-            console.warn("[TTS] Rate adjustment failed, retrying with default speed:", initialError);
-            step = "Generating (Fallback)";
-            // Retry without rate
-            await tts.synthesize(text, voice, {
-                outputFormat: "audio-24khz-48kbitrate-mono-mp3"
-            });
+            console.warn("[TTS] Rate-adjusted synthesis failed, retrying without rate.", initialError);
+            step = "Generating Fallback";
+            audioBuffer = await collectSynthesis(tts, text, voice);
         }
-
-        step = "Getting Buffer";
-        // Get the buffer directly from the instance
-        const audioBuffer = tts.toBuffer();
 
         if (audioBuffer.length === 0) {
             throw new Error("Generated audio buffer is empty");
         }
 
-        // Get Word Boundaries (Timestamps)
-        const marks = tts.getWordBoundaries().map(item => ({
-            time: item.offset / 10000, // Convert 100ns units to ms
-            type: "word",
-            start: item.offset / 10000,
-            end: (item.offset + item.duration) / 10000,
-            value: item.text
-        }));
+        const marks: Array<{
+            time: number;
+            type: string;
+            start: number;
+            end: number;
+            value: string;
+        }> = [];
 
-        // Convert buffer to base64
-        const audioBase64 = audioBuffer.toString('base64');
+        if (typeof tts.getWordBoundaries === "function") {
+            marks.push(...tts.getWordBoundaries().map((item) => ({
+                time: item.offset / 10000,
+                type: "word",
+                start: item.offset / 10000,
+                end: (item.offset + item.duration) / 10000,
+                value: item.text,
+            })));
+        }
+
+        const audioBase64 = audioBuffer.toString("base64");
 
         return NextResponse.json({
             audio: `data:audio/mp3;base64,${audioBase64}`,
@@ -72,15 +100,6 @@ export async function POST(req: Request) {
             fs.appendFileSync(path.join(process.cwd(), "tts_error.log"), logMsg);
         } catch (e) {
             console.error("Failed to write log", e);
-        }
-
-        // Attempt cleanup if failed
-        if (tempFile && fs.existsSync(tempFile)) {
-            try {
-                fs.unlinkSync(tempFile);
-            } catch (e) {
-                console.error("Failed to cleanup temp file:", e);
-            }
         }
 
         const errorMessage = error instanceof Error ? error.message : String(error);

@@ -3,13 +3,17 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
+import { useRouter } from "next/navigation";
 import { BadgeCheck, CloudUpload, LogOut, RefreshCw, Settings2 } from "lucide-react";
 
 import { PresetAvatar } from "@/components/profile/PresetAvatar";
+import { SpeechModelStatusPanel } from "@/components/speech/SpeechModelStatusPanel";
 import { db } from "@/lib/db";
-import { syncNow } from "@/lib/user-repository";
+import { useDesktopSpeechModel } from "@/hooks/useDesktopSpeechModel";
+import { getUserFacingSyncError, syncNow } from "@/lib/user-repository";
 import { DEFAULT_AVATAR_PRESET, DEFAULT_PROFILE_USERNAME } from "@/lib/user-sync";
 import { useSyncStatusStore } from "@/lib/sync-status";
+import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 
 interface UserAvatarMenuProps {
     email: string;
@@ -69,7 +73,10 @@ export function UserAvatarMenu({
 }: UserAvatarMenuProps) {
     const [open, setOpen] = useState(false);
     const [manualSyncing, setManualSyncing] = useState(false);
+    const [logoutBusy, setLogoutBusy] = useState(false);
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const router = useRouter();
+    const speechModel = useDesktopSpeechModel();
     const isSidebar = placement === "sidebar";
     const isHeader = placement === "header";
 
@@ -135,6 +142,16 @@ export function UserAvatarMenu({
                         <p className="mt-1 text-xs leading-5 opacity-90">{syncDescription}</p>
                     </div>
 
+                    {speechModel.isDesktopApp ? (
+                        <div className="mt-3">
+                            <SpeechModelStatusPanel
+                                progress={speechModel.progress}
+                                onDownload={speechModel.downloadModel}
+                                compact
+                            />
+                        </div>
+                    ) : null}
+
                     <div className="mt-4 space-y-2">
                         <button
                             type="button"
@@ -142,6 +159,8 @@ export function UserAvatarMenu({
                                 setManualSyncing(true);
                                 try {
                                     await syncNow();
+                                } catch (error) {
+                                    window.alert(getUserFacingSyncError(error));
                                 } finally {
                                     setManualSyncing(false);
                                 }
@@ -156,6 +175,7 @@ export function UserAvatarMenu({
                         </button>
                         <Link
                             href="/profile"
+                            prefetch={false}
                             className="flex cursor-pointer items-center justify-between rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-indigo-200 hover:text-slate-950"
                         >
                             <span className="flex items-center gap-2">
@@ -164,15 +184,26 @@ export function UserAvatarMenu({
                             </span>
                             <BadgeCheck className="h-4 w-4 text-indigo-500" />
                         </Link>
-                        <Link
-                            href="/logout"
-                            className="flex cursor-pointer items-center justify-between rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-rose-200 hover:text-rose-700"
+                        <button
+                            type="button"
+                            onClick={async () => {
+                                setLogoutBusy(true);
+                                try {
+                                    const supabase = createBrowserClientSingleton();
+                                    await supabase.auth.signOut();
+                                    await fetch("/logout", { method: "POST" }).catch(() => undefined);
+                                } finally {
+                                    setLogoutBusy(false);
+                                    router.replace("/login");
+                                }
+                            }}
+                            className="flex w-full cursor-pointer items-center justify-between rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 text-left text-sm font-medium text-slate-700 transition hover:border-rose-200 hover:text-rose-700"
                         >
                             <span className="flex items-center gap-2">
                                 <LogOut className="h-4 w-4" />
-                                退出登录
+                                {logoutBusy ? "退出中…" : "退出登录"}
                             </span>
-                        </Link>
+                        </button>
                     </div>
                 </div>
             ) : null}

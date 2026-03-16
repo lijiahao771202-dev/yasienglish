@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-
+import { FormEvent, useMemo, useState } from "react";
 import { APP_HOME_PATH } from "@/lib/auth-routing";
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 import { DEFAULT_AVATAR_PRESET } from "@/lib/user-sync";
@@ -57,6 +56,10 @@ export function RegisterForm() {
                 throw new Error("注册成功，但当前项目仍启用了邮箱确认。请在 Supabase Auth > Providers > Email 关闭 Confirm email。");
             }
 
+            await supabase.auth.setSession({
+                access_token: data.session.access_token,
+                refresh_token: data.session.refresh_token,
+            });
             router.replace(APP_HOME_PATH);
         } catch (error) {
             setStatus("error");

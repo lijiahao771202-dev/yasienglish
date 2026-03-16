@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import WaveSurfer from "wavesurfer.js";
 import { Play, Pause, Loader2, RefreshCw, Mic, Square } from "lucide-react";
+import { createAudioMediaRecorder, ensureMicrophoneAccess, getMicrophoneErrorMessage } from "@/lib/desktop-media";
+import { requestTtsPayload } from "@/lib/tts-client";
 import { cn } from "@/lib/utils";
 
 interface AudioPlayerProps {
@@ -29,17 +31,8 @@ export function AudioPlayer({ text, voice = "en-US-JennyNeural" }: AudioPlayerPr
         if (!text) return;
         setIsLoading(true);
         try {
-            const response = await fetch("/api/tts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, voice }),
-            });
-
-            if (!response.ok) throw new Error("TTS failed");
-
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            setAudioUrl(url);
+            const payload = await requestTtsPayload(text, voice);
+            setAudioUrl(payload.audio);
         } catch (error) {
             console.error(error);
         } finally {
@@ -97,8 +90,13 @@ export function AudioPlayer({ text, voice = "en-US-JennyNeural" }: AudioPlayerPr
 
     const startRecording = async () => {
         try {
+            const microphoneAccess = await ensureMicrophoneAccess();
+            if (!microphoneAccess.granted) {
+                throw new Error("Yasi 还没有拿到麦克风权限，请到系统设置里允许后再试。");
+            }
+
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder.current = new MediaRecorder(stream);
+            mediaRecorder.current = createAudioMediaRecorder(stream);
             audioChunks.current = [];
 
             mediaRecorder.current.ondataavailable = (event) => {
@@ -115,6 +113,7 @@ export function AudioPlayer({ text, voice = "en-US-JennyNeural" }: AudioPlayerPr
             setIsRecording(true);
         } catch (err) {
             console.error("Error accessing microphone:", err);
+            alert(getMicrophoneErrorMessage(err));
         }
     };
 

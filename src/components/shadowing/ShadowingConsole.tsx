@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mic, Play, Eye, EyeOff, RotateCcw } from 'lucide-react';
-import { useWhisper } from '@/hooks/useWhisper';
+import { useSpeechInput } from '@/hooks/useSpeechInput';
+import { SpeechModelStatusPanel } from '@/components/speech/SpeechModelStatusPanel';
 import { cn } from '@/lib/utils';
 
 interface ShadowingConsoleProps {
@@ -90,7 +91,21 @@ export function ShadowingConsole({ text, onClose, articleTitle }: ShadowingConso
     const [blurLevel, setBlurLevel] = useState<0 | 1 | 2>(0);
     const [showReview, setShowReview] = useState(false);
 
-    const { isReady, isRecording, isProcessing, result, audioBlob, startRecognition, stopRecognition, playRecording } = useWhisper();
+    const {
+        isAvailable,
+        canRecord,
+        isRecording,
+        isProcessing,
+        result,
+        audioBlob,
+        error,
+        audioLevel,
+        modelProgress,
+        startRecognition,
+        stopRecognition,
+        playRecording,
+        downloadModel,
+    } = useSpeechInput();
 
     const targetWords = useMemo(() => text.split(/\s+/), [text]);
 
@@ -107,7 +122,7 @@ export function ShadowingConsole({ text, onClose, articleTitle }: ShadowingConso
             setShowReview(true);
         } else {
             setShowReview(false);
-            startRecognition();
+            void startRecognition();
         }
     };
 
@@ -208,13 +223,26 @@ export function ShadowingConsole({ text, onClose, articleTitle }: ShadowingConso
                             <span className="text-slate-300">{result.text}</span>
                         ) : (
                             <span className="italic">
-                                {isProcessing ? "⏳ Processing with Whisper AI..." :
+                                {!isAvailable ? "本地语音识别目前只在桌面 App 提供。" :
+                                    isProcessing ? "⏳ Processing speech..." :
                                     isRecording ? "🎙️ Reading... Press stop when done" :
                                         "Press record, read the text, then stop"}
                             </span>
                         )}
                     </div>
                 </div>
+
+                {!canRecord && isAvailable ? (
+                    <div className="px-6 pb-3">
+                        <SpeechModelStatusPanel progress={modelProgress} onDownload={downloadModel} compact />
+                    </div>
+                ) : null}
+
+                {error ? (
+                    <div className="px-6 pb-3 text-center text-sm text-rose-400">
+                        {error}
+                    </div>
+                ) : null}
 
                 {/* Controls */}
                 <div className="px-6 py-4 border-t border-white/5 shrink-0">
@@ -238,9 +266,9 @@ export function ShadowingConsole({ text, onClose, articleTitle }: ShadowingConso
                         {/* Record Button */}
                         <button
                             onClick={handleToggleRecording}
-                            disabled={!isReady}
+                            disabled={!isAvailable || (!canRecord && !isRecording)}
                             className={cn(
-                                "p-5 rounded-full transition-all transform hover:scale-105 shadow-xl",
+                                "p-5 rounded-full transition-all transform hover:scale-105 shadow-xl disabled:cursor-not-allowed disabled:opacity-40",
                                 isRecording ? "bg-red-500 shadow-red-500/30" : "bg-cyan-500 shadow-cyan-500/30"
                             )}
                         >
@@ -250,6 +278,21 @@ export function ShadowingConsole({ text, onClose, articleTitle }: ShadowingConso
                                 <Mic className="w-6 h-6 text-white" />
                             )}
                         </button>
+
+                        {isRecording ? (
+                            <div className="flex h-10 items-end gap-1">
+                                {Array.from({ length: 10 }).map((_, index) => (
+                                    <div
+                                        key={index}
+                                        className="w-1.5 rounded-full bg-cyan-400 transition-all duration-150"
+                                        style={{
+                                            height: `${Math.max(10, 10 + audioLevel * 26 + ((index % 3) * 4))}px`,
+                                            opacity: 0.5 + audioLevel * 0.5,
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        ) : null}
 
                         {/* Play Recording */}
                         <button

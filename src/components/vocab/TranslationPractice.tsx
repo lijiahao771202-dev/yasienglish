@@ -7,8 +7,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, RefreshCw, CheckCircle, AlertCircle, Wand2, Mic, Volume2, MessageCircle, Send, X, Play, Square, RotateCcw, Volume1, FileAudio } from 'lucide-react';
 import axios from 'axios';
 import { cn } from '@/lib/utils';
+import { useSpeechInput } from '@/hooks/useSpeechInput';
+import { requestTtsPayload } from '@/lib/tts-client';
 import * as Diff from 'diff';
 import { WordPopup, PopupState } from '@/components/reading/WordPopup';
+import { SpeechModelStatusPanel } from '@/components/speech/SpeechModelStatusPanel';
 
 // [TYPES]
 type PracticeMode = 'INPUT' | 'REVIEW' | 'RETRY' | 'ORAL';
@@ -118,14 +121,10 @@ function ChatInterface({ context, onClose }: { context: string, onClose: () => v
 // 3. Oral Practice (Refined)
 function OralPractice({ text, onComplete }: { text: string, onComplete: () => void }) {
     const [isPlaying, setIsPlaying] = useState(false);
-    const [isRecording, setIsRecording] = useState(false);
-    const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
-    const [userAudioUrl, setUserAudioUrl] = useState<string | null>(null);
     const [isPlayingUserAudio, setIsPlayingUserAudio] = useState(false);
 
     // Analysis
     const [analysisResult, setAnalysisResult] = useState<{ score: number, transcript: string, feedback: string, diff?: any[] } | null>(null);
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     // Playback State
     const [currentTime, setCurrentTime] = useState(0);
@@ -135,23 +134,32 @@ function OralPractice({ text, onComplete }: { text: string, onComplete: () => vo
     const [popup, setPopup] = useState<PopupState | null>(null);
 
     // Refs
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const chunksRef = useRef<Blob[]>([]);
     const audioRef = useRef<HTMLAudioElement | null>(null);
-    const userAudioRef = useRef<HTMLAudioElement | null>(null);
     const textRef = useRef<HTMLDivElement>(null);
+    const lastAnalyzedTranscriptRef = useRef<string | null>(null);
+    const {
+        canRecord,
+        isAvailable,
+        isRecording,
+        isProcessing,
+        result,
+        audioBlob,
+        audioLevel,
+        error,
+        modelProgress,
+        startRecognition,
+        stopRecognition,
+        playRecording,
+        resetResult,
+        downloadModel,
+    } = useSpeechInput();
 
     // Load TTS Audio
     useEffect(() => {
         const loadAudio = async () => {
             try {
-                const res = await fetch('/api/tts', {
-                    method: 'POST',
-                    body: JSON.stringify({ text }),
-                });
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                const audio = new Audio(url);
+                const payload = await requestTtsPayload(text);
+                const audio = new Audio(payload.audio);
 
                 audio.onended = () => {
                     setIsPlaying(false);
@@ -181,29 +189,20 @@ function OralPractice({ text, onComplete }: { text: string, onComplete: () => vo
             audioRef.current.pause();
             setIsPlaying(false);
         } else {
-            // Stop user audio if playing
-            if (userAudioRef.current && isPlayingUserAudio) {
-                userAudioRef.current.pause();
-                setIsPlayingUserAudio(false);
-            }
             audioRef.current.play();
             setIsPlaying(true);
         }
     };
 
     const toggleUserPlay = () => {
-        if (!userAudioRef.current) return;
-
         if (isPlayingUserAudio) {
-            userAudioRef.current.pause();
             setIsPlayingUserAudio(false);
         } else {
-            // Stop TTS if playing
             if (audioRef.current && isPlaying) {
                 audioRef.current.pause();
                 setIsPlaying(false);
             }
-            userAudioRef.current.play();
+            playRecording();
             setIsPlayingUserAudio(true);
         }
     };
@@ -246,66 +245,27 @@ function OralPractice({ text, onComplete }: { text: string, onComplete: () => vo
         seekToPercent(percent);
     };
 
-    const startRecording = async () => {
-        chunksRef.current = [];
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const recorder = new MediaRecorder(stream);
-
-            recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunksRef.current.push(e.data);
-            };
-
-            recorder.onstop = () => {
-                const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-                const url = URL.createObjectURL(blob);
-                setAudioBlob(blob);
-                setUserAudioUrl(url);
-
-                // Init user audio ref
-                const userAudio = new Audio(url);
-                userAudio.onended = () => setIsPlayingUserAudio(false);
-                userAudioRef.current = userAudio;
-
-                analyzeAudio(blob);
-            };
-
-            recorder.start();
-            setIsRecording(true);
-            mediaRecorderRef.current = recorder;
-            if (isPlaying && audioRef.current) {
-                audioRef.current.pause();
-                setIsPlaying(false);
-            }
-        } catch (err) {
-            console.error("Microphone access denied", err);
-            alert("请允许访问麦克风以进行口语练习");
-        }
-    };
-
-    const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-            mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-        }
-    };
-
-    const analyzeAudio = async (blob: Blob) => {
-        setIsAnalyzing(true);
+    const analyzeAudio = async (transcript: string) => {
         setAnalysisResult(null);
         try {
             const formData = new FormData();
-            formData.append('audio', blob);
             formData.append('text', text);
+            formData.append('transcript', transcript);
             const res = await axios.post('/api/ai/score', formData);
             setAnalysisResult(res.data);
         } catch (err) {
             console.error(err);
-        } finally {
-            setIsAnalyzing(false);
         }
     };
+
+    useEffect(() => {
+        if (!result.isFinal || !result.text || result.text === lastAnalyzedTranscriptRef.current) {
+            return;
+        }
+
+        lastAnalyzedTranscriptRef.current = result.text;
+        void analyzeAudio(result.text);
+    }, [result.isFinal, result.text, text]);
 
     const words = text.split(' ');
     // Important: Use linear word progression for smoother visual tracking
@@ -392,7 +352,7 @@ function OralPractice({ text, onComplete }: { text: string, onComplete: () => vo
                 )}
 
                 {/* Loading overlay for analysis */}
-                {isAnalyzing && (
+                {isProcessing && (
                     <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10">
                         <div className="flex gap-2 items-center px-4 py-2 bg-white shadow-xl rounded-full text-indigo-600 font-bold border border-indigo-50">
                             <RefreshCw className="w-4 h-4 animate-spin" />
@@ -403,6 +363,12 @@ function OralPractice({ text, onComplete }: { text: string, onComplete: () => vo
             </div>
 
             {/* Controls */}
+            {!canRecord && isAvailable ? (
+                <SpeechModelStatusPanel progress={modelProgress} onDownload={downloadModel} />
+            ) : null}
+
+            {error ? <p className="text-sm text-rose-500">{error}</p> : null}
+
             <div className="flex justify-center gap-8 items-center pt-2">
                 {/* Play TTS */}
                 <button
@@ -421,12 +387,14 @@ function OralPractice({ text, onComplete }: { text: string, onComplete: () => vo
 
                 {/* Mic Trigger */}
                 <button
-                    onClick={isRecording ? stopRecording : startRecording}
+                    onClick={isRecording ? stopRecognition : () => void startRecognition()}
+                    disabled={isProcessing || (!canRecord && !isRecording)}
                     className={cn(
                         "w-20 h-20 rounded-full flex items-center justify-center text-white shadow-2xl hover:scale-105 transition-all ring-4 ring-offset-4 ring-offset-white/0",
                         isRecording
                             ? "bg-rose-500 ring-rose-100 shadow-rose-500/30 animate-pulse"
-                            : "bg-indigo-600 ring-indigo-50 shadow-indigo-600/30"
+                            : "bg-indigo-600 ring-indigo-50 shadow-indigo-600/30",
+                        (isProcessing || (!canRecord && !isRecording)) && "opacity-50 cursor-not-allowed"
                     )}
                 >
                     {isRecording ? <Square className="w-8 h-8 fill-current" /> : <Mic className="w-8 h-8" />}
@@ -435,7 +403,7 @@ function OralPractice({ text, onComplete }: { text: string, onComplete: () => vo
                 {/* Play User Recording (New!) */}
                 <button
                     onClick={toggleUserPlay}
-                    disabled={!userAudioUrl || isRecording}
+                    disabled={!audioBlob || isRecording}
                     className={cn(
                         "w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all disabled:opacity-30 border",
                         isPlayingUserAudio
@@ -447,6 +415,28 @@ function OralPractice({ text, onComplete }: { text: string, onComplete: () => vo
                     {isPlayingUserAudio ? <Square className="w-5 h-5 fill-current" /> : <FileAudio className="w-6 h-6" />}
                 </button>
             </div>
+
+            {isRecording ? (
+                <div className="mx-auto flex h-12 w-fit items-end gap-1.5 rounded-full bg-stone-50 px-4 py-2 shadow-inner">
+                    {Array.from({ length: 12 }).map((_, index) => (
+                        <div
+                            key={index}
+                            className="w-1.5 rounded-full bg-indigo-500 transition-all duration-150"
+                            style={{
+                                height: `${Math.max(18, 12 + audioLevel * 36 + ((index % 3) * 6))}px`,
+                                opacity: 0.42 + audioLevel * 0.58,
+                            }}
+                        />
+                    ))}
+                </div>
+            ) : null}
+
+            {result.text ? (
+                <div className="rounded-2xl border border-stone-100 bg-stone-50/70 px-4 py-3 text-left">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-400">Final Transcript</p>
+                    <p className="mt-2 text-sm text-stone-700">{result.text}</p>
+                </div>
+            ) : null}
 
 
             {/* Feedback Score (Cleaned up, removed redundant diff box) */}

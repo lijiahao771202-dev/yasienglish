@@ -42,16 +42,16 @@
   /* Reading Typography */
   --font-reading: "Georgia", "Cambria", "Times New Roman", serif;
 
-  /* Google Fonts Mappings */
-  --font-inter: var(--font-inter);
-  --font-merriweather: var(--font-merriweather);
-  --font-lora: var(--font-lora);
-  --font-roboto-mono: var(--font-roboto-mono);
-  --font-libre-baskerville: var(--font-libre-baskerville);
-  --font-source-serif: var(--font-source-serif);
-  --font-work-sans: var(--font-work-sans);
-  --font-comic: var(--font-comic);
-  --font-newsreader: var(--font-newsreader);
+  /* Local Font Stacks */
+  --font-inter: "Inter", "Helvetica Neue", "Arial Nova", "Segoe UI", sans-serif;
+  --font-merriweather: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-lora: "Baskerville", "Times New Roman", Georgia, serif;
+  --font-roboto-mono: "SFMono-Regular", "SF Mono", "Menlo", "Consolas", monospace;
+  --font-libre-baskerville: "Baskerville", "Big Caslon", "Times New Roman", serif;
+  --font-source-serif: "Source Serif Pro", "Georgia", "Times New Roman", serif;
+  --font-work-sans: "Avenir Next", "Avenir", "Helvetica Neue", "Segoe UI", sans-serif;
+  --font-comic: "Marker Felt", "Comic Sans MS", cursive, sans-serif;
+  --font-newsreader: "Iowan Old Style", "Palatino", "Book Antiqua", Georgia, serif;
 }
 
 /* Font Utilities */

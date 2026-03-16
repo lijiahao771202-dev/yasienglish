@@ -89,10 +89,20 @@ describe("auth forms", () => {
     });
 
     it("signs in with email and password, then redirects to home", async () => {
-        const signInWithPassword = vi.fn().mockResolvedValue({ error: null });
+        const setSession = vi.fn().mockResolvedValue({ error: null });
+        const signInWithPassword = vi.fn().mockResolvedValue({
+            data: {
+                session: {
+                    access_token: "access-token",
+                    refresh_token: "refresh-token",
+                },
+            },
+            error: null,
+        });
         createBrowserClientSingletonMock.mockReturnValue({
             auth: {
                 signInWithPassword,
+                setSession,
             },
         });
 
@@ -106,21 +116,31 @@ describe("auth forms", () => {
             email: "luna@yasi.app",
             password: "super-secret",
         });
+        expect(setSession).toHaveBeenCalledWith({
+            access_token: "access-token",
+            refresh_token: "refresh-token",
+        });
         expect(replaceMock).toHaveBeenCalledWith("/");
 
         await view.cleanup();
     });
 
     it("signs up with username metadata and the default avatar preset", async () => {
+        const setSession = vi.fn().mockResolvedValue({ error: null });
         const signUp = vi.fn().mockResolvedValue({
             data: {
-                session: { user: { id: "user-1" } },
+                session: {
+                    user: { id: "user-1" },
+                    access_token: "access-token",
+                    refresh_token: "refresh-token",
+                },
             },
             error: null,
         });
         createBrowserClientSingletonMock.mockReturnValue({
             auth: {
                 signUp,
+                setSession,
             },
         });
 
@@ -142,6 +162,10 @@ describe("auth forms", () => {
                 },
                 emailRedirectTo: "http://localhost:3000/auth/callback",
             },
+        });
+        expect(setSession).toHaveBeenCalledWith({
+            access_token: "access-token",
+            refresh_token: "refresh-token",
         });
         expect(replaceMock).toHaveBeenCalledWith("/");
 

@@ -49,5 +49,6 @@ next-env.d.ts
 *.webm
 
 # large model files
+/.cache/
 /public/sherpa/
 *.onnx
