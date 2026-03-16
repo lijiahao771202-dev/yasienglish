@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-
+import { FormEvent, useState } from "react";
 import { APP_HOME_PATH } from "@/lib/auth-routing";
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 
@@ -25,13 +24,18 @@ export function LoginForm() {
 
         try {
             const supabase = createBrowserClientSingleton();
-            const { error } = await supabase.auth.signInWithPassword({
+            const { data, error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             });
 
             if (error) throw error;
-
+            if (data.session) {
+                await supabase.auth.setSession({
+                    access_token: data.session.access_token,
+                    refresh_token: data.session.refresh_token,
+                });
+            }
             router.replace(APP_HOME_PATH);
         } catch (error) {
             setStatus("error");

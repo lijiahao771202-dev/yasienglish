@@ -15,15 +15,50 @@ interface AuthSyncProviderProps {
     children: ReactNode;
 }
 
+const AUTH_SESSION_TIMEOUT_MS = 5_000;
+
+async function getSessionWithTimeout(supabase: ReturnType<typeof createBrowserClientSingleton>) {
+    return Promise.race([
+        supabase.auth.getSession(),
+        new Promise<never>((_, reject) => {
+            window.setTimeout(() => reject(new Error("Timed out while reading your local session.")), AUTH_SESSION_TIMEOUT_MS);
+        }),
+    ]);
+}
+
 export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProps) {
     const pathname = usePathname();
     const router = useRouter();
+    const [isOffline, setIsOffline] = useState(false);
     const [sessionUser, setSessionUser] = useState<SessionUserSummary | null>(initialUser);
     const [authResolved, setAuthResolved] = useState(Boolean(initialUser));
     const bootstrappedUserIdRef = useRef<string | null>(null);
+    const pathnameRef = useRef<string | null>(pathname);
     const { phase, error, ready, reset, setPhase, setReady } = useSyncStatusStore();
     const isPublicPath = Boolean(pathname && isPublicAuthPath(pathname));
     const shouldBootstrap = Boolean(pathname && !isPublicAuthPath(pathname) && authResolved && sessionUser?.id);
+
+    useEffect(() => {
+        pathnameRef.current = pathname;
+    }, [pathname]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+
+        const updateOnlineState = () => {
+            setIsOffline(!window.navigator.onLine);
+        };
+
+        updateOnlineState();
+        window.addEventListener("online", updateOnlineState);
+        window.addEventListener("offline", updateOnlineState);
+        return () => {
+            window.removeEventListener("online", updateOnlineState);
+            window.removeEventListener("offline", updateOnlineState);
+        };
+    }, []);
 
     useEffect(() => {
         if (!pathname || isPublicAuthPath(pathname)) {
@@ -90,33 +125,10 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
     useEffect(() => {
         const supabase = createBrowserClientSingleton();
         let cancelled = false;
+        let receivedInitialSession = false;
 
-        void (async () => {
-            try {
-                const sessionResult = await supabase.auth.getSession();
-                if (cancelled) return;
-
-                if (sessionResult.error || !sessionResult.data.session?.user) {
-                    setSessionUser(null);
-                    setAuthResolved(true);
-                    return;
-                }
-
-                setSessionUser({
-                    id: sessionResult.data.session.user.id,
-                    email: sessionResult.data.session.user.email ?? null,
-                });
-                setAuthResolved(true);
-            } catch {
-                if (cancelled) return;
-                setSessionUser(null);
-                setAuthResolved(true);
-            }
-        })();
-
-        const {
-            data: { subscription },
-        } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
+        const markResolvedFromSession = (session: Session | null) => {
+            receivedInitialSession = true;
             setAuthResolved(true);
 
             if (session?.user) {
@@ -124,9 +136,50 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
                     id: session.user.id,
                     email: session.user.email ?? null,
                 });
+                return;
             }
 
-            if (!session?.user && !isPublicAuthPath(pathname || "")) {
+            setSessionUser(null);
+        };
+
+        const watchdogId = window.setTimeout(() => {
+            if (cancelled || receivedInitialSession) {
+                return;
+            }
+
+            setAuthResolved(true);
+            setSessionUser(null);
+
+            if (!isPublicAuthPath(pathnameRef.current || "")) {
+                setPhase("error", "We could not restore the local session on this device. Please check your network and sign in again.");
+                setReady(false);
+            }
+        }, AUTH_SESSION_TIMEOUT_MS);
+
+        const {
+            data: { subscription },
+        } = supabase.auth.onAuthStateChange((event: AuthChangeEvent, session: Session | null) => {
+            if (cancelled) {
+                return;
+            }
+
+            if (event === "INITIAL_SESSION") {
+                window.clearTimeout(watchdogId);
+                markResolvedFromSession(session);
+                return;
+            }
+
+            setAuthResolved(true);
+
+            if (session?.user) {
+                setSessionUser({
+                    id: session.user.id,
+                    email: session.user.email ?? null,
+                });
+                return;
+            }
+
+            if (!isPublicAuthPath(pathnameRef.current || "")) {
                 setSessionUser(null);
                 bootstrappedUserIdRef.current = null;
                 reset();
@@ -134,11 +187,47 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
             }
         });
 
+        void (async () => {
+            try {
+                const sessionResult = await getSessionWithTimeout(supabase);
+                if (cancelled) return;
+
+                if (sessionResult.error || !sessionResult.data.session?.user) {
+                    if (!receivedInitialSession) {
+                        window.clearTimeout(watchdogId);
+                        markResolvedFromSession(null);
+                    }
+                    return;
+                }
+
+                if (!receivedInitialSession) {
+                    window.clearTimeout(watchdogId);
+                    markResolvedFromSession(sessionResult.data.session);
+                }
+            } catch (sessionError) {
+                if (cancelled) return;
+                window.clearTimeout(watchdogId);
+                receivedInitialSession = true;
+                setSessionUser(null);
+                setAuthResolved(true);
+                if (!isPublicAuthPath(pathnameRef.current || "")) {
+                    setPhase(
+                        "error",
+                        sessionError instanceof Error
+                            ? sessionError.message
+                            : "Failed to check your session.",
+                    );
+                    setReady(false);
+                }
+            }
+        })();
+
         return () => {
             cancelled = true;
+            window.clearTimeout(watchdogId);
             subscription.unsubscribe();
         };
-    }, [reset, router]);
+    }, [initialUser, reset, router, setPhase, setReady]);
 
     useEffect(() => {
         if (!sessionUser?.id || !ready || isPublicPath) {
@@ -203,6 +292,13 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
 
     return (
         <AuthSessionContext.Provider value={sessionUser}>
+            {isOffline ? (
+                <div className="fixed inset-x-0 top-4 z-[150] flex justify-center px-4">
+                    <div className="rounded-full border border-amber-200 bg-white/92 px-4 py-2 text-sm font-medium text-amber-700 shadow-[0_18px_40px_-24px_rgba(217,119,6,0.42)] backdrop-blur-xl">
+                        当前网络连接失败，云端同步和 AI 接口暂时不可用。
+                    </div>
+                </div>
+            ) : null}
             {children}
         </AuthSessionContext.Provider>
     );

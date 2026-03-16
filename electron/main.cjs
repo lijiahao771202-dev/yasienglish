@@ -1,14 +1,96 @@
-const { app, BrowserWindow, dialog } = require("electron");
-const { spawn } = require("child_process");
+const { app, BrowserWindow, dialog, ipcMain, session, systemPreferences } = require("electron");
 const fs = require("fs");
+const Module = require("module");
+const net = require("net");
 const path = require("path");
+const { createSpeechModelController } = require("./speech-model.cjs");
 
 const SERVER_PORT = 3131;
-const SERVER_URL = `http://127.0.0.1:${SERVER_PORT}`;
+const SERVER_HOST = "localhost";
+const SERVER_URL = `http://${SERVER_HOST}:${SERVER_PORT}`;
+const TRUSTED_APP_ORIGINS = new Set([
+    `http://localhost:${SERVER_PORT}`,
+    `http://127.0.0.1:${SERVER_PORT}`,
+]);
 
 let mainWindow = null;
-let serverProcess = null;
+let serverStarted = false;
 let isQuitting = false;
+const speechModelController = createSpeechModelController({ app, BrowserWindow });
+
+function toProxyUrl(rule) {
+    const [scheme, host] = rule.trim().split(/\s+/, 2);
+    if (!scheme || !host) {
+        return null;
+    }
+
+    const upperScheme = scheme.toUpperCase();
+    if (upperScheme === "PROXY" || upperScheme === "HTTPS") {
+        return `http://${host}`;
+    }
+
+    if (upperScheme === "SOCKS" || upperScheme === "SOCKS4" || upperScheme === "SOCKS5") {
+        return `socks5://${host}`;
+    }
+
+    return null;
+}
+
+async function hydrateProxyEnvFromSystem() {
+    if (
+        process.env.HTTPS_PROXY
+        || process.env.HTTP_PROXY
+        || process.env.ALL_PROXY
+        || process.env.https_proxy
+        || process.env.http_proxy
+        || process.env.all_proxy
+    ) {
+        return;
+    }
+
+    const resolvedProxy = await session.defaultSession.resolveProxy("https://speech.platform.bing.com");
+    const firstRule = resolvedProxy
+        .split(";")
+        .map((entry) => entry.trim())
+        .find((entry) => entry && entry.toUpperCase() !== "DIRECT");
+
+    if (!firstRule) {
+        return;
+    }
+
+    const proxyUrl = toProxyUrl(firstRule);
+    if (!proxyUrl) {
+        try {
+            const clashProxyAvailable = await new Promise((resolve) => {
+                const socket = net.createConnection({ host: "127.0.0.1", port: 7897 });
+
+                const cleanup = (value) => {
+                    socket.removeAllListeners();
+                    socket.destroy();
+                    resolve(value);
+                };
+
+                socket.once("connect", () => cleanup(true));
+                socket.once("error", () => cleanup(false));
+                socket.setTimeout(800, () => cleanup(false));
+            });
+
+            if (clashProxyAvailable) {
+                proxyUrl = "http://127.0.0.1:7897";
+            }
+        } catch {
+            proxyUrl = null;
+        }
+    }
+
+    if (!proxyUrl) {
+        return;
+    }
+
+    process.env.HTTP_PROXY = proxyUrl;
+    process.env.HTTPS_PROXY = proxyUrl;
+    process.env.ALL_PROXY = proxyUrl;
+}
 
 function parseEnvFile(filePath) {
     if (!fs.existsSync(filePath)) {
@@ -59,8 +141,8 @@ function getBundledEnv(serverRoot) {
 }
 
 function startNextServer() {
-    if (serverProcess) {
-        return serverProcess;
+    if (serverStarted) {
+        return;
     }
 
     const serverRoot = getServerRoot();
@@ -71,47 +153,87 @@ function startNextServer() {
         throw new Error(`Missing desktop server bundle: ${serverEntrypoint}`);
     }
 
-    const childEnv = {
-        ...process.env,
-        ...getBundledEnv(serverRoot),
+    Object.assign(process.env, getBundledEnv(serverRoot), {
         PORT: String(SERVER_PORT),
         HOSTNAME: "127.0.0.1",
         NODE_ENV: "production",
-        ELECTRON_RUN_AS_NODE: "1",
-    };
+        YASI_SERVER_ROOT: serverRoot,
+    });
 
     if (fs.existsSync(runtimeNodeModulesDir)) {
-        childEnv.NODE_PATH = childEnv.NODE_PATH
-            ? `${runtimeNodeModulesDir}${path.delimiter}${childEnv.NODE_PATH}`
+        process.env.NODE_PATH = process.env.NODE_PATH
+            ? `${runtimeNodeModulesDir}${path.delimiter}${process.env.NODE_PATH}`
             : runtimeNodeModulesDir;
+        process.env.YASI_RUNTIME_NODE_MODULES = runtimeNodeModulesDir;
+        Module._initPaths();
     }
 
-    serverProcess = spawn(process.execPath, [serverEntrypoint], {
-        cwd: serverRoot,
-        env: childEnv,
-        stdio: ["ignore", "pipe", "pipe"],
-    });
+    serverStarted = true;
 
-    serverProcess.stdout.on("data", (chunk) => {
-        process.stdout.write(`[desktop-server] ${chunk}`);
-    });
+    try {
+        require(serverEntrypoint);
+    } catch (error) {
+        serverStarted = false;
+        throw error;
+    }
+}
 
-    serverProcess.stderr.on("data", (chunk) => {
-        process.stderr.write(`[desktop-server] ${chunk}`);
-    });
+function isTrustedAppOrigin(origin) {
+    return Array.from(TRUSTED_APP_ORIGINS).some((trustedOrigin) => origin === trustedOrigin || origin.startsWith(`${trustedOrigin}/`));
+}
 
-    serverProcess.on("exit", (code) => {
-        serverProcess = null;
+function configureMediaPermissions() {
+    const defaultSession = session.defaultSession;
 
-        if (!isQuitting) {
-            dialog.showErrorBox(
-                "Yasi 服务已停止",
-                `本地服务异常退出，退出码 ${code ?? "unknown"}。请重新启动应用。`,
-            );
+    defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin) => {
+        if (permission === "media") {
+            return isTrustedAppOrigin(requestingOrigin);
         }
+
+        return false;
     });
 
-    return serverProcess;
+    defaultSession.setPermissionRequestHandler((_webContents, permission, callback, details) => {
+        if (permission === "media") {
+            callback(isTrustedAppOrigin(details.requestingUrl || ""));
+            return;
+        }
+
+        callback(false);
+    });
+}
+
+async function ensureMicrophoneAccess() {
+    if (process.platform !== "darwin") {
+        return { granted: true, status: "granted" };
+    }
+
+    const status = systemPreferences.getMediaAccessStatus("microphone");
+    if (status === "granted") {
+        return { granted: true, status };
+    }
+
+    if (status === "not-determined") {
+        const granted = await systemPreferences.askForMediaAccess("microphone");
+        return {
+            granted,
+            status: granted ? "granted" : systemPreferences.getMediaAccessStatus("microphone"),
+        };
+    }
+
+    return { granted: false, status };
+}
+
+function getMicrophoneStatus() {
+    if (process.platform !== "darwin") {
+        return { granted: true, status: "granted" };
+    }
+
+    const status = systemPreferences.getMediaAccessStatus("microphone");
+    return {
+        granted: status === "granted",
+        status,
+    };
 }
 
 async function waitForServerReady() {
@@ -134,6 +256,7 @@ async function waitForServerReady() {
 }
 
 async function createMainWindow() {
+    await hydrateProxyEnvFromSystem();
     startNextServer();
     await waitForServerReady();
 
@@ -156,6 +279,20 @@ async function createMainWindow() {
         mainWindow?.show();
     });
 
+    mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
+        dialog.showErrorBox(
+            "Yasi 页面加载失败",
+            `无法加载 ${validatedURL || SERVER_URL}\n${errorDescription} (${errorCode})`,
+        );
+    });
+
+    mainWindow.webContents.on("render-process-gone", (_event, details) => {
+        dialog.showErrorBox(
+            "Yasi 渲染进程异常退出",
+            `原因: ${details.reason}${details.exitCode ? `\n退出码: ${details.exitCode}` : ""}`,
+        );
+    });
+
     await mainWindow.loadURL(SERVER_URL);
 
     mainWindow.on("closed", () => {
@@ -164,19 +301,33 @@ async function createMainWindow() {
 }
 
 function stopNextServer() {
-    if (!serverProcess) {
-        return;
-    }
-
     isQuitting = true;
-    serverProcess.kill("SIGTERM");
-    serverProcess = null;
 }
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
     app.quit();
 } else {
+    ipcMain.handle("desktop:get-microphone-status", () => {
+        return getMicrophoneStatus();
+    });
+
+    ipcMain.handle("desktop:request-microphone-access", async () => {
+        return ensureMicrophoneAccess();
+    });
+
+    ipcMain.handle("desktop:get-speech-model-status", () => {
+        return speechModelController.getSpeechModelStatus();
+    });
+
+    ipcMain.handle("desktop:get-speech-model-path", () => {
+        return speechModelController.getSpeechModelPath();
+    });
+
+    ipcMain.handle("desktop:download-speech-model", async () => {
+        return speechModelController.downloadSpeechModel();
+    });
+
     app.on("second-instance", () => {
         if (!mainWindow) return;
 
@@ -188,7 +339,21 @@ if (!gotLock) {
     });
 
     app.whenReady().then(async () => {
+        speechModelController.initializeEnv();
+        speechModelController.inspectCurrentState();
+        configureMediaPermissions();
+
         await createMainWindow();
+
+        void ensureMicrophoneAccess().then((microphoneAccess) => {
+            if (!microphoneAccess.granted) {
+                dialog.showMessageBox({
+                    type: "warning",
+                    title: "麦克风权限未开启",
+                    message: "Yasi 需要麦克风权限才能进行本地英文录音识别，请在系统设置里允许 Yasi 使用麦克风后重新启动应用。",
+                }).catch(() => {});
+            }
+        });
 
         app.on("activate", async () => {
             if (BrowserWindow.getAllWindows().length === 0) {

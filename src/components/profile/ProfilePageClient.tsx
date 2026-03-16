@@ -6,10 +6,12 @@ import { ArrowLeft, Cloud, RefreshCw, Sparkles } from "lucide-react";
 
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { ProfileSettingsPanel } from "@/components/profile/ProfileSettingsPanel";
+import { SpeechModelStatusPanel } from "@/components/speech/SpeechModelStatusPanel";
+import { useDesktopSpeechModel } from "@/hooks/useDesktopSpeechModel";
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 import { db } from "@/lib/db";
 import { useSyncStatusStore } from "@/lib/sync-status";
-import { saveProfilePatch, syncNow } from "@/lib/user-repository";
+import { getUserFacingSyncError, saveProfilePatch, syncNow } from "@/lib/user-repository";
 import { DEFAULT_AVATAR_PRESET, DEFAULT_LEARNING_PREFERENCES, DEFAULT_PROFILE_USERNAME } from "@/lib/user-sync";
 
 export function ProfilePageClient() {
@@ -17,6 +19,7 @@ export function ProfilePageClient() {
     const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
     const lastSynced = useLiveQuery(() => db.sync_meta.get("last_successful_sync_at"), []);
     const { phase } = useSyncStatusStore();
+    const speechModel = useDesktopSpeechModel();
 
     if (!sessionUser?.email) {
         return null;
@@ -66,8 +69,12 @@ export function ProfilePageClient() {
                         </span>
                         <button
                             type="button"
-                            onClick={() => {
-                                void syncNow();
+                            onClick={async () => {
+                                try {
+                                    await syncNow();
+                                } catch (error) {
+                                    window.alert(getUserFacingSyncError(error));
+                                }
                             }}
                             className="ml-auto inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/90 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:text-indigo-900"
                         >
@@ -75,6 +82,15 @@ export function ProfilePageClient() {
                             立即同步
                         </button>
                     </div>
+
+                    {speechModel.isDesktopApp ? (
+                        <div className="mb-6">
+                            <SpeechModelStatusPanel
+                                progress={speechModel.progress}
+                                onDownload={speechModel.downloadModel}
+                            />
+                        </div>
+                    ) : null}
 
                     <ProfileSettingsPanel
                         email={sessionUser.email}

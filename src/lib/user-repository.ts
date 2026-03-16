@@ -63,6 +63,7 @@ interface SupabaseMutationResult {
 interface RemoteSyncOptions {
     pullSnapshot?: boolean;
     forcePull?: boolean;
+    throwOnError?: boolean;
 }
 
 interface BootstrapResult {
@@ -79,6 +80,33 @@ function nowIso() {
     return new Date().toISOString();
 }
 
+export function getUserFacingSyncError(error: unknown) {
+    const message = error instanceof Error ? error.message : "Failed to sync your cloud backup.";
+    const normalized = message.toLowerCase();
+
+    if (
+        normalized.includes("network connection required")
+        || normalized.includes("failed to fetch")
+        || normalized.includes("networkerror")
+        || normalized.includes("load failed")
+    ) {
+        return "当前网络连接失败，云端备份暂时不可用。请检查网络后再试。";
+    }
+
+    if (
+        normalized.includes("session expired")
+        || normalized.includes("jwt")
+        || normalized.includes("refresh token")
+        || normalized.includes("invalid claim")
+        || normalized.includes("401")
+        || normalized.includes("403")
+    ) {
+        return "当前登录状态已失效，请重新登录后再同步。";
+    }
+
+    return message;
+}
+
 export function assertSupabaseMutationSucceeded(result: SupabaseMutationResult, context: string) {
     if (!result.error) return;
     throw new Error(`${context}: ${result.error.message || "Unknown Supabase error"}`);
@@ -93,6 +121,30 @@ function requireOnline() {
 async function getActiveUserId() {
     const activeUser = await db.sync_meta.get("active_user_id");
     return typeof activeUser?.value === "string" ? activeUser.value : null;
+}
+
+async function getAuthenticatedUserId() {
+    const supabase = createBrowserClientSingleton();
+    const {
+        data: { session },
+        error,
+    } = await supabase.auth.getSession();
+
+    if (error) {
+        throw error;
+    }
+
+    const sessionUserId = session?.user?.id;
+    if (!sessionUserId) {
+        throw new Error("Your login session expired. Please sign in again.");
+    }
+
+    const activeUserId = await getActiveUserId();
+    if (activeUserId !== sessionUserId) {
+        await setActiveUserId(sessionUserId);
+    }
+
+    return sessionUserId;
 }
 
 async function setActiveUserId(userId: string) {
@@ -508,8 +560,7 @@ async function migrateLegacyData(userId: string) {
 
 export async function flushOutbox() {
     requireOnline();
-    const userId = await getActiveUserId();
-    if (!userId) return;
+    const userId = await getAuthenticatedUserId();
 
     const supabase = createBrowserClientSingleton();
     const setPhase = useSyncStatusStore.getState().setPhase;
@@ -572,7 +623,7 @@ export async function flushOutbox() {
             }
             await markLocalOutboxItemSynced(item);
         } catch (error) {
-            const message = error instanceof Error ? error.message : "Unknown sync error";
+            const message = getUserFacingSyncError(error);
             if (item.id) {
                 await db.sync_outbox.update(item.id, {
                     attempts: item.attempts + 1,
@@ -661,8 +712,11 @@ export function scheduleBackgroundSync(options: RemoteSyncOptions = {}) {
                 }
             }
         } catch (error) {
-            const message = error instanceof Error ? error.message : "Failed to sync your cloud backup.";
+            const message = getUserFacingSyncError(error);
             useSyncStatusStore.getState().setPhase("error", message);
+            if (options.throwOnError) {
+                throw new Error(message);
+            }
         } finally {
             backgroundSyncPromise = null;
             if (pendingBackgroundPull || pendingForcedPull) {
@@ -699,7 +753,7 @@ export async function bootstrapUserSession(userId: string): Promise<BootstrapRes
 
 export function syncNow() {
     useSyncStatusStore.getState().setPhase("syncing");
-    return scheduleBackgroundSync({ pullSnapshot: true, forcePull: true });
+    return scheduleBackgroundSync({ pullSnapshot: true, forcePull: true, throwOnError: true });
 }
 
 export async function loadLocalUserData() {

@@ -1,10 +1,33 @@
 import { WebSocket } from "ws";
 import { v4 as uuidv4 } from "uuid";
+import { HttpsProxyAgent } from "https-proxy-agent";
+import { SocksProxyAgent } from "socks-proxy-agent";
 
 interface EdgeTTSOptions {
     voice?: string;
     lang?: string;
     outputFormat?: string;
+    timeoutMs?: number;
+}
+
+function getProxyUrl() {
+    return (
+        process.env.HTTPS_PROXY
+        || process.env.HTTP_PROXY
+        || process.env.ALL_PROXY
+        || process.env.https_proxy
+        || process.env.http_proxy
+        || process.env.all_proxy
+        || null
+    );
+}
+
+function createProxyAgent(proxyUrl: string) {
+    if (proxyUrl.startsWith("socks")) {
+        return new SocksProxyAgent(proxyUrl);
+    }
+
+    return new HttpsProxyAgent(proxyUrl);
 }
 
 export class EdgeTTS {
@@ -12,24 +35,28 @@ export class EdgeTTS {
     private voice: string;
     private lang: string;
     private outputFormat: string;
+    private timeoutMs: number;
 
     constructor(options: EdgeTTSOptions = {}) {
         this.voice = options.voice || "en-US-JennyNeural";
         this.lang = options.lang || "en-US";
         this.outputFormat = options.outputFormat || "audio-24khz-48kbitrate-mono-mp3";
+        this.timeoutMs = options.timeoutMs || 10000;
     }
 
     async connect(): Promise<void> {
         return new Promise((resolve, reject) => {
             const connectionId = uuidv4().replace(/-/g, "");
             const url = `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=6A5AA1D4EAFF4E9FB37E23D68491D6F4&ConnectionId=${connectionId}`;
+            const proxyUrl = getProxyUrl();
 
             this.ws = new WebSocket(url, {
                 headers: {
                     "Pragma": "no-cache",
                     "Cache-Control": "no-cache",
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
-                }
+                },
+                agent: proxyUrl ? createProxyAgent(proxyUrl) : undefined,
             });
 
             this.ws.on("open", () => {
@@ -39,6 +66,12 @@ export class EdgeTTS {
 
             this.ws.on("error", (err) => {
                 reject(err);
+            });
+
+            this.ws.on("close", (code, reason) => {
+                if (code !== 1000) {
+                    reject(new Error(`Edge TTS socket closed unexpectedly (${code}) ${reason.toString()}`));
+                }
             });
         });
     }
@@ -63,7 +96,7 @@ export class EdgeTTS {
         this.ws.send(`X-Timestamp:${new Date().toString()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n${JSON.stringify(config)}`);
     }
 
-    async ttsPromise(text: string): Promise<string> {
+    async ttsPromise(text: string, rate = "+0%"): Promise<string> {
         return new Promise((resolve, reject) => {
             if (!this.ws) {
                 reject(new Error("WebSocket not connected"));
@@ -74,19 +107,30 @@ export class EdgeTTS {
             const ssml = `
         <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='${this.lang}'>
           <voice name='${this.voice}'>
-            ${text}
+            <prosody rate='${rate}'>${text}</prosody>
           </voice>
         </speak>
       `.trim();
 
             const chunks: Buffer[] = [];
+            let settled = false;
 
             // Timeout to prevent hanging
             const timeout = setTimeout(() => {
+                if (settled) {
+                    return;
+                }
+
+                settled = true;
+                this.ws?.off("message", messageHandler);
                 reject(new Error("TTS request timed out"));
-            }, 10000);
+            }, this.timeoutMs);
 
             const messageHandler = (data: Buffer, isBinary: boolean) => {
+                if (settled) {
+                    return;
+                }
+
                 if (isBinary) {
                     // Parse binary message
                     // Format: [2 bytes header length][Headers][Body]
@@ -98,24 +142,34 @@ export class EdgeTTS {
                     if (headers.includes("Path:audio")) {
                         const audioData = data.subarray(2 + headerLength);
                         chunks.push(audioData);
-                        // console.log(`[EdgeTTS] Received audio chunk: ${audioData.length} bytes`);
                     }
                 } else {
                     const message = data.toString();
-                    console.log("[EdgeTTS] Text message:", message);
+                    if (message.includes("Path:response")) {
+                        return;
+                    }
+
+                    if (message.includes("Path:turn.start")) {
+                        return;
+                    }
+
                     if (message.includes("Path:turn.end")) {
+                        settled = true;
                         clearTimeout(timeout);
-                        this.ws?.off("message", messageHandler); // Clean up listener
+                        this.ws?.off("message", messageHandler);
                         const fullBuffer = Buffer.concat(chunks);
-                        console.log(`[EdgeTTS] Turn ended. Total audio size: ${fullBuffer.length} bytes`);
+
+                        if (!fullBuffer.length) {
+                            reject(new Error("Edge TTS returned an empty audio buffer."));
+                            return;
+                        }
+
                         resolve(fullBuffer.toString("base64"));
                     }
                 }
             };
 
             this.ws.on("message", messageHandler);
-
-            console.log("[EdgeTTS] Sending SSML request...");
             this.ws.send(`X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${new Date().toString()}\r\nPath:ssml\r\n\r\n${ssml}`);
         });
     }

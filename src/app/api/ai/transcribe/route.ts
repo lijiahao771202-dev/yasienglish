@@ -1,93 +1,77 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
 
-import { getLocalWhisperHealth, transcribeWithLocalWhisper } from '@/lib/local-whisper';
+import {
+    LOCAL_SPEECH_DESKTOP_ONLY_MESSAGE,
+    LOCAL_SPEECH_MODEL_MISSING_MESSAGE,
+    LOCAL_SPEECH_TRANSCRIBE_FAILED_MESSAGE,
+} from '@/lib/speech-input';
+import { getDesktopSpeechModelStatus, transcribeDesktopWav } from '@/lib/desktop-speech-server';
 
 export const runtime = "nodejs";
 
 export async function GET() {
-    const health = getLocalWhisperHealth();
+    if (process.env.YASI_DESKTOP_APP !== "1") {
+        return NextResponse.json({
+            ready: false,
+            mode: "maintenance",
+            message: LOCAL_SPEECH_DESKTOP_ONLY_MESSAGE,
+        }, { status: 503 });
+    }
+
+    const status = getDesktopSpeechModelStatus();
     return NextResponse.json({
-        ready: health.ready,
-        mode: health.ready ? "local" : "cloud",
-    });
+        ready: status.status === "ready",
+        mode: "local",
+        modelStatus: status.status,
+        modelPath: status.modelDir,
+        message: status.status === "ready" ? "Local Sherpa ASR ready" : LOCAL_SPEECH_MODEL_MISSING_MESSAGE,
+    }, { status: status.status === "ready" ? 200 : 503 });
 }
 
-export async function POST(req: Request) {
-    // Intelligent Configuration for Whisper
-    // 1. Start with explicit OpenAI config
-    let apiKey = process.env.OPENAI_API_KEY;
-    let baseURL = process.env.OPENAI_BASE_URL;
-
-    // 2. Check for incompatibility
-    const isDeepSeekUrl = baseURL?.includes("deepseek");
-
-    if (isDeepSeekUrl) {
-        // DeepSeek API currently does NOT support Whisper. 
-        // We must strip the BaseURL to force the SDK to use the official OpenAI endpoint.
-        console.log("[Transcribe] Detected DeepSeek BaseURL. Ignoring it for Whisper (Audio) request to use official OpenAI.");
-        baseURL = undefined;
-    }
-
-    // 3. Fallback logic
-    if (!apiKey) {
-        if (baseURL && !isDeepSeekUrl) {
-            // If using a CUSTOM proxy (not DeepSeek, not official), 
-            // the user might be sharing the key variable.
-            apiKey = process.env.DEEPSEEK_API_KEY;
-        }
-    }
-
-    if (!apiKey) {
+export async function POST(request: Request) {
+    if (process.env.YASI_DESKTOP_APP !== "1") {
         return NextResponse.json({
-            error: 'Configuration Error: OpenAI API Key is missing.',
-            details: 'To use Whisper Transcription, please add OPENAI_API_KEY to your .env file. DeepSeek keys cannot be used for official OpenAI Audio endpoints.'
-        }, { status: 500 });
+            error: "Speech input unavailable",
+            details: LOCAL_SPEECH_DESKTOP_ONLY_MESSAGE,
+            modelStatus: "missing",
+        }, { status: 503 });
     }
 
-    const openai = new OpenAI({
-        apiKey: apiKey,
-        baseURL: baseURL // If undefined, defaults to https://api.openai.com/v1
-    });
+    const status = getDesktopSpeechModelStatus();
+    if (status.status !== "ready") {
+        return NextResponse.json({
+            error: "Speech model unavailable",
+            details: LOCAL_SPEECH_MODEL_MISSING_MESSAGE,
+            modelStatus: status.status,
+        }, { status: 503 });
+    }
 
     try {
-        const formData = await req.formData();
-        const file = formData.get('file') as File;
-        const prompt = formData.get('prompt') as string | null;
+        const formData = await request.formData();
+        const audio = formData.get("audio");
 
-        if (!file) {
-            return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
+        if (!(audio instanceof File)) {
+            return NextResponse.json({
+                error: "Missing audio",
+                details: "没有收到录音文件。",
+                modelStatus: status.status,
+            }, { status: 400 });
         }
 
-        console.log(`[Transcribe] Processing file: ${file.name}, size: ${file.size}, type: ${file.type}, prompt_len: ${prompt?.length || 0}`);
+        const arrayBuffer = await audio.arrayBuffer();
+        const text = await transcribeDesktopWav(arrayBuffer);
 
-        // PRIORITY 1: Try bundled local Whisper runtime
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            const localData = await transcribeWithLocalWhisper(buffer, prompt || undefined);
-            if (localData.text) {
-                return NextResponse.json({ text: localData.text, mode: "local" });
-            }
-        } catch (localErr) {
-            console.warn('[Transcribe] Local Whisper unavailable, falling back to OpenAI Cloud.', localErr);
-        }
-
-        // PRIORITY 2: OpenAI Cloud (Fallback)
-        const transcription = await openai.audio.transcriptions.create({
-            file: file,
-            model: "whisper-1",
-            language: "en",
-            prompt: prompt || undefined, // Inject context
-        });
-
-        return NextResponse.json({ text: transcription.text, mode: "cloud" });
-
-    } catch (error: any) {
-        console.error('Transcription error details:', error);
         return NextResponse.json({
-            error: 'Transcription failed',
-            details: error?.message || 'Unknown error'
+            text,
+            mode: "local",
+            modelStatus: status.status,
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : LOCAL_SPEECH_TRANSCRIBE_FAILED_MESSAGE;
+        return NextResponse.json({
+            error: "Transcription failed",
+            details: message,
+            modelStatus: status.status,
         }, { status: 500 });
     }
 }

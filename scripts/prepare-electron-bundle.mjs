@@ -49,6 +49,23 @@ if (fs.existsSync(topLevelNodeModulesDir)) {
     fs.renameSync(topLevelNodeModulesDir, runtimeNodeModulesDir);
 }
 
+const nextNativeSwcPackageDir = path.join(
+    rootDir,
+    "node_modules",
+    "@next",
+    `swc-${process.platform}-${process.arch}`,
+);
+
+if (fs.existsSync(nextNativeSwcPackageDir) && fs.existsSync(runtimeNodeModulesDir)) {
+    const nextScopeDir = path.join(runtimeNodeModulesDir, "@next");
+    fs.mkdirSync(nextScopeDir, { recursive: true });
+    fs.cpSync(
+        nextNativeSwcPackageDir,
+        path.join(nextScopeDir, path.basename(nextNativeSwcPackageDir)),
+        { recursive: true, verbatimSymlinks: true },
+    );
+}
+
 if (fs.existsSync(runtimeNodeModulesDir)) {
     const stack = [runtimeNodeModulesDir];
 

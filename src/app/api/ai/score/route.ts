@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-import { transcribeWithLocalWhisper } from '@/lib/local-whisper';
+import { LOCAL_SPEECH_TRANSCRIBE_FAILED_MESSAGE } from '@/lib/speech-input';
 
 export const runtime = "nodejs";
 
@@ -49,20 +48,21 @@ function calculateLCS(original: string[], transcript: string[]) {
 export async function POST(req: NextRequest) {
     try {
         const formData = await req.formData();
-        const audioFile = formData.get('audio') as File | Blob;
         const originalText = formData.get('text') as string;
+        const transcript = (formData.get('transcript') as string | null)?.trim() || "";
 
-        if (!audioFile || !originalText) {
-            return NextResponse.json({ error: 'Missing audio or text' }, { status: 400 });
+        if (!originalText) {
+            return NextResponse.json({ error: 'Missing text' }, { status: 400 });
         }
 
-        // 1. Transcribe with bundled local Whisper runtime.
-        const arrayBuffer = await audioFile.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
-        const whisperData = await transcribeWithLocalWhisper(buffer);
-        const transcript = whisperData.text || "";
+        if (!transcript) {
+            return NextResponse.json({
+                error: 'Speech input unavailable',
+                details: LOCAL_SPEECH_TRANSCRIBE_FAILED_MESSAGE,
+            }, { status: 503 });
+        }
 
-        // 2. Advanced Scoring with LCS
+        // 1. Advanced Scoring with LCS
         const originalWordsRaw = originalText.split(/\s+/); // Keep original for display
         const originalNorm = normalize(originalText);
         const transcriptNorm = normalize(transcript);
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
         // Calculate Score: (Matches / Total Original Words) * 100
         const score = Math.round((matchCount / Math.max(1, originalNorm.length)) * 100);
 
-        // 3. Generate Diff for UI
+        // 2. Generate Diff for UI
         let normIndex = 0;
         const diff = originalWordsRaw.map((word) => {
             const cleanWord = word.toLowerCase().replace(/[.,!?;:"'()]/g, '');

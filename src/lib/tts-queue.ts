@@ -1,4 +1,5 @@
 import { saveAudioToCache } from "./tts-cache";
+import { dataUrlToAudioBlob, requestTtsPayload } from "./tts-client";
 
 type TTSRequest = {
     text: string;
@@ -49,19 +50,8 @@ class TTSQueueManager {
         }
 
         try {
-            // 1. Fetch from API
-            const res = await fetch("/api/tts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text: request.text }),
-            });
-
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.error || "TTS API Error");
-            }
-
-            const blob = await res.blob();
+            const payload = await requestTtsPayload(request.text);
+            const blob = dataUrlToAudioBlob(payload.audio);
 
             // 2. Save to Cache
             saveAudioToCache(request.text, blob);
