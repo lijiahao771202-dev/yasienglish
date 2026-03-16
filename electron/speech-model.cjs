@@ -211,7 +211,11 @@ function createSpeechModelController({ app, BrowserWindow }) {
     function initializeEnv() {
         process.env.YASI_DESKTOP_APP = "1";
         process.env.YASI_SPEECH_MODEL_DIR = getProductionModelRoot();
-        process.env.YASI_SPEECH_DEV_MODEL_DIR = getDevelopmentModelRoot();
+        if (app.isPackaged) {
+            delete process.env.YASI_SPEECH_DEV_MODEL_DIR;
+        } else {
+            process.env.YASI_SPEECH_DEV_MODEL_DIR = getDevelopmentModelRoot();
+        }
     }
 
     function getSpeechModelPath() {
