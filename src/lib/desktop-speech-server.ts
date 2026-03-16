@@ -21,8 +21,8 @@ let cachedModelDir: string | null = null;
 
 function resolveActiveModelDir() {
     const candidates = [
-        process.env.YASI_SPEECH_DEV_MODEL_DIR,
         process.env.YASI_SPEECH_MODEL_DIR,
+        process.env.YASI_SPEECH_DEV_MODEL_DIR,
     ].filter((value): value is string => Boolean(value));
 
     return candidates.find((candidate) => validateModelDirectory(candidate)) || candidates[0] || "";

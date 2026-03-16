@@ -17,6 +17,7 @@ function collectSignableFiles(rootDir, output = []) {
 
         if (
             entry.name.endsWith(".dylib")
+            || entry.name.endsWith(".node")
             || entry.name === "ffmpeg"
             || entry.name === "whisper-cli"
         ) {
