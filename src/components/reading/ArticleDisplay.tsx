@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import { motion, AnimatePresence } from "framer-motion";
+import { ExternalLink } from "lucide-react";
 import { ParagraphCard } from "./ParagraphCard";
 import { WordPopup } from "./WordPopup";
 import TEDVideoPlayer, { TEDVideoPlayerRef } from "./TEDVideoPlayer";
@@ -39,7 +40,7 @@ interface PopupState {
     y: number;
 }
 
-export function ArticleDisplay({ title, content, byline, blocks, siteName, videoUrl, isEditMode }: ArticleDisplayProps) {
+export function ArticleDisplay({ title, content, byline, blocks, siteName, videoUrl, articleUrl, isEditMode }: ArticleDisplayProps) {
     const contentRef = useRef<HTMLDivElement>(null);
     const videoPlayerRef = useRef<TEDVideoPlayerRef>(null);
     // Generate IDs if missing (migration)
@@ -98,6 +99,9 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
             })));
         }
     }, [blocks]);
+
+    const canOpenOriginalArticle = typeof articleUrl === "string"
+        && /^https?:\/\//i.test(articleUrl);
 
     const handleSplit = (index: number, textBefore: string, textAfter: string) => {
         const newBlocks = [...activeBlocks];
@@ -243,11 +247,24 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
                     <h1 className="text-4xl md:text-6xl font-medium font-newsreader italic text-stone-900 leading-tight">
                         {title}
                     </h1>
-                    {byline && (
-                        <p className="text-xs font-bold tracking-[0.2em] uppercase text-stone-400">
-                            By {byline}
-                        </p>
-                    )}
+                    <div className="flex flex-wrap items-center justify-center gap-3">
+                        {byline && (
+                            <p className="text-xs font-bold tracking-[0.2em] uppercase text-stone-400">
+                                By {byline}
+                            </p>
+                        )}
+                        {canOpenOriginalArticle && (
+                            <a
+                                href={articleUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white/80 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-stone-500 transition-colors hover:border-amber-300 hover:text-amber-700"
+                            >
+                                Open original
+                                <ExternalLink className="h-3.5 w-3.5" />
+                            </a>
+                        )}
+                    </div>
                 </header>
 
                 {/* TED Video Player */}
