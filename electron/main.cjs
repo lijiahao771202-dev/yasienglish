@@ -8,10 +8,22 @@ const { createSpeechModelController } = require("./speech-model.cjs");
 const SERVER_PORT = 3131;
 const SERVER_HOST = "localhost";
 const SERVER_URL = `http://${SERVER_HOST}:${SERVER_PORT}`;
-const TRUSTED_APP_ORIGINS = new Set([
-    `http://localhost:${SERVER_PORT}`,
-    `http://127.0.0.1:${SERVER_PORT}`,
-]);
+const DEV_SERVER_URL = process.env.YASI_DESKTOP_DEV_URL || "";
+const DEV_SERVER_ORIGIN = DEV_SERVER_URL ? new URL(DEV_SERVER_URL).origin : "";
+const APP_URL = DEV_SERVER_URL || SERVER_URL;
+const IS_DESKTOP_DEV_MODE = Boolean(DEV_SERVER_URL);
+const TRUSTED_APP_ORIGINS = new Set(
+    [
+        `http://localhost:${SERVER_PORT}`,
+        `http://127.0.0.1:${SERVER_PORT}`,
+        DEV_SERVER_ORIGIN,
+    ].filter(Boolean),
+);
+
+if (IS_DESKTOP_DEV_MODE) {
+    app.setName("Yasi Dev");
+    app.setPath("userData", path.join(app.getPath("appData"), "yasienglish-dev"));
+}
 
 let mainWindow = null;
 let serverStarted = false;
@@ -182,6 +194,10 @@ function isTrustedAppOrigin(origin) {
     return Array.from(TRUSTED_APP_ORIGINS).some((trustedOrigin) => origin === trustedOrigin || origin.startsWith(`${trustedOrigin}/`));
 }
 
+function getAppRouteUrl(route) {
+    return new URL(route, APP_URL.endsWith("/") ? APP_URL : `${APP_URL}/`).toString();
+}
+
 function configureMediaPermissions() {
     const defaultSession = session.defaultSession;
 
@@ -241,7 +257,7 @@ async function waitForServerReady() {
 
     while (Date.now() < timeoutAt) {
         try {
-            const response = await fetch(`${SERVER_URL}/login`, { method: "GET" });
+            const response = await fetch(getAppRouteUrl("login"), { method: "GET" });
             if (response.ok || response.redirected) {
                 return;
             }
@@ -252,12 +268,14 @@ async function waitForServerReady() {
         await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
-    throw new Error("Timed out while waiting for the local Yasi service to start.");
+    throw new Error("Timed out while waiting for the Yasi app service to start.");
 }
 
 async function createMainWindow() {
     await hydrateProxyEnvFromSystem();
-    startNextServer();
+    if (!DEV_SERVER_URL) {
+        startNextServer();
+    }
     await waitForServerReady();
 
     mainWindow = new BrowserWindow({
@@ -267,7 +285,7 @@ async function createMainWindow() {
         minHeight: 780,
         backgroundColor: "#ece7df",
         show: false,
-        title: "Yasi",
+        title: IS_DESKTOP_DEV_MODE ? "Yasi Dev" : "Yasi",
         webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
@@ -282,7 +300,7 @@ async function createMainWindow() {
     mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
         dialog.showErrorBox(
             "Yasi 页面加载失败",
-            `无法加载 ${validatedURL || SERVER_URL}\n${errorDescription} (${errorCode})`,
+            `无法加载 ${validatedURL || APP_URL}\n${errorDescription} (${errorCode})`,
         );
     });
 
@@ -293,7 +311,7 @@ async function createMainWindow() {
         );
     });
 
-    await mainWindow.loadURL(SERVER_URL);
+    await mainWindow.loadURL(APP_URL);
 
     mainWindow.on("closed", () => {
         mainWindow = null;
