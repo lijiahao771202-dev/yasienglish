@@ -21,10 +21,16 @@ export function LiquidGlassPanel({ breathe = false, className, children, onMouse
         <div
             {...props}
             onMouseMove={handleMouseMove}
-            className={cn("liquid-glass-panel", breathe && "liquid-glass-breathe", className)}
+            className={cn(
+                "liquid-glass-panel",
+                breathe && "liquid-glass-breathe",
+                className,
+            )}
         >
+            <div className="liquid-glass-caustic" />
             <div className="liquid-glass-rim" />
             <div className="liquid-glass-sheen" />
+            <div className="liquid-glass-inner-glow" />
             <div className="liquid-glass-noise" />
             <div className="liquid-glass-content">{children}</div>
         </div>
