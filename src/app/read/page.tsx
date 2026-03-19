@@ -7,7 +7,7 @@ import { AudioPlayer } from "@/components/shadowing/AudioPlayer";
 import { WritingEditor } from "@/components/writing/WritingEditor";
 import { RecommendedArticles, ArticleItem } from "@/components/reading/RecommendedArticles";
 import { ArticleSidebar } from "@/components/reading/ArticleSidebar";
-import { ReadingQuizPanel } from "@/components/reading/ReadingQuizPanel";
+import { ReadingQuizPanel, QuizQuestion } from "@/components/reading/ReadingQuizPanel";
 import { PenTool, ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import axios from "axios";
@@ -27,6 +27,10 @@ interface ArticleData {
     image?: string | null;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     isAIGenerated?: boolean;
+    quizCompleted?: boolean;
+    quizCorrect?: number;
+    quizTotal?: number;
+    quizScorePercent?: number;
 }
 
 interface ArticleBlock {
@@ -41,6 +45,12 @@ interface ArticleBlock {
     endTime?: number;
 }
 
+interface QuizLocateRequest {
+    requestId: number;
+    questionNumber: number;
+    paragraphNumber: number;
+    evidence?: string;
+}
 
 import { ReadingSettingsProvider, useReadingSettings, READING_THEMES } from "@/contexts/ReadingSettingsContext";
 import { AppearanceMenu } from "@/components/reading/AppearanceMenu";
@@ -52,6 +62,9 @@ function ReadingPageContent() {
     const [isWritingMode, setIsWritingMode] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [isQuizMode, setIsQuizMode] = useState(false);
+    const [quizLocateRequest, setQuizLocateRequest] = useState<QuizLocateRequest | null>(null);
+    const [quizCache, setQuizCache] = useState<Record<string, QuizQuestion[]>>({});
+    const [quizCacheHydrated, setQuizCacheHydrated] = useState<Record<string, boolean>>({});
     const { loadUserData, markArticleAsRead } = useUserStore();
 
     // Context Settings
@@ -129,12 +142,47 @@ function ReadingPageContent() {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentUrl, setCurrentUrl] = useState<string>("");
     const canShowQuizPanel = Boolean(isQuizMode && article?.isAIGenerated && article?.difficulty);
+    const quizCacheKey = article ? `${article.url || article.title}::${article.difficulty || "unknown"}` : "";
+    const quizDbKey = quizCacheKey ? `reading-quiz::${quizCacheKey}` : "";
+    const parseParagraphNumber = (value: string): number | null => {
+        const matched = value.match(/\d+/);
+        if (!matched) return null;
+        const num = Number(matched[0]);
+        return Number.isFinite(num) && num > 0 ? num : null;
+    };
 
     useEffect(() => {
         if (isQuizMode && (!article?.isAIGenerated || !article?.difficulty)) {
             setIsQuizMode(false);
         }
     }, [isQuizMode, article?.isAIGenerated, article?.difficulty]);
+
+    useEffect(() => {
+        if (!quizDbKey || quizCacheHydrated[quizDbKey]) return;
+        let cancelled = false;
+
+        const hydrateQuizCache = async () => {
+            try {
+                const { db } = await import("@/lib/db");
+                const cached = await db.ai_cache.where("[key+type]").equals([quizDbKey, "quiz"]).first();
+                const cachedQuestions = cached?.data?.questions;
+                if (!cancelled && Array.isArray(cachedQuestions) && cachedQuestions.length > 0) {
+                    setQuizCache((prev) => ({ ...prev, [quizCacheKey]: cachedQuestions as QuizQuestion[] }));
+                }
+            } catch (error) {
+                console.error("Failed to hydrate quiz cache:", error);
+            } finally {
+                if (!cancelled) {
+                    setQuizCacheHydrated((prev) => ({ ...prev, [quizDbKey]: true }));
+                }
+            }
+        };
+
+        hydrateQuizCache();
+        return () => {
+            cancelled = true;
+        };
+    }, [quizDbKey, quizCacheKey, quizCacheHydrated]);
 
     const handleUrlSubmit = async (url: string) => {
         setIsLoading(true);
@@ -153,7 +201,13 @@ function ReadingPageContent() {
                     byline: cached.byline,
                     siteName: cached.siteName,
                     blocks: cached.blocks,
-                    url: cached.url
+                    url: cached.url,
+                    difficulty: cached.difficulty,
+                    isAIGenerated: cached.isAIGenerated,
+                    quizCompleted: cached.quizCompleted,
+                    quizCorrect: cached.quizCorrect,
+                    quizTotal: cached.quizTotal,
+                    quizScorePercent: cached.quizScorePercent,
                 });
 
                 // Update timestamp
@@ -418,6 +472,7 @@ function ReadingPageContent() {
                                 videoUrl={article.videoUrl}
                                 articleUrl={article.url}
                                 isEditMode={isEditMode}
+                                locateRequest={quizLocateRequest}
                             />
 
                             {/* Quiz Entry Button - only for AI generated articles */}
@@ -455,6 +510,66 @@ function ReadingPageContent() {
                                         articleTitle={article.title}
                                         difficulty={article.difficulty as 'cet4' | 'cet6' | 'ielts'}
                                         onClose={() => setIsQuizMode(false)}
+                                        cachedQuestions={quizCacheKey ? quizCache[quizCacheKey] : undefined}
+                                        onQuestionsReady={(questions) => {
+                                            if (!quizCacheKey || !quizDbKey) return;
+                                            setQuizCache((prev) => ({ ...prev, [quizCacheKey]: questions }));
+                                            void (async () => {
+                                                try {
+                                                    const { db } = await import("@/lib/db");
+                                                    const existing = await db.ai_cache.where("[key+type]").equals([quizDbKey, "quiz"]).first();
+                                                    await db.ai_cache.put({
+                                                        id: existing?.id,
+                                                        key: quizDbKey,
+                                                        type: "quiz",
+                                                        data: { questions },
+                                                        timestamp: Date.now(),
+                                                    });
+                                                } catch (error) {
+                                                    console.error("Failed to persist quiz cache:", error);
+                                                }
+                                            })();
+                                        }}
+                                        onSubmitScore={({ correct, total }) => {
+                                            const scorePercent = total > 0 ? Math.round((correct / total) * 100) : 0;
+                                            setArticle((prev) => {
+                                                if (!prev) return prev;
+                                                return {
+                                                    ...prev,
+                                                    quizCompleted: true,
+                                                    quizCorrect: correct,
+                                                    quizTotal: total,
+                                                    quizScorePercent: scorePercent,
+                                                };
+                                            });
+
+                                            if (article?.url) {
+                                                void (async () => {
+                                                    try {
+                                                        const { db } = await import("@/lib/db");
+                                                        await db.articles.update(article.url, {
+                                                            quizCompleted: true,
+                                                            quizCorrect: correct,
+                                                            quizTotal: total,
+                                                            quizScorePercent: scorePercent,
+                                                            timestamp: Date.now(),
+                                                        });
+                                                    } catch (error) {
+                                                        console.error("Failed to persist quiz score:", error);
+                                                    }
+                                                })();
+                                            }
+                                        }}
+                                        onLocate={({ questionNumber, sourceParagraph, evidence }) => {
+                                            const paragraphNumber = parseParagraphNumber(sourceParagraph);
+                                            if (!paragraphNumber) return;
+                                            setQuizLocateRequest({
+                                                requestId: Date.now(),
+                                                questionNumber,
+                                                paragraphNumber,
+                                                evidence,
+                                            });
+                                        }}
                                     />
                                 </LiquidGlassPanel>
                             </div>

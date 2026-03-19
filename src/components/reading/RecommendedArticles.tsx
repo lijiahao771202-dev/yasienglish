@@ -16,6 +16,23 @@ export interface ArticleItem {
     snippet?: string;
     image?: string;
     fetchedAt?: number;
+    quizCompleted?: boolean;
+    quizCorrect?: number;
+    quizTotal?: number;
+    quizScorePercent?: number;
+}
+
+interface AIGenHistoryRecord {
+    url: string;
+    title: string;
+    content?: string;
+    textContent?: string;
+    timestamp: number;
+    isAIGenerated?: boolean;
+    quizCompleted?: boolean;
+    quizCorrect?: number;
+    quizTotal?: number;
+    quizScorePercent?: number;
 }
 
 type FeedCategory = 'psychology' | 'ai_news' | 'ai_gen';
@@ -115,9 +132,41 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         ielts: ["Urbanization", "Globalization", "Scientific Ethics", "Cultural Heritage", "AI & Society"],
     };
 
+    const loadAIGenHistory = async () => {
+        try {
+            const { db } = await import("@/lib/db");
+            const rows = (await db.articles
+                .toArray() as unknown as AIGenHistoryRecord[])
+                .filter((row) => Boolean((row as unknown as { isAIGenerated?: boolean }).isAIGenerated))
+                .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+            const historyItems: ArticleItem[] = rows.map((row) => ({
+                title: row.title || "Untitled",
+                link: row.url,
+                pubDate: new Date(row.timestamp || Date.now()).toISOString(),
+                source: "AI Gen",
+                snippet: (row.textContent || row.content || "").slice(0, 180),
+                fetchedAt: row.timestamp || Date.now(),
+                quizCompleted: row.quizCompleted,
+                quizCorrect: row.quizCorrect,
+                quizTotal: row.quizTotal,
+                quizScorePercent: row.quizScorePercent,
+            }));
+
+            const ordered = sortByNewest(historyItems);
+            setArticles(ordered);
+            if (onListUpdate) onListUpdate(ordered);
+        } catch (error) {
+            console.error("Failed to load AI-generated history:", error);
+            setArticles([]);
+            if (onListUpdate) onListUpdate([]);
+        }
+    };
+
     // Load from DB only (no auto-fetch from API)
     useEffect(() => {
         if (category === 'ai_gen') {
+            loadAIGenHistory();
             return;
         }
 
@@ -155,6 +204,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
             // Save to IndexedDB
             try {
                 const { db } = await import("@/lib/db");
+                const timestamp = Date.now();
                 await db.articles.put({
                     url: articleUrl,
                     title: data.title || genTopic,
@@ -162,9 +212,25 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                     textContent: data.textContent || data.content || "",
                     byline: data.byline,
                     blocks: data.blocks,
-                    timestamp: Date.now(),
+                    timestamp,
                     difficulty: genDifficulty,
                     isAIGenerated: true,
+                    quizCompleted: false,
+                });
+
+                const historyItem: ArticleItem = {
+                    title: data.title || genTopic,
+                    link: articleUrl,
+                    pubDate: new Date(timestamp).toISOString(),
+                    source: "AI Gen",
+                    snippet: (data.textContent || data.content || "").slice(0, 180),
+                    fetchedAt: timestamp,
+                    quizCompleted: false,
+                };
+                setArticles((prev) => {
+                    const next = uniqueByLink(sortByNewest([historyItem, ...prev]));
+                    if (onListUpdate) onListUpdate(next);
+                    return next;
                 });
             } catch (dbErr) {
                 console.error("Failed to save AI article to DB:", dbErr);
@@ -244,6 +310,23 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     };
 
     const handleDelete = async (link: string) => {
+        if (category === 'ai_gen') {
+            if (confirm('Are you sure you want to remove this article?')) {
+                try {
+                    const { db } = await import("@/lib/db");
+                    await db.articles.delete(link);
+                    setArticles((prev) => {
+                        const next = prev.filter(a => a.link !== link);
+                        if (onListUpdate) onListUpdate(next);
+                        return next;
+                    });
+                } catch (error) {
+                    console.error("Delete AI article failed:", error);
+                }
+            }
+            return;
+        }
+
         if (confirm('Are you sure you want to remove this article?')) {
             await deleteArticle(category, link);
             setArticles(prev => prev.filter(a => a.link !== link));
@@ -281,6 +364,10 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     <button
                                         key={tab.id}
                                         onClick={() => {
+                                            if (tab.id === 'ai_gen') {
+                                                setCategory(tab.id);
+                                                return;
+                                            }
                                             const cached = getFeed(tab.id);
                                             setCategory(tab.id);
                                             if (cached && cached.length > 0) {
@@ -506,6 +593,39 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                             {isGenerating ? "正在生成文章..." : "生成文章"}
                         </button>
                     </LiquidGlassPanel>
+
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between px-1">
+                            <h4 className="text-sm font-bold text-slate-800">历史文章</h4>
+                            <span className="text-xs text-slate-500">{articles.length} 篇</span>
+                        </div>
+
+                        {articles.length === 0 ? (
+                            <LiquidGlassPanel className="rounded-2xl p-8 text-center text-sm text-slate-500">
+                                暂无历史文章，先生成一篇试试
+                            </LiquidGlassPanel>
+                        ) : (
+                            <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6">
+                                {sortByNewest(articles).map((item, index) => (
+                                    <motion.div
+                                        key={item.link}
+                                        layout
+                                        initial={{ opacity: 0, y: 8 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        transition={{ delay: index * 0.015, duration: 0.34, type: "spring", bounce: 0.15 }}
+                                    >
+                                        <ArticleCard
+                                            item={item}
+                                            status={item.quizCompleted ? 'read' : 'unread'}
+                                            category="ai_gen"
+                                            onSelect={onSelect}
+                                            onDelete={handleDelete}
+                                        />
+                                    </motion.div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             ) : (
                 <div className="space-y-8">
@@ -771,6 +891,12 @@ function ArticleCard({ item, status, category, onSelect, onDelete }: {
                 )}>
                     {statusMeta.label}
                 </div>
+
+                {category === "ai_gen" && item.quizCompleted && typeof item.quizScorePercent === "number" && (
+                    <div className="absolute left-3 top-11 z-10 rounded-full border border-cyan-200/80 bg-cyan-100/90 px-2.5 py-1 text-[10px] font-bold tracking-wide text-cyan-800 backdrop-blur-sm">
+                        得分 {item.quizScorePercent}%{typeof item.quizCorrect === "number" && typeof item.quizTotal === "number" ? ` · ${item.quizCorrect}/${item.quizTotal}` : ""}
+                    </div>
+                )}
 
                 {/* Delete Button */}
                 <button

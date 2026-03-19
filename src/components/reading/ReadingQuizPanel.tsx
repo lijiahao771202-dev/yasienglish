@@ -91,6 +91,10 @@ interface ReadingQuizPanelProps {
     articleTitle: string;
     difficulty: "cet4" | "cet6" | "ielts";
     onClose: () => void;
+    onLocate?: (payload: { questionNumber: number; sourceParagraph: string; evidence?: string }) => void;
+    cachedQuestions?: QuizQuestion[];
+    onQuestionsReady?: (questions: QuizQuestion[]) => void;
+    onSubmitScore?: (score: { correct: number; total: number }) => void;
 }
 
 const DIFFICULTY_META: Record<string, { label: string; color: string; bgClass: string }> = {
@@ -104,6 +108,10 @@ export function ReadingQuizPanel({
     articleTitle,
     difficulty,
     onClose,
+    onLocate,
+    cachedQuestions,
+    onQuestionsReady,
+    onSubmitScore,
 }: ReadingQuizPanelProps) {
     const [questions, setQuestions] = useState<QuizQuestion[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -121,6 +129,13 @@ export function ReadingQuizPanel({
 
     // Fetch quiz questions on mount
     useEffect(() => {
+        if (cachedQuestions && cachedQuestions.length > 0) {
+            setQuestions(cachedQuestions);
+            setIsLoading(false);
+            setError(null);
+            return;
+        }
+
         let cancelled = false;
         const fetchQuiz = async () => {
             setIsLoading(true);
@@ -145,6 +160,7 @@ export function ReadingQuizPanel({
 
                     if (normalizedQuestions.length > 0) {
                         setQuestions(normalizedQuestions);
+                        onQuestionsReady?.(normalizedQuestions);
                     } else {
                         setError("未能生成题目，请重试。");
                     }
@@ -157,7 +173,7 @@ export function ReadingQuizPanel({
         };
         fetchQuiz();
         return () => { cancelled = true; };
-    }, [articleContent, difficulty, articleTitle]);
+    }, [articleContent, difficulty, articleTitle, cachedQuestions, onQuestionsReady]);
 
     const handleSelectAnswer = (questionId: number, answer: string) => {
         if (isSubmitted) return;
@@ -191,8 +207,10 @@ export function ReadingQuizPanel({
                 }
             }
         });
-        setScore({ correct, total: questions.length });
+        const finalScore = { correct, total: questions.length };
+        setScore(finalScore);
         setIsSubmitted(true);
+        onSubmitScore?.(finalScore);
     };
 
     const handleReset = () => {
@@ -298,6 +316,7 @@ export function ReadingQuizPanel({
                                 isCorrect={isSubmitted ? isCorrect(q) : undefined}
                                 isExpanded={Boolean(expandedExplanations[q.id])}
                                 onToggleExpand={toggleExplanation}
+                                onLocate={onLocate}
                             />
                         </motion.div>
                     ))}
@@ -357,6 +376,7 @@ function QuestionCard({
     isCorrect,
     isExpanded,
     onToggleExpand,
+    onLocate,
 }: {
     question: QuizQuestion;
     index: number;
@@ -367,6 +387,7 @@ function QuestionCard({
     isCorrect?: boolean;
     isExpanded: boolean;
     onToggleExpand: (id: number) => void;
+    onLocate?: (payload: { questionNumber: number; sourceParagraph: string; evidence?: string }) => void;
 }) {
     const typeLabels: Record<string, string> = {
         multiple_choice: "选择",
@@ -497,6 +518,18 @@ function QuestionCard({
                                     <p className="text-[11px] leading-relaxed text-amber-900/85">
                                         {explanationData.evidence}
                                     </p>
+                                )}
+                                {question.sourceParagraph && onLocate && (
+                                    <button
+                                        onClick={() => onLocate({
+                                            questionNumber: index + 1,
+                                            sourceParagraph: question.sourceParagraph as string,
+                                            evidence: explanationData.evidence,
+                                        })}
+                                        className="mt-2 inline-flex items-center rounded-md border border-amber-200 bg-white/80 px-2 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-white"
+                                    >
+                                        定位到原文（第{index + 1}题）
+                                    </button>
                                 )}
                             </div>
                         )}
