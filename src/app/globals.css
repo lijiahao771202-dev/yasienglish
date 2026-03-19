@@ -52,6 +52,23 @@
   --font-work-sans: "Avenir Next", "Avenir", "Helvetica Neue", "Segoe UI", sans-serif;
   --font-comic: "Marker Felt", "Comic Sans MS", cursive, sans-serif;
   --font-newsreader: "Iowan Old Style", "Palatino", "Book Antiqua", Georgia, serif;
+  --font-welcome-display:
+    "SF Pro Rounded",
+    "Avenir Next Rounded",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei UI",
+    "Noto Sans SC",
+    sans-serif;
+  --font-welcome-ui:
+    "SF Pro Text",
+    "SF Pro SC",
+    "Inter",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei UI",
+    "Segoe UI",
+    sans-serif;
 }
 
 /* Font Utilities */
@@ -89,6 +106,14 @@
 
 .font-newsreader {
   font-family: var(--font-newsreader), serif;
+}
+
+.font-welcome-display {
+  font-family: var(--font-welcome-display), serif;
+}
+
+.font-welcome-ui {
+  font-family: var(--font-welcome-ui), sans-serif;
 }
 
 /* Textures & Themes */
@@ -259,9 +284,14 @@ body {
   --lg-saturate: 150%;
   --lg-contrast: 125%;
   --lg-radius: 2rem;
-  --lg-border: rgba(255, 255, 255, 0.12);
+  --lg-border: rgba(255, 214, 234, 0.44);
   --lg-noise-opacity: 0.03;
-  --lg-spotlight-opacity: 0.1;
+  --lg-spotlight-opacity: 0.12;
+  --lg-hover-scale: 1.025;
+  --lg-tap-scale: 0.96;
+  --lg-hover-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --lg-caustic-opacity: 0.58;
+  --lg-hover-glow: rgba(170, 212, 255, 0.36);
 }
 
 @keyframes liquid-glass-breathe {
@@ -276,6 +306,20 @@ body {
   }
 }
 
+@keyframes liquid-glass-sheen-drift {
+
+  0%,
+  100% {
+    transform: translate3d(-2%, -1%, 0) skewX(-12deg);
+    opacity: 0.58;
+  }
+
+  50% {
+    transform: translate3d(2%, 1%, 0) skewX(-12deg);
+    opacity: 0.82;
+  }
+}
+
 .liquid-glass-panel {
   position: relative;
   overflow: hidden;
@@ -283,20 +327,22 @@ body {
   border: 1px solid var(--lg-border);
   background:
     linear-gradient(130deg,
-      rgba(255, 255, 255, 0.5) 0%,
-      rgba(255, 255, 255, 0.24) 42%,
-      rgba(228, 247, 255, 0.32) 100%);
+      rgba(255, 247, 252, 0.74) 0%,
+      rgba(255, 233, 244, 0.52) 44%,
+      rgba(255, 214, 234, 0.46) 100%);
   backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) contrast(var(--lg-contrast));
   -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(var(--lg-saturate)) contrast(var(--lg-contrast));
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
-    inset 1px 0 0 rgba(255, 200, 200, 0.05),
-    inset -1px 0 0 rgba(200, 220, 255, 0.06),
-    0 26px 46px -30px rgba(15, 23, 42, 0.75);
+    inset 0 1px 0 rgba(255, 255, 255, 0.56),
+    inset 0 -1px 0 rgba(255, 219, 238, 0.28),
+    inset 1px 0 0 rgba(255, 196, 225, 0.24),
+    inset -1px 0 0 rgba(255, 230, 244, 0.22),
+    0 28px 56px -34px rgba(85, 20, 56, 0.48);
   transform: translate3d(0, 0, 0);
   will-change: transform, opacity;
   contain: layout style paint;
   isolation: isolate;
+  transition: transform 280ms var(--lg-hover-ease), box-shadow 280ms var(--lg-hover-ease);
 }
 
 .liquid-glass-panel::before {
@@ -304,9 +350,13 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(760px circle at var(--lg-mouse-x, 50%) var(--lg-mouse-y, 50%),
-      rgba(255, 255, 255, var(--lg-spotlight-opacity)),
-      transparent 46%);
+  background:
+    radial-gradient(760px circle at var(--lg-mouse-x, 50%) var(--lg-mouse-y, 50%),
+      rgba(255, 255, 255, calc(var(--lg-spotlight-opacity) + 0.05)),
+      transparent 44%),
+    radial-gradient(440px circle at var(--lg-mouse-x, 50%) var(--lg-mouse-y, 50%),
+      var(--lg-hover-glow),
+      transparent 52%);
   opacity: 0;
   transition: opacity 280ms cubic-bezier(0.22, 1, 0.36, 1);
   z-index: 2;
@@ -316,16 +366,37 @@ body {
   opacity: 1;
 }
 
+.liquid-glass-panel:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -1px 0 rgba(255, 222, 242, 0.28),
+    inset 1px 0 0 rgba(255, 196, 225, 0.28),
+    inset -1px 0 0 rgba(255, 230, 244, 0.24),
+    0 30px 62px -36px rgba(72, 112, 206, 0.42);
+}
+
 .liquid-glass-panel::after {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
   border-radius: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.34);
   mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, black 0%, transparent 100%);
   z-index: 3;
+}
+
+.liquid-glass-caustic {
+  position: absolute;
+  inset: -20% -10%;
+  pointer-events: none;
+  z-index: 1;
+  opacity: var(--lg-caustic-opacity);
+  background:
+    radial-gradient(80% 55% at 14% 10%, rgba(255, 255, 255, 0.62), transparent 62%),
+    radial-gradient(56% 48% at 86% 22%, rgba(255, 226, 244, 0.44), transparent 68%),
+    linear-gradient(120deg, rgba(255, 255, 255, 0.25), rgba(255, 221, 239, 0.08) 45%, transparent 76%);
 }
 
 .liquid-glass-rim {
@@ -343,10 +414,23 @@ body {
 .liquid-glass-sheen {
   position: absolute;
   inset: -200% -60%;
-  transform: skewX(-12deg);
-  background: linear-gradient(90deg, transparent 20%, rgba(255, 255, 255, 0.06) 50%, transparent 80%);
+  transform: translate3d(0, 0, 0) skewX(-12deg);
+  background: linear-gradient(90deg, transparent 16%, rgba(255, 255, 255, 0.14) 50%, transparent 84%);
   pointer-events: none;
   z-index: 2;
+  animation: liquid-glass-sheen-drift 8s ease-in-out infinite;
+}
+
+.liquid-glass-inner-glow {
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 24px 42px -26px rgba(255, 255, 255, 0.55),
+    inset 0 -18px 34px -24px rgba(255, 190, 226, 0.3);
 }
 
 .liquid-glass-noise {
@@ -364,8 +448,114 @@ body {
   z-index: 10;
 }
 
+.liquid-glass-no-frame {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.liquid-glass-no-frame::after,
+.liquid-glass-no-frame .liquid-glass-rim,
+.liquid-glass-no-frame .liquid-glass-noise,
+.liquid-glass-no-frame .liquid-glass-caustic,
+.liquid-glass-no-frame .liquid-glass-inner-glow {
+  display: none;
+}
+
+.liquid-glass-apple-radius {
+  border-radius: 2.75rem;
+}
+
+.liquid-glass-interactive {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  transition: box-shadow 280ms var(--lg-hover-ease), transform 280ms var(--lg-hover-ease);
+}
+
+.liquid-glass-interactive::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  background:
+    radial-gradient(740px circle at var(--lg-mouse-x, 50%) var(--lg-mouse-y, 50%),
+      rgba(255, 255, 255, 0.2),
+      transparent 46%),
+    radial-gradient(420px circle at var(--lg-mouse-x, 50%) var(--lg-mouse-y, 50%),
+      rgba(150, 206, 255, 0.28),
+      transparent 56%);
+  transition: opacity 280ms var(--lg-hover-ease);
+}
+
+.liquid-glass-interactive:hover::before {
+  opacity: 1;
+}
+
+.liquid-glass-interactive:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.48),
+    0 24px 44px -30px rgba(86, 116, 198, 0.36);
+}
+
+.liquid-glass-hero {
+  border-color: rgba(255, 255, 255, 0.26) !important;
+  background:
+    linear-gradient(135deg,
+      rgba(255, 250, 253, 0.16) 0%,
+      rgba(246, 234, 250, 0.1) 46%,
+      rgba(236, 229, 255, 0.14) 100%) !important;
+  backdrop-filter: blur(54px) saturate(190%) contrast(118%) !important;
+  -webkit-backdrop-filter: blur(54px) saturate(190%) contrast(118%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.44),
+    inset 0 -1px 0 rgba(255, 222, 242, 0.24),
+    inset 0 30px 46px -34px rgba(255, 255, 255, 0.42),
+    0 26px 58px -42px rgba(26, 22, 44, 0.48) !important;
+}
+
+.liquid-glass-hero::after {
+  border-color: rgba(255, 255, 255, 0.26) !important;
+}
+
+.liquid-glass-hero .liquid-glass-caustic {
+  opacity: 0.78;
+}
+
+.liquid-glass-hero .liquid-glass-inner-glow {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 26px 48px -30px rgba(255, 255, 255, 0.58),
+    inset 0 -18px 36px -24px rgba(216, 191, 255, 0.28);
+}
+
 .liquid-glass-breathe {
   animation: liquid-glass-breathe 6s ease-in-out infinite;
+}
+
+.liquid-glass-hover:hover {
+  transform: translate3d(0, -1px, 0) scale(var(--lg-hover-scale));
+}
+
+.liquid-glass-tap:active {
+  transform: scale(var(--lg-tap-scale));
+}
+
+html[data-hydrated="0"] .liquid-glass-panel,
+html[data-hydrated="0"] .liquid-glass-panel::before,
+html[data-hydrated="0"] .liquid-glass-panel .liquid-glass-sheen,
+html[data-hydrated="0"] .liquid-glass-panel.liquid-glass-breathe {
+  animation: none !important;
+  transition: none !important;
+}
+
+html[data-hydrated="0"] .liquid-glass-panel .liquid-glass-sheen {
+  opacity: 0.4;
+  animation: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -374,6 +564,19 @@ body {
   }
 
   .liquid-glass-panel::before {
+    transition: none;
+  }
+
+  .liquid-glass-sheen {
+    animation: none;
+  }
+
+  .liquid-glass-hover:hover,
+  .liquid-glass-tap:active {
+    transform: none;
+  }
+
+  .liquid-glass-interactive::before {
     transition: none;
   }
 }
