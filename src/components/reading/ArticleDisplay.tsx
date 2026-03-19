@@ -62,6 +62,7 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
     const [highlightedParagraphNumber, setHighlightedParagraphNumber] = useState<number | null>(null);
     const [highlightedQuestionNumber, setHighlightedQuestionNumber] = useState<number | null>(null);
     const [highlightedSnippet, setHighlightedSnippet] = useState<string | null>(null);
+    const lastWordTriggerRef = useRef<{ word: string; at: number }>({ word: "", at: 0 });
 
     const { fontClass, isFocusMode } = useReadingSettings();
     const [lockedFocusIndex, setLockedFocusIndex] = useState<number | null>(null);
@@ -159,14 +160,6 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
         setHighlightedQuestionNumber(locateRequest.questionNumber);
         setHighlightedSnippet(snippet);
         el.scrollIntoView({ behavior: "smooth", block: "center" });
-
-        const timer = window.setTimeout(() => {
-            setHighlightedParagraphNumber((prev) => (prev === targetParagraph ? null : prev));
-            setHighlightedQuestionNumber((prev) => (prev === locateRequest.questionNumber ? null : prev));
-            setHighlightedSnippet(null);
-        }, 2600);
-
-        return () => window.clearTimeout(timer);
     }, [locateRequest, activeBlocks]);
 
     const canOpenOriginalArticle = typeof articleUrl === "string"
@@ -289,6 +282,14 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
             setPopup(null);
             return;
         }
+
+        // Debounce repeated clicks on the same word to avoid duplicate popup/audio requests.
+        const now = Date.now();
+        const last = lastWordTriggerRef.current;
+        if (last.word === word.toLowerCase() && now - last.at < 450) {
+            return;
+        }
+        lastWordTriggerRef.current = { word: word.toLowerCase(), at: now };
 
         // 3. Show popup and fetch definition
         // Calculate position

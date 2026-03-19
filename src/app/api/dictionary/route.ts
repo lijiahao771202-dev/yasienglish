@@ -1,5 +1,36 @@
 import { NextResponse } from "next/server";
 
+interface DictionaryResponsePayload {
+    word: string;
+    definition: string;
+    translation: string;
+    phonetic: string;
+    audio: string;
+}
+
+const DICT_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const dictCache = new Map<string, { data: DictionaryResponsePayload; expiresAt: number }>();
+
+function getCached(word: string): DictionaryResponsePayload | null {
+    const key = word.toLowerCase();
+    const hit = dictCache.get(key);
+    if (!hit) return null;
+    if (Date.now() > hit.expiresAt) {
+        dictCache.delete(key);
+        return null;
+    }
+    return hit.data;
+}
+
+function setCached(word: string, data: DictionaryResponsePayload) {
+    const key = word.toLowerCase();
+    dictCache.set(key, { data, expiresAt: Date.now() + DICT_CACHE_TTL_MS });
+    if (dictCache.size > 5000) {
+        const firstKey = dictCache.keys().next().value;
+        if (firstKey) dictCache.delete(firstKey);
+    }
+}
+
 export async function POST(req: Request) {
     try {
         const { word } = await req.json();
@@ -8,8 +39,23 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Word is required" }, { status: 400 });
         }
 
+        const normalizedWord = String(word).trim().toLowerCase();
+        const cached = getCached(normalizedWord);
+        if (cached) {
+            return NextResponse.json(cached);
+        }
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2800);
+
         // Youdao JSONAPI (Rich Data)
-        const youdaoRes = await fetch(`https://dict.youdao.com/jsonapi?q=${encodeURIComponent(word)}`);
+        const youdaoRes = await fetch(`https://dict.youdao.com/jsonapi?q=${encodeURIComponent(normalizedWord)}`, {
+            signal: controller.signal,
+            headers: {
+                "accept": "application/json,text/plain,*/*",
+            },
+            cache: "no-store",
+        }).finally(() => clearTimeout(timeout));
 
         let definition = "";
         let translation = "";
@@ -50,13 +96,15 @@ export async function POST(req: Request) {
         }
 
         if (definition || phonetic || translation) {
-            return NextResponse.json({
-                word,
+            const payload: DictionaryResponsePayload = {
+                word: normalizedWord,
                 definition: definition || translation,
                 translation,
                 phonetic,
-                audio
-            });
+                audio,
+            };
+            setCached(normalizedWord, payload);
+            return NextResponse.json(payload);
         }
 
         return NextResponse.json({ error: "Definition not found" }, { status: 404 });
