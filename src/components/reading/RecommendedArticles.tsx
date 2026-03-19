@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Newspaper, Brain, ExternalLink, Loader2, BookOpen, GraduationCap, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, LayoutGrid, ChevronDown, ChevronRight, Settings2 } from "lucide-react";
+import { Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, Settings2, LayoutGrid } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useFeedStore } from "@/lib/feed-store";
 import { useUserStore } from "@/lib/store";
+import { LiquidGlassPanel } from "@/components/ui/LiquidGlassPanel";
 
 export interface ArticleItem {
     title: string;
@@ -14,40 +15,99 @@ export interface ArticleItem {
     source: string;
     snippet?: string;
     image?: string;
+    fetchedAt?: number;
+}
+
+type FeedCategory = 'psychology' | 'ai_news' | 'ai_gen';
+type ArticleView = 'all' | 'new' | 'unread' | 'read';
+type ArticleStatus = 'new' | 'unread' | 'read';
+
+interface GeneratedArticleData {
+    title: string;
+    content: string;
+    byline?: string;
+    textContent?: string;
+    blocks?: unknown[];
+    siteName?: string;
+    videoUrl?: string;
+    url?: string;
+    image?: string | null;
 }
 
 interface RecommendedArticlesProps {
     onSelect: (url: string) => void;
-    onArticleLoaded?: (article: any) => void;
+    onArticleLoaded?: (article: GeneratedArticleData) => void;
     onListUpdate?: (articles: ArticleItem[]) => void;
+}
+
+function getArticleTimestamp(article: ArticleItem): number {
+    const pubTimestamp = Date.parse(article.pubDate || "");
+    if (Number.isFinite(pubTimestamp)) {
+        return pubTimestamp;
+    }
+
+    return article.fetchedAt ?? 0;
+}
+
+function sortByNewest(items: ArticleItem[]): ArticleItem[] {
+    return [...items].sort((left, right) => getArticleTimestamp(right) - getArticleTimestamp(left));
+}
+
+function uniqueByLink(items: ArticleItem[]): ArticleItem[] {
+    const seenLinks = new Set<string>();
+    return items.filter((item) => {
+        if (seenLinks.has(item.link)) {
+            return false;
+        }
+        seenLinks.add(item.link);
+        return true;
+    });
+}
+
+function formatArticleDate(article: ArticleItem): string {
+    const timestamp = getArticleTimestamp(article);
+    if (!timestamp) {
+        return "未知日期";
+    }
+
+    return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+}
+
+function normalizeSnippet(snippet?: string): string {
+    if (!snippet) return "";
+    return snippet.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function isArticleItem(value: unknown): value is ArticleItem {
+    if (!value || typeof value !== "object") return false;
+    const candidate = value as Partial<ArticleItem>;
+    return (
+        typeof candidate.title === "string"
+        && typeof candidate.link === "string"
+        && typeof candidate.source === "string"
+    );
 }
 
 export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }: RecommendedArticlesProps) {
     const [articles, setArticles] = useState<ArticleItem[]>([]);
-    const [loading, setLoading] = useState(false); // Changed: no auto-loading
-    const [category, setCategory] = useState<'news' | 'psychology' | 'ielts' | 'cet4' | 'cet6' | 'ai_news' | 'ai_gen' | 'ted'>('psychology');
+    const [category, setCategory] = useState<FeedCategory>('psychology');
+    const [activeView, setActiveView] = useState<ArticleView>('all');
     const [genTopic, setGenTopic] = useState("");
     const [isGenerating, setIsGenerating] = useState(false);
 
     // New states for enhanced UX
     const [fetchCount, setFetchCount] = useState(3); // Articles to fetch per refresh
-    const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
-        'read': false,
-        'new': false,
-        'unread': false
-    });
     const [showSettings, setShowSettings] = useState(false);
     const [newlyFetchedLinks, setNewlyFetchedLinks] = useState<Set<string>>(new Set()); // Track new articles for animation
     const [isFetching, setIsFetching] = useState(false); // Just for button state
     const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
 
-    const { feeds, setFeed, getFeed, loadFeedFromDB, deleteArticle } = useFeedStore();
-    const { readArticleUrls, markArticleAsRead } = useUserStore();
+    const { setFeed, getFeed, loadFeedFromDB, deleteArticle } = useFeedStore();
+    const { readArticleUrls } = useUserStore();
 
     // Load from DB only (no auto-fetch from API)
     useEffect(() => {
         if (category === 'ai_gen') {
-            setLoading(false);
             return;
         }
 
@@ -55,14 +115,17 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         loadFeedFromDB(category).then(() => {
             const cachedFeeds = getFeed(category);
             if (cachedFeeds) {
-                setArticles(cachedFeeds);
+                setArticles(sortByNewest(cachedFeeds));
                 if (onListUpdate) {
-                    onListUpdate(cachedFeeds);
+                    onListUpdate(sortByNewest(cachedFeeds));
                 }
             }
-            setLoading(false);
         });
-    }, [category, getFeed, loadFeedFromDB]);
+    }, [category, getFeed, loadFeedFromDB, onListUpdate]);
+
+    useEffect(() => {
+        setActiveView('all');
+    }, [category]);
 
     const handleGenerate = async () => {
         if (!genTopic.trim()) return;
@@ -75,7 +138,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
             });
             const data = await res.json();
             if (onArticleLoaded) {
-                onArticleLoaded(data);
+                onArticleLoaded(data as GeneratedArticleData);
             }
         } catch (error) {
             console.error("Generation error:", error);
@@ -89,14 +152,21 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         try {
             // Add timestamp to bypass cache and count parameter
             const res = await fetch(`/api/feed?category=${category}&count=${fetchCount}&t=${Date.now()}`);
-            const data = await res.json();
+            const data: unknown = await res.json();
             if (Array.isArray(data)) {
-                // Limit new data to fetchCount
-                const newArticles = data.slice(0, fetchCount);
+                const fetchedAt = Date.now();
+                const fetchedArticles = data
+                    .filter(isArticleItem)
+                    .slice(0, fetchCount)
+                    .map((item) => ({
+                        ...item,
+                        pubDate: item.pubDate || new Date(fetchedAt).toISOString(),
+                        fetchedAt: item.fetchedAt ?? fetchedAt,
+                    }));
 
                 // Merge with existing articles (keep old, add new at top, remove duplicates)
                 const existingLinks = new Set(articles.map(a => a.link));
-                const uniqueNewArticles = newArticles.filter(a => !existingLinks.has(a.link));
+                const uniqueNewArticles = uniqueByLink(fetchedArticles.filter((article) => !existingLinks.has(article.link)));
 
                 if (uniqueNewArticles.length > 0) {
                     // Track new links for animation
@@ -114,12 +184,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                         setNewlyFetchedLinks(new Set());
                     }, 2000);
 
-                    // Combine: new articles first, then existing
-                    const mergedArticles = [...uniqueNewArticles, ...articles];
+                    // Combine and sort by time, then dedupe by link.
+                    const mergedArticles = uniqueByLink(sortByNewest([...fetchedArticles, ...articles]));
 
                     setArticles(mergedArticles);
                     // Update global store & DB
-                    setFeed(category, mergedArticles);
+                    await setFeed(category, mergedArticles);
                     if (onListUpdate) {
                         onListUpdate(mergedArticles);
                     }
@@ -140,165 +210,137 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         }
     };
 
-    // Toggle section collapse
-    const toggleSection = (section: string) => {
-        setCollapsedSections(prev => ({
-            ...prev,
-            [section]: !prev[section]
-        }));
-    };
-
-    const handleDelete = async (e: React.MouseEvent, link: string) => {
-        e.stopPropagation(); // Prevent card click
+    const handleDelete = async (link: string) => {
         if (confirm('Are you sure you want to remove this article?')) {
             await deleteArticle(category, link);
             setArticles(prev => prev.filter(a => a.link !== link));
         }
     };
 
-    // Deterministic gradient generator
-    const getGradient = (id: string) => {
-        const gradients = [
-            "bg-gradient-to-br from-rose-100 to-teal-100",
-            "bg-gradient-to-br from-amber-100 to-lime-100",
-            "bg-gradient-to-br from-cyan-100 to-fuchsia-100",
-            "bg-gradient-to-br from-emerald-100 to-sky-100",
-            "bg-gradient-to-br from-violet-100 to-rose-100",
-            "bg-gradient-to-br from-orange-100 to-amber-100",
-            "bg-gradient-to-br from-blue-100 to-indigo-100",
-            "bg-gradient-to-br from-pink-100 to-rose-200",
-            "bg-gradient-to-br from-lime-100 to-emerald-100",
-            "bg-gradient-to-br from-sky-100 to-blue-200",
-        ];
-        let hash = 0;
-        for (let i = 0; i < id.length; i++) {
-            hash = id.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        return gradients[Math.abs(hash) % gradients.length];
-    };
-
     return (
-        <div className="w-full max-w-4xl animate-in slide-in-from-bottom-8 duration-700">
-            <div className="flex flex-col gap-4 mb-6">
-                <h3 className="text-2xl font-bold font-newsreader text-stone-800 flex items-center gap-2">
-                    {category === 'news' && <Newspaper className="w-5 h-5 text-blue-600" />}
-                    {category === 'psychology' && <Brain className="w-5 h-5 text-purple-600" />}
-                    {(category === 'ielts' || category === 'cet4' || category === 'cet6') && <GraduationCap className="w-5 h-5 text-amber-500" />}
-                    {category === 'ai_news' && <Cpu className="w-5 h-5 text-indigo-600" />}
-                    {category === 'ai_gen' && <Sparkles className="w-5 h-5 text-rose-500" />}
-                    {category === 'ted' && <span className="w-5 h-5 flex items-center justify-center font-bold text-[10px] text-white bg-red-600 rounded">TED</span>}
-                    推荐阅读
-
-                    {/* Refresh Controls */}
-                    <div className="flex items-center gap-1 ml-auto relative">
-                        {/* Fetch Count Selector */}
-                        <div className="relative">
-                            <button
-                                onClick={() => setShowSettings(!showSettings)}
-                                className="p-1.5 rounded-full hover:bg-stone-100 text-stone-400 hover:text-stone-600 transition-colors"
-                                title="设置抓取数量"
-                            >
-                                <Settings2 className="w-4 h-4" />
-                            </button>
-
-                            <AnimatePresence>
-                                {showSettings && (
-                                    <motion.div
-                                        initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                        className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-lg border border-stone-200 p-3 z-50 min-w-[160px]"
-                                    >
-                                        <div className="text-xs font-bold text-stone-500 mb-2">抓取数量</div>
-                                        <div className="flex gap-1.5">
-                                            {[1, 2, 3, 4, 5].map(count => (
-                                                <button
-                                                    key={count}
-                                                    onClick={() => {
-                                                        setFetchCount(count);
-                                                        setShowSettings(false);
-                                                    }}
-                                                    className={cn(
-                                                        "px-2.5 py-1.5 text-xs rounded-lg font-bold transition-all",
-                                                        fetchCount === count
-                                                            ? "bg-amber-100 text-amber-700 border border-amber-200"
-                                                            : "bg-stone-50 text-stone-500 hover:bg-stone-100 border border-stone-100"
-                                                    )}
-                                                >
-                                                    {count}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </div>
-
-                        {/* Refresh Button */}
-                        <button
-                            onClick={handleRefresh}
-                            disabled={isFetching}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-600 font-bold text-xs transition-colors disabled:opacity-50 border border-amber-100"
-                            title={`刷新 ${category} 文章`}
-                        >
-                            <RefreshCw className={cn("w-3.5 h-3.5", isFetching && "animate-spin")} />
-                            抓取 {fetchCount} 篇
-                        </button>
-                    </div>
-                </h3>
-
-                <div className="flex flex-col items-center justify-center gap-6">
-                    <div className="flex items-center gap-2 p-1.5 bg-stone-200/40 backdrop-blur-xl rounded-full border border-white/20 shadow-inner overflow-x-auto max-w-full scrollbar-hide">
-                        {[
-                            { id: 'psychology', label: 'Psychology' },
-                            { id: 'news', label: 'Global News' },
-                            { id: 'ai_news', label: 'AI News' },
-                            { id: 'ielts', label: 'IELTS' },
-                            { id: 'cet4', label: 'CET-4' },
-                            { id: 'cet6', label: 'CET-6' },
-                            { id: 'ai_gen', label: 'AI Gen' },
-                            { id: 'ted', label: 'TED Talks' },
-                        ].map((tab) => (
-                            <button
-                                key={tab.id}
-                                onClick={() => {
-                                    const cached = getFeed(tab.id as any);
-                                    setCategory(tab.id as any);
-                                    if (cached && cached.length > 0) {
-                                        setArticles(cached);
-                                        setLoading(false);
-                                    } else {
-                                        setArticles([]);
-                                        setLoading(true);
-                                    }
-                                }}
-                                className={cn(
-                                    "relative px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap z-10",
-                                    category === tab.id
-                                        ? "text-stone-800"
-                                        : "text-stone-500 hover:text-stone-700"
-                                )}
-                            >
-                                {category === tab.id && (
-                                    <motion.div
-                                        layoutId="activeTab"
-                                        className="absolute inset-0 bg-white rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.08)] border border-stone-200/50 -z-10"
-                                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                                    />
-                                )}
-                                {tab.label}
-                            </button>
-                        ))}
+        <div className="w-full max-w-7xl animate-in slide-in-from-bottom-8 duration-700">
+            <LiquidGlassPanel breathe className="mb-7 rounded-[30px] p-5 md:p-7">
+                <div className="pointer-events-none absolute -right-14 -top-14 h-44 w-44 rounded-full bg-cyan-300/18 blur-3xl" />
+                <div className="pointer-events-none absolute -bottom-16 left-6 h-40 w-40 rounded-full bg-violet-300/18 blur-3xl" />
+                <div className="flex flex-col gap-4 md:flex-row md:items-center">
+                    <div className="relative z-10 min-w-0 flex-1">
+                        <h3 className="flex items-center gap-2 font-newsreader text-[1.75rem] font-semibold leading-none tracking-tight text-slate-900 md:text-[2.05rem]">
+                            {category === 'psychology' && <Brain className="h-5 w-5 text-violet-600" />}
+                            {category === 'ai_news' && <Cpu className="h-5 w-5 text-cyan-600" />}
+                            {category === 'ai_gen' && <Sparkles className="h-5 w-5 text-pink-500" />}
+                            Reading Feed
+                        </h3>
+                        <p className="mt-2 text-sm text-slate-600">
+                            Liquid glass stream for deep reading. Fresh first, context preserved.
+                        </p>
                     </div>
                 </div>
-            </div>
+
+                <div className="mt-5">
+                    <LiquidGlassPanel className="rounded-2xl p-2">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto rounded-xl bg-white/28 p-1.5 scrollbar-hide">
+                                {([
+                                    { id: 'psychology', label: 'Psychology' },
+                                    { id: 'ai_news', label: 'AI News' },
+                                    { id: 'ai_gen', label: 'AI Gen' },
+                                ] as Array<{ id: FeedCategory; label: string }>).map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => {
+                                            const cached = getFeed(tab.id);
+                                            setCategory(tab.id);
+                                            if (cached && cached.length > 0) {
+                                                setArticles(sortByNewest(cached));
+                                            } else {
+                                                setArticles([]);
+                                            }
+                                        }}
+                                        className={cn(
+                                            "relative whitespace-nowrap rounded-xl px-4 py-2 text-xs font-semibold tracking-wide transition-all",
+                                            category === tab.id
+                                                ? "text-slate-900"
+                                                : "text-slate-500 hover:text-slate-700"
+                                        )}
+                                    >
+                                        {category === tab.id && (
+                                            <motion.div
+                                                layoutId="activeTab"
+                                                className="absolute inset-0 -z-10 rounded-xl border border-white/75 bg-white/70 shadow-[0_14px_24px_-18px_rgba(15,23,42,0.8)] backdrop-blur-xl"
+                                                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                            />
+                                        )}
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <div className="relative md:ml-auto">
+                                <div className="flex h-[42px] items-center border-l border-white/55 pl-2">
+                                    <button
+                                        onClick={() => setShowSettings(!showSettings)}
+                                        className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition-all hover:bg-white/40 hover:text-slate-800"
+                                        title="设置抓取数量"
+                                    >
+                                        <Settings2 className="h-4 w-4" />
+                                    </button>
+
+                                    <button
+                                        onClick={handleRefresh}
+                                        disabled={isFetching}
+                                        className="ml-1 inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold text-slate-700 transition-all hover:bg-white/40 disabled:opacity-50"
+                                        title={`刷新 ${category} 文章`}
+                                    >
+                                        <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+                                        抓取 {fetchCount} 篇
+                                    </button>
+                                </div>
+
+                                <AnimatePresence>
+                                    {showSettings && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                            className="absolute right-0 top-full z-50 mt-2 min-w-[170px] rounded-2xl border border-white/65 bg-white/56 p-3 shadow-[0_22px_42px_-22px_rgba(15,23,42,0.6)] ring-1 ring-white/60 backdrop-blur-2xl"
+                                        >
+                                            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">抓取数量</div>
+                                            <div className="flex gap-1.5">
+                                                {[1, 2, 3, 4, 5].map(count => (
+                                                    <button
+                                                        key={count}
+                                                        onClick={() => {
+                                                            setFetchCount(count);
+                                                            setShowSettings(false);
+                                                        }}
+                                                        className={cn(
+                                                            "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all",
+                                                            fetchCount === count
+                                                                ? "border-cyan-200 bg-cyan-100/70 text-cyan-700"
+                                                                : "border-white/65 bg-white/55 text-slate-500 hover:bg-white/75"
+                                                        )}
+                                                    >
+                                                        {count}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        </div>
+                    </LiquidGlassPanel>
+                </div>
+            </LiquidGlassPanel>
 
             {category === 'ai_gen' ? (
-                <div className="glass-panel p-8 rounded-xl flex flex-col items-center justify-center space-y-6 min-h-[300px]">
+                <LiquidGlassPanel className="relative flex min-h-[300px] flex-col items-center justify-center space-y-6 rounded-[28px] p-8">
+                    <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-pink-300/20 blur-3xl" />
+                    <div className="pointer-events-none absolute -left-16 -bottom-16 h-44 w-44 rounded-full bg-cyan-300/20 blur-3xl" />
                     <div className="text-center space-y-2">
-                        <Sparkles className="w-12 h-12 text-rose-400 mx-auto mb-4" />
-                        <h4 className="text-xl font-bold text-stone-800">Generate Custom Article</h4>
-                        <p className="text-stone-500 text-sm max-w-md">
+                        <Sparkles className="mx-auto mb-4 h-12 w-12 text-pink-500" />
+                        <h4 className="text-xl font-bold text-slate-900">Generate Custom Article</h4>
+                        <p className="max-w-md text-sm text-slate-600">
                             Enter a topic, and our AI will generate a tailored reading passage for you instantly.
                         </p>
                     </div>
@@ -310,13 +352,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                 value={genTopic}
                                 onChange={(e) => setGenTopic(e.target.value)}
                                 placeholder="e.g., Quantum Computing, History of Jazz..."
-                                className="w-full bg-white/50 border border-stone-200 rounded-lg px-4 py-3 text-stone-800 focus:outline-none focus:border-rose-400 transition-colors"
+                                className="w-full rounded-xl border border-white/70 bg-white/50 px-4 py-3 text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors focus:border-cyan-300 focus:outline-none"
                             />
                         </div>
                         <button
                             onClick={handleGenerate}
                             disabled={isGenerating || !genTopic.trim()}
-                            className="w-full bg-rose-100 hover:bg-rose-200 text-rose-600 font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/70 bg-white/62 py-3 font-bold text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] transition-all hover:bg-white/80 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                             {isGenerating ? "Generating..." : "Generate Article"}
@@ -328,100 +370,133 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                             <button
                                 key={topic}
                                 onClick={() => setGenTopic(topic)}
-                                className="px-3 py-1 rounded-full bg-white/50 hover:bg-white text-xs text-stone-500 transition-colors border border-stone-200/50"
+                                className="rounded-full border border-white/70 bg-white/45 px-3 py-1 text-xs text-slate-500 transition-all hover:bg-white/70 hover:text-slate-700"
                             >
                                 {topic}
                             </button>
                         ))}
                     </div>
-                </div>
+                </LiquidGlassPanel>
             ) : (
-                <div className="space-y-12">
+                <div className="space-y-8">
                     {(() => {
                         const now = Date.now();
                         const ONE_DAY = 24 * 60 * 60 * 1000;
                         const NEW_THRESHOLD = 2 * ONE_DAY; // 48 hours
 
-                        const read = articles.filter(a => readArticleUrls.includes(a.link));
-                        const unread = articles.filter(a => !readArticleUrls.includes(a.link));
+                        const read = sortByNewest(articles.filter(a => readArticleUrls.includes(a.link)));
+                        const unread = sortByNewest(articles.filter(a => !readArticleUrls.includes(a.link)));
 
-                        const newArticles = unread.filter(a => {
-                            const pub = new Date(a.pubDate).getTime();
-                            return !isNaN(pub) && (now - pub) < NEW_THRESHOLD;
+                        const newArrivals = unread.filter((article) => {
+                            const articleTime = getArticleTimestamp(article);
+                            return articleTime > 0 && (now - articleTime) < NEW_THRESHOLD;
                         });
 
-                        const olderUnread = unread.filter(a => {
-                            const pub = new Date(a.pubDate).getTime();
-                            return isNaN(pub) || (now - pub) >= NEW_THRESHOLD;
+                        const unreadBacklog = unread.filter((article) => {
+                            const articleTime = getArticleTimestamp(article);
+                            return articleTime <= 0 || (now - articleTime) >= NEW_THRESHOLD;
                         });
 
-                        const renderSection = (key: string, title: string, items: ArticleItem[], icon?: React.ReactNode) => {
-                            if (items.length === 0) return null;
-                            const isCollapsed = collapsedSections[key];
+                        const orderedAll = uniqueByLink([
+                            ...newArrivals,
+                            ...unreadBacklog,
+                            ...read,
+                        ]);
 
-                            return (
-                                <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                                    <button
-                                        onClick={() => toggleSection(key)}
-                                        className="flex items-center gap-2 text-sm font-bold text-stone-400 uppercase tracking-widest pl-1 hover:text-stone-600 transition-colors w-full text-left group"
-                                    >
-                                        {isCollapsed ? (
-                                            <ChevronRight className="w-4 h-4 transition-transform" />
-                                        ) : (
-                                            <ChevronDown className="w-4 h-4 transition-transform" />
-                                        )}
-                                        {icon}
-                                        {title}
-                                        <span className="bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded text-[10px] ml-1">{items.length}</span>
-                                    </button>
+                        const statusByLink = new Map<string, ArticleStatus>();
+                        newArrivals.forEach((item) => statusByLink.set(item.link, 'new'));
+                        unreadBacklog.forEach((item) => {
+                            if (!statusByLink.has(item.link)) {
+                                statusByLink.set(item.link, 'unread');
+                            }
+                        });
+                        read.forEach((item) => {
+                            if (!statusByLink.has(item.link)) {
+                                statusByLink.set(item.link, 'read');
+                            }
+                        });
 
-                                    <AnimatePresence>
-                                        {!isCollapsed && (
-                                            <motion.div
-                                                initial={{ opacity: 0, height: 0 }}
-                                                animate={{ opacity: 1, height: "auto" }}
-                                                exit={{ opacity: 0, height: 0 }}
-                                                transition={{ duration: 0.3 }}
-                                                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 overflow-hidden"
-                                            >
-                                                {items.map(item => (
-                                                    <motion.div
-                                                        key={item.link}
-                                                        layout
-                                                        initial={newlyFetchedLinks.has(item.link) ? { opacity: 0, y: -20, scale: 0.95 } : false}
-                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                        transition={{ duration: 0.5, type: "spring", bounce: 0.3 }}
-                                                    >
-                                                        <ArticleCard
-                                                            item={item}
-                                                            isRead={readArticleUrls.includes(item.link)}
-                                                            category={category}
-                                                            onSelect={onSelect}
-                                                            onDelete={(link) => handleDelete({ stopPropagation: () => { } } as any, link)}
-                                                        />
-                                                    </motion.div>
-                                                ))}
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                </div>
-                            );
-                        };
+                        const filteredArticles =
+                            activeView === 'all'
+                                ? orderedAll
+                                : activeView === 'new'
+                                    ? newArrivals
+                                    : activeView === 'unread'
+                                        ? unreadBacklog
+                                        : read;
+
+                        const filterItems = [
+                            { id: 'all' as const, label: '全部', count: orderedAll.length, icon: LayoutGrid },
+                            { id: 'new' as const, label: '新到达', count: newArrivals.length, icon: Sparkles },
+                            { id: 'unread' as const, label: '待阅读', count: unreadBacklog.length, icon: BookOpen },
+                            { id: 'read' as const, label: '已读历史', count: read.length, icon: Check },
+                        ];
 
                         return (
                             <>
-                                {/* Read History FIRST */}
-                                {renderSection("read", "已读历史 / Read History", read, <Check className="w-4 h-4 text-green-500" />)}
-
-                                {/* New Arrivals */}
-                                {renderSection("new", "新到达 / New Arrivals", newArticles, <Sparkles className="w-4 h-4 text-amber-500" />)}
-
-                                {/* Older Unread */}
-                                {renderSection("unread", "待阅读 / Unread", olderUnread, <BookOpen className="w-4 h-4 text-stone-400" />)}
-
                                 {articles.length === 0 && (
-                                    <div className="text-center py-20 text-stone-400 italic">
+                                    <LiquidGlassPanel className="rounded-[24px] py-16 text-center text-sm italic text-slate-500">
                                         点击刷新按钮抓取文章 / Click refresh to fetch articles
+                                    </LiquidGlassPanel>
+                                )}
+
+                                {articles.length > 0 && (
+                                    <div className="space-y-6">
+                                        <LiquidGlassPanel className="rounded-[22px] p-2.5">
+                                            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                                                {filterItems.map((filterItem) => {
+                                                    const Icon = filterItem.icon;
+                                                    const isActive = activeView === filterItem.id;
+                                                    return (
+                                                        <button
+                                                            key={filterItem.id}
+                                                            onClick={() => setActiveView(filterItem.id)}
+                                                            className={cn(
+                                                                "flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all duration-300",
+                                                                isActive
+                                                                    ? "border border-white/75 bg-white/70 text-slate-900 shadow-[0_16px_28px_-18px_rgba(15,23,42,0.7)]"
+                                                                    : "border border-transparent bg-white/30 text-slate-600 hover:bg-white/50"
+                                                            )}
+                                                        >
+                                                            <Icon className="h-4 w-4" />
+                                                            <span>{filterItem.label}</span>
+                                                            <span className={cn(
+                                                                "rounded-md px-1.5 py-0.5 text-[10px] font-bold",
+                                                                isActive ? "bg-slate-900 text-white" : "bg-white/75 text-slate-500"
+                                                            )}>
+                                                                {filterItem.count}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </LiquidGlassPanel>
+
+                                        {filteredArticles.length === 0 ? (
+                                            <LiquidGlassPanel className="rounded-2xl p-10 text-center text-sm text-slate-500">
+                                                这个分组暂时没有文章
+                                            </LiquidGlassPanel>
+                                        ) : (
+                                            <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6">
+                                                {filteredArticles.map((item, index) => (
+                                                    <motion.div
+                                                        key={item.link}
+                                                        layout
+                                                        initial={newlyFetchedLinks.has(item.link) ? { opacity: 0, y: -14, scale: 0.98 } : { opacity: 0, y: 8 }}
+                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                        transition={{ delay: index * 0.015, duration: 0.34, type: "spring", bounce: 0.15 }}
+                                                    >
+                                                        <ArticleCard
+                                                            item={item}
+                                                            status={statusByLink.get(item.link) ?? 'unread'}
+                                                            category={category}
+                                                            onSelect={onSelect}
+                                                            onDelete={handleDelete}
+                                                        />
+                                                    </motion.div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </>
@@ -438,7 +513,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 20, scale: 0.9 }}
                         transition={{ type: "spring", bounce: 0.3, duration: 0.5 }}
-                        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-2.5 bg-stone-800/90 backdrop-blur-md text-white rounded-full shadow-xl border border-white/10 text-sm font-bold tracking-wide"
+                        className="fixed bottom-8 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/70 bg-white/46 px-5 py-2.5 text-sm font-bold tracking-wide text-slate-800 shadow-[0_22px_42px_-22px_rgba(15,23,42,0.75)] ring-1 ring-white/65 backdrop-blur-2xl"
                     >
                         {notification.type === 'success' ? (
                             <div className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.6)] animate-pulse" />
@@ -454,13 +529,20 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
 }
 
 // Extracted Card Component for Reusability
-function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
+function ArticleCard({ item, status, category, onSelect, onDelete }: {
     item: ArticleItem,
-    isRead: boolean,
-    category: string,
+    status: ArticleStatus,
+    category: FeedCategory,
     onSelect: (url: string) => void,
     onDelete: (url: string) => void
 }) {
+    const isRead = status === 'read';
+    const statusMeta = status === 'new'
+        ? { label: '新到达', className: 'border-amber-200/80 bg-amber-100/80 text-amber-700' }
+        : status === 'read'
+            ? { label: '已读', className: 'border-emerald-200/80 bg-emerald-100/80 text-emerald-700' }
+            : { label: '未读', className: 'border-slate-200/80 bg-white/75 text-slate-600' };
+
     // Deterministic gradient generator
     const getGradient = (id: string) => {
         const gradients = [
@@ -483,25 +565,23 @@ function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
     };
 
     return (
-        <div
+        <LiquidGlassPanel
             onClick={() => onSelect(item.link)}
             className={cn(
-                "glass-panel rounded-2xl cursor-pointer transition-all duration-500 group relative overflow-hidden flex flex-col h-full",
-                // Soft Glass Border & Background
-                "bg-white/60 backdrop-blur-md border border-white/40",
+                "group flex h-full cursor-pointer flex-col overflow-hidden rounded-[26px] transition-all duration-500",
                 isRead
-                    ? "opacity-80 hover:opacity-100 grayscale-[0.3] hover:grayscale-0 shadow-none"
-                    : "hover:-translate-y-1 hover:shadow-[0_12px_32px_-8px_rgba(251,191,36,0.15)] hover:bg-white/80"
+                    ? "shadow-[0_14px_32px_-26px_rgba(15,23,42,0.68)]"
+                    : "hover:-translate-y-1.5 hover:shadow-[0_28px_48px_-26px_rgba(15,23,42,0.95)]"
             )}
         >
             {/* Cover Image Container */}
-            <div className="h-44 w-full relative overflow-hidden bg-stone-100">
+            <div className="relative h-48 w-full overflow-hidden bg-slate-100 md:h-52">
                 {/* Background Image - Picsum with deterministic seed */}
                 {item.image ? (
                     <img
                         src={item.image}
                         alt={item.title}
-                        className="w-full h-full object-cover transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-105"
+                        className="h-full w-full object-cover transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-105"
                         onError={(e) => {
                             // On error, show gradient fallback
                             e.currentTarget.style.display = 'none';
@@ -514,7 +594,7 @@ function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
                         <img
                             src={`https://picsum.photos/seed/${encodeURIComponent(item.title.slice(0, 20))}/800/600`}
                             alt=""
-                            className="w-full h-full object-cover transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-105"
+                            className="h-full w-full object-cover transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-105"
                             onError={(e) => {
                                 e.currentTarget.style.display = 'none';
                                 // Show gradient fallback
@@ -535,17 +615,10 @@ function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
                             )}
                         />
 
-                        {/* Source Badge Only (no title overlay) */}
-                        <div className="absolute bottom-3 left-3 flex items-center gap-1.5 bg-black/50 backdrop-blur-md rounded-full px-2.5 py-1 border border-white/10">
-                            {category === 'news' && <Newspaper className="w-3 h-3 text-white/90" />}
-                            {category === 'psychology' && <Brain className="w-3 h-3 text-white/90" />}
-                            {(category === 'ielts' || category === 'cet4' || category === 'cet6') && <GraduationCap className="w-3 h-3 text-white/90" />}
-                            {category === 'ai_news' && <Cpu className="w-3 h-3 text-white/90" />}
-                            {category === 'ted' && <span className="text-white/90 text-[10px] font-bold">TED</span>}
-                            <span className="text-white/90 text-[10px] uppercase tracking-wider font-medium">{item.source}</span>
-                        </div>
                     </>
                 )}
+
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/42 via-black/10 to-transparent" />
 
                 {/* Fallback Gradient (shown on image load error) */}
                 <div className={cn(
@@ -553,13 +626,21 @@ function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
                     getGradient(item.title)
                 )} />
 
+                {/* Source Badge */}
+                <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full border border-white/35 bg-black/45 px-2.5 py-1 backdrop-blur-md">
+                    {category === 'psychology' && <Brain className="h-3 w-3 text-white/90" />}
+                    {category === 'ai_news' && <Cpu className="h-3 w-3 text-white/90" />}
+                    {category === 'ai_gen' && <Sparkles className="h-3 w-3 text-white/90" />}
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-white/90">{item.source}</span>
+                </div>
+
                 {/* Read Badge */}
-                {isRead && (
-                    <div className="absolute top-3 left-3 bg-stone-900/40 backdrop-blur-md text-white text-[10px] uppercase font-bold tracking-widest px-2 py-1 rounded-full flex items-center gap-1.5 z-10 border border-white/10">
-                        <div className="w-1 h-1 rounded-full bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]" />
-                        已读
-                    </div>
-                )}
+                <div className={cn(
+                    "absolute left-3 top-3 z-10 rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-wide backdrop-blur-sm",
+                    statusMeta.className
+                )}>
+                    {statusMeta.label}
+                </div>
 
                 {/* Delete Button */}
                 <button
@@ -567,7 +648,7 @@ function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
                         e.stopPropagation();
                         onDelete(item.link);
                     }}
-                    className="absolute top-3 right-3 p-2 rounded-full bg-black/30 hover:bg-rose-500/90 backdrop-blur-md text-white/70 hover:text-white transition-all opacity-0 group-hover:opacity-100 z-20 translate-y-2 group-hover:translate-y-0 duration-300"
+                    className="absolute right-3 top-3 z-20 translate-y-2 rounded-full border border-white/35 bg-black/30 p-2 text-white/75 opacity-0 backdrop-blur-md transition-all duration-300 hover:bg-rose-500/90 hover:text-white group-hover:translate-y-0 group-hover:opacity-100"
                     title="Remove article"
                 >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -575,35 +656,47 @@ function ArticleCard({ item, isRead, category, onSelect, onDelete }: {
             </div>
 
             {/* Content Area */}
-            <div className="p-5 flex flex-col flex-1 justify-between space-y-3">
+            <div className="flex flex-1 flex-col justify-between space-y-3 p-5 md:p-6">
                 <div className="space-y-2">
                     {/* Date Only (source is on cover) */}
                     <div className="flex items-center justify-end">
-                        <span className="text-[10px] font-medium text-stone-400">
-                            {new Date(item.pubDate).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                        <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-slate-500">
+                            {formatArticleDate(item)}
                         </span>
                     </div>
 
                     {/* Title */}
                     <h4 className={cn(
-                        "text-lg font-bold font-newsreader leading-[1.3] group-hover:text-amber-800 transition-colors line-clamp-3",
-                        isRead ? "text-stone-500 decoration-stone-300 decoration-1" : "text-stone-800"
+                        "line-clamp-3 font-newsreader text-[1.5rem] font-semibold leading-[1.08] tracking-[-0.02em] transition-colors md:text-[1.62rem]",
+                        isRead ? "text-slate-600" : "text-slate-900 group-hover:text-slate-700"
                     )}>
                         {item.title}
                     </h4>
+
+                    {normalizeSnippet(item.snippet) && (
+                        <p className={cn(
+                            "line-clamp-2 pt-1 text-sm leading-relaxed",
+                            isRead ? "text-slate-400" : "text-slate-500"
+                        )}>
+                            {normalizeSnippet(item.snippet)}
+                        </p>
+                    )}
                 </div>
 
                 {/* Footer / Action */}
-                {!isRead && (
-                    <div className="pt-2 flex items-center justify-end">
-                        <span className="text-xs font-bold text-amber-600 flex items-center gap-1 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all duration-300">
-                            Read Article <ExternalLink className="w-3 h-3" />
-                        </span>
-                    </div>
-                )}
+                <div className="flex items-center justify-end pt-2">
+                    <span className={cn(
+                        "flex items-center gap-1 text-xs font-semibold transition-all duration-300",
+                        isRead
+                            ? "text-slate-400 group-hover:text-slate-500"
+                            : "text-cyan-700 group-hover:text-cyan-800"
+                    )}>
+                        {isRead ? "Revisit" : "Read Article"} <ExternalLink className="h-3 w-3" />
+                    </span>
+                </div>
             </div>
 
 
-        </div>
+        </LiquidGlassPanel>
     );
 }

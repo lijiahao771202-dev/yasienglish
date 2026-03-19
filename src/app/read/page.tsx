@@ -1,30 +1,41 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { UrlInput } from "@/components/reading/UrlInput";
+import { useEffect, useState } from "react";
 import { ArticleDisplay } from "@/components/reading/ArticleDisplay";
 import { AudioPlayer } from "@/components/shadowing/AudioPlayer";
 import { WritingEditor } from "@/components/writing/WritingEditor";
 import { RecommendedArticles, ArticleItem } from "@/components/reading/RecommendedArticles";
 import { ArticleSidebar } from "@/components/reading/ArticleSidebar";
-import { PenTool, ArrowLeft, House, Palette, Check, Edit3, Flashlight, Eye } from "lucide-react";
+import { PenTool, ArrowLeft, House, Palette, Edit3, Flashlight, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import axios from "axios";
 import { useUserStore } from "@/lib/store";
-import { useEffect } from "react";
 import { resolveDailyArticleCandidate } from "@/lib/dailyArticle";
+import { LiquidGlassPanel } from "@/components/ui/LiquidGlassPanel";
 
 interface ArticleData {
     title: string;
     content: string;
     byline?: string;
     textContent?: string;
-    blocks?: any[];
+    blocks?: ArticleBlock[];
     url?: string; // Track current URL for sidebar highlighting
     siteName?: string; // For TED video sync
     videoUrl?: string; // TED video URL
     image?: string | null;
+}
+
+interface ArticleBlock {
+    type: 'paragraph' | 'header' | 'list' | 'image' | 'blockquote';
+    id?: string;
+    content?: string;
+    tag?: string;
+    items?: string[];
+    src?: string;
+    alt?: string;
+    startTime?: number;
+    endTime?: number;
 }
 
 
@@ -40,7 +51,7 @@ function ReadingPageContent() {
     const { loadUserData, markArticleAsRead } = useUserStore();
 
     // Context Settings
-    const { theme, fontClass, fontSizeClass, isFocusMode, toggleFocusMode, isBionicMode, toggleBionicMode } = useReadingSettings();
+    const { theme, fontClass, isFocusMode, toggleFocusMode, isBionicMode, toggleBionicMode } = useReadingSettings();
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
 
     // Scroll Progress
@@ -70,7 +81,7 @@ function ReadingPageContent() {
             if (lastFetchDate !== today) {
                 try {
                     // Fetch feed list
-                    const feedRes = await axios.get('/api/feed?category=news');
+                    const feedRes = await axios.get('/api/feed?category=psychology');
                     if (feedRes.data && feedRes.data.length > 0) {
                         const resolved = await resolveDailyArticleCandidate({
                             items: feedRes.data,
@@ -174,11 +185,24 @@ function ReadingPageContent() {
 
     return (
         <main className={cn(
-            "min-h-screen text-stone-800 p-6 md:p-12 transition-all duration-500 ease-in-out",
+            "relative min-h-screen overflow-x-clip p-6 text-stone-800 transition-all duration-500 ease-in-out md:p-12",
             READING_THEMES.find(t => t.id === theme)?.class,
             fontClass, // Apply Font Global
             isSidebarOpen ? "md:pl-96" : ""
         )}>
+            {!article && (
+                <>
+                    <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_15%_18%,rgba(34,211,238,0.3),transparent_36%),radial-gradient(circle_at_82%_12%,rgba(139,92,246,0.27),transparent_34%),radial-gradient(circle_at_70%_82%,rgba(45,212,191,0.22),transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.86),rgba(247,250,255,0.84),rgba(242,255,251,0.82))]" />
+                    <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_30%_45%,rgba(255,255,255,0.7),transparent_56%)] backdrop-blur-[6px]" />
+                    <div
+                        className="pointer-events-none fixed inset-0 -z-10 opacity-[0.025] mix-blend-overlay"
+                        style={{
+                            backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+                        }}
+                    />
+                </>
+            )}
+
             {/* Sidebar */}
             <ArticleSidebar
                 articles={sidebarArticles}
@@ -190,10 +214,11 @@ function ReadingPageContent() {
 
             {/* Floating Navigation Dock */}
             <nav className="fixed top-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-500">
-                <div className="glass-panel bg-white/70 backdrop-blur-xl rounded-full px-2 py-1.5 flex items-center gap-1 shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/50 ring-1 ring-black/5">
+                <div className="relative flex items-center gap-1 rounded-full border border-white/55 bg-white/42 px-2 py-1.5 shadow-[0_30px_56px_-38px_rgba(14,30,66,0.8)] ring-1 ring-white/65 backdrop-blur-2xl">
+                    <div className="pointer-events-none absolute inset-0 rounded-full bg-[linear-gradient(115deg,rgba(255,255,255,0.56),rgba(255,255,255,0.18),rgba(255,255,255,0.4))]" />
                     <Link
                         href="/"
-                        className="w-10 h-10 flex items-center justify-center rounded-full text-stone-500 hover:text-stone-900 hover:bg-white/80 transition-all group"
+                        className="group relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-all hover:bg-white/65 hover:text-slate-900"
                         title="Back to Welcome"
                     >
                         <House className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />
@@ -208,7 +233,7 @@ function ReadingPageContent() {
                                 setIsWritingMode(false);
                                 setIsEditMode(false);
                             }}
-                            className="w-10 h-10 flex items-center justify-center rounded-full text-stone-500 hover:text-stone-900 hover:bg-white/80 transition-all group"
+                            className="group relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-all hover:bg-white/65 hover:text-slate-900"
                             title="Back to Article Picker"
                         >
                             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
@@ -217,14 +242,14 @@ function ReadingPageContent() {
 
                     {/* Brand Pill */}
                     {!article && (
-                        <div className="px-4 py-2 font-newsreader italic font-bold text-xl text-stone-800">
+                        <div className="relative z-10 px-4 py-2 font-newsreader text-xl font-bold italic text-slate-900">
                             DeepSeek IELTS
                         </div>
                     )}
 
                     {/* Progress Ring & Brand (When Article Active) */}
                     {article && (
-                        <div className="flex items-center gap-3 px-2">
+                        <div className="relative z-10 flex items-center gap-3 px-2">
                             {/* Nano Progress Ring */}
                             <div className="relative w-5 h-5 flex items-center justify-center">
                                 {/* Track */}
@@ -267,8 +292,8 @@ function ReadingPageContent() {
                                 className={cn(
                                     "w-10 h-10 flex items-center justify-center rounded-full transition-all duration-300",
                                     isFocusMode
-                                        ? "bg-stone-800 text-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.5)] ring-1 ring-yellow-400/50"
-                                        : "text-stone-400 hover:text-stone-600 hover:bg-stone-100/50"
+                                        ? "bg-slate-900 text-yellow-300 shadow-[0_0_20px_rgba(250,204,21,0.45)] ring-1 ring-yellow-300/45"
+                                        : "text-slate-500 hover:bg-white/65 hover:text-slate-800"
                                 )}
                                 title="Deep Focus Mode"
                             >
@@ -283,8 +308,8 @@ function ReadingPageContent() {
                                 className={cn(
                                     "w-10 h-10 flex items-center justify-center rounded-full transition-all duration-300",
                                     isBionicMode
-                                        ? "bg-stone-800 text-blue-400 shadow-[0_0_15px_rgba(96,165,250,0.5)] ring-1 ring-blue-400/50"
-                                        : "text-stone-400 hover:text-stone-600 hover:bg-stone-100/50"
+                                        ? "bg-slate-900 text-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.45)] ring-1 ring-cyan-300/45"
+                                        : "text-slate-500 hover:bg-white/65 hover:text-slate-800"
                                 )}
                                 title="Bionic Reading"
                             >
@@ -298,7 +323,7 @@ function ReadingPageContent() {
                                 onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
                                 className={cn(
                                     "w-10 h-10 flex items-center justify-center rounded-full transition-all",
-                                    isThemeMenuOpen ? "bg-stone-100 text-stone-900" : "text-stone-500 hover:text-stone-900 hover:bg-white/50"
+                                    isThemeMenuOpen ? "bg-white/75 text-slate-900" : "text-slate-500 hover:bg-white/65 hover:text-slate-900"
                                 )}
                                 title="Appearance"
                             >
@@ -316,7 +341,7 @@ function ReadingPageContent() {
                                     onClick={() => setIsEditMode(!isEditMode)}
                                     className={cn(
                                         "w-10 h-10 flex items-center justify-center rounded-full transition-all",
-                                        isEditMode ? "bg-amber-100 text-amber-700" : "text-stone-500 hover:text-stone-900 hover:bg-white/50"
+                                        isEditMode ? "bg-amber-100/90 text-amber-700" : "text-slate-500 hover:bg-white/65 hover:text-slate-900"
                                     )}
                                     title="Edit Text"
                                 >
@@ -325,7 +350,7 @@ function ReadingPageContent() {
 
                                 <button
                                     onClick={() => setIsWritingMode(true)}
-                                    className="px-4 h-10 rounded-full text-sm font-bold flex items-center gap-2 transition-all ml-1 bg-stone-100 text-stone-600 hover:bg-stone-200 hover:text-stone-900"
+                                    className="ml-1 flex h-10 items-center gap-2 rounded-full border border-white/60 bg-white/70 px-4 text-sm font-bold text-slate-700 shadow-[0_8px_22px_-16px_rgba(15,23,42,0.65)] transition-all hover:bg-white hover:text-slate-900"
                                 >
                                     <PenTool className="w-4 h-4" />
                                     <span>Drill</span>
@@ -338,21 +363,23 @@ function ReadingPageContent() {
 
             <div className={cn("mt-20 transition-all duration-700", isWritingMode ? "h-[calc(100vh-120px)]" : "")}>
                 {!article ? (
-                    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-12">
-                        <div className="w-full max-w-xl">
-                            <UrlInput onSubmit={handleUrlSubmit} isLoading={isLoading} />
-                            {error && (
-                                <p className="mt-4 text-red-400 bg-red-400/10 px-4 py-2 rounded-lg border border-red-400/20 text-center">
-                                    {error}
-                                </p>
-                            )}
-                        </div>
+                    <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 pb-10">
+                        {error && (
+                            <LiquidGlassPanel className="rounded-xl px-4 py-2 text-center text-sm text-red-700">
+                                {error}
+                            </LiquidGlassPanel>
+                        )}
+
+                        {isLoading && (
+                            <LiquidGlassPanel className="rounded-xl px-4 py-2 text-center text-sm text-cyan-700">
+                                Loading article...
+                            </LiquidGlassPanel>
+                        )}
 
                         <RecommendedArticles
                             onSelect={handleUrlSubmit}
                             onArticleLoaded={(data) => {
-                                setArticle(data);
-                                // If generated, we might not have a URL, but that's fine
+                                setArticle(data as ArticleData);
                             }}
                             onListUpdate={setSidebarArticles}
                         />
