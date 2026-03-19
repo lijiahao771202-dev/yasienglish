@@ -32,9 +32,10 @@ interface ParagraphCardProps {
     isFocusLocked?: boolean;
     hasActiveFocusLock?: boolean;
     onToggleFocusLock?: () => void;
+    highlightSnippet?: string;
 }
 
-export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit, onMerge, onUpdate, isEditMode, startTime, endTime, currentVideoTime, onSeekToTime, isFocusMode, isFocusLocked, hasActiveFocusLock, onToggleFocusLock }: ParagraphCardProps) {
+export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit, onMerge, onUpdate, isEditMode, startTime, endTime, currentVideoTime, onSeekToTime, isFocusMode, isFocusLocked, hasActiveFocusLock, onToggleFocusLock, highlightSnippet }: ParagraphCardProps) {
     const { fontSizeClass, fontClass, isBionicMode } = useReadingSettings();
     const {
         translations, setTranslation: setStoreTranslation,
@@ -106,6 +107,31 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
 
     const handlePlay = () => {
         togglePlay();
+    };
+
+    const renderTextWithUnderline = (paragraphText: string, snippet?: string) => {
+        if (!snippet) return paragraphText;
+        const normalizedSnippet = snippet.trim();
+        if (!normalizedSnippet) return paragraphText;
+
+        const lowerText = paragraphText.toLowerCase();
+        const lowerSnippet = normalizedSnippet.toLowerCase();
+        const idx = lowerText.indexOf(lowerSnippet);
+        if (idx < 0) return paragraphText;
+
+        const before = paragraphText.slice(0, idx);
+        const hit = paragraphText.slice(idx, idx + normalizedSnippet.length);
+        const after = paragraphText.slice(idx + normalizedSnippet.length);
+
+        return (
+            <>
+                {before}
+                <span className="rounded-[2px] border-b-2 border-amber-500/95 bg-amber-100/45 px-0.5">
+                    {hit}
+                </span>
+                {after}
+            </>
+        );
     };
 
     const handleSelection = () => {
@@ -648,7 +674,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                     })}
                                 </span>
                             ) : (
-                                text
+                                renderTextWithUnderline(text, highlightSnippet)
                             )
                         )
                     ))}

@@ -31,6 +31,12 @@ interface ArticleDisplayProps {
     videoUrl?: string;   // TED video URL
     articleUrl?: string; // Original article URL for download
     isEditMode?: boolean; // New prop for edit mode
+    locateRequest?: {
+        requestId: number;
+        questionNumber: number;
+        paragraphNumber: number;
+        evidence?: string;
+    } | null;
 }
 
 interface PopupState {
@@ -40,7 +46,7 @@ interface PopupState {
     y: number;
 }
 
-export function ArticleDisplay({ title, content, byline, blocks, siteName, videoUrl, articleUrl, isEditMode }: ArticleDisplayProps) {
+export function ArticleDisplay({ title, content, byline, blocks, siteName, videoUrl, articleUrl, isEditMode, locateRequest }: ArticleDisplayProps) {
     const contentRef = useRef<HTMLDivElement>(null);
     const videoPlayerRef = useRef<TEDVideoPlayerRef>(null);
     // Generate IDs if missing (migration)
@@ -53,6 +59,9 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
     });
     const [popup, setPopup] = useState<PopupState | null>(null);
     const [activeSpan, setActiveSpan] = useState<HTMLElement | null>(null);
+    const [highlightedParagraphNumber, setHighlightedParagraphNumber] = useState<number | null>(null);
+    const [highlightedQuestionNumber, setHighlightedQuestionNumber] = useState<number | null>(null);
+    const [highlightedSnippet, setHighlightedSnippet] = useState<string | null>(null);
 
     const { fontClass, isFocusMode } = useReadingSettings();
     const [lockedFocusIndex, setLockedFocusIndex] = useState<number | null>(null);
@@ -99,6 +108,66 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
             })));
         }
     }, [blocks]);
+
+    const getParagraphTextByOrder = (order: number): string | null => {
+        let paragraphCount = 0;
+        for (const block of activeBlocks) {
+            if (block.type === "paragraph" && block.content) {
+                paragraphCount += 1;
+                if (paragraphCount === order) return block.content;
+            }
+        }
+        return null;
+    };
+
+    const pickBestSnippet = (paragraphText: string, evidence?: string): string | null => {
+        if (!evidence) return null;
+        const normalizedEvidence = evidence
+            .replace(/[“”"']/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+        if (!normalizedEvidence) return null;
+
+        const candidates = [
+            normalizedEvidence,
+            ...normalizedEvidence.split(/[。！？.!?]/).map(s => s.trim()),
+            ...normalizedEvidence.split(/[，,;；]/).map(s => s.trim()),
+        ]
+            .filter((s, i, arr) => s.length >= 10 && arr.indexOf(s) === i)
+            .sort((a, b) => b.length - a.length);
+
+        const paraLower = paragraphText.toLowerCase();
+        for (const candidate of candidates) {
+            const idx = paraLower.indexOf(candidate.toLowerCase());
+            if (idx >= 0) {
+                return paragraphText.slice(idx, idx + candidate.length);
+            }
+        }
+        return null;
+    };
+
+    useEffect(() => {
+        if (!locateRequest) return;
+        const targetParagraph = locateRequest.paragraphNumber;
+        const el = document.querySelector<HTMLElement>(`[data-article-paragraph="${targetParagraph}"]`);
+        if (!el) return;
+
+        const paragraphText = getParagraphTextByOrder(targetParagraph);
+        const snippet = paragraphText ? pickBestSnippet(paragraphText, locateRequest.evidence) : null;
+
+        setHighlightedParagraphNumber(targetParagraph);
+        setHighlightedQuestionNumber(locateRequest.questionNumber);
+        setHighlightedSnippet(snippet);
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        const timer = window.setTimeout(() => {
+            setHighlightedParagraphNumber((prev) => (prev === targetParagraph ? null : prev));
+            setHighlightedQuestionNumber((prev) => (prev === locateRequest.questionNumber ? null : prev));
+            setHighlightedSnippet(null);
+        }, 2600);
+
+        return () => window.clearTimeout(timer);
+    }, [locateRequest, activeBlocks]);
 
     const canOpenOriginalArticle = typeof articleUrl === "string"
         && /^https?:\/\//i.test(articleUrl);
@@ -279,27 +348,47 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
 
                 <div className={cn("space-y-4 text-stone-800 leading-loose group/article", fontClass)}>
                     {activeBlocks && activeBlocks.length > 0 ? (
-                        activeBlocks.map((block, index) => {
+                        (() => {
+                            let paragraphOrder = 0;
+                            return activeBlocks.map((block, index) => {
                             if (block.type === 'paragraph' && block.content) {
+                                paragraphOrder += 1;
+                                const currentParagraphOrder = paragraphOrder;
+                                const isLocatedParagraph = highlightedParagraphNumber === currentParagraphOrder;
+                                const useParagraphFallbackHighlight = isLocatedParagraph && !highlightedSnippet;
                                 return (
-                                    <ParagraphCard
+                                    <div
                                         key={block.id || index}
-                                        text={block.content}
-                                        index={index}
-                                        articleTitle={title}
-                                        onWordClick={handleArticleClick}
-                                        onSplit={handleSplit}
-                                        onMerge={handleMerge}
-                                        onUpdate={handleUpdate}
-                                        isEditMode={isEditMode}
-                                        startTime={block.startTime}
-                                        endTime={block.endTime}
-                                        // Deep Focus Mode
-                                        isFocusMode={isFocusMode}
-                                        isFocusLocked={lockedFocusIndex === index}
-                                        hasActiveFocusLock={lockedFocusIndex !== null}
-                                        onToggleFocusLock={() => setLockedFocusIndex(prev => prev === index ? null : index)}
-                                    />
+                                        data-article-paragraph={currentParagraphOrder}
+                                        className={cn(
+                                            "relative rounded-xl transition-all duration-500",
+                                            useParagraphFallbackHighlight && "bg-amber-100/45 ring-2 ring-amber-300/70"
+                                        )}
+                                    >
+                                        {isLocatedParagraph && highlightedQuestionNumber && (
+                                            <div className="pointer-events-none absolute -right-2 -top-2 z-20 rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 shadow-sm">
+                                                第{highlightedQuestionNumber}题
+                                            </div>
+                                        )}
+                                        <ParagraphCard
+                                            text={block.content}
+                                            index={index}
+                                            articleTitle={title}
+                                            onWordClick={handleArticleClick}
+                                            onSplit={handleSplit}
+                                            onMerge={handleMerge}
+                                            onUpdate={handleUpdate}
+                                            isEditMode={isEditMode}
+                                            startTime={block.startTime}
+                                            endTime={block.endTime}
+                                            // Deep Focus Mode
+                                            isFocusMode={isFocusMode}
+                                            isFocusLocked={lockedFocusIndex === index}
+                                            hasActiveFocusLock={lockedFocusIndex !== null}
+                                            onToggleFocusLock={() => setLockedFocusIndex(prev => prev === index ? null : index)}
+                                            highlightSnippet={isLocatedParagraph ? (highlightedSnippet || undefined) : undefined}
+                                        />
+                                    </div>
                                 );
                             } else if (block.type === 'header') {
                                 const HeaderTag = (block.tag || 'h2') as React.ElementType;
@@ -325,7 +414,8 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
                                 );
                             }
                             return null;
-                        })
+                        });
+                        })()
                     ) : (
                         <div
                             ref={contentRef}

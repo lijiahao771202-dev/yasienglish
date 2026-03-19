@@ -13,7 +13,7 @@ export interface SyncTracked {
 export interface AICacheItem {
     id?: number;
     key: string; // Unique identifier (e.g., text content or hash)
-    type: 'grammar' | 'translation' | 'tts' | 'ask_ai';
+    type: 'grammar' | 'translation' | 'tts' | 'ask_ai' | 'quiz';
     data: any;
     timestamp: number;
 }
@@ -73,6 +73,10 @@ export interface CachedArticle {
     timestamp: number;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     isAIGenerated?: boolean;
+    quizCompleted?: boolean;
+    quizCorrect?: number;
+    quizTotal?: number;
+    quizScorePercent?: number;
 }
 
 export interface EloHistoryItem {
