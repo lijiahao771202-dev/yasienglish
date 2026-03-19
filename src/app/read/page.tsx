@@ -7,7 +7,8 @@ import { AudioPlayer } from "@/components/shadowing/AudioPlayer";
 import { WritingEditor } from "@/components/writing/WritingEditor";
 import { RecommendedArticles, ArticleItem } from "@/components/reading/RecommendedArticles";
 import { ArticleSidebar } from "@/components/reading/ArticleSidebar";
-import { PenTool, ArrowLeft, House, Palette, Edit3, Flashlight, Eye } from "lucide-react";
+import { ReadingQuizPanel } from "@/components/reading/ReadingQuizPanel";
+import { PenTool, ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import axios from "axios";
 import { useUserStore } from "@/lib/store";
@@ -24,6 +25,8 @@ interface ArticleData {
     siteName?: string; // For TED video sync
     videoUrl?: string; // TED video URL
     image?: string | null;
+    difficulty?: 'cet4' | 'cet6' | 'ielts';
+    isAIGenerated?: boolean;
 }
 
 interface ArticleBlock {
@@ -48,6 +51,7 @@ function ReadingPageContent() {
     const [error, setError] = useState<string | null>(null);
     const [isWritingMode, setIsWritingMode] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
+    const [isQuizMode, setIsQuizMode] = useState(false);
     const { loadUserData, markArticleAsRead } = useUserStore();
 
     // Context Settings
@@ -124,6 +128,13 @@ function ReadingPageContent() {
     const [sidebarArticles, setSidebarArticles] = useState<ArticleItem[]>([]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [currentUrl, setCurrentUrl] = useState<string>("");
+    const canShowQuizPanel = Boolean(isQuizMode && article?.isAIGenerated && article?.difficulty);
+
+    useEffect(() => {
+        if (isQuizMode && (!article?.isAIGenerated || !article?.difficulty)) {
+            setIsQuizMode(false);
+        }
+    }, [isQuizMode, article?.isAIGenerated, article?.difficulty]);
 
     const handleUrlSubmit = async (url: string) => {
         setIsLoading(true);
@@ -232,6 +243,7 @@ function ReadingPageContent() {
                                 setCurrentUrl("");
                                 setIsWritingMode(false);
                                 setIsEditMode(false);
+                                setIsQuizMode(false);
                             }}
                             className="group relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-all hover:bg-white/65 hover:text-slate-900"
                             title="Back to Article Picker"
@@ -385,9 +397,18 @@ function ReadingPageContent() {
                         />
                     </div>
                 ) : (
-                    <div className="grid gap-8 h-full grid-cols-1">
+                    <div className={cn(
+                        "grid gap-8 h-full transition-all duration-500",
+                        canShowQuizPanel
+                            ? "grid-cols-1 xl:grid-cols-[minmax(0,1fr)_500px] 2xl:grid-cols-[minmax(0,1fr)_560px] xl:h-[calc(100vh-120px)] xl:overflow-hidden"
+                            : "grid-cols-1"
+                    )}>
                         {/* Reading Column */}
-                        <div className={cn("space-y-12 transition-all duration-700 mx-auto max-w-3xl")}>
+                        <div className={cn(
+                            "space-y-12 transition-all duration-700",
+                            canShowQuizPanel && "xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1",
+                            canShowQuizPanel ? "max-w-none" : "mx-auto max-w-3xl"
+                        )}>
                             <ArticleDisplay
                                 title={article.title}
                                 content={article.content}
@@ -398,10 +419,46 @@ function ReadingPageContent() {
                                 articleUrl={article.url}
                                 isEditMode={isEditMode}
                             />
+
+                            {/* Quiz Entry Button - only for AI generated articles */}
+                            {article.isAIGenerated && article.difficulty && !isQuizMode && (
+                                <div className="flex justify-center pb-8">
+                                    <button
+                                        onClick={() => setIsQuizMode(true)}
+                                        className="group flex items-center gap-3 rounded-2xl border border-white/70 bg-white/60 px-8 py-4 font-bold text-slate-800 shadow-[0_20px_40px_-20px_rgba(15,23,42,0.6)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:bg-white/80 hover:shadow-[0_28px_52px_-20px_rgba(15,23,42,0.75)]"
+                                    >
+                                        <ClipboardCheck className="h-5 w-5 text-pink-500 transition-transform group-hover:scale-110" />
+                                        <span>开始答题</span>
+                                        <span className={cn(
+                                            "rounded-md border px-2 py-0.5 text-[10px] font-bold",
+                                            article.difficulty === 'cet4' && "border-emerald-200 bg-emerald-50 text-emerald-700",
+                                            article.difficulty === 'cet6' && "border-blue-200 bg-blue-50 text-blue-700",
+                                            article.difficulty === 'ielts' && "border-violet-200 bg-violet-50 text-violet-700"
+                                        )}>
+                                            {article.difficulty === 'cet4' ? '四级' : article.difficulty === 'cet6' ? '六级' : '雅思'}
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
+
                             <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">
                                 <AudioPlayer text={article.textContent || ""} />
                             </div>
                         </div>
+
+                        {/* Quiz Sidebar */}
+                        {canShowQuizPanel && (
+                            <div className="xl:h-full xl:min-h-0">
+                                <LiquidGlassPanel className="h-full min-h-0 overflow-hidden rounded-[24px] [&>.liquid-glass-content]:h-full [&>.liquid-glass-content]:min-h-0">
+                                    <ReadingQuizPanel
+                                        articleContent={article.textContent || article.content}
+                                        articleTitle={article.title}
+                                        difficulty={article.difficulty as 'cet4' | 'cet6' | 'ielts'}
+                                        onClose={() => setIsQuizMode(false)}
+                                    />
+                                </LiquidGlassPanel>
+                            </div>
+                        )}
 
                         {/* Writing Overlay */}
                         {isWritingMode && (
