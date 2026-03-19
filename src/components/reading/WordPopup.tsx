@@ -32,6 +32,35 @@ interface WordPopupProps {
     onClose: () => void;
 }
 
+const pronunciationAudioCache = new Map<string, HTMLAudioElement>();
+let lastPronounce: { word: string; at: number } = { word: "", at: 0 };
+const dictionaryMemoryCache = new Map<string, DefinitionData>();
+const dictionaryInFlight = new Map<string, Promise<DefinitionData | null>>();
+
+function playPronunciation(word: string, force = false) {
+    const normalized = word.trim().toLowerCase();
+    if (!normalized) return;
+    const now = Date.now();
+    if (!force && lastPronounce.word === normalized && now - lastPronounce.at < 500) {
+        return;
+    }
+    lastPronounce = { word: normalized, at: now };
+
+    let audio = pronunciationAudioCache.get(normalized);
+    if (!audio) {
+        audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(normalized)}&type=2`);
+        audio.preload = "auto";
+        pronunciationAudioCache.set(normalized, audio);
+    }
+
+    try {
+        audio.currentTime = 0;
+    } catch {
+        // ignore if media not ready
+    }
+    audio.play().catch(() => { });
+}
+
 export function WordPopup({ popup, onClose }: WordPopupProps) {
     const [definition, setDefinition] = useState<DefinitionData | null>(null);
     const [isLoadingDict, setIsLoadingDict] = useState(false);
@@ -55,30 +84,65 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
             if (isMounted && item) setIsSaved(true);
         });
 
-        // Auto-Play Audio (Instant Pronunciation) - Using Youdao for natural voice
-        const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(popup.word)}&type=2`);
-        audio.play().catch(() => { });
+        // Auto-play pronunciation with cache + cooldown to prevent repeated network/audio startup.
+        playPronunciation(popup.word);
 
-        // Fetch Dictionary Definition
-        fetch("/api/dictionary", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ word: popup.word }),
-        })
-            .then(res => res.json())
-            .then(data => {
-                if (isMounted && data.definition) {
-                    setDefinition(prev => ({
-                        ...prev,
+        const normalized = popup.word.trim().toLowerCase();
+        const cachedDict = dictionaryMemoryCache.get(normalized);
+        if (cachedDict) {
+            setDefinition(prev => ({ ...prev, ...cachedDict }));
+            setIsLoadingDict(false);
+            return () => { isMounted = false; };
+        }
+
+        const loadDictionary = async () => {
+            const existing = dictionaryInFlight.get(normalized);
+            if (existing) return existing;
+
+            const promise = (async () => {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 3200);
+                try {
+                    const res = await fetch("/api/dictionary", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ word: normalized }),
+                        signal: controller.signal,
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data?.definition) return null;
+
+                    const result: DefinitionData = {
                         dictionary_meaning: {
                             definition: data.definition,
                             translation: data.translation
                         },
-                        phonetic: data.phonetic // Often dictionary API returns phonetic too
-                    }));
+                        phonetic: data.phonetic,
+                    };
+                    dictionaryMemoryCache.set(normalized, result);
+                    if (dictionaryMemoryCache.size > 2000) {
+                        const firstKey = dictionaryMemoryCache.keys().next().value;
+                        if (firstKey) dictionaryMemoryCache.delete(firstKey);
+                    }
+                    return result;
+                } catch (error) {
+                    console.error("Dictionary error:", error);
+                    return null;
+                } finally {
+                    clearTimeout(timeout);
+                    dictionaryInFlight.delete(normalized);
                 }
+            })();
+
+            dictionaryInFlight.set(normalized, promise);
+            return promise;
+        };
+
+        loadDictionary()
+            .then((result) => {
+                if (!isMounted || !result) return;
+                setDefinition(prev => ({ ...prev, ...result }));
             })
-            .catch(err => console.error("Dictionary error:", err))
             .finally(() => {
                 if (isMounted) setIsLoadingDict(false);
             });
@@ -221,8 +285,7 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(popup.word)}&type=2`);
-                                audio.play().catch(() => { });
+                                playPronunciation(popup.word, true);
                             }}
                             className="p-2 rounded-full bg-amber-100/80 hover:bg-amber-200 text-amber-700 transition-colors shadow-sm"
                             title="Play Pronunciation"
