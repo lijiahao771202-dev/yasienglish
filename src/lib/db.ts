@@ -71,6 +71,8 @@ export interface CachedArticle {
     blocks?: any[];
     image?: string | null;
     timestamp: number;
+    difficulty?: 'cet4' | 'cet6' | 'ielts';
+    isAIGenerated?: boolean;
 }
 
 export interface EloHistoryItem {
@@ -538,6 +540,20 @@ export class YasiDB extends Dexie {
                     profile.deepseek_api_key = '';
                 }
             });
+        });
+
+        // Version 23: Add AI-generated article metadata fields.
+        this.version(23).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
         });
     }
 }

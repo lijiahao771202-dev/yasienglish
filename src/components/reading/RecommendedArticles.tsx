@@ -32,6 +32,8 @@ interface GeneratedArticleData {
     videoUrl?: string;
     url?: string;
     image?: string | null;
+    difficulty?: 'cet4' | 'cet6' | 'ielts';
+    isAIGenerated?: boolean;
 }
 
 interface RecommendedArticlesProps {
@@ -93,6 +95,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     const [category, setCategory] = useState<FeedCategory>('psychology');
     const [activeView, setActiveView] = useState<ArticleView>('all');
     const [genTopic, setGenTopic] = useState("");
+    const [genDifficulty, setGenDifficulty] = useState<'cet4' | 'cet6' | 'ielts'>('ielts');
     const [isGenerating, setIsGenerating] = useState(false);
 
     // New states for enhanced UX
@@ -104,6 +107,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
 
     const { setFeed, getFeed, loadFeedFromDB, deleteArticle } = useFeedStore();
     const { readArticleUrls } = useUserStore();
+
+    // Preset topics per difficulty
+    const PRESET_TOPICS: Record<string, string[]> = {
+        cet4: ["Daily Life", "Campus Life", "Travel", "Technology Basics", "Health & Fitness"],
+        cet6: ["Social Issues", "Economics", "Education Reform", "Environment", "Psychology"],
+        ielts: ["Urbanization", "Globalization", "Scientific Ethics", "Cultural Heritage", "AI & Society"],
+    };
 
     // Load from DB only (no auto-fetch from API)
     useEffect(() => {
@@ -134,9 +144,32 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
             const res = await fetch("/api/ai/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ topic: genTopic }),
+                body: JSON.stringify({ topic: genTopic, difficulty: genDifficulty }),
             });
             const data = await res.json();
+            const articleUrl = `ai-gen://${genDifficulty}/${Date.now()}`;
+            data.url = articleUrl;
+            data.difficulty = genDifficulty;
+            data.isAIGenerated = true;
+
+            // Save to IndexedDB
+            try {
+                const { db } = await import("@/lib/db");
+                await db.articles.put({
+                    url: articleUrl,
+                    title: data.title || genTopic,
+                    content: data.content || "",
+                    textContent: data.textContent || data.content || "",
+                    byline: data.byline,
+                    blocks: data.blocks,
+                    timestamp: Date.now(),
+                    difficulty: genDifficulty,
+                    isAIGenerated: true,
+                });
+            } catch (dbErr) {
+                console.error("Failed to save AI article to DB:", dbErr);
+            }
+
             if (onArticleLoaded) {
                 onArticleLoaded(data as GeneratedArticleData);
             }
@@ -334,49 +367,146 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
             </LiquidGlassPanel>
 
             {category === 'ai_gen' ? (
-                <LiquidGlassPanel className="relative flex min-h-[300px] flex-col items-center justify-center space-y-6 rounded-[28px] p-8">
-                    <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-pink-300/20 blur-3xl" />
-                    <div className="pointer-events-none absolute -left-16 -bottom-16 h-44 w-44 rounded-full bg-cyan-300/20 blur-3xl" />
-                    <div className="text-center space-y-2">
-                        <Sparkles className="mx-auto mb-4 h-12 w-12 text-pink-500" />
-                        <h4 className="text-xl font-bold text-slate-900">Generate Custom Article</h4>
-                        <p className="max-w-md text-sm text-slate-600">
-                            Enter a topic, and our AI will generate a tailored reading passage for you instantly.
-                        </p>
+                <div className="space-y-6">
+                    {/* Difficulty Selector */}
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        {([
+                            {
+                                id: 'cet4' as const,
+                                label: 'CET-4 四级',
+                                desc: '4000 词汇 · 300-400 词',
+                                detail: '简单句为主，日常话题',
+                                color: 'emerald',
+                                borderActive: 'border-emerald-300 ring-emerald-200/50',
+                                bgActive: 'bg-emerald-50/60',
+                                iconBg: 'bg-emerald-100 text-emerald-600',
+                            },
+                            {
+                                id: 'cet6' as const,
+                                label: 'CET-6 六级',
+                                desc: '6000 词汇 · 400-500 词',
+                                detail: '复合句+被动语态',
+                                color: 'blue',
+                                borderActive: 'border-blue-300 ring-blue-200/50',
+                                bgActive: 'bg-blue-50/60',
+                                iconBg: 'bg-blue-100 text-blue-600',
+                            },
+                            {
+                                id: 'ielts' as const,
+                                label: 'IELTS 雅思',
+                                desc: '8000+ 词汇 · 500-700 词',
+                                detail: '学术词汇+复杂句式',
+                                color: 'violet',
+                                borderActive: 'border-violet-300 ring-violet-200/50',
+                                bgActive: 'bg-violet-50/60',
+                                iconBg: 'bg-violet-100 text-violet-600',
+                            },
+                        ]).map((diff) => {
+                            const isActive = genDifficulty === diff.id;
+                            return (
+                                <LiquidGlassPanel
+                                    key={diff.id}
+                                    onClick={() => setGenDifficulty(diff.id)}
+                                    className={cn(
+                                        "cursor-pointer rounded-[22px] p-5 transition-all duration-300",
+                                        isActive
+                                            ? `${diff.borderActive} ring-2 shadow-[0_20px_40px_-20px_rgba(15,23,42,0.6)]`
+                                            : "hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-18px_rgba(15,23,42,0.5)]"
+                                    )}
+                                >
+                                    <div className={cn(
+                                        "mb-3 inline-flex rounded-xl p-2.5",
+                                        isActive ? diff.iconBg : "bg-white/50 text-slate-500"
+                                    )}>
+                                        <Sparkles className="h-5 w-5" />
+                                    </div>
+                                    <h4 className="font-newsreader text-lg font-bold text-slate-900">
+                                        {diff.label}
+                                    </h4>
+                                    <p className="mt-1 text-xs font-medium text-slate-500">
+                                        {diff.desc}
+                                    </p>
+                                    <p className="mt-0.5 text-[11px] text-slate-400">
+                                        {diff.detail}
+                                    </p>
+                                </LiquidGlassPanel>
+                            );
+                        })}
                     </div>
 
-                    <div className="w-full max-w-md space-y-4">
+                    {/* Topic Selection */}
+                    <LiquidGlassPanel className="relative rounded-[24px] p-6">
+                        <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-pink-300/15 blur-3xl" />
+                        <div className="pointer-events-none absolute -left-12 -bottom-12 h-36 w-36 rounded-full bg-cyan-300/15 blur-3xl" />
+
+                        <h4 className="mb-1 text-sm font-bold text-slate-800">选择主题</h4>
+                        <p className="mb-4 text-xs text-slate-500">
+                            点击预设标签或输入自定义主题
+                        </p>
+
+                        {/* Preset Topics */}
+                        <div className="mb-4 flex flex-wrap gap-2">
+                            {(PRESET_TOPICS[genDifficulty] || []).map(topic => (
+                                <button
+                                    key={topic}
+                                    onClick={() => setGenTopic(topic)}
+                                    className={cn(
+                                        "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-all duration-200",
+                                        genTopic === topic
+                                            ? "border-cyan-300 bg-cyan-50/80 text-cyan-800 shadow-sm"
+                                            : "border-white/60 bg-white/45 text-slate-500 hover:bg-white/70 hover:text-slate-700"
+                                    )}
+                                >
+                                    {topic}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Custom Input */}
                         <div className="relative">
                             <input
                                 type="text"
                                 value={genTopic}
                                 onChange={(e) => setGenTopic(e.target.value)}
-                                placeholder="e.g., Quantum Computing, History of Jazz..."
-                                className="w-full rounded-xl border border-white/70 bg-white/50 px-4 py-3 text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors focus:border-cyan-300 focus:outline-none"
+                                onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                                placeholder="或输入自定义主题 e.g., Quantum Computing..."
+                                className="w-full rounded-xl border border-white/70 bg-white/50 px-4 py-3 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors placeholder:text-slate-400 focus:border-cyan-300 focus:outline-none"
                             />
                         </div>
+                    </LiquidGlassPanel>
+
+                    {/* Generate Button */}
+                    <LiquidGlassPanel className="rounded-[20px] p-4">
+                        {/* Selection Summary */}
+                        {genTopic.trim() && (
+                            <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
+                                <span className={cn(
+                                    "rounded-md border px-2 py-0.5 font-semibold",
+                                    genDifficulty === 'cet4' && "border-emerald-200 bg-emerald-50 text-emerald-700",
+                                    genDifficulty === 'cet6' && "border-blue-200 bg-blue-50 text-blue-700",
+                                    genDifficulty === 'ielts' && "border-violet-200 bg-violet-50 text-violet-700"
+                                )}>
+                                    {genDifficulty === 'cet4' ? '四级' : genDifficulty === 'cet6' ? '六级' : '雅思'}
+                                </span>
+                                <span className="text-slate-400">·</span>
+                                <span className="truncate font-medium text-slate-700">{genTopic}</span>
+                            </div>
+                        )}
                         <button
                             onClick={handleGenerate}
                             disabled={isGenerating || !genTopic.trim()}
-                            className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/70 bg-white/62 py-3 font-bold text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] transition-all hover:bg-white/80 disabled:cursor-not-allowed disabled:opacity-50"
+                            className={cn(
+                                "flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold transition-all duration-300",
+                                isGenerating || !genTopic.trim()
+                                    ? "border border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
+                                    : "border border-white/70 bg-white/70 text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] hover:bg-white/90 hover:shadow-[0_20px_40px_-20px_rgba(15,23,42,0.8)]"
+                            )}
                         >
                             {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                            {isGenerating ? "Generating..." : "Generate Article"}
+                            {isGenerating ? "正在生成文章..." : "生成文章"}
                         </button>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 justify-center mt-4">
-                        {["Space Exploration", "Artificial Intelligence", "Climate Change", "Renaissance Art"].map(topic => (
-                            <button
-                                key={topic}
-                                onClick={() => setGenTopic(topic)}
-                                className="rounded-full border border-white/70 bg-white/45 px-3 py-1 text-xs text-slate-500 transition-all hover:bg-white/70 hover:text-slate-700"
-                            >
-                                {topic}
-                            </button>
-                        ))}
-                    </div>
-                </LiquidGlassPanel>
+                    </LiquidGlassPanel>
+                </div>
             ) : (
                 <div className="space-y-8">
                     {(() => {
