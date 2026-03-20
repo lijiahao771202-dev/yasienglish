@@ -13,11 +13,15 @@ import { InlineGrammarHighlights } from "@/components/shared/InlineGrammarHighli
 import { getGrammarHighlightColor, type GrammarDisplayMode } from "@/lib/grammarHighlights";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
+import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
+import { getReadingCoinCost, INSUFFICIENT_READING_COINS } from "@/lib/reading-economy";
 
 interface ParagraphCardProps {
     text: string;
     index: number;
     articleTitle?: string;
+    articleUrl?: string;
     onWordClick: (e: React.MouseEvent) => void;
     onSplit?: (index: number, textBefore: string, textAfter: string) => void;
     onMerge?: (sourceIndex: number, targetIndex: number) => void;
@@ -36,7 +40,8 @@ interface ParagraphCardProps {
     highlightSnippet?: string;
 }
 
-export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit, onMerge, onUpdate, isEditMode, startTime, endTime, currentVideoTime, onSeekToTime, isFocusMode, isFocusLocked, hasActiveFocusLock, onToggleFocusLock, highlightSnippet }: ParagraphCardProps) {
+export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordClick, onSplit, onMerge, onUpdate, isEditMode, startTime, endTime, currentVideoTime, onSeekToTime, isFocusMode, isFocusLocked, hasActiveFocusLock, onToggleFocusLock, highlightSnippet }: ParagraphCardProps) {
+    const sessionUser = useAuthSessionUser();
     const { fontSizeClass, fontClass, isBionicMode } = useReadingSettings();
     const {
         translations, setTranslation: setStoreTranslation,
@@ -121,6 +126,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
     const [phraseAnalysis, setPhraseAnalysis] = useState<any | null>(null);
     const [isAnalyzingPhrase, setIsAnalyzingPhrase] = useState(false);
     const [activeHighlightSpan, setActiveHighlightSpan] = useState<HTMLElement | null>(null);
+    const [readingCoinHint, setReadingCoinHint] = useState<string | null>(null);
 
     const pRef = useRef<HTMLDivElement>(null);
 
@@ -210,6 +216,21 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
         );
     };
 
+    const syncReadingBalance = async (payload: unknown) => {
+        const balance = (payload as { readingCoins?: { balance?: unknown } } | null)?.readingCoins?.balance;
+        if (typeof balance !== "number") return;
+        await applyServerProfilePatchToLocal({ reading_coins: balance });
+    };
+
+    const readEconomyContext = (action: string, dedupeSuffix?: string | null) => ({
+        scene: "read",
+        action,
+        articleUrl,
+        ...(dedupeSuffix
+            ? { dedupeKey: `${action}:${sessionUser?.id || "anon"}:${articleUrl || articleTitle || "article"}:${index}:${dedupeSuffix}` }
+            : {}),
+    });
+
     const handleSelection = () => {
         const selection = window.getSelection();
 
@@ -263,14 +284,24 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
         if (!selectedText) return;
 
         setIsAnalyzingPhrase(true);
+        setReadingCoinHint(null);
 
         try {
             const res = await fetch("/api/ai/analyze-phrase", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, selection: selectedText }),
+                body: JSON.stringify({
+                    text,
+                    selection: selectedText,
+                    economyContext: readEconomyContext("analyze_phrase", selectedText.slice(0, 42).toLowerCase()),
+                }),
             });
             const data = await res.json();
+            if (!res.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
+                setReadingCoinHint("阅读币不足，完成阅读或测验可获得阅读币。");
+                return;
+            }
+            await syncReadingBalance(data);
             setPhraseAnalysis(data); // Store the full JSON object
         } catch (err) {
             console.error(err);
@@ -323,13 +354,24 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
 
         setShowTranslation(true);
         setIsTranslating(true);
+        setReadingCoinHint(null);
         try {
             const res = await fetch("/api/ai/translate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, context: text }),
+                body: JSON.stringify({
+                    text,
+                    context: text,
+                    economyContext: readEconomyContext("translate"),
+                }),
             });
             const data = await res.json();
+            if (!res.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
+                setReadingCoinHint("阅读币不足，当前无法翻译。");
+                setShowTranslation(false);
+                return;
+            }
+            await syncReadingBalance(data);
             setStoreTranslation(text, data.translation);
         } catch (err) {
             console.error(err);
@@ -364,13 +406,24 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
         if (mode === "deep") setShowDeepAnalysis(true);
 
         setIsAnalyzingGrammar(true);
+        setReadingCoinHint(null);
         try {
             const res = await fetch("/api/ai/grammar", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, mode }),
+                body: JSON.stringify({
+                    text,
+                    mode,
+                    economyContext: readEconomyContext(mode === "deep" ? "grammar_deep" : "grammar_basic"),
+                }),
             });
             const data = await res.json();
+            if (!res.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
+                setReadingCoinHint("阅读币不足，当前无法进行语法分析。");
+                setShowGrammar(false);
+                return;
+            }
+            await syncReadingBalance(data);
 
             // If deep mode, merge with existing data if possible, or just set it
             // For simplicity, we just set it. 
@@ -391,15 +444,37 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
         setQuestion(""); // Clear input immediately
         setIsAskLoading(true);
         setStreamingContent("");
+        setReadingCoinHint(null);
 
         try {
             const res = await fetch("/api/ai/ask", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, question: userMessage, selection: selectedText }),
+                body: JSON.stringify({
+                    text,
+                    question: userMessage,
+                    selection: selectedText,
+                    economyContext: readEconomyContext("ask_ai"),
+                }),
             });
 
-            if (!res.ok) throw new Error("API Error");
+            if (!res.ok) {
+                const payload = await res.json().catch(() => ({}));
+                if (payload?.errorCode === INSUFFICIENT_READING_COINS) {
+                    setReadingCoinHint("阅读币不足，当前无法 Ask AI。");
+                    setMessages(prev => [...prev, { role: "assistant", content: "阅读币不足，请先完成阅读或测验获取阅读币。" }]);
+                    return;
+                }
+                throw new Error("API Error");
+            }
+
+            const readingBalanceHeader = res.headers.get("x-reading-coins-balance");
+            if (readingBalanceHeader) {
+                const balanceValue = Number(readingBalanceHeader);
+                if (Number.isFinite(balanceValue)) {
+                    await applyServerProfilePatchToLocal({ reading_coins: balanceValue });
+                }
+            }
 
             const reader = res.body?.getReader();
             const decoder = new TextDecoder();
@@ -786,7 +861,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                         className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", translation ? "bg-rose-100 text-rose-600" : "text-stone-400 hover:bg-stone-100 hover:text-stone-600")}
                     >
                         {isTranslating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Languages className="w-3 h-3" />}
-                        {showTranslation ? "Hide" : "Translate"}
+                        {showTranslation ? "Hide" : `Translate · -${getReadingCoinCost("translate")}`}
                     </button>
 
                     <button
@@ -794,14 +869,14 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                         className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", grammarAnalysis ? "bg-orange-100 text-orange-600" : "text-stone-400 hover:bg-stone-100 hover:text-orange-500")}
                     >
                         {isAnalyzingGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : <BookOpen className="w-3 h-3" />}
-                        {showGrammar ? "Hide Grammar" : "Grammar"}
+                        {showGrammar ? "Hide Grammar" : `Grammar · -${getReadingCoinCost("grammar_basic")}`}
                     </button>
 
                     <button
                         onClick={() => setIsAskOpen(!isAskOpen)}
                         className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", isAskOpen ? "bg-blue-100 text-blue-600" : "text-stone-400 hover:bg-stone-100 hover:text-blue-500")}
                     >
-                        <MessageCircleQuestion className="w-3 h-3" /> Ask AI
+                        <MessageCircleQuestion className="w-3 h-3" /> Ask AI · -{getReadingCoinCost("ask_ai")}
                     </button>
 
                     <button
@@ -811,6 +886,12 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                         <PenTool className="w-3 h-3" /> Practice
                     </button>
                 </div>
+
+                {readingCoinHint ? (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                        {readingCoinHint}
+                    </div>
+                ) : null}
 
                 <AnimatePresence>
                     {isSpeakingOpen && (
@@ -1037,7 +1118,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                         >
                             <div className="overflow-hidden rounded-2xl border border-white/60 bg-white/62 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.32)] ring-1 ring-white/45 backdrop-blur-xl">
                                 <div className="border-b border-white/60 bg-white/36 px-4 py-2.5">
-                                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Ask AI</p>
+                                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Ask AI · {getReadingCoinCost("ask_ai")} 阅读币/次</p>
                                 </div>
 
                                 <div className="max-h-72 min-h-[132px] overflow-y-auto space-y-2 px-4 py-3">
@@ -1242,7 +1323,7 @@ function PhraseAnalysisPopup({ selectionRect, phraseAnalysis, isAnalyzingPhrase,
                         ) : (
                             <>
                                 <Sparkles className="w-4 h-4 text-amber-500" />
-                                <span>Context Translate</span>
+                                <span>Context Translate · -{getReadingCoinCost("analyze_phrase")}</span>
                             </>
                         )}
                     </button>

@@ -12,6 +12,9 @@ interface MailMessage {
     is_read: boolean;
     message_type: string;
     reward_coins: number;
+    reward_reading_coins: number;
+    reward_cat_points: number;
+    reward_cat_badges: string[] | null;
     reward_inventory: Record<string, number> | null;
     claimed_at: string | null;
     created_at: string;
@@ -21,6 +24,16 @@ function formatReward(message: MailMessage) {
     const parts: string[] = [];
     if ((message.reward_coins ?? 0) > 0) {
         parts.push(`金币 +${message.reward_coins}`);
+    }
+    if ((message.reward_reading_coins ?? 0) > 0) {
+        parts.push(`阅读币 +${message.reward_reading_coins}`);
+    }
+    if ((message.reward_cat_points ?? 0) > 0) {
+        parts.push(`CAT点数 +${message.reward_cat_points}`);
+    }
+    const badges = Array.isArray(message.reward_cat_badges) ? message.reward_cat_badges.filter(Boolean) : [];
+    if (badges.length > 0) {
+        parts.push(`CAT徽章 +${badges.length}`);
     }
     const inv = message.reward_inventory ?? {};
     const keys: Array<[string, string]> = [
@@ -231,4 +244,3 @@ export function MailCenter() {
         </main>
     );
 }
-

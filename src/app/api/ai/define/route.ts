@@ -1,12 +1,49 @@
 import { NextResponse } from "next/server";
 import { deepseek } from "@/lib/deepseek";
+import {
+    chargeReadingCoins,
+    insufficientReadingCoinsPayload,
+    isReadEconomyContext,
+    type ReadingEconomyContext,
+} from "@/lib/reading-economy-server";
 
 export async function POST(req: Request) {
     try {
-        const { word, context } = await req.json();
+        const { word, context, economyContext } = await req.json() as {
+            word?: string;
+            context?: string;
+            economyContext?: ReadingEconomyContext;
+        };
 
         if (!word) {
             return NextResponse.json({ error: "Word is required" }, { status: 400 });
+        }
+
+        let readingBalance: number | undefined;
+        const readContext = isReadEconomyContext(economyContext)
+            ? {
+                ...economyContext,
+                action: economyContext?.action ?? "word_deep_analyze",
+            }
+            : null;
+
+        if (readContext?.action) {
+            const charge = await chargeReadingCoins({
+                action: readContext.action,
+                dedupeKey: readContext.dedupeKey,
+                meta: {
+                    articleUrl: readContext.articleUrl ?? null,
+                    word,
+                    from: "api/ai/define",
+                },
+            });
+            if (!charge.ok && charge.insufficient) {
+                return NextResponse.json(
+                    insufficientReadingCoinsPayload(readContext.action, charge.required ?? 2, charge.balance),
+                    { status: 402 },
+                );
+            }
+            readingBalance = charge.balance;
         }
 
         const normalizedContext = typeof context === "string" ? context.trim() : "";
@@ -52,7 +89,10 @@ Provide the response in JSON format with the following structure:
         if (!content) throw new Error("No content received");
 
         const result = JSON.parse(content);
-        return NextResponse.json(result);
+        return NextResponse.json({
+            ...result,
+            readingCoins: typeof readingBalance === "number" ? { balance: readingBalance } : undefined,
+        });
 
     } catch (error) {
         console.error("DeepSeek API Error:", error);

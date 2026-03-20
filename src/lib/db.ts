@@ -92,6 +92,33 @@ export interface EloHistoryItem {
     sync_status?: SyncStatus;
 }
 
+export interface LocalCatSessionRecord {
+    id?: string;
+    user_id?: string;
+    topic?: string;
+    difficulty?: 'cet4' | 'cet6' | 'ielts';
+    band?: number;
+    score_before?: number;
+    score_after?: number;
+    level_after?: number;
+    theta_after?: number;
+    accuracy?: number;
+    speed_score?: number;
+    stability_score?: number;
+    performance?: number;
+    delta?: number;
+    points_delta?: number;
+    next_band?: number;
+    quiz_correct?: number;
+    quiz_total?: number;
+    reading_ms?: number;
+    status?: 'started' | 'completed';
+    article_title?: string;
+    article_url?: string;
+    created_at?: string;
+    completed_at?: string;
+}
+
 export interface InventoryState {
     capsule?: number;
     hint_ticket?: number;
@@ -119,6 +146,15 @@ export interface LocalUserProfile extends SyncTracked {
     bio?: string;
     deepseek_api_key?: string;
     learning_preferences?: LearningPreferences;
+    reading_coins?: number;
+    reading_streak?: number;
+    reading_last_daily_grant_at?: string | null;
+    cat_score?: number;
+    cat_level?: number;
+    cat_theta?: number;
+    cat_points?: number;
+    cat_current_band?: number;
+    cat_updated_at?: string;
 }
 
 export interface SyncOutboxItem {
@@ -148,6 +184,7 @@ export class YasiDB extends Dexie {
     writing_history!: Table<WritingEntry>;
     articles!: Table<CachedArticle>;
     elo_history!: Table<EloHistoryItem, number>;
+    cat_sessions!: Table<LocalCatSessionRecord, string>;
     user_profile!: Table<LocalUserProfile>;
     sync_outbox!: Table<SyncOutboxItem, number>;
     sync_meta!: Table<SyncMetaItem, string>;
@@ -558,6 +595,34 @@ export class YasiDB extends Dexie {
             user_profile: '++id, user_id, updated_at, sync_status',
             sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
             sync_meta: '&key, updated_at',
+        });
+
+        // Version 24: Add CAT profile fields + reading coin fields + local CAT sessions.
+        this.version(24).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            const nowIso = new Date().toISOString();
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                if (typeof profile.reading_coins !== 'number') profile.reading_coins = 40;
+                if (typeof profile.reading_streak !== 'number') profile.reading_streak = 0;
+                if (typeof profile.reading_last_daily_grant_at !== 'string') profile.reading_last_daily_grant_at = null;
+                if (typeof profile.cat_score !== 'number') profile.cat_score = 1000;
+                if (typeof profile.cat_level !== 'number') profile.cat_level = 1;
+                if (typeof profile.cat_theta !== 'number') profile.cat_theta = 0;
+                if (typeof profile.cat_points !== 'number') profile.cat_points = 0;
+                if (typeof profile.cat_current_band !== 'number') profile.cat_current_band = 3;
+                if (typeof profile.cat_updated_at !== 'string') profile.cat_updated_at = nowIso;
+            });
         });
     }
 }

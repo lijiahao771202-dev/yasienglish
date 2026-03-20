@@ -1,12 +1,48 @@
 import { NextResponse } from "next/server";
 import { deepseek } from "@/lib/deepseek";
+import {
+    chargeReadingCoins,
+    insufficientReadingCoinsPayload,
+    isReadEconomyContext,
+    type ReadingEconomyContext,
+} from "@/lib/reading-economy-server";
 
 export async function POST(req: Request) {
     try {
-        const { text, context } = await req.json();
+        const { text, context, economyContext } = await req.json() as {
+            text?: string;
+            context?: string;
+            economyContext?: ReadingEconomyContext;
+        };
 
         if (!text) {
             return NextResponse.json({ error: "Text is required" }, { status: 400 });
+        }
+
+        let readingBalance: number | undefined;
+        const readContext = isReadEconomyContext(economyContext)
+            ? {
+                ...economyContext,
+                action: economyContext?.action ?? "translate",
+            }
+            : null;
+
+        if (readContext?.action) {
+            const charge = await chargeReadingCoins({
+                action: readContext.action,
+                dedupeKey: readContext.dedupeKey,
+                meta: {
+                    articleUrl: readContext.articleUrl ?? null,
+                    from: "api/ai/translate",
+                },
+            });
+            if (!charge.ok && charge.insufficient) {
+                return NextResponse.json(
+                    insufficientReadingCoinsPayload(readContext.action, charge.required ?? 1, charge.balance),
+                    { status: 402 },
+                );
+            }
+            readingBalance = charge.balance;
         }
 
         const prompt = `
@@ -25,7 +61,10 @@ export async function POST(req: Request) {
         });
 
         const translation = completion.choices[0].message.content?.trim();
-        return NextResponse.json({ translation });
+        return NextResponse.json({
+            translation,
+            readingCoins: typeof readingBalance === "number" ? { balance: readingBalance } : undefined,
+        });
 
     } catch (error) {
         console.error("Translation API Error:", error);

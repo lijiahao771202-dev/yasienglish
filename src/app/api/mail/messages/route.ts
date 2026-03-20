@@ -10,7 +10,7 @@ export async function GET() {
     const supabase = await createServerClient();
     const { data, error: queryError } = await supabase
         .from("user_messages")
-        .select("id, title, content, is_read, message_type, reward_coins, reward_inventory, claimed_at, created_at")
+        .select("id, title, content, is_read, message_type, reward_coins, reward_inventory, reward_reading_coins, reward_cat_points, reward_cat_badges, claimed_at, created_at")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(100);
@@ -21,4 +21,3 @@ export async function GET() {
 
     return NextResponse.json({ messages: data ?? [] });
 }
-

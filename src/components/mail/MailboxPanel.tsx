@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Bell, CheckCircle2, Gift, Inbox, Trash2 } from "lucide-react";
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
+import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
 
 interface MailMessage {
     id: string;
@@ -12,6 +13,9 @@ interface MailMessage {
     is_read: boolean;
     message_type: string;
     reward_coins: number;
+    reward_reading_coins: number;
+    reward_cat_points: number;
+    reward_cat_badges: string[] | null;
     reward_inventory: Record<string, number> | null;
     claimed_at: string | null;
     created_at: string;
@@ -20,6 +24,12 @@ interface MailMessage {
 function formatReward(message: MailMessage) {
     const parts: string[] = [];
     if ((message.reward_coins ?? 0) > 0) parts.push(`金币 +${message.reward_coins}`);
+    if ((message.reward_reading_coins ?? 0) > 0) parts.push(`阅读币 +${message.reward_reading_coins}`);
+    if ((message.reward_cat_points ?? 0) > 0) parts.push(`CAT点数 +${message.reward_cat_points}`);
+    const badges = Array.isArray(message.reward_cat_badges)
+        ? message.reward_cat_badges.filter((item) => typeof item === "string" && item.trim().length > 0)
+        : [];
+    if (badges.length > 0) parts.push(`CAT徽章 +${badges.length}`);
     const inv = message.reward_inventory ?? {};
     const keys: Array<[string, string]> = [
         ["capsule", "胶囊"],
@@ -112,6 +122,13 @@ export function MailboxPanel() {
                     item.id === messageId ? { ...item, claimed_at: payload.reward?.claimed_at ?? new Date().toISOString(), is_read: true } : item,
                 ),
             );
+            await applyServerProfilePatchToLocal({
+                coins: payload.reward?.coins,
+                inventory: payload.reward?.inventory,
+                reading_coins: payload.reward?.reading_coins,
+                cat_points: payload.reward?.cat_points,
+                cat_updated_at: new Date().toISOString(),
+            });
             setHint("奖励已领取。");
         } catch (claimError) {
             window.alert(claimError instanceof Error ? claimError.message : "Claim reward failed.");

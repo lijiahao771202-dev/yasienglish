@@ -17,13 +17,22 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LiquidGlassPanel } from "@/components/ui/LiquidGlassPanel";
+import {
+    getQuestionCorrectTokens,
+    isObjectiveQuestionAnswered,
+    isObjectiveQuestionCorrect,
+    normalizeObjectiveToken,
+    scoreObjectiveQuiz,
+    type QuizAnswerValue,
+} from "@/lib/quiz-scoring";
 
 export interface QuizQuestion {
     id: number;
-    type: "multiple_choice" | "short_answer" | "true_false_ng" | "matching" | "fill_blank";
+    type: "multiple_choice" | "multiple_select" | "short_answer" | "true_false_ng" | "matching" | "fill_blank" | "fill_blank_choice";
     question: string;
     options?: string[];
-    answer: string;
+    answer?: string;
+    answers?: string[];
     explanation: string | {
         summary?: string;
         evidence?: string;
@@ -44,18 +53,55 @@ function normalizeQuestion(raw: unknown, index: number): QuizQuestion | null {
     const questionType = candidate.type;
     const normalizedType: QuizQuestion["type"] =
         questionType === "multiple_choice"
+        || questionType === "multiple_select"
         || questionType === "short_answer"
         || questionType === "true_false_ng"
         || questionType === "matching"
         || questionType === "fill_blank"
+        || questionType === "fill_blank_choice"
             ? questionType
             : "multiple_choice";
 
     const rawOptions = Array.isArray(candidate.options)
         ? candidate.options.filter((opt): opt is string => typeof opt === "string" && opt.trim().length > 0)
         : [];
+    const normalizedOptions = rawOptions.map((option, optionIndex) => {
+        const trimmed = option.trim();
+        const expectedLetter = String.fromCharCode(65 + optionIndex);
+        return /^[A-D](?:[).:\-\s]|$)/i.test(trimmed) ? trimmed : `${expectedLetter}. ${trimmed}`;
+    });
 
-    const answer = typeof candidate.answer === "string" ? candidate.answer.trim() : "";
+    const resolveTokenFromOptions = (token: string) => {
+        const normalizedToken = normalizeObjectiveToken(token);
+        if (["A", "B", "C", "D"].includes(normalizedToken)) {
+            return normalizedToken;
+        }
+        const matchedIndex = normalizedOptions.findIndex((option) => {
+            const withoutPrefix = option.replace(/^[A-D](?:[).:\-\s]+)?/i, "").trim();
+            return withoutPrefix.toUpperCase() === normalizedToken || option.toUpperCase() === normalizedToken;
+        });
+        if (matchedIndex >= 0) {
+            return String.fromCharCode(65 + matchedIndex);
+        }
+        return normalizedToken;
+    };
+
+    const answer = typeof candidate.answer === "string" ? candidate.answer.trim() : undefined;
+    const parsedAnswers = Array.isArray(candidate.answers)
+        ? candidate.answers
+            .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+            .map((item) => item.trim())
+        : [];
+    const fallbackMultiAnswers =
+        normalizedType === "multiple_select" && typeof answer === "string"
+            ? answer
+                .split(/[，,;/|\s]+/g)
+                .map((item) => item.trim())
+                .filter(Boolean)
+            : [];
+    const normalizedAnswers = normalizedType === "multiple_select"
+        ? Array.from(new Set([...parsedAnswers, ...fallbackMultiAnswers].map((token) => resolveTokenFromOptions(token))))
+        : [];
     const explanation = typeof candidate.explanation === "string" ? candidate.explanation : "";
     const explanationObj =
         candidate.explanation && typeof candidate.explanation === "object"
@@ -67,8 +113,13 @@ function normalizeQuestion(raw: unknown, index: number): QuizQuestion | null {
             }>
             : null;
 
-    // For option questions, missing answer means this item is unusable.
-    if (rawOptions.length > 0 && !answer) {
+    const requiresSingleAnswer = normalizedType !== "multiple_select";
+    if (normalizedType === "multiple_select" && normalizedAnswers.length < 2) {
+        return null;
+    }
+
+    // For option-based single-answer questions, missing answer means this item is unusable.
+    if (rawOptions.length > 0 && requiresSingleAnswer && !answer) {
         return null;
     }
 
@@ -76,8 +127,9 @@ function normalizeQuestion(raw: unknown, index: number): QuizQuestion | null {
         id: typeof candidate.id === "number" ? candidate.id : index + 1,
         type: normalizedType,
         question: candidate.question.trim(),
-        options: rawOptions.length > 0 ? rawOptions : undefined,
-        answer,
+        options: normalizedOptions.length > 0 ? normalizedOptions : undefined,
+        answer: typeof answer === "string" ? resolveTokenFromOptions(answer) : undefined,
+        answers: normalizedType === "multiple_select" ? normalizedAnswers : undefined,
         explanation: explanationObj ?? explanation,
         sourceParagraph: typeof candidate.sourceParagraph === "string" ? candidate.sourceParagraph : undefined,
         evidence: typeof candidate.evidence === "string" ? candidate.evidence : explanationObj?.evidence,
@@ -90,6 +142,13 @@ interface ReadingQuizPanelProps {
     articleContent: string;
     articleTitle: string;
     difficulty: "cet4" | "cet6" | "ielts";
+    quizMode?: "standard" | "cat";
+    catBand?: number;
+    catScore?: number;
+    catQuizBlueprint?: {
+        questionCount?: number;
+        distribution?: Record<string, number>;
+    };
     onClose: () => void;
     onLocate?: (payload: { questionNumber: number; sourceParagraph: string; evidence?: string }) => void;
     cachedQuestions?: QuizQuestion[];
@@ -107,6 +166,10 @@ export function ReadingQuizPanel({
     articleContent,
     articleTitle,
     difficulty,
+    quizMode = "standard",
+    catBand,
+    catScore,
+    catQuizBlueprint,
     onClose,
     onLocate,
     cachedQuestions,
@@ -118,15 +181,12 @@ export function ReadingQuizPanel({
     const [error, setError] = useState<string | null>(null);
 
     // User answers: key = question id, value = selected answer
-    const [answers, setAnswers] = useState<Record<number, string>>({});
+    const [answers, setAnswers] = useState<Record<number, QuizAnswerValue>>({});
     const [isSubmitted, setIsSubmitted] = useState(false);
     const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
     const [expandedExplanations, setExpandedExplanations] = useState<Record<number, boolean>>({});
 
     const diffMeta = DIFFICULTY_META[difficulty] || DIFFICULTY_META.ielts;
-    const getAnswerInitial = (question: QuizQuestion): string =>
-        typeof question.answer === "string" ? question.answer.charAt(0).toUpperCase() : "";
-
     // Fetch quiz questions on mount
     useEffect(() => {
         if (cachedQuestions && cachedQuestions.length > 0) {
@@ -148,6 +208,10 @@ export function ReadingQuizPanel({
                         articleContent,
                         difficulty,
                         title: articleTitle,
+                        quizMode,
+                        catBand,
+                        catScore,
+                        catQuizBlueprint,
                     }),
                 });
                 const data = await res.json();
@@ -173,11 +237,21 @@ export function ReadingQuizPanel({
         };
         fetchQuiz();
         return () => { cancelled = true; };
-    }, [articleContent, difficulty, articleTitle, cachedQuestions, onQuestionsReady]);
+    }, [articleContent, difficulty, articleTitle, cachedQuestions, onQuestionsReady, quizMode, catBand, catScore, catQuizBlueprint]);
 
-    const handleSelectAnswer = (questionId: number, answer: string) => {
+    const handleSelectAnswer = (question: QuizQuestion, option: string) => {
         if (isSubmitted) return;
-        setAnswers((prev) => ({ ...prev, [questionId]: answer }));
+        if (question.type === "multiple_select") {
+            setAnswers((prev) => {
+                const current = Array.isArray(prev[question.id]) ? prev[question.id] as string[] : [];
+                const next = current.includes(option)
+                    ? current.filter((item) => item !== option)
+                    : [...current, option];
+                return { ...prev, [question.id]: next };
+            });
+            return;
+        }
+        setAnswers((prev) => ({ ...prev, [question.id]: option }));
     };
 
     const handleTextAnswer = (questionId: number, text: string) => {
@@ -186,28 +260,7 @@ export function ReadingQuizPanel({
     };
 
     const handleSubmit = () => {
-        let correct = 0;
-        questions.forEach((q) => {
-            const userAnswer = (answers[q.id] || "").trim();
-            if (q.type === "short_answer" || q.type === "fill_blank") {
-                if (!q.answer) return;
-                // For text-based answers, do case-insensitive includes check
-                if (
-                    userAnswer.toLowerCase().includes(q.answer.toLowerCase()) ||
-                    q.answer.toLowerCase().includes(userAnswer.toLowerCase())
-                ) {
-                    correct++;
-                }
-            } else {
-                // For choice-based, compare the letter/value
-                const answerLetter = userAnswer.charAt(0).toUpperCase();
-                const correctLetter = getAnswerInitial(q);
-                if (answerLetter === correctLetter) {
-                    correct++;
-                }
-            }
-        });
-        const finalScore = { correct, total: questions.length };
+        const finalScore = scoreObjectiveQuiz(questions, answers);
         setScore(finalScore);
         setIsSubmitted(true);
         onSubmitScore?.(finalScore);
@@ -220,19 +273,9 @@ export function ReadingQuizPanel({
         setExpandedExplanations({});
     };
 
-    const isCorrect = (q: QuizQuestion): boolean => {
-        const userAnswer = (answers[q.id] || "").trim();
-        if (q.type === "short_answer" || q.type === "fill_blank") {
-            if (!q.answer) return false;
-            return (
-                userAnswer.toLowerCase().includes(q.answer.toLowerCase()) ||
-                q.answer.toLowerCase().includes(userAnswer.toLowerCase())
-            );
-        }
-        return userAnswer.charAt(0).toUpperCase() === getAnswerInitial(q);
-    };
+    const isCorrect = (q: QuizQuestion): boolean => isObjectiveQuestionCorrect(q, answers[q.id]);
 
-    const allAnswered = questions.length > 0 && questions.every((q) => answers[q.id]?.trim());
+    const allAnswered = questions.length > 0 && questions.every((q) => isObjectiveQuestionAnswered(q, answers[q.id]));
     const toggleExplanation = (questionId: number) => {
         setExpandedExplanations((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
     };
@@ -309,7 +352,7 @@ export function ReadingQuizPanel({
                             <QuestionCard
                                 question={q}
                                 index={idx}
-                                userAnswer={answers[q.id] || ""}
+                                userAnswer={answers[q.id]}
                                 onSelect={handleSelectAnswer}
                                 onTextInput={handleTextAnswer}
                                 isSubmitted={isSubmitted}
@@ -380,8 +423,8 @@ function QuestionCard({
 }: {
     question: QuizQuestion;
     index: number;
-    userAnswer: string;
-    onSelect: (id: number, answer: string) => void;
+    userAnswer: QuizAnswerValue | undefined;
+    onSelect: (question: QuizQuestion, answer: string) => void;
     onTextInput: (id: number, text: string) => void;
     isSubmitted: boolean;
     isCorrect?: boolean;
@@ -391,11 +434,24 @@ function QuestionCard({
 }) {
     const typeLabels: Record<string, string> = {
         multiple_choice: "选择",
+        multiple_select: "多选",
         short_answer: "简答",
         true_false_ng: "判断",
         matching: "匹配",
         fill_blank: "填空",
+        fill_blank_choice: "填空",
     };
+    const isMultipleSelect = question.type === "multiple_select";
+    const userSelectedValues = Array.isArray(userAnswer)
+        ? userAnswer
+        : typeof userAnswer === "string" && userAnswer.trim().length > 0
+            ? [userAnswer]
+            : [];
+    const correctTokens = getQuestionCorrectTokens(question);
+    const correctTokenSet = new Set(correctTokens);
+    const correctAnswerText = correctTokens.length > 0
+        ? correctTokens.join("、")
+        : (typeof question.answer === "string" ? question.answer : "-");
 
     const explanationData = (() => {
         if (typeof question.explanation === "string") {
@@ -432,6 +488,11 @@ function QuestionCard({
                         <span className="rounded-md bg-white/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                             {typeLabels[question.type] || question.type}
                         </span>
+                        {isMultipleSelect && (
+                            <span className="rounded-md border border-cyan-200/80 bg-cyan-100/80 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700">
+                                可多选
+                            </span>
+                        )}
                         {isSubmitted && (
                             isCorrect ? (
                                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -450,14 +511,13 @@ function QuestionCard({
             {question.options && question.options.length > 0 ? (
                 <div className="space-y-2 pl-8">
                     {question.options.map((option) => {
-                        const optionLetter = option.charAt(0).toUpperCase();
-                        const isSelected = userAnswer.charAt(0).toUpperCase() === optionLetter;
-                        const answerInitial = typeof question.answer === "string" ? question.answer.charAt(0).toUpperCase() : "";
-                        const isCorrectOption = isSubmitted && answerInitial === optionLetter;
+                        const optionToken = normalizeObjectiveToken(option);
+                        const isSelected = userSelectedValues.includes(option);
+                        const isCorrectOption = isSubmitted && correctTokenSet.has(optionToken);
                         return (
                             <button
                                 key={option}
-                                onClick={() => onSelect(question.id, option)}
+                                onClick={() => onSelect(question, option)}
                                 disabled={isSubmitted}
                                 className={cn(
                                     "w-full rounded-xl border px-3 py-2.5 text-left text-sm transition-all duration-200",
@@ -468,7 +528,19 @@ function QuestionCard({
                                     isSubmitted && !isSelected && !isCorrectOption && "border-white/40 bg-white/25 text-slate-400"
                                 )}
                             >
-                                {option}
+                                <span className="flex items-center gap-2">
+                                    {isMultipleSelect ? (
+                                        <span className={cn(
+                                            "inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border text-[10px] font-bold",
+                                            isSelected
+                                                ? "border-cyan-400 bg-cyan-100 text-cyan-700"
+                                                : "border-slate-300/80 bg-white/65 text-slate-400"
+                                        )}>
+                                            {isSelected ? "✓" : ""}
+                                        </span>
+                                    ) : null}
+                                    <span>{option}</span>
+                                </span>
                             </button>
                         );
                     })}
@@ -477,7 +549,7 @@ function QuestionCard({
                 /* Text input for short_answer / fill_blank */
                 <div className="pl-8">
                     <textarea
-                        value={userAnswer}
+                        value={typeof userAnswer === "string" ? userAnswer : ""}
                         onChange={(e) => onTextInput(question.id, e.target.value)}
                         disabled={isSubmitted}
                         placeholder="Type your answer here..."
@@ -497,7 +569,7 @@ function QuestionCard({
                 >
                     <div className="rounded-xl border border-amber-200/60 bg-amber-50/60 px-3 py-2.5">
                         <p className="mb-1 text-xs font-semibold text-amber-700">
-                            {isCorrect ? "✓ 正确" : `✗ 正确答案：${question.answer}`}
+                            {isCorrect ? "✓ 正确" : `✗ 正确答案：${correctAnswerText}`}
                         </p>
                         <p className="text-xs leading-relaxed text-amber-800/90">
                             {explanationData.summary || "该题可根据原文关键信息定位作答。"}

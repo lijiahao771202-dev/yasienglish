@@ -44,6 +44,7 @@ interface PopupState {
     context: string;
     x: number;
     y: number;
+    articleUrl?: string;
 }
 
 export function ArticleDisplay({ title, content, byline, blocks, siteName, videoUrl, articleUrl, isEditMode, locateRequest }: ArticleDisplayProps) {
@@ -303,7 +304,7 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
             y = rect.bottom + 10;
         }
 
-        setPopup({ word, context, x, y });
+        setPopup({ word, context, x, y, articleUrl });
     };
 
     return (
@@ -375,6 +376,7 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
                                             text={block.content}
                                             index={index}
                                             articleTitle={title}
+                                            articleUrl={articleUrl}
                                             onWordClick={handleArticleClick}
                                             onSplit={handleSplit}
                                             onMerge={handleMerge}

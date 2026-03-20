@@ -1,16 +1,56 @@
 import { deepseek } from "@/lib/deepseek";
-
-export const runtime = "edge"; // Enable Edge Runtime for streaming
+import {
+    chargeReadingCoins,
+    insufficientReadingCoinsPayload,
+    isReadEconomyContext,
+    type ReadingEconomyContext,
+} from "@/lib/reading-economy-server";
 
 export async function POST(req: Request) {
     try {
-        const { text, question, selection } = await req.json();
+        const { text, question, selection, economyContext } = await req.json() as {
+            text?: string;
+            question?: string;
+            selection?: string;
+            economyContext?: ReadingEconomyContext;
+        };
 
         if (!text || !question) {
             return new Response(JSON.stringify({ error: "Text and question are required" }), {
                 status: 400,
                 headers: { "Content-Type": "application/json" },
             });
+        }
+
+        let readingBalance: number | undefined;
+        const readContext = isReadEconomyContext(economyContext)
+            ? {
+                ...economyContext,
+                action: economyContext?.action ?? "ask_ai",
+            }
+            : null;
+
+        if (readContext?.action) {
+            const charge = await chargeReadingCoins({
+                action: readContext.action,
+                dedupeKey: readContext.dedupeKey,
+                meta: {
+                    articleUrl: readContext.articleUrl ?? null,
+                    from: "api/ai/ask",
+                },
+            });
+            if (!charge.ok && charge.insufficient) {
+                return new Response(
+                    JSON.stringify(
+                        insufficientReadingCoinsPayload(readContext.action, charge.required ?? 2, charge.balance),
+                    ),
+                    {
+                        status: 402,
+                        headers: { "Content-Type": "application/json" },
+                    },
+                );
+            }
+            readingBalance = charge.balance;
         }
 
         // Build enhanced prompt
@@ -77,6 +117,9 @@ Instructions:
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
+                ...(typeof readingBalance === "number"
+                    ? { "x-reading-coins-balance": String(readingBalance) }
+                    : {}),
             },
         });
     } catch (error) {

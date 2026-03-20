@@ -7,6 +7,9 @@ interface SendMessagePayload {
     title?: string;
     content?: string;
     rewardCoins?: number;
+    rewardReadingCoins?: number;
+    rewardCatPoints?: number;
+    rewardCatBadges?: string[];
     rewardInventory?: Record<string, number>;
 }
 
@@ -23,6 +26,14 @@ export async function POST(request: Request) {
     const title = body.title?.trim();
     const content = body.content?.trim();
     const rewardCoins = Number(body.rewardCoins ?? 0);
+    const rewardReadingCoins = Number(body.rewardReadingCoins ?? 0);
+    const rewardCatPoints = Number(body.rewardCatPoints ?? 0);
+    const rewardCatBadges = Array.isArray(body.rewardCatBadges)
+        ? body.rewardCatBadges
+            .map((item) => (typeof item === "string" ? item.trim() : ""))
+            .filter(Boolean)
+            .slice(0, 12)
+        : [];
 
     const rewardInventory: Record<string, number> = {};
     for (const key of REWARD_KEYS) {
@@ -47,12 +58,22 @@ export async function POST(request: Request) {
             user_id: userId,
             title,
             content,
-            message_type: rewardCoins !== 0 || Object.keys(rewardInventory).length > 0 ? "reward" : "notice",
+            message_type:
+                rewardCoins !== 0
+                || rewardReadingCoins !== 0
+                || rewardCatPoints !== 0
+                || rewardCatBadges.length > 0
+                || Object.keys(rewardInventory).length > 0
+                    ? "reward"
+                    : "notice",
             reward_coins: Number.isFinite(rewardCoins) ? Math.round(rewardCoins) : 0,
+            reward_reading_coins: Number.isFinite(rewardReadingCoins) ? Math.round(rewardReadingCoins) : 0,
+            reward_cat_points: Number.isFinite(rewardCatPoints) ? Math.round(rewardCatPoints) : 0,
+            reward_cat_badges: rewardCatBadges,
             reward_inventory: rewardInventory,
             created_by: auth.user.id,
         })
-        .select("id, user_id, title, message_type, reward_coins, reward_inventory, created_at")
+        .select("id, user_id, title, message_type, reward_coins, reward_reading_coins, reward_cat_points, reward_cat_badges, reward_inventory, created_at")
         .single();
 
     if (error) {

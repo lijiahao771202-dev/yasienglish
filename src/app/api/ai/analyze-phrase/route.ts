@@ -1,15 +1,51 @@
 import { NextResponse } from "next/server";
 import { createDeepSeekClientForCurrentUser } from "@/lib/deepseek";
+import {
+    chargeReadingCoins,
+    insufficientReadingCoinsPayload,
+    isReadEconomyContext,
+    type ReadingEconomyContext,
+} from "@/lib/reading-economy-server";
 
 export async function POST(req: Request) {
     try {
-        const { text, selection } = await req.json();
+        const { text, selection, economyContext } = await req.json() as {
+            text?: string;
+            selection?: string;
+            economyContext?: ReadingEconomyContext;
+        };
 
         if (!text || !selection) {
             return NextResponse.json(
                 { error: "Text and selection are required" },
                 { status: 400 }
             );
+        }
+
+        let readingBalance: number | undefined;
+        const readContext = isReadEconomyContext(economyContext)
+            ? {
+                ...economyContext,
+                action: economyContext?.action ?? "analyze_phrase",
+            }
+            : null;
+
+        if (readContext?.action) {
+            const charge = await chargeReadingCoins({
+                action: readContext.action,
+                dedupeKey: readContext.dedupeKey,
+                meta: {
+                    articleUrl: readContext.articleUrl ?? null,
+                    from: "api/ai/analyze-phrase",
+                },
+            });
+            if (!charge.ok && charge.insufficient) {
+                return NextResponse.json(
+                    insufficientReadingCoinsPayload(readContext.action, charge.required ?? 2, charge.balance),
+                    { status: 402 },
+                );
+            }
+            readingBalance = charge.balance;
         }
 
         const systemPrompt = `You are an expert English-Chinese translator and tutor.
@@ -51,7 +87,10 @@ Analyze the selected text.
         const content = completion.choices[0].message.content;
         const result = content ? JSON.parse(content) : null;
 
-        return NextResponse.json(result);
+        return NextResponse.json({
+            ...(result ?? {}),
+            readingCoins: typeof readingBalance === "number" ? { balance: readingBalance } : undefined,
+        });
     } catch (error) {
         console.error("Error in analyze-phrase:", error);
         return NextResponse.json(

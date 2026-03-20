@@ -1,12 +1,49 @@
 import { NextResponse } from "next/server";
 import { deepseek } from "@/lib/deepseek";
+import {
+    chargeReadingCoins,
+    insufficientReadingCoinsPayload,
+    isReadEconomyContext,
+    type ReadingEconomyContext,
+} from "@/lib/reading-economy-server";
 
 export async function POST(req: Request) {
     try {
-        const { text, mode = "basic" } = await req.json();
+        const { text, mode = "basic", economyContext } = await req.json() as {
+            text?: string;
+            mode?: "basic" | "deep";
+            economyContext?: ReadingEconomyContext;
+        };
 
         if (!text) {
             return NextResponse.json({ error: "Text is required" }, { status: 400 });
+        }
+
+        let readingBalance: number | undefined;
+        const readContext = isReadEconomyContext(economyContext)
+            ? {
+                ...economyContext,
+                action: economyContext?.action ?? (mode === "deep" ? "grammar_deep" : "grammar_basic"),
+            }
+            : null;
+
+        if (readContext?.action) {
+            const charge = await chargeReadingCoins({
+                action: readContext.action,
+                dedupeKey: readContext.dedupeKey,
+                meta: {
+                    articleUrl: readContext.articleUrl ?? null,
+                    mode,
+                    from: "api/ai/grammar",
+                },
+            });
+            if (!charge.ok && charge.insufficient) {
+                return NextResponse.json(
+                    insufficientReadingCoinsPayload(readContext.action, charge.required ?? 2, charge.balance),
+                    { status: 402 },
+                );
+            }
+            readingBalance = charge.balance;
         }
 
         let prompt = "";
@@ -118,7 +155,10 @@ export async function POST(req: Request) {
         }
 
         const analysis = JSON.parse(content);
-        return NextResponse.json(analysis);
+        return NextResponse.json({
+            ...analysis,
+            readingCoins: typeof readingBalance === "number" ? { balance: readingBalance } : undefined,
+        });
 
     } catch (error) {
         console.error("Grammar Analysis Error:", error);
