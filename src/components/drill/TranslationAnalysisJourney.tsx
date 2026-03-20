@@ -1,5 +1,6 @@
 import React, { type ReactNode } from "react";
 import { BookOpen, ChevronRight, Sparkles, Volume2, Wand2 } from "lucide-react";
+import * as Diff from "diff";
 
 import { cn } from "@/lib/utils";
 import type { GrammarDisplayMode } from "@/lib/grammarHighlights";
@@ -9,12 +10,14 @@ export interface TranslationAnalysisHighlight {
     before: string;
     after: string;
     note: string;
+    tip?: string;
 }
 
 interface TranslationAnalysisJourneyProps {
     analysisLead: string;
     analysisHighlights: TranslationAnalysisHighlight[];
     userTranslation: string;
+    correctionTargetText: string;
     improvedVersionNode: ReactNode | null;
     referenceSentenceNode: ReactNode;
     isGeneratingGrammar: boolean;
@@ -37,37 +40,39 @@ interface TranslationAnalysisJourneyProps {
 interface StepCardProps {
     step: number;
     title: string;
-    subtitle: string;
+    subtitle?: string;
     children: ReactNode;
     actions?: ReactNode;
 }
 
 function StepCard({ step, title, subtitle, children, actions }: StepCardProps) {
     return (
-        <section className="relative rounded-[2rem] border border-stone-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(251,250,248,0.92))] p-5 shadow-[0_18px_40px_rgba(28,25,23,0.05)] md:p-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <section className="rounded-2xl border border-stone-200 bg-white p-4 md:p-5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-3">
-                        <span className="inline-flex min-h-10 items-center justify-center rounded-full border border-amber-200/80 bg-amber-50/80 px-3 py-1 font-sans text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                        <span className="inline-flex min-h-8 items-center justify-center rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 font-sans text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-600">
                             {`Step ${step}`}
                         </span>
                         <div>
-                            <h3 className="font-newsreader text-[1.45rem] leading-tight text-stone-900">{title}</h3>
-                            <p className="mt-1 text-sm leading-6 text-stone-500">{subtitle}</p>
+                            <h3 className="font-newsreader text-[1.25rem] leading-tight text-stone-900">{title}</h3>
+                            {subtitle ? (
+                                <p className="mt-0.5 text-xs leading-5 text-stone-500">{subtitle}</p>
+                            ) : null}
                         </div>
                     </div>
                 </div>
                 {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
             </div>
-            <div className="mt-5">{children}</div>
+            <div className="mt-4">{children}</div>
         </section>
     );
 }
 
 export function TranslationAnalysisJourney({
-    analysisLead,
     analysisHighlights,
     userTranslation,
+    correctionTargetText,
     improvedVersionNode,
     referenceSentenceNode,
     isGeneratingGrammar,
@@ -86,76 +91,208 @@ export function TranslationAnalysisJourney({
     onToggleFullAnalysis,
     fullAnalysisContent,
 }: TranslationAnalysisJourneyProps) {
-    const hasHighlights = analysisHighlights.length > 0;
     const grammarActionLabel = isGeneratingGrammar ? "正在生成语法分析" : grammarButtonLabel;
     const fullAnalysisButtonLabel = isGeneratingFullAnalysis
         ? "正在生成完整解析"
         : hasFullAnalysis
             ? "重新生成完整解析"
             : "生成完整解析";
+    const normalizedUserTranslation = userTranslation.replace(/\s+/g, " ").trim();
+    const normalizedCorrectionTarget = correctionTargetText.replace(/\s+/g, " ").trim();
+    const correctionDiffParts = Diff.diffWords(
+        normalizedUserTranslation,
+        normalizedCorrectionTarget,
+    );
+    const hasCorrectionDiff = correctionDiffParts.some((part) => part.added || part.removed);
+    const hasDedicatedNaturalExpression = Boolean(improvedVersionNode);
+
+    const normalizeForMatch = (text: string) =>
+        text
+            .toLowerCase()
+            .replace(/['’]/g, "")
+            .replace(/[^\p{L}\p{N}\s]/gu, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+
+    interface CorrectionInsight {
+        title: string;
+        before?: string;
+        after?: string;
+        reason: string;
+        tip?: string;
+    }
+
+    const cleanTooltipText = (text: string) => text.replace(/\s+/g, " ").trim();
+
+    const getCorrectionInsight = (index: number): CorrectionInsight => {
+        const part = correctionDiffParts[index];
+        if (!part || (!part.added && !part.removed)) {
+            return {
+                title: "说明",
+                reason: "这里做了表达优化。",
+            };
+        }
+
+        const currentValue = cleanTooltipText(part.value || "");
+        const currentNormalized = normalizeForMatch(part.value || "");
+        const nextPart = index + 1 < correctionDiffParts.length ? correctionDiffParts[index + 1] : null;
+        const prevPart = index - 1 >= 0 ? correctionDiffParts[index - 1] : null;
+        const nextValue = cleanTooltipText(nextPart?.value || "");
+        const prevValue = cleanTooltipText(prevPart?.value || "");
+        const pairedAdded = part.removed && nextPart?.added ? normalizeForMatch(nextPart.value || "") : "";
+        const pairedRemoved = part.added && prevPart?.removed ? normalizeForMatch(prevPart.value || "") : "";
+
+        const matched = analysisHighlights.find((item) => {
+            const before = normalizeForMatch(item.before || "");
+            const after = normalizeForMatch(item.after || "");
+            const currentInBefore = currentNormalized && before.includes(currentNormalized);
+            const currentInAfter = currentNormalized && after.includes(currentNormalized);
+            const pairedByNext = pairedAdded && before.includes(currentNormalized) && after.includes(pairedAdded);
+            const pairedByPrev = pairedRemoved && before.includes(pairedRemoved) && after.includes(currentNormalized);
+
+            if (part.removed) {
+                return pairedByNext || currentInBefore;
+            }
+            return pairedByPrev || currentInAfter;
+        });
+
+        if (matched) {
+            const matchedBefore = cleanTooltipText(matched.before || "");
+            const matchedAfter = cleanTooltipText(matched.after || "");
+            const matchedNote = (matched.note || "").trim();
+            const matchedTip = (matched.tip || "").trim();
+
+            if (matched.kind === "关键改错") {
+                return {
+                    title: "替换说明",
+                    before: matchedBefore,
+                    after: matchedAfter,
+                    reason: matchedNote || "这样表达更地道、更符合英语习惯。",
+                    tip: matchedTip || undefined,
+                };
+            }
+            if (matched.kind === "缺失内容") {
+                return {
+                    title: "补充说明",
+                    after: matchedAfter,
+                    reason: matchedNote || `补上“${matchedAfter}”后，句子信息更完整。`,
+                    tip: matchedTip || undefined,
+                };
+            }
+            if (matched.kind === "多余表达") {
+                return {
+                    title: "删除说明",
+                    before: matchedBefore,
+                    reason: matchedNote || `“${matchedBefore}”在这里不需要，删除后更自然。`,
+                    tip: matchedTip || undefined,
+                };
+            }
+            return {
+                title: "说明",
+                before: matchedBefore || undefined,
+                after: matchedAfter || undefined,
+                reason: matchedNote || "这里做了表达优化。",
+                tip: matchedTip || undefined,
+            };
+        }
+
+        if (part.removed && nextPart?.added) {
+            return {
+                title: "替换说明",
+                before: currentValue,
+                after: nextValue,
+                reason: "这样表达更自然、更贴近英语习惯。",
+            };
+        }
+        if (part.added && prevPart?.removed) {
+            return {
+                title: "替换说明",
+                before: prevValue,
+                after: currentValue,
+                reason: "这样表达更自然、更贴近英语习惯。",
+            };
+        }
+        if (part.removed) {
+            return {
+                title: "删除说明",
+                before: currentValue,
+                reason: `“${currentValue}”在这里不需要，删掉更简洁。`,
+            };
+        }
+        return {
+            title: "补充说明",
+            after: currentValue,
+            reason: `补上“${currentValue}”，句子信息才完整。`,
+        };
+    };
 
     return (
         <div className="space-y-4">
             <StepCard
                 step={1}
                 title="先看错在哪"
-                subtitle="先抓最关键的 2 到 3 个问题，再决定后面重点看什么。"
             >
-                <div className="space-y-4">
-                    <div className="rounded-[1.5rem] border border-stone-200/80 bg-white/85 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-                        <p className="font-newsreader text-[1.55rem] leading-tight text-stone-900">{analysisLead}</p>
-                        <p className="mt-3 text-sm leading-6 text-stone-500">
-                            你的答案：<span className="font-newsreader italic text-stone-700">&ldquo;{userTranslation.length > 140 ? `${userTranslation.slice(0, 140)}...` : userTranslation}&rdquo;</span>
+                <div className="space-y-3">
+                    <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3.5">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-500">你的答案</p>
+                        <p className="mt-2 font-newsreader text-[1.22rem] italic leading-relaxed text-stone-800">
+                            &ldquo;{userTranslation.length > 180 ? `${userTranslation.slice(0, 180)}...` : userTranslation}&rdquo;
                         </p>
                     </div>
-                    <div className="space-y-3">
-                        {hasHighlights ? analysisHighlights.map((item, index) => (
-                            <div key={`${item.kind}-${index}`} className="rounded-[1.35rem] border border-stone-100 bg-stone-50/75 px-4 py-3.5">
-                                <div className="flex items-center justify-between gap-3">
-                                    <span className="text-[10px] font-bold uppercase tracking-[0.22em] text-rose-500">{item.kind}</span>
-                                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-stone-300">#{index + 1}</span>
-                                </div>
-                                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-                                    <span className="rounded-full bg-rose-50 px-2.5 py-1 font-newsreader italic text-rose-600">{item.before}</span>
-                                    <ChevronRight className="h-3.5 w-3.5 text-stone-300" />
-                                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-newsreader italic text-emerald-700">{item.after}</span>
-                                </div>
-                                <p className="mt-2 text-sm leading-6 text-stone-500">{item.note}</p>
+                    <div className="rounded-xl border border-stone-200 bg-white px-4 py-3.5">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-rose-500">内容纠错</div>
+                        {hasCorrectionDiff ? (
+                            <div className="mt-2.5 flex flex-wrap items-center gap-y-1 text-[1.12rem] leading-relaxed font-newsreader text-stone-800 md:text-[1.2rem]">
+                                {correctionDiffParts.map((part, index) => {
+                                    if (!part.removed && !part.added) {
+                                        return <span key={`${part.value}-${index}`} className="whitespace-pre-wrap">{part.value}</span>;
+                                    }
+
+                                    const insight = getCorrectionInsight(index);
+                                    return (
+                                        <span key={`${part.value}-${index}`} className="group relative inline-block">
+                                            <span
+                                                className={cn(
+                                                    "whitespace-pre-wrap cursor-help rounded-sm px-1",
+                                                    part.removed && "bg-rose-50 text-rose-600 line-through decoration-rose-400 decoration-2",
+                                                    part.added && "bg-emerald-50 text-emerald-700",
+                                                )}
+                                            >
+                                                {part.value}
+                                            </span>
+                                            <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 w-72 -translate-x-1/2 rounded-xl border border-stone-200 bg-white px-3 py-2.5 font-sans text-stone-700 opacity-0 shadow-[0_14px_28px_rgba(28,25,23,0.14)] transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+                                                <span className="block text-[10px] font-semibold uppercase tracking-[0.16em] text-stone-500">{insight.title}</span>
+                                                {insight.before || insight.after ? (
+                                                    <span className="mt-1.5 flex flex-wrap items-center gap-1 text-[12px] leading-5">
+                                                        {insight.before ? (
+                                                            <span className="rounded bg-rose-50 px-1.5 py-0.5 text-rose-600 line-through decoration-rose-400">{insight.before}</span>
+                                                        ) : null}
+                                                        {insight.before && insight.after ? <span className="text-stone-400">→</span> : null}
+                                                        {insight.after ? (
+                                                            <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">{insight.after}</span>
+                                                        ) : null}
+                                                    </span>
+                                                ) : null}
+                                                <span className="mt-1.5 block text-[11px] leading-5 text-stone-600">{insight.reason}</span>
+                                                {insight.tip ? (
+                                                    <span className="mt-1 block text-[11px] leading-5 text-sky-700">记忆：{insight.tip}</span>
+                                                ) : null}
+                                            </span>
+                                        </span>
+                                    );
+                                })}
                             </div>
-                        )) : (
-                            <div className="rounded-[1.35rem] border border-emerald-100 bg-emerald-50/70 px-4 py-4 text-sm leading-6 text-emerald-800">
-                                这题没有明显结构性错误，主要是细节润色。
-                            </div>
+                        ) : (
+                            <p className="mt-2.5 text-xs leading-5 text-emerald-800">这句整体已经接近目标表达。</p>
                         )}
                     </div>
+
                 </div>
             </StepCard>
 
-            {improvedVersionNode ? (
-                <StepCard
-                    step={2}
-                    title="改成什么"
-                    subtitle="先把更自然的表达读顺，再回头看参考句的结构。"
-                >
-                    <div className="rounded-[1.5rem] border border-amber-100/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.88),rgba(255,255,255,0.92))] p-5">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-600">
-                            <Sparkles className="h-3.5 w-3.5" />
-                            更自然表达
-                        </div>
-                        <div className="mt-4 space-y-2">
-                            <div className="font-newsreader text-[1.55rem] leading-tight text-stone-900">
-                                {improvedVersionNode}
-                            </div>
-                            <p className="text-[11px] text-stone-400">点击单词可查看释义并加入生词本</p>
-                        </div>
-                    </div>
-                </StepCard>
-            ) : null}
-
             <StepCard
-                step={3}
-                title="参考句"
-                subtitle="先看标准表达，再按需决定要不要展开语法结构。"
+                step={2}
+                title="表达对照"
                 actions={(
                     <>
                         {hasGrammarAnalysis ? (
@@ -209,8 +346,17 @@ export function TranslationAnalysisJourney({
                 )}
             >
                 <div className="space-y-3">
-                    <div className="rounded-[1.5rem] border border-[#eadcc0] bg-[linear-gradient(180deg,rgba(255,252,245,0.98),rgba(249,244,231,0.94))] px-4 py-4 shadow-[0_18px_44px_rgba(120,94,42,0.08)]">
-                        <div className="font-newsreader text-base italic leading-relaxed text-stone-700 md:text-[1.075rem]">
+                    {hasDedicatedNaturalExpression ? (
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 px-4 py-3.5">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">地道表达</div>
+                            <div className="mt-2 font-newsreader text-[1.12rem] italic leading-relaxed text-stone-800 md:text-[1.2rem]">
+                                {improvedVersionNode}
+                            </div>
+                        </div>
+                    ) : null}
+                    <div className="rounded-xl border border-stone-200 bg-stone-50 px-4 py-3.5">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-500">参考句</div>
+                        <div className="mt-2 font-newsreader text-[1.12rem] italic leading-relaxed text-stone-800 md:text-[1.2rem]">
                             {referenceSentenceNode}
                         </div>
                     </div>
@@ -221,9 +367,8 @@ export function TranslationAnalysisJourney({
             </StepCard>
 
             <StepCard
-                step={4}
+                step={3}
                 title="完整解析"
-                subtitle="按需生成更具体的教学补充，再决定是否展开细看。"
                 actions={(
                     <>
                         <button
@@ -252,8 +397,8 @@ export function TranslationAnalysisJourney({
                     <p className="text-xs leading-5 text-rose-500">{fullAnalysisError}</p>
                 ) : null}
                 {!hasFullAnalysis && !isGeneratingFullAnalysis ? (
-                    <div className="rounded-[1.5rem] border border-dashed border-stone-200 bg-stone-50/70 px-4 py-4 text-sm leading-6 text-stone-500">
-                        这里会补充中式对比、易错提醒、短语同义替换和可迁移句型。
+                    <div className="rounded-xl border border-dashed border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-6 text-stone-500">
+                        按需生成完整解析。
                     </div>
                 ) : null}
                 {fullAnalysisOpen ? <div className="mt-3">{fullAnalysisContent}</div> : null}
