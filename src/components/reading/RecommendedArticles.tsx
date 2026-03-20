@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, Settings2, LayoutGrid } from "lucide-react";
+import { Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, Settings2, LayoutGrid, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useFeedStore } from "@/lib/feed-store";
 import { useUserStore } from "@/lib/store";
 import { LiquidGlassPanel } from "@/components/ui/LiquidGlassPanel";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "@/lib/db";
+import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
+import { CAT_RANK_TIERS, getCatRankIconByTierId, getCatRankTier, getCatScoreToNextRank, getLegacyBandFromScore } from "@/lib/cat-score";
+import { CatGrowthChart } from "@/components/reading/CatGrowthChart";
 
 export interface ArticleItem {
     title: string;
@@ -35,7 +40,7 @@ interface AIGenHistoryRecord {
     quizScorePercent?: number;
 }
 
-type FeedCategory = 'psychology' | 'ai_news' | 'ai_gen';
+type FeedCategory = 'psychology' | 'ai_news' | 'ai_gen' | 'cat_mode';
 type ArticleView = 'all' | 'new' | 'unread' | 'read';
 type ArticleStatus = 'new' | 'unread' | 'read';
 
@@ -51,6 +56,16 @@ interface GeneratedArticleData {
     image?: string | null;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     isAIGenerated?: boolean;
+    isCatMode?: boolean;
+    catSessionId?: string;
+    catBand?: number;
+    catScoreSnapshot?: number;
+    catQuizBlueprint?: {
+        score?: number;
+        questionCount?: number;
+        ratioBandLabel?: string;
+        distribution?: Record<string, number>;
+    };
 }
 
 interface RecommendedArticlesProps {
@@ -116,9 +131,20 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     const [isFetching, setIsFetching] = useState(false); // Just for button state
     const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
     const [loadingArticleLink, setLoadingArticleLink] = useState<string | null>(null);
+    const [catTopic, setCatTopic] = useState("");
+    const [isStartingCat, setIsStartingCat] = useState(false);
+    const [catStartError, setCatStartError] = useState<string | null>(null);
+    const [isCatRankOverviewOpen, setIsCatRankOverviewOpen] = useState(false);
 
     const { setFeed, getFeed, loadFeedFromDB, deleteArticle } = useFeedStore();
     const { readArticleUrls } = useUserStore();
+    const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
+    const catScore = typeof profile?.cat_score === "number" ? profile.cat_score : 1000;
+    const catBand = typeof profile?.cat_current_band === "number"
+        ? profile.cat_current_band
+        : getLegacyBandFromScore(catScore);
+    const catRank = getCatRankTier(catScore);
+    const catScoreToNextRank = getCatScoreToNextRank(catScore);
     const listContainerVariants = {
         hidden: { opacity: 0 },
         show: {
@@ -238,6 +264,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
 
     // Load from DB only (no auto-fetch from API)
     useEffect(() => {
+        if (category === 'cat_mode') {
+            setArticles([]);
+            onListUpdate?.([]);
+            return;
+        }
+
         if (category === 'ai_gen') {
             loadAIGenHistory();
             return;
@@ -320,6 +352,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     };
 
     const handleRefresh = async () => {
+        if (category === "cat_mode") {
+            return;
+        }
+        if (category === "ai_gen") {
+            await loadAIGenHistory();
+            return;
+        }
         setIsFetching(true); // Use isFetching instead of loading to avoid skeleton
         try {
             // Add timestamp to bypass cache and count parameter
@@ -370,6 +409,47 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
             setIsFetching(false);
             // Clear notification after 3 seconds
             setTimeout(() => setNotification(null), 3000);
+        }
+    };
+
+    const handleStartCatSession = async () => {
+        if (isStartingCat) return;
+        setIsStartingCat(true);
+        setCatStartError(null);
+        try {
+            const response = await fetch("/api/ai/cat/session/start", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    topic: catTopic.trim() || undefined,
+                    band: catBand,
+                }),
+            });
+            const payload = await response.json();
+            if (!response.ok) {
+                throw new Error(payload.error || "启动 CAT 训练失败。");
+            }
+
+            await applyServerProfilePatchToLocal({
+                cat_score: payload?.catProfile?.score,
+                cat_level: payload?.catProfile?.level,
+                cat_theta: payload?.catProfile?.theta,
+                cat_points: payload?.catProfile?.points,
+                cat_current_band: payload?.catProfile?.currentBand,
+            });
+
+            if (payload?.article && onArticleLoaded) {
+                onArticleLoaded(payload.article as GeneratedArticleData);
+            }
+            setNotification({
+                message: `CAT 已启动 · ${payload?.catSession?.rankBefore ?? catRank.name}`,
+                type: "success",
+            });
+            setTimeout(() => setNotification(null), 2600);
+        } catch (error) {
+            setCatStartError(error instanceof Error ? error.message : "启动 CAT 训练失败。");
+        } finally {
+            setIsStartingCat(false);
         }
     };
 
@@ -426,68 +506,75 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                             </p>
                         </div>
 
-                        <div className="relative flex items-center gap-2 self-start rounded-2xl border border-white/65 bg-white/36 p-1.5 backdrop-blur-xl">
-                            <button
-                                onClick={() => setShowSettings(!showSettings)}
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 transition-all hover:bg-white/55 hover:text-slate-800"
-                                title="设置抓取数量"
-                            >
-                                <Settings2 className="h-4 w-4" />
-                            </button>
-                            <button
-                                onClick={handleRefresh}
-                                disabled={isFetching}
-                                className="inline-flex h-9 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold text-slate-700 transition-all hover:bg-white/55 disabled:opacity-50"
-                                title={`刷新 ${category} 文章`}
-                            >
-                                <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
-                                抓取 {fetchCount} 篇
-                            </button>
-
-                            <AnimatePresence>
-                                {showSettings && (
-                                    <motion.div
-                                        initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                        className="absolute right-0 top-full z-50 mt-2 min-w-[170px] rounded-2xl border border-white/65 bg-white/56 p-3 shadow-[0_22px_42px_-22px_rgba(15,23,42,0.6)] ring-1 ring-white/60 backdrop-blur-2xl"
+                        {category === "cat_mode" ? null : (
+                            <div className="relative flex items-center gap-2 self-start rounded-2xl border border-white/65 bg-white/36 p-1.5 backdrop-blur-xl">
+                                {category !== "ai_gen" ? (
+                                    <button
+                                        onClick={() => setShowSettings(!showSettings)}
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 transition-all hover:bg-white/55 hover:text-slate-800"
+                                        title="设置抓取数量"
                                     >
-                                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">抓取数量</div>
-                                        <div className="flex gap-1.5">
-                                            {[1, 2, 3, 4, 5].map(count => (
-                                                <button
-                                                    key={count}
-                                                    onClick={() => {
-                                                        setFetchCount(count);
-                                                        setShowSettings(false);
-                                                    }}
-                                                    className={cn(
-                                                        "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all",
-                                                        fetchCount === count
-                                                            ? "border-cyan-200 bg-cyan-100/70 text-cyan-700"
-                                                            : "border-white/65 bg-white/55 text-slate-500 hover:bg-white/75"
-                                                    )}
-                                                >
-                                                    {count}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </div>
+                                        <Settings2 className="h-4 w-4" />
+                                    </button>
+                                ) : null}
+                                <button
+                                    onClick={handleRefresh}
+                                    disabled={isFetching}
+                                    className="inline-flex h-9 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold text-slate-700 transition-all hover:bg-white/55 disabled:opacity-50"
+                                    title={category === "ai_gen" ? "刷新 AI 历史" : `刷新 ${category} 文章`}
+                                >
+                                    <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+                                    {category === "ai_gen" ? "刷新历史" : `抓取 ${fetchCount} 篇`}
+                                </button>
+
+                                <AnimatePresence>
+                                    {showSettings && category !== "ai_gen" && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                            className="absolute right-0 top-full z-50 mt-2 min-w-[170px] rounded-2xl border border-white/65 bg-white/56 p-3 shadow-[0_22px_42px_-22px_rgba(15,23,42,0.6)] ring-1 ring-white/60 backdrop-blur-2xl"
+                                        >
+                                            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">抓取数量</div>
+                                            <div className="flex gap-1.5">
+                                                {[1, 2, 3, 4, 5].map(count => (
+                                                    <button
+                                                        key={count}
+                                                        onClick={() => {
+                                                            setFetchCount(count);
+                                                            setShowSettings(false);
+                                                        }}
+                                                        className={cn(
+                                                            "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all",
+                                                            fetchCount === count
+                                                                ? "border-cyan-200 bg-cyan-100/70 text-cyan-700"
+                                                                : "border-white/65 bg-white/55 text-slate-500 hover:bg-white/75"
+                                                        )}
+                                                    >
+                                                        {count}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        )}
                     </div>
 
-                    <div className="grid min-w-0 grid-cols-3 gap-1.5 rounded-2xl border border-white/65 bg-white/28 p-1.5">
+                    <div className="grid min-w-0 grid-cols-2 gap-1.5 rounded-2xl border border-white/65 bg-white/28 p-1.5 md:grid-cols-4">
                         {([
                             { id: 'psychology', label: '心理学' },
                             { id: 'ai_news', label: 'AI 资讯' },
                             { id: 'ai_gen', label: 'AI 生成' },
+                            { id: 'cat_mode', label: 'CAT 成长' },
                         ] as Array<{ id: FeedCategory; label: string }>).map((tab) => (
                             <button
                                 key={tab.id}
                                 onClick={() => {
-                                    if (tab.id === 'ai_gen') {
+                                    setShowSettings(false);
+                                    setCatStartError(null);
+                                    if (tab.id === 'ai_gen' || tab.id === 'cat_mode') {
                                         setCategory(tab.id);
                                         return;
                                     }
@@ -518,7 +605,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                         ))}
                     </div>
 
-                    {category !== 'ai_gen' && (
+                    {category === "cat_mode" && catStartError ? (
+                        <div className="rounded-2xl border border-rose-200/80 bg-rose-50/75 px-3 py-2 text-sm font-medium text-rose-700">
+                            {catStartError}
+                        </div>
+                    ) : null}
+
+                    {category !== 'ai_gen' && category !== "cat_mode" && (
                         <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-white/65 bg-white/24 p-1.5 md:grid-cols-4">
                             {feedViewModel.filterItems.map((filterItem) => {
                                 const Icon = filterItem.icon;
@@ -748,6 +841,128 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                             </motion.div>
                         )}
                     </div>
+                </div>
+            ) : category === "cat_mode" ? (
+                <div className="space-y-6">
+                    <LiquidGlassPanel className="relative overflow-hidden rounded-[34px] p-5 md:p-6">
+                        <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-violet-300/22 blur-3xl" />
+                        <div className="pointer-events-none absolute -left-16 bottom-0 h-56 w-56 rounded-full bg-cyan-300/18 blur-3xl" />
+
+                        <div className="relative space-y-5">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                    <h4 className="font-welcome-ui text-[1.5rem] font-semibold tracking-tight text-slate-900 md:text-[1.72rem]">
+                                        CAT 自适应训练
+                                    </h4>
+                                    <p className="mt-1 text-sm text-slate-600">一局一篇，按表现自动调节难度。</p>
+                                </div>
+                                <div className="inline-flex items-center gap-2 rounded-2xl border border-white/70 bg-white/54 px-3 py-2 text-sm font-semibold text-slate-800 shadow-[0_16px_30px_-22px_rgba(15,23,42,0.6)] backdrop-blur-2xl">
+                                    <span className="text-base leading-none">{getCatRankIconByTierId(catRank.id)}</span>
+                                    <span>{catRank.name}</span>
+                                    <span className="rounded-lg border border-white/70 bg-white/72 px-2 py-0.5 text-xs font-bold text-slate-700">{catScore}</span>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.2fr_1fr]">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsCatRankOverviewOpen((prev) => !prev)}
+                                    className="w-full rounded-2xl border border-white/70 bg-white/44 px-3.5 py-3 text-left transition-all hover:bg-white/62"
+                                >
+                                    <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3">
+                                        <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/80 bg-white/72 text-xl shadow-[0_12px_20px_-16px_rgba(15,23,42,0.45)]">
+                                            {getCatRankIconByTierId(catRank.id)}
+                                        </span>
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-semibold text-slate-900">{catRank.primaryLabel}</p>
+                                            <p className="truncate text-xs text-slate-500">{catRank.secondaryLabel}</p>
+                                        </div>
+                                        <div className="rounded-xl border border-white/70 bg-white/72 px-3 py-2 text-right">
+                                            <p className="text-[10px] text-slate-500">下一段</p>
+                                            <p className="text-sm font-semibold text-slate-900">
+                                                {catScoreToNextRank > 0 ? `还差 ${catScoreToNextRank} 分` : "已到顶段"}
+                                            </p>
+                                        </div>
+                                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/75 bg-white/75 text-slate-600">
+                                            <ChevronDown
+                                                className={cn(
+                                                    "h-4 w-4 transition-transform duration-300",
+                                                    isCatRankOverviewOpen && "rotate-180",
+                                                )}
+                                            />
+                                        </span>
+                                    </div>
+                                </button>
+
+                                <div className="rounded-2xl border border-white/70 bg-white/44 p-2.5">
+                                    <p className="px-1 text-xs font-semibold text-slate-600">训练主题（可选）</p>
+                                    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
+                                        <input
+                                            type="text"
+                                            value={catTopic}
+                                            onChange={(event) => setCatTopic(event.target.value)}
+                                            onKeyDown={(event) => event.key === "Enter" && handleStartCatSession()}
+                                            placeholder="例如：睡眠与记忆、AI 与教育"
+                                            className="w-full rounded-xl border border-white/75 bg-white/64 px-4 py-2.5 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all placeholder:text-slate-400 focus:border-violet-300/80 focus:bg-white/78 focus:outline-none"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={handleStartCatSession}
+                                            disabled={isStartingCat}
+                                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/80 bg-white/76 px-4 py-2.5 text-sm font-bold text-slate-800 shadow-[0_15px_28px_-18px_rgba(15,23,42,0.74)] transition-all hover:bg-white/92 disabled:opacity-50"
+                                        >
+                                            {isStartingCat ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+                                            {isStartingCat ? "生成中..." : "开始训练"}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <AnimatePresence initial={false}>
+                                {isCatRankOverviewOpen && (
+                                    <motion.div
+                                        key="cat-rank-overview"
+                                        initial={{ opacity: 0, height: 0, y: -8 }}
+                                        animate={{ opacity: 1, height: "auto", y: 0 }}
+                                        exit={{ opacity: 0, height: 0, y: -8 }}
+                                        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                                        className="overflow-hidden"
+                                    >
+                                        <div className="rounded-2xl border border-white/70 bg-white/40 p-3">
+                                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                                {CAT_RANK_TIERS.map((tier) => {
+                                                    const isActive = tier.id === catRank.id;
+                                                    return (
+                                                        <div
+                                                            key={tier.id}
+                                                            className={cn(
+                                                                "rounded-xl border px-3 py-2.5 transition-all",
+                                                                isActive
+                                                                    ? "border-violet-300/85 bg-violet-100/72 shadow-[0_12px_20px_-14px_rgba(124,58,237,0.45)]"
+                                                                    : "border-white/65 bg-white/60",
+                                                            )}
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-base leading-none">{getCatRankIconByTierId(tier.id)}</span>
+                                                                <span className="text-xs font-semibold text-slate-800">{tier.name}</span>
+                                                            </div>
+                                                            <p className="mt-1 text-[10px] text-slate-500">
+                                                                {tier.maxScore === null ? `${tier.minScore}+` : `${tier.minScore}-${tier.maxScore}`}
+                                                            </p>
+                                                            <p className="mt-1 text-[11px] font-semibold text-slate-700">{tier.primaryLabel}</p>
+                                                            <p className="text-[11px] text-slate-500">{tier.secondaryLabel}</p>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+
+                            <CatGrowthChart currentScore={catScore} />
+                        </div>
+                    </LiquidGlassPanel>
                 </div>
             ) : (
                 <div className="space-y-8">

@@ -17,10 +17,16 @@ import {
     createLocalVocabularyItem,
     DEFAULT_AVATAR_PRESET,
     DEFAULT_BASE_ELO,
+    DEFAULT_CAT_BAND,
+    DEFAULT_CAT_LEVEL,
+    DEFAULT_CAT_POINTS,
+    DEFAULT_CAT_SCORE,
+    DEFAULT_CAT_THETA,
     DEFAULT_FREE_THEME,
     DEFAULT_INVENTORY,
     DEFAULT_LEARNING_PREFERENCES,
     DEFAULT_PROFILE_USERNAME,
+    DEFAULT_READING_COINS,
     DEFAULT_STARTING_COINS,
     normalizeInventory,
     normalizeWordKey,
@@ -314,6 +320,15 @@ async function ensureRemoteProfile(userId: string) {
             bio: normalizeProfileBio(localProfile.bio),
             deepseek_api_key: localProfile.deepseek_api_key ?? "",
             learning_preferences: normalizeLearningPreferences(localProfile.learning_preferences ?? DEFAULT_LEARNING_PREFERENCES),
+            reading_coins: localProfile.reading_coins ?? DEFAULT_READING_COINS,
+            reading_streak: localProfile.reading_streak ?? 0,
+            reading_last_daily_grant_at: localProfile.reading_last_daily_grant_at ?? null,
+            cat_score: localProfile.cat_score ?? DEFAULT_CAT_SCORE,
+            cat_level: localProfile.cat_level ?? DEFAULT_CAT_LEVEL,
+            cat_theta: localProfile.cat_theta ?? DEFAULT_CAT_THETA,
+            cat_points: localProfile.cat_points ?? DEFAULT_CAT_POINTS,
+            cat_current_band: localProfile.cat_current_band ?? DEFAULT_CAT_BAND,
+            cat_updated_at: localProfile.cat_updated_at ?? nowIso(),
             last_practice_at: new Date(localProfile.last_practice).toISOString(),
             updated_at: localProfile.updated_at || nowIso(),
         }
@@ -334,6 +349,15 @@ async function ensureRemoteProfile(userId: string) {
             bio: "",
             deepseek_api_key: "",
             learning_preferences: DEFAULT_LEARNING_PREFERENCES,
+            reading_coins: DEFAULT_READING_COINS,
+            reading_streak: 0,
+            reading_last_daily_grant_at: null,
+            cat_score: DEFAULT_CAT_SCORE,
+            cat_level: DEFAULT_CAT_LEVEL,
+            cat_theta: DEFAULT_CAT_THETA,
+            cat_points: DEFAULT_CAT_POINTS,
+            cat_current_band: DEFAULT_CAT_BAND,
+            cat_updated_at: nowIso(),
             last_practice_at: nowIso(),
             updated_at: nowIso(),
         };
@@ -453,6 +477,15 @@ async function migrateLegacyData(userId: string) {
             bio: profile.bio,
             deepseek_api_key: profile.deepseek_api_key,
             learning_preferences: profile.learning_preferences,
+            reading_coins: profile.reading_coins,
+            reading_streak: profile.reading_streak,
+            reading_last_daily_grant_at: profile.reading_last_daily_grant_at,
+            cat_score: profile.cat_score,
+            cat_level: profile.cat_level,
+            cat_theta: profile.cat_theta,
+            cat_points: profile.cat_points,
+            cat_current_band: profile.cat_current_band,
+            cat_updated_at: profile.cat_updated_at,
         });
 
         if (Object.keys(patch).length > 0) {
@@ -867,7 +900,8 @@ export async function saveProfilePatch(
         Pick<
             LocalUserProfile,
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
-            | "deepseek_api_key"
+            | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
+            | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
         >
     >,
 ) {
@@ -890,6 +924,28 @@ export async function saveProfilePatch(
     });
     useSyncStatusStore.getState().setPhase("syncing");
     void scheduleBackgroundSync();
+}
+
+export async function applyServerProfilePatchToLocal(
+    patch: Partial<
+        Pick<
+            LocalUserProfile,
+            "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
+            | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
+            | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
+        >
+    >,
+) {
+    const profile = await db.user_profile.orderBy("id").first();
+    if (!profile?.id) return;
+
+    const normalized = buildProfilePatch(patch);
+    await db.user_profile.update(profile.id, {
+        ...normalized,
+        hints: patch.inventory?.capsule ?? profile.hints,
+        updated_at: nowIso(),
+        sync_status: "synced",
+    });
 }
 
 export async function settleBattle(payload: {

@@ -1,4 +1,10 @@
 import { NextResponse } from "next/server";
+import {
+    chargeReadingCoins,
+    insufficientReadingCoinsPayload,
+    isReadEconomyContext,
+    type ReadingEconomyContext,
+} from "@/lib/reading-economy-server";
 
 interface DictionaryResponsePayload {
     word: string;
@@ -33,16 +39,49 @@ function setCached(word: string, data: DictionaryResponsePayload) {
 
 export async function POST(req: Request) {
     try {
-        const { word } = await req.json();
+        const { word, economyContext } = await req.json() as {
+            word?: string;
+            economyContext?: ReadingEconomyContext;
+        };
 
         if (!word) {
             return NextResponse.json({ error: "Word is required" }, { status: 400 });
         }
 
+        let readingBalance: number | undefined;
+        const readContext = isReadEconomyContext(economyContext)
+            ? {
+                ...economyContext,
+                action: economyContext?.action ?? "word_lookup",
+            }
+            : null;
+
+        if (readContext?.action) {
+            const charge = await chargeReadingCoins({
+                action: readContext.action,
+                dedupeKey: readContext.dedupeKey,
+                meta: {
+                    articleUrl: readContext.articleUrl ?? null,
+                    word,
+                    from: "api/dictionary",
+                },
+            });
+            if (!charge.ok && charge.insufficient) {
+                return NextResponse.json(
+                    insufficientReadingCoinsPayload(readContext.action, charge.required ?? 1, charge.balance),
+                    { status: 402 },
+                );
+            }
+            readingBalance = charge.balance;
+        }
+
         const normalizedWord = String(word).trim().toLowerCase();
         const cached = getCached(normalizedWord);
         if (cached) {
-            return NextResponse.json(cached);
+            return NextResponse.json({
+                ...cached,
+                readingCoins: typeof readingBalance === "number" ? { balance: readingBalance } : undefined,
+            });
         }
 
         const controller = new AbortController();
@@ -104,7 +143,10 @@ export async function POST(req: Request) {
                 audio,
             };
             setCached(normalizedWord, payload);
-            return NextResponse.json(payload);
+            return NextResponse.json({
+                ...payload,
+                readingCoins: typeof readingBalance === "number" ? { balance: readingBalance } : undefined,
+            });
         }
 
         return NextResponse.json({ error: "Definition not found" }, { status: 404 });

@@ -1,195 +1,383 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { deepseek } from "@/lib/deepseek";
+import {
+    CAT_OBJECTIVE_QUESTION_TYPES,
+    type CatObjectiveQuestionType,
+    buildObjectiveDistribution,
+    getCatQuizBlueprint,
+    normalizeCatScore,
+} from "@/lib/cat-score";
 
 type Difficulty = "cet4" | "cet6" | "ielts";
 
-interface QuizConfig {
-    label: string;
-    instruction: string;
+type QuizMode = "standard" | "cat";
+
+interface QuizRequestPayload {
+    articleContent?: string;
+    difficulty?: Difficulty;
+    title?: string;
+    quizMode?: QuizMode;
+    catBand?: number;
+    catScore?: number;
+    catQuizBlueprint?: {
+        questionCount?: number;
+        distribution?: Partial<Record<CatObjectiveQuestionType, number>>;
+    };
 }
 
-const QUIZ_CONFIGS: Record<Difficulty, QuizConfig> = {
-    cet4: {
-        label: "CET-4",
-        instruction: `Generate exactly 5 multiple-choice questions based on the article.
-Each question should test reading comprehension at CET-4 level:
-- Focus on main idea, specific details, vocabulary in context, and inference.
-- 4 options (A/B/C/D) per question.
-- Questions should progress from easier to harder.
+interface QuizCacheEntry {
+    createdAt: number;
+    payload: {
+        questions: unknown[];
+        difficulty: Difficulty;
+        articleTitle?: string;
+        quizMode: QuizMode;
+        catBand: number | null;
+        catBlueprint: {
+            score: number;
+            questionCount: number;
+            distribution: Record<CatObjectiveQuestionType, number>;
+        } | null;
+        standardBlueprint: {
+            questionCount: number;
+            distribution: Record<CatObjectiveQuestionType, number>;
+        } | null;
+        generationMs?: number;
+    };
+}
 
-Return JSON:
-{
-  "questions": [
-    {
-      "id": 1,
-      "type": "multiple_choice",
-      "question": "...",
-      "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
-      "answer": "A",
-      "sourceParagraph": "2",
-      "evidence": "Quote or paraphrase the key sentence from paragraph 2.",
-      "explanation": {
-        "summary": "中文一句话结论（可夹少量英文关键词）",
-        "reasoning": "中文解题思路：如何定位和排除干扰项",
-        "trap": "中文易错点提示（可选）"
-      }
+const QUIZ_CACHE_TTL_MS = 15 * 60 * 1000;
+
+function getQuizCacheStore() {
+    const globalScope = globalThis as typeof globalThis & { __yasiQuizCache?: Map<string, QuizCacheEntry> };
+    if (!globalScope.__yasiQuizCache) {
+        globalScope.__yasiQuizCache = new Map<string, QuizCacheEntry>();
     }
-  ]
-}`,
+    return globalScope.__yasiQuizCache;
+}
+
+function pruneQuizCache(store: Map<string, QuizCacheEntry>, now: number) {
+    for (const [key, entry] of store.entries()) {
+        if (now - entry.createdAt > QUIZ_CACHE_TTL_MS) {
+            store.delete(key);
+        }
+    }
+}
+
+const TYPE_LABELS: Record<CatObjectiveQuestionType, string> = {
+    multiple_choice: "单选题",
+    multiple_select: "多选题",
+    true_false_ng: "True/False/Not Given",
+    matching: "段落匹配",
+    fill_blank_choice: "选项填空",
+};
+
+const STANDARD_DISTRIBUTION: Record<Difficulty, Record<CatObjectiveQuestionType, number>> = {
+    cet4: {
+        multiple_choice: 3,
+        multiple_select: 1,
+        true_false_ng: 1,
+        matching: 0,
+        fill_blank_choice: 0,
     },
     cet6: {
-        label: "CET-6",
-        instruction: `Generate 5 multiple-choice questions and 2 short-answer questions based on the article.
-This is CET-6 level, so questions should be more challenging:
-- Multiple-choice: test inference, author's attitude, logical reasoning, and vocabulary.
-- Short-answer: require 1-2 sentence responses demonstrating deep comprehension.
-
-Return JSON:
-{
-  "questions": [
-    {
-      "id": 1,
-      "type": "multiple_choice",
-      "question": "...",
-      "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
-      "answer": "A",
-      "sourceParagraph": "3",
-      "evidence": "Quote or paraphrase the supporting sentence from paragraph 3.",
-      "explanation": {
-        "summary": "中文一句话结论（可夹少量英文关键词）",
-        "reasoning": "中文解题思路：定位依据 + 逻辑推理",
-        "trap": "中文易错点提示（可选）"
-      }
-    },
-    {
-      "id": 6,
-      "type": "short_answer",
-      "question": "...",
-      "answer": "Model answer in 1-2 sentences.",
-      "sourceParagraph": "4",
-      "evidence": "Quote or paraphrase the supporting sentence from paragraph 4.",
-      "explanation": {
-        "summary": "中文总结该题应答要点",
-        "reasoning": "中文说明答案覆盖了哪些关键点",
-        "trap": "中文易漏点提示（可选）"
-      }
-    }
-  ]
-}`,
+        multiple_choice: 2,
+        multiple_select: 1,
+        true_false_ng: 1,
+        matching: 1,
+        fill_blank_choice: 1,
     },
     ielts: {
-        label: "IELTS Academic",
-        instruction: `Generate a mixed set of IELTS-style reading questions based on the article.
-Include exactly:
-- 3 True/False/Not Given questions
-- 2 matching (match headings/information to paragraphs) questions
-- 2 fill-in-the-blank (sentence completion) questions
-
-Return JSON:
-{
-  "questions": [
-    {
-      "id": 1,
-      "type": "true_false_ng",
-      "question": "Statement to evaluate...",
-      "options": ["True", "False", "Not Given"],
-      "answer": "True",
-      "sourceParagraph": "1",
-      "evidence": "Quote or paraphrase the supporting sentence from paragraph 1.",
-      "explanation": {
-        "summary": "中文判断结论（True/False/Not Given）",
-        "reasoning": "中文说明依据和判断逻辑",
-        "trap": "中文提示与原文无关的干扰点（可选）"
-      }
-    },
-    {
-      "id": 4,
-      "type": "matching",
-      "question": "Match the following information to the correct paragraph...",
-      "options": ["Paragraph 1", "Paragraph 2", "Paragraph 3", "Paragraph 4"],
-      "answer": "Paragraph 2",
-      "sourceParagraph": "2",
-      "evidence": "Quote or paraphrase the matching clue from paragraph 2.",
-      "explanation": {
-        "summary": "中文结论：匹配到哪个段落",
-        "reasoning": "中文说明匹配关键词和排除过程",
-        "trap": "中文提示常见误匹配点（可选）"
-      }
-    },
-    {
-      "id": 6,
-      "type": "fill_blank",
-      "question": "Complete the sentence: The author argues that ____.",
-      "answer": "expected fill text",
-      "sourceParagraph": "3",
-      "evidence": "Quote or paraphrase the sentence from paragraph 3.",
-      "explanation": {
-        "summary": "中文总结填空核心语义",
-        "reasoning": "中文说明如何从原文改写得到答案",
-        "trap": "中文提示同义改写陷阱（可选）"
-      }
-    }
-  ]
-}`,
+        multiple_choice: 1,
+        multiple_select: 1,
+        true_false_ng: 2,
+        matching: 2,
+        fill_blank_choice: 1,
     },
 };
 
+function sumDistribution(distribution: Record<CatObjectiveQuestionType, number>) {
+    return CAT_OBJECTIVE_QUESTION_TYPES.reduce((sum, type) => sum + distribution[type], 0);
+}
+
+function toPositiveInteger(value: unknown): number | null {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return null;
+    return Math.max(0, Math.round(num));
+}
+
+function sanitizeDistribution(
+    input: Partial<Record<CatObjectiveQuestionType, number>> | undefined,
+    questionCount: number,
+    fallback: Record<CatObjectiveQuestionType, number>,
+) {
+    const safeQuestionCount = Math.max(1, Math.round(questionCount));
+    const candidate = CAT_OBJECTIVE_QUESTION_TYPES.reduce((acc, type) => {
+        const parsed = toPositiveInteger(input?.[type]);
+        acc[type] = parsed ?? 0;
+        return acc;
+    }, {} as Record<CatObjectiveQuestionType, number>);
+
+    if (sumDistribution(candidate) !== safeQuestionCount || candidate.multiple_select < 1) {
+        const fallbackTotal = sumDistribution(fallback);
+        if (fallbackTotal === safeQuestionCount && fallback.multiple_select >= 1) {
+            return fallback;
+        }
+
+        const fallbackRatios = CAT_OBJECTIVE_QUESTION_TYPES.reduce((acc, type) => {
+            acc[type] = fallbackTotal > 0 ? fallback[type] / fallbackTotal : 0;
+            return acc;
+        }, {} as Record<CatObjectiveQuestionType, number>);
+
+        return buildObjectiveDistribution(safeQuestionCount, fallbackRatios);
+    }
+
+    return candidate;
+}
+
+function distributionText(distribution: Record<CatObjectiveQuestionType, number>) {
+    return CAT_OBJECTIVE_QUESTION_TYPES
+        .map((type) => `- ${TYPE_LABELS[type]} (${type}): ${distribution[type]} 题`)
+        .join("\n");
+}
+
+function buildStandardInstruction(difficulty: Difficulty) {
+    const distribution = STANDARD_DISTRIBUTION[difficulty] ?? STANDARD_DISTRIBUTION.ielts;
+    const questionCount = sumDistribution(distribution);
+
+    return {
+        questionCount,
+        distribution,
+        instruction: `Generate exactly ${questionCount} objective reading questions.
+Question type distribution:
+${distributionText(distribution)}
+
+Question protocol (strict):
+1. All questions must be objective; no short-answer questions.
+2. \'multiple_choice\', \'matching\', \'fill_blank_choice\' use exactly 4 options and one correct answer in field \'answer\'.
+3. \'multiple_select\' uses exactly 4 options and 2-3 correct options in field \'answers\' (array of letters, e.g., ["A", "C"]).
+4. \'true_false_ng\' options must be ["True", "False", "Not Given"] and one correct answer in \'answer\'.
+5. Every question must include sourceParagraph and evidence.
+6. Keep explanations Chinese-first and concise.
+
+Return JSON only:
+{
+  "questions": [
+    {
+      "id": 1,
+      "type": "multiple_choice | multiple_select | true_false_ng | matching | fill_blank_choice",
+      "question": "...",
+      "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+      "answer": "A",
+      "answers": ["A", "C"],
+      "sourceParagraph": "2",
+      "evidence": "...",
+      "explanation": {
+        "summary": "中文一句话结论",
+        "reasoning": "中文解题思路",
+        "trap": "中文易错点（可选）"
+      }
+    }
+  ]
+}`,
+    };
+}
+
+function buildCatInstruction(params: {
+    score: number;
+    questionCount: number;
+    distribution: Record<CatObjectiveQuestionType, number>;
+}) {
+    const { score, questionCount, distribution } = params;
+
+    return `Generate exactly ${questionCount} objective CAT adaptive reading questions.
+Learner CAT score: ${score}
+
+Question type distribution:
+${distributionText(distribution)}
+
+CAT strict protocol:
+1. Keep all questions objectively answerable from the article.
+2. \'multiple_select\' must appear at least once, with exactly 4 options and 2-3 correct answers in \'answers\'.
+3. For non-multiple-select types, provide one correct answer in field \'answer\'.
+4. \'matching\' and \'fill_blank_choice\' should still use 4 options.
+5. \'true_false_ng\' must use options ["True", "False", "Not Given"].
+6. Include sourceParagraph and evidence for every question.
+7. Explanation must be Chinese-first and concise.
+8. Order questions from easier to harder.
+
+Return JSON only:
+{
+  "questions": [
+    {
+      "id": 1,
+      "type": "multiple_choice | multiple_select | true_false_ng | matching | fill_blank_choice",
+      "question": "...",
+      "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+      "answer": "A",
+      "answers": ["A", "C"],
+      "sourceParagraph": "2",
+      "evidence": "...",
+      "explanation": {
+        "summary": "中文一句话结论",
+        "reasoning": "中文解题思路",
+        "trap": "中文易错点（可选）"
+      }
+    }
+  ]
+}`;
+}
+
+function toPromptArticle(content: string) {
+    const trimmed = content.trim();
+    if (trimmed.length <= 8200) return trimmed;
+    return `${trimmed.slice(0, 8200)}\n\n[Article truncated for faster quiz generation. Keep questions grounded in provided content.]`;
+}
+
 export async function POST(req: Request) {
     try {
-        const { articleContent, difficulty = "ielts", title } = await req.json();
+        const {
+            articleContent,
+            difficulty = "ielts",
+            title,
+            quizMode = "standard",
+            catBand,
+            catScore,
+            catQuizBlueprint,
+        } = await req.json() as QuizRequestPayload;
 
         if (!articleContent) {
             return NextResponse.json(
                 { error: "Article content is required" },
-                { status: 400 }
+                { status: 400 },
             );
         }
 
-        const diff = (difficulty as string).toLowerCase();
-        const config =
-            QUIZ_CONFIGS[diff as Difficulty] ?? QUIZ_CONFIGS.ielts;
+        const isCatMode = quizMode === "cat";
+        const normalizedDifficulty =
+            difficulty === "cet4" || difficulty === "cet6" || difficulty === "ielts"
+                ? difficulty
+                : "ielts";
+
+        const normalizedCatScore = normalizeCatScore(Number(catScore ?? 1000));
+        const computedCatBlueprint = getCatQuizBlueprint(normalizedCatScore);
+        const requestedCount = toPositiveInteger(catQuizBlueprint?.questionCount);
+        const questionCount = requestedCount && requestedCount > 0
+            ? requestedCount
+            : computedCatBlueprint.questionCount;
+
+        const catDistribution = sanitizeDistribution(
+            catQuizBlueprint?.distribution,
+            questionCount,
+            computedCatBlueprint.distribution,
+        );
+
+        const standardInstruction = buildStandardInstruction(normalizedDifficulty);
+        const instruction = isCatMode
+            ? buildCatInstruction({
+                score: normalizedCatScore,
+                questionCount,
+                distribution: catDistribution,
+            })
+            : standardInstruction.instruction;
+
+        const quizLabel = isCatMode
+            ? `CAT Adaptive Score ${normalizedCatScore}`
+            : `Standard ${normalizedDifficulty.toUpperCase()}`;
+
+        const promptArticle = toPromptArticle(articleContent);
+        const cacheKey = createHash("sha1")
+            .update(JSON.stringify({
+                mode: quizMode,
+                difficulty: normalizedDifficulty,
+                title: title || "",
+                article: promptArticle,
+                score: normalizedCatScore,
+                questionCount,
+                distribution: catDistribution,
+            }))
+            .digest("hex");
+
+        const cacheStore = getQuizCacheStore();
+        const now = Date.now();
+        pruneQuizCache(cacheStore, now);
+        const cached = cacheStore.get(cacheKey);
+        if (cached && now - cached.createdAt <= QUIZ_CACHE_TTL_MS) {
+            return NextResponse.json({
+                ...cached.payload,
+                cacheHit: true,
+            });
+        }
 
         const prompt = `
-You are an expert English exam question writer for ${config.label}.
+You are an expert English reading exam question writer for ${quizLabel}.
 Based on the following article, generate reading comprehension questions.
 
 ARTICLE TITLE: ${title || "Untitled"}
 
 ARTICLE CONTENT:
-${articleContent}
+${promptArticle}
 
 INSTRUCTIONS:
-${config.instruction}
+${instruction}
 
 IMPORTANT:
 - All questions must be directly answerable from the article content.
-- Explanations must be Chinese-first (you may keep key terms in English).
-- Every question should include sourceParagraph and evidence fields.
-- Keep explanation concise and practical for learners.
-- Do NOT include questions about information not in the article.
+- Return valid JSON only, no markdown fences.
+- Keep question id sequential from 1.
 `;
 
+        const generationStart = Date.now();
         const completion = await deepseek.chat.completions.create({
             messages: [{ role: "user", content: prompt }],
             model: "deepseek-chat",
             response_format: { type: "json_object" },
+            temperature: 0.2,
+            max_tokens: 1800,
         });
 
-        const content = completion.choices[0].message.content;
+        const content = completion.choices[0]?.message?.content;
         if (!content) throw new Error("No content received");
 
-        const result = JSON.parse(content);
+        const result = JSON.parse(content) as { questions?: unknown[] };
+        const normalizedCatBandValue = Number.isFinite(Number(catBand)) ? Number(catBand) : null;
+        const payload = {
+            questions: Array.isArray(result.questions) ? result.questions : [],
+            difficulty: normalizedDifficulty,
+            articleTitle: title,
+            quizMode,
+            catBand: isCatMode ? normalizedCatBandValue : null,
+            catBlueprint: isCatMode
+                ? {
+                    score: normalizedCatScore,
+                    questionCount,
+                    distribution: catDistribution,
+                }
+                : null,
+            standardBlueprint: isCatMode
+                ? null
+                : {
+                    questionCount: standardInstruction.questionCount,
+                    distribution: standardInstruction.distribution,
+                },
+            generationMs: Date.now() - generationStart,
+        };
+
+        cacheStore.set(cacheKey, {
+            createdAt: Date.now(),
+            payload,
+        });
 
         return NextResponse.json({
-            questions: result.questions || [],
-            difficulty: diff,
-            articleTitle: title,
+            ...payload,
+            cacheHit: false,
         });
     } catch (error) {
         console.error("Quiz Generation API Error:", error);
         return NextResponse.json(
             { error: "Failed to generate quiz" },
-            { status: 500 }
+            { status: 500 },
         );
     }
 }

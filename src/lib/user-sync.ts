@@ -48,6 +48,15 @@ export interface RemoteProfileRow {
     bio?: string;
     deepseek_api_key?: string;
     learning_preferences?: LearningPreferences;
+    reading_coins?: number;
+    reading_streak?: number;
+    reading_last_daily_grant_at?: string | null;
+    cat_score?: number;
+    cat_level?: number;
+    cat_theta?: number;
+    cat_points?: number;
+    cat_current_band?: number;
+    cat_updated_at?: string | null;
     updated_at: string;
     last_practice_at: string;
 }
@@ -109,6 +118,12 @@ export interface RemoteEloHistoryRow {
 export const DEFAULT_BASE_ELO = 400;
 export const DEFAULT_STARTING_COINS = 500;
 export const DEFAULT_FREE_THEME = "morning_coffee";
+export const DEFAULT_READING_COINS = 40;
+export const DEFAULT_CAT_SCORE = 1000;
+export const DEFAULT_CAT_LEVEL = 1;
+export const DEFAULT_CAT_THETA = 0;
+export const DEFAULT_CAT_POINTS = 0;
+export const DEFAULT_CAT_BAND = 3;
 export const DEFAULT_INVENTORY: Required<InventoryState> = {
     capsule: 10,
     hint_ticket: 10,
@@ -154,6 +169,15 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
         bio: "",
         deepseek_api_key: "",
         learning_preferences: DEFAULT_LEARNING_PREFERENCES,
+        reading_coins: DEFAULT_READING_COINS,
+        reading_streak: 0,
+        reading_last_daily_grant_at: null,
+        cat_score: DEFAULT_CAT_SCORE,
+        cat_level: DEFAULT_CAT_LEVEL,
+        cat_theta: DEFAULT_CAT_THETA,
+        cat_points: DEFAULT_CAT_POINTS,
+        cat_current_band: DEFAULT_CAT_BAND,
+        cat_updated_at: new Date(now).toISOString(),
         updated_at: new Date(now).toISOString(),
         sync_status: "pending",
     };
@@ -182,6 +206,15 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
         bio: normalizeProfileBio(remote.bio),
         deepseek_api_key: normalizeProfileDeepSeekApiKey(remote.deepseek_api_key),
         learning_preferences: normalizeLearningPreferences(remote.learning_preferences),
+        reading_coins: typeof remote.reading_coins === "number" ? remote.reading_coins : DEFAULT_READING_COINS,
+        reading_streak: typeof remote.reading_streak === "number" ? remote.reading_streak : 0,
+        reading_last_daily_grant_at: remote.reading_last_daily_grant_at || null,
+        cat_score: typeof remote.cat_score === "number" ? remote.cat_score : DEFAULT_CAT_SCORE,
+        cat_level: typeof remote.cat_level === "number" ? remote.cat_level : DEFAULT_CAT_LEVEL,
+        cat_theta: typeof remote.cat_theta === "number" ? remote.cat_theta : DEFAULT_CAT_THETA,
+        cat_points: typeof remote.cat_points === "number" ? remote.cat_points : DEFAULT_CAT_POINTS,
+        cat_current_band: typeof remote.cat_current_band === "number" ? remote.cat_current_band : DEFAULT_CAT_BAND,
+        cat_updated_at: remote.cat_updated_at || remote.updated_at,
         updated_at: remote.updated_at,
         sync_status: "synced",
     };
@@ -192,7 +225,8 @@ export function buildProfilePatch(
         Pick<
             LocalUserProfile,
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
-            | "deepseek_api_key"
+            | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
+            | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
         >
     >,
 ) {
@@ -208,6 +242,19 @@ export function buildProfilePatch(
     if (patch.deepseek_api_key !== undefined) nextPatch.deepseek_api_key = normalizeProfileDeepSeekApiKey(patch.deepseek_api_key);
     if (patch.learning_preferences !== undefined) {
         nextPatch.learning_preferences = normalizeLearningPreferences(patch.learning_preferences);
+    }
+    if (patch.reading_coins !== undefined) nextPatch.reading_coins = patch.reading_coins;
+    if (patch.reading_streak !== undefined) nextPatch.reading_streak = patch.reading_streak;
+    if (patch.reading_last_daily_grant_at !== undefined) {
+        nextPatch.reading_last_daily_grant_at = patch.reading_last_daily_grant_at || null;
+    }
+    if (patch.cat_score !== undefined) nextPatch.cat_score = patch.cat_score;
+    if (patch.cat_level !== undefined) nextPatch.cat_level = patch.cat_level;
+    if (patch.cat_theta !== undefined) nextPatch.cat_theta = patch.cat_theta;
+    if (patch.cat_points !== undefined) nextPatch.cat_points = patch.cat_points;
+    if (patch.cat_current_band !== undefined) nextPatch.cat_current_band = patch.cat_current_band;
+    if (patch.cat_updated_at !== undefined) {
+        nextPatch.cat_updated_at = patch.cat_updated_at ? new Date(patch.cat_updated_at).toISOString() : null;
     }
 
     return nextPatch;

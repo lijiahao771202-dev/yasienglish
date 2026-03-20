@@ -11,7 +11,7 @@ export async function GET() {
     const supabase = createAdminClient();
     const { data, error } = await supabase
         .from("profiles")
-        .select("user_id, username, coins, translation_elo, listening_elo, updated_at, created_at")
+        .select("user_id, username, coins, reading_coins, translation_elo, listening_elo, cat_score, cat_level, cat_theta, cat_points, cat_current_band, cat_updated_at, updated_at, created_at")
         .order("updated_at", { ascending: false })
         .limit(200);
 
