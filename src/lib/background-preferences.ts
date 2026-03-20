@@ -179,9 +179,15 @@ export function setSavedBackgroundTheme(themeId: BackgroundThemeId, userId?: str
     if (typeof window === "undefined") return;
     const key = buildBackgroundStorageKey(userId);
     window.localStorage.setItem(key, themeId);
+    document.documentElement.setAttribute("data-bg-theme", themeId);
     window.dispatchEvent(new CustomEvent(BACKGROUND_CHANGED_EVENT, { detail: { themeId } }));
 }
 
 export function getBackgroundThemeSpec(themeId: BackgroundThemeId): BackgroundThemeSpec {
     return BACKGROUND_THEMES.find((theme) => theme.id === themeId) ?? BACKGROUND_THEMES[0];
+}
+
+export function applyBackgroundThemeToDocument(themeId: BackgroundThemeId) {
+    if (typeof window === "undefined") return;
+    document.documentElement.setAttribute("data-bg-theme", themeId);
 }

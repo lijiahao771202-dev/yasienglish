@@ -12,7 +12,7 @@ import { EloChart } from "@/components/battle/EloChart";
 import { BattleDrillSelection, shouldRefreshBattleChart } from "@/lib/battleUiState";
 import { TOPICS } from "@/lib/battle-topics";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
-import { BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
+import { applyBackgroundThemeToDocument, BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
 
 export default function BattlePage() {
     const router = useRouter();
@@ -89,6 +89,10 @@ export default function BattlePage() {
             chevron: "text-blue-600",
             textTag: "text-blue-700 bg-blue-50/80 border-blue-200/70"
         };
+
+    useEffect(() => {
+        applyBackgroundThemeToDocument(backgroundTheme);
+    }, [backgroundTheme]);
 
     useEffect(() => {
         const onBackgroundChange = (event: Event) => {

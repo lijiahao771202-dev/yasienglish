@@ -10,7 +10,7 @@ import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { HomeDashboardPanels } from "@/components/home/HomeDashboardPanels";
 import { buildHomeDashboardModel } from "@/components/home/home-data";
 import { GlassCard } from "@/components/ui/GlassCard";
-import { BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
+import { applyBackgroundThemeToDocument, BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
 import { db } from "@/lib/db";
 
 interface HomeConsoleProps {
@@ -51,6 +51,10 @@ export function HomeConsole({ passwordUpdated = false }: HomeConsoleProps) {
     const [, forceBackgroundRefresh] = useState(0);
     const backgroundTheme = getSavedBackgroundTheme(sessionUser?.id);
     const backgroundSpec = getBackgroundThemeSpec(backgroundTheme);
+
+    useEffect(() => {
+        applyBackgroundThemeToDocument(backgroundTheme);
+    }, [backgroundTheme]);
 
     useEffect(() => {
         const onBackgroundChange = (event: Event) => {
@@ -163,7 +167,7 @@ export function HomeConsole({ passwordUpdated = false }: HomeConsoleProps) {
                             <button
                                 type="button"
                                 onClick={() => handleNavigateFromHome("read")}
-                                className="liquid-glass-hover liquid-glass-tap flex min-w-[172px] items-center justify-between gap-3 rounded-[1.3rem] border border-[#f7b9d8] bg-[linear-gradient(145deg,rgba(255,233,244,0.82),rgba(255,211,230,0.64))] px-4 py-3 text-[#8d2e5e] shadow-[inset_0_1px_0_rgba(255,255,255,0.34)]"
+                                className="liquid-glass-hover liquid-glass-tap liquid-theme-pill flex min-w-[172px] items-center justify-between gap-3 rounded-[1.3rem] px-4 py-3"
                             >
                                 <span className="flex items-center gap-2 text-sm font-semibold">
                                     <BookOpenText className="h-4 w-4" />
@@ -174,7 +178,7 @@ export function HomeConsole({ passwordUpdated = false }: HomeConsoleProps) {
                             <button
                                 type="button"
                                 onClick={() => handleNavigateFromHome("battle")}
-                                className="liquid-glass-hover liquid-glass-tap flex min-w-[172px] items-center justify-between gap-3 rounded-[1.3rem] border border-[#f59cc6] bg-[linear-gradient(145deg,rgba(255,219,237,0.84),rgba(255,190,221,0.66))] px-4 py-3 text-[#892656] shadow-[inset_0_1px_0_rgba(255,255,255,0.34)]"
+                                className="liquid-glass-hover liquid-glass-tap liquid-theme-pill flex min-w-[172px] items-center justify-between gap-3 rounded-[1.3rem] px-4 py-3"
                             >
                                 <span className="flex items-center gap-2 text-sm font-semibold">
                                     <Swords className="h-4 w-4" />
@@ -185,7 +189,7 @@ export function HomeConsole({ passwordUpdated = false }: HomeConsoleProps) {
                             <button
                                 type="button"
                                 onClick={() => handleNavigateFromHome("vocab")}
-                                className="liquid-glass-hover liquid-glass-tap flex min-w-[172px] items-center justify-between gap-3 rounded-[1.3rem] border border-[#f6c0da] bg-[linear-gradient(145deg,rgba(255,238,247,0.84),rgba(255,218,234,0.66))] px-4 py-3 text-[#9c3468] shadow-[inset_0_1px_0_rgba(255,255,255,0.34)]"
+                                className="liquid-glass-hover liquid-glass-tap liquid-theme-pill flex min-w-[172px] items-center justify-between gap-3 rounded-[1.3rem] px-4 py-3"
                             >
                                 <span className="flex items-center gap-2 text-sm font-semibold">
                                     <BrainCircuit className="h-4 w-4" />
