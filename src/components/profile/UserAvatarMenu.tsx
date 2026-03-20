@@ -93,6 +93,8 @@ export function UserAvatarMenu({
         const handlePointerDown = (event: MouseEvent) => {
             if (!containerRef.current?.contains(event.target as Node)) {
                 setOpen(false);
+                setMailboxOpen(false);
+                setBackgroundOpen(false);
             }
         };
 
@@ -103,15 +105,16 @@ export function UserAvatarMenu({
     }, []);
 
     useEffect(() => {
-        if (!mailboxOpen) return;
+        if (!mailboxOpen && !backgroundOpen) return;
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Escape") {
                 setMailboxOpen(false);
+                setBackgroundOpen(false);
             }
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [mailboxOpen]);
+    }, [backgroundOpen, mailboxOpen]);
 
     return (
         <div
@@ -268,13 +271,11 @@ export function UserAvatarMenu({
             ) : null}
             {mailboxOpen ? (
                 <div
-                    className="fixed inset-0 z-[180] flex items-center justify-center bg-black/45 p-4 backdrop-blur-md"
-                    onClick={() => setMailboxOpen(false)}
+                    className={isSidebar
+                        ? "absolute bottom-full left-full z-[180] mb-3 ml-3 w-[min(92vw,40rem)]"
+                        : "absolute right-0 top-full z-[180] mt-3 w-[min(92vw,40rem)]"}
                 >
-                    <div
-                        className="relative w-full max-w-[640px] rounded-[1.9rem] border border-white/80 bg-white p-3 shadow-[0_36px_100px_-42px_rgba(15,23,42,0.45)]"
-                        onClick={(event) => event.stopPropagation()}
-                    >
+                    <div className="relative rounded-[1.9rem] border border-white/80 bg-white p-3 shadow-[0_36px_100px_-42px_rgba(15,23,42,0.45)]">
                         <button
                             type="button"
                             onClick={() => setMailboxOpen(false)}
@@ -289,13 +290,11 @@ export function UserAvatarMenu({
             ) : null}
             {backgroundOpen ? (
                 <div
-                    className="fixed inset-0 z-[180] flex items-center justify-center bg-black/45 p-4 backdrop-blur-md"
-                    onClick={() => setBackgroundOpen(false)}
+                    className={isSidebar
+                        ? "absolute bottom-full left-full z-[180] mb-3 ml-3 w-[min(92vw,42.5rem)]"
+                        : "absolute right-0 top-full z-[180] mt-3 w-[min(92vw,42.5rem)]"}
                 >
-                    <div
-                        className="relative w-full max-w-[680px] rounded-[1.9rem] border border-white/80 bg-white p-3 shadow-[0_36px_100px_-42px_rgba(15,23,42,0.45)]"
-                        onClick={(event) => event.stopPropagation()}
-                    >
+                    <div className="relative rounded-[1.9rem] border border-white/80 bg-white p-3 shadow-[0_36px_100px_-42px_rgba(15,23,42,0.45)]">
                         <button
                             type="button"
                             onClick={() => setBackgroundOpen(false)}

@@ -15,7 +15,7 @@ import { useUserStore } from "@/lib/store";
 import { resolveDailyArticleCandidate } from "@/lib/dailyArticle";
 import { LiquidGlassPanel } from "@/components/ui/LiquidGlassPanel";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
-import { BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
+import { applyBackgroundThemeToDocument, BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
 
 interface ArticleData {
     title: string;
@@ -126,6 +126,10 @@ function ReadingPageContent() {
             router.push("/battle?from=read");
         }, 560);
     };
+
+    useEffect(() => {
+        applyBackgroundThemeToDocument(backgroundTheme);
+    }, [backgroundTheme]);
 
     useEffect(() => {
         const onBackgroundChange = (event: Event) => {
