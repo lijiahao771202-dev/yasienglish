@@ -30,6 +30,7 @@ const FEEDS = {
 };
 
 type FeedCategory = keyof typeof FEEDS;
+type FeedSource = { name: string; url: string };
 
 interface ParsedFeedItem {
     title?: string;
@@ -51,6 +52,165 @@ function getTime(pubDate?: string) {
     return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
+const TRACKING_PARAMS = new Set([
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "gclid",
+    "fbclid",
+    "mc_cid",
+    "mc_eid",
+    "ref",
+    "ref_src",
+]);
+
+const CATEGORY_KEYWORDS: Record<FeedCategory, { positive: string[]; negative: string[] }> = {
+    psychology: {
+        positive: [
+            "study",
+            "research",
+            "findings",
+            "evidence",
+            "experiment",
+            "trial",
+            "meta-analysis",
+            "psychology",
+            "neuroscience",
+            "brain",
+            "cognitive",
+        ],
+        negative: [
+            "policy",
+            "policies",
+            "moderation",
+            "submission",
+            "call for papers",
+            "announcement",
+            "terms",
+            "privacy",
+            "maintenance",
+            "downtime",
+            "returns to normal operations",
+            "member institutions",
+        ],
+    },
+    ai_news: {
+        positive: [
+            "research",
+            "paper",
+            "benchmark",
+            "model",
+            "release",
+            "evaluation",
+            "safety",
+            "alignment",
+            "agent",
+            "training",
+            "inference",
+        ],
+        negative: [
+            "careers",
+            "job",
+            "hiring",
+            "event",
+            "webinar",
+            "press release",
+            "sponsored",
+            "announcement",
+            "newsletter",
+        ],
+    },
+};
+
+const SOURCE_WEIGHTS: Record<string, number> = {
+    "ScienceDaily": 1.05,
+    "Psychology Today": 1,
+    "Neuroscience News": 1.08,
+    "BPS Research Digest": 1.08,
+    "PsyPost": 1.12,
+    "Scientific American Mind": 1.06,
+    "MIT Tech Review": 1.1,
+    "OpenAI": 1.08,
+    "Google DeepMind": 1.08,
+    "Anthropic Research": 1.06,
+    "Arxiv CS.AI": 1.12,
+};
+
+function stripHtml(value?: string): string {
+    if (!value) return "";
+    return value.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function normalizeTitle(title?: string): string {
+    if (!title) return "";
+    return title
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s]/gu, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function normalizeLink(link?: string): string {
+    if (!link) return "";
+    try {
+        const url = new URL(link);
+        for (const key of [...url.searchParams.keys()]) {
+            if (TRACKING_PARAMS.has(key.toLowerCase())) {
+                url.searchParams.delete(key);
+            }
+        }
+        if ((url.protocol === "http:" && url.port === "80") || (url.protocol === "https:" && url.port === "443")) {
+            url.port = "";
+        }
+        if (url.pathname.endsWith("/")) {
+            url.pathname = url.pathname.slice(0, -1);
+        }
+        url.hash = "";
+        return url.toString();
+    } catch {
+        return link.trim();
+    }
+}
+
+function includesAny(haystack: string, needles: string[]): boolean {
+    return needles.some((needle) => haystack.includes(needle));
+}
+
+function scoreArticle(
+    article: { title?: string; snippet?: string; pubDate?: string; source?: string },
+    category: FeedCategory,
+): number {
+    const title = normalizeTitle(article.title);
+    const snippet = normalizeTitle(stripHtml(article.snippet));
+    const text = `${title} ${snippet}`.trim();
+    const keywords = CATEGORY_KEYWORDS[category];
+    const sourceWeight = SOURCE_WEIGHTS[article.source || ""] ?? 1;
+
+    let score = 0;
+    for (const kw of keywords.positive) {
+        if (text.includes(kw)) score += title.includes(kw) ? 2.2 : 1;
+    }
+    for (const kw of keywords.negative) {
+        if (text.includes(kw)) score -= title.includes(kw) ? 3 : 1.5;
+    }
+
+    const timeScore = Math.max(0, 45 - (Date.now() - getTime(article.pubDate)) / (1000 * 60 * 60 * 24));
+    return (score + timeScore * 0.12) * sourceWeight;
+}
+
+function shouldRejectArticle(
+    article: { title?: string; snippet?: string },
+    category: FeedCategory,
+): boolean {
+    const title = normalizeTitle(article.title);
+    const snippet = normalizeTitle(stripHtml(article.snippet));
+    const text = `${title} ${snippet}`.trim();
+    const keywords = CATEGORY_KEYWORDS[category];
+    return includesAny(text, keywords.negative) && !includesAny(text, keywords.positive);
+}
+
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const category = searchParams.get("category") || "psychology";
@@ -62,7 +222,8 @@ export async function GET(req: Request) {
 
     // Handle Standard RSS Feeds
     const parser = new Parser();
-    const sources = FEEDS[category as FeedCategory] || FEEDS.psychology;
+    const selectedCategory = (category as FeedCategory) in FEEDS ? (category as FeedCategory) : "psychology";
+    const sources: FeedSource[] = FEEDS[selectedCategory];
 
     try {
         const feedPromises = sources.map(async (source) => {
@@ -180,12 +341,47 @@ export async function GET(req: Request) {
         });
 
         const results = await Promise.all(feedPromises);
-        const articles = results
+        const candidateArticles = results
             .flat()
             .filter((article) => Boolean(article.title && article.link))
-            .sort((a, b) => getTime(b.pubDate) - getTime(a.pubDate))
-            .filter((article, index, all) => {
-                return all.findIndex((candidate) => candidate.link === article.link) === index;
+            .map((article) => ({
+                ...article,
+                link: normalizeLink(article.link),
+            }))
+            .filter((article) => !shouldRejectArticle(article, selectedCategory))
+            .filter((article) => {
+                const articleTime = getTime(article.pubDate);
+                if (!articleTime) return true;
+                const ageDays = (Date.now() - articleTime) / (1000 * 60 * 60 * 24);
+                return ageDays <= 90;
+            })
+            .sort((a, b) => {
+                const scoreDelta = scoreArticle(b, selectedCategory) - scoreArticle(a, selectedCategory);
+                if (scoreDelta !== 0) return scoreDelta;
+                return getTime(b.pubDate) - getTime(a.pubDate);
+            });
+
+        const dedupedByLink = candidateArticles.filter((article, index, all) => {
+            return all.findIndex((candidate) => candidate.link === article.link) === index;
+        });
+        const seenTitleKeys = new Set<string>();
+        const deduped = dedupedByLink.filter((article) => {
+            const key = normalizeTitle(article.title);
+            if (!key) return true;
+            if (seenTitleKeys.has(key)) return false;
+            seenTitleKeys.add(key);
+            return true;
+        });
+
+        const perSourceCap = Math.max(1, Math.min(3, Math.ceil(count / 3)));
+        const sourceCount = new Map<string, number>();
+        const articles = deduped
+            .filter((article) => {
+                const sourceName = article.source || "Unknown";
+                const used = sourceCount.get(sourceName) ?? 0;
+                if (used >= perSourceCap) return false;
+                sourceCount.set(sourceName, used + 1);
+                return true;
             })
             .slice(0, count);
 

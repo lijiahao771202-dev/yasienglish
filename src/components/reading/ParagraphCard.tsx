@@ -12,6 +12,7 @@ import { bionicText } from "@/lib/bionic";
 import { InlineGrammarHighlights } from "@/components/shared/InlineGrammarHighlights";
 import { getGrammarHighlightColor, type GrammarDisplayMode } from "@/lib/grammarHighlights";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface ParagraphCardProps {
     text: string;
@@ -68,6 +69,41 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
     const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
     const [isAskLoading, setIsAskLoading] = useState(false);
     const [streamingContent, setStreamingContent] = useState("");
+    const qaPairs = (() => {
+        const pairs: Array<{ id: number; question: string; answer: string; isStreaming: boolean }> = [];
+        let pendingQuestion: string | null = null;
+        let idx = 0;
+
+        for (const msg of messages) {
+            if (msg.role === "user") {
+                if (pendingQuestion) {
+                    pairs.push({ id: idx++, question: pendingQuestion, answer: "", isStreaming: false });
+                }
+                pendingQuestion = msg.content;
+                continue;
+            }
+
+            if (pendingQuestion) {
+                pairs.push({ id: idx++, question: pendingQuestion, answer: msg.content, isStreaming: false });
+                pendingQuestion = null;
+            } else {
+                pairs.push({ id: idx++, question: "", answer: msg.content, isStreaming: false });
+            }
+        }
+
+        if (pendingQuestion) {
+            pairs.push({
+                id: idx++,
+                question: pendingQuestion,
+                answer: streamingContent,
+                isStreaming: isAskLoading || Boolean(streamingContent),
+            });
+        } else if (streamingContent) {
+            pairs.push({ id: idx++, question: "", answer: streamingContent, isStreaming: true });
+        }
+
+        return pairs;
+    })();
 
     // Practice State
     const [isPracticing, setIsPracticing] = useState(false);
@@ -108,6 +144,46 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
     const handlePlay = () => {
         togglePlay();
     };
+    const renderAskMarkdown = (content: string) => (
+        <div className="prose prose-sm max-w-none text-inherit leading-7 prose-p:my-2 prose-ol:my-3 prose-ol:space-y-2 prose-ul:my-3 prose-ul:space-y-1.5">
+            <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                    p: ({ children }) => <p className="my-2 text-inherit">{children}</p>,
+                    ol: ({ children }) => <ol className="my-3 list-decimal space-y-2.5 pl-6 marker:font-semibold marker:text-amber-700">{children}</ol>,
+                    ul: ({ children }) => <ul className="my-3 list-disc space-y-1.5 pl-5 marker:text-stone-400">{children}</ul>,
+                    li: ({ children }) => <li className="my-1 leading-7">{children}</li>,
+                    blockquote: ({ children }) => (
+                        <blockquote className="my-2 rounded-r-lg border-l-4 border-sky-300 bg-sky-50/60 px-3 py-2 text-sky-900">
+                            {children}
+                        </blockquote>
+                    ),
+                    strong: ({ children }) => (
+                        <strong className="rounded-[6px] bg-amber-100/90 px-1.5 py-0.5 font-semibold text-amber-950 shadow-[inset_0_-1px_0_rgba(251,191,36,0.35)] underline decoration-amber-300/80 decoration-[1.5px] underline-offset-[3px]">
+                            {children}
+                        </strong>
+                    ),
+                    code: ({ children, className: codeClassName, ...props }) => {
+                        const isInline = !String(codeClassName || "").includes("language-");
+                        if (isInline) {
+                            return (
+                                <code className="rounded-md border border-sky-100 bg-sky-50/85 px-1.5 py-0.5 text-[0.9em] font-medium text-sky-800">
+                                    {children}
+                                </code>
+                            );
+                        }
+                        return (
+                            <code className={cn("text-xs", codeClassName)} {...props}>
+                                {children}
+                            </code>
+                        );
+                    },
+                }}
+            >
+                {content.replace(/\n/g, "  \n")}
+            </ReactMarkdown>
+        </div>
+    );
 
     const renderTextWithUnderline = (paragraphText: string, snippet?: string) => {
         if (!snippet) return paragraphText;
@@ -307,10 +383,10 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
         }
     };
 
-    const handleAskAI = async () => {
-        if (!question.trim()) return;
+    const handleAskAI = async (overrideQuestion?: string) => {
+        const userMessage = (overrideQuestion ?? question).trim();
+        if (!userMessage) return;
 
-        const userMessage = question.trim();
         setMessages(prev => [...prev, { role: "user", content: userMessage }]);
         setQuestion(""); // Clear input immediately
         setIsAskLoading(true);
@@ -943,7 +1019,7 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                                         </>
                                     ) : (
                                         <div className="text-center p-4 text-stone-500 text-sm italic">
-                                            Click "Analyze Deep Structure" to generate detailed sentence trees.
+                                            Click &quot;Analyze Deep Structure&quot; to generate detailed sentence trees.
                                         </div>
                                     ))}
                                 </div>
@@ -959,84 +1035,88 @@ export function ParagraphCard({ text, index, articleTitle, onWordClick, onSplit,
                             animate={{ opacity: 1, height: "auto" }}
                             className="space-y-3"
                         >
-                            {/* Chat History */}
-                            {messages.length > 0 && (
-                                <div className="max-h-64 overflow-y-auto space-y-2 p-3 bg-stone-50/50 rounded-xl border border-stone-100">
-                                    {messages.map((msg, i) => (
-                                        <div
-                                            key={i}
-                                            className={cn(
-                                                "text-sm p-5 rounded-3xl max-w-[90%] shadow-md transition-all duration-500 animate-in fade-in slide-in-from-bottom-4",
-                                                msg.role === "user"
-                                                    ? "ml-auto bg-gradient-to-tr from-violet-600 to-indigo-600 text-white shadow-indigo-500/20 rounded-tr-sm border border-white/10"
-                                                    : "mr-auto bg-white/70 backdrop-blur-xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.08)] text-stone-700 prose prose-sm prose-stone ring-1 ring-white/60 rounded-tl-sm"
-                                            )}
-                                        >
-                                            <div className="leading-relaxed tracking-wide">
-                                                {msg.role === "user" ? msg.content : <ReactMarkdown>{msg.content}</ReactMarkdown>}
-                                            </div>
+                            <div className="overflow-hidden rounded-2xl border border-white/60 bg-white/62 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.32)] ring-1 ring-white/45 backdrop-blur-xl">
+                                <div className="border-b border-white/60 bg-white/36 px-4 py-2.5">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Ask AI</p>
+                                </div>
+
+                                <div className="max-h-72 min-h-[132px] overflow-y-auto space-y-2 px-4 py-3">
+                                    {qaPairs.length === 0 ? (
+                                        <div className="rounded-xl border border-white/60 bg-white/46 p-3 text-sm text-stone-500">
+                                            输入问题，AI 会基于当前段落回答，支持 <span className="font-semibold text-stone-700">Markdown</span> 输出。
                                         </div>
-                                    ))}
-                                    {/* Streaming response (typing effect) with Glass Style */}
-                                    {streamingContent && (
-                                        <div className="mr-auto bg-white/70 backdrop-blur-xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.08)] text-stone-700 text-sm p-5 rounded-3xl max-w-[90%] prose prose-sm prose-stone ring-1 ring-white/60 rounded-tl-sm animate-pulse">
-                                            <ReactMarkdown>{streamingContent}</ReactMarkdown>
-                                            <span className="inline-block w-2 h-4 align-middle bg-indigo-500/50 rounded-sm animate-pulse ml-1" />
-                                        </div>
+                                    ) : (
+                                        <>
+                                            {qaPairs.map((pair) => (
+                                                <div
+                                                    key={pair.id}
+                                                    className="overflow-hidden rounded-2xl border border-white/65 bg-white/68 shadow-[0_10px_28px_-24px_rgba(15,23,42,0.5)]"
+                                                >
+                                                    {pair.question && (
+                                                        <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-3.5 py-2 text-sm font-medium text-white">
+                                                            {pair.question}
+                                                        </div>
+                                                    )}
+                                                    <div className="px-3.5 py-3 text-sm text-stone-700">
+                                                        {pair.answer ? (
+                                                            renderAskMarkdown(pair.answer)
+                                                        ) : (
+                                                            <div className="text-stone-400">等待回答…</div>
+                                                        )}
+                                                        {pair.isStreaming && (
+                                                            <span className="ml-1 inline-block h-4 w-2 animate-pulse rounded-sm bg-indigo-500/50 align-middle" />
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </>
                                     )}
                                 </div>
-                            )}
 
-                            {/* Input Area */}
-                            {/* Floating Input Area */}
-                            <div className="relative group mt-2">
-                                <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-300/30 to-purple-300/30 rounded-full blur opacity-50 group-hover:opacity-100 transition duration-500"></div>
-                                <div className="relative flex items-center bg-white/80 backdrop-blur-xl rounded-full border border-white/60 shadow-[0_4px_20px_rgba(0,0,0,0.03)] focus-within:shadow-[0_8px_30px_rgba(59,130,246,0.15)] focus-within:border-blue-200/50 transition-all duration-300">
-                                    <input
-                                        type="text"
-                                        value={question}
-                                        onChange={(e) => setQuestion(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleAskAI()}
-                                        placeholder={selectedText ? `Ask about selection...` : "Ask a question..."}
-                                        className="w-full bg-transparent border-none text-stone-800 text-sm px-6 py-3.5 focus:outline-none focus:ring-0 placeholder:text-stone-400 placeholder:font-light"
-                                    />
-                                    <button
-                                        onClick={handleAskAI}
-                                        disabled={isAskLoading || !question.trim()}
-                                        className="mr-1.5 p-2 rounded-full transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed group-focus-within:bg-blue-500 group-focus-within:text-white group-focus-within:shadow-lg text-stone-400 hover:bg-stone-100"
-                                    >
-                                        {isAskLoading ? (
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                        ) : (
-                                            <Send className="w-4 h-4 translate-x-px translate-y-px group-focus-within:rotate-[-10deg] transition-transform" />
-                                        )}
-                                    </button>
+                                <div className="border-t border-white/60 bg-white/42 px-4 py-3">
+                                    <div className="flex flex-wrap gap-2 pb-2.5">
+                                        <button
+                                            onClick={() => handleAskAI("帮我分析这段话的语法结构")}
+                                            disabled={isAskLoading}
+                                            className="text-xs bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50"
+                                        >
+                                            🔍 语法分析
+                                        </button>
+                                        <button
+                                            onClick={() => handleAskAI("用一句话总结这段话的大意")}
+                                            disabled={isAskLoading}
+                                            className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50"
+                                        >
+                                            📝 总结大意
+                                        </button>
+                                        <button
+                                            onClick={() => handleAskAI("列出这段话中的高级词汇并解释")}
+                                            disabled={isAskLoading}
+                                            className="text-xs bg-violet-50 hover:bg-violet-100 text-violet-600 border border-violet-200 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50"
+                                        >
+                                            ✨ 难词解析
+                                        </button>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 rounded-xl border border-white/70 bg-white/70 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                                        <input
+                                            type="text"
+                                            value={question}
+                                            onChange={(e) => setQuestion(e.target.value)}
+                                            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleAskAI()}
+                                            placeholder={selectedText ? "针对选中文本提问..." : "输入你的问题..."}
+                                            className="w-full bg-transparent border-none text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-0"
+                                        />
+                                        <button
+                                            onClick={() => handleAskAI()}
+                                            disabled={isAskLoading || !question.trim()}
+                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-stone-500 transition-all hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        >
+                                            {isAskLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-
-                            {/* Quick Actions */}
-                            {messages.length === 0 && !isAskLoading && (
-                                <div className="flex flex-wrap gap-2">
-                                    <button
-                                        onClick={() => { setQuestion("帮我分析这段话的语法结构"); handleAskAI(); }}
-                                        className="text-xs bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-full transition-colors"
-                                    >
-                                        🔍 语法分析
-                                    </button>
-                                    <button
-                                        onClick={() => { setQuestion("用一句话总结这段话的大意"); handleAskAI(); }}
-                                        className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 px-3 py-1.5 rounded-full transition-colors"
-                                    >
-                                        📝 总结大意
-                                    </button>
-                                    <button
-                                        onClick={() => { setQuestion("列出这段话中的高级词汇并解释"); handleAskAI(); }}
-                                        className="text-xs bg-violet-50 hover:bg-violet-100 text-violet-600 border border-violet-200 px-3 py-1.5 rounded-full transition-colors"
-                                    >
-                                        ✨ 难词解析
-                                    </button>
-                                </div>
-                            )}
                         </motion.div>
                     )
                 }

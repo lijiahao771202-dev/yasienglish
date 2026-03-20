@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, Settings2, LayoutGrid } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -92,11 +92,6 @@ function formatArticleDate(article: ArticleItem): string {
     return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
 }
 
-function normalizeSnippet(snippet?: string): string {
-    if (!snippet) return "";
-    return snippet.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
 function isArticleItem(value: unknown): value is ArticleItem {
     if (!value || typeof value !== "object") return false;
     const candidate = value as Partial<ArticleItem>;
@@ -120,6 +115,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     const [showSettings, setShowSettings] = useState(false);
     const [isFetching, setIsFetching] = useState(false); // Just for button state
     const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+    const [loadingArticleLink, setLoadingArticleLink] = useState<string | null>(null);
 
     const { setFeed, getFeed, loadFeedFromDB, deleteArticle } = useFeedStore();
     const { readArticleUrls } = useUserStore();
@@ -148,6 +144,66 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         cet6: ["Social Issues", "Economics", "Education Reform", "Environment", "Psychology"],
         ielts: ["Urbanization", "Globalization", "Scientific Ethics", "Cultural Heritage", "AI & Society"],
     };
+    const feedViewModel = useMemo(() => {
+        const now = Date.now();
+        const ONE_DAY = 24 * 60 * 60 * 1000;
+        const NEW_THRESHOLD = 2 * ONE_DAY;
+
+        const read = sortByNewest(articles.filter(a => readArticleUrls.includes(a.link)));
+        const unread = sortByNewest(articles.filter(a => !readArticleUrls.includes(a.link)));
+
+        const newArrivals = unread.filter((article) => {
+            const articleTime = getArticleTimestamp(article);
+            return articleTime > 0 && (now - articleTime) < NEW_THRESHOLD;
+        });
+
+        const unreadBacklog = unread.filter((article) => {
+            const articleTime = getArticleTimestamp(article);
+            return articleTime <= 0 || (now - articleTime) >= NEW_THRESHOLD;
+        });
+
+        const orderedAll = uniqueByLink([
+            ...newArrivals,
+            ...unreadBacklog,
+            ...read,
+        ]);
+
+        const statusByLink = new Map<string, ArticleStatus>();
+        newArrivals.forEach((item) => statusByLink.set(item.link, 'new'));
+        unreadBacklog.forEach((item) => {
+            if (!statusByLink.has(item.link)) {
+                statusByLink.set(item.link, 'unread');
+            }
+        });
+        read.forEach((item) => {
+            if (!statusByLink.has(item.link)) {
+                statusByLink.set(item.link, 'read');
+            }
+        });
+
+        const filteredArticles =
+            activeView === 'all'
+                ? orderedAll
+                : activeView === 'new'
+                    ? newArrivals
+                    : activeView === 'unread'
+                        ? unreadBacklog
+                        : read;
+
+        const filterItems = [
+            { id: 'all' as const, label: '全部', count: orderedAll.length, icon: LayoutGrid },
+            { id: 'new' as const, label: '新到达', count: newArrivals.length, icon: Sparkles },
+            { id: 'unread' as const, label: '待阅读', count: unreadBacklog.length, icon: BookOpen },
+            { id: 'read' as const, label: '已读历史', count: read.length, icon: Check },
+        ];
+
+        return {
+            filterItems,
+            filteredArticles,
+            orderedAll,
+            statusByLink,
+        };
+    }, [activeView, articles, readArticleUrls]);
 
     const loadAIGenHistory = async () => {
         try {
@@ -341,270 +397,319 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         }
     };
 
+    const handleSelectArticle = async (link: string) => {
+        if (loadingArticleLink) return;
+        setLoadingArticleLink(link);
+        try {
+            await Promise.resolve(onSelect(link));
+        } finally {
+            setLoadingArticleLink(null);
+        }
+    };
+
     return (
         <motion.div
-            className="w-full max-w-7xl"
+            className="mx-auto w-full max-w-6xl"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
         >
-            <LiquidGlassPanel className="mb-7 rounded-[30px] p-5 md:p-7">
-                <div className="pointer-events-none absolute -right-14 -top-14 h-44 w-44 rounded-full bg-cyan-300/18 blur-3xl" />
-                <div className="pointer-events-none absolute -bottom-16 left-6 h-40 w-40 rounded-full bg-violet-300/18 blur-3xl" />
-                <div className="flex flex-col gap-4 md:flex-row md:items-center">
-                    <div className="relative z-10 min-w-0 flex-1">
-                        <h3 className="flex items-center gap-2 font-newsreader text-[1.75rem] font-semibold leading-none tracking-tight text-slate-900 md:text-[2.05rem]">
-                            {category === 'psychology' && <Brain className="h-5 w-5 text-violet-600" />}
-                            {category === 'ai_news' && <Cpu className="h-5 w-5 text-cyan-600" />}
-                            {category === 'ai_gen' && <Sparkles className="h-5 w-5 text-pink-500" />}
-                            Reading Feed
-                        </h3>
-                        <p className="mt-2 text-sm text-slate-600">
-                            Liquid glass stream for deep reading. Fresh first, context preserved.
-                        </p>
-                    </div>
-                </div>
+            <LiquidGlassPanel className="mb-6 rounded-[26px] p-4 md:p-5">
+                <div className="flex flex-col gap-4">
+                    <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                        <div className="min-w-0">
+                            <h3 className="font-welcome-ui text-[1.45rem] font-semibold leading-none tracking-tight text-slate-900 md:text-[1.68rem]">
+                            阅读流
+                            </h3>
+                            <p className="mt-1.5 text-sm text-slate-600">
+                                按新鲜度优先，保持阅读上下文连续。
+                            </p>
+                        </div>
 
-                <div className="mt-5">
-                    <LiquidGlassPanel className="rounded-2xl p-2">
-                        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-                            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto rounded-xl bg-white/28 p-1.5 scrollbar-hide">
-                                {([
-                                    { id: 'psychology', label: 'Psychology' },
-                                    { id: 'ai_news', label: 'AI News' },
-                                    { id: 'ai_gen', label: 'AI Gen' },
-                                ] as Array<{ id: FeedCategory; label: string }>).map((tab) => (
+                        <div className="relative flex items-center gap-2 self-start rounded-2xl border border-white/65 bg-white/36 p-1.5 backdrop-blur-xl">
+                            <button
+                                onClick={() => setShowSettings(!showSettings)}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 transition-all hover:bg-white/55 hover:text-slate-800"
+                                title="设置抓取数量"
+                            >
+                                <Settings2 className="h-4 w-4" />
+                            </button>
+                            <button
+                                onClick={handleRefresh}
+                                disabled={isFetching}
+                                className="inline-flex h-9 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold text-slate-700 transition-all hover:bg-white/55 disabled:opacity-50"
+                                title={`刷新 ${category} 文章`}
+                            >
+                                <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+                                抓取 {fetchCount} 篇
+                            </button>
+
+                            <AnimatePresence>
+                                {showSettings && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                        className="absolute right-0 top-full z-50 mt-2 min-w-[170px] rounded-2xl border border-white/65 bg-white/56 p-3 shadow-[0_22px_42px_-22px_rgba(15,23,42,0.6)] ring-1 ring-white/60 backdrop-blur-2xl"
+                                    >
+                                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">抓取数量</div>
+                                        <div className="flex gap-1.5">
+                                            {[1, 2, 3, 4, 5].map(count => (
+                                                <button
+                                                    key={count}
+                                                    onClick={() => {
+                                                        setFetchCount(count);
+                                                        setShowSettings(false);
+                                                    }}
+                                                    className={cn(
+                                                        "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all",
+                                                        fetchCount === count
+                                                            ? "border-cyan-200 bg-cyan-100/70 text-cyan-700"
+                                                            : "border-white/65 bg-white/55 text-slate-500 hover:bg-white/75"
+                                                    )}
+                                                >
+                                                    {count}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                    </div>
+
+                    <div className="grid min-w-0 grid-cols-3 gap-1.5 rounded-2xl border border-white/65 bg-white/28 p-1.5">
+                        {([
+                            { id: 'psychology', label: '心理学' },
+                            { id: 'ai_news', label: 'AI 资讯' },
+                            { id: 'ai_gen', label: 'AI 生成' },
+                        ] as Array<{ id: FeedCategory; label: string }>).map((tab) => (
+                            <button
+                                key={tab.id}
+                                onClick={() => {
+                                    if (tab.id === 'ai_gen') {
+                                        setCategory(tab.id);
+                                        return;
+                                    }
+                                    const cached = getFeed(tab.id);
+                                    setCategory(tab.id);
+                                    if (cached && cached.length > 0) {
+                                        setArticles(sortByNewest(cached));
+                                    } else {
+                                        setArticles([]);
+                                    }
+                                }}
+                                className={cn(
+                                    "relative w-full rounded-xl px-4 py-2 text-center text-sm font-semibold tracking-wide transition-all",
+                                    category === tab.id
+                                        ? "text-slate-900"
+                                        : "text-slate-500 hover:text-slate-700"
+                                )}
+                            >
+                                {category === tab.id && (
+                                    <motion.div
+                                        layoutId="activeTab"
+                                        className="absolute inset-0 -z-10 rounded-xl border border-white/75 bg-white/70 shadow-[0_14px_24px_-18px_rgba(15,23,42,0.8)] backdrop-blur-xl"
+                                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                    />
+                                )}
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {category !== 'ai_gen' && (
+                        <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-white/65 bg-white/24 p-1.5 md:grid-cols-4">
+                            {feedViewModel.filterItems.map((filterItem) => {
+                                const Icon = filterItem.icon;
+                                const isActive = activeView === filterItem.id;
+                                return (
                                     <button
-                                        key={tab.id}
-                                        onClick={() => {
-                                            if (tab.id === 'ai_gen') {
-                                                setCategory(tab.id);
-                                                return;
-                                            }
-                                            const cached = getFeed(tab.id);
-                                            setCategory(tab.id);
-                                            if (cached && cached.length > 0) {
-                                                setArticles(sortByNewest(cached));
-                                            } else {
-                                                setArticles([]);
-                                            }
-                                        }}
+                                        key={filterItem.id}
+                                        onClick={() => setActiveView(filterItem.id)}
                                         className={cn(
-                                            "relative whitespace-nowrap rounded-xl px-4 py-2 text-xs font-semibold tracking-wide transition-all",
-                                            category === tab.id
+                                            "relative flex min-h-[40px] w-full items-center justify-center gap-2 rounded-[12px] px-3 py-2 text-sm font-semibold transition-all duration-300",
+                                            isActive
                                                 ? "text-slate-900"
-                                                : "text-slate-500 hover:text-slate-700"
+                                                : "text-slate-600 hover:text-slate-800"
                                         )}
                                     >
-                                        {category === tab.id && (
+                                        {isActive && (
                                             <motion.div
-                                                layoutId="activeTab"
-                                                className="absolute inset-0 -z-10 rounded-xl border border-white/75 bg-white/70 shadow-[0_14px_24px_-18px_rgba(15,23,42,0.8)] backdrop-blur-xl"
-                                                transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                                                layoutId="activeFeedFilter"
+                                                className="absolute inset-0 -z-10 rounded-[12px] border border-white/75 bg-white/72 shadow-[0_14px_24px_-18px_rgba(15,23,42,0.7)] backdrop-blur-xl"
+                                                transition={{ type: "spring", bounce: 0.2, duration: 0.55 }}
                                             />
                                         )}
-                                        {tab.label}
+                                        <Icon className="h-4 w-4" />
+                                        <span>{filterItem.label}</span>
+                                        <span className={cn(
+                                            "rounded-md px-1.5 py-0.5 text-[10px] font-bold",
+                                            isActive ? "bg-slate-900 text-white" : "bg-white/75 text-slate-500"
+                                        )}>
+                                            {filterItem.count}
+                                        </span>
                                     </button>
-                                ))}
-                            </div>
-
-                            <div className="relative md:ml-auto">
-                                <div className="flex h-[42px] items-center border-l border-white/55 pl-2">
-                                    <button
-                                        onClick={() => setShowSettings(!showSettings)}
-                                        className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-600 transition-all hover:bg-white/40 hover:text-slate-800"
-                                        title="设置抓取数量"
-                                    >
-                                        <Settings2 className="h-4 w-4" />
-                                    </button>
-
-                                    <button
-                                        onClick={handleRefresh}
-                                        disabled={isFetching}
-                                        className="ml-1 inline-flex h-10 items-center gap-2 rounded-lg px-4 text-sm font-semibold text-slate-700 transition-all hover:bg-white/40 disabled:opacity-50"
-                                        title={`刷新 ${category} 文章`}
-                                    >
-                                        <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
-                                        抓取 {fetchCount} 篇
-                                    </button>
-                                </div>
-
-                                <AnimatePresence>
-                                    {showSettings && (
-                                        <motion.div
-                                            initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                            className="absolute right-0 top-full z-50 mt-2 min-w-[170px] rounded-2xl border border-white/65 bg-white/56 p-3 shadow-[0_22px_42px_-22px_rgba(15,23,42,0.6)] ring-1 ring-white/60 backdrop-blur-2xl"
-                                        >
-                                            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">抓取数量</div>
-                                            <div className="flex gap-1.5">
-                                                {[1, 2, 3, 4, 5].map(count => (
-                                                    <button
-                                                        key={count}
-                                                        onClick={() => {
-                                                            setFetchCount(count);
-                                                            setShowSettings(false);
-                                                        }}
-                                                        className={cn(
-                                                            "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all",
-                                                            fetchCount === count
-                                                                ? "border-cyan-200 bg-cyan-100/70 text-cyan-700"
-                                                                : "border-white/65 bg-white/55 text-slate-500 hover:bg-white/75"
-                                                        )}
-                                                    >
-                                                        {count}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
+                                );
+                            })}
                         </div>
-                    </LiquidGlassPanel>
+                    )}
                 </div>
             </LiquidGlassPanel>
 
             {category === 'ai_gen' ? (
                 <div className="space-y-6">
-                    {/* Difficulty Selector */}
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                        {([
-                            {
-                                id: 'cet4' as const,
-                                label: 'CET-4 四级',
-                                desc: '4000 词汇 · 300-400 词',
-                                detail: '简单句为主，日常话题',
-                                color: 'emerald',
-                                borderActive: 'border-emerald-300 ring-emerald-200/50',
-                                bgActive: 'bg-emerald-50/60',
-                                iconBg: 'bg-emerald-100 text-emerald-600',
-                            },
-                            {
-                                id: 'cet6' as const,
-                                label: 'CET-6 六级',
-                                desc: '6000 词汇 · 400-500 词',
-                                detail: '复合句+被动语态',
-                                color: 'blue',
-                                borderActive: 'border-blue-300 ring-blue-200/50',
-                                bgActive: 'bg-blue-50/60',
-                                iconBg: 'bg-blue-100 text-blue-600',
-                            },
-                            {
-                                id: 'ielts' as const,
-                                label: 'IELTS 雅思',
-                                desc: '8000+ 词汇 · 500-700 词',
-                                detail: '学术词汇+复杂句式',
-                                color: 'violet',
-                                borderActive: 'border-violet-300 ring-violet-200/50',
-                                bgActive: 'bg-violet-50/60',
-                                iconBg: 'bg-violet-100 text-violet-600',
-                            },
-                        ]).map((diff) => {
-                            const isActive = genDifficulty === diff.id;
-                            return (
-                                <LiquidGlassPanel
-                                    key={diff.id}
-                                    onClick={() => setGenDifficulty(diff.id)}
-                                    className={cn(
-                                        "cursor-pointer rounded-[22px] p-5 transition-all duration-300",
-                                        isActive
-                                            ? `${diff.borderActive} ring-2 shadow-[0_20px_40px_-20px_rgba(15,23,42,0.6)]`
-                                            : "hover:-translate-y-0.5 hover:shadow-[0_16px_32px_-18px_rgba(15,23,42,0.5)]"
-                                    )}
-                                >
-                                    <div className={cn(
-                                        "mb-3 inline-flex rounded-xl p-2.5",
-                                        isActive ? diff.iconBg : "bg-white/50 text-slate-500"
-                                    )}>
-                                        <Sparkles className="h-5 w-5" />
-                                    </div>
-                                    <h4 className="font-newsreader text-lg font-bold text-slate-900">
-                                        {diff.label}
+                    <LiquidGlassPanel className="relative overflow-hidden rounded-[30px] p-5 md:p-6">
+                        <div className="pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full bg-fuchsia-300/20 blur-3xl" />
+                        <div className="pointer-events-none absolute -left-16 bottom-0 h-48 w-48 rounded-full bg-amber-300/18 blur-3xl" />
+
+                        <div className="relative space-y-5">
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">AI Studio</p>
+                                    <h4 className="mt-1 font-newsreader text-[1.5rem] font-semibold leading-tight text-slate-900 md:text-[1.7rem]">
+                                        智能写作台
                                     </h4>
-                                    <p className="mt-1 text-xs font-medium text-slate-500">
-                                        {diff.desc}
-                                    </p>
-                                    <p className="mt-0.5 text-[11px] text-slate-400">
-                                        {diff.detail}
-                                    </p>
-                                </LiquidGlassPanel>
-                            );
-                        })}
-                    </div>
-
-                    {/* Topic Selection */}
-                    <LiquidGlassPanel className="relative rounded-[24px] p-6">
-                        <div className="pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full bg-pink-300/15 blur-3xl" />
-                        <div className="pointer-events-none absolute -left-12 -bottom-12 h-36 w-36 rounded-full bg-cyan-300/15 blur-3xl" />
-
-                        <h4 className="mb-1 text-sm font-bold text-slate-800">选择主题</h4>
-                        <p className="mb-4 text-xs text-slate-500">
-                            点击预设标签或输入自定义主题
-                        </p>
-
-                        {/* Preset Topics */}
-                        <div className="mb-4 flex flex-wrap gap-2">
-                            {(PRESET_TOPICS[genDifficulty] || []).map(topic => (
-                                <button
-                                    key={topic}
-                                    onClick={() => setGenTopic(topic)}
-                                    className={cn(
-                                        "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-all duration-200",
-                                        genTopic === topic
-                                            ? "border-cyan-300 bg-cyan-50/80 text-cyan-800 shadow-sm"
-                                            : "border-white/60 bg-white/45 text-slate-500 hover:bg-white/70 hover:text-slate-700"
-                                    )}
+                                    <p className="mt-1 text-sm text-slate-600">难度、主题、生成合并为一个连续工作流。</p>
+                                </div>
+                                <motion.div
+                                    animate={{ opacity: [0.72, 1, 0.72] }}
+                                    transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
+                                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/70 bg-white/45 text-violet-600 backdrop-blur-xl"
                                 >
-                                    {topic}
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* Custom Input */}
-                        <div className="relative">
-                            <input
-                                type="text"
-                                value={genTopic}
-                                onChange={(e) => setGenTopic(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-                                placeholder="或输入自定义主题 e.g., Quantum Computing..."
-                                className="w-full rounded-xl border border-white/70 bg-white/50 px-4 py-3 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors placeholder:text-slate-400 focus:border-cyan-300 focus:outline-none"
-                            />
-                        </div>
-                    </LiquidGlassPanel>
-
-                    {/* Generate Button */}
-                    <LiquidGlassPanel className="rounded-[20px] p-4">
-                        {/* Selection Summary */}
-                        {genTopic.trim() && (
-                            <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
-                                <span className={cn(
-                                    "rounded-md border px-2 py-0.5 font-semibold",
-                                    genDifficulty === 'cet4' && "border-emerald-200 bg-emerald-50 text-emerald-700",
-                                    genDifficulty === 'cet6' && "border-blue-200 bg-blue-50 text-blue-700",
-                                    genDifficulty === 'ielts' && "border-violet-200 bg-violet-50 text-violet-700"
-                                )}>
-                                    {genDifficulty === 'cet4' ? '四级' : genDifficulty === 'cet6' ? '六级' : '雅思'}
-                                </span>
-                                <span className="text-slate-400">·</span>
-                                <span className="truncate font-medium text-slate-700">{genTopic}</span>
+                                    <Sparkles className="h-5 w-5" />
+                                </motion.div>
                             </div>
-                        )}
-                        <button
-                            onClick={handleGenerate}
-                            disabled={isGenerating || !genTopic.trim()}
-                            className={cn(
-                                "flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold transition-all duration-300",
-                                isGenerating || !genTopic.trim()
-                                    ? "border border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
-                                    : "border border-white/70 bg-white/70 text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] hover:bg-white/90 hover:shadow-[0_20px_40px_-20px_rgba(15,23,42,0.8)]"
-                            )}
-                        >
-                            {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                            {isGenerating ? "正在生成文章..." : "生成文章"}
-                        </button>
+
+                            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
+                                {([
+                                    {
+                                        id: 'cet4' as const,
+                                        label: 'CET-4 四级',
+                                        desc: '4000 词汇 · 300-400 词',
+                                        detail: '简单句为主，日常话题',
+                                        icon: BookOpen,
+                                        activeClass: 'border-emerald-300/90 bg-emerald-50/65 text-emerald-900 shadow-[0_18px_35px_-22px_rgba(16,185,129,0.5)]',
+                                        iconClass: 'bg-emerald-100/90 text-emerald-700',
+                                    },
+                                    {
+                                        id: 'cet6' as const,
+                                        label: 'CET-6 六级',
+                                        desc: '6000 词汇 · 400-500 词',
+                                        detail: '复合句+被动语态',
+                                        icon: Cpu,
+                                        activeClass: 'border-sky-300/90 bg-sky-50/65 text-sky-900 shadow-[0_18px_35px_-22px_rgba(14,165,233,0.5)]',
+                                        iconClass: 'bg-sky-100/90 text-sky-700',
+                                    },
+                                    {
+                                        id: 'ielts' as const,
+                                        label: 'IELTS 雅思',
+                                        desc: '8000+ 词汇 · 500-700 词',
+                                        detail: '学术词汇+复杂句式',
+                                        icon: Brain,
+                                        activeClass: 'border-violet-300/90 bg-violet-50/65 text-violet-900 shadow-[0_18px_35px_-22px_rgba(139,92,246,0.5)]',
+                                        iconClass: 'bg-violet-100/90 text-violet-700',
+                                    },
+                                ]).map((diff) => {
+                                    const Icon = diff.icon;
+                                    const isActive = genDifficulty === diff.id;
+                                    return (
+                                        <motion.button
+                                            key={diff.id}
+                                            type="button"
+                                            onClick={() => setGenDifficulty(diff.id)}
+                                            whileHover={{ y: -2 }}
+                                            whileTap={{ scale: 0.99 }}
+                                            className={cn(
+                                                "group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-350",
+                                                isActive
+                                                    ? diff.activeClass
+                                                    : "border-white/65 bg-white/42 text-slate-700 hover:border-white/80 hover:bg-white/58 hover:shadow-[0_16px_30px_-20px_rgba(15,23,42,0.42)]"
+                                            )}
+                                        >
+                                            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_12%,rgba(255,255,255,0.58)_0%,rgba(255,255,255,0)_56%)] opacity-70 transition-opacity duration-300 group-hover:opacity-100" />
+                                            <div className="relative">
+                                                <div className={cn(
+                                                    "mb-3 inline-flex rounded-xl p-2.5 transition-transform duration-300 group-hover:scale-105",
+                                                    isActive ? diff.iconClass : "bg-white/65 text-slate-500"
+                                                )}>
+                                                    <Icon className="h-4 w-4" />
+                                                </div>
+                                                <p className="text-base font-bold leading-tight">{diff.label}</p>
+                                                <p className="mt-1 text-xs font-medium text-slate-600">{diff.desc}</p>
+                                                <p className="mt-0.5 text-[11px] text-slate-500">{diff.detail}</p>
+                                            </div>
+                                        </motion.button>
+                                    );
+                                })}
+                            </div>
+
+                            <div className="rounded-2xl border border-white/70 bg-white/30 p-3.5 backdrop-blur-xl md:p-4">
+                                <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+                                    <h5 className="text-sm font-semibold text-slate-800">主题选择</h5>
+                                    {genTopic.trim() && (
+                                        <span className={cn(
+                                            "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                                            genDifficulty === 'cet4' && "border-emerald-200/80 bg-emerald-100/75 text-emerald-700",
+                                            genDifficulty === 'cet6' && "border-sky-200/80 bg-sky-100/75 text-sky-700",
+                                            genDifficulty === 'ielts' && "border-violet-200/80 bg-violet-100/75 text-violet-700"
+                                        )}>
+                                            {genDifficulty === 'cet4' ? '四级' : genDifficulty === 'cet6' ? '六级' : '雅思'} · {genTopic}
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="mb-3 flex flex-wrap gap-2">
+                                    {(PRESET_TOPICS[genDifficulty] || []).map(topic => (
+                                        <motion.button
+                                            key={topic}
+                                            type="button"
+                                            onClick={() => setGenTopic(topic)}
+                                            whileHover={{ y: -1, scale: 1.02 }}
+                                            whileTap={{ scale: 0.98 }}
+                                            className={cn(
+                                                "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-all duration-250",
+                                                genTopic === topic
+                                                    ? "border-slate-300/90 bg-white/82 text-slate-900 shadow-[0_9px_18px_-14px_rgba(15,23,42,0.7)]"
+                                                    : "border-white/65 bg-white/50 text-slate-600 hover:border-white/85 hover:bg-white/72 hover:text-slate-800"
+                                            )}
+                                        >
+                                            {topic}
+                                        </motion.button>
+                                    ))}
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-2.5 md:grid-cols-[1fr_auto]">
+                                    <input
+                                        type="text"
+                                        value={genTopic}
+                                        onChange={(e) => setGenTopic(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                                        placeholder="输入主题，例如：Quantum Computing"
+                                        className="w-full rounded-xl border border-white/75 bg-white/58 px-4 py-3 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all placeholder:text-slate-400 focus:border-cyan-300/80 focus:bg-white/72 focus:outline-none"
+                                    />
+                                    <motion.button
+                                        type="button"
+                                        onClick={handleGenerate}
+                                        disabled={isGenerating || !genTopic.trim()}
+                                        whileHover={isGenerating || !genTopic.trim() ? undefined : { y: -1, scale: 1.01 }}
+                                        whileTap={isGenerating || !genTopic.trim() ? undefined : { scale: 0.99 }}
+                                        className={cn(
+                                            "group relative overflow-hidden rounded-xl px-5 py-3 text-sm font-bold transition-all duration-300",
+                                            isGenerating || !genTopic.trim()
+                                                ? "cursor-not-allowed border border-white/45 bg-white/34 text-slate-400"
+                                                : "border border-white/80 bg-white/72 text-slate-800 shadow-[0_15px_28px_-18px_rgba(15,23,42,0.74)] hover:bg-white/90 hover:shadow-[0_20px_38px_-18px_rgba(15,23,42,0.85)]"
+                                        )}
+                                    >
+                                        <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0)_18%,rgba(255,255,255,0.5)_50%,rgba(255,255,255,0)_78%)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                                        <span className="relative flex items-center gap-2">
+                                            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                            {isGenerating ? "正在生成..." : "生成文章"}
+                                        </span>
+                                    </motion.button>
+                                </div>
+                            </div>
+                        </div>
                     </LiquidGlassPanel>
 
                     <div className="space-y-3">
@@ -633,8 +738,10 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             item={item}
                                             status={item.quizCompleted ? 'read' : 'unread'}
                                             category="ai_gen"
-                                            onSelect={onSelect}
+                                            onSelect={handleSelectArticle}
                                             onDelete={handleDelete}
+                                            isLoading={loadingArticleLink === item.link}
+                                            isAnyLoading={Boolean(loadingArticleLink)}
                                         />
                                     </motion.div>
                                 ))}
@@ -644,131 +751,45 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 </div>
             ) : (
                 <div className="space-y-8">
-                    {(() => {
-                        const now = Date.now();
-                        const ONE_DAY = 24 * 60 * 60 * 1000;
-                        const NEW_THRESHOLD = 2 * ONE_DAY; // 48 hours
+                    {articles.length === 0 && (
+                        <LiquidGlassPanel className="rounded-[24px] py-16 text-center text-sm italic text-slate-500">
+                            点击刷新按钮抓取文章 / Click refresh to fetch articles
+                        </LiquidGlassPanel>
+                    )}
 
-                        const read = sortByNewest(articles.filter(a => readArticleUrls.includes(a.link)));
-                        const unread = sortByNewest(articles.filter(a => !readArticleUrls.includes(a.link)));
-
-                        const newArrivals = unread.filter((article) => {
-                            const articleTime = getArticleTimestamp(article);
-                            return articleTime > 0 && (now - articleTime) < NEW_THRESHOLD;
-                        });
-
-                        const unreadBacklog = unread.filter((article) => {
-                            const articleTime = getArticleTimestamp(article);
-                            return articleTime <= 0 || (now - articleTime) >= NEW_THRESHOLD;
-                        });
-
-                        const orderedAll = uniqueByLink([
-                            ...newArrivals,
-                            ...unreadBacklog,
-                            ...read,
-                        ]);
-
-                        const statusByLink = new Map<string, ArticleStatus>();
-                        newArrivals.forEach((item) => statusByLink.set(item.link, 'new'));
-                        unreadBacklog.forEach((item) => {
-                            if (!statusByLink.has(item.link)) {
-                                statusByLink.set(item.link, 'unread');
-                            }
-                        });
-                        read.forEach((item) => {
-                            if (!statusByLink.has(item.link)) {
-                                statusByLink.set(item.link, 'read');
-                            }
-                        });
-
-                        const filteredArticles =
-                            activeView === 'all'
-                                ? orderedAll
-                                : activeView === 'new'
-                                    ? newArrivals
-                                    : activeView === 'unread'
-                                        ? unreadBacklog
-                                        : read;
-
-                        const filterItems = [
-                            { id: 'all' as const, label: '全部', count: orderedAll.length, icon: LayoutGrid },
-                            { id: 'new' as const, label: '新到达', count: newArrivals.length, icon: Sparkles },
-                            { id: 'unread' as const, label: '待阅读', count: unreadBacklog.length, icon: BookOpen },
-                            { id: 'read' as const, label: '已读历史', count: read.length, icon: Check },
-                        ];
-
-                        return (
-                            <>
-                                {articles.length === 0 && (
-                                    <LiquidGlassPanel className="rounded-[24px] py-16 text-center text-sm italic text-slate-500">
-                                        点击刷新按钮抓取文章 / Click refresh to fetch articles
-                                    </LiquidGlassPanel>
-                                )}
-
-                                {articles.length > 0 && (
-                                    <div className="space-y-6">
-                                        <LiquidGlassPanel className="rounded-[22px] p-2.5">
-                                            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                                                {filterItems.map((filterItem) => {
-                                                    const Icon = filterItem.icon;
-                                                    const isActive = activeView === filterItem.id;
-                                                    return (
-                                                        <button
-                                                            key={filterItem.id}
-                                                            onClick={() => setActiveView(filterItem.id)}
-                                                            className={cn(
-                                                                "flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all duration-300",
-                                                                isActive
-                                                                    ? "border border-white/75 bg-white/70 text-slate-900 shadow-[0_16px_28px_-18px_rgba(15,23,42,0.7)]"
-                                                                    : "border border-transparent bg-white/30 text-slate-600 hover:bg-white/50"
-                                                            )}
-                                                        >
-                                                            <Icon className="h-4 w-4" />
-                                                            <span>{filterItem.label}</span>
-                                                            <span className={cn(
-                                                                "rounded-md px-1.5 py-0.5 text-[10px] font-bold",
-                                                                isActive ? "bg-slate-900 text-white" : "bg-white/75 text-slate-500"
-                                                            )}>
-                                                                {filterItem.count}
-                                                            </span>
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </LiquidGlassPanel>
-
-                                        {filteredArticles.length === 0 ? (
-                                            <LiquidGlassPanel className="rounded-2xl p-10 text-center text-sm text-slate-500">
-                                                这个分组暂时没有文章
-                                            </LiquidGlassPanel>
-                                        ) : (
-                                            <motion.div
-                                                className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6"
-                                                variants={listContainerVariants}
-                                                initial="hidden"
-                                                animate="show"
-                                            >
-                                                {filteredArticles.map((item) => (
-                                                    <motion.div
-                                                        key={item.link}
-                                                        variants={listItemVariants}
-                                                    >
-                                                        <ArticleCard
-                                                            item={item}
-                                                            status={statusByLink.get(item.link) ?? 'unread'}
-                                                            category={category}
-                                                            onSelect={onSelect}
-                                                            onDelete={handleDelete}
-                                                        />
-                                                    </motion.div>
-                                                ))}
-                                            </motion.div>
-                                        )}
-                                    </div>
-                                )}
-                            </>
-                        );
-                    })()}
+                    {articles.length > 0 && (
+                        <div className="space-y-6">
+                            {feedViewModel.filteredArticles.length === 0 ? (
+                                <LiquidGlassPanel className="rounded-2xl p-10 text-center text-sm text-slate-500">
+                                    这个分组暂时没有文章
+                                </LiquidGlassPanel>
+                            ) : (
+                                <motion.div
+                                    className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6"
+                                    variants={listContainerVariants}
+                                    initial="hidden"
+                                    animate="show"
+                                >
+                                    {feedViewModel.filteredArticles.map((item) => (
+                                        <motion.div
+                                            key={item.link}
+                                            variants={listItemVariants}
+                                        >
+                                            <ArticleCard
+                                                item={item}
+                                                status={feedViewModel.statusByLink.get(item.link) ?? 'unread'}
+                                                category={category}
+                                                onSelect={handleSelectArticle}
+                                                onDelete={handleDelete}
+                                                isLoading={loadingArticleLink === item.link}
+                                                isAnyLoading={Boolean(loadingArticleLink)}
+                                            />
+                                        </motion.div>
+                                    ))}
+                                </motion.div>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -796,12 +817,14 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
 }
 
 // Extracted Card Component for Reusability
-function ArticleCard({ item, status, category, onSelect, onDelete }: {
+function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = false, isAnyLoading = false }: {
     item: ArticleItem,
     status: ArticleStatus,
     category: FeedCategory,
     onSelect: (url: string) => void,
-    onDelete: (url: string) => void
+    onDelete: (url: string) => void,
+    isLoading?: boolean,
+    isAnyLoading?: boolean,
 }) {
     const isRead = status === 'read';
     const statusMeta = status === 'new'
@@ -809,6 +832,7 @@ function ArticleCard({ item, status, category, onSelect, onDelete }: {
         : status === 'read'
             ? { label: '已读', className: 'border-emerald-200/80 bg-emerald-100/80 text-emerald-700' }
             : { label: '未读', className: 'border-slate-200/80 bg-white/75 text-slate-600' };
+    const sourceLabel = category === "ai_gen" ? "AI Studio" : item.source;
 
     // Deterministic gradient generator
     const getGradient = (id: string) => {
@@ -833,23 +857,26 @@ function ArticleCard({ item, status, category, onSelect, onDelete }: {
 
     return (
         <LiquidGlassPanel
-            onClick={() => onSelect(item.link)}
+            onClick={() => {
+                if (isAnyLoading) return;
+                onSelect(item.link);
+            }}
             className={cn(
-                "group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-[26px] transition-all duration-500",
+                "group relative flex h-[348px] cursor-pointer flex-col overflow-hidden rounded-[24px] transition-all duration-500 md:h-[376px] [&>.liquid-glass-content]:h-full [&>.liquid-glass-content]:w-full",
+                isAnyLoading && !isLoading && "opacity-75",
                 isRead
                     ? "shadow-[0_14px_32px_-26px_rgba(15,23,42,0.68)]"
                     : "hover:shadow-[0_28px_48px_-26px_rgba(15,23,42,0.95)]"
             )}
         >
-            <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(120deg,rgba(255,255,255,0)_18%,rgba(255,255,255,0.14)_46%,rgba(255,255,255,0)_72%)] opacity-40" />
-            {/* Cover Image Container */}
-            <div className="relative h-48 w-full overflow-hidden bg-slate-100 md:h-52">
-                {/* Background Image - Picsum with deterministic seed */}
+            <div className="relative h-full w-full">
+                <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(120deg,rgba(255,255,255,0)_18%,rgba(255,255,255,0.14)_46%,rgba(255,255,255,0)_72%)] opacity-35" />
+                <div className="absolute inset-0 overflow-hidden bg-slate-100">
                 {item.image ? (
                     <img
                         src={item.image}
                         alt={item.title}
-                        className="h-full w-full object-cover transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-105"
+                        className="h-full w-full object-cover object-center transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-[1.02]"
                         onError={(e) => {
                             // On error, show gradient fallback
                             e.currentTarget.style.display = 'none';
@@ -858,11 +885,10 @@ function ArticleCard({ item, status, category, onSelect, onDelete }: {
                     />
                 ) : (
                     <>
-                        {/* Picsum random photo based on title hash */}
                         <img
                             src={`https://picsum.photos/seed/${encodeURIComponent(item.title.slice(0, 20))}/800/600`}
                             alt=""
-                            className="h-full w-full object-cover transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-105"
+                            className="h-full w-full object-cover object-center transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-[1.02]"
                             onError={(e) => {
                                 e.currentTarget.style.display = 'none';
                                 // Show gradient fallback
@@ -874,7 +900,6 @@ function ArticleCard({ item, status, category, onSelect, onDelete }: {
                             }}
                         />
 
-                        {/* Gradient fallback if Picsum fails */}
                         <div
                             data-fallback
                             className={cn(
@@ -886,23 +911,14 @@ function ArticleCard({ item, status, category, onSelect, onDelete }: {
                     </>
                 )}
 
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/42 via-black/10 to-transparent" />
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/50 via-black/14 to-transparent" />
+                <div className="pointer-events-none absolute inset-x-10 bottom-[142px] h-10 rounded-full bg-[linear-gradient(90deg,rgba(125,211,252,0.3),rgba(255,255,255,0.2),rgba(191,219,254,0.3))] blur-xl opacity-90 transition-all duration-700 group-hover:opacity-100" />
 
-                {/* Fallback Gradient (shown on image load error) */}
                 <div className={cn(
                     "w-full h-full absolute top-0 left-0 hidden",
                     getGradient(item.title)
                 )} />
 
-                {/* Source Badge */}
-                <div className="absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full border border-white/35 bg-black/45 px-2.5 py-1 backdrop-blur-md">
-                    {category === 'psychology' && <Brain className="h-3 w-3 text-white/90" />}
-                    {category === 'ai_news' && <Cpu className="h-3 w-3 text-white/90" />}
-                    {category === 'ai_gen' && <Sparkles className="h-3 w-3 text-white/90" />}
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-white/90">{item.source}</span>
-                </div>
-
-                {/* Read Badge */}
                 <div className={cn(
                     "absolute left-3 top-3 z-10 rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-wide backdrop-blur-sm",
                     statusMeta.className
@@ -916,7 +932,6 @@ function ArticleCard({ item, status, category, onSelect, onDelete }: {
                     </div>
                 )}
 
-                {/* Delete Button */}
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
@@ -927,46 +942,55 @@ function ArticleCard({ item, status, category, onSelect, onDelete }: {
                 >
                     <Trash2 className="w-3.5 h-3.5" />
                 </button>
-            </div>
-
-            {/* Content Area */}
-            <div className="flex flex-1 flex-col justify-between space-y-3 p-5 md:p-6">
-                <div className="space-y-2">
-                    {/* Date Only (source is on cover) */}
-                    <div className="flex items-center justify-end">
-                        <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-slate-500">
-                            {formatArticleDate(item)}
-                        </span>
-                    </div>
-
-                    {/* Title */}
-                    <h4 className={cn(
-                        "line-clamp-3 font-newsreader text-[1.5rem] font-semibold leading-[1.08] tracking-[-0.02em] transition-colors md:text-[1.62rem]",
-                        isRead ? "text-slate-600" : "text-slate-900 group-hover:text-slate-700"
-                    )}>
-                        {item.title}
-                    </h4>
-
-                    {normalizeSnippet(item.snippet) && (
-                        <p className={cn(
-                            "line-clamp-2 pt-1 text-sm leading-relaxed",
-                            isRead ? "text-slate-400" : "text-slate-500"
-                        )}>
-                            {normalizeSnippet(item.snippet)}
-                        </p>
-                    )}
                 </div>
 
-                {/* Footer / Action */}
-                <div className="flex items-center justify-end pt-2">
-                    <span className={cn(
-                        "flex items-center gap-1 text-xs font-semibold transition-all duration-300",
-                        isRead
-                            ? "text-slate-400 group-hover:text-slate-500"
-                            : "text-cyan-700 group-hover:text-cyan-800"
-                    )}>
-                        {isRead ? "Revisit" : "Read Article"} <ExternalLink className="h-3 w-3" />
-                    </span>
+                <div className="absolute inset-x-0 bottom-0 z-30 h-[44%] min-h-[150px] max-h-[176px] overflow-hidden border-t border-white/30 bg-white/12 px-4 pt-3 backdrop-blur-[30px] backdrop-saturate-[2.2] md:px-5 md:pt-4">
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(216,232,252,0.38)_0%,rgba(173,207,245,0.2)_44%,rgba(146,185,234,0.28)_100%)]" />
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.28)_0%,rgba(255,255,255,0.02)_30%,rgba(15,23,42,0.05)_100%)]" />
+                    <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_-22px_34px_-24px_rgba(30,58,138,0.52),inset_0_0_0_1px_rgba(255,255,255,0.18)]" />
+                    <div className="pointer-events-none absolute left-0 top-0 h-full w-[34%] bg-[linear-gradient(96deg,rgba(186,230,253,0.34),rgba(255,255,255,0.02))] blur-xl opacity-90" />
+                    <div className="pointer-events-none absolute right-0 top-0 h-full w-[32%] bg-[linear-gradient(264deg,rgba(191,219,254,0.3),rgba(255,255,255,0.03))] blur-xl opacity-90" />
+                    <div className="pointer-events-none absolute inset-x-10 top-7 h-7 rounded-full bg-[linear-gradient(90deg,rgba(224,242,254,0.52),rgba(255,255,255,0.26),rgba(219,234,254,0.48))] blur-lg opacity-95" />
+                    <div className="pointer-events-none absolute inset-0 opacity-[0.07] mix-blend-overlay bg-[radial-gradient(circle_at_18%_24%,rgba(255,255,255,0.35)_0%,transparent_48%),radial-gradient(circle_at_84%_72%,rgba(191,219,254,0.3)_0%,transparent_52%)]" />
+                    <div className="relative z-10 flex h-full flex-col gap-3.5 pb-3 md:pb-4">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600/95">
+                                {sourceLabel}
+                            </span>
+                            <span className="text-[11px] font-medium text-slate-600">
+                                {formatArticleDate(item)}
+                            </span>
+                        </div>
+
+                        <h4 className={cn(
+                            "line-clamp-3 font-newsreader text-[1.34rem] font-semibold leading-[1.06] tracking-[-0.018em] transition-colors md:text-[1.48rem]",
+                            isRead ? "text-slate-700" : "text-slate-900 group-hover:text-slate-800"
+                        )}>
+                            {item.title}
+                        </h4>
+
+                        <div className="mt-auto flex items-center justify-end">
+                            <span className={cn(
+                                "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-300",
+                                isLoading
+                                    ? "border-slate-200/80 bg-white/82 text-slate-700"
+                                    : isRead
+                                    ? "border-slate-200/70 bg-white/65 text-slate-500 group-hover:border-slate-300 group-hover:text-slate-700"
+                                    : "border-cyan-200/80 bg-cyan-50/82 text-cyan-700 group-hover:-translate-y-0.5 group-hover:border-cyan-300 group-hover:bg-cyan-100/85 group-hover:text-cyan-800"
+                            )}>
+                                {isLoading ? (
+                                    <>
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        正在加载中
+                                    </>
+                                ) : (
+                                    <>
+                                        {isRead ? "继续阅读" : "进入文章"} <ExternalLink className="h-3 w-3" />
+                                    </>
+                                )}
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
