@@ -88,6 +88,19 @@ function ReadingPageContent() {
     const hasRouteEntry = routeFrom === "battle" || routeFrom === "home";
     const backgroundTheme = getSavedBackgroundTheme(sessionUser?.id);
     const backgroundSpec = getBackgroundThemeSpec(backgroundTheme);
+    const readingThemeFilm: Record<string, string> = {
+        warm: "bg-[radial-gradient(circle_at_20%_18%,rgba(254,215,170,0.42),transparent_56%),radial-gradient(circle_at_85%_22%,rgba(251,146,60,0.22),transparent_44%),linear-gradient(180deg,rgba(255,248,240,0.45),rgba(255,243,233,0.28))]",
+        sunlight: "bg-[radial-gradient(circle_at_50%_0%,rgba(254,240,138,0.3),transparent_55%),linear-gradient(180deg,rgba(255,251,219,0.42),rgba(255,247,196,0.3))]",
+        vintage: "bg-[linear-gradient(180deg,rgba(235,229,217,0.45),rgba(226,217,198,0.38))]",
+        green: "bg-[radial-gradient(circle_at_22%_18%,rgba(167,243,208,0.32),transparent_54%),linear-gradient(180deg,rgba(240,253,250,0.42),rgba(220,252,231,0.28))]",
+        cool: "bg-[radial-gradient(circle_at_85%_14%,rgba(147,197,253,0.28),transparent_45%),linear-gradient(180deg,rgba(241,245,249,0.42),rgba(219,234,254,0.28))]",
+        mono: "bg-[linear-gradient(180deg,rgba(250,250,249,0.45),rgba(245,245,244,0.3))]",
+        dark: "bg-[linear-gradient(180deg,rgba(2,6,23,0.6),rgba(15,23,42,0.46))]",
+        navy: "bg-[linear-gradient(180deg,rgba(23,37,84,0.56),rgba(30,58,138,0.38))]",
+        coal: "bg-[linear-gradient(180deg,rgba(28,25,23,0.56),rgba(41,37,36,0.4))]",
+    };
+    const activeReadingFilm = article ? readingThemeFilm[theme] : undefined;
+    const shouldUseGlobalBackgroundLayers = !article || theme === "welcome";
     const pageIntroEase = [0.22, 1, 0.36, 1] as const;
     const navEntryInitial = hasRouteEntry
         ? { opacity: 0, y: 16, scale: 0.992, filter: "blur(8px)" }
@@ -353,11 +366,25 @@ function ReadingPageContent() {
             fontClass // Apply Font Global
         )}
         >
-            <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.baseLayer}`} />
-            <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.glassLayer}`} />
-            <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.glowLayer}`} />
-            <div className={`pointer-events-none fixed inset-x-0 bottom-0 z-0 h-[34%] ${backgroundSpec.bottomLayer}`} />
-            <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.vignetteLayer}`} />
+            {shouldUseGlobalBackgroundLayers && (
+                <>
+                    <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.baseLayer}`} />
+                    <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.glassLayer}`} />
+                    <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.glowLayer}`} />
+                    <div className={`pointer-events-none fixed inset-x-0 bottom-0 z-0 h-[34%] ${backgroundSpec.bottomLayer}`} />
+                    <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.vignetteLayer}`} />
+                </>
+            )}
+            {article && theme !== "welcome" && activeReadingFilm && (
+                <motion.div
+                    key={`reading-theme-${theme}`}
+                    className={cn("pointer-events-none fixed inset-0 z-0", activeReadingFilm)}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                />
+            )}
 
             <div className="relative z-10">
             <AnimatePresence>
@@ -370,7 +397,12 @@ function ReadingPageContent() {
                         transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
                     >
                         <motion.div
-                            className={`absolute inset-0 backdrop-blur-[8px] ${backgroundSpec.transitionFilm}`}
+                            className={cn(
+                                "absolute inset-0 backdrop-blur-[8px]",
+                                shouldUseGlobalBackgroundLayers
+                                    ? backgroundSpec.transitionFilm
+                                    : (activeReadingFilm ?? "bg-[linear-gradient(180deg,rgba(241,245,249,0.5),rgba(203,213,225,0.42))]")
+                            )}
                             initial={{ scale: 1.08, filter: "blur(22px)" }}
                             animate={{ scale: 1, filter: "blur(0px)" }}
                             transition={{ duration: 0.76, ease: [0.18, 1, 0.3, 1] }}

@@ -35,7 +35,13 @@ Instructions:
 2. Be concise but thorough.
 3. If explaining grammar, clearly label the structure (e.g., 主语, 谓语, 定语从句).
 4. If explaining vocabulary, mention common usages or collocations.
-5. Use Markdown formatting where helpful (bold, lists).
+5. MUST return Markdown with clear structure:
+   - Start with section title: ## 结论
+   - Then section title: ## 解析
+   - Use bullet lists for points.
+   - Highlight key terms with **bold**.
+   - If examples are needed, add section: ## 例句.
+6. Keep line breaks readable; avoid one giant paragraph.
 6. If the answer cannot be found in the paragraph, say so politely.
 `;
 
