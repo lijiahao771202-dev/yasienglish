@@ -2,59 +2,66 @@ export interface AvatarPreset {
     id: string;
     name: string;
     emoji: string;
-    baseFrom: string;
-    baseTo: string;
-    glow: string;
+    gradientFrom: string;
+    gradientTo: string;
+    aura: string;
+    ring: string;
 }
 
 export const AVATAR_PRESETS: AvatarPreset[] = [
     {
         id: "bubble-bear",
-        name: "Dream Bear",
-        emoji: "🐻",
-        baseFrom: "#b79cff",
-        baseTo: "#ffc0dc",
-        glow: "#fff0f7",
+        name: "Sugar Bear",
+        emoji: "🧸",
+        gradientFrom: "#9eb5ff",
+        gradientTo: "#f8bbd9",
+        aura: "#ffe8f4",
+        ring: "#ffffff",
     },
     {
         id: "peach-spark",
         name: "Peach Cat",
         emoji: "🐱",
-        baseFrom: "#ffb38b",
-        baseTo: "#ffd7b8",
-        glow: "#fff4e9",
+        gradientFrom: "#ffbf9e",
+        gradientTo: "#ffe3c9",
+        aura: "#fff4e8",
+        ring: "#fff7f0",
     },
     {
         id: "mint-orbit",
         name: "Mint Frog",
         emoji: "🐸",
-        baseFrom: "#91e7c4",
-        baseTo: "#d2fff0",
-        glow: "#effff9",
+        gradientFrom: "#8be5cf",
+        gradientTo: "#d0fff2",
+        aura: "#ebfff8",
+        ring: "#effff9",
     },
     {
         id: "plum-comet",
-        name: "Plum Rabbit",
+        name: "Plum Bunny",
         emoji: "🐰",
-        baseFrom: "#b9a0ff",
-        baseTo: "#f3c6ff",
-        glow: "#f7edff",
+        gradientFrom: "#b8a0ff",
+        gradientTo: "#efc5ff",
+        aura: "#f9edff",
+        ring: "#fef6ff",
     },
     {
         id: "lemon-loop",
         name: "Lemon Chick",
         emoji: "🐥",
-        baseFrom: "#ffe17d",
-        baseTo: "#ffd199",
-        glow: "#fff8da",
+        gradientFrom: "#ffe27e",
+        gradientTo: "#ffd19c",
+        aura: "#fff9dc",
+        ring: "#fffdf1",
     },
     {
         id: "cloud-bloom",
         name: "Cloud Panda",
         emoji: "🐼",
-        baseFrom: "#d6d8ff",
-        baseTo: "#ffe7f1",
-        glow: "#ffffff",
+        gradientFrom: "#d8dbff",
+        gradientTo: "#ffe7f0",
+        aura: "#ffffff",
+        ring: "#ffffff",
     },
 ];
 

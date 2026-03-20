@@ -118,12 +118,29 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     // New states for enhanced UX
     const [fetchCount, setFetchCount] = useState(3); // Articles to fetch per refresh
     const [showSettings, setShowSettings] = useState(false);
-    const [newlyFetchedLinks, setNewlyFetchedLinks] = useState<Set<string>>(new Set()); // Track new articles for animation
     const [isFetching, setIsFetching] = useState(false); // Just for button state
     const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
 
     const { setFeed, getFeed, loadFeedFromDB, deleteArticle } = useFeedStore();
     const { readArticleUrls } = useUserStore();
+    const listContainerVariants = {
+        hidden: { opacity: 0 },
+        show: {
+            opacity: 1,
+            transition: {
+                staggerChildren: 0.04,
+                delayChildren: 0.06,
+            },
+        },
+    };
+    const listItemVariants = {
+        hidden: { opacity: 0, scale: 0.998 },
+        show: {
+            opacity: 1,
+            scale: 1,
+            transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] as const },
+        },
+    };
 
     // Preset topics per difficulty
     const PRESET_TOPICS: Record<string, string[]> = {
@@ -268,20 +285,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 const uniqueNewArticles = uniqueByLink(fetchedArticles.filter((article) => !existingLinks.has(article.link)));
 
                 if (uniqueNewArticles.length > 0) {
-                    // Track new links for animation
-                    const newLinks = new Set(uniqueNewArticles.map(a => a.link));
-                    setNewlyFetchedLinks(newLinks);
-
                     // Show success notification
                     setNotification({
                         message: `成功抓取 ${uniqueNewArticles.length} 篇新文章`,
                         type: 'success'
                     });
-
-                    // Clear animation flag after 2 seconds
-                    setTimeout(() => {
-                        setNewlyFetchedLinks(new Set());
-                    }, 2000);
 
                     // Combine and sort by time, then dedupe by link.
                     const mergedArticles = uniqueByLink(sortByNewest([...fetchedArticles, ...articles]));
@@ -334,8 +342,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     };
 
     return (
-        <div className="w-full max-w-7xl animate-in slide-in-from-bottom-8 duration-700">
-            <LiquidGlassPanel breathe className="mb-7 rounded-[30px] p-5 md:p-7">
+        <motion.div
+            className="w-full max-w-7xl"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
+        >
+            <LiquidGlassPanel className="mb-7 rounded-[30px] p-5 md:p-7">
                 <div className="pointer-events-none absolute -right-14 -top-14 h-44 w-44 rounded-full bg-cyan-300/18 blur-3xl" />
                 <div className="pointer-events-none absolute -bottom-16 left-6 h-40 w-40 rounded-full bg-violet-300/18 blur-3xl" />
                 <div className="flex flex-col gap-4 md:flex-row md:items-center">
@@ -605,14 +618,16 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                 暂无历史文章，先生成一篇试试
                             </LiquidGlassPanel>
                         ) : (
-                            <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6">
-                                {sortByNewest(articles).map((item, index) => (
+                            <motion.div
+                                className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6"
+                                variants={listContainerVariants}
+                                initial="hidden"
+                                animate="show"
+                            >
+                                {sortByNewest(articles).map((item) => (
                                     <motion.div
                                         key={item.link}
-                                        layout
-                                        initial={{ opacity: 0, y: 8 }}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        transition={{ delay: index * 0.015, duration: 0.34, type: "spring", bounce: 0.15 }}
+                                        variants={listItemVariants}
                                     >
                                         <ArticleCard
                                             item={item}
@@ -623,7 +638,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                         />
                                     </motion.div>
                                 ))}
-                            </div>
+                            </motion.div>
                         )}
                     </div>
                 </div>
@@ -727,14 +742,16 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                                 这个分组暂时没有文章
                                             </LiquidGlassPanel>
                                         ) : (
-                                            <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6">
-                                                {filteredArticles.map((item, index) => (
+                                            <motion.div
+                                                className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6"
+                                                variants={listContainerVariants}
+                                                initial="hidden"
+                                                animate="show"
+                                            >
+                                                {filteredArticles.map((item) => (
                                                     <motion.div
                                                         key={item.link}
-                                                        layout
-                                                        initial={newlyFetchedLinks.has(item.link) ? { opacity: 0, y: -14, scale: 0.98 } : { opacity: 0, y: 8 }}
-                                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                        transition={{ delay: index * 0.015, duration: 0.34, type: "spring", bounce: 0.15 }}
+                                                        variants={listItemVariants}
                                                     >
                                                         <ArticleCard
                                                             item={item}
@@ -745,7 +762,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                                         />
                                                     </motion.div>
                                                 ))}
-                                            </div>
+                                            </motion.div>
                                         )}
                                     </div>
                                 )}
@@ -774,7 +791,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+        </motion.div>
     );
 }
 
@@ -818,12 +835,13 @@ function ArticleCard({ item, status, category, onSelect, onDelete }: {
         <LiquidGlassPanel
             onClick={() => onSelect(item.link)}
             className={cn(
-                "group flex h-full cursor-pointer flex-col overflow-hidden rounded-[26px] transition-all duration-500",
+                "group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-[26px] transition-all duration-500",
                 isRead
                     ? "shadow-[0_14px_32px_-26px_rgba(15,23,42,0.68)]"
-                    : "hover:-translate-y-1.5 hover:shadow-[0_28px_48px_-26px_rgba(15,23,42,0.95)]"
+                    : "hover:shadow-[0_28px_48px_-26px_rgba(15,23,42,0.95)]"
             )}
         >
+            <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(120deg,rgba(255,255,255,0)_18%,rgba(255,255,255,0.14)_46%,rgba(255,255,255,0)_72%)] opacity-40" />
             {/* Cover Image Container */}
             <div className="relative h-48 w-full overflow-hidden bg-slate-100 md:h-52">
                 {/* Background Image - Picsum with deterministic seed */}

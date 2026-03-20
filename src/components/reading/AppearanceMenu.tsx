@@ -1,8 +1,8 @@
 "use client";
 
 import React from 'react';
-import { useReadingSettings, READING_THEMES } from '@/contexts/ReadingSettingsContext';
-import { Check, Type, Minus, Plus } from 'lucide-react';
+import { useReadingSettings } from '@/contexts/ReadingSettingsContext';
+import { Type, Minus, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function AppearanceMenu({ onClose }: { onClose: () => void }) {
@@ -12,7 +12,19 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
         fontSize, setFontSize
     } = useReadingSettings();
 
-    const themes = [
+    type ThemeOption = {
+        id: Parameters<typeof setTheme>[0];
+        name: string;
+        dot: string;
+    };
+    type FontOption = {
+        id: Parameters<typeof setFont>[0];
+        name: string;
+        fontClass: string;
+    };
+
+    const themes: ThemeOption[] = [
+        { id: 'welcome', name: 'Welcome', dot: 'bg-indigo-300' },
         { id: 'warm', name: 'Warm', dot: 'bg-orange-300' },
         { id: 'sunlight', name: 'Sun', dot: 'bg-amber-400' },
         { id: 'vintage', name: 'Aged', dot: 'bg-stone-400' },
@@ -24,7 +36,7 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
         { id: 'coal', name: 'Coal', dot: 'bg-neutral-800 border-white/20' },
     ];
 
-    const fonts = [
+    const fonts: FontOption[] = [
         { id: 'serif', name: 'System Serif', fontClass: 'font-serif' },
         { id: 'sans', name: 'System Sans', fontClass: 'font-sans' },
         { id: 'mono', name: 'System Mono', fontClass: 'font-mono' },
@@ -38,24 +50,34 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
         { id: 'comic', name: 'Comic', fontClass: 'font-comic' },
     ];
 
-    const sizes = ['text-base', 'text-lg', 'text-xl', 'text-2xl'];
+    const sizes: Array<Parameters<typeof setFontSize>[0]> = ['text-base', 'text-lg', 'text-xl', 'text-2xl'];
 
     const handleIncreaseSize = () => {
         const currentIndex = sizes.indexOf(fontSize);
         if (currentIndex < sizes.length - 1) {
-            setFontSize(sizes[currentIndex + 1] as any);
+            setFontSize(sizes[currentIndex + 1]);
         }
     };
 
     const handleDecreaseSize = () => {
         const currentIndex = sizes.indexOf(fontSize);
         if (currentIndex > 0) {
-            setFontSize(sizes[currentIndex - 1] as any);
+            setFontSize(sizes[currentIndex - 1]);
         }
     };
 
     return (
         <div className="absolute top-full right-0 mt-3 w-80 glass-panel p-4 rounded-xl flex flex-col gap-4 shadow-xl animate-in fade-in zoom-in-95 z-50 border border-white/50 text-stone-800">
+            <div className="flex justify-end">
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full text-stone-500 transition hover:bg-white/70 hover:text-stone-800"
+                    aria-label="Close appearance menu"
+                >
+                    <X className="h-4 w-4" />
+                </button>
+            </div>
 
             {/* Theme Section */}
             <div className="space-y-2">
@@ -64,7 +86,7 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
                     {themes.map(t => (
                         <button
                             key={t.id}
-                            onClick={() => setTheme(t.id as any)}
+                            onClick={() => setTheme(t.id)}
                             className={cn(
                                 "flex items-center justify-center gap-2 px-2 py-2 rounded-lg text-xs font-medium transition-all border",
                                 theme === t.id
@@ -91,7 +113,7 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
                     {fonts.map(f => (
                         <button
                             key={f.id}
-                            onClick={() => setFont(f.id as any)}
+                            onClick={() => setFont(f.id)}
                             className={cn(
                                 "px-3 py-2 rounded-md text-xs font-medium transition-all text-center border",
                                 f.fontClass,

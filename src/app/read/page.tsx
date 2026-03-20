@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { ArticleDisplay } from "@/components/reading/ArticleDisplay";
 import { AudioPlayer } from "@/components/shadowing/AudioPlayer";
 import { WritingEditor } from "@/components/writing/WritingEditor";
-import { RecommendedArticles, ArticleItem } from "@/components/reading/RecommendedArticles";
-import { ArticleSidebar } from "@/components/reading/ArticleSidebar";
+import { RecommendedArticles } from "@/components/reading/RecommendedArticles";
 import { ReadingQuizPanel, QuizQuestion } from "@/components/reading/ReadingQuizPanel";
 import { PenTool, ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,8 @@ import axios from "axios";
 import { useUserStore } from "@/lib/store";
 import { resolveDailyArticleCandidate } from "@/lib/dailyArticle";
 import { LiquidGlassPanel } from "@/components/ui/LiquidGlassPanel";
+import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
+import { BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
 
 interface ArticleData {
     title: string;
@@ -56,23 +58,87 @@ import { ReadingSettingsProvider, useReadingSettings, READING_THEMES } from "@/c
 import { AppearanceMenu } from "@/components/reading/AppearanceMenu";
 
 function ReadingPageContent() {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const sessionUser = useAuthSessionUser();
     const [isLoading, setIsLoading] = useState(false);
     const [article, setArticle] = useState<ArticleData | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [isWritingMode, setIsWritingMode] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [isQuizMode, setIsQuizMode] = useState(false);
+    const [routeExitTarget, setRouteExitTarget] = useState<"home" | "battle" | null>(null);
+    const [articleTransitionMode, setArticleTransitionMode] = useState<"toArticle" | "toPicker">("toArticle");
     const [quizLocateRequest, setQuizLocateRequest] = useState<QuizLocateRequest | null>(null);
     const [quizCache, setQuizCache] = useState<Record<string, QuizQuestion[]>>({});
     const [quizCacheHydrated, setQuizCacheHydrated] = useState<Record<string, boolean>>({});
+    const [, forceBackgroundRefresh] = useState(0);
     const { loadUserData, markArticleAsRead } = useUserStore();
 
     // Context Settings
     const { theme, fontClass, isFocusMode, toggleFocusMode, isBionicMode, toggleBionicMode } = useReadingSettings();
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+    const [isDockVisible, setIsDockVisible] = useState(true);
+    const [isDockHovered, setIsDockHovered] = useState(false);
+    const dockHideTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
     // Scroll Progress
     const [scrollProgress, setScrollProgress] = useState(0);
+    const routeFrom = searchParams.get("from");
+    const hasRouteEntry = routeFrom === "battle" || routeFrom === "home";
+    const backgroundTheme = getSavedBackgroundTheme(sessionUser?.id);
+    const backgroundSpec = getBackgroundThemeSpec(backgroundTheme);
+    const pageIntroEase = [0.22, 1, 0.36, 1] as const;
+    const navEntryInitial = hasRouteEntry
+        ? { opacity: 0, y: 16, scale: 0.992, filter: "blur(8px)" }
+        : { opacity: 0, y: 10 };
+    const contentEntryInitial = hasRouteEntry
+        ? { opacity: 0, y: 20, scale: 0.994, filter: "blur(10px)" }
+        : { opacity: 0, y: 12 };
+    const softReveal = {
+        initial: { opacity: 0, y: 4, scale: 0.998 },
+        animate: { opacity: 1, y: 0, scale: 1 },
+        exit: { opacity: 0, y: -5, scale: 0.998 },
+    };
+
+    const clearDockHideTimer = useCallback(() => {
+        if (dockHideTimerRef.current) {
+            window.clearTimeout(dockHideTimerRef.current);
+            dockHideTimerRef.current = null;
+        }
+    }, []);
+
+    const scheduleDockHide = useCallback((delay = 1100) => {
+        clearDockHideTimer();
+        dockHideTimerRef.current = window.setTimeout(() => {
+            setIsDockVisible(false);
+        }, delay);
+    }, [clearDockHideTimer]);
+
+    const handleRouteExit = (target: "home" | "battle") => {
+        if (routeExitTarget) return;
+        setRouteExitTarget(target);
+        window.setTimeout(() => {
+            if (target === "home") {
+                router.push("/?from=read");
+                return;
+            }
+            router.push("/battle?from=read");
+        }, 560);
+    };
+
+    useEffect(() => {
+        const onBackgroundChange = (event: Event) => {
+            const detail = (event as CustomEvent<{ themeId?: string }>).detail;
+            if (typeof detail?.themeId === "string") {
+                forceBackgroundRefresh((value) => value + 1);
+                return;
+            }
+            forceBackgroundRefresh((value) => value + 1);
+        };
+        window.addEventListener(BACKGROUND_CHANGED_EVENT, onBackgroundChange);
+        return () => window.removeEventListener(BACKGROUND_CHANGED_EVENT, onBackgroundChange);
+    }, [sessionUser?.id]);
 
     useEffect(() => {
         const handleScroll = () => {
@@ -84,6 +150,41 @@ function ReadingPageContent() {
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
+
+    useEffect(() => {
+        if (!article) {
+            clearDockHideTimer();
+            setIsDockVisible(true);
+            return;
+        }
+
+        setIsDockVisible(true);
+        if (!isDockHovered) {
+            scheduleDockHide(1300);
+        }
+
+        return () => {
+            clearDockHideTimer();
+        };
+    }, [article, clearDockHideTimer, isDockHovered, scheduleDockHide]);
+
+    useEffect(() => {
+        if (!article) return;
+
+        const handleMouseMove = (event: MouseEvent) => {
+            if (event.clientY <= 92) {
+                if (!isDockVisible) {
+                    setIsDockVisible(true);
+                }
+                if (!isDockHovered) {
+                    scheduleDockHide(1000);
+                }
+            }
+        };
+
+        window.addEventListener("mousemove", handleMouseMove);
+        return () => window.removeEventListener("mousemove", handleMouseMove);
+    }, [article, isDockHovered, isDockVisible, scheduleDockHide]);
 
     // Load user data (history, vocab, read status) from DB on mount
     useEffect(() => {
@@ -137,10 +238,6 @@ function ReadingPageContent() {
         checkDailyArticle();
     }, [loadUserData]);
 
-    // Sidebar State
-    const [sidebarArticles, setSidebarArticles] = useState<ArticleItem[]>([]);
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const [currentUrl, setCurrentUrl] = useState<string>("");
     const canShowQuizPanel = Boolean(isQuizMode && article?.isAIGenerated && article?.difficulty);
     const quizCacheKey = article ? `${article.url || article.title}::${article.difficulty || "unknown"}` : "";
     const quizDbKey = quizCacheKey ? `reading-quiz::${quizCacheKey}` : "";
@@ -185,9 +282,9 @@ function ReadingPageContent() {
     }, [quizDbKey, quizCacheKey, quizCacheHydrated]);
 
     const handleUrlSubmit = async (url: string) => {
+        setArticleTransitionMode("toArticle");
         setIsLoading(true);
         setError(null);
-        setCurrentUrl(url);
         try {
             // Check cache first
             const { db } = await import("@/lib/db");
@@ -236,10 +333,6 @@ function ReadingPageContent() {
                 timestamp: Date.now()
             });
 
-            // Auto-open sidebar if we have articles to show context
-            if (sidebarArticles.length > 0 && !isSidebarOpen) {
-                setIsSidebarOpen(true);
-            }
         } catch (err) {
             console.error(err);
             setError("Failed to load article. Please check the URL and try again.");
@@ -249,52 +342,86 @@ function ReadingPageContent() {
     };
 
     return (
-        <main className={cn(
+        <main
+            className={cn(
             "relative min-h-screen overflow-x-clip p-6 text-stone-800 transition-all duration-500 ease-in-out md:p-12",
-            READING_THEMES.find(t => t.id === theme)?.class,
-            fontClass, // Apply Font Global
-            isSidebarOpen ? "md:pl-96" : ""
-        )}>
-            {!article && (
-                <>
-                    <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_15%_18%,rgba(34,211,238,0.3),transparent_36%),radial-gradient(circle_at_82%_12%,rgba(139,92,246,0.27),transparent_34%),radial-gradient(circle_at_70%_82%,rgba(45,212,191,0.22),transparent_42%),linear-gradient(135deg,rgba(255,255,255,0.86),rgba(247,250,255,0.84),rgba(242,255,251,0.82))]" />
-                    <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_30%_45%,rgba(255,255,255,0.7),transparent_56%)] backdrop-blur-[6px]" />
-                    <div
-                        className="pointer-events-none fixed inset-0 -z-10 opacity-[0.025] mix-blend-overlay"
-                        style={{
-                            backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
-                        }}
-                    />
-                </>
-            )}
+            article ? READING_THEMES.find(t => t.id === theme)?.class : undefined,
+            fontClass // Apply Font Global
+        )}
+        >
+            <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.baseLayer}`} />
+            <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.glassLayer}`} />
+            <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.glowLayer}`} />
+            <div className={`pointer-events-none fixed inset-x-0 bottom-0 z-0 h-[34%] ${backgroundSpec.bottomLayer}`} />
+            <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.vignetteLayer}`} />
 
-            {/* Sidebar */}
-            <ArticleSidebar
-                articles={sidebarArticles}
-                currentUrl={currentUrl}
-                onSelect={handleUrlSubmit}
-                isOpen={isSidebarOpen}
-                setIsOpen={setIsSidebarOpen}
-            />
+            <div className="relative z-10">
+            <AnimatePresence>
+                {routeExitTarget && (
+                    <motion.div
+                        className="pointer-events-none fixed inset-0 z-[80]"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
+                    >
+                        <motion.div
+                            className={`absolute inset-0 backdrop-blur-[8px] ${backgroundSpec.transitionFilm}`}
+                            initial={{ scale: 1.08, filter: "blur(22px)" }}
+                            animate={{ scale: 1, filter: "blur(0px)" }}
+                            transition={{ duration: 0.76, ease: [0.18, 1, 0.3, 1] }}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Floating Navigation Dock */}
-            <nav className="fixed top-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-500">
+            <motion.nav
+                className={cn(
+                    "fixed top-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-500",
+                    article && !isDockVisible && "pointer-events-none"
+                )}
+                style={{ transformOrigin: "50% 0%" }}
+                initial={navEntryInitial}
+                animate={article
+                    ? (isDockVisible
+                        ? { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }
+                        : { opacity: 0, y: -38, scale: 0.96, filter: "blur(8px)" })
+                    : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                transition={article
+                    ? (isDockVisible
+                        ? { type: "spring", stiffness: 320, damping: 32, mass: 0.72 }
+                        : { duration: 0.34, ease: [0.4, 0, 1, 1] })
+                    : { duration: hasRouteEntry ? 0.62 : 0.52, ease: pageIntroEase }}
+                onMouseEnter={() => {
+                    if (!article) return;
+                    setIsDockVisible(true);
+                    setIsDockHovered(true);
+                    clearDockHideTimer();
+                }}
+                onMouseLeave={() => {
+                    if (!article) return;
+                    setIsDockHovered(false);
+                    scheduleDockHide(700);
+                }}
+            >
                 <div className="relative flex items-center gap-1 rounded-full border border-white/55 bg-white/42 px-2 py-1.5 shadow-[0_30px_56px_-38px_rgba(14,30,66,0.8)] ring-1 ring-white/65 backdrop-blur-2xl">
                     <div className="pointer-events-none absolute inset-0 rounded-full bg-[linear-gradient(115deg,rgba(255,255,255,0.56),rgba(255,255,255,0.18),rgba(255,255,255,0.4))]" />
-                    <Link
-                        href="/"
+                    <button
+                        type="button"
+                        onClick={() => handleRouteExit("home")}
                         className="group relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-all hover:bg-white/65 hover:text-slate-900"
                         title="Back to Welcome"
                     >
                         <House className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />
-                    </Link>
+                    </button>
 
                     {/* Article List Back */}
                     {article && (
                         <button
                             onClick={() => {
+                                setArticleTransitionMode("toPicker");
                                 setArticle(null);
-                                setCurrentUrl("");
                                 setIsWritingMode(false);
                                 setIsEditMode(false);
                                 setIsQuizMode(false);
@@ -425,11 +552,24 @@ function ReadingPageContent() {
                         )}
                     </div>
                 </div>
-            </nav>
+            </motion.nav>
 
-            <div className={cn("mt-20 transition-all duration-700", isWritingMode ? "h-[calc(100vh-120px)]" : "")}>
-                {!article ? (
-                    <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 pb-10">
+            <motion.div
+                className={cn("mt-20 transition-all duration-700", isWritingMode ? "h-[calc(100vh-120px)]" : "")}
+                initial={contentEntryInitial}
+                animate={routeExitTarget ? { opacity: 0, y: 10, scale: 0.993, filter: "blur(8px)" } : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                transition={{ delay: 0, duration: hasRouteEntry ? 0.68 : 0.56, ease: pageIntroEase }}
+            >
+                <AnimatePresence mode="wait" initial={false}>
+                    {!article ? (
+                        <motion.div
+                            key="picker"
+                            className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 overflow-hidden pb-10"
+                            initial={softReveal.initial}
+                            animate={softReveal.animate}
+                            exit={softReveal.exit}
+                            transition={{ delay: 0.02, duration: hasRouteEntry ? 0.52 : 0.46, ease: pageIntroEase }}
+                        >
                         {error && (
                             <LiquidGlassPanel className="rounded-xl px-4 py-2 text-center text-sm text-red-700">
                                 {error}
@@ -442,23 +582,42 @@ function ReadingPageContent() {
                             </LiquidGlassPanel>
                         )}
 
-                        <RecommendedArticles
-                            onSelect={handleUrlSubmit}
-                            onArticleLoaded={(data) => {
-                                setArticle(data as ArticleData);
-                            }}
-                            onListUpdate={setSidebarArticles}
-                        />
-                    </div>
-                ) : (
-                    <div className={cn(
-                        "grid gap-8 h-full transition-all duration-500",
-                        canShowQuizPanel
-                            ? "grid-cols-1 xl:grid-cols-[minmax(0,1fr)_500px] 2xl:grid-cols-[minmax(0,1fr)_560px] xl:h-[calc(100vh-120px)] xl:overflow-hidden"
-                            : "grid-cols-1"
-                    )}>
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.998 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: 0.04, duration: hasRouteEntry ? 0.5 : 0.44, ease: pageIntroEase }}
+                        >
+                            <RecommendedArticles
+                                onSelect={handleUrlSubmit}
+                                onArticleLoaded={(data) => {
+                                    setArticle(data as ArticleData);
+                                }}
+                            />
+                        </motion.div>
+                        </motion.div>
+                    ) : (
+                        <motion.div
+                            key={article.url || article.title}
+                            initial={softReveal.initial}
+                            animate={softReveal.animate}
+                            exit={articleTransitionMode === "toPicker"
+                                ? { opacity: 0, y: 8, scale: 0.994 }
+                                : softReveal.exit}
+                            transition={{ delay: 0.02, duration: hasRouteEntry ? 0.54 : 0.48, ease: pageIntroEase }}
+                            className={cn(
+                                "relative overflow-hidden",
+                                "grid gap-8 h-full transition-all duration-500",
+                                canShowQuizPanel
+                                    ? "grid-cols-1 xl:grid-cols-[minmax(0,1fr)_500px] 2xl:grid-cols-[minmax(0,1fr)_560px] xl:h-[calc(100vh-120px)] xl:overflow-hidden"
+                                    : "grid-cols-1"
+                            )}
+                        >
                         {/* Reading Column */}
-                        <div className={cn(
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ delay: 0.04, duration: hasRouteEntry ? 0.5 : 0.44, ease: pageIntroEase }}
+                            className={cn(
                             "space-y-12 transition-all duration-700",
                             canShowQuizPanel && "xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1",
                             canShowQuizPanel ? "max-w-none" : "mx-auto max-w-3xl"
@@ -499,11 +658,16 @@ function ReadingPageContent() {
                             <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">
                                 <AudioPlayer text={article.textContent || ""} />
                             </div>
-                        </div>
+                        </motion.div>
 
                         {/* Quiz Sidebar */}
                         {canShowQuizPanel && (
-                            <div className="xl:h-full xl:min-h-0">
+                            <motion.div
+                                className="xl:h-full xl:min-h-0"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ delay: 0.06, duration: hasRouteEntry ? 0.52 : 0.46, ease: pageIntroEase }}
+                            >
                                 <LiquidGlassPanel className="h-full min-h-0 overflow-hidden rounded-[24px] [&>.liquid-glass-content]:h-full [&>.liquid-glass-content]:min-h-0">
                                     <ReadingQuizPanel
                                         articleContent={article.textContent || article.content}
@@ -572,7 +736,7 @@ function ReadingPageContent() {
                                         }}
                                     />
                                 </LiquidGlassPanel>
-                            </div>
+                            </motion.div>
                         )}
 
                         {/* Writing Overlay */}
@@ -583,8 +747,10 @@ function ReadingPageContent() {
                                 onClose={() => setIsWritingMode(false)}
                             />
                         )}
-                    </div>
-                )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </motion.div>
             </div>
         </main >
     );

@@ -36,7 +36,12 @@ export function LoginForm() {
                     refresh_token: data.session.refresh_token,
                 });
             }
-            router.replace(APP_HOME_PATH);
+            const adminResponse = await fetch("/api/admin/is-admin", {
+                method: "GET",
+                cache: "no-store",
+            });
+            const adminPayload = await adminResponse.json().catch(() => ({ isAdmin: false }));
+            router.replace(adminPayload?.isAdmin ? "/admin" : APP_HOME_PATH);
         } catch (error) {
             setStatus("error");
             setMessage(error instanceof Error ? error.message : "登录失败，请重试。");

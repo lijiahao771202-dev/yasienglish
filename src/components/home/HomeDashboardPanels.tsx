@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import {
     Area,
     AreaChart,
@@ -64,6 +65,54 @@ const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
 function formatDelta(value: number) {
     if (value > 0) return `+${value}`;
     return `${value}`;
+}
+
+function easeOutExpo(t: number) {
+    return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
+}
+
+function AnimatedNumber({
+    value,
+    signed = false,
+    className = "",
+    duration = 920,
+}: {
+    value: number;
+    signed?: boolean;
+    className?: string;
+    duration?: number;
+}) {
+    const [displayValue, setDisplayValue] = useState(0);
+    const previousValueRef = useRef(0);
+
+    useEffect(() => {
+        const startValue = previousValueRef.current;
+        const delta = value - startValue;
+        const startedAt = performance.now();
+        let frameId = 0;
+
+        const tick = (now: number) => {
+            const progress = Math.min((now - startedAt) / duration, 1);
+            const eased = easeOutExpo(progress);
+            const nextValue = startValue + (delta * eased);
+            setDisplayValue(nextValue);
+
+            if (progress < 1) {
+                frameId = requestAnimationFrame(tick);
+            } else {
+                previousValueRef.current = value;
+                setDisplayValue(value);
+            }
+        };
+
+        frameId = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(frameId);
+    }, [duration, value]);
+
+    const roundedValue = Math.round(displayValue);
+    const textValue = signed ? formatDelta(roundedValue) : String(roundedValue);
+
+    return <span className={className}>{textValue}</span>;
 }
 
 function buildBattleGlowModel(eloHistory: EloHistoryItem[], fallbackElo: number) {
@@ -146,13 +195,18 @@ function SummaryChip({
     label,
     value,
     tone = "soft",
+    signed = false,
 }: {
     label: string;
-    value: string;
+    value: number;
     tone?: "soft" | "dark";
+    signed?: boolean;
 }) {
     return (
-        <div
+        <motion.div
+            initial={{ opacity: 0, scale: 0.994, filter: "blur(8px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
             className={`rounded-[1.4rem] border px-4 py-3 ${
                 tone === "dark"
                     ? "border-[#2c2f3a] bg-[linear-gradient(145deg,rgba(29,31,40,0.96),rgba(43,47,58,0.92))] text-white shadow-[0_24px_42px_-30px_rgba(27,28,36,0.88)]"
@@ -160,8 +214,10 @@ function SummaryChip({
             }`}
         >
             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.3em] opacity-75">{label}</p>
-            <p className="mt-2 font-welcome-display text-[1.8rem] leading-none tracking-[-0.05em]">{value}</p>
-        </div>
+            <p className="mt-2 font-welcome-display text-[1.8rem] leading-none tracking-[-0.05em]">
+                <AnimatedNumber value={value} signed={signed} />
+            </p>
+        </motion.div>
     );
 }
 
@@ -203,7 +259,12 @@ function BattleGlowCard({
     const hasCurve = glowModel.points.length > 1;
 
     return (
-        <section className="liquid-glass-interactive relative overflow-hidden rounded-[2.3rem] border border-white/76 bg-[linear-gradient(135deg,rgba(255,255,255,0.44),rgba(241,236,228,0.2))] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_26px_46px_-30px_rgba(15,23,42,0.42)] backdrop-blur-[22px]">
+        <motion.section
+            initial={{ opacity: 0, scale: 0.994, filter: "blur(10px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 0.86, ease: [0.22, 1, 0.36, 1] }}
+            className="liquid-glass-interactive relative overflow-hidden rounded-[2.3rem] border border-white/76 bg-[linear-gradient(135deg,rgba(255,255,255,0.44),rgba(241,236,228,0.2))] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_26px_46px_-30px_rgba(15,23,42,0.42)] backdrop-blur-[22px]"
+        >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(255,255,255,0.76),transparent_20%),radial-gradient(circle_at_72%_24%,rgba(255,231,169,0.34),transparent_22%),radial-gradient(circle_at_74%_74%,rgba(226,180,125,0.16),transparent_30%)]" />
             <div className="pointer-events-none absolute -left-12 bottom-10 h-40 w-40 rounded-full bg-[#f8edcf]/44 blur-3xl" />
             <div className="pointer-events-none absolute right-12 top-12 h-44 w-44 rounded-full bg-[#fff8df]/36 blur-3xl" />
@@ -265,6 +326,9 @@ function BattleGlowCard({
                                         strokeWidth={4}
                                         fill="url(#home-elo-fill)"
                                         activeDot={{ r: 6, fill: "#d78a4c", stroke: "#fff9ef", strokeWidth: 2 }}
+                                        isAnimationActive
+                                        animationDuration={1300}
+                                        animationEasing="ease-out"
                                     />
                                 </AreaChart>
                             </ResponsiveContainer>
@@ -291,10 +355,10 @@ function BattleGlowCard({
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-                    <SummaryChip label="Elo" value={String(glowModel.currentElo)} tone="dark" />
-                    <SummaryChip label="Peak" value={String(glowModel.peakElo)} />
-                    <SummaryChip label="Delta" value={formatDelta(glowModel.delta)} />
-                    <SummaryChip label="Sessions" value={String(glowModel.sessions)} />
+                    <SummaryChip label="Elo" value={glowModel.currentElo} tone="dark" />
+                    <SummaryChip label="Peak" value={glowModel.peakElo} />
+                    <SummaryChip label="Delta" value={glowModel.delta} signed />
+                    <SummaryChip label="Sessions" value={glowModel.sessions} />
                 </div>
             </div>
 
@@ -324,7 +388,7 @@ function BattleGlowCard({
                     </p>
                 </div>
             </div>
-        </section>
+        </motion.section>
     );
 }
 
@@ -353,7 +417,12 @@ function LearningCalendarCard({
     calendarDays,
 }: Pick<HomeDashboardViewModel, "monthLabel" | "calendarDays">) {
     return (
-        <section className="liquid-glass-interactive relative overflow-hidden rounded-[2.5rem] border border-white/24 bg-[linear-gradient(180deg,rgba(54,64,108,0.34)_0%,rgba(64,48,92,0.32)_44%,rgba(44,36,78,0.3)_100%)] p-6 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.26),inset_0_-1px_0_rgba(185,203,255,0.12),0_28px_52px_-34px_rgba(18,20,42,0.72)] backdrop-blur-[52px] backdrop-saturate-[170%]">
+        <motion.section
+            initial={{ opacity: 0, scale: 0.994, filter: "blur(10px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 0.88, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
+            className="liquid-glass-interactive relative overflow-hidden rounded-[2.5rem] border border-white/24 bg-[linear-gradient(180deg,rgba(54,64,108,0.34)_0%,rgba(64,48,92,0.32)_44%,rgba(44,36,78,0.3)_100%)] p-6 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.26),inset_0_-1px_0_rgba(185,203,255,0.12),0_28px_52px_-34px_rgba(18,20,42,0.72)] backdrop-blur-[52px] backdrop-saturate-[170%]"
+        >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(84%_54%_at_12%_10%,rgba(255,255,255,0.18),transparent_62%),radial-gradient(64%_40%_at_88%_14%,rgba(255,157,206,0.18),transparent_66%),radial-gradient(110%_72%_at_50%_100%,rgba(130,166,255,0.14),transparent_76%)]" />
             <div className="pointer-events-none absolute inset-[1px] rounded-[2.38rem] border border-white/12" />
             <div className="relative z-10 flex items-start justify-between gap-4">
@@ -380,14 +449,20 @@ function LearningCalendarCard({
                             {day}
                         </p>
                     ))}
-                    {calendarDays.map((day) => (
-                        <div key={day.dateKey} className="flex justify-center">
+                    {calendarDays.map((day, index) => (
+                        <motion.div
+                            key={day.dateKey}
+                            className="flex justify-center"
+                            initial={{ opacity: 0, scale: 0.94, filter: "blur(6px)" }}
+                            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                            transition={{ delay: 0.12 + (index * 0.012), duration: 0.46, ease: [0.22, 1, 0.36, 1] }}
+                        >
                             <div
                                 className={`flex h-12 w-12 items-center justify-center rounded-full border text-[1.03rem] font-semibold transition ${getCalendarDayTone(day)}`}
                             >
                                 {day.label}
                             </div>
-                        </div>
+                        </motion.div>
                     ))}
                 </div>
             </div>
@@ -406,7 +481,7 @@ function LearningCalendarCard({
                     Active day
                 </span>
             </div>
-        </section>
+        </motion.section>
     );
 }
 
@@ -416,7 +491,12 @@ function GoalCard({
     goal: HomeDashboardViewModel["goal"];
 }) {
     return (
-        <section className="liquid-glass-interactive rounded-[2rem] border border-[#f7d4e4] bg-[linear-gradient(180deg,#fff7fa_0%,#feeef5_100%)] p-5 shadow-[0_24px_42px_-30px_rgba(43,18,32,0.26)]">
+        <motion.section
+            initial={{ opacity: 0, scale: 0.994, filter: "blur(8px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 0.78, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+            className="liquid-glass-interactive rounded-[2rem] border border-[#f7d4e4] bg-[linear-gradient(180deg,#fff7fa_0%,#feeef5_100%)] p-5 shadow-[0_24px_42px_-30px_rgba(43,18,32,0.26)]"
+        >
             <p className="text-[0.76rem] font-semibold uppercase tracking-[0.34em] text-[#9c6c82]">
                 TODAY
             </p>
@@ -451,7 +531,7 @@ function GoalCard({
                     </div>
                 </div>
             </div>
-        </section>
+        </motion.section>
     );
 }
 
@@ -463,7 +543,12 @@ function GrowthCard({
     const percentage = Math.round(growth.progressRatio * 100);
 
     return (
-        <section className="liquid-glass-interactive rounded-[2rem] border border-[#f7d4e4] bg-[linear-gradient(180deg,#fff7fa_0%,#feeef5_100%)] p-5 shadow-[0_24px_42px_-30px_rgba(43,18,32,0.26)]">
+        <motion.section
+            initial={{ opacity: 0, scale: 0.994, filter: "blur(8px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 0.78, delay: 0.14, ease: [0.22, 1, 0.36, 1] }}
+            className="liquid-glass-interactive rounded-[2rem] border border-[#f7d4e4] bg-[linear-gradient(180deg,#fff7fa_0%,#feeef5_100%)] p-5 shadow-[0_24px_42px_-30px_rgba(43,18,32,0.26)]"
+        >
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <p className="text-[0.76rem] font-semibold uppercase tracking-[0.34em] text-[#9c6c82]">
@@ -475,7 +560,7 @@ function GrowthCard({
                 </div>
                 <div className="rounded-[1.2rem] border border-white/80 bg-white/72 px-4 py-3 text-right shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
                     <p className="font-welcome-display text-[1.9rem] leading-none tracking-[-0.05em] text-[#181512]">
-                        {percentage}%
+                        <AnimatedNumber value={percentage} />%
                     </p>
                     <p className="mt-1 text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-[#a17488]">
                         of peak
@@ -486,16 +571,16 @@ function GrowthCard({
             <div className="mt-6">
                 <div className="h-3 overflow-hidden rounded-full bg-[#efdbe5]">
                     <div
-                        className="h-full rounded-full bg-[linear-gradient(90deg,#b22f73_0%,#df5798_38%,#ff97bf_100%)] shadow-[0_14px_22px_-18px_rgba(87,22,53,0.6)]"
+                        className="h-full rounded-full bg-[linear-gradient(90deg,#b22f73_0%,#df5798_38%,#ff97bf_100%)] shadow-[0_14px_22px_-18px_rgba(87,22,53,0.6)] transition-[width] duration-1000 ease-out"
                         style={{ width: `${Math.max(12, percentage)}%` }}
                     />
                 </div>
                 <div className="mt-3 flex items-center justify-between text-sm text-[#775966]">
-                    <span>Current Elo {growth.eloRating}</span>
-                    <span>Peak {growth.maxElo}</span>
+                    <span>Current Elo <AnimatedNumber value={growth.eloRating} /></span>
+                    <span>Peak <AnimatedNumber value={growth.maxElo} /></span>
                 </div>
             </div>
-        </section>
+        </motion.section>
     );
 }
 
@@ -571,7 +656,12 @@ function LearningLanesCard({
     learningLanes: HomeDashboardViewModel["learningLanes"];
 }) {
     return (
-        <section className="liquid-glass-interactive rounded-[2rem] border border-[#f7d4e4] bg-[linear-gradient(180deg,#fff7fa_0%,#feeef5_100%)] p-5 shadow-[0_24px_42px_-30px_rgba(43,18,32,0.26)]">
+        <motion.section
+            initial={{ opacity: 0, scale: 0.994, filter: "blur(8px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 0.82, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            className="liquid-glass-interactive rounded-[2rem] border border-[#f7d4e4] bg-[linear-gradient(180deg,#fff7fa_0%,#feeef5_100%)] p-5 shadow-[0_24px_42px_-30px_rgba(43,18,32,0.26)]"
+        >
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <p className="text-[0.76rem] font-semibold uppercase tracking-[0.34em] text-[#9c6c82]">
@@ -632,7 +722,7 @@ function LearningLanesCard({
                     );
                 })}
             </div>
-        </section>
+        </motion.section>
     );
 }
 
@@ -643,7 +733,12 @@ export function HomeDashboardPanels({
     passwordUpdated = false,
 }: HomeDashboardPanelsProps) {
     return (
-        <section className="relative flex min-w-0 flex-col gap-5 overflow-hidden rounded-[2.75rem] border border-white/18 bg-[linear-gradient(180deg,rgba(255,251,254,0.1)_0%,rgba(252,240,248,0.05)_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.34),0_20px_46px_-40px_rgba(28,22,38,0.22)] backdrop-blur-[58px] backdrop-saturate-[200%] lg:p-7">
+        <motion.section
+            initial={{ opacity: 0, scale: 0.996, filter: "blur(10px)" }}
+            animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 0.86, ease: [0.22, 1, 0.36, 1] }}
+            className="relative flex min-w-0 flex-col gap-5 overflow-hidden rounded-[2.75rem] border border-white/18 bg-[linear-gradient(180deg,rgba(255,251,254,0.1)_0%,rgba(252,240,248,0.05)_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.34),0_20px_46px_-40px_rgba(28,22,38,0.22)] backdrop-blur-[58px] backdrop-saturate-[200%] lg:p-7"
+        >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_55%_at_12%_8%,rgba(255,255,255,0.16),transparent_62%),radial-gradient(65%_44%_at_84%_20%,rgba(255,219,240,0.1),transparent_66%)]" />
             <div className="relative z-10 flex min-w-0 flex-col gap-5">
             {passwordUpdated ? (
@@ -667,6 +762,6 @@ export function HomeDashboardPanels({
                 <LearningLanesCard learningLanes={model.learningLanes} />
             </div>
             </div>
-        </section>
+        </motion.section>
     );
 }

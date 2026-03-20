@@ -32,6 +32,7 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
     const [isOffline, setIsOffline] = useState(false);
     const [sessionUser, setSessionUser] = useState<SessionUserSummary | null>(initialUser);
     const [authResolved, setAuthResolved] = useState(Boolean(initialUser));
+    const [showBlockingOverlay, setShowBlockingOverlay] = useState(false);
     const bootstrappedUserIdRef = useRef<string | null>(null);
     const pathnameRef = useRef<string | null>(pathname);
     const { phase, error, ready, reset, setPhase, setReady } = useSyncStatusStore();
@@ -252,20 +253,67 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
         };
     }, [isPublicPath, ready, sessionUser?.id]);
 
+    useEffect(() => {
+        if (!sessionUser?.id || isPublicPath) {
+            return;
+        }
+
+        const supabase = createBrowserClientSingleton();
+        const channel = supabase
+            .channel(`profile-realtime-${sessionUser.id}`)
+            .on(
+                "postgres_changes",
+                {
+                    event: "UPDATE",
+                    schema: "public",
+                    table: "profiles",
+                    filter: `user_id=eq.${sessionUser.id}`,
+                },
+                () => {
+                    void scheduleBackgroundSync({ pullSnapshot: true });
+                },
+            )
+            .subscribe();
+
+        return () => {
+            void supabase.removeChannel(channel);
+        };
+    }, [isPublicPath, sessionUser?.id]);
+
     const shouldBlock = Boolean(pathname && !isPublicPath && (!authResolved || !ready));
-    if (shouldBlock) {
+
+    useEffect(() => {
+        if (!shouldBlock) {
+            const hideTimeoutId = window.setTimeout(() => {
+                setShowBlockingOverlay(false);
+            }, 0);
+            return () => {
+                window.clearTimeout(hideTimeoutId);
+            };
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            setShowBlockingOverlay(true);
+        }, 700);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
+    }, [shouldBlock]);
+
+    if (shouldBlock && showBlockingOverlay) {
         return (
             <div className="fixed inset-0 z-[140] flex items-center justify-center bg-stone-950/70 px-6 backdrop-blur-xl">
                 <div className="w-full max-w-md rounded-[2rem] border border-white/10 bg-white/95 p-8 text-center shadow-2xl">
                     <h2 className="font-newsreader text-4xl text-stone-900">
-                        {phase === "error" ? "Sync blocked" : authResolved ? "Preparing your data" : "Checking your session"}
+                        {phase === "error" ? "同步受阻" : authResolved ? "正在同步数据" : "正在检查登录状态"}
                     </h2>
                     <p className="mt-4 text-sm text-stone-600">
                         {!authResolved
-                            ? "We are checking the local session on this device before opening your learning space."
+                            ? "正在检查当前设备的登录会话。"
                             : phase === "error"
-                            ? error || "We could not sync your account data."
-                            : "We are restoring your account from Supabase before the app becomes interactive."}
+                            ? error || "暂时无法完成账户同步。"
+                            : "正在恢复你的云端数据，请稍候。"}
                     </p>
                     {phase === "error" ? (
                         <div className="mt-6 flex justify-center gap-3">
