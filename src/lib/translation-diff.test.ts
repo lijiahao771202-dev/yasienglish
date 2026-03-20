@@ -13,7 +13,7 @@ describe("buildTranslationHighlights", () => {
                 kind: "关键改错",
                 before: "the",
                 after: "my lost",
-                note: "这里需要替换成更准确的表达。",
+                note: "将“the”改为“my lost”。这里调整了限定词搭配，让名词表达更自然。",
             },
         ]);
     });
@@ -24,7 +24,7 @@ describe("buildTranslationHighlights", () => {
                 kind: "缺失内容",
                 before: "未写出",
                 after: "at the cinema",
-                note: "这部分补上后意思才完整。",
+                note: "补上“at the cinema”后，句子信息更完整。",
             },
         ]);
     });

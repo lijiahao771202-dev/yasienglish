@@ -18,6 +18,7 @@ describe("TranslationAnalysisJourney", () => {
                     },
                 ]}
                 userTranslation="It depend of your schedule."
+                correctionTargetText="It really depends on your schedule."
                 improvedVersionNode={<span>It really depends on your schedule.</span>}
                 referenceSentenceNode={<span>&ldquo;It depends on your schedule.&rdquo;</span>}
                 isGeneratingGrammar={false}
@@ -40,13 +41,15 @@ describe("TranslationAnalysisJourney", () => {
 
         expect(html).toContain("Step 1");
         expect(html).toContain("先看错在哪");
+        expect(html).toContain("内容纠错");
+        expect(html).toContain("地道表达");
+        expect(html).toContain("depends on your schedule");
         expect(html).toContain("Step 2");
-        expect(html).toContain("改成什么");
-        expect(html).toContain("Step 3");
+        expect(html).not.toContain("改成什么");
         expect(html).toContain("参考句");
+        expect(html).toContain("Step 3");
         expect(html).toContain("生成语法分析");
         expect(html).not.toContain("主干");
-        expect(html).toContain("Step 4");
         expect(html).toContain("完整解析");
         expect(html).toContain("生成完整解析");
         expect(html).not.toContain("完整说明");
@@ -58,6 +61,7 @@ describe("TranslationAnalysisJourney", () => {
                 analysisLead="这题核心结构已经对了，主要是表达不够自然。"
                 analysisHighlights={[]}
                 userTranslation="It is okay."
+                correctionTargetText="It is perfectly fine."
                 improvedVersionNode={null}
                 referenceSentenceNode={<span>&ldquo;It is perfectly fine.&rdquo;</span>}
                 isGeneratingGrammar={false}
@@ -86,6 +90,8 @@ describe("TranslationAnalysisJourney", () => {
         expect(html).toContain("重新生成完整解析");
         expect(html).toContain("收起详情");
         expect(html).toContain("完整解析生成失败");
-        expect(html).not.toContain("Step 2");
+        expect(html).toContain("Step 2");
+        expect(html).not.toContain("改成什么");
+        expect(html).toContain("It is perfectly fine.");
     });
 });

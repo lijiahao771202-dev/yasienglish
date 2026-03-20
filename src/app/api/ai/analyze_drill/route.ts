@@ -110,10 +110,10 @@ export async function POST(req: NextRequest) {
                     "example_en": "对应英文句子",
                     "tip_cn": "怎么套这个模板"
                   },
-                  "memory_hook_cn": "一句很短的记忆法"${teaching_mode ? `,
+                  "memory_hook_cn": "一句很短的记忆法",
                   "error_analysis": [
-                    { "error": "用户写错的部分", "correction": "正确写法", "rule": "语法规则解释", "tip": "记忆技巧" }
-                  ],
+                    { "error": "用户原句中的问题片段", "correction": "建议替换后的表达", "rule": "为什么这样替换（聚焦搭配/语义/语气）", "tip": "一句简短记忆法" }
+                  ]${teaching_mode ? `,
                   "similar_patterns": [
                     { "chinese": "类似中文句子", "english": "对应英文翻译", "point": "这个句型的要点" }
                   ]` : ""}
@@ -146,10 +146,10 @@ export async function POST(req: NextRequest) {
                 Output JSON only:
                 {
                   "feedback": ["一条简短中文点评", "一条简短中文修改建议"],
-                  "improved_version": "更自然的改写版本"${teaching_mode ? `,
+                  "improved_version": "更自然的改写版本",
                   "error_analysis": [
-                    { "error": "用户写错的部分", "correction": "正确写法", "rule": "语法规则解释", "tip": "记忆技巧" }
-                  ],
+                    { "error": "用户原句中的问题片段", "correction": "建议替换后的表达", "rule": "为什么这样替换（聚焦搭配/语义/语气）", "tip": "一句简短记忆法" }
+                  ]${teaching_mode ? `,
                   "similar_patterns": [
                     { "chinese": "类似中文句子", "english": "对应英文翻译", "point": "这个句型的要点" }
                   ]` : ""}

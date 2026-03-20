@@ -4174,8 +4174,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         onClick={(e) => handleWordClick(e, word, text)}
                         className={cn(
                             "cursor-pointer rounded-lg px-1 py-0.5 transition-all duration-200",
-                            "hover:bg-indigo-100/80 hover:text-indigo-800",
-                            isActive ? "bg-indigo-100 text-indigo-800 ring-1 ring-indigo-200" : "text-indigo-900"
+                            "hover:bg-stone-100/80 hover:text-stone-900",
+                            isActive ? "bg-stone-100 text-stone-900 ring-1 ring-stone-200" : "text-stone-800"
                         )}
                     >
                         {word}
@@ -4397,7 +4397,20 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 });
         }
 
-        return buildTranslationHighlights(userTranslation, drillData.reference_english);
+        if (drillFeedback.error_analysis && drillFeedback.error_analysis.length > 0) {
+            return drillFeedback.error_analysis.slice(0, 3).map((err) => ({
+                kind: "关键改错",
+                before: err.error,
+                after: err.correction,
+                note: err.rule || "这里做了表达优化。",
+                tip: err.tip || "",
+            }));
+        }
+
+        return buildTranslationHighlights(
+            userTranslation,
+            drillFeedback.improved_version || drillData.reference_english,
+        );
     };
 
     const getAnalysisLead = () => {
@@ -6525,6 +6538,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             analysisLead={analysisLead}
                                                                             analysisHighlights={analysisHighlights}
                                                                             userTranslation={userTranslation}
+                                                                            correctionTargetText={drillFeedback.improved_version || drillData.reference_english}
                                                                             improvedVersionNode={drillFeedback.improved_version ? (
                                                                                 <>{renderInteractiveCoachText(drillFeedback.improved_version)}</>
                                                                             ) : null}

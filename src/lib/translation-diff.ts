@@ -5,6 +5,35 @@ export interface TranslationHighlight {
     before: string;
     after: string;
     note: string;
+    tip?: string;
+}
+
+const PREPOSITIONS = new Set([
+    "about", "at", "by", "for", "from", "in", "into", "of", "on", "to", "with", "over", "under", "through", "between",
+]);
+
+function inferReplacementHint(before: string, after: string): string {
+    const beforeTokens = tokenizeForComparison(before);
+    const afterTokens = tokenizeForComparison(after);
+    const allTokens = [...beforeTokens, ...afterTokens];
+
+    if (allTokens.some((token) => PREPOSITIONS.has(token))) {
+        return "这里调整了介词或固定搭配，用法更符合英语习惯。";
+    }
+
+    const hasArticleShift =
+        beforeTokens.some((token) => token === "a" || token === "an" || token === "the") ||
+        afterTokens.some((token) => token === "a" || token === "an" || token === "the");
+    if (hasArticleShift) {
+        return "这里调整了限定词搭配，让名词表达更自然。";
+    }
+
+    const hasVerbFormShift = allTokens.some((token) => /(ed|ing|s)$/.test(token));
+    if (hasVerbFormShift) {
+        return "这里调整了动词或词形，使句子更符合语法和语感。";
+    }
+
+    return "这里换成了更地道、更常见的表达方式。";
 }
 
 function normalizeToken(token: string) {
@@ -51,14 +80,16 @@ export function buildTranslationHighlights(userText: string, targetText: string,
                 kind: correction ? "关键改错" : "多余表达",
                 before: currentValue,
                 after: correction || "删除这部分",
-                note: correction ? "这里需要替换成更准确的表达。" : "这部分在标准表达里不需要。",
+                note: correction
+                    ? `将“${currentValue}”改为“${correction}”。${inferReplacementHint(currentValue, correction)}`
+                    : `“${currentValue}”在这里语义重复或不自然，建议删除。`,
             });
         } else if (part.added) {
             highlights.push({
                 kind: "缺失内容",
                 before: "未写出",
                 after: currentValue,
-                note: "这部分补上后意思才完整。",
+                note: `补上“${currentValue}”后，句子信息更完整。`,
             });
         }
 
