@@ -18,34 +18,38 @@ export function PresetAvatar({
 
     return (
         <div
-            className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-[36%] ${className}`}
+            className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-full ${className}`}
             style={{
                 width: size,
                 height: size,
-                background: `linear-gradient(145deg, ${preset.baseFrom}, ${preset.baseTo})`,
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.78), 0 18px 32px -20px rgba(60, 44, 31, 0.28)",
+                background: `linear-gradient(148deg, ${preset.gradientFrom}, ${preset.gradientTo})`,
+                boxShadow:
+                    "inset 0 1px 0 rgba(255,255,255,0.85), inset 0 -10px 16px rgba(30,25,40,0.14), 0 14px 24px -18px rgba(34,24,43,0.35)",
             }}
         >
             <div
-                className="absolute inset-[10%] rounded-[32%] border border-white/35"
+                className="absolute inset-[5%] rounded-full border"
                 style={{
-                    background: `radial-gradient(circle at 30% 20%, ${preset.glow}, transparent 56%)`,
+                    borderColor: preset.ring,
+                    background: `radial-gradient(82% 72% at 28% 22%, ${preset.aura}, transparent 70%)`,
                 }}
             />
             <div
-                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                className="absolute left-[20%] top-[24%] rounded-full"
                 style={{
-                    width: size * 0.72,
-                    height: size * 0.72,
-                    background: "rgba(255,255,255,0.32)",
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.75)",
+                    width: size * 0.16,
+                    height: size * 0.16,
+                    background: "rgba(255,255,255,0.88)",
+                    boxShadow: "0 0 12px rgba(255,255,255,0.65)",
                 }}
             />
             <span
                 className="relative z-10 select-none leading-none"
                 style={{
-                    fontSize: size * 0.48,
-                    filter: "drop-shadow(0 8px 16px rgba(60, 44, 31, 0.16))",
+                    fontSize: size * 0.62,
+                    lineHeight: 1,
+                    transform: "translateY(2%)",
+                    filter: "drop-shadow(0 4px 10px rgba(20,16,28,0.2))",
                 }}
                 aria-hidden="true"
             >

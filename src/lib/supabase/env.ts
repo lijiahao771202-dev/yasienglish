@@ -29,3 +29,10 @@ export function getSupabasePublishableKey() {
         "Missing required environment variable: NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY",
     );
 }
+
+export function getSupabaseServiceRoleKey() {
+    const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (serviceRole) return serviceRole;
+
+    throw new Error("Missing required environment variable: SUPABASE_SERVICE_ROLE_KEY");
+}

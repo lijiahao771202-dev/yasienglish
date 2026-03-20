@@ -1,8 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 
-type ThemeId = 'warm' | 'sunlight' | 'vintage' | 'green' | 'cool' | 'mono' | 'dark' | 'navy' | 'coal';
+type ThemeId = 'welcome' | 'warm' | 'sunlight' | 'vintage' | 'green' | 'cool' | 'mono' | 'dark' | 'navy' | 'coal';
 type FontId = 'serif' | 'sans' | 'mono' | 'merriweather' | 'lora' | 'inter' | 'roboto-mono' | 'libre-baskerville' | 'source-serif' | 'work-sans' | 'comic';
 type FontSize = 'text-base' | 'text-lg' | 'text-xl' | 'text-2xl';
 
@@ -28,6 +28,10 @@ interface ReadingSettingsContextType extends ReadingSettings {
 const ReadingSettingsContext = createContext<ReadingSettingsContextType | undefined>(undefined);
 
 const THEMES = [
+    {
+        id: 'welcome',
+        class: 'bg-[linear-gradient(180deg,#8fa0de_0%,#a8b5e8_18%,#d5d9f3_42%,#d9dcf7_60%,#c8d4f3_74%,#b8c9eb_100%)]',
+    },
     { id: 'warm', class: 'bg-gradient-to-br from-orange-50 via-white to-rose-50' },
     {
         id: 'sunlight',
@@ -58,30 +62,31 @@ const FONTS = {
 };
 
 export function ReadingSettingsProvider({ children }: { children: React.ReactNode }) {
-    const [theme, setTheme] = useState<ThemeId>('warm');
-    const [font, setFont] = useState<FontId>('serif');
-    const [fontSize, setFontSize] = useState<FontSize>('text-xl');
-    const [isFocusMode, setIsFocusMode] = useState(false);
-    const [isBionicMode, setIsBionicMode] = useState(false);
-    const [mounted, setMounted] = useState(false);
-
-    useEffect(() => {
-        // Load settings from localStorage
-        const storedTheme = localStorage.getItem('reading_theme') as ThemeId;
-        const storedFont = localStorage.getItem('reading_font') as FontId;
-        const storedSize = localStorage.getItem('reading_size') as FontSize;
-        const storedFocus = localStorage.getItem('reading_focus_mode');
-
-        if (storedTheme) setTheme(storedTheme);
-        if (storedFont) setFont(storedFont);
-        if (storedSize) setFontSize(storedSize);
-        if (storedFocus === 'true') setIsFocusMode(true);
-        const storedBionic = localStorage.getItem('reading_bionic_mode');
-        if (storedBionic === 'true') setIsBionicMode(true);
-
-        setMounted(true);
-    }, []);
-
+    const [theme, setTheme] = useState<ThemeId>(() => {
+        if (typeof window === "undefined") return 'warm';
+        const storedTheme = localStorage.getItem('reading_theme');
+        return THEMES.some((item) => item.id === storedTheme) ? (storedTheme as ThemeId) : 'warm';
+    });
+    const [font, setFont] = useState<FontId>(() => {
+        if (typeof window === "undefined") return 'serif';
+        const storedFont = localStorage.getItem('reading_font');
+        return storedFont && storedFont in FONTS ? (storedFont as FontId) : 'serif';
+    });
+    const [fontSize, setFontSize] = useState<FontSize>(() => {
+        if (typeof window === "undefined") return 'text-xl';
+        const storedSize = localStorage.getItem('reading_size');
+        return storedSize === 'text-base' || storedSize === 'text-lg' || storedSize === 'text-xl' || storedSize === 'text-2xl'
+            ? storedSize
+            : 'text-xl';
+    });
+    const [isFocusMode, setIsFocusMode] = useState<boolean>(() => {
+        if (typeof window === "undefined") return false;
+        return localStorage.getItem('reading_focus_mode') === 'true';
+    });
+    const [isBionicMode, setIsBionicMode] = useState<boolean>(() => {
+        if (typeof window === "undefined") return false;
+        return localStorage.getItem('reading_bionic_mode') === 'true';
+    });
     const updateTheme = (newTheme: ThemeId) => {
         setTheme(newTheme);
         localStorage.setItem('reading_theme', newTheme);
@@ -128,9 +133,7 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
             fontClass: FONTS[font],
             fontSizeClass: fontSize
         }}>
-            <div className={mounted ? "" : "invisible"}>
-                {children}
-            </div>
+            {children}
         </ReadingSettingsContext.Provider>
     );
 }

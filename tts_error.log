@@ -271,3 +271,29 @@
     at async handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:447:24)
     at async requestHandlerImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:496:13)
     at async Server.requestListener (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/start-server.js:226:13)
+[2026-03-19T18:21:09.000Z] Step: Init | Error: Unexpected end of JSON input | Stack: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at parseJSONFromBytes (node:internal/deps/undici/undici:5731:19)
+    at successSteps (node:internal/deps/undici/undici:5712:27)
+    at consumeBody (node:internal/deps/undici/undici:5718:9)
+    at NextRequest.json (node:internal/deps/undici/undici:5658:18)
+    at POST (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__a5a854a8._.js:103:79)
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:80:14)
+    at AppRouteRouteModule.do (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37945)
+    at /Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47941
+    at /Users/lijiahao/yasi/node_modules/next/dist/server/lib/trace/tracer.js:185:36
+    at NoopContextManager.with (/Users/lijiahao/yasi/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/Users/lijiahao/yasi/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NoopTracer.startActiveSpan (/Users/lijiahao/yasi/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18093)
+    at ProxyTracer.startActiveSpan (/Users/lijiahao/yasi/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:18854)
+    at /Users/lijiahao/yasi/node_modules/next/dist/server/lib/trace/tracer.js:154:103
+    at NoopContextManager.with (/Users/lijiahao/yasi/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:7062)
+    at ContextAPI.with (/Users/lijiahao/yasi/node_modules/next/dist/compiled/@opentelemetry/api/index.js:1:518)
+    at NextTracerImpl.trace (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/trace/tracer.js:154:28)
+    at /Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:47780
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)
+    at /Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45275
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)
+    at /Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45232
+    at AsyncLocalStorage.run (node:internal/async_local_storage/async_hooks:91:14)
+    at AppRouteRouteModule.handle (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45186)

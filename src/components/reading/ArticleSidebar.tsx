@@ -9,9 +9,10 @@ interface ArticleSidebarProps {
     onSelect: (url: string) => void;
     isOpen: boolean;
     setIsOpen: (isOpen: boolean) => void;
+    onNavigateBattle?: () => void;
 }
 
-export function ArticleSidebar({ articles, currentUrl, onSelect, isOpen, setIsOpen }: ArticleSidebarProps) {
+export function ArticleSidebar({ articles, currentUrl, onSelect, isOpen, setIsOpen, onNavigateBattle }: ArticleSidebarProps) {
     const { readArticleUrls } = useUserStore();
 
     return (
@@ -50,10 +51,20 @@ export function ArticleSidebar({ articles, currentUrl, onSelect, isOpen, setIsOp
 
                 {/* Navigation Links */}
                 <div className="px-4 py-3 border-b border-stone-200/50">
-                    <a href="/battle" className="w-full flex items-center justify-center gap-2 p-2 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors text-sm font-medium border border-indigo-100">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (onNavigateBattle) {
+                                onNavigateBattle();
+                                return;
+                            }
+                            window.location.href = "/battle";
+                        }}
+                        className="w-full flex items-center justify-center gap-2 p-2 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors text-sm font-medium border border-indigo-100"
+                    >
                         <Sword className="w-4 h-4" />
                         Battle
-                    </a>
+                    </button>
                 </div>
 
                 {/* Article List */}
