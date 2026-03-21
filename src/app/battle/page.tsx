@@ -290,7 +290,7 @@ const ITEM_ATLAS = [
         effect: "刷新当前题，不结算该题",
         consume: "点击刷新按钮时消耗 1 张",
         refund: "无自动返还",
-        modes: "Listening + Dictation",
+        modes: "Listening + Dictation + Translation",
     },
 ] as const;
 
@@ -318,9 +318,9 @@ export default function BattlePage() {
     const router = useRouter();
     const sessionUser = useAuthSessionUser();
     const [activeDrill, setActiveDrill] = useState<BattleDrillSelection | null>(null);
-    const [eloRating, setEloRating] = useState(600); // Translation
-    const [listeningElo, setListeningElo] = useState(600); // Listening
-    const [dictationElo, setDictationElo] = useState(600); // Dictation
+    const [eloRating, setEloRating] = useState(400); // Translation
+    const [listeningElo, setListeningElo] = useState(400); // Listening
+    const [dictationElo, setDictationElo] = useState(400); // Dictation
     const [streak, setStreak] = useState(0);
     const [battleMode, setBattleMode] = useState<BattleMode>('listening');
     const [showGuide, setShowGuide] = useState(false);
@@ -332,9 +332,9 @@ export default function BattlePage() {
     const loadProfile = useCallback(() => {
         db.user_profile.orderBy('id').first().then(profile => {
             if (profile) {
-                setEloRating(profile.elo_rating || 600);
-                setListeningElo(profile.listening_elo || 600);
-                setDictationElo(profile.dictation_elo ?? profile.listening_elo ?? 600);
+                setEloRating(profile.elo_rating || 400);
+                setListeningElo(profile.listening_elo || 400);
+                setDictationElo(profile.dictation_elo ?? profile.listening_elo ?? 400);
                 setStreak(profile.streak_count);
             }
         });
@@ -900,6 +900,199 @@ export default function BattlePage() {
                                                         </tbody>
                                                     </table>
                                                 </div>
+                                            </div>
+                                        )}
+
+                                        {(activeGuideSection === "listening" || activeGuideSection === "dictation" || activeGuideSection === "elo" || activeGuideSection === "overview") && (
+                                            <div className="rounded-2xl border border-sky-200/80 bg-[linear-gradient(165deg,rgba(224,242,254,0.7),rgba(255,255,255,0.95))] p-4 shadow-[0_14px_28px_rgba(2,132,199,0.12)]">
+                                                <div className="mb-3 flex items-center gap-2">
+                                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-sky-500 text-white">
+                                                        <Headphones className="h-4 w-4" />
+                                                    </span>
+                                                    <p className="text-sm font-black tracking-[0.14em] uppercase text-sky-700">Listening / Dictation 难度细表（词量与长度）</p>
+                                                </div>
+                                                <div className="overflow-x-auto rounded-xl border border-sky-100 bg-white/90">
+                                                    <table className="min-w-full text-sm">
+                                                        <thead className="bg-sky-50/90 text-sky-800">
+                                                            <tr>
+                                                                <th className="px-3 py-2 text-left font-bold">Elo 区间</th>
+                                                                <th className="px-3 py-2 text-left font-bold">段位</th>
+                                                                <th className="px-3 py-2 text-left font-bold">词汇量参考</th>
+                                                                <th className="px-3 py-2 text-left font-bold">题目词数</th>
+                                                                <th className="px-3 py-2 text-left font-bold">评分词数</th>
+                                                                <th className="px-3 py-2 text-left font-bold">音频风格</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {LISTENING_DIFFICULTY_DETAIL.map((row, index) => (
+                                                                <tr key={row.elo} className={cn(index % 2 === 0 ? "bg-white" : "bg-sky-50/30")}>
+                                                                    <td className="border-t border-sky-100 px-3 py-2 font-semibold text-stone-800">{row.elo}</td>
+                                                                    <td className="border-t border-sky-100 px-3 py-2 text-stone-700">{row.tier}</td>
+                                                                    <td className="border-t border-sky-100 px-3 py-2 text-stone-700">{row.vocab}</td>
+                                                                    <td className="border-t border-sky-100 px-3 py-2 text-stone-700">{row.promptRange}</td>
+                                                                    <td className="border-t border-sky-100 px-3 py-2 text-stone-700">{row.validateRange}</td>
+                                                                    <td className="border-t border-sky-100 px-3 py-2 text-stone-600">{row.audio}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                                <p className="mt-3 rounded-xl border border-sky-200/80 bg-sky-50/70 px-3 py-2 text-xs leading-6 text-sky-900">
+                                                    Dictation 与 Listening 共用听力难度梯度，但评分目标不同：Listening 看英语复述质量，Dictation 看中文语义重建完整度。
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {(activeGuideSection === "translation" || activeGuideSection === "elo" || activeGuideSection === "overview") && (
+                                            <div className="rounded-2xl border border-amber-200/80 bg-[linear-gradient(165deg,rgba(255,237,213,0.7),rgba(255,255,255,0.95))] p-4 shadow-[0_14px_28px_rgba(217,119,6,0.12)]">
+                                                <div className="mb-3 flex items-center gap-2">
+                                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500 text-white">
+                                                        <Feather className="h-4 w-4" />
+                                                    </span>
+                                                    <p className="text-sm font-black tracking-[0.14em] uppercase text-amber-700">Translation 难度细表（句长与语法）</p>
+                                                </div>
+                                                <div className="overflow-x-auto rounded-xl border border-amber-100 bg-white/90">
+                                                    <table className="min-w-full text-sm">
+                                                        <thead className="bg-amber-50/90 text-amber-800">
+                                                            <tr>
+                                                                <th className="px-3 py-2 text-left font-bold">Elo 区间</th>
+                                                                <th className="px-3 py-2 text-left font-bold">段位</th>
+                                                                <th className="px-3 py-2 text-left font-bold">句长范围</th>
+                                                                <th className="px-3 py-2 text-left font-bold">语法复杂度</th>
+                                                                <th className="px-3 py-2 text-left font-bold">词汇风格</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {TRANSLATION_DIFFICULTY_DETAIL.map((row, index) => (
+                                                                <tr key={row.elo} className={cn(index % 2 === 0 ? "bg-white" : "bg-amber-50/30")}>
+                                                                    <td className="border-t border-amber-100 px-3 py-2 font-semibold text-stone-800">{row.elo}</td>
+                                                                    <td className="border-t border-amber-100 px-3 py-2 text-stone-700">{row.tier}</td>
+                                                                    <td className="border-t border-amber-100 px-3 py-2 text-stone-700">{row.wordRange}</td>
+                                                                    <td className="border-t border-amber-100 px-3 py-2 text-stone-700">{row.syntax}</td>
+                                                                    <td className="border-t border-amber-100 px-3 py-2 text-stone-600">{row.vocab}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {(activeGuideSection === "items" || activeGuideSection === "overview") && (
+                                            <div className="rounded-2xl border border-fuchsia-200/80 bg-[linear-gradient(165deg,rgba(250,232,255,0.68),rgba(255,255,255,0.95))] p-4 shadow-[0_14px_28px_rgba(192,38,211,0.12)]">
+                                                <div className="mb-3 flex items-center gap-2">
+                                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-fuchsia-500 text-white">
+                                                        <Gift className="h-4 w-4" />
+                                                    </span>
+                                                    <p className="text-sm font-black tracking-[0.14em] uppercase text-fuchsia-700">道具图鉴（作用 / 消耗 / 返还）</p>
+                                                </div>
+                                                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                                                    {ITEM_ATLAS.map((item) => (
+                                                        <div key={item.id} className="rounded-2xl border border-fuchsia-100/80 bg-white/85 p-3 shadow-[0_10px_22px_rgba(167,139,250,0.12)]">
+                                                            <div className="mb-2 flex items-start gap-2">
+                                                                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-fuchsia-200/80 bg-fuchsia-50 text-xl">
+                                                                    {item.icon}
+                                                                </span>
+                                                                <div className="min-w-0">
+                                                                    <p className="truncate text-sm font-black text-stone-900">{item.name}</p>
+                                                                    <p className="text-xs font-semibold text-fuchsia-700">售价：{item.price} 金币</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="space-y-1.5 text-xs leading-5 text-stone-700">
+                                                                <p><span className="font-bold text-stone-900">作用：</span>{item.effect}</p>
+                                                                <p><span className="font-bold text-stone-900">消耗：</span>{item.consume}</p>
+                                                                <p><span className="font-bold text-stone-900">返还：</span>{item.refund}</p>
+                                                            </div>
+                                                            <p className="mt-2 inline-flex rounded-full border border-fuchsia-200 bg-fuchsia-50 px-2 py-0.5 text-[11px] font-bold text-fuchsia-700">
+                                                                可用模式：{item.modes}
+                                                            </p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {(activeGuideSection === "drops" || activeGuideSection === "overview") && (
+                                            <div className="space-y-4 rounded-2xl border border-rose-200/80 bg-[linear-gradient(165deg,rgba(255,228,230,0.68),rgba(255,255,255,0.95))] p-4 shadow-[0_14px_28px_rgba(225,29,72,0.12)]">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-rose-500 text-white">
+                                                        <Coins className="h-4 w-4" />
+                                                    </span>
+                                                    <p className="text-sm font-black tracking-[0.14em] uppercase text-rose-700">奖励与掉落机制</p>
+                                                    <span className="ml-auto rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">Listening: 有奖励/掉落</span>
+                                                    <span className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[11px] font-bold text-purple-700">Dictation: 有奖励/掉落</span>
+                                                </div>
+
+                                                <div className="overflow-x-auto rounded-xl border border-rose-100 bg-white/90">
+                                                    <table className="min-w-full text-sm">
+                                                        <thead className="bg-rose-50/90 text-rose-800">
+                                                            <tr>
+                                                                <th className="px-3 py-2 text-left font-bold">奖励来源</th>
+                                                                <th className="px-3 py-2 text-left font-bold">触发条件</th>
+                                                                <th className="px-3 py-2 text-left font-bold">奖励内容</th>
+                                                                <th className="px-3 py-2 text-left font-bold">适用模式</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {REWARD_RULES.map((rule, index) => (
+                                                                <tr key={rule.source} className={cn(index % 2 === 0 ? "bg-white" : "bg-rose-50/30")}>
+                                                                    <td className="border-t border-rose-100 px-3 py-2 font-semibold text-stone-800">{rule.source}</td>
+                                                                    <td className="border-t border-rose-100 px-3 py-2 text-stone-700">{rule.trigger}</td>
+                                                                    <td className="border-t border-rose-100 px-3 py-2 text-stone-700">{rule.detail}</td>
+                                                                    <td className="border-t border-rose-100 px-3 py-2 text-stone-600">{rule.mode}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                <div className="overflow-x-auto rounded-xl border border-rose-100 bg-white/90">
+                                                    <table className="min-w-full text-sm">
+                                                        <thead className="bg-rose-50/90 text-rose-800">
+                                                            <tr>
+                                                                <th className="px-3 py-2 text-left font-bold">掉落来源</th>
+                                                                <th className="px-3 py-2 text-left font-bold">触发条件</th>
+                                                                <th className="px-3 py-2 text-left font-bold">掉落内容</th>
+                                                                <th className="px-3 py-2 text-left font-bold">适用模式</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {DROP_RULES.map((rule, index) => (
+                                                                <tr key={rule.source} className={cn(index % 2 === 0 ? "bg-white" : "bg-rose-50/30")}>
+                                                                    <td className="border-t border-rose-100 px-3 py-2 font-semibold text-stone-800">{rule.source}</td>
+                                                                    <td className="border-t border-rose-100 px-3 py-2 text-stone-700">{rule.trigger}</td>
+                                                                    <td className="border-t border-rose-100 px-3 py-2 text-stone-700">{rule.reward}</td>
+                                                                    <td className="border-t border-rose-100 px-3 py-2 text-stone-600">{rule.mode}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                <div className="overflow-x-auto rounded-xl border border-rose-100 bg-white/90">
+                                                    <table className="min-w-full text-sm">
+                                                        <thead className="bg-rose-50/90 text-rose-800">
+                                                            <tr>
+                                                                <th className="px-3 py-2 text-left font-bold">抽卡池</th>
+                                                                <th className="px-3 py-2 text-left font-bold">可能奖励</th>
+                                                                <th className="px-3 py-2 text-left font-bold">权重</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {GACHA_POOL_TABLE.map((row, index) => (
+                                                                <tr key={row.pool} className={cn(index % 2 === 0 ? "bg-white" : "bg-rose-50/30")}>
+                                                                    <td className="border-t border-rose-100 px-3 py-2 font-semibold text-stone-800">{row.pool}</td>
+                                                                    <td className="border-t border-rose-100 px-3 py-2 text-stone-700">{row.reward}</td>
+                                                                    <td className="border-t border-rose-100 px-3 py-2 text-stone-600">{row.weight}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                <p className="rounded-xl border border-rose-200/80 bg-rose-50/70 px-3 py-2 text-xs leading-6 text-rose-900">
+                                                    抽卡事件目前仅在 Translation 触发。Listening 与 Dictation 仍有完整金币结算、暴击、隐藏赏金和开题掉落，只是没有抽卡池。
+                                                </p>
                                             </div>
                                         )}
 

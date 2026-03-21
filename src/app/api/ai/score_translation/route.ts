@@ -14,6 +14,61 @@ type ScoreCompletion = {
     }>;
 };
 
+const DICTATION_PUNCTUATION_HINT_RE = /(标点|逗号|句号|顿号|分号|冒号|引号|问号|感叹号|括号|省略号|破折号|书名号|符号|断句)/;
+const DICTATION_SEMANTIC_HINT_RE = /(遗漏|缺失|漏掉|误解|错误|偏差|不完整|关键信息|主语|动作|宾语|否定|数字|时间|地点|因果|逻辑|语义)/;
+
+function normalizeDictationText(text: string) {
+    return text
+        .normalize("NFKC")
+        .replace(/[\p{P}\p{S}\s]+/gu, "")
+        .trim();
+}
+
+function isDictationPunctuationOnlyDifference(userAnswer: string, goldAnswer: string) {
+    if (!userAnswer || !goldAnswer) return false;
+    return normalizeDictationText(userAnswer) === normalizeDictationText(goldAnswer);
+}
+
+function collectDictationIssueText(payload: Record<string, unknown>) {
+    const chunks: string[] = [];
+
+    if (typeof payload.judge_reasoning === "string") {
+        chunks.push(payload.judge_reasoning);
+    }
+
+    const feedback = payload.feedback;
+    if (Array.isArray(feedback)) {
+        for (const item of feedback) {
+            if (typeof item === "string") chunks.push(item);
+        }
+    } else if (feedback && typeof feedback === "object") {
+        const feedbackRecord = feedback as Record<string, unknown>;
+        const tips = feedbackRecord.dictation_tips;
+        if (Array.isArray(tips)) {
+            for (const tip of tips) {
+                if (typeof tip === "string") chunks.push(tip);
+            }
+        }
+        if (typeof feedbackRecord.encouragement === "string") {
+            chunks.push(feedbackRecord.encouragement);
+        }
+    }
+
+    const errorAnalysis = payload.error_analysis;
+    if (Array.isArray(errorAnalysis)) {
+        for (const row of errorAnalysis) {
+            if (!row || typeof row !== "object") continue;
+            const rowRecord = row as Record<string, unknown>;
+            for (const key of ["error", "correction", "rule", "tip"] as const) {
+                const value = rowRecord[key];
+                if (typeof value === "string") chunks.push(value);
+            }
+        }
+    }
+
+    return chunks.join(" ");
+}
+
 export async function POST(req: NextRequest) {
     try {
         const { user_translation, reference_english, original_chinese, current_elo, mode = "translation", is_reverse = false, input_source = 'keyboard', teaching_mode = false } = await req.json();
@@ -121,8 +176,9 @@ export async function POST(req: NextRequest) {
             1. Evaluate semantic fidelity first, literal wording second.
             2. Accept reasonable paraphrases/synonyms in Chinese.
             3. Penalize missing key information: subject, action, object, negation, numbers, time/place, causal relation.
-            4. Minor punctuation/style issues should have little impact.
-            5. If core meaning is mostly complete, score should be at least 6.
+            4. Punctuation differences MUST NOT reduce score.
+            5. If only punctuation differs, score MUST be 9.5-10.
+            6. If core meaning is mostly complete, score should be at least 6.
 
             Output language:
             - judge_reasoning and all tips MUST be in Simplified Chinese.
@@ -244,7 +300,35 @@ export async function POST(req: NextRequest) {
         const content = completion.choices[0].message.content;
         if (!content) throw new Error("No content generated");
 
-        const data = JSON.parse(content);
+        const data = JSON.parse(content) as Record<string, unknown>;
+
+        if (mode === "dictation") {
+            const numericScore = typeof data.score === "number" ? data.score : Number(data.score);
+            const issuesText = collectDictationIssueText(data);
+            const punctuationOnlyIssue =
+                DICTATION_PUNCTUATION_HINT_RE.test(issuesText) &&
+                !DICTATION_SEMANTIC_HINT_RE.test(issuesText);
+            const punctuationOnlyDifference = isDictationPunctuationOnlyDifference(
+                typeof user_translation === "string" ? user_translation : "",
+                typeof original_chinese === "string" ? original_chinese : "",
+            );
+
+            if (punctuationOnlyIssue || punctuationOnlyDifference) {
+                data.score = Math.max(Number.isFinite(numericScore) ? numericScore : 0, 9.5);
+                data.judge_reasoning = "核心语义完整；仅标点差异不扣分。";
+                data.feedback = {
+                    dictation_tips: [
+                        "这题关键信息完整，标点只作可读性优化。",
+                        "可在停顿处补逗号或句号，让句子层次更清晰。",
+                    ],
+                    encouragement: "听懂并写对核心意思很棒，继续保持。",
+                };
+                if (Array.isArray(data.error_analysis)) {
+                    data.error_analysis = [];
+                }
+            }
+        }
+
         console.log("[score_translation] Success:", { score: data.score, teaching_mode });
         return NextResponse.json(data);
 

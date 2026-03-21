@@ -15,7 +15,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
-import { getReadingCoinCost, INSUFFICIENT_READING_COINS } from "@/lib/reading-economy";
+import { getReadingCoinCost, INSUFFICIENT_READING_COINS, type ReadingEconomyAction } from "@/lib/reading-economy";
+import { dispatchReadingCoinFx } from "@/lib/reading-coin-fx";
 
 interface ParagraphCardProps {
     text: string;
@@ -216,10 +217,30 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
         );
     };
 
-    const syncReadingBalance = async (payload: unknown) => {
-        const balance = (payload as { readingCoins?: { balance?: unknown } } | null)?.readingCoins?.balance;
-        if (typeof balance !== "number") return;
-        await applyServerProfilePatchToLocal({ reading_coins: balance });
+    const syncReadingBalance = async (payload: unknown, fallbackAction?: ReadingEconomyAction) => {
+        const readingCoins = (payload as {
+            readingCoins?: {
+                balance?: unknown;
+                delta?: unknown;
+                applied?: unknown;
+                action?: unknown;
+            };
+        } | null)?.readingCoins;
+        if (!readingCoins) return;
+
+        if (typeof readingCoins.balance === "number") {
+            await applyServerProfilePatchToLocal({ reading_coins: readingCoins.balance });
+        }
+
+        const delta = Number(readingCoins.delta ?? 0);
+        const action = typeof readingCoins.action === "string"
+            ? readingCoins.action
+            : fallbackAction;
+        const applied = readingCoins.applied !== false;
+
+        if (applied && Number.isFinite(delta) && delta !== 0 && action) {
+            dispatchReadingCoinFx({ delta, action: action as ReadingEconomyAction });
+        }
     };
 
     const readEconomyContext = (action: string, dedupeSuffix?: string | null) => ({
@@ -301,7 +322,7 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                 setReadingCoinHint("阅读币不足，完成阅读或测验可获得阅读币。");
                 return;
             }
-            await syncReadingBalance(data);
+            await syncReadingBalance(data, "analyze_phrase");
             setPhraseAnalysis(data); // Store the full JSON object
         } catch (err) {
             console.error(err);
@@ -371,7 +392,7 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                 setShowTranslation(false);
                 return;
             }
-            await syncReadingBalance(data);
+            await syncReadingBalance(data, "translate");
             setStoreTranslation(text, data.translation);
         } catch (err) {
             console.error(err);
@@ -423,7 +444,7 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                 setShowGrammar(false);
                 return;
             }
-            await syncReadingBalance(data);
+            await syncReadingBalance(data, mode === "deep" ? "grammar_deep" : "grammar_basic");
 
             // If deep mode, merge with existing data if possible, or just set it
             // For simplicity, we just set it. 
@@ -474,6 +495,15 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                 if (Number.isFinite(balanceValue)) {
                     await applyServerProfilePatchToLocal({ reading_coins: balanceValue });
                 }
+            }
+            const readingDeltaHeader = Number(res.headers.get("x-reading-coins-delta") ?? 0);
+            const readingAppliedHeader = res.headers.get("x-reading-coins-applied") === "1";
+            const readingActionHeader = res.headers.get("x-reading-coins-action");
+            if (readingAppliedHeader && Number.isFinite(readingDeltaHeader) && readingDeltaHeader !== 0 && readingActionHeader) {
+                dispatchReadingCoinFx({
+                    delta: readingDeltaHeader,
+                    action: readingActionHeader as ReadingEconomyAction,
+                });
             }
 
             const reader = res.body?.getReader();

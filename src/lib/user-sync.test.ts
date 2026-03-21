@@ -22,8 +22,10 @@ describe("user sync helpers", () => {
         expect(profile.user_id).toBe("user-1");
         expect(profile.elo_rating).toBe(400);
         expect(profile.listening_elo).toBe(400);
+        expect(profile.dictation_elo).toBe(400);
         expect(profile.max_elo).toBe(400);
         expect(profile.listening_max_elo).toBe(400);
+        expect(profile.dictation_max_elo).toBe(400);
         expect(profile.coins).toBe(500);
         expect(profile.inventory).toEqual({
             capsule: 10,
@@ -46,9 +48,13 @@ describe("user sync helpers", () => {
             user_id: "user-1",
             translation_elo: 900,
             listening_elo: 720,
+            dictation_elo: 680,
             streak_count: 4,
+            listening_streak: 2,
+            dictation_streak: 3,
             max_translation_elo: 910,
             max_listening_elo: 730,
+            dictation_max_elo: 740,
             coins: 25,
             inventory: {
                 capsule: 18,
@@ -74,6 +80,8 @@ describe("user sync helpers", () => {
 
         expect(localProfile.elo_rating).toBe(900);
         expect(localProfile.listening_elo).toBe(720);
+        expect(localProfile.dictation_elo).toBe(680);
+        expect(localProfile.dictation_streak).toBe(3);
         expect(localProfile.hints).toBe(18);
         expect(localProfile.username).toBe("Luna");
         expect(localProfile.avatar_preset).toBe("peach-spark");
@@ -89,6 +97,10 @@ describe("user sync helpers", () => {
             username: "Nova",
             avatar_preset: "mint-orbit",
             bio: "Focused and playful.",
+            dictation_elo: 512,
+            dictation_streak: 6,
+            dictation_max_elo: 640,
+            last_practice_at: "2026-03-13T13:00:00.000Z",
             learning_preferences: {
                 target_mode: "vocab",
                 english_level: "C1",
@@ -103,6 +115,10 @@ describe("user sync helpers", () => {
             username: "Nova",
             avatar_preset: "mint-orbit",
             bio: "Focused and playful.",
+            dictation_elo: 512,
+            dictation_streak: 6,
+            dictation_max_elo: 640,
+            last_practice_at: "2026-03-13T13:00:00.000Z",
             learning_preferences: {
                 target_mode: "vocab",
                 english_level: "C1",

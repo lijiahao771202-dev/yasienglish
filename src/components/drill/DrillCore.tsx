@@ -1486,6 +1486,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         eloAfter: number;
         change: number;
         streak: number;
+        coins?: number;
+        inventory?: InventoryState;
+        ownedThemes?: string[];
+        activeTheme?: string | null;
         source?: string;
     }) => {
         const profile = await loadLocalProfile();
@@ -1496,11 +1500,15 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             payload.eloAfter,
         );
 
-        await db.user_profile.update(profile.id, {
+        await saveProfilePatch({
+            coins: payload.coins ?? profile.coins ?? DEFAULT_STARTING_COINS,
+            inventory: payload.inventory ?? profile.inventory,
+            owned_themes: payload.ownedThemes ?? profile.owned_themes,
+            active_theme: payload.activeTheme ?? profile.active_theme,
             dictation_elo: payload.eloAfter,
             dictation_streak: payload.streak,
             dictation_max_elo: nextMaxElo,
-            last_practice: Date.now(),
+            last_practice_at: new Date().toISOString(),
         });
 
         await db.elo_history.add({
@@ -1572,22 +1580,27 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             setStreakCount(0);
                         }
 
-                        loadLocalProfile().then((profile) => {
+                        void loadLocalProfile().then(async (profile) => {
                             if (!profile) return;
                             if (isActiveDictationMode) {
-                                return persistDictationBattle({
+                                await persistDictationBattle({
                                     eloAfter: newElo,
                                     change: -penalty,
                                     streak: 0,
+                                    coins: profile.coins ?? DEFAULT_STARTING_COINS,
+                                    inventory: inventoryRef.current,
+                                    ownedThemes: ownedThemes,
+                                    activeTheme: cosmeticTheme,
                                     source: 'timeout_penalty',
                                 });
+                                return;
                             }
 
                             const maxElo = isActiveListeningMode
                                 ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
                                 : Math.max(profile.max_elo, newElo);
 
-                            return settleBattle({
+                            await settleBattle({
                                 mode: isActiveListeningMode ? 'listening' : 'translation',
                                 eloAfter: newElo,
                                 change: -penalty,
@@ -2517,22 +2530,23 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 setStreakCount(0);
             }
 
-            loadLocalProfile().then((profile) => {
+            void loadLocalProfile().then(async (profile) => {
                 if (!profile) return;
                 if (isDictation) {
-                    return persistDictationBattle({
+                    await persistDictationBattle({
                         eloAfter: newElo,
                         change: -penalty,
                         streak: 0,
                         source: 'roulette_penalty',
                     });
+                    return;
                 }
 
                 const maxElo = isListening
                     ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
                     : Math.max(profile.max_elo, newElo);
 
-                return settleBattle({
+                await settleBattle({
                     mode: isListening ? 'listening' : 'translation',
                     eloAfter: newElo,
                     change: -penalty,
@@ -3587,14 +3601,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             eloAfter: newElo,
                             change,
                             streak: newStreak,
-                            source: learningSessionActive ? 'guided_session' : 'battle',
-                        });
-
-                        await saveProfilePatch({
                             coins: finalCoins,
                             inventory: inventoryRef.current,
-                            owned_themes: ownedThemes,
-                            active_theme: cosmeticTheme,
+                            ownedThemes: ownedThemes,
+                            activeTheme: cosmeticTheme,
+                            source: learningSessionActive ? 'guided_session' : 'battle',
                         });
                     } else {
                         const maxElo = isListening
@@ -4079,6 +4090,27 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message });
         }
     }, []);
+
+    const handleDictationWordLookupTicketConsume = useCallback((action: "lookup" | "deepAnalyze") => {
+        if (!isDictationMode) return true;
+
+        if (getItemCount('vocab_ticket') <= 0) {
+            setIsHintShake(true);
+            setTimeout(() => setIsHintShake(false), 500);
+            openShopForItem('vocab_ticket', '关键词券不足，请先去商场购买');
+            return false;
+        }
+
+        applyEconomyPatch({ itemDelta: { vocab_ticket: -1 } });
+        pushEconomyFx({
+            kind: 'item_consume',
+            itemId: 'vocab_ticket',
+            amount: 1,
+            message: action === "deepAnalyze" ? '已消耗 1 关键词券（Deep Analyze）' : '已消耗 1 关键词券（查词）',
+            source: 'vocab',
+        });
+        return true;
+    }, [applyEconomyPatch, getItemCount, isDictationMode, openShopForItem, pushEconomyFx]);
 
     const handleBlindVisibilityToggle = useCallback(() => {
         if (!isDictationMode) {
@@ -7188,7 +7220,18 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         )}
                     </AnimatePresence>
 
-                    {wordPopup && <WordPopup key="word-popup" popup={wordPopup} onClose={() => setWordPopup(null)} />}
+                    {wordPopup && (
+                        <WordPopup
+                            key="word-popup"
+                            popup={wordPopup}
+                            onClose={() => setWordPopup(null)}
+                            mode="battle"
+                            battleConsumeLookupTicket={isDictationMode ? () => handleDictationWordLookupTicketConsume("lookup") : undefined}
+                            battleConsumeDeepAnalyzeTicket={isDictationMode ? () => handleDictationWordLookupTicketConsume("deepAnalyze") : undefined}
+                            battleLookupCostHint={isDictationMode ? "查词 -1 关键词券，Deep Analyze -1 关键词券。" : "Battle 查词不消耗阅读币。"}
+                            battleInsufficientHint="关键词券不足，请先去商场购买。"
+                        />
+                    )}
                 </motion.div>
 
                 {/* Negotiator Overlay (Crimson Roulette) - Localized */}

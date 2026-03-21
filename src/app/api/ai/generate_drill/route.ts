@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
 
         const snippet = articleContent ? articleContent.slice(0, 3000) : "";
 
-        let currentElo = eloRating || 1200;
+        let currentElo = eloRating || 400;
         if (bossType === "roulette_execution") {
             console.log(`[API] Roulette Execution Detected! Overriding Elo from ${currentElo} to 3200 (MAXIMUM)`);
             currentElo = 3200;

@@ -22,7 +22,12 @@ export async function POST(req: Request) {
             );
         }
 
-        let readingBalance: number | undefined;
+        let readingCoinMutation: {
+            balance: number;
+            delta: number;
+            applied: boolean;
+            action: string;
+        } | null = null;
         const readContext = isReadEconomyContext(economyContext)
             ? {
                 ...economyContext,
@@ -45,7 +50,12 @@ export async function POST(req: Request) {
                     { status: 402 },
                 );
             }
-            readingBalance = charge.balance;
+            readingCoinMutation = {
+                balance: charge.balance,
+                delta: charge.delta,
+                applied: charge.applied,
+                action: charge.action,
+            };
         }
 
         const systemPrompt = `You are an expert English-Chinese translator and tutor.
@@ -89,7 +99,7 @@ Analyze the selected text.
 
         return NextResponse.json({
             ...(result ?? {}),
-            readingCoins: typeof readingBalance === "number" ? { balance: readingBalance } : undefined,
+            readingCoins: readingCoinMutation,
         });
     } catch (error) {
         console.error("Error in analyze-phrase:", error);

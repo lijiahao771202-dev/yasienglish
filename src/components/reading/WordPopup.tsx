@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import { X, Loader2, Book, Volume2, Sparkles, Check, BookPlus } from "lucide-react";
@@ -7,7 +7,8 @@ import { createEmptyCard } from "@/lib/fsrs";
 import { applyServerProfilePatchToLocal, saveVocabulary } from "@/lib/user-repository";
 import { cn } from "@/lib/utils";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
-import { buildWordLookupDedupeKey, INSUFFICIENT_READING_COINS } from "@/lib/reading-economy";
+import { buildWordLookupDedupeKey, INSUFFICIENT_READING_COINS, type ReadingEconomyAction } from "@/lib/reading-economy";
+import { dispatchReadingCoinFx } from "@/lib/reading-coin-fx";
 
 export interface PopupState {
     word: string;
@@ -33,6 +34,11 @@ export interface DefinitionData {
 interface WordPopupProps {
     popup: PopupState;
     onClose: () => void;
+    mode?: "reading" | "battle";
+    battleConsumeLookupTicket?: () => boolean;
+    battleConsumeDeepAnalyzeTicket?: () => boolean;
+    battleLookupCostHint?: string;
+    battleInsufficientHint?: string;
 }
 
 const pronunciationAudioCache = new Map<string, HTMLAudioElement>();
@@ -64,7 +70,15 @@ function playPronunciation(word: string, force = false) {
     audio.play().catch(() => { });
 }
 
-export function WordPopup({ popup, onClose }: WordPopupProps) {
+export function WordPopup({
+    popup,
+    onClose,
+    mode = "reading",
+    battleConsumeLookupTicket,
+    battleConsumeDeepAnalyzeTicket,
+    battleLookupCostHint = "Battle 查词不消耗阅读币。",
+    battleInsufficientHint = "关键词券不足，请先购买。",
+}: WordPopupProps) {
     const sessionUser = useAuthSessionUser();
     const [definition, setDefinition] = useState<DefinitionData | null>(null);
     const [isLoadingDict, setIsLoadingDict] = useState(false);
@@ -74,12 +88,38 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
     const [saveError, setSaveError] = useState<string | null>(null);
     const [readingError, setReadingError] = useState<string | null>(null);
     const popupRef = useRef<HTMLDivElement>(null);
-    const syncReadingBalance = async (balance: unknown) => {
-        if (typeof balance !== "number") return;
-        await applyServerProfilePatchToLocal({
-            reading_coins: balance,
-        });
-    };
+    const isReadingMode = mode === "reading";
+    const syncReadingBalance = useCallback(async (
+        payload: unknown,
+        fallbackAction?: ReadingEconomyAction,
+    ) => {
+        if (!isReadingMode) return;
+        const readingCoins = (payload as {
+            readingCoins?: {
+                balance?: unknown;
+                delta?: unknown;
+                applied?: unknown;
+                action?: unknown;
+            };
+        } | null)?.readingCoins;
+        if (!readingCoins) return;
+
+        if (typeof readingCoins.balance === "number") {
+            await applyServerProfilePatchToLocal({
+                reading_coins: readingCoins.balance,
+            });
+        }
+
+        const delta = Number(readingCoins.delta ?? 0);
+        const action = typeof readingCoins.action === "string"
+            ? readingCoins.action
+            : fallbackAction;
+        const applied = readingCoins.applied !== false;
+
+        if (applied && Number.isFinite(delta) && delta !== 0 && action) {
+            dispatchReadingCoinFx({ delta, action: action as ReadingEconomyAction });
+        }
+    }, [isReadingMode]);
 
     // Initial Load & Dictionary Search
     useEffect(() => {
@@ -120,17 +160,23 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                         articleUrl: popup.articleUrl,
                         word: normalized,
                     });
+                    if (!isReadingMode && battleConsumeLookupTicket && !battleConsumeLookupTicket()) {
+                        setReadingError(battleInsufficientHint);
+                        return null;
+                    }
                     const res = await fetch("/api/dictionary", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             word: normalized,
-                            economyContext: {
-                                scene: "read",
-                                action: "word_lookup",
-                                articleUrl: popup.articleUrl,
-                                dedupeKey: lookupDedupeKey,
-                            },
+                            economyContext: isReadingMode
+                                ? {
+                                    scene: "read",
+                                    action: "word_lookup",
+                                    articleUrl: popup.articleUrl,
+                                    dedupeKey: lookupDedupeKey,
+                                }
+                                : undefined,
                         }),
                         signal: controller.signal,
                     });
@@ -140,7 +186,7 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                         return null;
                     }
                     if (!res.ok || !data?.definition) return null;
-                    await syncReadingBalance(data?.readingCoins?.balance);
+                    await syncReadingBalance(data, "word_lookup");
 
                     const result: DefinitionData = {
                         dictionary_meaning: {
@@ -178,7 +224,7 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
             });
 
         return () => { isMounted = false; };
-    }, [popup.word, popup.articleUrl, sessionUser?.id]); // Re-run if word changes
+    }, [battleConsumeLookupTicket, battleInsufficientHint, isReadingMode, popup.word, popup.articleUrl, sessionUser?.id, syncReadingBalance]); // Re-run if word changes
 
     // Close on click outside
     useEffect(() => {
@@ -195,6 +241,10 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
         setIsLoadingAI(true);
         setReadingError(null);
         try {
+            if (!isReadingMode && battleConsumeDeepAnalyzeTicket && !battleConsumeDeepAnalyzeTicket()) {
+                setReadingError(battleInsufficientHint);
+                return;
+            }
             const dedupeKey = `word_deep:${sessionUser?.id || "anon"}:${(popup.articleUrl || "unknown").toLowerCase()}:${popup.word.trim().toLowerCase()}`;
             const response = await fetch("/api/ai/define", {
                 method: "POST",
@@ -202,12 +252,14 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                 body: JSON.stringify({
                     word: popup.word,
                     context: popup.context,
-                    economyContext: {
-                        scene: "read",
-                        action: "word_deep_analyze",
-                        articleUrl: popup.articleUrl,
-                        dedupeKey,
-                    },
+                    economyContext: isReadingMode
+                        ? {
+                            scene: "read",
+                            action: "word_deep_analyze",
+                            articleUrl: popup.articleUrl,
+                            dedupeKey,
+                        }
+                        : undefined,
                 }),
             });
             const data = await response.json();
@@ -215,7 +267,7 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                 setReadingError("阅读币不足，暂时无法 Deep Analyze。");
                 return;
             }
-            await syncReadingBalance(data?.readingCoins?.balance);
+            await syncReadingBalance(data, "word_deep_analyze");
             setDefinition(prev => ({
                 ...prev,
                 context_meaning: data.context_meaning,
@@ -241,6 +293,10 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
 
         try {
             if (!aiDefinition) {
+                if (!isReadingMode && battleConsumeDeepAnalyzeTicket && !battleConsumeDeepAnalyzeTicket()) {
+                    setReadingError(battleInsufficientHint);
+                    return;
+                }
                 const dedupeKey = `word_deep:${sessionUser?.id || "anon"}:${(popup.articleUrl || "unknown").toLowerCase()}:${popup.word.trim().toLowerCase()}`;
                 const response = await fetch("/api/ai/define", {
                     method: "POST",
@@ -248,12 +304,14 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                     body: JSON.stringify({
                         word: popup.word,
                         context: popup.context || `Please explain the word "${popup.word}" for an IELTS learner.`,
-                        economyContext: {
-                            scene: "read",
-                            action: "word_deep_analyze",
-                            articleUrl: popup.articleUrl,
-                            dedupeKey,
-                        },
+                        economyContext: isReadingMode
+                            ? {
+                                scene: "read",
+                                action: "word_deep_analyze",
+                                articleUrl: popup.articleUrl,
+                                dedupeKey,
+                            }
+                            : undefined,
                     }),
                 });
                 const data = await response.json();
@@ -261,7 +319,7 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                     setReadingError("阅读币不足，暂时无法补充深度释义。");
                     return;
                 }
-                await syncReadingBalance(data?.readingCoins?.balance);
+                await syncReadingBalance(data, "word_deep_analyze");
                 aiDefinition = data?.context_meaning;
                 aiExample = data?.example || aiExample;
                 aiPhonetic = data?.phonetic || aiPhonetic;
@@ -337,7 +395,9 @@ export function WordPopup({ popup, onClose }: WordPopupProps) {
                                 </span>
                             </div>
                         )}
-                        <p className="text-[11px] mt-2 text-stone-500">首次查词 -1 阅读币，Deep Analyze -2 阅读币。</p>
+                        <p className="text-[11px] mt-2 text-stone-500">
+                            {isReadingMode ? "首次查词 -1 阅读币，Deep Analyze -2 阅读币。" : battleLookupCostHint}
+                        </p>
                     </div>
                     <div className="flex gap-1">
                         <button

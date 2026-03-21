@@ -5,7 +5,7 @@ import { normalizeGuidedScript } from "@/lib/guidedLearning";
 
 export async function POST(req: NextRequest) {
     try {
-        const { chinese, reference_english, elo = 600, topic = "" } = await req.json();
+        const { chinese, reference_english, elo = 400, topic = "" } = await req.json();
 
         if (!chinese || !reference_english) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });

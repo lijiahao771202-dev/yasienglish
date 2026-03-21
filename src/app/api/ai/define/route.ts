@@ -19,7 +19,12 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Word is required" }, { status: 400 });
         }
 
-        let readingBalance: number | undefined;
+        let readingCoinMutation: {
+            balance: number;
+            delta: number;
+            applied: boolean;
+            action: string;
+        } | null = null;
         const readContext = isReadEconomyContext(economyContext)
             ? {
                 ...economyContext,
@@ -43,7 +48,12 @@ export async function POST(req: Request) {
                     { status: 402 },
                 );
             }
-            readingBalance = charge.balance;
+            readingCoinMutation = {
+                balance: charge.balance,
+                delta: charge.delta,
+                applied: charge.applied,
+                action: charge.action,
+            };
         }
 
         const normalizedContext = typeof context === "string" ? context.trim() : "";
@@ -91,7 +101,7 @@ Provide the response in JSON format with the following structure:
         const result = JSON.parse(content);
         return NextResponse.json({
             ...result,
-            readingCoins: typeof readingBalance === "number" ? { balance: readingBalance } : undefined,
+            readingCoins: readingCoinMutation,
         });
 
     } catch (error) {
