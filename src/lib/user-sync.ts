@@ -54,6 +54,7 @@ export interface RemoteProfileRow {
     cat_score?: number;
     cat_level?: number;
     cat_theta?: number;
+    cat_se?: number;
     cat_points?: number;
     cat_current_band?: number;
     cat_updated_at?: string | null;
@@ -122,6 +123,7 @@ export const DEFAULT_READING_COINS = 40;
 export const DEFAULT_CAT_SCORE = 1000;
 export const DEFAULT_CAT_LEVEL = 1;
 export const DEFAULT_CAT_THETA = 0;
+export const DEFAULT_CAT_SE = 1.15;
 export const DEFAULT_CAT_POINTS = 0;
 export const DEFAULT_CAT_BAND = 3;
 export const DEFAULT_INVENTORY: Required<InventoryState> = {
@@ -159,6 +161,9 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
         listening_elo: DEFAULT_BASE_ELO,
         listening_streak: 0,
         listening_max_elo: DEFAULT_BASE_ELO,
+        dictation_elo: DEFAULT_BASE_ELO,
+        dictation_streak: 0,
+        dictation_max_elo: DEFAULT_BASE_ELO,
         coins: DEFAULT_STARTING_COINS,
         hints: inventory.capsule,
         inventory,
@@ -175,6 +180,7 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
         cat_score: DEFAULT_CAT_SCORE,
         cat_level: DEFAULT_CAT_LEVEL,
         cat_theta: DEFAULT_CAT_THETA,
+        cat_se: DEFAULT_CAT_SE,
         cat_points: DEFAULT_CAT_POINTS,
         cat_current_band: DEFAULT_CAT_BAND,
         cat_updated_at: new Date(now).toISOString(),
@@ -196,6 +202,9 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
         listening_elo: remote.listening_elo,
         listening_streak: remote.listening_streak ?? 0,
         listening_max_elo: remote.max_listening_elo,
+        dictation_elo: remote.listening_elo,
+        dictation_streak: remote.listening_streak ?? 0,
+        dictation_max_elo: remote.max_listening_elo,
         coins: remote.coins,
         hints: inventory.capsule,
         inventory,
@@ -212,6 +221,7 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
         cat_score: typeof remote.cat_score === "number" ? remote.cat_score : DEFAULT_CAT_SCORE,
         cat_level: typeof remote.cat_level === "number" ? remote.cat_level : DEFAULT_CAT_LEVEL,
         cat_theta: typeof remote.cat_theta === "number" ? remote.cat_theta : DEFAULT_CAT_THETA,
+        cat_se: typeof remote.cat_se === "number" ? remote.cat_se : DEFAULT_CAT_SE,
         cat_points: typeof remote.cat_points === "number" ? remote.cat_points : DEFAULT_CAT_POINTS,
         cat_current_band: typeof remote.cat_current_band === "number" ? remote.cat_current_band : DEFAULT_CAT_BAND,
         cat_updated_at: remote.cat_updated_at || remote.updated_at,
@@ -227,6 +237,7 @@ export function buildProfilePatch(
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
             | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
+            | "cat_se"
         >
     >,
 ) {
@@ -251,6 +262,7 @@ export function buildProfilePatch(
     if (patch.cat_score !== undefined) nextPatch.cat_score = patch.cat_score;
     if (patch.cat_level !== undefined) nextPatch.cat_level = patch.cat_level;
     if (patch.cat_theta !== undefined) nextPatch.cat_theta = patch.cat_theta;
+    if (patch.cat_se !== undefined) nextPatch.cat_se = patch.cat_se;
     if (patch.cat_points !== undefined) nextPatch.cat_points = patch.cat_points;
     if (patch.cat_current_band !== undefined) nextPatch.cat_current_band = patch.cat_current_band;
     if (patch.cat_updated_at !== undefined) {
@@ -366,6 +378,10 @@ export function toLocalReadArticle(remote: RemoteReadArticleRow): ReadArticleIte
 }
 
 export function toRemoteEloHistoryRow(userId: string, item: EloHistoryItem): RemoteEloHistoryRow {
+    if (item.mode === "dictation") {
+        throw new Error("Dictation Elo history is local-only and should not be synced.");
+    }
+
     return {
         id: item.remote_id || crypto.randomUUID(),
         user_id: userId,

@@ -7,7 +7,7 @@ import { ArticleDisplay } from "@/components/reading/ArticleDisplay";
 import { AudioPlayer } from "@/components/shadowing/AudioPlayer";
 import { WritingEditor } from "@/components/writing/WritingEditor";
 import { RecommendedArticles } from "@/components/reading/RecommendedArticles";
-import { ReadingQuizPanel, QuizQuestion } from "@/components/reading/ReadingQuizPanel";
+import { ReadingQuizPanel, QuizQuestion, type QuizSubmitPayload } from "@/components/reading/ReadingQuizPanel";
 import { PenTool, ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import axios from "axios";
@@ -47,6 +47,24 @@ interface ArticleData {
         questionCount?: number;
         ratioBandLabel?: string;
         distribution?: Record<string, number>;
+        allowedTypes?: string[];
+    };
+    catThetaSnapshot?: number;
+    catSeSnapshot?: number;
+    catSessionBlueprint?: {
+        minItems?: number;
+        maxItems?: number;
+        targetSe?: number;
+        stopRule?: string;
+        challengeRatioTarget?: [number, number];
+        passages?: Array<{
+            passageIndex: number;
+            title: string;
+            content: string;
+            targetScore: number;
+            qualityTier: "ok" | "low_confidence";
+        }>;
+        items?: QuizQuestion[];
     };
     quizCompleted?: boolean;
     quizCorrect?: number;
@@ -93,6 +111,10 @@ interface CatSettlementPayload {
     };
     isRankUp: boolean;
     isRankDown: boolean;
+    stopReason?: string | null;
+    itemCount?: number | null;
+    minItems?: number | null;
+    maxItems?: number | null;
 }
 
 import { ReadingSettingsProvider, useReadingSettings, READING_THEMES } from "@/contexts/ReadingSettingsContext";
@@ -153,6 +175,26 @@ function ReadingPageContent() {
         ? backgroundSpec.transitionFilm
         : (activeReadingFilm ?? "bg-[linear-gradient(180deg,rgba(241,245,249,0.55),rgba(203,213,225,0.48))]");
     const pageIntroEase = [0.22, 1, 0.36, 1] as const;
+    const formatCatStopReason = useCallback((payload: {
+        stopReason?: string | null;
+        itemCount?: number | null;
+        minItems?: number | null;
+        maxItems?: number | null;
+    }) => {
+        const itemCount = Number(payload.itemCount ?? 0);
+        const minItems = Number(payload.minItems ?? 0);
+        const maxItems = Number(payload.maxItems ?? 0);
+        if (payload.stopReason === "target_se_reached") {
+            return itemCount > 0 ? `第 ${itemCount} 题达到精度阈值，自动收卷` : "达到精度阈值，自动收卷";
+        }
+        if (payload.stopReason === "max_items_reached") {
+            return maxItems > 0 ? `达到上限 ${maxItems} 题，自动收卷` : "达到题量上限，自动收卷";
+        }
+        if (payload.stopReason === "insufficient_items") {
+            return minItems > 0 ? `未达最少题量（至少 ${minItems} 题）` : "题量不足，按已提交结算";
+        }
+        return "本局已完成结算";
+    }, []);
     const navEntryInitial = hasRouteEntry
         ? { opacity: 0, y: 16, scale: 0.992, filter: "blur(8px)" }
         : { opacity: 0, y: 10 };
@@ -365,6 +407,7 @@ function ReadingPageContent() {
     }, [applyReadingEconomy, sessionUser?.id]);
 
     const canShowQuizPanel = Boolean(isQuizMode && article?.isAIGenerated && article?.difficulty);
+    const showStandardSplitQuiz = canShowQuizPanel;
     const quizCacheKey = article ? `${article.url || article.title}::${article.difficulty || "unknown"}` : "";
     const quizDbKey = quizCacheKey ? `reading-quiz::${quizCacheKey}` : "";
     const parseParagraphNumber = (value: string): number | null => {
@@ -410,6 +453,9 @@ function ReadingPageContent() {
     useEffect(() => {
         if (!article?.isAIGenerated || !article?.difficulty) return;
         if (!quizCacheKey || !quizDbKey) return;
+        if (article.isCatMode && Array.isArray(article.catSessionBlueprint?.items) && article.catSessionBlueprint.items.length > 0) {
+            return;
+        }
         if (isQuizMode) return;
         if (Array.isArray(quizCache[quizCacheKey]) && quizCache[quizCacheKey].length > 0) return;
         if (quizPrefetchRef.current[quizCacheKey]) return;
@@ -549,6 +595,185 @@ function ReadingPageContent() {
         }
     };
 
+    const renderQuizPanel = () => {
+        if (!article?.difficulty) return null;
+        return (
+            <ReadingQuizPanel
+                articleContent={article.textContent || article.content}
+                articleTitle={article.title}
+                difficulty={article.difficulty as 'cet4' | 'cet6' | 'ielts'}
+                quizMode={article.isCatMode ? "cat" : "standard"}
+                catBand={article.catBand}
+                catScore={article.catScoreSnapshot}
+                catTheta={article.catThetaSnapshot}
+                catSe={article.catSeSnapshot}
+                catTargetSe={article.catSessionBlueprint?.targetSe}
+                catMinItems={article.catSessionBlueprint?.minItems}
+                catMaxItems={article.catSessionBlueprint?.maxItems}
+                catQuizBlueprint={article.catQuizBlueprint}
+                floatingCompact={false}
+                onClose={() => setIsQuizMode(false)}
+                cachedQuestions={
+                    article.isCatMode && Array.isArray(article.catSessionBlueprint?.items) && article.catSessionBlueprint.items.length > 0
+                        ? article.catSessionBlueprint.items
+                        : (quizCacheKey ? quizCache[quizCacheKey] : undefined)
+                }
+                onQuestionsReady={(questions) => {
+                    if (!quizCacheKey || !quizDbKey) return;
+                    setQuizCache((prev) => ({ ...prev, [quizCacheKey]: questions }));
+                    void (async () => {
+                        try {
+                            const { db } = await import("@/lib/db");
+                            const existing = await db.ai_cache.where("[key+type]").equals([quizDbKey, "quiz"]).first();
+                            await db.ai_cache.put({
+                                id: existing?.id,
+                                key: quizDbKey,
+                                type: "quiz",
+                                data: { questions },
+                                timestamp: Date.now(),
+                            });
+                        } catch (error) {
+                            console.error("Failed to persist quiz cache:", error);
+                        }
+                    })();
+                }}
+                onSubmitScore={(submission: QuizSubmitPayload) => {
+                    const { correct, total } = submission;
+                    const scorePercent = total > 0 ? Math.round((correct / total) * 100) : 0;
+                    const readingMs = articleStartedAt ? Math.max(30_000, Date.now() - articleStartedAt) : undefined;
+                    setArticle((prev) => {
+                        if (!prev) return prev;
+                        return {
+                            ...prev,
+                            quizCompleted: true,
+                            quizCorrect: correct,
+                            quizTotal: total,
+                            quizScorePercent: scorePercent,
+                        };
+                    });
+
+                    if (article?.url) {
+                        void (async () => {
+                            try {
+                                const { db } = await import("@/lib/db");
+                                await db.articles.update(article.url, {
+                                    quizCompleted: true,
+                                    quizCorrect: correct,
+                                    quizTotal: total,
+                                    quizScorePercent: scorePercent,
+                                    timestamp: Date.now(),
+                                });
+                            } catch (error) {
+                                console.error("Failed to persist quiz score:", error);
+                            }
+                        })();
+                    }
+
+                    if (sessionUser?.id && article?.url) {
+                        const dedupeKey = buildQuizCompleteDedupeKey({ userId: sessionUser.id, articleUrl: article.url });
+                        if (article.isCatMode && article.catSessionId) {
+                            void (async () => {
+                                try {
+                                    const response = await fetch("/api/ai/cat/session/submit", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                            sessionId: article.catSessionId,
+                                            quizCorrect: correct,
+                                            quizTotal: total,
+                                            readingMs,
+                                            responses: submission.responses,
+                                            qualityTier: submission.qualityTier,
+                                        }),
+                                    });
+                                    const payload = await response.json();
+                                    if (!response.ok) {
+                                        throw new Error(payload.error || "CAT submit failed");
+                                    }
+                                    await applyServerProfilePatchToLocal({
+                                        cat_score: payload?.cat?.score,
+                                        cat_level: payload?.cat?.level,
+                                        cat_theta: payload?.cat?.theta,
+                                        cat_se: payload?.cat?.se,
+                                        cat_points: payload?.cat?.points,
+                                        cat_current_band: payload?.cat?.currentBand,
+                                        cat_updated_at: payload?.cat?.updatedAt ?? new Date().toISOString(),
+                                        reading_coins: payload?.readingCoins?.balance,
+                                    });
+                                    if (payload?.readingCoins?.delta > 0) {
+                                        setReadingCoinNotice(`测验奖励 +${payload.readingCoins.delta} 阅读币`);
+                                        window.setTimeout(() => setReadingCoinNotice(null), 2800);
+                                    }
+                                    if (payload?.session?.delta !== undefined) {
+                                        const signedDelta = Number(payload.session.delta);
+                                        const deltaText = signedDelta >= 0 ? `+${signedDelta}` : `${signedDelta}`;
+                                        const policyUsed = payload?.session?.policyUsed;
+                                        const stopHint = formatCatStopReason({
+                                            stopReason: payload?.session?.stopReason,
+                                            itemCount: payload?.session?.itemCount,
+                                            minItems: policyUsed?.minItems,
+                                            maxItems: policyUsed?.maxItems,
+                                        });
+                                        setCatNotice(`CAT 本局结算 ${deltaText} 分 · ${stopHint}`);
+                                        window.setTimeout(() => setCatNotice(null), 4200);
+                                    }
+                                    if (payload?.animationPayload) {
+                                        const policyUsed = payload?.session?.policyUsed;
+                                        const animationPayload = {
+                                            ...(payload.animationPayload as CatSettlementPayload),
+                                            stopReason: payload?.session?.stopReason,
+                                            itemCount: payload?.session?.itemCount,
+                                            minItems: policyUsed?.minItems,
+                                            maxItems: policyUsed?.maxItems,
+                                        } as CatSettlementPayload;
+                                        setCatSettlement(animationPayload);
+                                        clearCatSettlementTimer();
+                                        catSettlementTimerRef.current = window.setTimeout(() => {
+                                            setCatSettlement(null);
+                                            setIsQuizMode(false);
+                                            setArticle(null);
+                                            setArticleStartedAt(null);
+                                        }, 3000);
+                                    }
+                                } catch (submitError) {
+                                    console.error(submitError);
+                                }
+                            })();
+                        } else {
+                            void applyReadingEconomy({
+                                action: "quiz_complete",
+                                dedupeKey,
+                                articleUrl: article.url,
+                                delta: 5 + (scorePercent >= 80 ? 2 : 0),
+                                meta: {
+                                    scorePercent,
+                                    correct,
+                                    total,
+                                    source: "read_quiz_standard",
+                                },
+                            }).then((result) => {
+                                if (result?.applied && result.delta > 0) {
+                                    setReadingCoinNotice(`测验奖励 +${result.delta} 阅读币`);
+                                    window.setTimeout(() => setReadingCoinNotice(null), 2800);
+                                }
+                            });
+                        }
+                    }
+                }}
+                onLocate={({ questionNumber, sourceParagraph, evidence }) => {
+                    const paragraphNumber = parseParagraphNumber(sourceParagraph);
+                    if (!paragraphNumber) return;
+                    setQuizLocateRequest({
+                        requestId: Date.now(),
+                        questionNumber,
+                        paragraphNumber,
+                        evidence,
+                    });
+                }}
+            />
+        );
+    };
+
     return (
         <main
             className={cn(
@@ -634,6 +859,9 @@ function ReadingPageContent() {
                                         </h3>
                                         <p className="mt-1 text-sm text-slate-600">
                                             {catSettlement.rankBefore.primaryLabel} → {catSettlement.rankAfter.primaryLabel}
+                                        </p>
+                                        <p className="mt-1 text-xs text-slate-500">
+                                            {formatCatStopReason(catSettlement)}
                                         </p>
                                     </div>
                                     <div className={cn(
@@ -953,9 +1181,9 @@ function ReadingPageContent() {
                             className={cn(
                                 "relative overflow-hidden",
                                 "grid gap-8 h-full transition-all duration-500",
-                                canShowQuizPanel
+                                showStandardSplitQuiz
                                     ? "grid-cols-1 xl:grid-cols-[minmax(0,1fr)_500px] 2xl:grid-cols-[minmax(0,1fr)_560px] xl:h-[calc(100vh-120px)] xl:overflow-hidden"
-                                    : "grid-cols-1"
+                                    : "grid-cols-1",
                             )}
                         >
                         {/* Reading Column */}
@@ -965,9 +1193,30 @@ function ReadingPageContent() {
                             transition={{ delay: 0.04, duration: hasRouteEntry ? 0.5 : 0.44, ease: pageIntroEase }}
                             className={cn(
                             "space-y-12 transition-all duration-700",
-                            canShowQuizPanel && "xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1",
-                            canShowQuizPanel ? "max-w-none" : "mx-auto max-w-3xl"
+                            showStandardSplitQuiz && "xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1",
+                            showStandardSplitQuiz ? "max-w-none" : "mx-auto max-w-3xl"
                         )}>
+                            {/* Quiz Entry Button - only for AI generated articles */}
+                            {article.isAIGenerated && article.difficulty && !isQuizMode && (
+                                <div className="sticky top-[94px] z-40 flex justify-end">
+                                    <button
+                                        onClick={() => setIsQuizMode(true)}
+                                        className="group flex items-center gap-2.5 rounded-full border border-white/70 bg-white/78 px-5 py-2.5 text-sm font-bold text-slate-800 shadow-[0_20px_40px_-22px_rgba(15,23,42,0.65)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/92 hover:shadow-[0_28px_52px_-20px_rgba(15,23,42,0.75)]"
+                                    >
+                                        <ClipboardCheck className="h-4 w-4 text-pink-500 transition-transform group-hover:scale-110" />
+                                        <span>开始答题</span>
+                                        <span className={cn(
+                                            "rounded-full border px-2 py-0.5 text-[10px] font-bold",
+                                            article.difficulty === 'cet4' && "border-emerald-200 bg-emerald-50 text-emerald-700",
+                                            article.difficulty === 'cet6' && "border-blue-200 bg-blue-50 text-blue-700",
+                                            article.difficulty === 'ielts' && "border-violet-200 bg-violet-50 text-violet-700"
+                                        )}>
+                                            {article.difficulty === 'cet4' ? '四级' : article.difficulty === 'cet6' ? '六级' : '雅思'}
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
+
                             <ArticleDisplay
                                 title={article.title}
                                 content={article.content}
@@ -980,34 +1229,12 @@ function ReadingPageContent() {
                                 locateRequest={quizLocateRequest}
                             />
 
-                            {/* Quiz Entry Button - only for AI generated articles */}
-                            {article.isAIGenerated && article.difficulty && !isQuizMode && (
-                                <div className="flex justify-center pb-8">
-                                    <button
-                                        onClick={() => setIsQuizMode(true)}
-                                        className="group flex items-center gap-3 rounded-2xl border border-white/70 bg-white/60 px-8 py-4 font-bold text-slate-800 shadow-[0_20px_40px_-20px_rgba(15,23,42,0.6)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:bg-white/80 hover:shadow-[0_28px_52px_-20px_rgba(15,23,42,0.75)]"
-                                    >
-                                        <ClipboardCheck className="h-5 w-5 text-pink-500 transition-transform group-hover:scale-110" />
-                                        <span>开始答题</span>
-                                        <span className={cn(
-                                            "rounded-md border px-2 py-0.5 text-[10px] font-bold",
-                                            article.difficulty === 'cet4' && "border-emerald-200 bg-emerald-50 text-emerald-700",
-                                            article.difficulty === 'cet6' && "border-blue-200 bg-blue-50 text-blue-700",
-                                            article.difficulty === 'ielts' && "border-violet-200 bg-violet-50 text-violet-700"
-                                        )}>
-                                            {article.difficulty === 'cet4' ? '四级' : article.difficulty === 'cet6' ? '六级' : '雅思'}
-                                        </span>
-                                    </button>
-                                </div>
-                            )}
-
                             <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">
                                 <AudioPlayer text={article.textContent || ""} />
                             </div>
                         </motion.div>
 
-                        {/* Quiz Sidebar */}
-                        {canShowQuizPanel && (
+                        {showStandardSplitQuiz && (
                             <motion.div
                                 className="xl:h-full xl:min-h-0"
                                 initial={{ opacity: 0 }}
@@ -1015,151 +1242,7 @@ function ReadingPageContent() {
                                 transition={{ delay: 0.06, duration: hasRouteEntry ? 0.52 : 0.46, ease: pageIntroEase }}
                             >
                                 <LiquidGlassPanel className="h-full min-h-0 overflow-hidden rounded-[24px] [&>.liquid-glass-content]:h-full [&>.liquid-glass-content]:min-h-0">
-                                    <ReadingQuizPanel
-                                        articleContent={article.textContent || article.content}
-                                        articleTitle={article.title}
-                                        difficulty={article.difficulty as 'cet4' | 'cet6' | 'ielts'}
-                                        quizMode={article.isCatMode ? "cat" : "standard"}
-                                        catBand={article.catBand}
-                                        catScore={article.catScoreSnapshot}
-                                        catQuizBlueprint={article.catQuizBlueprint}
-                                        onClose={() => setIsQuizMode(false)}
-                                        cachedQuestions={quizCacheKey ? quizCache[quizCacheKey] : undefined}
-                                        onQuestionsReady={(questions) => {
-                                            if (!quizCacheKey || !quizDbKey) return;
-                                            setQuizCache((prev) => ({ ...prev, [quizCacheKey]: questions }));
-                                            void (async () => {
-                                                try {
-                                                    const { db } = await import("@/lib/db");
-                                                    const existing = await db.ai_cache.where("[key+type]").equals([quizDbKey, "quiz"]).first();
-                                                    await db.ai_cache.put({
-                                                        id: existing?.id,
-                                                        key: quizDbKey,
-                                                        type: "quiz",
-                                                        data: { questions },
-                                                        timestamp: Date.now(),
-                                                    });
-                                                } catch (error) {
-                                                    console.error("Failed to persist quiz cache:", error);
-                                                }
-                                            })();
-                                        }}
-                                        onSubmitScore={({ correct, total }) => {
-                                            const scorePercent = total > 0 ? Math.round((correct / total) * 100) : 0;
-                                            const readingMs = articleStartedAt ? Math.max(30_000, Date.now() - articleStartedAt) : undefined;
-                                            setArticle((prev) => {
-                                                if (!prev) return prev;
-                                                return {
-                                                    ...prev,
-                                                    quizCompleted: true,
-                                                    quizCorrect: correct,
-                                                    quizTotal: total,
-                                                    quizScorePercent: scorePercent,
-                                                };
-                                            });
-
-                                            if (article?.url) {
-                                                void (async () => {
-                                                    try {
-                                                        const { db } = await import("@/lib/db");
-                                                        await db.articles.update(article.url, {
-                                                            quizCompleted: true,
-                                                            quizCorrect: correct,
-                                                            quizTotal: total,
-                                                            quizScorePercent: scorePercent,
-                                                            timestamp: Date.now(),
-                                                        });
-                                                    } catch (error) {
-                                                        console.error("Failed to persist quiz score:", error);
-                                                    }
-                                                })();
-                                            }
-
-                                            if (sessionUser?.id && article?.url) {
-                                                const dedupeKey = buildQuizCompleteDedupeKey({ userId: sessionUser.id, articleUrl: article.url });
-                                                if (article.isCatMode && article.catSessionId) {
-                                                    void (async () => {
-                                                        try {
-                                                            const response = await fetch("/api/ai/cat/session/submit", {
-                                                                method: "POST",
-                                                                headers: { "Content-Type": "application/json" },
-                                                                body: JSON.stringify({
-                                                                    sessionId: article.catSessionId,
-                                                                    quizCorrect: correct,
-                                                                    quizTotal: total,
-                                                                    readingMs,
-                                                                }),
-                                                            });
-                                                            const payload = await response.json();
-                                                            if (!response.ok) {
-                                                                throw new Error(payload.error || "CAT submit failed");
-                                                            }
-                                                            await applyServerProfilePatchToLocal({
-                                                                cat_score: payload?.cat?.score,
-                                                                cat_level: payload?.cat?.level,
-                                                                cat_theta: payload?.cat?.theta,
-                                                                cat_points: payload?.cat?.points,
-                                                                cat_current_band: payload?.cat?.currentBand,
-                                                                cat_updated_at: payload?.cat?.updatedAt ?? new Date().toISOString(),
-                                                                reading_coins: payload?.readingCoins?.balance,
-                                                            });
-                                                            if (payload?.readingCoins?.delta > 0) {
-                                                                setReadingCoinNotice(`测验奖励 +${payload.readingCoins.delta} 阅读币`);
-                                                                window.setTimeout(() => setReadingCoinNotice(null), 2800);
-                                                            }
-                                                            if (payload?.session?.delta !== undefined) {
-                                                                const signedDelta = Number(payload.session.delta);
-                                                                const deltaText = signedDelta >= 0 ? `+${signedDelta}` : `${signedDelta}`;
-                                                                setCatNotice(`CAT 本局结算 ${deltaText} 分`);
-                                                                window.setTimeout(() => setCatNotice(null), 4200);
-                                                            }
-                                                            if (payload?.animationPayload) {
-                                                                const animationPayload = payload.animationPayload as CatSettlementPayload;
-                                                                setCatSettlement(animationPayload);
-                                                                clearCatSettlementTimer();
-                                                                catSettlementTimerRef.current = window.setTimeout(() => {
-                                                                    setCatSettlement(null);
-                                                                    setIsQuizMode(false);
-                                                                    setArticle(null);
-                                                                    setArticleStartedAt(null);
-                                                                }, 3000);
-                                                            }
-                                                        } catch (submitError) {
-                                                            console.error(submitError);
-                                                        }
-                                                    })();
-                                                } else {
-                                                    void applyReadingEconomy({
-                                                        action: "quiz_complete",
-                                                        dedupeKey,
-                                                        articleUrl: article.url,
-                                                        delta: 5 + (scorePercent >= 80 ? 2 : 0),
-                                                        meta: {
-                                                            scorePercent,
-                                                            correct,
-                                                            total,
-                                                            source: "read_quiz_standard",
-                                                        },
-                                                    }).then((result) => {
-                                                        if (result?.applied && result.delta > 0) {
-                                                            setReadingCoinNotice(`测验奖励 +${result.delta} 阅读币`);
-                                                            window.setTimeout(() => setReadingCoinNotice(null), 2800);
-                                                        }
-                                                    });
-                                                }
-                                            }
-                                        }}
-                                        onLocate={({ questionNumber, sourceParagraph, evidence }) => {
-                                            const paragraphNumber = parseParagraphNumber(sourceParagraph);
-                                            if (!paragraphNumber) return;
-                                            setQuizLocateRequest({
-                                                requestId: Date.now(),
-                                                questionNumber,
-                                                paragraphNumber,
-                                                evidence,
-                                            });
-                                        }}
-                                    />
+                                    {renderQuizPanel()}
                                 </LiquidGlassPanel>
                             </motion.div>
                         )}
@@ -1198,11 +1281,6 @@ function RollingNumber({
         let frameId = 0;
         let startAt = 0;
         const delta = to - from;
-
-        if (delta === 0) {
-            setValue(to);
-            return;
-        }
 
         const tick = (timestamp: number) => {
             if (!startAt) {

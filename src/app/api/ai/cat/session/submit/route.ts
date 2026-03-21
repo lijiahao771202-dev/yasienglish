@@ -5,7 +5,8 @@ import {
     normalizeBand,
     recommendBadges,
 } from "@/lib/cat-growth";
-import { getCatRankTier } from "@/lib/cat-score";
+import { runCatRaschSession, type CatRaschResponse } from "@/lib/cat-rasch";
+import { getCatRankTier, getCatSessionPolicy } from "@/lib/cat-score";
 import { rewardReadingCoins } from "@/lib/reading-economy-server";
 import { createServerClient, getServerUserSafely } from "@/lib/supabase/server";
 
@@ -14,6 +15,16 @@ interface SubmitCatPayload {
     quizCorrect?: number;
     quizTotal?: number;
     readingMs?: number;
+    qualityTier?: "ok" | "low_confidence";
+    responses?: Array<{
+        itemId?: string | number;
+        order?: number;
+        answer?: string | string[];
+        correct?: boolean;
+        latencyMs?: number;
+        itemDifficulty?: number;
+        itemType?: string;
+    }>;
 }
 
 function isMissingRpcFunction(error: { message?: string } | null, functionName: string) {
@@ -32,6 +43,36 @@ function expectedReadingMsByDifficulty(difficulty?: string) {
     return 10 * 60 * 1000;
 }
 
+function parseRaschResponses(raw: SubmitCatPayload["responses"]) {
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .map((item, index): CatRaschResponse | null => {
+            if (!item || typeof item !== "object") return null;
+            const hasCorrect = typeof item.correct === "boolean";
+            if (!hasCorrect) return null;
+            const itemDifficultyRaw = Number(item.itemDifficulty);
+            const itemDifficulty = Number.isFinite(itemDifficultyRaw) ? itemDifficultyRaw : 0;
+            const latencyRaw = Number(item.latencyMs);
+            const latencyMs = Number.isFinite(latencyRaw) ? latencyRaw : 10_000;
+            const orderRaw = Number(item.order);
+            const order = Number.isFinite(orderRaw) ? orderRaw : index + 1;
+            return {
+                itemId: String(item.itemId ?? `item-${index + 1}`),
+                order,
+                correct: Boolean(item.correct),
+                latencyMs,
+                itemDifficulty,
+                itemType: typeof item.itemType === "string" ? item.itemType : undefined,
+                answer: Array.isArray(item.answer)
+                    ? item.answer.filter((token): token is string => typeof token === "string")
+                    : typeof item.answer === "string"
+                        ? item.answer
+                        : undefined,
+            };
+        })
+        .filter((item): item is CatRaschResponse => item !== null);
+}
+
 export async function POST(request: Request) {
     const { user, error } = await getServerUserSafely();
     if (error || !user) {
@@ -47,7 +88,7 @@ export async function POST(request: Request) {
     const supabase = await createServerClient();
     const { data: session, error: sessionError } = await supabase
         .from("cat_sessions")
-        .select("id, user_id, difficulty, band, status, score_before, created_at, completed_at, delta, points_delta, next_band, score_after, level_after, theta_after")
+        .select("*")
         .eq("id", sessionId)
         .eq("user_id", user.id)
         .maybeSingle();
@@ -62,7 +103,7 @@ export async function POST(request: Request) {
 
     const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("cat_score, cat_level, cat_theta, cat_points, cat_current_band, reading_coins")
+        .select("*")
         .eq("user_id", user.id)
         .single();
 
@@ -71,18 +112,23 @@ export async function POST(request: Request) {
     }
 
     const scoreBeforeSnapshot = Number(profile.cat_score ?? session.score_before ?? 1000);
+    const sessionPolicy = getCatSessionPolicy(scoreBeforeSnapshot);
+    const seBeforeSnapshot = clamp(Number((profile as Record<string, unknown>).cat_se ?? 1.15), 0.22, 2.4);
     const rankBefore = getCatRankTier(scoreBeforeSnapshot);
 
     if (session.status === "completed") {
         const settledScore = Number(session.score_after ?? profile.cat_score ?? scoreBeforeSnapshot);
         const settledDelta = Number(session.delta ?? 0);
         const rankAfterCompleted = getCatRankTier(settledScore);
+        const completedSe =
+            Number((session as Record<string, unknown>).se_after ?? (profile as Record<string, unknown>).cat_se ?? seBeforeSnapshot);
         return NextResponse.json({
             alreadyCompleted: true,
             cat: {
                 score: profile.cat_score ?? settledScore,
                 level: profile.cat_level ?? levelFromScore(profile.cat_score ?? settledScore),
                 theta: profile.cat_theta ?? 0,
+                se: Number.isFinite(completedSe) ? completedSe : null,
                 points: profile.cat_points ?? 0,
                 currentBand: profile.cat_current_band ?? 3,
             },
@@ -94,6 +140,14 @@ export async function POST(request: Request) {
                 scoreAfter: session.score_after ?? profile.cat_score ?? 1000,
                 levelAfter: session.level_after ?? profile.cat_level ?? 1,
                 thetaAfter: session.theta_after ?? profile.cat_theta ?? 0,
+                seAfter: completedSe,
+                stopReason: (session as Record<string, unknown>).stop_reason ?? null,
+                itemCount: (session as Record<string, unknown>).item_count ?? null,
+                policyUsed: {
+                    minItems: sessionPolicy.minItems,
+                    maxItems: sessionPolicy.maxItems,
+                    targetSe: sessionPolicy.targetSe,
+                },
             },
             animationPayload: {
                 scoreBefore: Number(session.score_before ?? scoreBeforeSnapshot),
@@ -107,12 +161,13 @@ export async function POST(request: Request) {
         });
     }
 
-    const quizCorrect = Math.max(0, Math.round(Number(body.quizCorrect ?? 0)));
-    const quizTotal = Math.max(1, Math.round(Number(body.quizTotal ?? 5)));
-    const accuracy = clamp(quizCorrect / quizTotal, 0, 1);
+    const normalizedResponses = parseRaschResponses(body.responses);
+    const useRaschMode = normalizedResponses.length > 0;
+    const qualityTier = body.qualityTier === "low_confidence" ? "low_confidence" : "ok";
 
     const expectedMs = expectedReadingMsByDifficulty(session.difficulty);
-    const rawReadingMs = Math.round(Number(body.readingMs ?? expectedMs));
+    const responseLatencySum = normalizedResponses.reduce((sum, item) => sum + Math.max(0, item.latencyMs), 0);
+    const rawReadingMs = Math.round(Number(body.readingMs ?? (responseLatencySum || expectedMs)));
     const readingMs = Math.max(90_000, rawReadingMs);
 
     const speedRatio = expectedMs / Math.max(readingMs, expectedMs * 0.48);
@@ -138,15 +193,49 @@ export async function POST(request: Request) {
         stabilityScore = clamp(1 - std / 0.34, 0.25, 1);
     }
 
-    const growth = computeCatGrowth({
-        score: scoreBeforeSnapshot,
-        level: Number(profile.cat_level ?? 1),
-        theta: Number(profile.cat_theta ?? 0),
-        currentBand: normalizeBand(Number(profile.cat_current_band ?? session.band ?? 3)),
-        accuracy,
-        speedScore,
-        stabilityScore,
-    });
+    const raschSession = useRaschMode
+        ? runCatRaschSession({
+            scoreBefore: scoreBeforeSnapshot,
+            thetaBefore: Number(profile.cat_theta ?? 0),
+            seBefore: seBeforeSnapshot,
+            responses: normalizedResponses,
+            minItems: sessionPolicy.minItems,
+            maxItems: sessionPolicy.maxItems,
+            targetSe: sessionPolicy.targetSe,
+            qualityTier,
+            growthPace: "balanced",
+        })
+        : null;
+
+    const quizCorrect = useRaschMode
+        ? raschSession?.traces.filter((item) => item.correct).length ?? 0
+        : Math.max(0, Math.round(Number(body.quizCorrect ?? 0)));
+    const quizTotal = useRaschMode
+        ? raschSession?.usedItemCount ?? 0
+        : Math.max(1, Math.round(Number(body.quizTotal ?? 5)));
+    const accuracy = useRaschMode
+        ? raschSession?.accuracy ?? 0
+        : clamp(quizCorrect / Math.max(1, quizTotal), 0, 1);
+
+    const growth = useRaschMode
+        ? {
+            performance: clamp(accuracy * 0.72 + speedScore * 0.14 + stabilityScore * 0.14, 0, 1),
+            delta: raschSession?.delta ?? 0,
+            scoreAfter: raschSession?.scoreAfter ?? scoreBeforeSnapshot,
+            levelAfter: levelFromScore(raschSession?.scoreAfter ?? scoreBeforeSnapshot),
+            thetaAfter: raschSession?.thetaAfter ?? Number(profile.cat_theta ?? 0),
+            nextBand: normalizeBand(Math.floor((raschSession?.scoreAfter ?? scoreBeforeSnapshot) / 400) + 1),
+            pointsDelta: raschSession?.pointsDelta ?? 4,
+        }
+        : computeCatGrowth({
+            score: scoreBeforeSnapshot,
+            level: Number(profile.cat_level ?? 1),
+            theta: Number(profile.cat_theta ?? 0),
+            currentBand: normalizeBand(Number(profile.cat_current_band ?? session.band ?? 3)),
+            accuracy,
+            speedScore,
+            stabilityScore,
+        });
 
     const badges = recommendBadges({
         levelBefore: Number(profile.cat_level ?? 1),
@@ -178,6 +267,7 @@ export async function POST(request: Request) {
         cat_score?: number;
         cat_level?: number;
         cat_theta?: number;
+        cat_se?: number;
         cat_points?: number;
         cat_current_band?: number;
         delta?: number;
@@ -195,6 +285,7 @@ export async function POST(request: Request) {
         const nextCatScore = growth.scoreAfter;
         const nextCatLevel = growth.levelAfter;
         const nextCatTheta = growth.thetaAfter;
+        const nextCatSe = useRaschMode ? Number(raschSession?.seAfter ?? seBeforeSnapshot) : seBeforeSnapshot;
         const nextCatPoints = Math.max(0, Number(profile.cat_points ?? 0) + growth.pointsDelta);
         const nextCatBand = growth.nextBand;
 
@@ -209,7 +300,7 @@ export async function POST(request: Request) {
                 cat_updated_at: nowIso,
             })
             .eq("user_id", user.id)
-            .select("cat_score, cat_level, cat_theta, cat_points, cat_current_band")
+            .select("*")
             .single();
 
         if (updateProfileError) {
@@ -265,6 +356,7 @@ export async function POST(request: Request) {
             cat_score: updatedProfile.cat_score ?? nextCatScore,
             cat_level: updatedProfile.cat_level ?? nextCatLevel,
             cat_theta: updatedProfile.cat_theta ?? nextCatTheta,
+            cat_se: Number((updatedProfile as Record<string, unknown>).cat_se ?? nextCatSe),
             cat_points: updatedProfile.cat_points ?? nextCatPoints,
             cat_current_band: updatedProfile.cat_current_band ?? nextCatBand,
             delta: updatedSession.delta ?? growth.delta,
@@ -275,6 +367,61 @@ export async function POST(request: Request) {
     } else {
         const rpcRow = Array.isArray(submitData) ? submitData[0] : submitData;
         submitRow = rpcRow ?? {};
+    }
+
+    const nowIso = new Date().toISOString();
+    if (useRaschMode && raschSession) {
+        try {
+            await supabase
+                .from("profiles")
+                .update({
+                    cat_se: raschSession.seAfter,
+                    cat_updated_at: nowIso,
+                    updated_at: nowIso,
+                })
+                .eq("user_id", user.id);
+        } catch {
+            // ignore if cat_se column is not available yet
+        }
+
+        try {
+            await supabase
+                .from("cat_sessions")
+                .update({
+                    se_before: raschSession.seBefore,
+                    se_after: raschSession.seAfter,
+                    stop_reason: raschSession.stopReason,
+                    item_count: raschSession.usedItemCount,
+                    quality_tier: qualityTier,
+                    updated_at: nowIso,
+                })
+                .eq("id", session.id)
+                .eq("user_id", user.id);
+        } catch {
+            // ignore if extended columns are not available yet
+        }
+
+        try {
+            const itemRows = raschSession.traces.map((trace) => ({
+                session_id: session.id,
+                user_id: user.id,
+                item_id: trace.itemId,
+                item_order: trace.order,
+                item_type: trace.itemType ?? null,
+                item_difficulty: trace.itemDifficulty,
+                user_answer: trace.answer ?? null,
+                is_correct: trace.correct,
+                latency_ms: trace.latencyMs,
+                info_gain: trace.infoGain,
+                theta_before: trace.thetaBefore,
+                theta_after: trace.thetaAfter,
+            }));
+            if (itemRows.length > 0) {
+                await supabase.from("cat_session_items").insert(itemRows);
+            }
+        } catch {
+            // ignore if cat_session_items table is not available yet
+        }
     }
 
     const quizReward = 6 + (accuracy >= 0.8 ? 2 : 0) + (growth.delta > 0 ? 1 : 0);
@@ -310,6 +457,9 @@ export async function POST(request: Request) {
     }
 
     const finalScore = Number(submitRow?.cat_score ?? growth.scoreAfter);
+    const finalSe = useRaschMode
+        ? Number(submitRow?.cat_se ?? raschSession?.seAfter ?? seBeforeSnapshot)
+        : Number((profile as Record<string, unknown>).cat_se ?? seBeforeSnapshot);
     const finalRankAfter = getCatRankTier(finalScore);
     const finalDelta = Number(submitRow?.delta ?? growth.delta);
 
@@ -318,12 +468,14 @@ export async function POST(request: Request) {
             score: finalScore,
             level: submitRow?.cat_level ?? growth.levelAfter,
             theta: submitRow?.cat_theta ?? growth.thetaAfter,
+            se: finalSe,
             points: submitRow?.cat_points ?? Number(profile.cat_points ?? 0) + growth.pointsDelta,
             currentBand: submitRow?.cat_current_band ?? growth.nextBand,
             updatedAt: new Date().toISOString(),
         },
         session: {
             id: submitRow?.session_id ?? session.id,
+            mode: useRaschMode ? "rasch" : "legacy",
             delta: submitRow?.delta ?? growth.delta,
             pointsDelta: submitRow?.points_delta ?? growth.pointsDelta,
             nextBand: submitRow?.next_band ?? growth.nextBand,
@@ -334,6 +486,20 @@ export async function POST(request: Request) {
             readingMs,
             quizCorrect,
             quizTotal,
+            seBefore: useRaschMode ? raschSession?.seBefore ?? null : null,
+            seAfter: useRaschMode ? raschSession?.seAfter ?? null : null,
+            targetSe: useRaschMode ? raschSession?.targetSe ?? null : null,
+            stopReason: useRaschMode ? raschSession?.stopReason ?? null : null,
+            itemCount: useRaschMode ? raschSession?.usedItemCount ?? quizTotal : quizTotal,
+            policyUsed: useRaschMode
+                ? {
+                    minItems: sessionPolicy.minItems,
+                    maxItems: sessionPolicy.maxItems,
+                    targetSe: sessionPolicy.targetSe,
+                }
+                : null,
+            qualityTier: useRaschMode ? qualityTier : null,
+            challengeRatio: useRaschMode ? raschSession?.challengeRatio ?? null : null,
             awardedBadges: submitRow?.awarded_badges ?? badges,
         },
         readingCoins: {

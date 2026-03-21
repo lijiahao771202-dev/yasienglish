@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
     CAT_RANK_TIERS,
+    getCatArticleTargets,
     getTierLexicalProfile,
     validateArticleDifficulty,
+    validateCatArticleAgainstTargets,
     validateLexicalAudit,
     getCatQuizBlueprint,
+    getCatSessionPolicy,
     getCatRankTier,
     getCatScoreToNextRank,
 } from "./cat-score";
@@ -51,24 +54,54 @@ describe("cat score model", () => {
         expect(lower.targetWordCountRange[0]).toBeLessThanOrEqual(lower.targetWordCountRange[1]);
     });
 
+    it("maps score to three-axis article targets by boundary", () => {
+        expect(getCatArticleTargets(799).lexicalTarget.coreTier).toBe("high_school");
+        expect(getCatArticleTargets(800).lexicalTarget.coreTier).toBe("cet4");
+        expect(getCatArticleTargets(1399).lexicalTarget.coreTier).toBe("cet4");
+        expect(getCatArticleTargets(1400).lexicalTarget.coreTier).toBe("cet6");
+        expect(getCatArticleTargets(1999).lexicalTarget.coreTier).toBe("cet6");
+        expect(getCatArticleTargets(2000).lexicalTarget.coreTier).toBe("tem4_ielts6");
+        expect(getCatArticleTargets(2599).lexicalTarget.coreTier).toBe("tem4_ielts6");
+        expect(getCatArticleTargets(2600).lexicalTarget.coreTier).toBe("tem8_ielts7");
+        expect(getCatArticleTargets(3199).lexicalTarget.coreTier).toBe("tem8_ielts7");
+        expect(getCatArticleTargets(3200).lexicalTarget.coreTier).toBe("tem8plus_ielts8");
+    });
+
     it("returns score distance to next rank", () => {
         expect(getCatScoreToNextRank(199)).toBe(1);
         expect(getCatScoreToNextRank(200)).toBe(200);
         expect(getCatScoreToNextRank(3200)).toBe(0);
     });
 
-    it("uses score bands for CAT question count", () => {
-        expect(getCatQuizBlueprint(100).questionCount).toBe(5);
-        expect(getCatQuizBlueprint(900).questionCount).toBe(6);
-        expect(getCatQuizBlueprint(2000).questionCount).toBe(7);
+    it("maps dynamic CAT session policy by score bands", () => {
+        expect(getCatSessionPolicy(100)).toMatchObject({ minItems: 2, maxItems: 4, targetSe: 0.62 });
+        expect(getCatSessionPolicy(1000)).toMatchObject({ minItems: 3, maxItems: 5, targetSe: 0.56 });
+        expect(getCatSessionPolicy(1800)).toMatchObject({ minItems: 4, maxItems: 6, targetSe: 0.5 });
+        expect(getCatSessionPolicy(2300)).toMatchObject({ minItems: 5, maxItems: 7, targetSe: 0.46 });
+        expect(getCatSessionPolicy(2800)).toMatchObject({ minItems: 6, maxItems: 8, targetSe: 0.42 });
+        expect(getCatSessionPolicy(3300)).toMatchObject({ minItems: 6, maxItems: 8, targetSe: 0.38 });
+    });
+
+    it("uses max items as CAT quiz pool size", () => {
+        expect(getCatQuizBlueprint(100).questionCount).toBe(4);
+        expect(getCatQuizBlueprint(900).questionCount).toBe(5);
+        expect(getCatQuizBlueprint(1800).questionCount).toBe(6);
+        expect(getCatQuizBlueprint(2300).questionCount).toBe(7);
         expect(getCatQuizBlueprint(2600).questionCount).toBe(8);
     });
 
-    it("always allocates at least one multiple_select and balanced total", () => {
-        for (const score of [0, 799, 800, 1599, 1600, 2399, 2400, 5000]) {
+    it("removes multiple_select in low score segments and enables it in high segments", () => {
+        for (const score of [0, 799, 800, 1399]) {
+            const blueprint = getCatQuizBlueprint(score);
+            expect(blueprint.allowedTypes.includes("multiple_select")).toBe(false);
+            expect(blueprint.distribution.multiple_select).toBe(0);
+        }
+
+        for (const score of [2000, 2600, 5000]) {
             const blueprint = getCatQuizBlueprint(score);
             const total = Object.values(blueprint.distribution).reduce((sum, value) => sum + value, 0);
             expect(total).toBe(blueprint.questionCount);
+            expect(blueprint.allowedTypes.includes("multiple_select")).toBe(true);
             expect(blueprint.distribution.multiple_select).toBeGreaterThanOrEqual(1);
         }
     });
@@ -140,5 +173,63 @@ describe("cat score model", () => {
         expect(result.lexical.isValid).toBe(true);
         expect(result.isValid).toBe(true);
         expect(result.reasons).toHaveLength(0);
+    });
+
+    it("validates three-axis targets with detailed pass/fail reasons", () => {
+        const targets = getCatArticleTargets(1000);
+        const simpleSentence = "Students read detailed practice passages and record concise notes in a structured learning journal.";
+        const complexSentence = "Learners improve steadily because daily review builds reliable memory for core language patterns.";
+        const multiClauseSentence =
+            "Progress remains stable because the class tracks errors while each member keeps consistent study notes every day.";
+        const passText = [
+            ...Array.from({ length: 15 }, () => simpleSentence),
+            ...Array.from({ length: 4 }, () => complexSentence),
+            multiClauseSentence,
+        ].join(" ");
+
+        const pass = validateCatArticleAgainstTargets({
+            text: passText,
+            score: 1000,
+            targets,
+            lexicalMix: {
+                lower: 0.18,
+                core: 0.66,
+                stretch: 0.13,
+                overlevel: 0.03,
+            },
+            lexicalEvidence: {
+                lower: ["students", "class"],
+                core: ["practice", "memory", "review"],
+                stretch: ["journal", "context"],
+                overlevel: ["outcomes"],
+            },
+        });
+
+        expect(pass.passed).toBe(true);
+        expect(pass.reasons).toHaveLength(0);
+        expect(pass.dimensions.syntax.complexSentenceRatio).toBeGreaterThan(0);
+
+        const fail = validateCatArticleAgainstTargets({
+            text: "Short text. Very easy sentence.",
+            score: 1000,
+            targets,
+            lexicalMix: {
+                lower: 0.01,
+                core: 0.2,
+                stretch: 0.2,
+                overlevel: 0.59,
+            },
+            lexicalEvidence: {
+                lower: [],
+                core: [],
+                stretch: [],
+                overlevel: [],
+            },
+        });
+
+        expect(fail.passed).toBe(false);
+        expect(fail.dimensions.length.passed).toBe(false);
+        expect(fail.dimensions.lexical.passed).toBe(false);
+        expect(fail.reasons.some((reason) => reason.includes("overlevel"))).toBe(true);
     });
 });

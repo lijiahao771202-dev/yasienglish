@@ -60,11 +60,29 @@ interface GeneratedArticleData {
     catSessionId?: string;
     catBand?: number;
     catScoreSnapshot?: number;
+    catThetaSnapshot?: number;
+    catSeSnapshot?: number;
+    catSessionBlueprint?: {
+        minItems?: number;
+        maxItems?: number;
+        targetSe?: number;
+        stopRule?: string;
+        challengeRatioTarget?: [number, number];
+        passages?: Array<{
+            passageIndex: number;
+            title: string;
+            content: string;
+            targetScore: number;
+            qualityTier: "ok" | "low_confidence";
+        }>;
+        items?: unknown[];
+    };
     catQuizBlueprint?: {
         score?: number;
         questionCount?: number;
         ratioBandLabel?: string;
         distribution?: Record<string, number>;
+        allowedTypes?: string[];
     };
 }
 
@@ -292,19 +310,26 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     }, [category]);
 
     const handleGenerate = async () => {
-        if (!genTopic.trim()) return;
         setIsGenerating(true);
         try {
+            const normalizedTopic = genTopic.trim();
             const res = await fetch("/api/ai/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ topic: genTopic, difficulty: genDifficulty }),
+                body: JSON.stringify({
+                    topic: normalizedTopic || undefined,
+                    difficulty: genDifficulty,
+                }),
             });
             const data = await res.json();
             const articleUrl = `ai-gen://${genDifficulty}/${Date.now()}`;
             data.url = articleUrl;
             data.difficulty = genDifficulty;
             data.isAIGenerated = true;
+            const fallbackTopicTitle = typeof data?.topicSeed?.topicLine === "string"
+                ? data.topicSeed.topicLine
+                : (normalizedTopic || "随机主题");
+            const finalTitle = data.title || fallbackTopicTitle;
 
             // Save to IndexedDB
             try {
@@ -312,7 +337,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 const timestamp = Date.now();
                 await db.articles.put({
                     url: articleUrl,
-                    title: data.title || genTopic,
+                    title: finalTitle,
                     content: data.content || "",
                     textContent: data.textContent || data.content || "",
                     byline: data.byline,
@@ -324,7 +349,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 });
 
                 const historyItem: ArticleItem = {
-                    title: data.title || genTopic,
+                    title: finalTitle,
                     link: articleUrl,
                     pubDate: new Date(timestamp).toISOString(),
                     source: "AI Gen",
@@ -434,6 +459,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 cat_score: payload?.catProfile?.score,
                 cat_level: payload?.catProfile?.level,
                 cat_theta: payload?.catProfile?.theta,
+                cat_se: payload?.catProfile?.se,
                 cat_points: payload?.catProfile?.points,
                 cat_current_band: payload?.catProfile?.currentBand,
             });
@@ -778,18 +804,18 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                         value={genTopic}
                                         onChange={(e) => setGenTopic(e.target.value)}
                                         onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-                                        placeholder="输入主题，例如：Quantum Computing"
+                                        placeholder="输入主题（留空则随机），例如：Quantum Computing"
                                         className="w-full rounded-xl border border-white/75 bg-white/58 px-4 py-3 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all placeholder:text-slate-400 focus:border-cyan-300/80 focus:bg-white/72 focus:outline-none"
                                     />
                                     <motion.button
                                         type="button"
                                         onClick={handleGenerate}
-                                        disabled={isGenerating || !genTopic.trim()}
-                                        whileHover={isGenerating || !genTopic.trim() ? undefined : { y: -1, scale: 1.01 }}
-                                        whileTap={isGenerating || !genTopic.trim() ? undefined : { scale: 0.99 }}
+                                        disabled={isGenerating}
+                                        whileHover={isGenerating ? undefined : { y: -1, scale: 1.01 }}
+                                        whileTap={isGenerating ? undefined : { scale: 0.99 }}
                                         className={cn(
                                             "group relative overflow-hidden rounded-xl px-5 py-3 text-sm font-bold transition-all duration-300",
-                                            isGenerating || !genTopic.trim()
+                                            isGenerating
                                                 ? "cursor-not-allowed border border-white/45 bg-white/34 text-slate-400"
                                                 : "border border-white/80 bg-white/72 text-slate-800 shadow-[0_15px_28px_-18px_rgba(15,23,42,0.74)] hover:bg-white/90 hover:shadow-[0_20px_38px_-18px_rgba(15,23,42,0.85)]"
                                         )}

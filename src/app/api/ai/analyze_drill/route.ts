@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { deepseek } from "@/lib/deepseek";
 
 const LISTENING_ANALYSIS_MAX_TOKENS = 320;
+const DICTATION_ANALYSIS_MAX_TOKENS = 420;
 const TRANSLATION_ANALYSIS_MAX_TOKENS = 360;
 const TEACHING_ANALYSIS_MAX_TOKENS = 520;
 const FULL_TRANSLATION_ANALYSIS_MAX_TOKENS = 820;
@@ -63,6 +64,36 @@ export async function POST(req: NextRequest) {
                 "listening_tips": ["一条简短发音建议", "一条简短流畅度建议"],
                 "encouragement": "一句简短中文鼓励"
               }
+            }
+            `;
+        } else if (mode === "dictation") {
+            prompt = `
+            Act as an expert dictation coach (English audio -> Chinese writing).
+
+            This is a post-score analysis request. Do NOT rescore.
+            Final score: ${score ?? "unknown"}/10
+            User Elo: ${userElo}
+            English Reference: "${reference_english}"
+            Chinese Gold Reference: "${original_chinese}"
+            User Chinese Answer: "${user_translation}"
+
+            Focus:
+            1. Identify missing or incorrect key meaning units.
+            2. Distinguish major semantic errors from minor wording/style issues.
+            3. Give concise, reusable correction advice.
+
+            Output JSON only:
+            {
+              "feedback": ["一句总评（中文）", "一句改进建议（中文）"],
+              "improved_version": "更自然且完整的中文参考写法",
+              "error_analysis": [
+                {
+                  "error": "用户答案中的错误片段或缺失点",
+                  "correction": "推荐改法",
+                  "rule": "为什么这样改（语义/信息完整性）",
+                  "tip": "一句记忆提示"
+                }
+              ]
             }
             `;
         } else {
@@ -166,6 +197,8 @@ export async function POST(req: NextRequest) {
 
         const maxTokens = mode === "listening"
             ? LISTENING_ANALYSIS_MAX_TOKENS
+            : mode === "dictation"
+                ? DICTATION_ANALYSIS_MAX_TOKENS
             : detail_level === "full"
                 ? FULL_TRANSLATION_ANALYSIS_MAX_TOKENS
             : teaching_mode
