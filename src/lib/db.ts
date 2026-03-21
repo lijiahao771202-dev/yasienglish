@@ -83,7 +83,7 @@ export interface EloHistoryItem {
     id?: number;
     remote_id?: string;
     user_id?: string;
-    mode: 'translation' | 'listening';
+    mode: 'translation' | 'listening' | 'dictation';
     elo: number;
     change: number;
     timestamp: number;
@@ -102,6 +102,11 @@ export interface LocalCatSessionRecord {
     score_after?: number;
     level_after?: number;
     theta_after?: number;
+    se_before?: number;
+    se_after?: number;
+    stop_reason?: string;
+    item_count?: number;
+    quality_tier?: string;
     accuracy?: number;
     speed_score?: number;
     stability_score?: number;
@@ -136,6 +141,9 @@ export interface LocalUserProfile extends SyncTracked {
     listening_elo?: number;
     listening_streak?: number;
     listening_max_elo?: number;
+    dictation_elo?: number;
+    dictation_streak?: number;
+    dictation_max_elo?: number;
     coins?: number;
     hints?: number;
     inventory?: InventoryState;
@@ -152,6 +160,7 @@ export interface LocalUserProfile extends SyncTracked {
     cat_score?: number;
     cat_level?: number;
     cat_theta?: number;
+    cat_se?: number;
     cat_points?: number;
     cat_current_band?: number;
     cat_updated_at?: string;
@@ -619,9 +628,54 @@ export class YasiDB extends Dexie {
                 if (typeof profile.cat_score !== 'number') profile.cat_score = 1000;
                 if (typeof profile.cat_level !== 'number') profile.cat_level = 1;
                 if (typeof profile.cat_theta !== 'number') profile.cat_theta = 0;
+                if (typeof profile.cat_se !== 'number') profile.cat_se = 1.15;
                 if (typeof profile.cat_points !== 'number') profile.cat_points = 0;
                 if (typeof profile.cat_current_band !== 'number') profile.cat_current_band = 3;
                 if (typeof profile.cat_updated_at !== 'string') profile.cat_updated_at = nowIso;
+            });
+        });
+
+        // Version 25: CAT precision fields.
+        this.version(25).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                if (typeof profile.cat_se !== 'number') profile.cat_se = 1.15;
+            });
+        });
+
+        // Version 26: add local-only dictation Elo/streak fields.
+        this.version(26).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                const listeningElo = profile.listening_elo ?? profile.elo_rating ?? 400;
+                const listeningStreak = profile.listening_streak ?? 0;
+                const listeningMaxElo = profile.listening_max_elo ?? listeningElo;
+
+                if (typeof profile.dictation_elo !== 'number') profile.dictation_elo = listeningElo;
+                if (typeof profile.dictation_streak !== 'number') profile.dictation_streak = listeningStreak;
+                if (typeof profile.dictation_max_elo !== 'number') profile.dictation_max_elo = listeningMaxElo;
             });
         });
     }

@@ -3,6 +3,7 @@ import { deepseek } from "@/lib/deepseek";
 
 const LISTENING_MAX_TOKENS = 128;
 const TRANSLATION_MAX_TOKENS = 96;
+const DICTATION_MAX_TOKENS = 128;
 const SCORING_TEMPERATURE = 0.2;
 
 type ScoreCompletion = {
@@ -103,6 +104,39 @@ export async function POST(req: NextRequest) {
                 "judge_reasoning": "一句简短口语表现评价"
             }
             `;
+        } else if (mode === "dictation") {
+            // Dictation Mode Prompt (English audio -> Chinese writing)
+            prompt = `
+            Act as an expert bilingual dictation coach.
+
+            Context:
+            - Input Method: ${input_source.toUpperCase()}
+            - User Elo: ${userElo}
+            - Task: User listened to an English sentence and wrote Chinese.
+            - English Reference: "${reference_english}"
+            - Chinese Gold Reference: "${original_chinese}"
+            - User Chinese Answer: "${user_translation}"
+
+            Scoring rules (Dictation-specific):
+            1. Evaluate semantic fidelity first, literal wording second.
+            2. Accept reasonable paraphrases/synonyms in Chinese.
+            3. Penalize missing key information: subject, action, object, negation, numbers, time/place, causal relation.
+            4. Minor punctuation/style issues should have little impact.
+            5. If core meaning is mostly complete, score should be at least 6.
+
+            Output language:
+            - judge_reasoning and all tips MUST be in Simplified Chinese.
+
+            Output JSON only:
+            {
+              "score": 0-10,
+              "judge_reasoning": "一句简短评分结论",
+              "feedback": {
+                "dictation_tips": ["一条信息缺失建议", "一条表达优化建议"],
+                "encouragement": "一句简短鼓励"
+              }
+            }
+            `;
         } else {
             // Translation Mode Prompt (Smart Elo)
             // Translation Mode Prompt (Written Elo)
@@ -170,7 +204,11 @@ export async function POST(req: NextRequest) {
 
         console.log("[score_translation] Calling DeepSeek API...");
         const MAX_RETRIES = 3;
-        const maxTokens = mode === "listening" ? LISTENING_MAX_TOKENS : TRANSLATION_MAX_TOKENS;
+        const maxTokens = mode === "listening"
+            ? LISTENING_MAX_TOKENS
+            : mode === "dictation"
+                ? DICTATION_MAX_TOKENS
+                : TRANSLATION_MAX_TOKENS;
         let lastError: Error | null = null;
         let completion: ScoreCompletion | null = null;
 

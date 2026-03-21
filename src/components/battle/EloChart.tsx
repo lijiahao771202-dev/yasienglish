@@ -3,13 +3,13 @@
 import { useEffect, useState, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { db, EloHistoryItem } from '@/lib/db';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { Headphones, Feather, TrendingUp, Crown, ArrowUp, ArrowDown, Target, Zap, Trophy, Flame, Snowflake, Calendar, History, Clock } from 'lucide-react';
+import { Headphones, Feather, TrendingUp, Crown, ArrowUp, ArrowDown, Zap, Flame, Snowflake, Calendar, History, Clock, BookOpen } from 'lucide-react';
 import { getRank } from '@/lib/rankUtils';
 
 interface EloChartProps {
-    mode: 'listening' | 'translation';
+    mode: 'listening' | 'translation' | 'dictation';
 }
 
 // Rank boundaries
@@ -44,11 +44,16 @@ interface EnhancedEloItem extends EloHistoryItem {
 }
 
 // Custom dot component with fire/ice effects
-const CustomDot = (props: any) => {
-    const { cx, cy, payload } = props;
-    if (!payload || !cx || !cy) return null;
+interface CustomDotProps {
+    cx?: number;
+    cy?: number;
+    payload?: EnhancedEloItem;
+}
 
-    const item = payload as EnhancedEloItem;
+const CustomDot = ({ cx, cy, payload }: CustomDotProps) => {
+    if (!payload || cx === undefined || cy === undefined) return null;
+
+    const item = payload;
     const streak = item.streak || 0;
 
     // Milestone marker (trophy)
@@ -137,7 +142,7 @@ export function EloChart({ mode }: EloChartProps) {
         const loadData = async () => {
             setIsLoading(true);
             try {
-                let history = await db.elo_history
+                const history = await db.elo_history
                     .where('mode')
                     .equals(mode)
                     .reverse()
@@ -287,7 +292,8 @@ export function EloChart({ mode }: EloChartProps) {
     }, [data]);
 
     const isListening = mode === 'listening';
-    const baseColor = isListening ? '#0ea5e9' : '#8b5cf6';
+    const isDictation = mode === 'dictation';
+    const baseColor = isListening ? '#0ea5e9' : isDictation ? '#a855f7' : '#8b5cf6';
     const trendColor = trend === 'up' ? '#22c55e' : trend === 'down' ? '#ef4444' : baseColor;
     const gradientId = `colorElo-${mode}`;
     const currentRank = getRank(currentElo || 600);
@@ -352,8 +358,15 @@ export function EloChart({ mode }: EloChartProps) {
             <div className="p-4 border-b border-stone-100/50">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className={cn("p-2 rounded-xl text-white shadow-lg", isListening ? "bg-gradient-to-br from-sky-400 to-sky-600" : "bg-gradient-to-br from-violet-400 to-violet-600")}>
-                            {isListening ? <Headphones className="w-5 h-5" /> : <Feather className="w-5 h-5" />}
+                        <div className={cn(
+                            "p-2 rounded-xl text-white shadow-lg",
+                            isListening
+                                ? "bg-gradient-to-br from-sky-400 to-sky-600"
+                                : isDictation
+                                    ? "bg-gradient-to-br from-fuchsia-500 to-purple-600"
+                                    : "bg-gradient-to-br from-violet-400 to-violet-600"
+                        )}>
+                            {isListening ? <Headphones className="w-5 h-5" /> : isDictation ? <BookOpen className="w-5 h-5" /> : <Feather className="w-5 h-5" />}
                         </div>
                         <div>
                             <div className="flex items-center gap-2">
@@ -406,7 +419,11 @@ export function EloChart({ mode }: EloChartProps) {
                             animate={{ width: `${currentRank.progress}%` }}
                             transition={{ duration: 1, ease: "easeOut" }}
                             className={cn("h-full rounded-full bg-gradient-to-r",
-                                isListening ? "from-sky-400 to-sky-500" : "from-violet-400 to-violet-500"
+                                isListening
+                                    ? "from-sky-400 to-sky-500"
+                                    : isDictation
+                                        ? "from-fuchsia-500 to-purple-600"
+                                        : "from-violet-400 to-violet-500"
                             )}
                         />
                     </div>

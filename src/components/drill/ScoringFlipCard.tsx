@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 interface ScoringFlipCardProps {
     isScoring: boolean;
     userAnswer: string;
-    mode: 'listening' | 'translation';
+    mode: 'listening' | 'translation' | 'dictation';
     streakTier: 0 | 1 | 2 | 3 | 4;
 }
 
@@ -19,6 +19,11 @@ const SCORING_PHASES: Record<ScoringFlipCardProps["mode"], Array<{ label: string
     listening: [
         { label: "Pronunciation", detail: "比对发音准确度" },
         { label: "Fluency", detail: "检查复述流畅度" },
+        { label: "Score", detail: "封存最终评分" },
+    ],
+    dictation: [
+        { label: "Semantics", detail: "对齐中文语义准确度" },
+        { label: "Coverage", detail: "核对关键信息完整度" },
         { label: "Score", detail: "封存最终评分" },
     ],
 };

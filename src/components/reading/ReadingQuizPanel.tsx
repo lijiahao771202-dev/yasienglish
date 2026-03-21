@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     CheckCircle2,
@@ -28,6 +28,7 @@ import {
 
 export interface QuizQuestion {
     id: number;
+    itemId?: string;
     type: "multiple_choice" | "multiple_select" | "short_answer" | "true_false_ng" | "matching" | "fill_blank" | "fill_blank_choice";
     question: string;
     options?: string[];
@@ -43,6 +44,8 @@ export interface QuizQuestion {
     evidence?: string;
     reasoning?: string;
     trap?: string;
+    itemDifficulty?: number;
+    passageIndex?: number;
 }
 
 function normalizeQuestion(raw: unknown, index: number): QuizQuestion | null {
@@ -125,6 +128,7 @@ function normalizeQuestion(raw: unknown, index: number): QuizQuestion | null {
 
     return {
         id: typeof candidate.id === "number" ? candidate.id : index + 1,
+        itemId: typeof candidate.itemId === "string" ? candidate.itemId : undefined,
         type: normalizedType,
         question: candidate.question.trim(),
         options: normalizedOptions.length > 0 ? normalizedOptions : undefined,
@@ -135,7 +139,36 @@ function normalizeQuestion(raw: unknown, index: number): QuizQuestion | null {
         evidence: typeof candidate.evidence === "string" ? candidate.evidence : explanationObj?.evidence,
         reasoning: typeof candidate.reasoning === "string" ? candidate.reasoning : explanationObj?.reasoning,
         trap: typeof candidate.trap === "string" ? candidate.trap : explanationObj?.trap,
+        itemDifficulty: typeof candidate.itemDifficulty === "number"
+            ? candidate.itemDifficulty
+            : (typeof (candidate as { b?: number }).b === "number" ? (candidate as { b: number }).b : undefined),
+        passageIndex: typeof candidate.passageIndex === "number" ? candidate.passageIndex : undefined,
     };
+}
+
+export interface QuizSubmitPayload {
+    correct: number;
+    total: number;
+    responses?: Array<{
+        itemId: string;
+        order: number;
+        answer?: string | string[];
+        correct: boolean;
+        latencyMs: number;
+        itemDifficulty: number;
+        itemType?: string;
+    }>;
+    qualityTier?: "ok" | "low_confidence";
+}
+
+interface CatQuestionResponse {
+    itemId: string;
+    order: number;
+    answer?: string | string[];
+    correct: boolean;
+    latencyMs: number;
+    itemDifficulty: number;
+    itemType?: string;
 }
 
 interface ReadingQuizPanelProps {
@@ -145,15 +178,23 @@ interface ReadingQuizPanelProps {
     quizMode?: "standard" | "cat";
     catBand?: number;
     catScore?: number;
+    catTheta?: number;
+    catSe?: number;
+    catTargetSe?: number;
+    catMinItems?: number;
+    catMaxItems?: number;
     catQuizBlueprint?: {
         questionCount?: number;
         distribution?: Record<string, number>;
+        allowedTypes?: string[];
     };
+    floatingCompact?: boolean;
+    onFloatingCompactChange?: (compact: boolean) => void;
     onClose: () => void;
     onLocate?: (payload: { questionNumber: number; sourceParagraph: string; evidence?: string }) => void;
     cachedQuestions?: QuizQuestion[];
     onQuestionsReady?: (questions: QuizQuestion[]) => void;
-    onSubmitScore?: (score: { correct: number; total: number }) => void;
+    onSubmitScore?: (score: QuizSubmitPayload) => void;
 }
 
 const DIFFICULTY_META: Record<string, { label: string; color: string; bgClass: string }> = {
@@ -169,7 +210,14 @@ export function ReadingQuizPanel({
     quizMode = "standard",
     catBand,
     catScore,
+    catTheta,
+    catSe,
+    catTargetSe = 0.56,
+    catMinItems = 2,
+    catMaxItems = 8,
     catQuizBlueprint,
+    floatingCompact = false,
+    onFloatingCompactChange,
     onClose,
     onLocate,
     cachedQuestions,
@@ -182,11 +230,38 @@ export function ReadingQuizPanel({
 
     // User answers: key = question id, value = selected answer
     const [answers, setAnswers] = useState<Record<number, QuizAnswerValue>>({});
+    const [questionFirstAnswerAt, setQuestionFirstAnswerAt] = useState<Record<number, number>>({});
     const [isSubmitted, setIsSubmitted] = useState(false);
     const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
     const [expandedExplanations, setExpandedExplanations] = useState<Record<number, boolean>>({});
+    const [catStepIndex, setCatStepIndex] = useState(0);
+    const [catResponseMap, setCatResponseMap] = useState<Record<number, CatQuestionResponse>>({});
+    const [isCatCompactMode, setIsCatCompactMode] = useState(true);
+    const autoCompactTimerRef = useRef<number | null>(null);
 
     const diffMeta = DIFFICULTY_META[difficulty] || DIFFICULTY_META.ielts;
+
+    const clearAutoCompactTimer = useCallback(() => {
+        if (autoCompactTimerRef.current) {
+            window.clearTimeout(autoCompactTimerRef.current);
+            autoCompactTimerRef.current = null;
+        }
+    }, []);
+
+    const scheduleAutoCompact = useCallback((delay = 1200) => {
+        if (!(quizMode === "cat" && floatingCompact)) return;
+        clearAutoCompactTimer();
+        autoCompactTimerRef.current = window.setTimeout(() => {
+            setIsCatCompactMode(true);
+        }, delay);
+    }, [clearAutoCompactTimer, floatingCompact, quizMode]);
+
+    useEffect(() => () => clearAutoCompactTimer(), [clearAutoCompactTimer]);
+
+    useEffect(() => {
+        if (quizMode !== "cat" || !floatingCompact) return;
+        onFloatingCompactChange?.(isCatCompactMode);
+    }, [floatingCompact, isCatCompactMode, onFloatingCompactChange, quizMode]);
     // Fetch quiz questions on mount
     useEffect(() => {
         if (cachedQuestions && cachedQuestions.length > 0) {
@@ -224,6 +299,16 @@ export function ReadingQuizPanel({
 
                     if (normalizedQuestions.length > 0) {
                         setQuestions(normalizedQuestions);
+                        setAnswers({});
+                        setQuestionFirstAnswerAt({});
+                        setExpandedExplanations({});
+                        setCatStepIndex(0);
+                        setCatResponseMap({});
+                        setIsSubmitted(false);
+                        setScore(null);
+                        if (quizMode === "cat" && floatingCompact) {
+                            setIsCatCompactMode(true);
+                        }
                         onQuestionsReady?.(normalizedQuestions);
                     } else {
                         setError("未能生成题目，请重试。");
@@ -237,10 +322,16 @@ export function ReadingQuizPanel({
         };
         fetchQuiz();
         return () => { cancelled = true; };
-    }, [articleContent, difficulty, articleTitle, cachedQuestions, onQuestionsReady, quizMode, catBand, catScore, catQuizBlueprint]);
+    }, [articleContent, difficulty, articleTitle, cachedQuestions, onQuestionsReady, quizMode, catBand, catScore, catQuizBlueprint, floatingCompact]);
 
     const handleSelectAnswer = (question: QuizQuestion, option: string) => {
         if (isSubmitted) return;
+        if (quizMode === "cat" && catResponseMap[question.id]) return;
+        if (quizMode === "cat" && floatingCompact) {
+            setIsCatCompactMode(false);
+        }
+        const now = Date.now();
+        setQuestionFirstAnswerAt((prev) => (prev[question.id] ? prev : { ...prev, [question.id]: now }));
         if (question.type === "multiple_select") {
             setAnswers((prev) => {
                 const current = Array.isArray(prev[question.id]) ? prev[question.id] as string[] : [];
@@ -256,52 +347,211 @@ export function ReadingQuizPanel({
 
     const handleTextAnswer = (questionId: number, text: string) => {
         if (isSubmitted) return;
+        if (quizMode === "cat" && catResponseMap[questionId]) return;
+        if (quizMode === "cat" && floatingCompact) {
+            setIsCatCompactMode(false);
+        }
+        const now = Date.now();
+        setQuestionFirstAnswerAt((prev) => (prev[questionId] ? prev : { ...prev, [questionId]: now }));
         setAnswers((prev) => ({ ...prev, [questionId]: text }));
     };
 
+    const getFallbackDifficulty = (question: QuizQuestion, order: number, poolLength: number) => {
+        const fallbackDifficulty = (typeof catTheta === "number" ? catTheta : (typeof catScore === "number" ? (catScore / 3200) * 6 - 3 : 0))
+            + ((order - 1) / Math.max(1, poolLength - 1)) * 0.9
+            - 0.35;
+        return typeof question.itemDifficulty === "number" ? question.itemDifficulty : Number(fallbackDifficulty.toFixed(3));
+    };
+
+    const buildCatResponse = (question: QuizQuestion, order: number, submittedAt: number): CatQuestionResponse => {
+        const answerValue = answers[question.id];
+        const answer = Array.isArray(answerValue)
+            ? answerValue.map((token) => String(token))
+            : typeof answerValue === "string"
+                ? answerValue
+                : undefined;
+        const firstAnsweredAt = questionFirstAnswerAt[question.id] ?? submittedAt;
+        const latencyMs = Math.max(200, submittedAt - firstAnsweredAt);
+        return {
+            itemId: question.itemId || `cat-item-${order}`,
+            order,
+            answer,
+            correct: isObjectiveQuestionCorrect(question, answers[question.id]),
+            latencyMs,
+            itemDifficulty: getFallbackDifficulty(question, order, Math.max(questions.length, 1)),
+            itemType: question.type,
+        };
+    };
+
     const handleSubmit = () => {
-        const finalScore = scoreObjectiveQuiz(questions, answers);
+        const submittedAt = Date.now();
+        const answeredQuestions = questions.filter((question) => isObjectiveQuestionAnswered(question, answers[question.id]));
+        const scoringPool = quizMode === "cat" ? answeredQuestions : questions;
+        const finalScore = scoreObjectiveQuiz(scoringPool, answers);
+        const normalizedResponses = scoringPool.map((question, index) => buildCatResponse(question, index + 1, submittedAt));
         setScore(finalScore);
         setIsSubmitted(true);
-        onSubmitScore?.(finalScore);
+        onSubmitScore?.({
+            ...finalScore,
+            responses: quizMode === "cat" ? normalizedResponses : undefined,
+            qualityTier: quizMode === "cat" && typeof catSe === "number" && catSe > 1.25 ? "low_confidence" : "ok",
+        });
     };
 
     const handleReset = () => {
+        clearAutoCompactTimer();
         setAnswers({});
+        setQuestionFirstAnswerAt({});
         setIsSubmitted(false);
         setScore(null);
         setExpandedExplanations({});
+        setCatStepIndex(0);
+        setCatResponseMap({});
+        setIsCatCompactMode(true);
     };
 
     const isCorrect = (q: QuizQuestion): boolean => isObjectiveQuestionCorrect(q, answers[q.id]);
 
-    const allAnswered = questions.length > 0 && questions.every((q) => isObjectiveQuestionAnswered(q, answers[q.id]));
+    const answeredCount = questions.filter((q) => isObjectiveQuestionAnswered(q, answers[q.id])).length;
+    const catSubmittedCount = Object.keys(catResponseMap).length;
+    const catCurrentQuestion = questions[catStepIndex];
+    const catCurrentCommitted = Boolean(catCurrentQuestion && catResponseMap[catCurrentQuestion.id]);
+    const catCurrentCanSubmit = Boolean(catCurrentQuestion && isObjectiveQuestionAnswered(catCurrentQuestion, answers[catCurrentQuestion.id]));
+    const catMinRequired = Math.min(catMinItems, Math.max(1, questions.length));
+    const catMaxAllowed = Math.min(catMaxItems, Math.max(1, questions.length));
+    const hasReachedCatMin = catSubmittedCount >= catMinRequired;
+    const hasReachedCatMax = catSubmittedCount >= catMaxAllowed;
+    const nextUnsubmittedIndex = questions.findIndex((question, index) => index > catStepIndex && !catResponseMap[question.id]);
+    const hasNextQuestion = nextUnsubmittedIndex >= 0;
+
+    const handleSubmitCurrentCatQuestion = () => {
+        if (!catCurrentQuestion || catCurrentCommitted || !catCurrentCanSubmit) return;
+        const submittedAt = Date.now();
+        const response = buildCatResponse(catCurrentQuestion, catSubmittedCount + 1, submittedAt);
+        setCatResponseMap((prev) => ({ ...prev, [catCurrentQuestion.id]: response }));
+        setExpandedExplanations((prev) => ({ ...prev, [catCurrentQuestion.id]: true }));
+        scheduleAutoCompact();
+    };
+
+    const handleNextCatQuestion = () => {
+        if (nextUnsubmittedIndex < 0) return;
+        clearAutoCompactTimer();
+        setCatStepIndex(nextUnsubmittedIndex);
+        if (quizMode === "cat" && floatingCompact) {
+            setIsCatCompactMode(false);
+        }
+    };
+
+    const handleFinalizeCatSession = () => {
+        if (!hasReachedCatMin) return;
+        const responses = Object.values(catResponseMap).sort((left, right) => left.order - right.order);
+        const correct = responses.filter((item) => item.correct).length;
+        const total = responses.length;
+        const finalScore = { correct, total };
+        setScore(finalScore);
+        setIsSubmitted(true);
+        clearAutoCompactTimer();
+        if (quizMode === "cat" && floatingCompact) {
+            setIsCatCompactMode(false);
+        }
+        onSubmitScore?.({
+            ...finalScore,
+            responses,
+            qualityTier: quizMode === "cat" && typeof catSe === "number" && catSe > 1.25 ? "low_confidence" : "ok",
+        });
+    };
+
+    const allAnswered = questions.length > 0 && answeredCount === questions.length;
+    const canSubmitCat = quizMode === "cat"
+        ? hasReachedCatMin
+        : false;
+    const canSubmit = quizMode === "cat" ? canSubmitCat : allAnswered;
+    const catAnsweredHint = quizMode === "cat"
+        ? `已提交 ${catSubmittedCount} 题 · 至少 ${catMinRequired} 题，精度达标自动收卷（上限 ${catMaxAllowed} 题，目标SE ≤ ${catTargetSe.toFixed(2)}）`
+        : null;
+    const isFloatingCat = quizMode === "cat" && floatingCompact;
     const toggleExplanation = (questionId: number) => {
         setExpandedExplanations((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
     };
 
+    const shouldUseCompactShell = quizMode === "cat" && floatingCompact && isCatCompactMode && !isSubmitted;
+    if (shouldUseCompactShell) {
+        return (
+            <div className="flex h-full items-center justify-between gap-3 px-4">
+                <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                        阅读测验 · 第 {Math.min(catSubmittedCount + 1, Math.max(1, questions.length || 1))} 题
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-violet-700/90">
+                        {catSubmittedCount}/{catMaxAllowed} · 至少 {catMinRequired} 题后按精度自动收卷
+                    </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                    {hasReachedCatMin ? (
+                        <button
+                            onClick={handleFinalizeCatSession}
+                            className="rounded-lg border border-violet-200/80 bg-violet-100/80 px-3 py-1.5 text-xs font-bold text-violet-800 transition-colors hover:bg-violet-100"
+                        >
+                            结算
+                        </button>
+                    ) : null}
+                    <button
+                        onClick={() => {
+                            clearAutoCompactTimer();
+                            setIsCatCompactMode(false);
+                        }}
+                        className="rounded-lg border border-white/75 bg-white/80 px-3 py-1.5 text-xs font-bold text-slate-800 shadow-[0_10px_20px_-14px_rgba(15,23,42,0.8)] transition-colors hover:bg-white"
+                    >
+                        展开作答
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="flex h-full min-h-0 flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex-shrink-0 border-b border-white/40 px-5 py-4">
+            <div className="flex-shrink-0 border-b border-white/40 px-4 py-2.5">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <Sparkles className="h-5 w-5 text-pink-500" />
-                        <h3 className="font-newsreader text-lg font-bold text-slate-900">
-                            阅读理解
+                        {!isFloatingCat && <Sparkles className="h-5 w-5 text-pink-500" />}
+                        <h3 className={cn("font-newsreader font-bold text-slate-900", isFloatingCat ? "text-base" : "text-lg")}>
+                            {isFloatingCat ? "阅读测验" : "阅读理解"}
                         </h3>
-                    </div>
-                    <span
-                        className={cn(
-                            "rounded-full border px-2.5 py-0.5 text-xs font-bold",
-                            diffMeta.bgClass,
-                            diffMeta.color
+                        {isFloatingCat && (
+                            <span className="rounded-full border border-white/70 bg-white/70 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                {Math.min(catSubmittedCount + (catCurrentCommitted ? 0 : 1), catMaxAllowed)}/{catMaxAllowed}
+                            </span>
                         )}
-                    >
-                        {diffMeta.label}
-                    </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        {!isFloatingCat && (
+                            <span
+                                className={cn(
+                                    "rounded-full border px-2.5 py-0.5 text-xs font-bold",
+                                    diffMeta.bgClass,
+                                    diffMeta.color
+                                )}
+                            >
+                                {diffMeta.label}
+                            </span>
+                        )}
+                        {isFloatingCat && !isSubmitted ? (
+                            <button
+                                onClick={() => {
+                                    clearAutoCompactTimer();
+                                    setIsCatCompactMode(true);
+                                }}
+                                className="rounded-full border border-white/70 bg-white/75 p-1.5 text-slate-600 transition-colors hover:bg-white"
+                                aria-label="收起答题面板"
+                            >
+                                <ChevronDown className="h-3.5 w-3.5" />
+                            </button>
+                        ) : null}
+                    </div>
                 </div>
-                {score && (
+                {score && !isFloatingCat && (
                     <motion.div
                         initial={{ opacity: 0, y: -8 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -324,7 +574,7 @@ export function ReadingQuizPanel({
             </div>
 
             {/* Questions Body */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-5 scrollbar-hide">
+            <div className="flex-1 min-h-0 space-y-3 overflow-y-auto overscroll-y-contain px-4 py-2.5 scrollbar-hide">
                 {isLoading && (
                     <div className="flex flex-col items-center justify-center py-16 text-slate-500">
                         <Loader2 className="mb-4 h-8 w-8 animate-spin text-pink-400" />
@@ -334,6 +584,16 @@ export function ReadingQuizPanel({
                         </p>
                     </div>
                 )}
+                {!isLoading && quizMode === "cat" && !isFloatingCat && (
+                    <div className="rounded-xl border border-violet-200/70 bg-violet-50/65 px-3 py-2 text-xs font-medium text-violet-700">
+                        {catAnsweredHint}
+                    </div>
+                )}
+                {!isLoading && quizMode === "cat" && isFloatingCat && (
+                    <div className="rounded-xl border border-violet-200/60 bg-violet-50/55 px-3 py-1.5 text-[11px] font-semibold text-violet-700">
+                        已提交 {catSubmittedCount} 题，至少 {catMinRequired} 题后按精度自动收卷
+                    </div>
+                )}
 
                 {error && (
                     <LiquidGlassPanel className="rounded-xl px-4 py-3 text-center text-sm text-red-600">
@@ -341,41 +601,121 @@ export function ReadingQuizPanel({
                     </LiquidGlassPanel>
                 )}
 
-                <AnimatePresence mode="popLayout">
-                    {questions.map((q, idx) => (
-                        <motion.div
-                            key={q.id}
-                            initial={{ opacity: 0, y: 12 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: idx * 0.06 }}
-                        >
-                            <QuestionCard
-                                question={q}
-                                index={idx}
-                                userAnswer={answers[q.id]}
-                                onSelect={handleSelectAnswer}
-                                onTextInput={handleTextAnswer}
-                                isSubmitted={isSubmitted}
-                                isCorrect={isSubmitted ? isCorrect(q) : undefined}
-                                isExpanded={Boolean(expandedExplanations[q.id])}
-                                onToggleExpand={toggleExplanation}
-                                onLocate={onLocate}
-                            />
-                        </motion.div>
-                    ))}
-                </AnimatePresence>
+                {quizMode === "cat" ? (
+                    <AnimatePresence mode="wait">
+                        {catCurrentQuestion ? (
+                            <motion.div
+                                key={catCurrentQuestion.id}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -8 }}
+                                transition={{ duration: 0.24 }}
+                            >
+                                <QuestionCard
+                                    question={catCurrentQuestion}
+                                    index={catStepIndex}
+                                    userAnswer={answers[catCurrentQuestion.id]}
+                                    onSelect={handleSelectAnswer}
+                                    onTextInput={handleTextAnswer}
+                                    isSubmitted={Boolean(catResponseMap[catCurrentQuestion.id])}
+                                    isCorrect={catResponseMap[catCurrentQuestion.id]?.correct}
+                                    isExpanded={Boolean(expandedExplanations[catCurrentQuestion.id])}
+                                    onToggleExpand={toggleExplanation}
+                                    onLocate={onLocate}
+                                    compact={isFloatingCat}
+                                />
+                            </motion.div>
+                        ) : (
+                            <div className="rounded-xl border border-white/60 bg-white/45 px-4 py-3 text-sm text-slate-600">
+                                本局题目已完成，可直接结算。
+                            </div>
+                        )}
+                    </AnimatePresence>
+                ) : (
+                    <AnimatePresence mode="popLayout">
+                        {questions.map((q, idx) => (
+                            <motion.div
+                                key={q.id}
+                                initial={{ opacity: 0, y: 12 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: idx * 0.06 }}
+                            >
+                                <QuestionCard
+                                    question={q}
+                                    index={idx}
+                                    userAnswer={answers[q.id]}
+                                    onSelect={handleSelectAnswer}
+                                    onTextInput={handleTextAnswer}
+                                    isSubmitted={isSubmitted}
+                                    isCorrect={isSubmitted ? isCorrect(q) : undefined}
+                                    isExpanded={Boolean(expandedExplanations[q.id])}
+                                    onToggleExpand={toggleExplanation}
+                                    onLocate={onLocate}
+                                    compact={false}
+                                />
+                            </motion.div>
+                        ))}
+                    </AnimatePresence>
+                )}
             </div>
 
             {/* Footer Actions */}
             {questions.length > 0 && (
-                <div className="flex-shrink-0 border-t border-white/40 px-5 py-4">
-                    {!isSubmitted ? (
+                <div className="flex-shrink-0 border-t border-white/40 px-4 py-2.5">
+                    {!isSubmitted && quizMode === "cat" ? (
+                        <div className={cn("flex flex-wrap gap-2.5", isFloatingCat && "gap-2")}>
+                            {!catCurrentCommitted ? (
+                                <button
+                                    onClick={handleSubmitCurrentCatQuestion}
+                                    disabled={!catCurrentCanSubmit}
+                                    className={cn(
+                                        "flex items-center justify-center gap-2 rounded-xl text-sm font-bold transition-all duration-300",
+                                        isFloatingCat ? "min-w-[128px] flex-1 py-2.5" : "min-w-[180px] flex-1 py-3",
+                                        catCurrentCanSubmit
+                                            ? "border border-white/60 bg-white/70 text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] hover:bg-white/90"
+                                            : "border border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
+                                    )}
+                                >
+                                    <Send className="h-4 w-4" />
+                                    {isFloatingCat ? "提交" : "提交本题"}
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={handleNextCatQuestion}
+                                    disabled={!hasNextQuestion || hasReachedCatMax}
+                                    className={cn(
+                                        "flex items-center justify-center gap-2 rounded-xl text-sm font-bold transition-all duration-300",
+                                        isFloatingCat ? "min-w-[128px] flex-1 py-2.5" : "min-w-[180px] flex-1 py-3",
+                                        hasNextQuestion && !hasReachedCatMax
+                                            ? "border border-white/60 bg-white/70 text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] hover:bg-white/90"
+                                            : "border border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
+                                    )}
+                                >
+                                    <ChevronRight className="h-4 w-4" />
+                                    下一题
+                                </button>
+                            )}
+                            <button
+                                onClick={handleFinalizeCatSession}
+                                disabled={!canSubmitCat}
+                                className={cn(
+                                    "flex items-center justify-center gap-2 rounded-xl text-sm font-bold transition-all duration-300",
+                                    isFloatingCat ? "min-w-[128px] py-2.5 px-4" : "min-w-[180px] flex-1 py-3",
+                                    canSubmitCat
+                                        ? "border border-violet-200/70 bg-violet-100/70 text-violet-800 shadow-[0_14px_30px_-20px_rgba(109,40,217,0.55)] hover:bg-violet-100"
+                                        : "border border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
+                                )}
+                            >
+                                {isFloatingCat ? "结算" : "完成本局结算"}
+                            </button>
+                        </div>
+                    ) : !isSubmitted ? (
                         <button
                             onClick={handleSubmit}
-                            disabled={!allAnswered}
+                            disabled={!canSubmit}
                             className={cn(
                                 "flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition-all duration-300",
-                                allAnswered
+                                canSubmit
                                     ? "border border-white/60 bg-white/70 text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] hover:bg-white/90"
                                     : "border border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
                             )}
@@ -385,13 +725,15 @@ export function ReadingQuizPanel({
                         </button>
                     ) : (
                         <div className="flex gap-3">
-                            <button
-                                onClick={handleReset}
-                                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/60 bg-white/50 py-3 text-sm font-bold text-slate-600 transition-all hover:bg-white/70"
-                            >
-                                <RotateCcw className="h-4 w-4" />
-                                重做
-                            </button>
+                            {quizMode !== "cat" ? (
+                                <button
+                                    onClick={handleReset}
+                                    className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/60 bg-white/50 py-3 text-sm font-bold text-slate-600 transition-all hover:bg-white/70"
+                                >
+                                    <RotateCcw className="h-4 w-4" />
+                                    重做
+                                </button>
+                            ) : null}
                             <button
                                 onClick={onClose}
                                 className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/60 bg-white/70 py-3 text-sm font-bold text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] transition-all hover:bg-white/90"
@@ -420,6 +762,7 @@ function QuestionCard({
     isExpanded,
     onToggleExpand,
     onLocate,
+    compact = false,
 }: {
     question: QuizQuestion;
     index: number;
@@ -431,6 +774,7 @@ function QuestionCard({
     isExpanded: boolean;
     onToggleExpand: (id: number) => void;
     onLocate?: (payload: { questionNumber: number; sourceParagraph: string; evidence?: string }) => void;
+    compact?: boolean;
 }) {
     const typeLabels: Record<string, string> = {
         multiple_choice: "选择",
@@ -473,22 +817,27 @@ function QuestionCard({
     return (
         <LiquidGlassPanel
             className={cn(
-                "rounded-2xl p-4 transition-all duration-300",
+                compact ? "rounded-[18px] p-3.5 transition-all duration-300" : "rounded-2xl p-4 transition-all duration-300",
                 isSubmitted && isCorrect && "ring-1 ring-emerald-300/60",
                 isSubmitted && !isCorrect && "ring-1 ring-rose-300/60"
             )}
         >
             {/* Question Header */}
-            <div className="mb-3 flex items-start gap-2">
-                <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white">
+            <div className={cn("flex items-start gap-2", compact ? "mb-2.5" : "mb-3")}>
+                <span className={cn(
+                    "flex flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white",
+                    compact ? "h-5 w-5" : "h-6 w-6"
+                )}>
                     {index + 1}
                 </span>
                 <div className="min-w-0 flex-1">
                     <div className="mb-1 flex items-center gap-2">
-                        <span className="rounded-md bg-white/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-                            {typeLabels[question.type] || question.type}
-                        </span>
-                        {isMultipleSelect && (
+                        {!compact && (
+                            <span className="rounded-md bg-white/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                                {typeLabels[question.type] || question.type}
+                            </span>
+                        )}
+                        {!compact && isMultipleSelect && (
                             <span className="rounded-md border border-cyan-200/80 bg-cyan-100/80 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700">
                                 可多选
                             </span>
@@ -501,7 +850,7 @@ function QuestionCard({
                             )
                         )}
                     </div>
-                    <p className="text-sm font-medium leading-relaxed text-slate-800">
+                    <p className={cn("font-medium leading-relaxed text-slate-800", compact ? "text-[15px]" : "text-sm")}>
                         {question.question}
                     </p>
                 </div>
@@ -509,7 +858,7 @@ function QuestionCard({
 
             {/* Answer Area */}
             {question.options && question.options.length > 0 ? (
-                <div className="space-y-2 pl-8">
+                <div className={cn("space-y-2", compact ? "pl-7" : "pl-8")}>
                     {question.options.map((option) => {
                         const optionToken = normalizeObjectiveToken(option);
                         const isSelected = userSelectedValues.includes(option);
@@ -520,7 +869,8 @@ function QuestionCard({
                                 onClick={() => onSelect(question, option)}
                                 disabled={isSubmitted}
                                 className={cn(
-                                    "w-full rounded-xl border px-3 py-2.5 text-left text-sm transition-all duration-200",
+                                    "w-full rounded-xl border text-left transition-all duration-200",
+                                    compact ? "px-3 py-2 text-[15px]" : "px-3 py-2.5 text-sm",
                                     !isSubmitted && isSelected && "border-cyan-300 bg-cyan-50/80 text-slate-900 shadow-sm",
                                     !isSubmitted && !isSelected && "border-white/60 bg-white/40 text-slate-600 hover:bg-white/60",
                                     isSubmitted && isCorrectOption && "border-emerald-300 bg-emerald-50/80 text-emerald-800",
@@ -547,14 +897,14 @@ function QuestionCard({
                 </div>
             ) : (
                 /* Text input for short_answer / fill_blank */
-                <div className="pl-8">
+                <div className={cn(compact ? "pl-7" : "pl-8")}>
                     <textarea
                         value={typeof userAnswer === "string" ? userAnswer : ""}
                         onChange={(e) => onTextInput(question.id, e.target.value)}
                         disabled={isSubmitted}
                         placeholder="Type your answer here..."
                         className="w-full rounded-xl border border-white/60 bg-white/40 px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors focus:border-cyan-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                        rows={2}
+                        rows={compact ? 1 : 2}
                     />
                 </div>
             )}
@@ -565,7 +915,7 @@ function QuestionCard({
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     transition={{ duration: 0.3 }}
-                    className="mt-3 ml-8 overflow-hidden"
+                    className={cn("overflow-hidden", compact ? "mt-2.5 ml-7" : "mt-3 ml-8")}
                 >
                     <div className="rounded-xl border border-amber-200/60 bg-amber-50/60 px-3 py-2.5">
                         <p className="mb-1 text-xs font-semibold text-amber-700">
@@ -575,7 +925,7 @@ function QuestionCard({
                             {explanationData.summary || "该题可根据原文关键信息定位作答。"}
                         </p>
 
-                        {(question.sourceParagraph || explanationData.evidence) && (
+                        {!compact && (question.sourceParagraph || explanationData.evidence) && (
                             <div className="mt-2 rounded-lg border border-amber-200/70 bg-white/55 px-2.5 py-2">
                                 <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-amber-700">
                                     <BookMarked className="h-3.5 w-3.5" />
@@ -606,7 +956,7 @@ function QuestionCard({
                             </div>
                         )}
 
-                        {(explanationData.reasoning || explanationData.trap) && (
+                        {!compact && (explanationData.reasoning || explanationData.trap) && (
                             <div className="mt-2">
                                 <button
                                     onClick={() => onToggleExpand(question.id)}

@@ -66,7 +66,7 @@ import { loadLocalProfile, saveProfilePatch, saveWritingHistory, settleBattle } 
 
 // --- Interfaces ---
 
-export type DrillMode = "translation" | "listening";
+export type DrillMode = "translation" | "listening" | "dictation";
 type GuidedInnerMode = "teacher_guided" | "gestalt_cloze";
 
 export interface DrillCoreProps {
@@ -782,6 +782,11 @@ const STREAK_TIER_VISUALS: Record<StreakTier, StreakTierVisual> = {
 export function DrillCore({ context, initialMode = "translation", onClose }: DrillCoreProps) {
     // Mode State
     const [mode, setMode] = useState<DrillMode>(initialMode);
+    const isListeningMode = mode === "listening";
+    const isDictationMode = mode === "dictation";
+    const isListeningFamilyMode = isListeningMode || isDictationMode;
+    const canUseModeShop = mode === "translation" || mode === "dictation";
+    const generationMode: "translation" | "listening" = isListeningFamilyMode ? "listening" : "translation";
 
     // Drill State
     const [drillData, setDrillData] = useState<DrillData | null>(null);
@@ -883,6 +888,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // UI State
     const [isBlindMode, setIsBlindMode] = useState(true);
     const [showChinese, setShowChinese] = useState(false);
+    const [dictationVisibleUnlockConsumed, setDictationVisibleUnlockConsumed] = useState(false);
     const [difficulty, setDifficulty] = useState<string>('Level 3');
     const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
 
@@ -892,9 +898,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     const [listeningElo, setListeningElo] = useState(DEFAULT_BASE_ELO);
     const [listeningStreak, setListeningStreak] = useState(0);
+    const [dictationElo, setDictationElo] = useState(DEFAULT_BASE_ELO);
+    const [dictationStreak, setDictationStreak] = useState(0);
     const [isEloLoaded, setIsEloLoaded] = useState(false); // Track if Elo has been loaded from DB
     const eloRatingRef = useRef(DEFAULT_BASE_ELO);
     const listeningEloRef = useRef(DEFAULT_BASE_ELO);
+    const dictationEloRef = useRef(DEFAULT_BASE_ELO);
     const coinsRef = useRef(DEFAULT_STARTING_COINS);
     const inventoryRef = useRef<InventoryState>({ ...DEFAULT_INVENTORY });
 
@@ -1473,6 +1482,41 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [rankUp, setRankUp] = useState<{ oldRank: ReturnType<typeof getRank>; newRank: ReturnType<typeof getRank>; } | null>(null); // Rank promotion celebration
     const [rankDown, setRankDown] = useState<{ oldRank: ReturnType<typeof getRank>; newRank: ReturnType<typeof getRank>; } | null>(null); // Rank demotion punishment
 
+    const persistDictationBattle = useCallback(async (payload: {
+        eloAfter: number;
+        change: number;
+        streak: number;
+        source?: string;
+    }) => {
+        const profile = await loadLocalProfile();
+        if (!profile?.id) return null;
+
+        const nextMaxElo = Math.max(
+            profile.dictation_max_elo ?? profile.dictation_elo ?? DEFAULT_BASE_ELO,
+            payload.eloAfter,
+        );
+
+        await db.user_profile.update(profile.id, {
+            dictation_elo: payload.eloAfter,
+            dictation_streak: payload.streak,
+            dictation_max_elo: nextMaxElo,
+            last_practice: Date.now(),
+        });
+
+        await db.elo_history.add({
+            user_id: profile.user_id,
+            mode: "dictation",
+            elo: payload.eloAfter,
+            change: payload.change,
+            timestamp: Date.now(),
+            source: payload.source || "battle",
+            updated_at: new Date().toISOString(),
+            sync_status: "synced",
+        });
+
+        return nextMaxElo;
+    }, []);
+
     // Theme-based Ambient Audio
     // Theme-based Ambient Audio (Legacy Removed -> Handled by modern BGM Manager at line 523)
 
@@ -1507,14 +1551,22 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         setDeathAnim(isGamble ? 'shatter' : 'glitch');
 
                         // Apply Penalty to the active mode pool (avoid cross-mode Elo pollution)
-                        const isListeningMode = mode === 'listening';
+                        const isActiveListeningMode = mode === 'listening';
+                        const isActiveDictationMode = mode === 'dictation';
 
-                        const activeElo = isListeningMode ? listeningEloRef.current : eloRatingRef.current;
+                        const activeElo = isActiveDictationMode
+                            ? dictationEloRef.current
+                            : isActiveListeningMode
+                                ? listeningEloRef.current
+                                : eloRatingRef.current;
                         const newElo = Math.max(0, activeElo - penalty);
 
-                        if (isListeningMode) {
+                        if (isActiveListeningMode) {
                             setListeningElo(newElo);
                             setListeningStreak(0);
+                        } else if (isActiveDictationMode) {
+                            setDictationElo(newElo);
+                            setDictationStreak(0);
                         } else {
                             setEloRating(newElo);
                             setStreakCount(0);
@@ -1522,12 +1574,21 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                         loadLocalProfile().then((profile) => {
                             if (!profile) return;
-                            const maxElo = isListeningMode
+                            if (isActiveDictationMode) {
+                                return persistDictationBattle({
+                                    eloAfter: newElo,
+                                    change: -penalty,
+                                    streak: 0,
+                                    source: 'timeout_penalty',
+                                });
+                            }
+
+                            const maxElo = isActiveListeningMode
                                 ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
                                 : Math.max(profile.max_elo, newElo);
 
                             return settleBattle({
-                                mode: isListeningMode ? 'listening' : 'translation',
+                                mode: isActiveListeningMode ? 'listening' : 'translation',
                                 eloAfter: newElo,
                                 change: -penalty,
                                 streak: 0,
@@ -1554,6 +1615,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                             setGambleState(prev => ({ ...prev, active: false, introAck: false, wager: null, doubleDownCount: 0 }));
                             if (mode === 'listening') {
                                 setListeningStreak(0);
+                            } else if (mode === 'dictation') {
+                                setDictationStreak(0);
                             } else {
                                 setStreakCount(0);
                             }
@@ -1569,7 +1632,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setFuseTime(100); // Reset if not in a timed mode
         }
         return () => clearInterval(interval);
-    }, [theme, mode, isSubmittingDrill, bossState.introAck, gambleState.introAck, bossState.active, bossState.type, gambleState.active, gambleState.wager, lightningStarted]);
+    }, [theme, mode, isSubmittingDrill, bossState.introAck, gambleState.introAck, bossState.active, bossState.type, gambleState.active, gambleState.wager, lightningStarted, persistDictationBattle]);
 
     // Shake Trigger
     useEffect(() => {
@@ -1594,7 +1657,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     useEffect(() => {
         eloRatingRef.current = eloRating;
         listeningEloRef.current = listeningElo;
-    }, [eloRating, listeningElo]);
+        dictationEloRef.current = dictationElo;
+    }, [dictationElo, eloRating, listeningElo]);
 
     useEffect(() => {
         coinsRef.current = coins;
@@ -1608,6 +1672,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     useEffect(() => {
         translationAudioUnlockRef.current = isTranslationAudioUnlocked;
     }, [isTranslationAudioUnlocked]);
+
+    useEffect(() => {
+        if (isDictationMode) {
+            setShowChinese(false);
+        }
+    }, [isDictationMode]);
 
     // Cleanup: Stop ALL audio and abort requests when component unmounts
     useEffect(() => {
@@ -1628,8 +1698,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
 
     // Computed Elo based on Mode
-    const currentElo = mode === 'listening' ? listeningElo : eloRating;
-    const currentStreak = mode === 'listening' ? listeningStreak : streakCount;
+    const isShadowingMode = isListeningMode;
+    const currentElo = isDictationMode ? dictationElo : isListeningMode ? listeningElo : eloRating;
+    const currentStreak = isDictationMode ? dictationStreak : isListeningMode ? listeningStreak : streakCount;
     const capsuleCount = inventory.capsule;
     const hintTicketCount = inventory.hint_ticket;
     const vocabTicketCount = inventory.vocab_ticket;
@@ -1990,8 +2061,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 // Load Listening Stats (Fallback if undefined post-migration in memory before reload)
                 setListeningElo(profile.listening_elo ?? DEFAULT_BASE_ELO);
                 setListeningStreak(profile.listening_streak ?? 0);
+                setDictationElo(profile.dictation_elo ?? profile.listening_elo ?? DEFAULT_BASE_ELO);
+                setDictationStreak(profile.dictation_streak ?? 0);
                 eloRatingRef.current = profile.elo_rating;
                 listeningEloRef.current = profile.listening_elo ?? DEFAULT_BASE_ELO;
+                dictationEloRef.current = profile.dictation_elo ?? profile.listening_elo ?? DEFAULT_BASE_ELO;
 
                 // Load Hint Economy Stats
                 const loadedCoins = profile.coins ?? DEFAULT_STARTING_COINS;
@@ -2019,8 +2093,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 setStreakCount(0);
                 setListeningElo(DEFAULT_BASE_ELO);
                 setListeningStreak(0);
+                setDictationElo(DEFAULT_BASE_ELO);
+                setDictationStreak(0);
                 eloRatingRef.current = DEFAULT_BASE_ELO;
                 listeningEloRef.current = DEFAULT_BASE_ELO;
+                dictationEloRef.current = DEFAULT_BASE_ELO;
                 coinsRef.current = DEFAULT_STARTING_COINS;
                 inventoryRef.current = initialInventory;
                 setCoins(DEFAULT_STARTING_COINS);
@@ -2415,7 +2492,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             // --- IMMEDIATE PENALTY ---
             const penalty = 50;
             const isListening = mode === 'listening';
-            const activeElo = isListening ? listeningElo : eloRating;
+            const isDictation = mode === 'dictation';
+            const activeElo = isDictation ? dictationElo : isListening ? listeningElo : eloRating;
             const newElo = Math.max(0, (activeElo || DEFAULT_BASE_ELO) - penalty);
 
             setEloChange(-penalty);
@@ -2428,11 +2506,28 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setShake(true);
 
             // Update local state
-            if (isListening) setListeningElo(newElo);
-            else setEloRating(newElo);
+            if (isListening) {
+                setListeningElo(newElo);
+                setListeningStreak(0);
+            } else if (isDictation) {
+                setDictationElo(newElo);
+                setDictationStreak(0);
+            } else {
+                setEloRating(newElo);
+                setStreakCount(0);
+            }
 
             loadLocalProfile().then((profile) => {
                 if (!profile) return;
+                if (isDictation) {
+                    return persistDictationBattle({
+                        eloAfter: newElo,
+                        change: -penalty,
+                        streak: 0,
+                        source: 'roulette_penalty',
+                    });
+                }
+
                 const maxElo = isListening
                     ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
                     : Math.max(profile.max_elo, newElo);
@@ -2471,7 +2566,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         abortPrefetchRef.current = new AbortController();
 
         let nextBossType: 'blind' | 'lightning' | 'echo' | 'reaper' | undefined = undefined;
-        if (mode === 'listening') {
+        if (isListeningFamilyMode) {
             const roll = Math.random();
             if (roll < 0.02) {
                 const bossRoll = Math.random();
@@ -2492,7 +2587,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 articleContent: context.articleContent || "",
                 difficulty: getEloDifficulty(nextElo, mode).level,
                 eloRating: Math.max(0, nextElo),
-                mode,
+                mode: generationMode,
                 bossType: nextBossType,
                 _t: Date.now()
             }),
@@ -2554,6 +2649,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setIsHintLoading(false);
             setIsVocabHintRevealed(false);
             setIsTranslationAudioUnlocked(false);
+            setDictationVisibleUnlockConsumed(false);
+            if (isDictationMode) {
+                setIsBlindMode(true);
+                setShowChinese(false);
+            }
             vocabHintRevealRef.current = false;
             translationAudioUnlockRef.current = false;
             resetResult();
@@ -2620,6 +2720,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setIsHintLoading(false);
         setIsVocabHintRevealed(false);
         setIsTranslationAudioUnlocked(false);
+        setDictationVisibleUnlockConsumed(false);
+        if (isDictationMode) {
+            setIsBlindMode(true);
+            setShowChinese(false);
+        }
         vocabHintRevealRef.current = false;
         translationAudioUnlockRef.current = false;
         resetResult(); // Clear previous recording transcript
@@ -2632,7 +2737,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         let pendingGambleState: any = null;
 
         // ALL Special Events (Boss, Gamble, Roulette) are EXCLUSIVELY for Listening Mode
-        if (mode === 'listening') {
+        if (isListeningFamilyMode) {
             nextBossType = overrideBossType as any || (bossState.active ? bossState.type : undefined);
 
             if (!bossState.active && !gambleState.active && !overrideBossType) {
@@ -2724,7 +2829,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     articleContent: context.articleContent || "",
                     difficulty: eloDifficulty.level, // Auto-calculated from ELO
                     eloRating: currentElo,
-                    mode,
+                    mode: generationMode,
                     bossType: nextBossType, // Inject Boss Context for Custom Scenarios
                     _t: Date.now() // Cache buster to prevent repeated drills
                 }),
@@ -3082,7 +3187,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
         try {
             // Use correct Elo based on mode
-            const activeElo = mode === 'listening' ? listeningElo : eloRating;
+            const activeElo = isDictationMode ? dictationElo : isListeningMode ? listeningElo : eloRating;
+            const scoreMode: "translation" | "listening" | "dictation" = isDictationMode ? "dictation" : generationMode;
+            const scoringInputSource = isListeningFamilyMode && !isDictationMode ? "voice" : "keyboard";
 
             const response = await fetch("/api/ai/score_translation", {
                 method: "POST",
@@ -3092,7 +3199,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
                     current_elo: activeElo || DEFAULT_BASE_ELO,
-                    mode,
+                    mode: scoreMode,
+                    input_source: scoringInputSource,
                     teaching_mode: teachingMode,
                 }),
             });
@@ -3112,7 +3220,21 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 return;
             }
 
-            setDrillFeedback(data);
+            if (isDictationMode) {
+                const normalizedDictationFeedback: DrillFeedback = {
+                    ...data,
+                    feedback: data.feedback ?? {
+                        dictation_tips: [
+                            data.judge_reasoning || "先写主干意思，再补细节。",
+                            "建议先听完整句，再回放核对关键词。",
+                        ],
+                        encouragement: "听写已提交，继续保持。",
+                    },
+                };
+                setDrillFeedback(normalizedDictationFeedback);
+            } else {
+                setDrillFeedback(data);
+            }
             setAnalysisRequested(false);
             setAnalysisError(null);
             setAnalysisDetailsOpen(false);
@@ -3135,8 +3257,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                 // --- Elo Calculation with Mode Separation ---
                 const isListening = mode === 'listening';
-                const activeElo = isListening ? listeningElo : eloRating;
-                const activeStreak = isListening ? listeningStreak : streakCount;
+                const isDictation = mode === 'dictation';
+                const activeElo = isDictation ? dictationElo : isListening ? listeningElo : eloRating;
+                const activeStreak = isDictation ? dictationStreak : isListening ? listeningStreak : streakCount;
 
                 // --- Advanced Elo Logic (UIUXProMax) ---
                 const calculateAdvancedElo = (playerElo: number, difficultyElo: number, actualScore: number, streak: number) => {
@@ -3316,7 +3439,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     // Fever Logic
                     const newCombo = comboCount + 1;
                     setComboCount(newCombo);
-                    if (newCombo >= 3 && !feverMode && mode === 'listening') {
+                    if (newCombo >= 3 && !feverMode && isListeningFamilyMode) {
                         setFeverMode(true);
                         setTheme('fever');
                         new Audio('https://assets.mixkit.co/sfx/preview/mixkit-futuristic-robotic-blip-hit-695.mp3').play().catch(() => { });
@@ -3356,6 +3479,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 if (isListening) {
                     setListeningElo(newElo);
                     setListeningStreak(newStreak);
+                } else if (isDictation) {
+                    setDictationElo(newElo);
+                    setDictationStreak(newStreak);
                 } else {
                     setEloRating(newElo);
                     setStreakCount(newStreak);
@@ -3424,7 +3550,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 // --- GACHA TRIGGER ---
                 let gachaTriggered = false;
                 if (!hasExistingLoot && shouldTriggerGacha({
-                    mode,
+                    mode: generationMode,
                     score: data.score,
                     learningSession: learningSessionActive,
                     roll: Math.random(),
@@ -3456,22 +3582,38 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                 const profile = await loadLocalProfile();
                 if (profile) {
-                    const maxElo = isListening
-                        ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
-                        : Math.max(profile.max_elo, newElo);
+                    if (isDictation) {
+                        await persistDictationBattle({
+                            eloAfter: newElo,
+                            change,
+                            streak: newStreak,
+                            source: learningSessionActive ? 'guided_session' : 'battle',
+                        });
 
-                    await settleBattle({
-                        mode: isListening ? 'listening' : 'translation',
-                        eloAfter: newElo,
-                        change,
-                        streak: newStreak,
-                        maxElo,
-                        coins: finalCoins,
-                        inventory: inventoryRef.current,
-                        ownedThemes: ownedThemes,
-                        activeTheme: cosmeticTheme,
-                        source: learningSessionActive ? 'guided_session' : 'battle',
-                    });
+                        await saveProfilePatch({
+                            coins: finalCoins,
+                            inventory: inventoryRef.current,
+                            owned_themes: ownedThemes,
+                            active_theme: cosmeticTheme,
+                        });
+                    } else {
+                        const maxElo = isListening
+                            ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
+                            : Math.max(profile.max_elo, newElo);
+
+                        await settleBattle({
+                            mode: isListening ? 'listening' : 'translation',
+                            eloAfter: newElo,
+                            change,
+                            streak: newStreak,
+                            maxElo,
+                            coins: finalCoins,
+                            inventory: inventoryRef.current,
+                            ownedThemes: ownedThemes,
+                            activeTheme: cosmeticTheme,
+                            source: learningSessionActive ? 'guided_session' : 'battle',
+                        });
+                    }
                 }
 
                 if (context.type === 'article' && mode === 'translation' && userTranslation.trim()) {
@@ -3510,7 +3652,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setFullAnalysisData(null);
 
         try {
-            const activeElo = mode === 'listening' ? listeningEloRef.current : eloRatingRef.current;
+            const activeElo = isDictationMode ? dictationEloRef.current : isListeningMode ? listeningEloRef.current : eloRatingRef.current;
+            const analysisMode: "translation" | "listening" | "dictation" = isDictationMode ? "dictation" : generationMode;
             const analysisResponse = await fetch("/api/ai/analyze_drill", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -3520,7 +3663,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     original_chinese: drillData.chinese,
                     current_elo: activeElo || DEFAULT_BASE_ELO,
                     score: drillFeedback.score,
-                    mode,
+                    mode: analysisMode,
+                    input_source: isListeningFamilyMode && !isDictationMode ? "voice" : "keyboard",
                     teaching_mode: teachingMode,
                     detail_level: "basic",
                 }),
@@ -3936,6 +4080,44 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
     }, []);
 
+    const handleBlindVisibilityToggle = useCallback(() => {
+        if (!isDictationMode) {
+            setIsBlindMode((prev) => !prev);
+            return;
+        }
+
+        // VISIBLE -> BLIND: free toggle back
+        if (!isBlindMode) {
+            setIsBlindMode(true);
+            return;
+        }
+
+        // BLIND -> VISIBLE in dictation: consume once per drill
+        if (dictationVisibleUnlockConsumed) {
+            setIsBlindMode(false);
+            return;
+        }
+
+        if (getItemCount('hint_ticket') <= 0) {
+            setIsHintShake(true);
+            setTimeout(() => setIsHintShake(false), 500);
+            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: 'Hint 道具不足，请先去商场购买' });
+            return;
+        }
+
+        applyEconomyPatch({ itemDelta: { hint_ticket: -1 } });
+        pushEconomyFx({ kind: 'item_consume', itemId: 'hint_ticket', amount: 1, message: '已消耗 1 Hint 道具', source: 'hint' });
+        setDictationVisibleUnlockConsumed(true);
+        setIsBlindMode(false);
+    }, [
+        applyEconomyPatch,
+        dictationVisibleUnlockConsumed,
+        getItemCount,
+        isBlindMode,
+        isDictationMode,
+        pushEconomyFx,
+    ]);
+
     const handleMagicHint = async () => {
         if (learningSessionActive) return;
         if (!drillData || !drillData.reference_english) return;
@@ -4093,7 +4275,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         const cleanWord = word.replace(/[^a-zA-Z]/g, "").trim();
         if (!cleanWord) return;
 
-        if (mode === "listening" && drillData?.reference_english) {
+        if (isListeningFamilyMode && drillData?.reference_english) {
             const textKey = "SENTENCE_" + drillData.reference_english;
             const cached = audioCache.current.get(textKey);
 
@@ -4242,8 +4424,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             );
         }
 
+        const comparisonTarget = isDictationMode ? drillData.chinese : drillData.reference_english;
         const cleanUser = normalizeTranslationForComparison(userTranslation);
-        const cleanTarget = normalizeTranslationForComparison(drillData.reference_english);
+        const cleanTarget = normalizeTranslationForComparison(comparisonTarget);
         const diffs = Diff.diffWords(cleanUser, cleanTarget);
 
         const elements = [];
@@ -4299,8 +4482,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         )}
                         <div>
                             <div className="mb-1 flex items-center justify-between gap-3">
-                                <p className="text-[10px] text-stone-400 font-sans font-bold uppercase">Standard Reference (参考答案)</p>
-                                {referenceGrammarAnalysis ? (
+                                <p className="text-[10px] text-stone-400 font-sans font-bold uppercase">
+                                    {isDictationMode ? "Standard Reference (中文参考)" : "Standard Reference (参考答案)"}
+                                </p>
+                                {!isDictationMode && referenceGrammarAnalysis ? (
                                     <div className="flex items-center rounded-full border border-[#dfcfab] bg-white/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                                         <button
                                             type="button"
@@ -4329,7 +4514,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     </div>
                                 ) : null}
                             </div>
-                            {isGeneratingGrammar ? (
+                            {isDictationMode ? (
+                                <div className="rounded-[24px] border border-[#eadcc0] bg-[linear-gradient(180deg,rgba(255,252,245,0.98),rgba(249,244,231,0.94))] px-4 py-4 shadow-[0_18px_44px_rgba(120,94,42,0.08)]">
+                                    <p className="text-base font-newsreader text-stone-700 italic leading-relaxed md:text-[1.075rem]">&ldquo;{drillData.chinese}&rdquo;</p>
+                                </div>
+                            ) : isGeneratingGrammar ? (
                                 <div className="rounded-[20px] border border-[#eadcc0] bg-[linear-gradient(180deg,rgba(255,250,241,0.96),rgba(249,243,228,0.92))] px-4 py-3 text-xs text-[#8a5d1f] shadow-[0_12px_28px_rgba(120,94,42,0.06)]">
                                     语法分析生成中...
                                 </div>
@@ -4352,7 +4541,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     <p className="text-base font-newsreader text-stone-700 italic leading-relaxed md:text-[1.075rem]">&ldquo;{drillData.reference_english}&rdquo;</p>
                                 </div>
                             )}
-                            {grammarError ? (
+                            {!isDictationMode && grammarError ? (
                                 <p className="mt-2 text-xs text-stone-400">参考句语法分析暂时不可用，已回退到普通参考句显示。</p>
                             ) : null}
                         </div>
@@ -4409,7 +4598,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
         return buildTranslationHighlights(
             userTranslation,
-            drillFeedback.improved_version || drillData.reference_english,
+            drillFeedback.improved_version || (isDictationMode ? drillData.chinese : drillData.reference_english),
         );
     };
 
@@ -4417,6 +4606,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (!drillFeedback) return "";
         if (drillFeedback.judge_reasoning) return drillFeedback.judge_reasoning;
         if (Array.isArray(drillFeedback.feedback) && drillFeedback.feedback.length > 0) return drillFeedback.feedback[0];
+        if (drillFeedback.feedback?.dictation_tips?.length) return drillFeedback.feedback.dictation_tips[0];
         if (drillFeedback.feedback?.listening_tips?.length) return drillFeedback.feedback.listening_tips[0];
         if (drillFeedback.feedback?.encouragement) return drillFeedback.feedback.encouragement;
         return "本题解析已生成。";
@@ -4762,10 +4952,15 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const analysisLead = getAnalysisLead();
     const primaryAdvice = Array.isArray(drillFeedback?.feedback)
         ? drillFeedback?.feedback?.[0]
-        : drillFeedback?.feedback?.listening_tips?.[0] || drillFeedback?.feedback?.encouragement || "";
+        : drillFeedback?.feedback?.dictation_tips?.[0]
+            || drillFeedback?.feedback?.listening_tips?.[0]
+            || drillFeedback?.feedback?.encouragement
+            || "";
     const secondaryAdvice = Array.isArray(drillFeedback?.feedback)
         ? drillFeedback?.feedback?.[1]
-        : drillFeedback?.feedback?.listening_tips?.[1] || "";
+        : drillFeedback?.feedback?.dictation_tips?.[1]
+            || drillFeedback?.feedback?.listening_tips?.[1]
+            || "";
 
 
     // Auto-Mount Generate (WAIT for Elo to be loaded first!)
@@ -4879,30 +5074,37 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         backgroundClass: string;
         variant: DrillLoadingVariant;
     }) => {
-        const variantUi = variant === "listening"
+        const variantUi = variant === "listening" || variant === "dictation"
             ? {
-                mode: "Listening Mode",
-                icon: Headphones,
-                auraPrimary: "from-cyan-200/45 via-sky-200/35 to-transparent",
-                auraSecondary: "from-blue-200/35 via-cyan-100/30 to-transparent",
-                badgeClass: "border-cyan-200/80 bg-cyan-50/85 text-cyan-700",
-                progressGradient: "from-cyan-400 via-sky-500 to-cyan-500",
-                beamGradient: "from-transparent via-cyan-400/85 to-transparent",
-                bounceGradients: [
-                    "linear-gradient(180deg, rgba(239,252,255,0.99) 0%, rgba(174,239,255,0.95) 44%, rgba(86,210,255,0.92) 100%)",
-                    "linear-gradient(180deg, rgba(238,252,255,0.99) 0%, rgba(150,231,255,0.95) 46%, rgba(59,130,246,0.92) 100%)",
-                    "linear-gradient(180deg, rgba(241,249,255,0.99) 0%, rgba(186,230,253,0.95) 46%, rgba(14,165,233,0.92) 100%)",
-                    "linear-gradient(180deg, rgba(247,254,255,0.99) 0%, rgba(125,211,252,0.95) 48%, rgba(37,99,235,0.92) 100%)",
-                ],
-                bounceGlow: "radial-gradient(circle, rgba(125,211,252,0.34) 0%, rgba(186,230,253,0.12) 52%, transparent 74%)",
-                loaderShell: "linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(240,249,255,0.72) 100%)",
-                loaderBase: "linear-gradient(90deg, rgba(207,250,254,0.2) 0%, rgba(125,211,252,0.48) 48%, rgba(59,130,246,0.22) 100%)",
-                sparkleClass: "bg-cyan-200/90",
-                attackGradient: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(125,211,252,0.92) 45%, rgba(59,130,246,0.9) 100%)",
-                attackStroke: "rgba(103,232,249,0.95)",
-                stages: ["声纹预热", "降噪校准", "播放就绪"],
-                comfortCopy: "正在为你生成更清晰、稳定的听力挑战",
-                accentText: "text-cyan-700",
+                mode: variant === "dictation" ? "Dictation Mode" : "Listening Mode",
+                icon: variant === "dictation" ? BookOpen : Headphones,
+                auraPrimary: variant === "dictation" ? "from-fuchsia-200/45 via-purple-200/35 to-transparent" : "from-cyan-200/45 via-sky-200/35 to-transparent",
+                auraSecondary: variant === "dictation" ? "from-violet-200/35 via-purple-100/30 to-transparent" : "from-blue-200/35 via-cyan-100/30 to-transparent",
+                badgeClass: variant === "dictation" ? "border-purple-200/80 bg-purple-50/85 text-purple-700" : "border-cyan-200/80 bg-cyan-50/85 text-cyan-700",
+                progressGradient: variant === "dictation" ? "from-fuchsia-400 via-purple-500 to-violet-500" : "from-cyan-400 via-sky-500 to-cyan-500",
+                beamGradient: variant === "dictation" ? "from-transparent via-purple-400/85 to-transparent" : "from-transparent via-cyan-400/85 to-transparent",
+                bounceGradients: variant === "dictation"
+                    ? [
+                        "linear-gradient(180deg, rgba(250,245,255,0.99) 0%, rgba(233,213,255,0.95) 44%, rgba(216,180,254,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(248,244,255,0.99) 0%, rgba(221,214,254,0.95) 46%, rgba(192,132,252,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(246,240,255,0.99) 0%, rgba(216,180,254,0.95) 46%, rgba(168,85,247,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(248,246,255,0.99) 0%, rgba(196,181,253,0.95) 48%, rgba(139,92,246,0.92) 100%)",
+                    ]
+                    : [
+                        "linear-gradient(180deg, rgba(239,252,255,0.99) 0%, rgba(174,239,255,0.95) 44%, rgba(86,210,255,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(238,252,255,0.99) 0%, rgba(150,231,255,0.95) 46%, rgba(59,130,246,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(241,249,255,0.99) 0%, rgba(186,230,253,0.95) 46%, rgba(14,165,233,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(247,254,255,0.99) 0%, rgba(125,211,252,0.95) 48%, rgba(37,99,235,0.92) 100%)",
+                    ],
+                bounceGlow: variant === "dictation" ? "radial-gradient(circle, rgba(196,181,253,0.34) 0%, rgba(216,180,254,0.12) 52%, transparent 74%)" : "radial-gradient(circle, rgba(125,211,252,0.34) 0%, rgba(186,230,253,0.12) 52%, transparent 74%)",
+                loaderShell: variant === "dictation" ? "linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(250,245,255,0.72) 100%)" : "linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(240,249,255,0.72) 100%)",
+                loaderBase: variant === "dictation" ? "linear-gradient(90deg, rgba(237,233,254,0.2) 0%, rgba(196,181,253,0.48) 48%, rgba(168,85,247,0.22) 100%)" : "linear-gradient(90deg, rgba(207,250,254,0.2) 0%, rgba(125,211,252,0.48) 48%, rgba(59,130,246,0.22) 100%)",
+                sparkleClass: variant === "dictation" ? "bg-purple-200/90" : "bg-cyan-200/90",
+                attackGradient: variant === "dictation" ? "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(216,180,254,0.92) 45%, rgba(168,85,247,0.9) 100%)" : "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(125,211,252,0.92) 45%, rgba(59,130,246,0.9) 100%)",
+                attackStroke: variant === "dictation" ? "rgba(196,181,253,0.95)" : "rgba(103,232,249,0.95)",
+                stages: variant === "dictation" ? ["语义取样", "音频校准", "听写就绪"] : ["声纹预热", "降噪校准", "播放就绪"],
+                comfortCopy: variant === "dictation" ? "正在准备听音写中文的题目流程" : "正在为你生成更清晰、稳定的听力挑战",
+                accentText: variant === "dictation" ? "text-purple-700" : "text-cyan-700",
             }
             : variant === "translation"
                 ? {
@@ -5560,7 +5762,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         {/* Right Side Actions & Ledger */}
                         <div className="flex items-center gap-2">
                             {/* Mobile/Desktop Status Bar - Unified (Collapsible) */}
-                            {mode === 'translation' && (
+                            {canUseModeShop && (
                                 <div className={cn(
                                     "hidden md:flex items-center h-[38px] gap-1 p-0.5 rounded-full backdrop-blur-xl border ring-1 shrink-0 transition-all duration-300",
                                     activeCosmeticUi.ledgerClass,
@@ -5758,72 +5960,115 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                         {drillSurfacePhase !== "ready" ? (
                             renderDrillLoadingState({
-                                title: mode === "translation" ? "正在生成句子..." : "正在准备音频...",
-                                subtitle: mode === "translation" ? "Crafting your phrase" : "Preparing audio stream",
+                                title: mode === "translation" ? "正在生成句子..." : mode === "dictation" ? "正在准备听写..." : "正在准备音频...",
+                                subtitle: mode === "translation" ? "Crafting your phrase" : mode === "dictation" ? "Preparing dictation stream" : "Preparing audio stream",
                                 backgroundClass: "bg-gradient-to-br from-stone-50 via-white to-slate-50/70",
                                 variant: mode,
                             })
                         ) : drillData ? (
                             <AnimatePresence mode="popLayout" initial={false}>
                                 {!drillFeedback ? (
-                                    <motion.div key="question" initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.4, ease: "easeOut" }} className="absolute inset-0 overflow-y-auto custom-scrollbar p-6 md:p-8 pb-10 md:pb-12 flex flex-col">
-                                        <div className="max-w-3xl mx-auto w-full space-y-4">
+                                    <motion.div
+                                        key="question"
+                                        initial={{ x: -20, opacity: 0 }}
+                                        animate={{ x: 0, opacity: 1 }}
+                                        exit={{ x: -20, opacity: 0 }}
+                                        transition={{ duration: 0.4, ease: "easeOut" }}
+                                        className={cn(
+                                            "absolute inset-0 overflow-y-auto custom-scrollbar flex flex-col",
+                                            isDictationMode ? "p-4 md:p-5 pb-6 md:pb-8" : "p-6 md:p-8 pb-10 md:pb-12"
+                                        )}
+                                    >
+                                        <div className={cn("mx-auto w-full", isDictationMode ? "max-w-2xl space-y-3" : "max-w-3xl space-y-4")}>
                                             {/* Source / Listening Area */}
-                                            <div className="space-y-6 text-center w-full">
-                                                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative flex flex-col items-center gap-6 w-full">
-                                                    {mode === "listening" ? (
+                                            <div className={cn("text-center w-full", isDictationMode ? "space-y-4" : "space-y-6")}>
+                                                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={cn("relative flex flex-col items-center w-full", isDictationMode ? "gap-4" : "gap-6")}>
+                                                    {isListeningFamilyMode ? (
                                                         <div className="w-full flex flex-col items-center justify-center relative">
                                                             {/* Big Play Button */}
                                                             <button
                                                                 onClick={playAudio}
                                                                 disabled={isPlaying || isAudioLoading || (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)}
                                                                 className={cn(
-                                                                    "group relative w-24 h-24 flex items-center justify-center transition-all duration-500 mb-8 mt-4",
+                                                                    "group relative flex items-center justify-center transition-all duration-500",
+                                                                    isDictationMode ? "w-20 h-20 mb-4 mt-2" : "w-24 h-24 mb-8 mt-4",
                                                                     (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)
                                                                         ? "grayscale opacity-50 cursor-not-allowed scale-95"
                                                                         : "hover:scale-105 active:scale-95 disabled:opacity-80 disabled:scale-100"
                                                                 )}
                                                             >
-                                                                <div className={cn("absolute inset-0 rounded-full bg-gradient-to-br from-indigo-500/20 to-purple-500/20 blur-2xl transition-all duration-500", isPlaying ? "scale-125 opacity-100" : "scale-100 opacity-0 group-hover:opacity-100")} />
-                                                                <div className="absolute inset-0 rounded-full bg-white/60 dark:bg-white/10 backdrop-blur-2xl border border-white/50 dark:border-white/20 shadow-2xl shadow-indigo-500/10 transition-all duration-300 group-hover:bg-white/80 group-hover:border-white" />
-                                                                <div className="relative z-10 text-indigo-600 dark:text-indigo-300 drop-shadow-sm flex items-center justify-center">
+                                                                <div
+                                                                    className={cn(
+                                                                        "absolute inset-0 rounded-full bg-gradient-to-br blur-2xl transition-all duration-500",
+                                                                        isDictationMode ? "from-fuchsia-500/25 to-purple-500/25" : "from-indigo-500/20 to-purple-500/20",
+                                                                        isPlaying ? "scale-125 opacity-100" : "scale-100 opacity-0 group-hover:opacity-100"
+                                                                    )}
+                                                                />
+                                                                <div className={cn(
+                                                                    "absolute inset-0 rounded-full bg-white/60 dark:bg-white/10 backdrop-blur-2xl border border-white/50 dark:border-white/20 shadow-2xl transition-all duration-300 group-hover:bg-white/80 group-hover:border-white",
+                                                                    isDictationMode ? "shadow-purple-500/15" : "shadow-indigo-500/10"
+                                                                )} />
+                                                                <div className={cn("relative z-10 drop-shadow-sm flex items-center justify-center", isDictationMode ? "text-purple-600 dark:text-purple-300" : "text-indigo-600 dark:text-indigo-300")}>
                                                                     {(isPrefetching || isAudioLoading) ? (
-                                                                        <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+                                                                        <div className={cn(
+                                                                            "w-10 h-10 border-4 rounded-full animate-spin",
+                                                                            isDictationMode ? "border-purple-200 border-t-purple-600" : "border-indigo-200 border-t-indigo-600"
+                                                                        )} />
                                                                     ) : isPlaying ? (
                                                                         <div className="flex items-center gap-1.5 h-10">
                                                                             {[0.4, 1, 0.6, 0.8, 0.5].map((h, i) => (
-                                                                                <motion.div key={i} animate={{ height: [10 * h, 30 * h, 10 * h] }} transition={{ duration: 0.6 + (i * 0.1), repeat: Infinity, ease: "easeInOut", repeatType: "mirror" }} className="w-1.5 bg-indigo-500 rounded-full" />
+                                                                                <motion.div
+                                                                                    key={i}
+                                                                                    animate={{ height: [10 * h, 30 * h, 10 * h] }}
+                                                                                    transition={{ duration: 0.6 + (i * 0.1), repeat: Infinity, ease: "easeInOut", repeatType: "mirror" }}
+                                                                                    className={cn("w-1.5 rounded-full", isDictationMode ? "bg-purple-500" : "bg-indigo-500")}
+                                                                                />
                                                                             ))}
                                                                         </div>
-                                                                    ) : <Play className="w-10 h-10 ml-1.5 fill-indigo-600 text-indigo-600" />}
+                                                                    ) : <Play className={cn("w-10 h-10 ml-1.5", isDictationMode ? "fill-purple-600 text-purple-600" : "fill-indigo-600 text-indigo-600")} />}
                                                                 </div>
                                                             </button>
 
                                                             {/* Minimal Controls */}
                                                             {/* Composite Control Bar */}
-                                                            <div className="flex items-center justify-center gap-2 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
+                                                            <div className={cn(
+                                                                "flex items-center justify-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150",
+                                                                isDictationMode ? "mb-4" : "mb-8",
+                                                            )}>
                                                                 <div className="flex items-center bg-stone-200/50 backdrop-blur-md p-1.5 rounded-full shadow-inner border border-stone-100/20">
                                                                     {/* Blind Toggle */}
                                                                     <button
-                                                                        onClick={() => setIsBlindMode(!isBlindMode)}
-                                                                        className={cn("px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-2", isBlindMode ? "text-stone-500 hover:text-stone-700" : "bg-white text-stone-800 shadow-sm")}
+                                                                        onClick={handleBlindVisibilityToggle}
+                                                                        className={cn(
+                                                                            "px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-2",
+                                                                            isBlindMode
+                                                                                ? "text-stone-500 hover:text-stone-700"
+                                                                                : isDictationMode
+                                                                                    ? "bg-purple-50 text-purple-700 shadow-sm"
+                                                                                    : "bg-white text-stone-800 shadow-sm"
+                                                                        )}
+                                                                        title={isDictationMode && isBlindMode && !dictationVisibleUnlockConsumed ? "开启 VISIBLE 将消耗 1 个 Hint 道具" : undefined}
                                                                     >
                                                                         {isBlindMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                                                                         {isBlindMode ? "BLIND TEXT" : "VISIBLE"}
                                                                     </button>
 
-                                                                    <div className="w-px h-4 bg-stone-300 mx-2" />
+                                                                    {!isDictationMode && (
+                                                                        <>
+                                                                            <div className="w-px h-4 bg-stone-300 mx-2" />
 
-                                                                    {/* Chinese Toggle */}
-                                                                    <button
-                                                                        onClick={() => setShowChinese(!showChinese)}
-                                                                        className={cn("w-8 h-8 rounded-full text-xs font-bold transition-all flex items-center justify-center", showChinese ? "bg-white text-stone-800 shadow-sm" : "text-stone-400 hover:text-stone-600")}
-                                                                        title="Toggle Chinese Translation"
-                                                                    >
-                                                                        中
-                                                                    </button>
+                                                                            {/* Chinese Toggle */}
+                                                                            <button
+                                                                                onClick={() => setShowChinese(!showChinese)}
+                                                                                className={cn("w-8 h-8 rounded-full text-xs font-bold transition-all flex items-center justify-center", showChinese ? "bg-white text-stone-800 shadow-sm" : "text-stone-400 hover:text-stone-600")}
+                                                                                title="Toggle Chinese Translation"
+                                                                            >
+                                                                                中
+                                                                            </button>
 
-                                                                    <div className="w-px h-4 bg-stone-300 mx-2" />
+                                                                            <div className="w-px h-4 bg-stone-300 mx-2" />
+                                                                        </>
+                                                                    )}
 
                                                                     {/* Speed Controls */}
                                                                     <div className="flex items-center gap-1">
@@ -5831,14 +6076,21 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             <button
                                                                                 key={speed}
                                                                                 onClick={() => { setPlaybackSpeed(speed); if (audioRef.current) audioRef.current.playbackRate = speed; }}
-                                                                                className={cn("text-[10px] px-3 py-1.5 rounded-full font-bold transition-all", playbackSpeed === speed ? "bg-white text-indigo-600 shadow-sm" : "text-stone-500 hover:text-stone-700")}
+                                                                                className={cn(
+                                                                                    "text-[10px] px-3 py-1.5 rounded-full font-bold transition-all",
+                                                                                    playbackSpeed === speed
+                                                                                        ? isDictationMode
+                                                                                            ? "bg-purple-50 text-purple-700 shadow-sm"
+                                                                                            : "bg-white text-indigo-600 shadow-sm"
+                                                                                        : "text-stone-500 hover:text-stone-700"
+                                                                                )}
                                                                             >
                                                                                 {speed}x
                                                                             </button>
                                                                         ))}
                                                                     </div>
 
-                                                                    {mode === 'listening' && (
+                                                                    {isListeningFamilyMode && (
                                                                         <>
                                                                             <div className="w-px h-5 bg-stone-300 mx-2" />
 
@@ -5846,11 +6098,21 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             <button
                                                                                 onClick={handleRefreshDrill}
                                                                                 disabled={isGeneratingDrill}
-                                                                                className="relative w-8 h-8 rounded-full text-cyan-500 hover:text-cyan-700 hover:bg-cyan-50 flex items-center justify-center transition-all disabled:opacity-50"
+                                                                                className={cn(
+                                                                                    "relative w-8 h-8 rounded-full flex items-center justify-center transition-all disabled:opacity-50",
+                                                                                    isDictationMode
+                                                                                        ? "text-purple-500 hover:text-purple-700 hover:bg-purple-50"
+                                                                                        : "text-cyan-500 hover:text-cyan-700 hover:bg-cyan-50"
+                                                                                )}
                                                                                 title="刷新当前题目 · 消耗 1 张刷新卡"
                                                                             >
                                                                                 <RefreshCw className={cn("w-3.5 h-3.5", isGeneratingDrill && "animate-spin")} />
-                                                                                <span className="absolute -right-1 -bottom-1 min-w-[14px] h-[14px] rounded-full bg-cyan-500 px-1 text-[9px] font-black leading-[14px] text-white shadow-[0_4px_10px_rgba(6,182,212,0.35)]">
+                                                                                <span className={cn(
+                                                                                    "absolute -right-1 -bottom-1 min-w-[14px] h-[14px] rounded-full px-1 text-[9px] font-black leading-[14px] text-white",
+                                                                                    isDictationMode
+                                                                                        ? "bg-purple-500 shadow-[0_4px_10px_rgba(168,85,247,0.35)]"
+                                                                                        : "bg-cyan-500 shadow-[0_4px_10px_rgba(6,182,212,0.35)]"
+                                                                                )}>
                                                                                     {refreshTicketCount}
                                                                                 </span>
                                                                             </button>
@@ -5935,7 +6197,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                                                             {/* Text Reveal / Hint Area - Check Manual Toggle OR Boss Force */}
                                                             {!((bossState.active && bossState.type === 'blind') || isBlindMode) ? (
-                                                                <div className="relative w-full max-w-4xl mx-auto px-4 pt-12 pb-8 animate-in fade-in zoom-in-95 duration-500">
+                                                                <div className={cn(
+                                                                    "relative w-full max-w-4xl mx-auto px-4 animate-in fade-in zoom-in-95 duration-500",
+                                                                    isDictationMode ? "pt-6 pb-4" : "pt-12 pb-8",
+                                                                )}>
                                                                     <div className="text-center font-newsreader italic text-2xl md:text-3xl leading-relaxed text-stone-800 tracking-wide selection:bg-indigo-100">
                                                                         {((gambleState.active && gambleState.wager !== 'safe')) && !isSubmittingDrill ? (
                                                                             <div className={cn(
@@ -6108,7 +6373,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="w-full space-y-4">
                                                 <div className="relative group">
-                                                    {mode === "listening" ? (
+                                                    {isShadowingMode ? (
                                                         <div className="flex flex-col items-center justify-center gap-4 py-2">
                                                             {whisperProcessing ? (
                                                                 <div className="flex items-center gap-3 px-6 py-3 bg-indigo-50 rounded-full">
@@ -6214,6 +6479,38 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             {speechInputError ? (
                                                                 <p className="text-sm text-rose-500">{speechInputError}</p>
                                                             ) : null}
+                                                        </div>
+                                                    ) : isDictationMode ? (
+                                                        <div className="w-full max-w-2xl">
+                                                            <div className="rounded-[1.2rem] border border-purple-200/80 bg-[linear-gradient(180deg,rgba(250,245,255,0.94),rgba(255,255,255,0.95))] p-3 shadow-[0_10px_24px_rgba(88,28,135,0.09)]">
+                                                                <div className="mb-2.5 text-left">
+                                                                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-purple-700">Dictation</p>
+                                                                    <p className="mt-1 text-[13px] leading-5 text-purple-900/80">听音频后直接写中文，按语义准确度评分。</p>
+                                                                </div>
+                                                                <textarea
+                                                                    value={userTranslation}
+                                                                    onChange={(event) => setUserTranslation(event.target.value)}
+                                                                    placeholder="听完后写中文（可意译，但要保留核心信息）..."
+                                                                    disabled={isSubmittingDrill}
+                                                                    className="min-h-[88px] w-full resize-none rounded-xl border border-purple-100/80 bg-white px-3 py-2.5 text-[14px] leading-6 text-stone-800 outline-none transition focus:border-purple-300 focus:ring-2 focus:ring-purple-200/60 disabled:cursor-not-allowed disabled:opacity-70"
+                                                                />
+                                                                <div className="mt-2 flex items-center justify-between">
+                                                                    <span className="text-xs text-stone-400">字数：{userTranslation.trim().length}</span>
+                                                                    <button
+                                                                        onClick={() => { void handleSubmitDrill(); }}
+                                                                        disabled={!userTranslation.trim() || isSubmittingDrill}
+                                                                        className={cn(
+                                                                            "inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold transition-all",
+                                                                            (!userTranslation.trim() || isSubmittingDrill)
+                                                                                ? "cursor-not-allowed border border-stone-300/70 bg-white/70 text-stone-400"
+                                                                                : "border border-purple-500/80 bg-purple-500 text-white shadow-[0_10px_24px_rgba(168,85,247,0.28)] hover:-translate-y-0.5 hover:bg-purple-600"
+                                                                        )}
+                                                                    >
+                                                                        {isSubmittingDrill ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                                                        {isSubmittingDrill ? "评分中..." : "提交听写"}
+                                                                    </button>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     ) : (
                                                         <>
@@ -6585,7 +6882,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                     </div>
 
                                                                                     <div className="flex gap-2">
-                                                                                        {mode === 'listening' && (
+                                                                                        {isShadowingMode && (
                                                                                             <button onClick={playRecording} className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-rose-200/80 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-600 transition-all hover:-translate-y-0.5 hover:bg-rose-100" title="Play My Recording"><Mic className="w-3.5 h-3.5" /> Play Mine</button>
                                                                                         )}
                                                                                         <button onClick={playAudio} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-indigo-200/80 bg-indigo-50 text-indigo-600 transition-all hover:-translate-y-0.5 hover:bg-indigo-100" title="Listen to Correct Version"><Volume2 className="w-4 h-4" /></button>
@@ -6622,9 +6919,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                                                                                     <div className="rounded-[1.5rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.88),rgba(255,255,255,0.92))] p-5">
                                                                                         <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-600">
-                                                                                            {mode === "listening" ? "重点建议" : "更自然表达"}
+                                                                                            {isShadowingMode ? "重点建议" : isDictationMode ? "听写建议" : "更自然表达"}
                                                                                         </div>
-                                                                                        {mode === "listening" ? (
+                                                                                        {isShadowingMode ? (
                                                                                             <div className="mt-4 space-y-3">
                                                                                                 {primaryAdvice ? <p className="text-base leading-7 text-stone-800">{primaryAdvice}</p> : <p className="text-sm text-stone-500">本题没有额外口语建议。</p>}
                                                                                                 {secondaryAdvice ? <p className="text-sm leading-6 text-stone-500">{secondaryAdvice}</p> : null}
@@ -6685,6 +6982,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                                     <div key={i} className="flex gap-2 text-sm leading-7 text-stone-600"><div className="mt-3 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-400" /><p>{point}</p></div>
                                                                                                 )) : (
                                                                                                     <div className="grid gap-3">
+                                                                                                        {drillFeedback.feedback.dictation_tips && <div className="rounded-2xl bg-purple-50 p-3 text-sm leading-6 text-purple-800"><strong className="mb-1 block text-xs uppercase tracking-[0.16em] text-purple-600">Dictation Tips</strong>{drillFeedback.feedback.dictation_tips}</div>}
                                                                                                         {drillFeedback.feedback.listening_tips && <div className="rounded-2xl bg-amber-50 p-3 text-sm leading-6 text-amber-800"><strong className="mb-1 block text-xs uppercase tracking-[0.16em] text-amber-600">Listening Tips</strong>{drillFeedback.feedback.listening_tips}</div>}
                                                                                                         {drillFeedback.feedback.encouragement && <div className="rounded-2xl bg-stone-50 px-4 py-3 text-sm italic text-stone-500">&ldquo;{drillFeedback.feedback.encouragement}&rdquo;</div>}
                                                                                                     </div>
@@ -7409,7 +7707,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
             {/* SHOP MODAL */}
             <AnimatePresence key="shop-modal">
-                {showShopModal && mode === 'translation' && (
+                {showShopModal && canUseModeShop && (
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}

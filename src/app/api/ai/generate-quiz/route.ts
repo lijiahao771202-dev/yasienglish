@@ -23,6 +23,7 @@ interface QuizRequestPayload {
     catQuizBlueprint?: {
         questionCount?: number;
         distribution?: Partial<Record<CatObjectiveQuestionType, number>>;
+        allowedTypes?: CatObjectiveQuestionType[];
     };
 }
 
@@ -111,17 +112,25 @@ function sanitizeDistribution(
     input: Partial<Record<CatObjectiveQuestionType, number>> | undefined,
     questionCount: number,
     fallback: Record<CatObjectiveQuestionType, number>,
+    options?: {
+        allowedTypes?: CatObjectiveQuestionType[];
+    },
 ) {
     const safeQuestionCount = Math.max(1, Math.round(questionCount));
+    const allowedTypeSet = new Set(
+        (options?.allowedTypes ?? CAT_OBJECTIVE_QUESTION_TYPES).filter((type) =>
+            CAT_OBJECTIVE_QUESTION_TYPES.includes(type),
+        ),
+    );
     const candidate = CAT_OBJECTIVE_QUESTION_TYPES.reduce((acc, type) => {
         const parsed = toPositiveInteger(input?.[type]);
-        acc[type] = parsed ?? 0;
+        acc[type] = allowedTypeSet.has(type) ? (parsed ?? 0) : 0;
         return acc;
     }, {} as Record<CatObjectiveQuestionType, number>);
 
-    if (sumDistribution(candidate) !== safeQuestionCount || candidate.multiple_select < 1) {
+    if (sumDistribution(candidate) !== safeQuestionCount) {
         const fallbackTotal = sumDistribution(fallback);
-        if (fallbackTotal === safeQuestionCount && fallback.multiple_select >= 1) {
+        if (fallbackTotal === safeQuestionCount) {
             return fallback;
         }
 
@@ -130,7 +139,9 @@ function sanitizeDistribution(
             return acc;
         }, {} as Record<CatObjectiveQuestionType, number>);
 
-        return buildObjectiveDistribution(safeQuestionCount, fallbackRatios);
+        return buildObjectiveDistribution(safeQuestionCount, fallbackRatios, {
+            allowedTypes: Array.from(allowedTypeSet),
+        });
     }
 
     return candidate;
@@ -188,19 +199,27 @@ function buildCatInstruction(params: {
     score: number;
     questionCount: number;
     distribution: Record<CatObjectiveQuestionType, number>;
+    allowedTypes: CatObjectiveQuestionType[];
 }) {
-    const { score, questionCount, distribution } = params;
+    const { score, questionCount, distribution, allowedTypes } = params;
+    const allowedTypeText = allowedTypes
+        .map((type) => `${TYPE_LABELS[type]} (${type})`)
+        .join("、");
+    const multipleSelectAllowed = allowedTypes.includes("multiple_select");
 
     return `Generate exactly ${questionCount} objective CAT adaptive reading questions.
 Learner CAT score: ${score}
+Allowed question types: ${allowedTypeText}
 
 Question type distribution:
 ${distributionText(distribution)}
 
 CAT strict protocol:
 1. Keep all questions objectively answerable from the article.
-2. \'multiple_select\' must appear at least once, with exactly 4 options and 2-3 correct answers in \'answers\'.
-3. For non-multiple-select types, provide one correct answer in field \'answer\'.
+2. Only use allowed question types above. Do not output any other type.
+3. ${multipleSelectAllowed
+        ? "\'multiple_select\' may appear, with exactly 4 options and 2-3 correct answers in \'answers\'."
+        : "Do not output \'multiple_select\' for this learner."}
 4. \'matching\' and \'fill_blank_choice\' should still use 4 options.
 5. \'true_false_ng\' must use options ["True", "False", "Not Given"].
 6. Include sourceParagraph and evidence for every question.
@@ -271,6 +290,9 @@ export async function POST(req: Request) {
             catQuizBlueprint?.distribution,
             questionCount,
             computedCatBlueprint.distribution,
+            {
+                allowedTypes: catQuizBlueprint?.allowedTypes ?? computedCatBlueprint.allowedTypes,
+            },
         );
 
         const standardInstruction = buildStandardInstruction(normalizedDifficulty);
@@ -279,6 +301,7 @@ export async function POST(req: Request) {
                 score: normalizedCatScore,
                 questionCount,
                 distribution: catDistribution,
+                allowedTypes: catQuizBlueprint?.allowedTypes ?? computedCatBlueprint.allowedTypes,
             })
             : standardInstruction.instruction;
 

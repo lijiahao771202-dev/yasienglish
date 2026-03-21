@@ -4,57 +4,142 @@ import { createClient } from "@supabase/supabase-js";
 import { deepseek } from "@/lib/deepseek";
 import { levelFromScore } from "@/lib/cat-growth";
 import {
-    getCatDifficultyProfile,
+    buildObjectiveDistribution,
+    getCatMainSkillBand,
+    getCatArticleTargets,
     getCatQuizBlueprint,
+    getCatSessionPolicy,
     getCatRankTier,
     getCatScoreToNextRank,
+    type CatObjectiveQuestionType,
     getLegacyBandFromScore,
     getLegacyDifficultyFromScore,
-    getTierLexicalProfile,
     normalizeCatScore,
-    validateArticleDifficulty as validateCatArticleDifficulty,
+    validateCatArticleAgainstTargets,
+    CAT_MAIN_SKILL_BANDS,
+    type CatArticleLexicalEvidence,
+    type CatArticleLexicalMix,
+    type CatArticleTargets,
 } from "@/lib/cat-score";
 import { getSupabasePublishableKey, getSupabaseUrl } from "@/lib/supabase/env";
 import { createServerClient, getServerUserSafely } from "@/lib/supabase/server";
+import { normalizeThetaFromScore } from "@/lib/cat-rasch";
+import { pickCatTopicSeed } from "@/lib/content-topic-pool";
 
 interface StartCatPayload {
     topic?: string;
     band?: number;
 }
 
+type ObjectiveQuestionType =
+    | "multiple_choice"
+    | "multiple_select"
+    | "true_false_ng"
+    | "matching"
+    | "fill_blank_choice";
+
+type SessionQuizQuestion = {
+    id: number;
+    itemId: string;
+    type: ObjectiveQuestionType;
+    question: string;
+    options: string[];
+    answer?: string;
+    answers?: string[];
+    explanation: {
+        summary: string;
+        reasoning?: string;
+        trap?: string;
+    };
+    sourceParagraph?: string;
+    evidence?: string;
+    passageIndex: number;
+    itemDifficulty: number;
+};
+
+type SessionBlueprint = {
+    minItems: number;
+    maxItems: number;
+    targetSe: number;
+    stopRule: "precision_first";
+    challengeRatioTarget: [number, number];
+    passages: Array<{
+        passageIndex: number;
+        title: string;
+        content: string;
+        targetScore: number;
+        qualityTier: "ok" | "low_confidence";
+    }>;
+    items: SessionQuizQuestion[];
+};
+
+type DraftSelfCheck = {
+    sentenceCount: number;
+    complexSentenceCount: number;
+    multiClauseSentenceCount: number;
+    clauseMarkerCount: number;
+};
+
 type ArticleDraft = {
     title: string;
     content: string;
     byline: string;
     wordCount: number;
+    selfCheck: DraftSelfCheck;
+    lexicalMix: CatArticleLexicalMix;
+    lexicalEvidence: CatArticleLexicalEvidence;
 };
 
-type LexicalAudit = {
-    coreCoverage: number;
-    stretchCoverage: number;
-    overlevelPenalty: number;
-    confidence: number;
-    reasons: string[];
+type RawModelDraft = {
+    title?: string;
+    content?: string;
+    byline?: string;
+    wordCount?: number;
+    selfCheck?: Partial<DraftSelfCheck>;
+    lexicalMix?: Partial<CatArticleLexicalMix>;
+    lexicalEvidence?: Partial<CatArticleLexicalEvidence>;
 };
 
-type ValidationSummary = {
-    stage: "r1" | "r2" | "r3" | "fallback";
-    scoreUsed: number;
-    passed: boolean;
-    structure: {
-        ok: boolean;
-        reasons: string[];
-        metrics: {
-            wordCount: number;
-            sentenceCount: number;
-            avgSentenceLength: number;
-            clauseDensity: number;
-            rareWordRatio: number;
-        };
-    };
-    lexical: LexicalAudit;
-    reasons: string[];
+const CAT_AUDIT_MODE = "three_axis_programmatic_single_shot" as const;
+const CAT_GENERATION_MODEL = "deepseek-reasoner" as const;
+type CatGenerationTheme = {
+    id: string;
+    name: string;
+    directive: string;
 };
+
+const CAT_GENERATION_THEMES: CatGenerationTheme[] = [
+    {
+        id: "scenario-log",
+        name: "场景日志",
+        directive: "Ground the passage in one realistic daily or academic scene with concrete actions and outcomes.",
+    },
+    {
+        id: "contrast-brief",
+        name: "对照短评",
+        directive: "Contrast two approaches, then explain why one works better under specific constraints.",
+    },
+    {
+        id: "problem-solution",
+        name: "问题解决",
+        directive: "Present a practical problem and a stepwise solution with clear cause-effect links.",
+    },
+    {
+        id: "micro-case",
+        name: "微案例",
+        directive: "Use a compact case and extract one transferable strategy for readers.",
+    },
+    {
+        id: "evidence-note",
+        name: "证据笔记",
+        directive: "Introduce a claim, then support it with observable evidence rather than abstract statements.",
+    },
+    {
+        id: "timeline-shift",
+        name: "时间线变化",
+        directive: "Show past-present-near-future change while keeping logical continuity and accessible style.",
+    },
+];
 
 function isMissingRpcFunction(error: { message?: string } | null, functionName: string) {
     const message = String(error?.message || "");
@@ -62,16 +147,8 @@ function isMissingRpcFunction(error: { message?: string } | null, functionName: 
     return message.includes(`public.${functionName}`) && message.toLowerCase().includes("schema cache");
 }
 
-function round(value: number, digits = 2) {
-    const factor = 10 ** digits;
-    return Math.round(value * factor) / factor;
-}
-
-function defaultTopicByScore(score: number) {
-    if (score < 1000) return "Daily habits, study life, and practical communication";
-    if (score < 2000) return "Technology, society, and behavior change";
-    if (score < 2800) return "Education policy, science ethics, and cognition";
-    return "Research methods, long-term strategy, and interdisciplinary reasoning";
+function pickRandomCatGenerationTheme() {
+    return CAT_GENERATION_THEMES[Math.floor(Math.random() * CAT_GENERATION_THEMES.length)] ?? CAT_GENERATION_THEMES[0];
 }
 
 function stripCodeFences(text: string) {
@@ -86,10 +163,267 @@ function safeParseJson<T>(text: string): T | null {
     }
 }
 
-function formatQuestionDistribution(distribution: Record<string, number>) {
-    return Object.entries(distribution)
-        .map(([type, count]) => `${type}: ${count}`)
-        .join(", ");
+function tryExtractJsonObject(text: string): string | null {
+    if (!text) return null;
+    const cleaned = stripCodeFences(text);
+    const first = cleaned.indexOf("{");
+    const last = cleaned.lastIndexOf("}");
+    if (first === -1 || last === -1 || last <= first) return null;
+    return cleaned.slice(first, last + 1);
+}
+
+function parseTaggedDraft(text: string): RawModelDraft | null {
+    if (!text.trim()) return null;
+
+    const normalized = text.replace(/\r\n/g, "\n").trim();
+    const sectionRegex =
+        /\[(Title|Article|LexicalMix|LexicalEvidence)\]\s*([\s\S]*?)(?=\n\[(Title|Article|LexicalMix|LexicalEvidence)\]\s*|$)/gi;
+
+    const sections: Record<string, string> = {};
+    for (const match of normalized.matchAll(sectionRegex)) {
+        const key = (match[1] || "").trim().toLowerCase();
+        const value = (match[2] || "").trim();
+        if (key && value) {
+            sections[key] = value;
+        }
+    }
+
+    const article = sections.article || "";
+    if (!article) {
+        return null;
+    }
+
+    const title = (sections.title || article.split("\n")[0] || "CAT Adaptive Reading").trim();
+
+    const mixText = sections.lexicalmix || "";
+    const readMix = (key: string) => {
+        const matched = mixText.match(new RegExp(`${key}\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)`, "i"));
+        if (!matched) return undefined;
+        const value = Number(matched[1]);
+        if (!Number.isFinite(value)) return undefined;
+        return value;
+    };
+
+    const evidenceText = sections.lexicalevidence || "";
+    const readEvidence = (key: string) => {
+        const matched = evidenceText.match(new RegExp(`${key}\\s*:\\s*([^\\n]+)`, "i"));
+        if (!matched) return undefined;
+        return matched[1]
+            .split(/[，,]/g)
+            .map((word) => word.trim())
+            .filter(Boolean);
+    };
+
+    return {
+        title,
+        content: article,
+        byline: "CAT Adaptive Trainer",
+        wordCount: article.split(/\s+/).filter(Boolean).length,
+        lexicalMix: {
+            lower: readMix("lower"),
+            core: readMix("core"),
+            stretch: readMix("stretch"),
+            overlevel: readMix("overlevel"),
+        },
+        lexicalEvidence: {
+            lower: readEvidence("lower"),
+            core: readEvidence("core"),
+            stretch: readEvidence("stretch"),
+            overlevel: readEvidence("overlevel"),
+        },
+    };
+}
+
+function parseModelDraft(raw: string): RawModelDraft | null {
+    const jsonCandidate = tryExtractJsonObject(raw);
+    if (jsonCandidate) {
+        const jsonParsed = safeParseJson<RawModelDraft>(jsonCandidate);
+        if (jsonParsed) return jsonParsed;
+    }
+    return parseTaggedDraft(raw);
+}
+
+function normalizeQuestionType(value: unknown): ObjectiveQuestionType {
+    if (
+        value === "multiple_choice"
+        || value === "multiple_select"
+        || value === "true_false_ng"
+        || value === "matching"
+        || value === "fill_blank_choice"
+    ) {
+        return value;
+    }
+    return "multiple_choice";
+}
+
+function normalizeOptionWithLetter(option: string, index: number) {
+    const value = option.trim();
+    const letter = String.fromCharCode(65 + index);
+    if (/^[A-D](?:[).:\-\s]|$)/i.test(value)) {
+        return value;
+    }
+    return `${letter}. ${value}`;
+}
+
+function normalizeQuestionFromUnknown(raw: unknown, index: number): SessionQuizQuestion | null {
+    if (!raw || typeof raw !== "object") return null;
+    const candidate = raw as Record<string, unknown>;
+    const question = typeof candidate.question === "string" ? candidate.question.trim() : "";
+    if (!question) return null;
+
+    const type = normalizeQuestionType(candidate.type);
+    const optionsRaw = Array.isArray(candidate.options)
+        ? candidate.options.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+        : [];
+    const options = optionsRaw.slice(0, 4).map((item, optionIndex) => normalizeOptionWithLetter(item, optionIndex));
+    if (options.length < 4) return null;
+
+    const answer = typeof candidate.answer === "string" ? candidate.answer.trim().toUpperCase() : undefined;
+    const answers = Array.isArray(candidate.answers)
+        ? candidate.answers
+            .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+            .map((item) => item.trim().toUpperCase())
+        : undefined;
+
+    if (type === "multiple_select") {
+        if (!answers || answers.length < 2) return null;
+    } else if (!answer) {
+        return null;
+    }
+
+    const explanationObj = candidate.explanation && typeof candidate.explanation === "object"
+        ? candidate.explanation as Record<string, unknown>
+        : null;
+    const explanationSummary = typeof explanationObj?.summary === "string"
+        ? explanationObj.summary.trim()
+        : (typeof candidate.explanation === "string" ? String(candidate.explanation).trim() : "");
+
+    const passageIndexRaw = Number(candidate.passageIndex ?? candidate.passage ?? 1);
+    const passageIndex = Number.isFinite(passageIndexRaw) ? Math.max(1, Math.min(2, Math.round(passageIndexRaw))) : 1;
+    const itemDifficultyRaw = Number(candidate.itemDifficulty ?? candidate.b ?? 0);
+    const itemDifficulty = Number.isFinite(itemDifficultyRaw) ? Math.max(-3.5, Math.min(4.5, itemDifficultyRaw)) : 0;
+
+    return {
+        id: typeof candidate.id === "number" ? Math.max(1, Math.round(candidate.id)) : index + 1,
+        itemId: typeof candidate.itemId === "string" && candidate.itemId.trim()
+            ? candidate.itemId.trim()
+            : `cat-item-${index + 1}`,
+        type,
+        question,
+        options,
+        answer,
+        answers,
+        explanation: {
+            summary: explanationSummary || "根据原文关键句定位作答。",
+            reasoning: typeof explanationObj?.reasoning === "string" ? explanationObj.reasoning.trim() : undefined,
+            trap: typeof explanationObj?.trap === "string" ? explanationObj.trap.trim() : undefined,
+        },
+        sourceParagraph: typeof candidate.sourceParagraph === "string" ? candidate.sourceParagraph : undefined,
+        evidence: typeof candidate.evidence === "string" ? candidate.evidence : undefined,
+        passageIndex,
+        itemDifficulty,
+    };
+}
+
+function normalizeQuestionSet(rawQuestions: unknown, fallbackDifficulties: number[]) {
+    const questions = Array.isArray(rawQuestions)
+        ? rawQuestions
+            .map((item, index) => normalizeQuestionFromUnknown(item, index))
+            .filter((item): item is SessionQuizQuestion => item !== null)
+        : [];
+
+    return questions.map((item, index) => ({
+        ...item,
+        id: index + 1,
+        itemId: item.itemId || `cat-item-${index + 1}`,
+        itemDifficulty: Number.isFinite(item.itemDifficulty) ? item.itemDifficulty : fallbackDifficulties[index] ?? 0,
+    }));
+}
+
+function buildBandMappingPromptText() {
+    return CAT_MAIN_SKILL_BANDS
+        .map((band) => {
+            const scoreRange = band.max === null ? `${band.min}+` : `${band.min}-${band.max}`;
+            return `- ${scoreRange}: ${band.label} (${band.examMapping}) | 词汇重点: ${band.lexicalFocus}`;
+        })
+        .join("\n");
+}
+
+function buildCatSessionQuizPrompt(params: {
+    title: string;
+    score: number;
+    theta: number;
+    questionCount: number;
+    distribution: Record<CatObjectiveQuestionType, number>;
+    passageOne: string;
+    passageTwo: string;
+}) {
+    const typeLabels: Record<CatObjectiveQuestionType, string> = {
+        multiple_choice: "单选",
+        multiple_select: "多选",
+        true_false_ng: "TFNG",
+        matching: "匹配",
+        fill_blank_choice: "选项填空",
+    };
+    const challengeBand = [params.theta + 0.2, params.theta + 0.4];
+    const distText = Object.entries(params.distribution)
+        .map(([type, count]) => `- ${typeLabels[type as CatObjectiveQuestionType]}(${type}): ${count} 题`)
+        .join("\n");
+
+    return [
+        "你是一位CAT阅读测验设计师。请基于两段短文生成客观题。",
+        `标题: ${params.title}`,
+        `学习者分数: ${params.score} (0-3200+体系)`,
+        `学习者能力theta: ${params.theta.toFixed(2)}`,
+        "",
+        "分数段说明（必须参考）：",
+        buildBandMappingPromptText(),
+        "",
+        `总题数: ${params.questionCount}`,
+        "题型分布：",
+        distText,
+        "",
+        "难度约束：",
+        `- 至少30%-40%题目难度b需要高于当前theta（挑战区）`,
+        `- 推荐挑战区: b in [${challengeBand[0].toFixed(2)}, ${challengeBand[1].toFixed(2)}]`,
+        "- 题目顺序从易到难",
+        "- 题目必须可从原文直接定位，不出主观题",
+        "",
+        "输出要求：仅输出JSON对象，不要markdown。",
+        "JSON Schema:",
+        `{
+  "questions": [
+    {
+      "id": 1,
+      "itemId": "cat-item-1",
+      "type": "multiple_choice|multiple_select|true_false_ng|matching|fill_blank_choice",
+      "passageIndex": 1,
+      "itemDifficulty": -0.5,
+      "question": "...",
+      "options": ["A. ...","B. ...","C. ...","D. ..."],
+      "answer": "A",
+      "answers": ["A","C"],
+      "sourceParagraph": "2",
+      "evidence": "...",
+      "explanation": {"summary":"中文结论","reasoning":"中文思路","trap":"中文易错点"}
+    }
+  ]
+}`,
+        "",
+        "[Passage 1]",
+        params.passageOne,
+        "",
+        "[Passage 2]",
+        params.passageTwo,
+    ].join("\n");
+}
+
+function ratioRangeLabel([min, max]: [number, number]) {
+    return `${Math.round(min * 100)}%-${Math.round(max * 100)}%`;
+}
+
+function clamp(value: number, min: number, max: number) {
+    return Math.min(max, Math.max(min, value));
 }
 
 function buildArticlePrompt(params: {
@@ -99,51 +433,78 @@ function buildArticlePrompt(params: {
     primaryLabel: string;
     secondaryLabel: string;
     difficulty: ReturnType<typeof getLegacyDifficultyFromScore>;
-    profile: ReturnType<typeof getCatDifficultyProfile>;
-    quizBlueprint: ReturnType<typeof getCatQuizBlueprint>;
-    lexicalProfile: ReturnType<typeof getTierLexicalProfile>;
-    failureSummary?: string;
+    targets: CatArticleTargets;
+    generationTheme: CatGenerationTheme;
 }) {
-    const { topic, score, rankName, primaryLabel, secondaryLabel, difficulty, profile, quizBlueprint, lexicalProfile, failureSummary } = params;
+    const { topic, score, rankName, primaryLabel, secondaryLabel, difficulty, targets, generationTheme } = params;
+    const { lexicalTarget, lengthTarget, syntaxTarget } = targets;
+    const shortWordMin = Math.max(80, Math.round(lengthTarget.wordCountMin * 0.45));
+    const shortWordMax = Math.max(shortWordMin + 40, Math.round(lengthTarget.wordCountMax * 0.6));
+    const mainBand = getCatMainSkillBand(score);
+    const clauseMarkers =
+        "because, although, though, while, whereas, which, that, who, whose, whom, if, when, unless, whether, since, after, before, until, once, provided, despite, where, as";
 
     return [
-        "Write one English reading article for a Chinese learner.",
+        "Task: Generate ONE CAT adaptive short reading passage for a Chinese learner.",
         `Topic: ${topic}`,
-        `Score: ${score} | Rank: ${rankName} | ${primaryLabel} / ${secondaryLabel} | Bucket: ${difficulty}`,
-        `Structure target: ${profile.wordCountMin}-${profile.wordCountMax} words; sentence ${profile.sentenceLengthMin.toFixed(1)}-${profile.sentenceLengthMax.toFixed(1)} words; clause ${profile.clauseDensityMin.toFixed(2)}-${profile.clauseDensityMax.toFixed(2)}.`,
-        `Tier lexical register: core=${lexicalProfile.coreDomain}; stretch=${lexicalProfile.stretchDomain}.`,
-        `Lexical gate: coreCoverage >= ${lexicalProfile.minimumCoreCoverage}; stretchCoverage >= ${lexicalProfile.minimumStretchCoverage}; overlevelPenalty <= ${lexicalProfile.maximumOverlevelPenalty}; confidence >= ${lexicalProfile.minimumConfidence}.`,
-        "Avoid vocabulary leaps above two tiers and keep the article aligned with the target register.",
-        `Quiz context: ${quizBlueprint.questionCount} questions | ${formatQuestionDistribution(quizBlueprint.distribution)}`,
-        'Return JSON only: {"title":"string","content":"string","byline":"CAT Adaptive Trainer","wordCount":0}',
-        "Keep claims plausible, concise, and directly useful for objective question writing.",
-        failureSummary ? `Fix only: ${failureSummary}` : "",
-    ]
-        .filter(Boolean)
-        .join("\n");
-}
-
-function buildLexicalAuditPrompt(params: {
-    content: string;
-    score: number;
-    rankName: string;
-    lexicalProfile: ReturnType<typeof getTierLexicalProfile>;
-}) {
-    const { content, score, rankName, lexicalProfile } = params;
-
-    return [
-        "Assess lexical fit for one CAT reading article.",
-        `Score: ${score} | Rank: ${rankName}`,
-        `Core register: ${lexicalProfile.coreDomain}; stretch register: ${lexicalProfile.stretchDomain}.`,
-        `Thresholds: coreCoverage >= ${lexicalProfile.minimumCoreCoverage}; stretchCoverage >= ${lexicalProfile.minimumStretchCoverage}; overlevelPenalty <= ${lexicalProfile.maximumOverlevelPenalty}; confidence >= ${lexicalProfile.minimumConfidence}`,
-        "Return JSON only with these fields:",
-        '{"coreCoverage":0,"stretchCoverage":0,"overlevelPenalty":0,"confidence":0,"reasons":["short reason"]}',
-        "Rules:",
-        "- Use decimals from 0 to 1 for the four scores.",
-        "- reasons should be short and specific.",
-        "- Penalize over-level vocabulary, weak coverage of core content, and missing stretch vocabulary.",
-        "Article:",
-        content,
+        `Learner score: ${score} | Rank: ${rankName} | ${primaryLabel} / ${secondaryLabel} | Bucket: ${difficulty}`,
+        `Main skill band: ${mainBand.label} (${mainBand.examMapping})`,
+        "",
+        "CAT score map (0-3200+):",
+        buildBandMappingPromptText(),
+        "",
+        "Why this matters:",
+        "- The passage is used in adaptive CAT training. Difficulty must match the learner score.",
+        "- Keep challenge but avoid uncontrolled complexity spikes.",
+        "",
+        "RANDOM STYLE INJECTION (must apply this generation):",
+        `- Theme: ${generationTheme.name}`,
+        `- Directive: ${generationTheme.directive}`,
+        "",
+        "THREE-AXIS HARD TARGETS (all required):",
+        `1) Lexical ratio (decimal 0-1, not %): core=${lexicalTarget.coreTierLabel} ${ratioRangeLabel(lexicalTarget.ratios.core)}; lower=${lexicalTarget.lowerTierLabel ?? "None"} ${ratioRangeLabel(lexicalTarget.ratios.lower)}; stretch=${lexicalTarget.stretchTierLabel} ${ratioRangeLabel(lexicalTarget.ratios.stretch)}; overlevel<=${Math.round(lexicalTarget.overlevelMax * 100)}%.`,
+        `2) Length: short passage wordCount ${shortWordMin}-${shortWordMax} (english tokens).`,
+        `3) Syntax: complexSentenceRatio ${ratioRangeLabel(syntaxTarget.complexSentenceRatioRange)}; multiClauseSentenceRatio ${ratioRangeLabel(syntaxTarget.multiClauseSentenceRatioRange)}; clauseDensity ${syntaxTarget.clauseDensityRange[0].toFixed(2)}-${syntaxTarget.clauseDensityRange[1].toFixed(2)}.`,
+        "",
+        "How syntax is measured by validator:",
+        `- Clause markers: ${clauseMarkers}.`,
+        "- complex sentence = sentence containing >=1 clause marker.",
+        "- multi-clause sentence = sentence containing >=2 clause markers.",
+        "- clauseDensity = total clause markers / sentence count.",
+        "- Use mostly short independent clauses if you need to reduce density.",
+        "",
+        "INTERNAL WORKFLOW (must follow before final output):",
+        "A. Plan ratio first: choose lexicalMix.lower/core/stretch/overlevel within target bands and make sum about 1.00.",
+        "B. Draft short passage in 2-3 coherent paragraphs.",
+        "C. Self-check length + syntax using the validator rules above.",
+        "D. Self-check lexicalEvidence: every evidence word MUST appear verbatim in content.",
+        "E. If any axis misses, revise internally. Return final result only once.",
+        "",
+        "STRICT OUTPUT:",
+        "- Do NOT output JSON.",
+        "- Do NOT output markdown fence.",
+        "- Do NOT output explanation text.",
+        "- Use EXACT plain text template below:",
+        "[Title]",
+        "one short title line",
+        "",
+        "[Article]",
+        "2-3 short paragraphs of article content",
+        "",
+        "[LexicalMix]",
+        "lower: 0.xx",
+        "core: 0.xx",
+        "stretch: 0.xx",
+        "overlevel: 0.xx",
+        "",
+        "[LexicalEvidence]",
+        "lower: word1, word2",
+        "core: word1, word2, word3",
+        "stretch: word1, word2",
+        "overlevel: word1",
+        "",
+        "- lexicalEvidence words must appear verbatim in [Article].",
+        "- lexicalMix values in [0,1], sum close to 1.00 (0.95-1.05).",
     ].join("\n");
 }
 
@@ -159,16 +520,50 @@ function getBearerToken(request: Request) {
     return token.trim() || null;
 }
 
-function normalizeDraft(parsed: {
-    title?: string;
-    content?: string;
-    byline?: string;
-    wordCount?: number;
-}): ArticleDraft | null {
+function normalizeEvidenceBucket(input: unknown) {
+    if (!Array.isArray(input)) return [];
+    return input
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter(Boolean)
+        .slice(0, 12);
+}
+
+function normalizeMixValue(value: unknown) {
+    if (typeof value !== "number" || !Number.isFinite(value)) return 0;
+    if (value > 1 && value <= 100) {
+        return Math.max(0, Math.min(1, value / 100));
+    }
+    return Math.max(0, Math.min(1, value));
+}
+
+function normalizeDraft(parsed: RawModelDraft): ArticleDraft | null {
     const title = (parsed.title || "").trim();
     const content = (parsed.content || "").trim();
     const byline = (parsed.byline || "CAT Adaptive Trainer").trim();
     if (!content) return null;
+
+    const countedWords = content.split(/\s+/).filter(Boolean).length;
+
+    const selfCheck: DraftSelfCheck = {
+        sentenceCount: Math.max(0, Math.round(Number(parsed.selfCheck?.sentenceCount ?? 0))),
+        complexSentenceCount: Math.max(0, Math.round(Number(parsed.selfCheck?.complexSentenceCount ?? 0))),
+        multiClauseSentenceCount: Math.max(0, Math.round(Number(parsed.selfCheck?.multiClauseSentenceCount ?? 0))),
+        clauseMarkerCount: Math.max(0, Math.round(Number(parsed.selfCheck?.clauseMarkerCount ?? 0))),
+    };
+
+    const lexicalMix: CatArticleLexicalMix = {
+        lower: normalizeMixValue(parsed.lexicalMix?.lower),
+        core: normalizeMixValue(parsed.lexicalMix?.core),
+        stretch: normalizeMixValue(parsed.lexicalMix?.stretch),
+        overlevel: normalizeMixValue(parsed.lexicalMix?.overlevel),
+    };
+
+    const lexicalEvidence: CatArticleLexicalEvidence = {
+        lower: normalizeEvidenceBucket(parsed.lexicalEvidence?.lower),
+        core: normalizeEvidenceBucket(parsed.lexicalEvidence?.core),
+        stretch: normalizeEvidenceBucket(parsed.lexicalEvidence?.stretch),
+        overlevel: normalizeEvidenceBucket(parsed.lexicalEvidence?.overlevel),
+    };
 
     return {
         title,
@@ -176,20 +571,67 @@ function normalizeDraft(parsed: {
         byline,
         wordCount: Number.isFinite(parsed.wordCount ?? NaN)
             ? Math.max(0, Math.round(Number(parsed.wordCount)))
-            : content.split(/\s+/).filter(Boolean).length,
+            : countedWords,
+        selfCheck,
+        lexicalMix,
+        lexicalEvidence,
+    };
+}
+
+function splitParagraphs(content: string) {
+    return content
+        .split(/\n\n+/g)
+        .map((paragraph) => paragraph.trim())
+        .filter(Boolean);
+}
+
+function buildCombinedArticle(params: {
+    title: string;
+    passageOneTitle: string;
+    passageOneContent: string;
+    passageTwoTitle: string;
+    passageTwoContent: string;
+}) {
+    const headingOne = `Part A · ${params.passageOneTitle}`;
+    const headingTwo = `Part B · ${params.passageTwoTitle}`;
+    const content = [
+        headingOne,
+        params.passageOneContent.trim(),
+        "",
+        headingTwo,
+        params.passageTwoContent.trim(),
+    ].join("\n\n");
+
+    const blocks = [
+        { type: "header", tag: "h2", content: headingOne },
+        ...splitParagraphs(params.passageOneContent).map((paragraph) => ({ type: "paragraph", content: paragraph })),
+        { type: "header", tag: "h2", content: headingTwo },
+        ...splitParagraphs(params.passageTwoContent).map((paragraph) => ({ type: "paragraph", content: paragraph })),
+    ];
+
+    return {
+        title: params.title,
+        content,
+        blocks,
     };
 }
 
 async function generateDraft(params: {
-    model: "deepseek-chat" | "deepseek-reasoner";
     prompt: string;
     useSharedKey?: boolean;
 }) {
     const baseRequest = {
-        model: params.model,
-        messages: [{ role: "user" as const, content: params.prompt }],
-        response_format: { type: "json_object" as const },
-        temperature: params.model === "deepseek-reasoner" ? 0.2 : 0.55,
+        model: CAT_GENERATION_MODEL,
+        messages: [
+            {
+                role: "system" as const,
+                content:
+                    "You are an adaptive reading content generator. Follow user constraints exactly and output using the exact plain-text tagged template requested by the user.",
+            },
+            { role: "user" as const, content: params.prompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 2400,
     };
 
     const completion = await (async () => {
@@ -209,100 +651,22 @@ async function generateDraft(params: {
         return deepseek.chat.completions.create(baseRequest);
     })();
 
-    const content = completion.choices[0]?.message?.content;
-    if (!content) {
-        return null;
-    }
+    const message = completion.choices[0]?.message as
+        | {
+              content?: string | null;
+              reasoning_content?: string | null;
+          }
+        | undefined;
 
-    const parsed = safeParseJson<{
-        title?: string;
-        content?: string;
-        byline?: string;
-        wordCount?: number;
-    }>(content);
+    const content = typeof message?.content === "string" ? message.content : "";
+    const reasoningContent = typeof message?.reasoning_content === "string" ? message.reasoning_content : "";
 
-    if (!parsed) return null;
-    return normalizeDraft(parsed);
-}
+    const rawCandidate = content || reasoningContent || "";
+    if (!rawCandidate) return { rawContent: null, draft: null };
 
-async function runLexicalAudit(params: {
-    content: string;
-    score: number;
-    rankName: string;
-    lexicalProfile: ReturnType<typeof getTierLexicalProfile>;
-}) {
-    const prompt = buildLexicalAuditPrompt(params);
-
-    const completion = await deepseek.chat.completions.create({
-        model: "deepseek-chat",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" },
-        temperature: 0.1,
-        max_tokens: 240,
-    });
-
-    const content = completion.choices[0]?.message?.content;
-    if (!content) {
-        return {
-            coreCoverage: 0,
-            stretchCoverage: 0,
-            overlevelPenalty: 1,
-            confidence: 0,
-            reasons: ["lexical audit returned empty content"],
-        } satisfies LexicalAudit;
-    }
-
-    const parsed = safeParseJson<Partial<LexicalAudit>>(content);
-    if (!parsed) {
-        return {
-            coreCoverage: 0,
-            stretchCoverage: 0,
-            overlevelPenalty: 1,
-            confidence: 0,
-            reasons: ["lexical audit returned invalid JSON"],
-        } satisfies LexicalAudit;
-    }
-
-    return {
-        coreCoverage: Number(parsed.coreCoverage ?? 0),
-        stretchCoverage: Number(parsed.stretchCoverage ?? 0),
-        overlevelPenalty: Number(parsed.overlevelPenalty ?? 1),
-        confidence: Number(parsed.confidence ?? 0),
-        reasons: Array.isArray(parsed.reasons)
-            ? parsed.reasons.map((reason) => String(reason).trim()).filter(Boolean)
-            : [],
-    } satisfies LexicalAudit;
-}
-
-function toValidationSummary(params: {
-    stage: ValidationSummary["stage"];
-    scoreUsed: number;
-    validation: ReturnType<typeof validateCatArticleDifficulty>;
-}): ValidationSummary {
-    const { stage, scoreUsed, validation } = params;
-    const reasons = [
-        ...validation.structure.reasons.map((reason) => `structure: ${reason}`),
-        ...validation.lexical.reasons.map((reason) => `lexical: ${reason}`),
-    ];
-
-    return {
-        stage,
-        scoreUsed,
-        passed: validation.isValid,
-        structure: {
-            ok: validation.structure.isValid,
-            reasons: validation.structure.reasons,
-            metrics: validation.structure.metrics,
-        },
-        lexical: {
-            coreCoverage: validation.lexical.coreCoverage,
-            stretchCoverage: validation.lexical.stretchCoverage,
-            overlevelPenalty: validation.lexical.overlevelPenalty,
-            confidence: validation.lexical.confidence,
-            reasons: validation.lexical.reasons,
-        },
-        reasons,
-    };
+    const parsed = parseModelDraft(rawCandidate);
+    if (!parsed) return { rawContent: rawCandidate, draft: null };
+    return { rawContent: rawCandidate, draft: normalizeDraft(parsed) };
 }
 
 async function generateValidatedArticle(params: {
@@ -312,11 +676,10 @@ async function generateValidatedArticle(params: {
     primaryLabel: string;
     secondaryLabel: string;
     difficulty: ReturnType<typeof getLegacyDifficultyFromScore>;
-    profile: ReturnType<typeof getCatDifficultyProfile>;
-    quizBlueprint: ReturnType<typeof getCatQuizBlueprint>;
+    generationTheme: CatGenerationTheme;
     useSharedKey?: boolean;
 }) {
-    const lexicalProfile = getTierLexicalProfile(params.score);
+    const difficultyTargets = getCatArticleTargets(params.score);
     const prompt = buildArticlePrompt({
         topic: params.topic,
         score: params.score,
@@ -324,68 +687,94 @@ async function generateValidatedArticle(params: {
         primaryLabel: params.primaryLabel,
         secondaryLabel: params.secondaryLabel,
         difficulty: params.difficulty,
-        profile: params.profile,
-        quizBlueprint: params.quizBlueprint,
-        lexicalProfile,
+        targets: difficultyTargets,
+        generationTheme: params.generationTheme,
     });
 
-    const model = "deepseek-chat" as const;
-    const draft = await generateDraft({ model, prompt, useSharedKey: params.useSharedKey });
-    if (!draft) {
+    const generated = await generateDraft({
+        prompt,
+        useSharedKey: params.useSharedKey,
+    });
+
+    if (!generated.draft) {
         return {
             draft: null,
-            validation: {
-                stage: "r1",
-                scoreUsed: params.score,
-                passed: false,
-                structure: {
-                    ok: false,
-                    reasons: ["generation returned invalid JSON or empty content"],
-                    metrics: {
-                        wordCount: 0,
-                        sentenceCount: 0,
-                        avgSentenceLength: 0,
-                        clauseDensity: 0,
-                        rareWordRatio: 0,
-                    },
-                },
-                lexical: {
-                    coreCoverage: 0,
-                    stretchCoverage: 0,
-                    overlevelPenalty: 1,
-                    confidence: 0,
-                    reasons: ["generation failed before lexical audit"],
-                },
-                reasons: ["generation returned invalid JSON or empty content"],
-            } satisfies ValidationSummary,
-            model,
-            lexicalProfile,
+            rawContent: generated.rawContent,
+            difficultyTargets,
+            difficultyAudit: null,
+            model: CAT_GENERATION_MODEL,
         };
     }
 
-    const lexicalAudit = await runLexicalAudit({
-        content: draft.content,
+    const difficultyAudit = validateCatArticleAgainstTargets({
+        text: generated.draft.content,
         score: params.score,
-        rankName: params.rankName,
-        lexicalProfile,
-    });
-
-    const validation = toValidationSummary({
-        stage: "r1",
-        scoreUsed: params.score,
-        validation: validateCatArticleDifficulty({
-            text: draft.content,
-            score: params.score,
-            profile: params.profile,
-            lexicalAuditResult: lexicalAudit,
-        }),
+        targets: difficultyTargets,
+        lexicalMix: generated.draft.lexicalMix,
+        lexicalEvidence: generated.draft.lexicalEvidence,
     });
 
     return {
-        draft,
-        validation,
-        model,
-        lexicalProfile,
+        draft: generated.draft,
+        rawContent: generated.rawContent,
+        difficultyTargets,
+        difficultyAudit,
+        model: CAT_GENERATION_MODEL,
+    };
+}
+
+async function generateCatSessionQuestions(params: {
+    score: number;
+    theta: number;
+    title: string;
+    passageOne: string;
+    passageTwo: string;
+}) {
+    const quizBlueprint = getCatQuizBlueprint(params.score);
+    const questionCount = 8;
+    const distribution = buildObjectiveDistribution(questionCount, quizBlueprint.ratios, {
+        allowedTypes: quizBlueprint.allowedTypes,
+    });
+    const prompt = buildCatSessionQuizPrompt({
+        title: params.title,
+        score: params.score,
+        theta: params.theta,
+        questionCount,
+        distribution,
+        passageOne: params.passageOne,
+        passageTwo: params.passageTwo,
+    });
+
+    const completion = await deepseek.chat.completions.create({
+        model: CAT_GENERATION_MODEL,
+        response_format: { type: "json_object" },
+        temperature: 0.15,
+        max_tokens: 2200,
+        messages: [{ role: "user", content: prompt }],
+    });
+
+    const content = completion.choices[0]?.message?.content ?? "";
+    const parsed = safeParseJson<{ questions?: unknown[] }>(content);
+
+    const baseDifficulty = params.theta - 0.45;
+    const fallbackDifficulties = Array.from({ length: questionCount }, (_, index) =>
+        Number((baseDifficulty + index * 0.2).toFixed(3)),
+    );
+    const normalized = normalizeQuestionSet(parsed?.questions, fallbackDifficulties);
+
+    const questions = normalized.map((question, index) => ({
+        ...question,
+        id: index + 1,
+        itemId: question.itemId || `cat-item-${index + 1}`,
+        itemDifficulty: Number.isFinite(question.itemDifficulty)
+            ? question.itemDifficulty
+            : fallbackDifficulties[index] ?? params.theta,
+    }));
+
+    return {
+        questions,
+        distribution,
+        questionCount,
     };
 }
 
@@ -426,53 +815,80 @@ export async function POST(request: Request) {
 
     const { data: profile } = await dbClient
         .from("profiles")
-        .select("cat_score, cat_level, cat_theta, cat_points, cat_current_band")
+        .select("*")
         .eq("user_id", resolvedUser.id)
         .maybeSingle();
 
-    const scoreBefore = normalizeCatScore(Number(profile?.cat_score ?? 1000));
-    const levelBefore = Number(profile?.cat_level ?? levelFromScore(scoreBefore));
-    const thetaBefore = Number(profile?.cat_theta ?? 0);
+    const scoreBefore = normalizeCatScore(Number((profile as Record<string, unknown> | null)?.cat_score ?? 1000));
+    const levelBefore = Number((profile as Record<string, unknown> | null)?.cat_level ?? levelFromScore(scoreBefore));
+    const thetaBefore = Number((profile as Record<string, unknown> | null)?.cat_theta ?? normalizeThetaFromScore(scoreBefore));
+    const seBefore = clamp(Number((profile as Record<string, unknown> | null)?.cat_se ?? 1.15), 0.22, 2.4);
     const nextBand = getLegacyBandFromScore(scoreBefore);
     const difficulty = getLegacyDifficultyFromScore(scoreBefore);
     const rankBefore = getCatRankTier(scoreBefore);
     const scoreToNextRank = getCatScoreToNextRank(scoreBefore);
-    const topic = (body.topic || "").trim() || defaultTopicByScore(scoreBefore);
+    const mainSkillBand = getCatMainSkillBand(scoreBefore);
+    const topicSeed = pickCatTopicSeed({
+        score: scoreBefore,
+        userTopic: typeof body.topic === "string" ? body.topic : "",
+    });
+    const topic = topicSeed.topicLine;
+    const generationTheme = pickRandomCatGenerationTheme();
 
-    const attemptCount = 1;
-    const qualityTier = "single_shot" as const;
-    const usedReasoner = false;
-    const activeScore = scoreBefore;
-    const activeProfile = getCatDifficultyProfile(scoreBefore);
-    const activeQuizBlueprint = getCatQuizBlueprint(scoreBefore);
-    const activeRank = rankBefore;
-
-    const result = await generateValidatedArticle({
+    const passageOneResult = await generateValidatedArticle({
         score: scoreBefore,
         topic,
         rankName: rankBefore.name,
         primaryLabel: rankBefore.primaryLabel,
         secondaryLabel: rankBefore.secondaryLabel,
         difficulty,
-        profile: activeProfile,
-        quizBlueprint: activeQuizBlueprint,
+        generationTheme,
         useSharedKey: true,
     });
 
-    if (!result.draft) {
-        return NextResponse.json({ error: "Failed to generate CAT article." }, { status: 500 });
+    if (!passageOneResult.draft) {
+        return NextResponse.json(
+            {
+                error: "Failed to generate CAT article.",
+                auditMode: CAT_AUDIT_MODE,
+                difficultyTargets: passageOneResult.difficultyTargets,
+            },
+            { status: 500 },
+        );
     }
 
-    const articleDraft = result.draft;
-    const validationSummary = result.validation;
+    const passageOneDraft = passageOneResult.draft;
+    const passageOneAudit = passageOneResult.difficultyAudit;
+    const questionBlueprint = getCatQuizBlueprint(scoreBefore);
+    const sessionPolicy = getCatSessionPolicy(scoreBefore);
+    const sessionQualityTier = passageOneAudit?.passed ? "ok" : "low_confidence";
+    const challengeRatioMin = Math.max(0, Number((sessionPolicy.challengeRatio - 0.08).toFixed(2)));
+    const challengeRatioMax = Math.min(1, Number((sessionPolicy.challengeRatio + 0.08).toFixed(2)));
+    const sessionBlueprint: SessionBlueprint = {
+        minItems: sessionPolicy.minItems,
+        maxItems: sessionPolicy.maxItems,
+        targetSe: sessionPolicy.targetSe,
+        stopRule: "precision_first",
+        challengeRatioTarget: [challengeRatioMin, challengeRatioMax],
+        passages: [
+            {
+                passageIndex: 1,
+                title: passageOneDraft.title || "CAT Short Passage",
+                content: passageOneDraft.content,
+                targetScore: scoreBefore,
+                qualityTier: passageOneAudit?.passed ? "ok" : "low_confidence",
+            },
+        ],
+        items: [],
+    };
 
-    const articleTitle = articleDraft.title || `${activeRank.name} 阅读训练`;
+    const articleTitle = passageOneDraft.title || `${rankBefore.name} 阅读训练`;
     const articleUrl = `cat://${resolvedUser.id}/${Date.now()}`;
-    const blocks = articleDraft.content
-        .split(/\n\n+/)
-        .map((paragraph) => paragraph.trim())
-        .filter(Boolean)
-        .map((paragraph) => ({ type: "paragraph", content: paragraph }));
+    const blocks = splitParagraphs(passageOneDraft.content).map((paragraph) => ({ type: "paragraph", content: paragraph }));
+    const difficultyTargets = passageOneResult.difficultyTargets;
+    const qualityTier = sessionQualityTier;
+    const attemptCount = 1;
+    const usedReasoner = true;
 
     let sessionRow: {
         session_id?: string;
@@ -530,16 +946,29 @@ export async function POST(request: Request) {
         sessionRow = rpcRow ?? {};
     }
 
-    const finalDifficultyProfile = activeProfile;
-    const finalQuizBlueprint = activeQuizBlueprint;
-    const finalScoreSnapshot = activeScore;
+    try {
+        await dbClient
+            .from("cat_sessions")
+            .update({
+                session_blueprint: sessionBlueprint,
+                quality_tier: sessionQualityTier,
+                se_before: seBefore,
+                target_se: sessionPolicy.targetSe,
+                item_count: questionBlueprint.questionCount,
+                updated_at: new Date().toISOString(),
+            })
+            .eq("id", sessionRow?.session_id ?? "");
+            // ignore missing column/table errors in older DBs
+    } catch {
+        // no-op
+    }
 
     return NextResponse.json({
         article: {
             title: articleTitle,
-            content: articleDraft.content,
-            byline: articleDraft.byline,
-            textContent: articleDraft.content,
+            content: passageOneDraft.content,
+            byline: passageOneDraft.byline,
+            textContent: passageOneDraft.content,
             blocks,
             url: articleUrl,
             difficulty,
@@ -547,16 +976,30 @@ export async function POST(request: Request) {
             isCatMode: true,
             catSessionId: sessionRow?.session_id,
             catBand: sessionRow?.band ?? nextBand,
-            catScoreSnapshot: finalScoreSnapshot,
-            catRankName: activeRank.name,
-            catRankPrimaryLabel: activeRank.primaryLabel,
-            catRankSecondaryLabel: activeRank.secondaryLabel,
-            catQuizBlueprint: finalQuizBlueprint,
+            catScoreSnapshot: scoreBefore,
+            catThetaSnapshot: thetaBefore,
+            catSeSnapshot: seBefore,
+            catRankName: rankBefore.name,
+            catRankPrimaryLabel: rankBefore.primaryLabel,
+            catRankSecondaryLabel: rankBefore.secondaryLabel,
+            catQuizBlueprint: {
+                score: scoreBefore,
+                questionCount: questionBlueprint.questionCount,
+                ratioBandLabel: questionBlueprint.ratioBandLabel,
+                distribution: questionBlueprint.distribution,
+                allowedTypes: questionBlueprint.allowedTypes,
+            },
+            catSessionBlueprint: sessionBlueprint,
             catDifficultyProfile: {
-                wordCount: [finalDifficultyProfile.wordCountMin, finalDifficultyProfile.wordCountMax],
-                sentenceLength: [finalDifficultyProfile.sentenceLengthMin, finalDifficultyProfile.sentenceLengthMax],
-                clauseDensity: [finalDifficultyProfile.clauseDensityMin, finalDifficultyProfile.clauseDensityMax],
-                rareWordRatio: [finalDifficultyProfile.rareWordRatioMin, finalDifficultyProfile.rareWordRatioMax],
+                wordCount: [difficultyTargets.lengthTarget.wordCountMin, difficultyTargets.lengthTarget.wordCountMax],
+                complexSentenceRatio: difficultyTargets.syntaxTarget.complexSentenceRatioRange,
+                multiClauseSentenceRatio: difficultyTargets.syntaxTarget.multiClauseSentenceRatioRange,
+                clauseDensity: difficultyTargets.syntaxTarget.clauseDensityRange,
+                lexicalRatios: difficultyTargets.lexicalTarget.ratios,
+            },
+            generationTheme: {
+                id: generationTheme.id,
+                name: generationTheme.name,
             },
         },
         catSession: {
@@ -566,45 +1009,54 @@ export async function POST(request: Request) {
             scoreBefore: sessionRow?.score_before ?? scoreBefore,
             levelBefore: sessionRow?.level_before ?? levelBefore,
             thetaBefore: sessionRow?.theta_before ?? thetaBefore,
+            seBefore,
             createdAt: sessionRow?.created_at ?? new Date().toISOString(),
             topic,
             rankBefore: rankBefore.name,
             primaryLabel: rankBefore.primaryLabel,
             secondaryLabel: rankBefore.secondaryLabel,
             scoreToNextRank,
+            stopRule: "precision_first",
+            minItems: sessionPolicy.minItems,
+            maxItems: sessionPolicy.maxItems,
+            targetSe: sessionPolicy.targetSe,
+            generationTheme: generationTheme.name,
+            topicSeed,
         },
         catProfile: {
             score: scoreBefore,
             level: levelBefore,
             theta: thetaBefore,
-            points: profile?.cat_points ?? 0,
-            currentBand: profile?.cat_current_band ?? nextBand,
+            se: seBefore,
+            points: (profile as Record<string, unknown> | null)?.cat_points ?? 0,
+            currentBand: (profile as Record<string, unknown> | null)?.cat_current_band ?? nextBand,
             rank: rankBefore.name,
             primaryLabel: rankBefore.primaryLabel,
             secondaryLabel: rankBefore.secondaryLabel,
             scoreToNextRank,
+            mainSkillBand,
         },
         qualityTier,
         attemptCount,
         usedReasoner,
-        validationSummary: validationSummary
+        auditMode: CAT_AUDIT_MODE,
+        model: passageOneResult.model,
+        difficultyTargets,
+        difficultyAudit: {
+            passageOne: passageOneAudit,
+            questionCount: questionBlueprint.questionCount,
+        },
+        validationSummary: passageOneAudit
             ? {
-                  stage: validationSummary.stage,
-                  scoreUsed: validationSummary.scoreUsed,
-                  passed: validationSummary.passed,
-                  structure: {
-                      ok: validationSummary.structure.ok,
-                      reasons: validationSummary.structure.reasons.slice(0, 3),
-                  },
-                  lexical: {
-                      coreCoverage: round(validationSummary.lexical.coreCoverage, 3),
-                      stretchCoverage: round(validationSummary.lexical.stretchCoverage, 3),
-                      overlevelPenalty: round(validationSummary.lexical.overlevelPenalty, 3),
-                      confidence: round(validationSummary.lexical.confidence, 3),
-                      reasons: validationSummary.lexical.reasons.slice(0, 3),
-                  },
-                  reasons: validationSummary.reasons.slice(0, 5),
+                  passed: passageOneAudit.passed,
+                  reasons: [...(passageOneAudit.reasons ?? [])],
               }
             : null,
+        abilitySnapshot: {
+            score: scoreBefore,
+            theta: thetaBefore,
+            se: seBefore,
+            rank: rankBefore.name,
+        },
     });
 }

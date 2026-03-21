@@ -21,6 +21,7 @@ import {
     DEFAULT_CAT_LEVEL,
     DEFAULT_CAT_POINTS,
     DEFAULT_CAT_SCORE,
+    DEFAULT_CAT_SE,
     DEFAULT_CAT_THETA,
     DEFAULT_FREE_THEME,
     DEFAULT_INVENTORY,
@@ -326,6 +327,7 @@ async function ensureRemoteProfile(userId: string) {
             cat_score: localProfile.cat_score ?? DEFAULT_CAT_SCORE,
             cat_level: localProfile.cat_level ?? DEFAULT_CAT_LEVEL,
             cat_theta: localProfile.cat_theta ?? DEFAULT_CAT_THETA,
+            cat_se: localProfile.cat_se ?? DEFAULT_CAT_SE,
             cat_points: localProfile.cat_points ?? DEFAULT_CAT_POINTS,
             cat_current_band: localProfile.cat_current_band ?? DEFAULT_CAT_BAND,
             cat_updated_at: localProfile.cat_updated_at ?? nowIso(),
@@ -355,6 +357,7 @@ async function ensureRemoteProfile(userId: string) {
             cat_score: DEFAULT_CAT_SCORE,
             cat_level: DEFAULT_CAT_LEVEL,
             cat_theta: DEFAULT_CAT_THETA,
+            cat_se: DEFAULT_CAT_SE,
             cat_points: DEFAULT_CAT_POINTS,
             cat_current_band: DEFAULT_CAT_BAND,
             cat_updated_at: nowIso(),
@@ -402,6 +405,11 @@ async function queueOutboxItem({ entity, operation, recordKey, payload }: Outbox
 
 async function pullRemoteSnapshot(userId: string) {
     const supabase = createBrowserClientSingleton();
+    const [existingLocalProfile, existingDictationHistory] = await Promise.all([
+        db.user_profile.orderBy("id").first(),
+        db.elo_history.where("mode").equals("dictation").toArray(),
+    ]);
+
     const [
         profileRes,
         vocabRes,
@@ -422,11 +430,34 @@ async function pullRemoteSnapshot(userId: string) {
     if (readRes.error) throw readRes.error;
     if (eloRes.error) throw eloRes.error;
 
-    const localProfile = toLocalProfile(profileRes.data as RemoteProfileRow);
+    const remoteLocalProfile = toLocalProfile(profileRes.data as RemoteProfileRow);
+    const localProfile: LocalUserProfile = {
+        ...remoteLocalProfile,
+        dictation_elo: existingLocalProfile?.dictation_elo
+            ?? remoteLocalProfile.dictation_elo
+            ?? remoteLocalProfile.listening_elo
+            ?? DEFAULT_BASE_ELO,
+        dictation_streak: existingLocalProfile?.dictation_streak
+            ?? remoteLocalProfile.dictation_streak
+            ?? remoteLocalProfile.listening_streak
+            ?? 0,
+        dictation_max_elo: existingLocalProfile?.dictation_max_elo
+            ?? remoteLocalProfile.dictation_max_elo
+            ?? remoteLocalProfile.listening_max_elo
+            ?? DEFAULT_BASE_ELO,
+    };
     const localVocabulary = (vocabRes.data as RemoteVocabularyRow[]).map(toLocalVocabularyItem);
     const localWriting = (writingRes.data as RemoteWritingHistoryRow[]).map(toLocalWritingEntry);
     const localRead = (readRes.data as RemoteReadArticleRow[]).map(toLocalReadArticle);
-    const localElo = (eloRes.data as RemoteEloHistoryRow[]).map(toLocalEloHistoryItem);
+    const syncedRemoteElo = (eloRes.data as RemoteEloHistoryRow[]).map(toLocalEloHistoryItem);
+    const retainedLocalDictationElo = existingDictationHistory.map((item) => ({
+        ...item,
+        id: undefined,
+        user_id: userId,
+        sync_status: "synced" as const,
+        updated_at: item.updated_at || nowIso(),
+    }));
+    const localElo = [...syncedRemoteElo, ...retainedLocalDictationElo];
 
     await db.transaction(
         "rw",
@@ -563,6 +594,16 @@ async function migrateLegacyData(userId: string) {
     }
 
     for (const item of eloHistory) {
+        if (item.mode === "dictation") {
+            await db.elo_history.put({
+                ...item,
+                user_id: userId,
+                updated_at: item.updated_at || nowIso(),
+                sync_status: "synced",
+            });
+            continue;
+        }
+
         const remoteId = item.remote_id || crypto.randomUUID();
         await db.elo_history.put({
             ...item,
@@ -902,6 +943,7 @@ export async function saveProfilePatch(
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
             | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
+            | "cat_se"
         >
     >,
 ) {
@@ -933,6 +975,7 @@ export async function applyServerProfilePatchToLocal(
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
             | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
+            | "cat_se"
         >
     >,
 ) {
