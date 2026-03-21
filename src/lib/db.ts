@@ -678,6 +678,43 @@ export class YasiDB extends Dexie {
                 if (typeof profile.dictation_max_elo !== 'number') profile.dictation_max_elo = listeningMaxElo;
             });
         });
+
+        // Version 27: reset all battle Elo scores (translation/listening/dictation) to 400.
+        this.version(27).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            const nowMs = Date.now();
+            const nowIso = new Date(nowMs).toISOString();
+
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                profile.elo_rating = 400;
+                profile.max_elo = 400;
+                profile.listening_elo = 400;
+                profile.listening_max_elo = 400;
+                profile.dictation_elo = 400;
+                profile.dictation_max_elo = 400;
+                profile.updated_at = nowIso;
+                profile.sync_status = 'pending';
+            });
+
+            await tx.table('elo_history').clear();
+            await tx.table('sync_outbox').filter((item: SyncOutboxItem) => item.entity === 'profile' || item.entity === 'elo_history').delete();
+            await tx.table('sync_meta').put({
+                key: 'elo_reset_2026_03_21',
+                value: true,
+                updated_at: nowMs,
+            });
+        });
     }
 }
 

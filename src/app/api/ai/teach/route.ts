@@ -3,7 +3,7 @@ import { deepseek } from "@/lib/deepseek";
 
 export async function POST(req: NextRequest) {
     try {
-        const { chinese, reference_english, elo = 600 } = await req.json();
+        const { chinese, reference_english, elo = 400 } = await req.json();
 
         if (!chinese || !reference_english) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });

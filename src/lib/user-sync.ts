@@ -35,10 +35,13 @@ export interface RemoteProfileRow {
     user_id: string;
     translation_elo: number;
     listening_elo: number;
+    dictation_elo?: number;
     streak_count: number;
     listening_streak?: number;
+    dictation_streak?: number;
     max_translation_elo: number;
     max_listening_elo: number;
+    dictation_max_elo?: number;
     coins: number;
     inventory: InventoryState;
     owned_themes: string[];
@@ -191,6 +194,9 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
 
 export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
     const inventory = normalizeInventory(remote.inventory);
+    const dictationElo = typeof remote.dictation_elo === "number" ? remote.dictation_elo : remote.listening_elo;
+    const dictationStreak = typeof remote.dictation_streak === "number" ? remote.dictation_streak : remote.listening_streak ?? 0;
+    const dictationMaxElo = typeof remote.dictation_max_elo === "number" ? remote.dictation_max_elo : remote.max_listening_elo;
 
     return {
         user_id: remote.user_id,
@@ -202,9 +208,9 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
         listening_elo: remote.listening_elo,
         listening_streak: remote.listening_streak ?? 0,
         listening_max_elo: remote.max_listening_elo,
-        dictation_elo: remote.listening_elo,
-        dictation_streak: remote.listening_streak ?? 0,
-        dictation_max_elo: remote.max_listening_elo,
+        dictation_elo: dictationElo,
+        dictation_streak: dictationStreak,
+        dictation_max_elo: dictationMaxElo,
         coins: remote.coins,
         hints: inventory.capsule,
         inventory,
@@ -237,9 +243,11 @@ export function buildProfilePatch(
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
             | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
-            | "cat_se"
+            | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
         >
-    >,
+    > & {
+        last_practice_at?: string | number | null;
+    },
 ) {
     const nextPatch: Record<string, unknown> = {};
 
@@ -267,6 +275,12 @@ export function buildProfilePatch(
     if (patch.cat_current_band !== undefined) nextPatch.cat_current_band = patch.cat_current_band;
     if (patch.cat_updated_at !== undefined) {
         nextPatch.cat_updated_at = patch.cat_updated_at ? new Date(patch.cat_updated_at).toISOString() : null;
+    }
+    if (patch.dictation_elo !== undefined) nextPatch.dictation_elo = patch.dictation_elo;
+    if (patch.dictation_streak !== undefined) nextPatch.dictation_streak = patch.dictation_streak;
+    if (patch.dictation_max_elo !== undefined) nextPatch.dictation_max_elo = patch.dictation_max_elo;
+    if (patch.last_practice_at !== undefined && patch.last_practice_at !== null) {
+        nextPatch.last_practice_at = new Date(patch.last_practice_at).toISOString();
     }
 
     return nextPatch;

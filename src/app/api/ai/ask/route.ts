@@ -22,7 +22,12 @@ export async function POST(req: Request) {
             });
         }
 
-        let readingBalance: number | undefined;
+        let readingCoinMutation: {
+            balance: number;
+            delta: number;
+            applied: boolean;
+            action: string;
+        } | null = null;
         const readContext = isReadEconomyContext(economyContext)
             ? {
                 ...economyContext,
@@ -50,7 +55,12 @@ export async function POST(req: Request) {
                     },
                 );
             }
-            readingBalance = charge.balance;
+            readingCoinMutation = {
+                balance: charge.balance,
+                delta: charge.delta,
+                applied: charge.applied,
+                action: charge.action,
+            };
         }
 
         // Build enhanced prompt
@@ -117,8 +127,13 @@ Instructions:
                 "Content-Type": "text/event-stream",
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
-                ...(typeof readingBalance === "number"
-                    ? { "x-reading-coins-balance": String(readingBalance) }
+                ...(readingCoinMutation
+                    ? {
+                        "x-reading-coins-balance": String(readingCoinMutation.balance),
+                        "x-reading-coins-delta": String(readingCoinMutation.delta),
+                        "x-reading-coins-applied": readingCoinMutation.applied ? "1" : "0",
+                        "x-reading-coins-action": readingCoinMutation.action,
+                    }
                     : {}),
             },
         });

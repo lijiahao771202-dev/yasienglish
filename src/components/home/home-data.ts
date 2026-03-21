@@ -221,8 +221,8 @@ export function buildHomeDashboardModel({
     const resolvedReadCount = typeof readCount === "number" ? readCount : readArticles.length;
     const resolvedVocabularyCount = typeof vocabularyCount === "number" ? vocabularyCount : vocabulary.length;
     const resolvedWritingCount = typeof writingCount === "number" ? writingCount : writingEntries.length;
-    const eloRating = profile?.elo_rating ?? 600;
-    const maxElo = Math.max(profile?.max_elo ?? 600, eloRating, 600);
+    const eloRating = profile?.elo_rating ?? 400;
+    const maxElo = Math.max(profile?.max_elo ?? 400, eloRating, 400);
     const recentBattleCount = eloHistory.length;
 
     return {

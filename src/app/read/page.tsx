@@ -25,6 +25,12 @@ import {
     type ReadingEconomyAction,
 } from "@/lib/reading-economy";
 import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
+import { ReadingCoinIsland } from "@/components/reading/ReadingCoinIsland";
+import {
+    READING_COIN_FX_EVENT,
+    createReadingCoinFxEvent,
+    type ReadingCoinFxEvent,
+} from "@/lib/reading-coin-fx";
 
 interface ArticleData {
     title: string;
@@ -128,7 +134,8 @@ function ReadingPageContent() {
     const [isLoading, setIsLoading] = useState(false);
     const [article, setArticle] = useState<ArticleData | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [readingCoinNotice, setReadingCoinNotice] = useState<string | null>(null);
+    const [readingCoinFxQueue, setReadingCoinFxQueue] = useState<ReadingCoinFxEvent[]>([]);
+    const [activeReadingCoinFx, setActiveReadingCoinFx] = useState<ReadingCoinFxEvent | null>(null);
     const [catNotice, setCatNotice] = useState<string | null>(null);
     const [catSettlement, setCatSettlement] = useState<CatSettlementPayload | null>(null);
     const [isWritingMode, setIsWritingMode] = useState(false);
@@ -194,6 +201,20 @@ function ReadingPageContent() {
             return minItems > 0 ? `未达最少题量（至少 ${minItems} 题）` : "题量不足，按已提交结算";
         }
         return "本局已完成结算";
+    }, []);
+    const pushReadingCoinFx = useCallback((payload: {
+        delta?: number;
+        action?: ReadingEconomyAction | null;
+        applied?: boolean;
+    }) => {
+        if (!payload.action) return;
+        if (payload.applied === false) return;
+        const event = createReadingCoinFxEvent({
+            delta: Number(payload.delta ?? 0),
+            action: payload.action,
+        });
+        if (!event) return;
+        setReadingCoinFxQueue((prev) => [...prev, event]);
     }, []);
     const navEntryInitial = hasRouteEntry
         ? { opacity: 0, y: 16, scale: 0.992, filter: "blur(8px)" }
@@ -321,6 +342,32 @@ function ReadingPageContent() {
     }, [clearCatSettlementTimer]);
 
     useEffect(() => {
+        if (activeReadingCoinFx || readingCoinFxQueue.length === 0) return;
+        setActiveReadingCoinFx(readingCoinFxQueue[0]);
+        setReadingCoinFxQueue((prev) => prev.slice(1));
+    }, [activeReadingCoinFx, readingCoinFxQueue]);
+
+    useEffect(() => {
+        if (!activeReadingCoinFx) return;
+        const timeoutId = window.setTimeout(() => {
+            setActiveReadingCoinFx(null);
+        }, 2350);
+        return () => window.clearTimeout(timeoutId);
+    }, [activeReadingCoinFx]);
+
+    useEffect(() => {
+        const onReadingCoinFx = (event: Event) => {
+            const detail = (event as CustomEvent<ReadingCoinFxEvent | undefined>).detail;
+            if (!detail) return;
+            setReadingCoinFxQueue((prev) => [...prev, detail]);
+        };
+        window.addEventListener(READING_COIN_FX_EVENT, onReadingCoinFx as EventListener);
+        return () => {
+            window.removeEventListener(READING_COIN_FX_EVENT, onReadingCoinFx as EventListener);
+        };
+    }, []);
+
+    useEffect(() => {
         if (!article) return;
 
         const handleMouseMove = (event: MouseEvent) => {
@@ -399,12 +446,9 @@ function ReadingPageContent() {
             dedupeKey,
             meta: { from: "read_page_enter", dateKey },
         }).then((result) => {
-            if (result?.applied && result?.delta > 0) {
-                setReadingCoinNotice(`每日补给 +${result.delta} 阅读币`);
-                window.setTimeout(() => setReadingCoinNotice(null), 2800);
-            }
+            pushReadingCoinFx(result);
         });
-    }, [applyReadingEconomy, sessionUser?.id]);
+    }, [applyReadingEconomy, pushReadingCoinFx, sessionUser?.id]);
 
     const canShowQuizPanel = Boolean(isQuizMode && article?.isAIGenerated && article?.difficulty);
     const showStandardSplitQuiz = canShowQuizPanel;
@@ -552,7 +596,7 @@ function ReadingPageContent() {
                         dedupeKey,
                         articleUrl: cached.url,
                         meta: { source: "read_open_cached" },
-                    });
+                    }).then((result) => pushReadingCoinFx(result));
                 }
                 setIsLoading(false);
                 return;
@@ -572,7 +616,7 @@ function ReadingPageContent() {
                     dedupeKey,
                     articleUrl: finalUrl,
                     meta: { source: "read_open_parse" },
-                });
+                }).then((result) => pushReadingCoinFx(result));
             }
 
             // Cache it
@@ -701,8 +745,11 @@ function ReadingPageContent() {
                                         reading_coins: payload?.readingCoins?.balance,
                                     });
                                     if (payload?.readingCoins?.delta > 0) {
-                                        setReadingCoinNotice(`测验奖励 +${payload.readingCoins.delta} 阅读币`);
-                                        window.setTimeout(() => setReadingCoinNotice(null), 2800);
+                                        pushReadingCoinFx({
+                                            action: "quiz_complete",
+                                            delta: payload.readingCoins.delta,
+                                            applied: payload?.readingCoins?.applied !== false,
+                                        });
                                     }
                                     if (payload?.session?.delta !== undefined) {
                                         const signedDelta = Number(payload.session.delta);
@@ -752,10 +799,7 @@ function ReadingPageContent() {
                                     source: "read_quiz_standard",
                                 },
                             }).then((result) => {
-                                if (result?.applied && result.delta > 0) {
-                                    setReadingCoinNotice(`测验奖励 +${result.delta} 阅读币`);
-                                    window.setTimeout(() => setReadingCoinNotice(null), 2800);
-                                }
+                                pushReadingCoinFx(result);
                             });
                         }
                     }
@@ -1102,24 +1146,19 @@ function ReadingPageContent() {
                 </div>
             </motion.nav>
 
+            <ReadingCoinIsland event={activeReadingCoinFx} />
+
             <motion.div
                 className={cn("mt-20 transition-all duration-700", isWritingMode ? "h-[calc(100vh-120px)]" : "")}
                 initial={contentEntryInitial}
                 animate={routeExitTarget ? { opacity: 0, y: 10, scale: 0.993, filter: "blur(8px)" } : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
                 transition={{ delay: 0, duration: hasRouteEntry ? 0.68 : 0.56, ease: pageIntroEase }}
             >
-                {(readingCoinNotice || catNotice) ? (
+                {catNotice ? (
                     <div className="mx-auto mb-4 flex w-full max-w-4xl flex-col gap-2">
-                        {readingCoinNotice ? (
-                            <div className="rounded-full border border-sky-200/80 bg-white/72 px-4 py-2 text-center text-sm font-semibold text-sky-700 shadow-[0_18px_36px_-26px_rgba(14,116,144,0.6)] backdrop-blur-xl">
-                                {readingCoinNotice}
-                            </div>
-                        ) : null}
-                        {catNotice ? (
-                            <div className="rounded-full border border-violet-200/80 bg-white/72 px-4 py-2 text-center text-sm font-semibold text-violet-700 shadow-[0_18px_36px_-26px_rgba(109,40,217,0.55)] backdrop-blur-xl">
-                                {catNotice}
-                            </div>
-                        ) : null}
+                        <div className="rounded-full border border-violet-200/80 bg-white/72 px-4 py-2 text-center text-sm font-semibold text-violet-700 shadow-[0_18px_36px_-26px_rgba(109,40,217,0.55)] backdrop-blur-xl">
+                            {catNotice}
+                        </div>
                     </div>
                 ) : null}
                 <AnimatePresence mode="wait" initial={false}>
@@ -1163,7 +1202,7 @@ function ReadingPageContent() {
                                             dedupeKey,
                                             articleUrl: nextArticle.url,
                                             meta: { source: nextArticle.isCatMode ? "cat_open" : "ai_gen_open" },
-                                        });
+                                        }).then((result) => pushReadingCoinFx(result));
                                     }
                                 }}
                             />

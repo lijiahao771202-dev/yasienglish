@@ -308,10 +308,13 @@ async function ensureRemoteProfile(userId: string) {
             user_id: userId,
             translation_elo: localProfile.elo_rating,
             listening_elo: localProfile.listening_elo ?? DEFAULT_BASE_ELO,
+            dictation_elo: localProfile.dictation_elo ?? localProfile.listening_elo ?? DEFAULT_BASE_ELO,
             streak_count: localProfile.streak_count,
             listening_streak: localProfile.listening_streak ?? 0,
+            dictation_streak: localProfile.dictation_streak ?? localProfile.listening_streak ?? 0,
             max_translation_elo: localProfile.max_elo,
             max_listening_elo: localProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
+            dictation_max_elo: localProfile.dictation_max_elo ?? localProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
             coins: localProfile.coins ?? DEFAULT_STARTING_COINS,
             inventory: normalizeInventory(localProfile.inventory, localProfile.hints),
             owned_themes: localProfile.owned_themes ?? [DEFAULT_FREE_THEME],
@@ -338,10 +341,13 @@ async function ensureRemoteProfile(userId: string) {
             user_id: userId,
             translation_elo: DEFAULT_BASE_ELO,
             listening_elo: DEFAULT_BASE_ELO,
+            dictation_elo: DEFAULT_BASE_ELO,
             streak_count: 0,
             listening_streak: 0,
+            dictation_streak: 0,
             max_translation_elo: DEFAULT_BASE_ELO,
             max_listening_elo: DEFAULT_BASE_ELO,
+            dictation_max_elo: DEFAULT_BASE_ELO,
             coins: DEFAULT_STARTING_COINS,
             inventory: { ...DEFAULT_INVENTORY },
             owned_themes: [DEFAULT_FREE_THEME],
@@ -383,10 +389,17 @@ async function queueOutboxItem({ entity, operation, recordKey, payload }: Outbox
         .first()
         .catch(() => undefined);
 
+    const nextPayload = existing?.payload && entity === "profile" && operation !== "delete"
+        ? {
+            ...(typeof existing.payload === "object" && existing.payload !== null ? existing.payload as Record<string, unknown> : {}),
+            ...(typeof payload === "object" && payload !== null ? payload as Record<string, unknown> : {}),
+        }
+        : payload;
+
     const next = {
         entity,
         operation,
-        payload,
+        payload: nextPayload,
         record_key: recordKey,
         created_at: existing?.created_at ?? Date.now(),
         updated_at: Date.now(),
@@ -430,21 +443,19 @@ async function pullRemoteSnapshot(userId: string) {
     if (readRes.error) throw readRes.error;
     if (eloRes.error) throw eloRes.error;
 
+    const remoteProfileRow = profileRes.data as RemoteProfileRow & Record<string, unknown>;
     const remoteLocalProfile = toLocalProfile(profileRes.data as RemoteProfileRow);
     const localProfile: LocalUserProfile = {
         ...remoteLocalProfile,
-        dictation_elo: existingLocalProfile?.dictation_elo
-            ?? remoteLocalProfile.dictation_elo
-            ?? remoteLocalProfile.listening_elo
-            ?? DEFAULT_BASE_ELO,
-        dictation_streak: existingLocalProfile?.dictation_streak
-            ?? remoteLocalProfile.dictation_streak
-            ?? remoteLocalProfile.listening_streak
-            ?? 0,
-        dictation_max_elo: existingLocalProfile?.dictation_max_elo
-            ?? remoteLocalProfile.dictation_max_elo
-            ?? remoteLocalProfile.listening_max_elo
-            ?? DEFAULT_BASE_ELO,
+        dictation_elo: typeof remoteProfileRow.dictation_elo === "number"
+            ? remoteProfileRow.dictation_elo
+            : (existingLocalProfile?.dictation_elo ?? remoteLocalProfile.dictation_elo ?? remoteLocalProfile.listening_elo ?? DEFAULT_BASE_ELO),
+        dictation_streak: typeof remoteProfileRow.dictation_streak === "number"
+            ? remoteProfileRow.dictation_streak
+            : (existingLocalProfile?.dictation_streak ?? remoteLocalProfile.dictation_streak ?? remoteLocalProfile.listening_streak ?? 0),
+        dictation_max_elo: typeof remoteProfileRow.dictation_max_elo === "number"
+            ? remoteProfileRow.dictation_max_elo
+            : (existingLocalProfile?.dictation_max_elo ?? remoteLocalProfile.dictation_max_elo ?? remoteLocalProfile.listening_max_elo ?? DEFAULT_BASE_ELO),
     };
     const localVocabulary = (vocabRes.data as RemoteVocabularyRow[]).map(toLocalVocabularyItem);
     const localWriting = (writingRes.data as RemoteWritingHistoryRow[]).map(toLocalWritingEntry);
@@ -517,6 +528,10 @@ async function migrateLegacyData(userId: string) {
             cat_points: profile.cat_points,
             cat_current_band: profile.cat_current_band,
             cat_updated_at: profile.cat_updated_at,
+            dictation_elo: profile.dictation_elo,
+            dictation_streak: profile.dictation_streak,
+            dictation_max_elo: profile.dictation_max_elo,
+            last_practice_at: new Date(profile.last_practice).toISOString(),
         });
 
         if (Object.keys(patch).length > 0) {
@@ -943,17 +958,23 @@ export async function saveProfilePatch(
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
             | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
-            | "cat_se"
+            | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
         >
-    >,
+    > & {
+        last_practice_at?: string | number | null;
+    },
 ) {
     const profile = await db.user_profile.orderBy("id").first();
     if (!profile?.id) throw new Error("Local profile not initialized.");
 
     const nextPatch = buildProfilePatch(patch);
+    const nextLastPractice = patch.last_practice_at !== undefined && patch.last_practice_at !== null
+        ? new Date(patch.last_practice_at).getTime()
+        : profile.last_practice;
     await db.user_profile.update(profile.id, {
         ...nextPatch,
         hints: patch.inventory?.capsule ?? profile.hints,
+        last_practice: Number.isFinite(nextLastPractice) ? nextLastPractice : profile.last_practice,
         updated_at: nowIso(),
         sync_status: "pending",
     });
@@ -975,17 +996,23 @@ export async function applyServerProfilePatchToLocal(
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
             | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
-            | "cat_se"
+            | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
         >
-    >,
+    > & {
+        last_practice_at?: string | number | null;
+    },
 ) {
     const profile = await db.user_profile.orderBy("id").first();
     if (!profile?.id) return;
 
     const normalized = buildProfilePatch(patch);
+    const nextLastPractice = patch.last_practice_at !== undefined && patch.last_practice_at !== null
+        ? new Date(patch.last_practice_at).getTime()
+        : profile.last_practice;
     await db.user_profile.update(profile.id, {
         ...normalized,
         hints: patch.inventory?.capsule ?? profile.hints,
+        last_practice: Number.isFinite(nextLastPractice) ? nextLastPractice : profile.last_practice,
         updated_at: nowIso(),
         sync_status: "synced",
     });

@@ -296,7 +296,7 @@ export function EloChart({ mode }: EloChartProps) {
     const baseColor = isListening ? '#0ea5e9' : isDictation ? '#a855f7' : '#8b5cf6';
     const trendColor = trend === 'up' ? '#22c55e' : trend === 'down' ? '#ef4444' : baseColor;
     const gradientId = `colorElo-${mode}`;
-    const currentRank = getRank(currentElo || 600);
+    const currentRank = getRank(currentElo || 400);
 
     if (isLoading) return <div className="h-64 flex items-center justify-center text-stone-400">Loading chart...</div>;
 
