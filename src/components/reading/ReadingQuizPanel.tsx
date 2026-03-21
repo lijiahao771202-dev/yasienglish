@@ -238,6 +238,7 @@ export function ReadingQuizPanel({
     const [catResponseMap, setCatResponseMap] = useState<Record<number, CatQuestionResponse>>({});
     const [isCatCompactMode, setIsCatCompactMode] = useState(true);
     const autoCompactTimerRef = useRef<number | null>(null);
+    const catAutoFinalizeTimerRef = useRef<number | null>(null);
 
     const diffMeta = DIFFICULTY_META[difficulty] || DIFFICULTY_META.ielts;
 
@@ -245,6 +246,13 @@ export function ReadingQuizPanel({
         if (autoCompactTimerRef.current) {
             window.clearTimeout(autoCompactTimerRef.current);
             autoCompactTimerRef.current = null;
+        }
+    }, []);
+
+    const clearAutoFinalizeTimer = useCallback(() => {
+        if (catAutoFinalizeTimerRef.current) {
+            window.clearTimeout(catAutoFinalizeTimerRef.current);
+            catAutoFinalizeTimerRef.current = null;
         }
     }, []);
 
@@ -256,7 +264,10 @@ export function ReadingQuizPanel({
         }, delay);
     }, [clearAutoCompactTimer, floatingCompact, quizMode]);
 
-    useEffect(() => () => clearAutoCompactTimer(), [clearAutoCompactTimer]);
+    useEffect(() => () => {
+        clearAutoCompactTimer();
+        clearAutoFinalizeTimer();
+    }, [clearAutoCompactTimer, clearAutoFinalizeTimer]);
 
     useEffect(() => {
         if (quizMode !== "cat" || !floatingCompact) return;
@@ -400,6 +411,7 @@ export function ReadingQuizPanel({
 
     const handleReset = () => {
         clearAutoCompactTimer();
+        clearAutoFinalizeTimer();
         setAnswers({});
         setQuestionFirstAnswerAt({});
         setIsSubmitted(false);
@@ -442,8 +454,9 @@ export function ReadingQuizPanel({
         }
     };
 
-    const handleFinalizeCatSession = () => {
+    const handleFinalizeCatSession = useCallback(() => {
         if (!hasReachedCatMin) return;
+        clearAutoFinalizeTimer();
         const responses = Object.values(catResponseMap).sort((left, right) => left.order - right.order);
         const correct = responses.filter((item) => item.correct).length;
         const total = responses.length;
@@ -459,7 +472,19 @@ export function ReadingQuizPanel({
             responses,
             qualityTier: quizMode === "cat" && typeof catSe === "number" && catSe > 1.25 ? "low_confidence" : "ok",
         });
-    };
+    }, [
+        catResponseMap,
+        catSe,
+        clearAutoCompactTimer,
+        clearAutoFinalizeTimer,
+        floatingCompact,
+        hasReachedCatMin,
+        onSubmitScore,
+        quizMode,
+        setIsCatCompactMode,
+        setIsSubmitted,
+        setScore,
+    ]);
 
     const allAnswered = questions.length > 0 && answeredCount === questions.length;
     const canSubmitCat = quizMode === "cat"
@@ -473,6 +498,39 @@ export function ReadingQuizPanel({
     const toggleExplanation = (questionId: number) => {
         setExpandedExplanations((prev) => ({ ...prev, [questionId]: !prev[questionId] }));
     };
+
+    useEffect(() => {
+        if (quizMode !== "cat" || isSubmitted) {
+            clearAutoFinalizeTimer();
+            return;
+        }
+
+        const shouldAutoFinalize = hasReachedCatMin && (hasReachedCatMax || (!hasNextQuestion && catCurrentCommitted));
+        if (!shouldAutoFinalize) {
+            clearAutoFinalizeTimer();
+            return;
+        }
+
+        if (catAutoFinalizeTimerRef.current) return;
+
+        catAutoFinalizeTimerRef.current = window.setTimeout(() => {
+            catAutoFinalizeTimerRef.current = null;
+            handleFinalizeCatSession();
+        }, 160);
+
+        return () => {
+            clearAutoFinalizeTimer();
+        };
+    }, [
+        catCurrentCommitted,
+        clearAutoFinalizeTimer,
+        handleFinalizeCatSession,
+        hasNextQuestion,
+        hasReachedCatMax,
+        hasReachedCatMin,
+        isSubmitted,
+        quizMode,
+    ]);
 
     const shouldUseCompactShell = quizMode === "cat" && floatingCompact && isCatCompactMode && !isSubmitted;
     if (shouldUseCompactShell) {

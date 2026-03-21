@@ -4,18 +4,15 @@ import { createClient } from "@supabase/supabase-js";
 import { deepseek } from "@/lib/deepseek";
 import { levelFromScore } from "@/lib/cat-growth";
 import {
-    buildObjectiveDistribution,
     getCatMainSkillBand,
     getCatArticleTargets,
     getCatQuizBlueprint,
     getCatSessionPolicy,
     getCatRankTier,
     getCatScoreToNextRank,
-    type CatObjectiveQuestionType,
     getLegacyBandFromScore,
     getLegacyDifficultyFromScore,
     normalizeCatScore,
-    validateCatArticleAgainstTargets,
     CAT_MAIN_SKILL_BANDS,
     type CatArticleLexicalEvidence,
     type CatArticleLexicalMix,
@@ -100,8 +97,8 @@ type RawModelDraft = {
     lexicalEvidence?: Partial<CatArticleLexicalEvidence>;
 };
 
-const CAT_AUDIT_MODE = "three_axis_programmatic_single_shot" as const;
-const CAT_GENERATION_MODEL = "deepseek-reasoner" as const;
+const CAT_AUDIT_MODE = "single_shot_chat" as const;
+const CAT_GENERATION_MODEL = "deepseek-chat" as const;
 type CatGenerationTheme = {
     id: string;
     name: string;
@@ -243,103 +240,6 @@ function parseModelDraft(raw: string): RawModelDraft | null {
     return parseTaggedDraft(raw);
 }
 
-function normalizeQuestionType(value: unknown): ObjectiveQuestionType {
-    if (
-        value === "multiple_choice"
-        || value === "multiple_select"
-        || value === "true_false_ng"
-        || value === "matching"
-        || value === "fill_blank_choice"
-    ) {
-        return value;
-    }
-    return "multiple_choice";
-}
-
-function normalizeOptionWithLetter(option: string, index: number) {
-    const value = option.trim();
-    const letter = String.fromCharCode(65 + index);
-    if (/^[A-D](?:[).:\-\s]|$)/i.test(value)) {
-        return value;
-    }
-    return `${letter}. ${value}`;
-}
-
-function normalizeQuestionFromUnknown(raw: unknown, index: number): SessionQuizQuestion | null {
-    if (!raw || typeof raw !== "object") return null;
-    const candidate = raw as Record<string, unknown>;
-    const question = typeof candidate.question === "string" ? candidate.question.trim() : "";
-    if (!question) return null;
-
-    const type = normalizeQuestionType(candidate.type);
-    const optionsRaw = Array.isArray(candidate.options)
-        ? candidate.options.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-        : [];
-    const options = optionsRaw.slice(0, 4).map((item, optionIndex) => normalizeOptionWithLetter(item, optionIndex));
-    if (options.length < 4) return null;
-
-    const answer = typeof candidate.answer === "string" ? candidate.answer.trim().toUpperCase() : undefined;
-    const answers = Array.isArray(candidate.answers)
-        ? candidate.answers
-            .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-            .map((item) => item.trim().toUpperCase())
-        : undefined;
-
-    if (type === "multiple_select") {
-        if (!answers || answers.length < 2) return null;
-    } else if (!answer) {
-        return null;
-    }
-
-    const explanationObj = candidate.explanation && typeof candidate.explanation === "object"
-        ? candidate.explanation as Record<string, unknown>
-        : null;
-    const explanationSummary = typeof explanationObj?.summary === "string"
-        ? explanationObj.summary.trim()
-        : (typeof candidate.explanation === "string" ? String(candidate.explanation).trim() : "");
-
-    const passageIndexRaw = Number(candidate.passageIndex ?? candidate.passage ?? 1);
-    const passageIndex = Number.isFinite(passageIndexRaw) ? Math.max(1, Math.min(2, Math.round(passageIndexRaw))) : 1;
-    const itemDifficultyRaw = Number(candidate.itemDifficulty ?? candidate.b ?? 0);
-    const itemDifficulty = Number.isFinite(itemDifficultyRaw) ? Math.max(-3.5, Math.min(4.5, itemDifficultyRaw)) : 0;
-
-    return {
-        id: typeof candidate.id === "number" ? Math.max(1, Math.round(candidate.id)) : index + 1,
-        itemId: typeof candidate.itemId === "string" && candidate.itemId.trim()
-            ? candidate.itemId.trim()
-            : `cat-item-${index + 1}`,
-        type,
-        question,
-        options,
-        answer,
-        answers,
-        explanation: {
-            summary: explanationSummary || "根据原文关键句定位作答。",
-            reasoning: typeof explanationObj?.reasoning === "string" ? explanationObj.reasoning.trim() : undefined,
-            trap: typeof explanationObj?.trap === "string" ? explanationObj.trap.trim() : undefined,
-        },
-        sourceParagraph: typeof candidate.sourceParagraph === "string" ? candidate.sourceParagraph : undefined,
-        evidence: typeof candidate.evidence === "string" ? candidate.evidence : undefined,
-        passageIndex,
-        itemDifficulty,
-    };
-}
-
-function normalizeQuestionSet(rawQuestions: unknown, fallbackDifficulties: number[]) {
-    const questions = Array.isArray(rawQuestions)
-        ? rawQuestions
-            .map((item, index) => normalizeQuestionFromUnknown(item, index))
-            .filter((item): item is SessionQuizQuestion => item !== null)
-        : [];
-
-    return questions.map((item, index) => ({
-        ...item,
-        id: index + 1,
-        itemId: item.itemId || `cat-item-${index + 1}`,
-        itemDifficulty: Number.isFinite(item.itemDifficulty) ? item.itemDifficulty : fallbackDifficulties[index] ?? 0,
-    }));
-}
-
 function buildBandMappingPromptText() {
     return CAT_MAIN_SKILL_BANDS
         .map((band) => {
@@ -347,79 +247,6 @@ function buildBandMappingPromptText() {
             return `- ${scoreRange}: ${band.label} (${band.examMapping}) | 词汇重点: ${band.lexicalFocus}`;
         })
         .join("\n");
-}
-
-function buildCatSessionQuizPrompt(params: {
-    title: string;
-    score: number;
-    theta: number;
-    questionCount: number;
-    distribution: Record<CatObjectiveQuestionType, number>;
-    passageOne: string;
-    passageTwo: string;
-}) {
-    const typeLabels: Record<CatObjectiveQuestionType, string> = {
-        multiple_choice: "单选",
-        multiple_select: "多选",
-        true_false_ng: "TFNG",
-        matching: "匹配",
-        fill_blank_choice: "选项填空",
-    };
-    const challengeBand = [params.theta + 0.2, params.theta + 0.4];
-    const distText = Object.entries(params.distribution)
-        .map(([type, count]) => `- ${typeLabels[type as CatObjectiveQuestionType]}(${type}): ${count} 题`)
-        .join("\n");
-
-    return [
-        "你是一位CAT阅读测验设计师。请基于两段短文生成客观题。",
-        `标题: ${params.title}`,
-        `学习者分数: ${params.score} (0-3200+体系)`,
-        `学习者能力theta: ${params.theta.toFixed(2)}`,
-        "",
-        "分数段说明（必须参考）：",
-        buildBandMappingPromptText(),
-        "",
-        `总题数: ${params.questionCount}`,
-        "题型分布：",
-        distText,
-        "",
-        "难度约束：",
-        `- 至少30%-40%题目难度b需要高于当前theta（挑战区）`,
-        `- 推荐挑战区: b in [${challengeBand[0].toFixed(2)}, ${challengeBand[1].toFixed(2)}]`,
-        "- 题目顺序从易到难",
-        "- 题目必须可从原文直接定位，不出主观题",
-        "",
-        "输出要求：仅输出JSON对象，不要markdown。",
-        "JSON Schema:",
-        `{
-  "questions": [
-    {
-      "id": 1,
-      "itemId": "cat-item-1",
-      "type": "multiple_choice|multiple_select|true_false_ng|matching|fill_blank_choice",
-      "passageIndex": 1,
-      "itemDifficulty": -0.5,
-      "question": "...",
-      "options": ["A. ...","B. ...","C. ...","D. ..."],
-      "answer": "A",
-      "answers": ["A","C"],
-      "sourceParagraph": "2",
-      "evidence": "...",
-      "explanation": {"summary":"中文结论","reasoning":"中文思路","trap":"中文易错点"}
-    }
-  ]
-}`,
-        "",
-        "[Passage 1]",
-        params.passageOne,
-        "",
-        "[Passage 2]",
-        params.passageTwo,
-    ].join("\n");
-}
-
-function ratioRangeLabel([min, max]: [number, number]) {
-    return `${Math.round(min * 100)}%-${Math.round(max * 100)}%`;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -462,9 +289,15 @@ function buildArticlePrompt(params: {
         `- Directive: ${generationTheme.directive}`,
         "",
         "THREE-AXIS HARD TARGETS (all required):",
-        `1) Lexical ratio (decimal 0-1, not %): core=${lexicalTarget.coreTierLabel} ${ratioRangeLabel(lexicalTarget.ratios.core)}; lower=${lexicalTarget.lowerTierLabel ?? "None"} ${ratioRangeLabel(lexicalTarget.ratios.lower)}; stretch=${lexicalTarget.stretchTierLabel} ${ratioRangeLabel(lexicalTarget.ratios.stretch)}; overlevel<=${Math.round(lexicalTarget.overlevelMax * 100)}%.`,
+        `1) Lexical ratio (decimal 0-1, not %): core=${lexicalTarget.coreTierLabel} ${Math.round(lexicalTarget.ratios.core[0] * 100)}%-${Math.round(lexicalTarget.ratios.core[1] * 100)}%; lower=${lexicalTarget.lowerTierLabel ?? "None"} ${Math.round(lexicalTarget.ratios.lower[0] * 100)}%-${Math.round(lexicalTarget.ratios.lower[1] * 100)}%; stretch=${lexicalTarget.stretchTierLabel} ${Math.round(lexicalTarget.ratios.stretch[0] * 100)}%-${Math.round(lexicalTarget.ratios.stretch[1] * 100)}%; overlevel<=${Math.round(lexicalTarget.overlevelMax * 100)}%.`,
         `2) Length: short passage wordCount ${shortWordMin}-${shortWordMax} (english tokens).`,
-        `3) Syntax: complexSentenceRatio ${ratioRangeLabel(syntaxTarget.complexSentenceRatioRange)}; multiClauseSentenceRatio ${ratioRangeLabel(syntaxTarget.multiClauseSentenceRatioRange)}; clauseDensity ${syntaxTarget.clauseDensityRange[0].toFixed(2)}-${syntaxTarget.clauseDensityRange[1].toFixed(2)}.`,
+        `3) Syntax: complexSentenceRatio ${Math.round(syntaxTarget.complexSentenceRatioRange[0] * 100)}%-${Math.round(syntaxTarget.complexSentenceRatioRange[1] * 100)}%; multiClauseSentenceRatio ${Math.round(syntaxTarget.multiClauseSentenceRatioRange[0] * 100)}%-${Math.round(syntaxTarget.multiClauseSentenceRatioRange[1] * 100)}%; clauseDensity ${syntaxTarget.clauseDensityRange[0].toFixed(2)}-${syntaxTarget.clauseDensityRange[1].toFixed(2)}.`,
+        "",
+        "Writing rules:",
+        "- Write 2-3 coherent short paragraphs only.",
+        "- Keep the title concise and natural.",
+        "- Do not output placeholder text, markdown fences, bullet lists, or commentary.",
+        "- Do not mention prompt instructions in the content.",
         "",
         "How syntax is measured by validator:",
         `- Clause markers: ${clauseMarkers}.`,
@@ -480,7 +313,7 @@ function buildArticlePrompt(params: {
         "D. Self-check lexicalEvidence: every evidence word MUST appear verbatim in content.",
         "E. If any axis misses, revise internally. Return final result only once.",
         "",
-        "STRICT OUTPUT:",
+        "OUTPUT FORMAT:",
         "- Do NOT output JSON.",
         "- Do NOT output markdown fence.",
         "- Do NOT output explanation text.",
@@ -585,36 +418,6 @@ function splitParagraphs(content: string) {
         .filter(Boolean);
 }
 
-function buildCombinedArticle(params: {
-    title: string;
-    passageOneTitle: string;
-    passageOneContent: string;
-    passageTwoTitle: string;
-    passageTwoContent: string;
-}) {
-    const headingOne = `Part A · ${params.passageOneTitle}`;
-    const headingTwo = `Part B · ${params.passageTwoTitle}`;
-    const content = [
-        headingOne,
-        params.passageOneContent.trim(),
-        "",
-        headingTwo,
-        params.passageTwoContent.trim(),
-    ].join("\n\n");
-
-    const blocks = [
-        { type: "header", tag: "h2", content: headingOne },
-        ...splitParagraphs(params.passageOneContent).map((paragraph) => ({ type: "paragraph", content: paragraph })),
-        { type: "header", tag: "h2", content: headingTwo },
-        ...splitParagraphs(params.passageTwoContent).map((paragraph) => ({ type: "paragraph", content: paragraph })),
-    ];
-
-    return {
-        title: params.title,
-        content,
-        blocks,
-    };
-}
 
 async function generateDraft(params: {
     prompt: string;
@@ -701,82 +504,18 @@ async function generateValidatedArticle(params: {
             draft: null,
             rawContent: generated.rawContent,
             difficultyTargets,
-            difficultyAudit: null,
             model: CAT_GENERATION_MODEL,
         };
     }
-
-    const difficultyAudit = validateCatArticleAgainstTargets({
-        text: generated.draft.content,
-        score: params.score,
-        targets: difficultyTargets,
-        lexicalMix: generated.draft.lexicalMix,
-        lexicalEvidence: generated.draft.lexicalEvidence,
-    });
 
     return {
         draft: generated.draft,
         rawContent: generated.rawContent,
         difficultyTargets,
-        difficultyAudit,
         model: CAT_GENERATION_MODEL,
     };
 }
 
-async function generateCatSessionQuestions(params: {
-    score: number;
-    theta: number;
-    title: string;
-    passageOne: string;
-    passageTwo: string;
-}) {
-    const quizBlueprint = getCatQuizBlueprint(params.score);
-    const questionCount = 8;
-    const distribution = buildObjectiveDistribution(questionCount, quizBlueprint.ratios, {
-        allowedTypes: quizBlueprint.allowedTypes,
-    });
-    const prompt = buildCatSessionQuizPrompt({
-        title: params.title,
-        score: params.score,
-        theta: params.theta,
-        questionCount,
-        distribution,
-        passageOne: params.passageOne,
-        passageTwo: params.passageTwo,
-    });
-
-    const completion = await deepseek.chat.completions.create({
-        model: CAT_GENERATION_MODEL,
-        response_format: { type: "json_object" },
-        temperature: 0.15,
-        max_tokens: 2200,
-        messages: [{ role: "user", content: prompt }],
-    });
-
-    const content = completion.choices[0]?.message?.content ?? "";
-    const parsed = safeParseJson<{ questions?: unknown[] }>(content);
-
-    const baseDifficulty = params.theta - 0.45;
-    const fallbackDifficulties = Array.from({ length: questionCount }, (_, index) =>
-        Number((baseDifficulty + index * 0.2).toFixed(3)),
-    );
-    const normalized = normalizeQuestionSet(parsed?.questions, fallbackDifficulties);
-
-    const questions = normalized.map((question, index) => ({
-        ...question,
-        id: index + 1,
-        itemId: question.itemId || `cat-item-${index + 1}`,
-        itemDifficulty: Number.isFinite(question.itemDifficulty)
-            ? question.itemDifficulty
-            : fallbackDifficulties[index] ?? params.theta,
-    }));
-
-    return {
-        questions,
-        distribution,
-        questionCount,
-    };
-}
 
 export async function POST(request: Request) {
     const body = (await request.json().catch(() => ({}))) as StartCatPayload;
@@ -858,10 +597,8 @@ export async function POST(request: Request) {
     }
 
     const passageOneDraft = passageOneResult.draft;
-    const passageOneAudit = passageOneResult.difficultyAudit;
     const questionBlueprint = getCatQuizBlueprint(scoreBefore);
     const sessionPolicy = getCatSessionPolicy(scoreBefore);
-    const sessionQualityTier = passageOneAudit?.passed ? "ok" : "low_confidence";
     const challengeRatioMin = Math.max(0, Number((sessionPolicy.challengeRatio - 0.08).toFixed(2)));
     const challengeRatioMax = Math.min(1, Number((sessionPolicy.challengeRatio + 0.08).toFixed(2)));
     const sessionBlueprint: SessionBlueprint = {
@@ -876,7 +613,7 @@ export async function POST(request: Request) {
                 title: passageOneDraft.title || "CAT Short Passage",
                 content: passageOneDraft.content,
                 targetScore: scoreBefore,
-                qualityTier: passageOneAudit?.passed ? "ok" : "low_confidence",
+                qualityTier: "ok",
             },
         ],
         items: [],
@@ -886,9 +623,9 @@ export async function POST(request: Request) {
     const articleUrl = `cat://${resolvedUser.id}/${Date.now()}`;
     const blocks = splitParagraphs(passageOneDraft.content).map((paragraph) => ({ type: "paragraph", content: paragraph }));
     const difficultyTargets = passageOneResult.difficultyTargets;
-    const qualityTier = sessionQualityTier;
+    const qualityTier = "ok" as const;
     const attemptCount = 1;
-    const usedReasoner = true;
+    const usedReasoner = false;
 
     let sessionRow: {
         session_id?: string;
@@ -951,7 +688,7 @@ export async function POST(request: Request) {
             .from("cat_sessions")
             .update({
                 session_blueprint: sessionBlueprint,
-                quality_tier: sessionQualityTier,
+                quality_tier: qualityTier,
                 se_before: seBefore,
                 target_se: sessionPolicy.targetSe,
                 item_count: questionBlueprint.questionCount,
@@ -1042,16 +779,8 @@ export async function POST(request: Request) {
         auditMode: CAT_AUDIT_MODE,
         model: passageOneResult.model,
         difficultyTargets,
-        difficultyAudit: {
-            passageOne: passageOneAudit,
-            questionCount: questionBlueprint.questionCount,
-        },
-        validationSummary: passageOneAudit
-            ? {
-                  passed: passageOneAudit.passed,
-                  reasons: [...(passageOneAudit.reasons ?? [])],
-              }
-            : null,
+        difficultyAudit: null,
+        validationSummary: null,
         abilitySnapshot: {
             score: scoreBefore,
             theta: thetaBefore,
