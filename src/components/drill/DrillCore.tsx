@@ -28,7 +28,8 @@ import { GhostTextarea } from "../vocab/GhostTextarea";
 import { InlineGrammarHighlights } from "../shared/InlineGrammarHighlights";
 import { LottieJsonPlayer } from "../shared/LottieJsonPlayer";
 import { SpeechModelStatusPanel } from "../speech/SpeechModelStatusPanel";
-import { TOPICS } from "@/lib/battle-topics";
+import { resolveBattleScenarioTopic } from "@/lib/battle-quickmatch-topics";
+import { getBattleInteractiveWordClassName } from "@/lib/drill-interactive-word";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 import { buildTranslationHighlights, normalizeTranslationForComparison } from "@/lib/translation-diff";
 import { requestTtsPayload } from "@/lib/tts-client";
@@ -305,18 +306,6 @@ const ITEM_CATALOG: Record<ShopItemId, { id: ShopItemId; name: string; price: nu
         consumeAction: '重刷当前题目',
         description: '用于丢弃当前题并立即刷新一题，不影响 Elo 和连胜',
     },
-};
-
-const RANDOM_SCENARIO_TOPIC = "Random Scenario";
-
-const resolveScenarioTopic = (context: DrillCoreProps["context"]) => {
-    const targetTopic = context.articleTitle || context.topic;
-    if (context.type !== "scenario") return targetTopic;
-    if (!targetTopic || targetTopic.trim().length === 0 || targetTopic === RANDOM_SCENARIO_TOPIC) {
-        const randomTopicObj = TOPICS[Math.floor(Math.random() * TOPICS.length)];
-        return randomTopicObj.title;
-    }
-    return targetTopic;
 };
 
 const normalizeInventory = (inventory: unknown, legacyCapsule?: number): InventoryState => {
@@ -2591,7 +2580,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             }
         }
 
-        const targetTopic = resolveScenarioTopic(context);
+        const targetTopic = resolveBattleScenarioTopic(context.articleTitle || context.topic, nextElo);
 
         fetch("/api/ai/generate_drill", {
             method: "POST",
@@ -2816,7 +2805,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         try {
             console.log(`[DEBUG] Sending to API: bossType=${nextBossType}, eloRating=${currentElo}`);
             // --- DETERMINE TOPIC ---
-            const targetTopic = resolveScenarioTopic(context);
+            const targetTopic = resolveBattleScenarioTopic(context.articleTitle || context.topic, currentElo);
 
             // --- RANDOM SURPRISE DROP ---
             if (currentStreak > 0 && Math.random() < 0.05) { // 5% chance on new drill load (only if they aren't totally failing)
@@ -4361,10 +4350,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         className={cn(
                             "cursor-pointer px-1.5 py-0.5 transition-all duration-300 rounded-lg mx-[1px] relative",
                             "hover:text-rose-600 hover:bg-rose-50/60 hover:scale-105",
-                            isActive ? "text-rose-700 bg-rose-100 ring-2 ring-rose-200 shadow-sm scale-110 z-10 font-bold" : "",
-                            isKaraokeActive
-                                ? "text-rose-600 bg-rose-50/80 backdrop-blur-sm font-bold shadow-[0_0_15px_rgba(244,63,94,0.15)] ring-1 ring-rose-100/50 scale-110 z-10"
-                                : "text-stone-700"
+                            getBattleInteractiveWordClassName({
+                                isActive,
+                                isKaraokeActive,
+                            })
                         )}
                     >
                         {word}

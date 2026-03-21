@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { EloChart } from "@/components/battle/EloChart";
 import { BattleDrillSelection, shouldRefreshBattleChart } from "@/lib/battleUiState";
 import { TOPICS } from "@/lib/battle-topics";
+import { RANDOM_SCENARIO_TOPIC } from "@/lib/battle-quickmatch-topics";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { applyBackgroundThemeToDocument, BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
 import ReactMarkdown from "react-markdown";
@@ -707,7 +708,7 @@ export default function BattlePage() {
                     className="mb-20"
                 >
                     <button
-                        onClick={() => setActiveDrill({ type: 'scenario', topic: 'Random Scenario' })}
+                        onClick={() => setActiveDrill({ type: 'scenario', topic: RANDOM_SCENARIO_TOPIC })}
                         className={cn("group relative w-full overflow-hidden rounded-[2.1rem] border border-white/45 text-slate-900 backdrop-blur-[22px] saturate-[1.5] transition-all hover:scale-[1.01]", glassTone.hero)}
                     >
                         <motion.div className={cn("absolute inset-0 z-0", glassListeningHeroLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />

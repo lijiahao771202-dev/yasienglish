@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deepseek } from "@/lib/deepseek";
+import {
+    filterSemanticDictationErrorItems,
+    isDictationPunctuationOnlyDifference,
+} from "@/lib/dictation-guardrails";
 
 const LISTENING_ANALYSIS_MAX_TOKENS = 320;
 const DICTATION_ANALYSIS_MAX_TOKENS = 420;
@@ -15,48 +19,6 @@ type AnalysisCompletion = {
         };
     }>;
 };
-
-const DICTATION_PUNCTUATION_HINT_RE = /(标点|逗号|句号|顿号|分号|冒号|引号|问号|感叹号|括号|省略号|破折号|书名号|符号|断句)/;
-const DICTATION_SEMANTIC_HINT_RE = /(遗漏|缺失|漏掉|误解|错误|偏差|不完整|关键信息|主语|动作|宾语|否定|数字|时间|地点|因果|逻辑|语义)/;
-
-function normalizeDictationText(text: string) {
-    return text
-        .normalize("NFKC")
-        .replace(/[\p{P}\p{S}\s]+/gu, "")
-        .trim();
-}
-
-function isDictationPunctuationOnlyDifference(userAnswer: string, goldAnswer: string) {
-    if (!userAnswer || !goldAnswer) return false;
-    return normalizeDictationText(userAnswer) === normalizeDictationText(goldAnswer);
-}
-
-type DictationErrorItem = {
-    error?: string;
-    correction?: string;
-    rule?: string;
-    tip?: string;
-};
-
-function normalizeDictationErrorItems(value: unknown): DictationErrorItem[] {
-    if (!Array.isArray(value)) return [];
-    return value
-        .filter((row) => row && typeof row === "object")
-        .map((row) => {
-            const record = row as Record<string, unknown>;
-            return {
-                error: typeof record.error === "string" ? record.error : "",
-                correction: typeof record.correction === "string" ? record.correction : "",
-                rule: typeof record.rule === "string" ? record.rule : "",
-                tip: typeof record.tip === "string" ? record.tip : "",
-            };
-        });
-}
-
-function isPunctuationOnlyDictationError(item: DictationErrorItem) {
-    const text = [item.error, item.correction, item.rule, item.tip].filter(Boolean).join(" ");
-    return DICTATION_PUNCTUATION_HINT_RE.test(text) && !DICTATION_SEMANTIC_HINT_RE.test(text);
-}
 
 export async function POST(req: NextRequest) {
     try {
@@ -142,6 +104,7 @@ export async function POST(req: NextRequest) {
             3. Give concise, reusable correction advice.
             4. Never treat punctuation-only issues as key errors.
             5. If only punctuation differs, return empty error_analysis.
+            6. Keep the score boundary aligned with the scoring route: semantic issues only.
 
             Output JSON only:
             {
@@ -284,8 +247,7 @@ export async function POST(req: NextRequest) {
 
         const parsed = JSON.parse(content) as Record<string, unknown>;
         if (mode === "dictation") {
-            const errorItems = normalizeDictationErrorItems(parsed.error_analysis);
-            const semanticErrorItems = errorItems.filter((item) => !isPunctuationOnlyDictationError(item));
+            const semanticErrorItems = filterSemanticDictationErrorItems(parsed.error_analysis);
             parsed.error_analysis = semanticErrorItems;
 
             if (semanticErrorItems.length === 0) {

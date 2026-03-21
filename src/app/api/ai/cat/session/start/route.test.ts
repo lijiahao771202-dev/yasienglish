@@ -123,26 +123,13 @@ function createSupabaseMock() {
     };
 }
 
-function taggedDraft(title: string, content: string) {
-    return [
-        "[Title]",
+function jsonDraft(title: string, content: string) {
+    return JSON.stringify({
         title,
-        "",
-        "[Article]",
         content,
-        "",
-        "[LexicalMix]",
-        "lower: 0.2",
-        "core: 0.68",
-        "stretch: 0.1",
-        "overlevel: 0.02",
-        "",
-        "[LexicalEvidence]",
-        "lower: students, class",
-        "core: learning, memory, summary",
-        "stretch: analysis, inference",
-        "overlevel: interdisciplinary",
-    ].join("\n");
+        byline: "CAT Adaptive Trainer",
+        wordCount: content.split(/\s+/).filter(Boolean).length,
+    });
 }
 
 describe("cat session start route", () => {
@@ -170,7 +157,7 @@ describe("cat session start route", () => {
             choices: [
                 {
                     message: {
-                        content: taggedDraft(
+                        content: jsonDraft(
                             "Memory Routine",
                             "Students track notes every morning and review each paragraph in a small notebook. "
                             + "They check main ideas because repetition improves recall and supports steady reading confidence.",
@@ -186,6 +173,7 @@ describe("cat session start route", () => {
         expect(response.status).toBe(200);
         expect(openaiCreateMock).toHaveBeenCalledTimes(1);
         expect(deepseekCreateMock).not.toHaveBeenCalled();
+        expect(data.model).toBe("deepseek-chat");
         expect(data.article.isCatMode).toBe(true);
         expect(data.article.catSessionBlueprint).toBeTruthy();
         expect(Array.isArray(data.article.catSessionBlueprint.passages)).toBe(true);
