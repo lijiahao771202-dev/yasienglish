@@ -5,7 +5,6 @@ import {
     isDictationPunctuationOnlyDifference,
 } from "@/lib/dictation-guardrails";
 
-const LISTENING_ANALYSIS_MAX_TOKENS = 320;
 const DICTATION_ANALYSIS_MAX_TOKENS = 420;
 const TRANSLATION_ANALYSIS_MAX_TOKENS = 360;
 const TEACHING_ANALYSIS_MAX_TOKENS = 520;
@@ -30,7 +29,6 @@ export async function POST(req: NextRequest) {
             score,
             mode = "translation",
             is_reverse = false,
-            input_source = "keyboard",
             teaching_mode = false,
             detail_level = "basic",
         } = await req.json();
@@ -60,33 +58,7 @@ export async function POST(req: NextRequest) {
         let prompt = "";
 
         if (mode === "listening") {
-            prompt = `
-            Act as an expert English speaking coach.
-
-            This is a post-score analysis request. Do NOT rescore.
-            Final score: ${score ?? "unknown"}/10
-            Input Method: ${input_source.toUpperCase()}
-            User Elo: ${userElo}
-            Reference: "${reference_english}"
-            User Input: "${user_translation}"
-
-            Analyze using phonetic matching:
-            1. Match by sound, not strict spelling.
-            2. Numeric forms and word forms are equivalent.
-            3. Ignore fillers like "um", "ah".
-            4. Ignore punctuation and capitalization.
-
-            Output JSON only:
-            {
-              "segments": [
-                { "word": "reference word", "status": "correct" | "phonetic_error" | "missing" | "typo" | "variation", "user_input": "only if needed" }
-              ],
-              "feedback": {
-                "listening_tips": ["一条简短发音建议", "一条简短流畅度建议"],
-                "encouragement": "一句简短中文鼓励"
-              }
-            }
-            `;
+            return NextResponse.json({ error: "Listening analysis moved to local pronunciation scoring" }, { status: 400 });
         } else if (mode === "dictation") {
             prompt = `
             Act as an expert dictation coach (English audio -> Chinese writing).
@@ -219,10 +191,8 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        const maxTokens = mode === "listening"
-            ? LISTENING_ANALYSIS_MAX_TOKENS
-            : mode === "dictation"
-                ? DICTATION_ANALYSIS_MAX_TOKENS
+        const maxTokens = mode === "dictation"
+            ? DICTATION_ANALYSIS_MAX_TOKENS
             : detail_level === "full"
                 ? FULL_TRANSLATION_ANALYSIS_MAX_TOKENS
             : teaching_mode

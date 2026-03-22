@@ -29,7 +29,7 @@ const GUIDE_SECTIONS: Array<{
 }> = [
     { id: "overview", title: "总览", subtitle: "Battle 怎么玩", icon: Zap, tone: "text-indigo-700 bg-indigo-50 border-indigo-200" },
     { id: "elo", title: "Elo 规则", subtitle: "分数如何涨跌", icon: Gauge, tone: "text-emerald-700 bg-emerald-50 border-emerald-200" },
-    { id: "listening", title: "Listening", subtitle: "听力复述", icon: Headphones, tone: "text-sky-700 bg-sky-50 border-sky-200" },
+    { id: "listening", title: "Shadowing", subtitle: "跟读发音", icon: Headphones, tone: "text-sky-700 bg-sky-50 border-sky-200" },
     { id: "dictation", title: "Dictation", subtitle: "听写中文", icon: BookOpen, tone: "text-purple-700 bg-purple-50 border-purple-200" },
     { id: "translation", title: "Translation", subtitle: "中译英", icon: Feather, tone: "text-amber-700 bg-amber-50 border-amber-200" },
     { id: "items", title: "道具图鉴", subtitle: "道具作用与用法", icon: Gift, tone: "text-fuchsia-700 bg-fuchsia-50 border-fuchsia-200" },
@@ -42,13 +42,13 @@ const GUIDE_MARKDOWN: Record<GuideSectionId, string> = {
 
 Battle 是一个 **输入 -> 理解 -> 输出** 的闭环训练系统：
 
-1. **Listening**：先把英语声音吃进去  
+1. **Shadowing**：先把英语声音吃进去，再跟着说出来  
 2. **Dictation**：把听到的意思重建成中文  
 3. **Translation**：再把中文转回自然英文
 
 ### 推荐节奏
 
-- 先做 3-5 题 Listening 热身
+- 先做 3-5 题 Shadowing 热身
 - 切 Dictation 校验“你是否真的听懂”
 - 最后用 Translation 把表达打磨成输出能力
 
@@ -76,11 +76,11 @@ Elo 是 **每个模式的实力分**，不是总分。
 > 直观理解：高质量发挥会稳定涨分；低于预期会掉分；越接近高水平，涨分越看重稳定性。
 `,
     listening: `
-## Listening（听力复述）
+## Shadowing（跟读发音）
 
 ### 目标
 
-听英文后，用麦克风复述，训练“听到就说”的能力。
+听英文后，用麦克风跟读，训练“听到就说”的发音稳定度。
 
 ### 玩法步骤
 
@@ -91,8 +91,8 @@ Elo 是 **每个模式的实力分**，不是总分。
 ### 评分重点
 
 - 发音清晰度
+- 句子覆盖率
 - 语流流畅性
-- 语义贴合度
 
 ### 适合人群
 

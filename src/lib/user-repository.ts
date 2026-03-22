@@ -78,6 +78,7 @@ interface BootstrapResult {
 }
 
 const REMOTE_PULL_INTERVAL_MS = 5 * 60 * 1000;
+const LISTENING_SCORING_VERSION = 2;
 
 let backgroundSyncPromise: Promise<void> | null = null;
 let pendingBackgroundPull = false;
@@ -859,8 +860,62 @@ export async function loadLocalUserData() {
     };
 }
 
+async function ensureListeningScoringVersion(profile: LocalUserProfile | undefined) {
+    if (!profile?.id) {
+        return profile;
+    }
+
+    if ((profile.listening_scoring_version ?? 0) >= LISTENING_SCORING_VERSION) {
+        return profile;
+    }
+
+    const nextUpdatedAt = nowIso();
+    const nextProfile: LocalUserProfile = {
+        ...profile,
+        listening_scoring_version: LISTENING_SCORING_VERSION,
+        listening_elo: DEFAULT_BASE_ELO,
+        listening_streak: 0,
+        listening_max_elo: DEFAULT_BASE_ELO,
+        updated_at: nextUpdatedAt,
+        sync_status: "pending",
+    };
+
+    await db.user_profile.put(nextProfile);
+    await db.sync_meta.put({
+        key: "listening_scoring_version",
+        value: LISTENING_SCORING_VERSION,
+        updated_at: Date.now(),
+    });
+
+    if (nextProfile.user_id) {
+        await queueOutboxItem({
+            entity: "profile",
+            operation: "upsert",
+            recordKey: "profile",
+            payload: {
+                translation_elo: nextProfile.elo_rating,
+                listening_elo: nextProfile.listening_elo ?? DEFAULT_BASE_ELO,
+                streak_count: nextProfile.streak_count,
+                listening_streak: nextProfile.listening_streak ?? 0,
+                max_translation_elo: nextProfile.max_elo,
+                max_listening_elo: nextProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
+                coins: nextProfile.coins ?? DEFAULT_STARTING_COINS,
+                inventory: normalizeInventory(nextProfile.inventory, nextProfile.hints),
+                owned_themes: nextProfile.owned_themes ?? [DEFAULT_FREE_THEME],
+                active_theme: nextProfile.active_theme ?? DEFAULT_FREE_THEME,
+                last_practice_at: new Date(nextProfile.last_practice).toISOString(),
+            },
+        });
+        useSyncStatusStore.getState().setPhase("syncing");
+        void scheduleBackgroundSync();
+    }
+
+    return nextProfile;
+}
+
 export async function loadLocalProfile() {
-    return db.user_profile.orderBy("id").first();
+    const profile = await db.user_profile.orderBy("id").first();
+    return ensureListeningScoringVersion(profile);
 }
 
 export async function saveVocabulary(item: VocabItem) {
@@ -1049,6 +1104,7 @@ export async function settleBattle(payload: {
         elo_rating: isListening ? profile.elo_rating : payload.eloAfter,
         streak_count: isListening ? profile.streak_count : payload.streak,
         max_elo: isListening ? profile.max_elo : payload.maxElo,
+        listening_scoring_version: LISTENING_SCORING_VERSION,
         listening_elo: isListening ? payload.eloAfter : (profile.listening_elo ?? DEFAULT_BASE_ELO),
         listening_streak: isListening ? payload.streak : (profile.listening_streak ?? 0),
         listening_max_elo: isListening ? payload.maxElo : (profile.listening_max_elo ?? DEFAULT_BASE_ELO),

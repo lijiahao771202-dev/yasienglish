@@ -18,7 +18,7 @@ const SCORING_PHASES: Record<ScoringFlipCardProps["mode"], Array<{ label: string
     ],
     listening: [
         { label: "Pronunciation", detail: "比对发音准确度" },
-        { label: "Fluency", detail: "检查复述流畅度" },
+        { label: "Coverage", detail: "核对句子覆盖率" },
         { label: "Score", detail: "封存最终评分" },
     ],
     dictation: [

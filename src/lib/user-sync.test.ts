@@ -24,6 +24,7 @@ describe("user sync helpers", () => {
         expect(profile.listening_elo).toBe(400);
         expect(profile.dictation_elo).toBe(400);
         expect(profile.max_elo).toBe(400);
+        expect(profile.listening_scoring_version).toBe(2);
         expect(profile.listening_max_elo).toBe(400);
         expect(profile.dictation_max_elo).toBe(400);
         expect(profile.coins).toBe(500);
@@ -79,6 +80,7 @@ describe("user sync helpers", () => {
         });
 
         expect(localProfile.elo_rating).toBe(900);
+        expect(localProfile.listening_scoring_version).toBe(0);
         expect(localProfile.listening_elo).toBe(720);
         expect(localProfile.dictation_elo).toBe(680);
         expect(localProfile.dictation_streak).toBe(3);

@@ -64,6 +64,7 @@ import {
 } from "./gacha";
 import sphereSplitterAnimation from "@/assets/lottie/sphere-splitter.json";
 import { loadLocalProfile, saveProfilePatch, saveWritingHistory, settleBattle } from "@/lib/user-repository";
+import type { PronunciationWordResult } from "@/lib/pronunciation-scoring";
 
 // --- Interfaces ---
 
@@ -125,6 +126,23 @@ function getGuidedScriptKey(
 
 interface DrillFeedback {
     score: number;
+    pronunciation_score?: number;
+    content_score?: number;
+    fluency_score?: number;
+    coverage_ratio?: number;
+    utterance_scores?: {
+        accuracy: number;
+        completeness: number;
+        fluency: number;
+        prosody: number;
+        total: number;
+    };
+    transcript?: string;
+    summary_cn?: string;
+    tips_cn?: string[];
+    engine?: string;
+    engine_version?: string;
+    word_results?: PronunciationWordResult[];
     feedback?: any; // Can be string[] or object with listening_tips
     judge_reasoning?: string;
     improved_version?: string;
@@ -806,6 +824,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const abortPrefetchRef = useRef<AbortController | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const audioCache = useRef<Map<string, { url?: string; blob?: Blob; marks?: any[] }>>(new Map());
+    const audioInflight = useRef<Map<string, Promise<{ blob: Blob; marks: any[] }>>>(new Map());
     const [currentAudioTime, setCurrentAudioTime] = useState(0);
 
     // Active Word Card
@@ -822,6 +841,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         audioLevel: speechInputLevel,
         error: speechInputError,
         modelProgress: speechModelProgress,
+        wavBlob,
         setContext,
         startRecognition,
         stopRecognition,
@@ -2144,6 +2164,31 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         return { blob, marks: data.marks || [] };
     }, []);
 
+    const ensureAudioCached = useCallback(async (text: string) => {
+        const textKey = "SENTENCE_" + text;
+        const cached = audioCache.current.get(textKey);
+        if (cached?.blob) {
+            return cached;
+        }
+
+        const pending = audioInflight.current.get(textKey);
+        if (pending) {
+            return pending;
+        }
+
+        const nextRequest = fetchTtsAudio(text)
+            .then((nextAudio) => {
+                audioCache.current.set(textKey, nextAudio);
+                return nextAudio;
+            })
+            .finally(() => {
+                audioInflight.current.delete(textKey);
+            });
+
+        audioInflight.current.set(textKey, nextRequest);
+        return nextRequest;
+    }, [fetchTtsAudio]);
+
     // Pre-generate audio when listening drill loads (translation stays lazy-loaded)
     useEffect(() => {
         if (mode !== 'listening' || !drillData?.reference_english) {
@@ -2152,7 +2197,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
 
         const textKey = "SENTENCE_" + drillData.reference_english;
-        if (audioCache.current.has(textKey)) {
+        if (audioCache.current.has(textKey) || audioInflight.current.has(textKey)) {
             return;
         }
 
@@ -2161,7 +2206,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         const prefetchAudio = async () => {
             setIsPrefetching(true);
             try {
-                const cachedAudio = await fetchTtsAudio(drillData.reference_english);
+                const cachedAudio = await ensureAudioCached(drillData.reference_english);
                 if (isCancelled) return;
                 audioCache.current.set(textKey, cachedAudio);
             } catch (error) {
@@ -2180,7 +2225,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         return () => {
             isCancelled = true;
         };
-    }, [drillData?.reference_english, fetchTtsAudio, mode]);
+    }, [drillData?.reference_english, ensureAudioCached, mode]);
 
     const lastPlayTime = useRef(0);
 
@@ -2217,8 +2262,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 setIsAudioLoading(true);
                 setIsPlaying(false);
 
-                cached = await fetchTtsAudio(drillData.reference_english);
-                audioCache.current.set(textKey, cached);
+                cached = await ensureAudioCached(drillData.reference_english);
                 setIsAudioLoading(false);
             }
 
@@ -2302,14 +2346,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
     };
 
-
-    // --- Whisper Result Sync (No auto-submit - user must click confirm) ---
-    useEffect(() => {
-        if (mode === "listening" && whisperResult.isFinal && whisperResult.text) {
-            setUserTranslation(whisperResult.text);
-            // Note: User must click "Submit" button to confirm
-        }
-    }, [whisperResult, mode]);
 
     useEffect(() => {
         if (drillData?.reference_english && setContext) {
@@ -2600,6 +2636,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 if (!abortPrefetchRef.current?.signal.aborted) {
                     console.log("[Prefetch] Background prefetch completed and stored!");
                     setPrefetchedDrillData({ ...data, mode });
+                    if (mode === "listening" && typeof data?.reference_english === "string" && data.reference_english.trim()) {
+                        ensureAudioCached(data.reference_english).catch((error) => {
+                            console.error("[Prefetch] Audio prewarm failed:", error);
+                        });
+                    }
                 }
             }).catch(err => {
                 if (err.name !== 'AbortError') console.error("[Prefetch] Error:", err);
@@ -3181,7 +3222,23 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const handleSubmitDrill = async (submittedTranslation?: string) => {
         if (showGacha) return;
         const translationToScore = (submittedTranslation ?? userTranslation).trim();
-        if (!translationToScore || !drillData) return;
+        if (!drillData) return;
+        if (!isListeningMode && !translationToScore) return;
+        if (isListeningMode && !wavBlob) {
+            setDrillFeedback({
+                score: -1,
+                judge_reasoning: "还没有可评分的录音，请先完整跟读一遍。",
+                feedback: {
+                    listening_tips: ["先录一遍完整音频，再提交发音评分。"],
+                    encouragement: "录音成功后会自动显示跟读评分。",
+                },
+                summary_cn: "还没有可评分的录音，请先完整跟读一遍。",
+                tips_cn: ["先录一遍完整音频，再提交发音评分。"],
+                word_results: [],
+                _error: true,
+            });
+            return;
+        }
         if (shouldBypassBattleRewards({ learningSession: learningSessionActive, guidedModeStatus })) {
             return;
         }
@@ -3193,37 +3250,60 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             const activeElo = isDictationMode ? dictationElo : isListeningMode ? listeningElo : eloRating;
             const scoreMode: "translation" | "listening" | "dictation" = isDictationMode ? "dictation" : generationMode;
             const scoringInputSource = isListeningFamilyMode && !isDictationMode ? "voice" : "keyboard";
-
-            const response = await fetch("/api/ai/score_translation", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    user_translation: translationToScore,
-                    reference_english: drillData.reference_english,
-                    original_chinese: drillData.chinese,
-                    current_elo: activeElo || DEFAULT_BASE_ELO,
-                    mode: scoreMode,
-                    input_source: scoringInputSource,
-                    teaching_mode: teachingMode,
-                }),
-            });
+            const response = isListeningMode
+                ? await (async () => {
+                    const formData = new FormData();
+                    formData.append("audio", wavBlob!, "shadowing.wav");
+                    formData.append("reference_english", drillData.reference_english);
+                    return fetch("/api/ai/pronunciation/score", {
+                        method: "POST",
+                        body: formData,
+                    });
+                })()
+                : await fetch("/api/ai/score_translation", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        user_translation: translationToScore,
+                        reference_english: drillData.reference_english,
+                        original_chinese: drillData.chinese,
+                        current_elo: activeElo || DEFAULT_BASE_ELO,
+                        mode: scoreMode,
+                        input_source: scoringInputSource,
+                        teaching_mode: teachingMode,
+                    }),
+                });
             const data = await response.json();
 
             // Guard: If API returned an error (no score), show error feedback
             if (!response.ok || data.error || data.score === undefined || data.score === null) {
-                console.error("[DrillCore] Scoring API failed:", data.error || "No score returned");
+                console.error("[DrillCore] Scoring API failed:", data.error || data.details || "No score returned");
                 setDrillFeedback({
                     score: -1,
-                    judge_reasoning: "评分服务暂时不可用，请重试。",
-                    feedback: ["AI 评分接口超时或出错，请再试一次。"],
+                    judge_reasoning: isListeningMode
+                        ? (data.details || "本地发音评分暂时不可用，请重试。")
+                        : "评分服务暂时不可用，请重试。",
+                    feedback: isListeningMode
+                        ? {
+                            listening_tips: [data.details || "本地发音评分暂时不可用，请重试。"],
+                            encouragement: "录音会保留，调整后可以重新提交。",
+                        }
+                        : ["AI 评分接口超时或出错，请再试一次。"],
+                    summary_cn: isListeningMode ? (data.details || "本地发音评分暂时不可用，请重试。") : undefined,
+                    tips_cn: isListeningMode ? [data.details || "本地发音评分暂时不可用，请重试。"] : undefined,
                     improved_version: "",
+                    word_results: [],
                     _error: true,
                 });
                 setIsSubmittingDrill(false);
                 return;
             }
 
-            if (isDictationMode) {
+            if (isListeningMode) {
+                setDrillFeedback(data);
+                setAnalysisRequested(true);
+                setAnalysisDetailsOpen(true);
+            } else if (isDictationMode) {
                 const normalizedDictationFeedback: DrillFeedback = {
                     ...data,
                     feedback: data.feedback ?? {
@@ -3238,9 +3318,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             } else {
                 setDrillFeedback(data);
             }
-            setAnalysisRequested(false);
             setAnalysisError(null);
-            setAnalysisDetailsOpen(false);
             setFullAnalysisRequested(false);
             setIsGeneratingFullAnalysis(false);
             setFullAnalysisError(null);
@@ -3250,6 +3328,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setGrammarError(null);
             setReferenceGrammarAnalysis(null);
             setReferenceGrammarDisplayMode("core");
+
+            if (!isListeningMode) {
+                setAnalysisRequested(false);
+                setAnalysisDetailsOpen(false);
+            }
 
             if (data.score !== undefined) {
                 if (hasRatedDrill) {
@@ -3632,7 +3715,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
             // --- BACKGROUND PREFETCH LOGIC (Evaluation-time) ---
             // Only prefetch after a successful score produced a fresh Elo for the next question.
-            if (drillData && userTranslation.trim() && prefetchNextElo !== null) {
+            if (drillData && (isListeningMode ? Boolean(wavBlob) : userTranslation.trim()) && prefetchNextElo !== null) {
                 prefetchNextDrill(prefetchNextElo);
             }
         }
@@ -3642,6 +3725,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (!drillData || !drillFeedback || isGeneratingAnalysis) return;
 
         setAnalysisRequested(true);
+        if (mode === "listening") {
+            setAnalysisError(null);
+            setAnalysisDetailsOpen(true);
+            return;
+        }
         setIsGeneratingAnalysis(true);
         setAnalysisError(null);
         setAnalysisDetailsOpen(false);
@@ -4391,7 +4479,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const renderDiff = () => {
         if (!drillData || !drillFeedback) return null;
 
-        if (mode === "listening" && drillFeedback.segments) {
+        if (mode === "listening" && drillFeedback.word_results?.length) {
             const pronounceWord = (word: string) => {
                 const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${word}&type=2`);
                 audio.play().catch(() => { });
@@ -4399,43 +4487,41 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
             return (
                 <div className="space-y-4">
-                    <div className="p-4 bg-stone-50 rounded-xl border border-stone-100">
-                        <div className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2 flex items-center gap-2">
-                            <Mic className="w-3 h-3" /> 你的原文
-                        </div>
-                        <p className="font-newsreader text-xl text-stone-600 leading-relaxed">"{userTranslation}"</p>
-                    </div>
-
                     <div className="p-5 bg-white/60 rounded-2xl border border-stone-100 shadow-sm">
                         <div className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-3 flex items-center gap-2">
                             <BookOpen className="w-3 h-3" />
-                            对照修订 <span className="text-stone-300 font-normal ml-2">点击单词可发音</span>
+                            词级评分 <span className="text-stone-300 font-normal ml-2">点击单词可发音</span>
                         </div>
                         <div className="font-newsreader text-2xl leading-loose text-stone-800 flex flex-wrap gap-x-1 gap-y-2">
-                            {drillFeedback.segments.map((seg, i) => {
-                                if (seg.status === "correct" || seg.status === "variation") {
-                                    return <span key={i} className="text-emerald-700 cursor-pointer hover:bg-emerald-50 px-0.5 rounded transition-colors" onClick={() => pronounceWord(seg.word)}>{seg.word}</span>;
-                                }
-                                if (seg.status === "missing") {
+                            {drillFeedback.word_results.map((result, i) => {
+                                const tooltip = [
+                                    `总分 ${result.score.toFixed(1)}/10`,
+                                    typeof result.accuracy_score === "number" ? `准确度 ${result.accuracy_score.toFixed(1)}` : null,
+                                    typeof result.stress_score === "number" ? `重音 ${result.stress_score.toFixed(1)}` : null,
+                                ].filter(Boolean).join(" · ");
+
+                                if (result.status === "correct") {
                                     return (
-                                        <span key={i} className="relative group cursor-pointer" onClick={() => pronounceWord(seg.word)}>
-                                            <span className="text-rose-500 font-semibold underline decoration-wavy decoration-rose-300 hover:bg-rose-50 px-0.5 rounded transition-colors">{seg.word}</span>
-                                            <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-[10px] bg-rose-500 text-white px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">漏读</span>
+                                        <span key={i} className="relative group cursor-pointer" onClick={() => pronounceWord(result.word)}>
+                                            <span className="text-emerald-700 hover:bg-emerald-50 px-0.5 rounded transition-colors">{result.word}</span>
+                                            <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[10px] text-emerald-600 bg-emerald-50 px-1 rounded border border-emerald-200 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">{tooltip}</span>
                                         </span>
                                     );
                                 }
-                                if (seg.status === "phonetic_error") {
+
+                                if (result.status === "weak") {
                                     return (
-                                        <span key={i} className="relative group cursor-pointer" onClick={() => pronounceWord(seg.word)}>
-                                            <span className="text-amber-600 font-semibold hover:bg-amber-50 px-0.5 rounded transition-colors">{seg.word}</span>
-                                            <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[10px] text-amber-500 bg-amber-50 px-1 rounded border border-amber-200 opacity-70 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">你说: {seg.user_input}</span>
+                                        <span key={i} className="relative group cursor-pointer" onClick={() => pronounceWord(result.word)}>
+                                            <span className="text-amber-600 font-semibold hover:bg-amber-50 px-0.5 rounded transition-colors">{result.word}</span>
+                                            <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[10px] text-amber-600 bg-amber-50 px-1 rounded border border-amber-200 opacity-70 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">{tooltip}</span>
                                         </span>
                                     );
                                 }
+
                                 return (
-                                    <span key={i} className="relative group cursor-pointer" onClick={() => pronounceWord(seg.word)}>
-                                        <span className="text-rose-600 font-semibold underline decoration-rose-300 decoration-2 hover:bg-rose-50 px-0.5 rounded transition-colors">{seg.word}</span>
-                                        <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[10px] text-rose-400 line-through opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">{seg.user_input || "???"}</span>
+                                    <span key={i} className="relative group cursor-pointer" onClick={() => pronounceWord(result.word)}>
+                                        <span className="text-rose-500 font-semibold underline decoration-wavy decoration-rose-300 hover:bg-rose-50 px-0.5 rounded transition-colors">{result.word}</span>
+                                        <span className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[10px] text-rose-600 bg-rose-50 px-1 rounded border border-rose-200 opacity-70 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">{tooltip}</span>
                                     </span>
                                 );
                             })}
@@ -4572,37 +4658,52 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         );
     };
 
+    const renderListeningMetricCards = () => {
+        if (mode !== "listening" || !drillFeedback) return null;
+
+        return (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="rounded-[1.4rem] border border-emerald-100 bg-emerald-50/70 p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">总分</p>
+                    <p className="mt-2 text-2xl font-semibold text-emerald-900">{drillFeedback.utterance_scores?.total?.toFixed?.(1) ?? drillFeedback.pronunciation_score?.toFixed?.(1) ?? "--"}</p>
+                </div>
+                <div className="rounded-[1.4rem] border border-sky-100 bg-sky-50/70 p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-700">准确度</p>
+                    <p className="mt-2 text-2xl font-semibold text-sky-900">{drillFeedback.utterance_scores?.accuracy?.toFixed?.(1) ?? "--"}</p>
+                </div>
+                <div className="rounded-[1.4rem] border border-amber-100 bg-amber-50/70 p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-700">完整度</p>
+                    <p className="mt-2 text-2xl font-semibold text-amber-900">{drillFeedback.utterance_scores?.completeness?.toFixed?.(1) ?? "--"}</p>
+                </div>
+                <div className="rounded-[1.4rem] border border-violet-100 bg-violet-50/70 p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-700">流利度</p>
+                    <p className="mt-2 text-2xl font-semibold text-violet-900">{drillFeedback.utterance_scores?.fluency?.toFixed?.(1) ?? drillFeedback.fluency_score?.toFixed?.(1) ?? "--"}</p>
+                </div>
+                <div className="rounded-[1.4rem] border border-stone-200 bg-white/90 p-4">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">韵律</p>
+                    <p className="mt-2 text-2xl font-semibold text-stone-900">{drillFeedback.utterance_scores?.prosody?.toFixed?.(1) ?? "--"}</p>
+                </div>
+            </div>
+        );
+    };
+
     const getAnalysisHighlights = () => {
         if (!drillData || !drillFeedback) return [];
 
-        if (mode === "listening" && drillFeedback.segments) {
-            return drillFeedback.segments
-                .filter(seg => seg.status !== "correct" && seg.status !== "variation")
+        if (mode === "listening" && drillFeedback.word_results?.length) {
+            return drillFeedback.word_results
+                .filter((row) => row.status !== "correct")
+                .sort((left, right) => left.score - right.score)
                 .slice(0, 3)
-                .map((seg) => {
-                    if (seg.status === "missing") {
-                        return {
-                            kind: "漏读",
-                            before: "未读出",
-                            after: seg.word,
-                            note: "这部分在复述里漏掉了。",
-                        };
-                    }
-
-                    if (seg.status === "phonetic_error") {
-                        return {
-                            kind: "发音偏差",
-                            before: seg.user_input || "发音不清",
-                            after: seg.word,
-                            note: "优先把这个词读清楚。",
-                        };
-                    }
-
+                .map((row) => {
                     return {
-                        kind: "听写修正",
-                        before: seg.user_input || "识别偏差",
-                        after: seg.word,
-                        note: "参考标准读法再跟读一次。",
+                        kind: row.status === "weak" ? "待加强" : "低分词",
+                        before: `${row.score.toFixed(1)}/10`,
+                        after: row.word.toUpperCase(),
+                        note: [
+                            typeof row.accuracy_score === "number" ? `Accuracy ${row.accuracy_score.toFixed(1)}` : null,
+                            typeof row.stress_score === "number" ? `Stress ${row.stress_score.toFixed(1)}` : null,
+                        ].filter(Boolean).join(" · ") || "该词当前词级评分偏低。",
                     };
                 });
         }
@@ -4625,10 +4726,19 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     const getAnalysisLead = () => {
         if (!drillFeedback) return "";
+        if (mode === "listening") {
+            const utteranceScores = drillFeedback.utterance_scores;
+            if (utteranceScores) {
+                return `句级评分：总分 ${utteranceScores.total.toFixed(1)} / 准确度 ${utteranceScores.accuracy.toFixed(1)} / 流利度 ${utteranceScores.fluency.toFixed(1)}`;
+            }
+            return "发音评分结果";
+        }
+        if (drillFeedback.summary_cn) return drillFeedback.summary_cn;
         if (drillFeedback.judge_reasoning) return drillFeedback.judge_reasoning;
         if (Array.isArray(drillFeedback.feedback) && drillFeedback.feedback.length > 0) return drillFeedback.feedback[0];
         if (drillFeedback.feedback?.dictation_tips?.length) return drillFeedback.feedback.dictation_tips[0];
         if (drillFeedback.feedback?.listening_tips?.length) return drillFeedback.feedback.listening_tips[0];
+        if (drillFeedback.tips_cn?.length) return drillFeedback.tips_cn[0];
         if (drillFeedback.feedback?.encouragement) return drillFeedback.feedback.encouragement;
         return "本题解析已生成。";
     };
@@ -4962,28 +5072,26 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     const hasDetailedAnalysis = Boolean(
             drillFeedback && (
+                (drillFeedback.word_results && drillFeedback.word_results.length > 0) ||
                 drillFeedback.segments ||
                 drillFeedback.feedback ||
                 drillFeedback.improved_version ||
+                (drillFeedback.tips_cn && drillFeedback.tips_cn.length > 0) ||
                 (drillFeedback.error_analysis && drillFeedback.error_analysis.length > 0) ||
                 (drillFeedback.similar_patterns && drillFeedback.similar_patterns.length > 0)
             )
     );
     const analysisHighlights = hasDetailedAnalysis ? getAnalysisHighlights() : [];
     const analysisLead = getAnalysisLead();
-    const primaryAdvice = Array.isArray(drillFeedback?.feedback)
+    const primaryAdvice = mode === "listening"
+        ? ""
+        : Array.isArray(drillFeedback?.feedback)
         ? drillFeedback?.feedback?.[0]
         : drillFeedback?.feedback?.dictation_tips?.[0]
             || drillFeedback?.feedback?.listening_tips?.[0]
+            || drillFeedback?.tips_cn?.[0]
             || drillFeedback?.feedback?.encouragement
             || "";
-    const secondaryAdvice = Array.isArray(drillFeedback?.feedback)
-        ? drillFeedback?.feedback?.[1]
-        : drillFeedback?.feedback?.dictation_tips?.[1]
-            || drillFeedback?.feedback?.listening_tips?.[1]
-            || "";
-
-
     // Auto-Mount Generate (WAIT for Elo to be loaded first!)
     useEffect(() => {
         // Only generate when Elo is loaded to ensure correct difficulty
@@ -6399,7 +6507,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             {whisperProcessing ? (
                                                                 <div className="flex items-center gap-3 px-6 py-3 bg-indigo-50 rounded-full">
                                                                     <RefreshCw className="w-5 h-5 text-indigo-500 animate-spin" />
-                                                                    <span className="text-indigo-600 font-bold text-sm">Transcribing...</span>
+                                                                    <span className="text-indigo-600 font-bold text-sm">Processing...</span>
                                                                 </div>
                                                             ) : whisperRecording ? (
                                                                 /* Recording State - Compact horizontal layout */
@@ -6420,13 +6528,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                                                                     <div className="min-w-[180px] max-w-[340px]">
                                                                         <p className="text-base font-newsreader text-stone-700 truncate">
-                                                                            {whisperResult.text || <span className="text-stone-400 italic">Listening...</span>}
+                                                                            <span className="text-stone-400 italic">Recording...</span>
                                                                         </p>
-                                                                        {!whisperResult.text ? (
-                                                                            <p className="mt-1 text-[11px] text-stone-400">
-                                                                                {speechInputUnavailableReason}
-                                                                            </p>
-                                                                        ) : null}
+                                                                        <p className="mt-1 text-[11px] text-stone-400">
+                                                                            停止后将直接按发音评分，不做语音转写。
+                                                                        </p>
                                                                     </div>
 
                                                                     {/* Stop Button */}
@@ -6437,13 +6543,16 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         <div className="w-4 h-4 bg-white rounded-sm" />
                                                                     </button>
                                                                 </div>
-                                                            ) : whisperResult.text ? (
+                                                            ) : wavBlob ? (
                                                                 /* Has Result - Compact confirm/retry */
                                                                 <div className="flex items-center gap-3 px-4 py-3 bg-white/80 backdrop-blur-sm border border-stone-200 rounded-2xl shadow-sm">
                                                                     {/* Result text */}
-                                                                    <p className="text-base font-newsreader text-stone-800 max-w-[250px]">
-                                                                        {whisperResult.text}
-                                                                    </p>
+                                                                    <div className="max-w-[280px]">
+                                                                        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">录音已保存</p>
+                                                                        <p className="mt-1 text-base font-newsreader text-stone-800">
+                                                                            将只按发音质量评分，不再做语音转写。
+                                                                        </p>
+                                                                    </div>
 
                                                                     {/* Action Buttons */}
                                                                     <div className="flex items-center gap-2 shrink-0">
@@ -6456,9 +6565,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         </button>
                                                                         <button
                                                                             onClick={() => {
-                                                                                const recognizedText = whisperResult.text;
-                                                                                setUserTranslation(recognizedText);
-                                                                                handleSubmitDrill(recognizedText);
+                                                                                handleSubmitDrill();
                                                                             }}
                                                                             disabled={isSubmittingDrill}
                                                                             className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full font-bold text-sm shadow-md transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
@@ -6685,7 +6792,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                     <div className="flex flex-col items-center justify-center gap-4 py-16">
                                                         <div className="text-4xl">⚠️</div>
                                                         <p className="text-stone-600 font-medium text-center">评分服务暂时不可用</p>
-                                                        <p className="text-stone-400 text-sm text-center">AI 接口超时，请重试</p>
+                                                        <p className="text-stone-400 text-sm text-center">
+                                                            {typeof drillFeedback.judge_reasoning === "string" && drillFeedback.judge_reasoning.trim().length > 0
+                                                                ? drillFeedback.judge_reasoning
+                                                                : "请重试。"}
+                                                        </p>
                                                         <button
                                                             onClick={() => {
                                                                 setDrillFeedback(null);
@@ -6826,7 +6937,12 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         )}
                                                                     </div>
 
-                                                                    {drillFeedback.judge_reasoning && <p className="text-[10px] text-stone-400 mt-3 max-w-lg text-center leading-relaxed"><span className="font-bold text-stone-500 mr-1">AI Judge:</span>{drillFeedback.judge_reasoning}</p>}
+                                                                    {mode !== "listening" && drillFeedback.judge_reasoning && (
+                                                                        <p className="text-[10px] text-stone-400 mt-3 max-w-lg text-center leading-relaxed">
+                                                                            <span className="font-bold text-stone-500 mr-1">{mode === "listening" ? "Pronunciation:" : "AI Judge:"}</span>
+                                                                            {drillFeedback.judge_reasoning}
+                                                                        </p>
+                                                                    )}
                                                                 </div>
                                                             ) : null}
                                                         </div>
@@ -6877,6 +6993,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                             onToggleFullAnalysis={() => setFullAnalysisOpen(prev => !prev)}
                                                                             fullAnalysisContent={renderTranslationAnalysisDetails()}
                                                                         />
+                                                                    ) : mode === "listening" ? (
+                                                                        <div className="space-y-4">
+                                                                            {renderDiff()}
+                                                                            {renderListeningMetricCards()}
+                                                                        </div>
                                                                     ) : (
                                                                     <div className="space-y-4">
                                                                         <div className="overflow-hidden rounded-[2rem] border border-stone-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(251,250,248,0.94))] shadow-[0_18px_40px_rgba(28,25,23,0.06)]">
@@ -6914,7 +7035,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                     <div className="rounded-[1.5rem] border border-stone-200/80 bg-white/80 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                                                                                         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-400">
                                                                                             <BookOpen className="w-3.5 h-3.5 text-stone-400" />
-                                                                                            关键改错
+                                                                                            {isShadowingMode ? "词级评分" : "关键改错"}
                                                                                         </div>
                                                                                         <div className="mt-4 space-y-3">
                                                                                             {analysisHighlights.length > 0 ? analysisHighlights.map((item, index) => (
@@ -6932,7 +7053,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                                 </div>
                                                                                             )) : (
                                                                                                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-4 text-sm leading-6 text-emerald-800">
-                                                                                                    这题没有明显结构性错误，主要是细节润色。
+                                                                                                    {isShadowingMode ? "当前没有明显低分词，词级评分整体稳定。" : "这题没有明显结构性错误，主要是细节润色。"}
                                                                                                 </div>
                                                                                             )}
                                                                                         </div>
@@ -6940,13 +7061,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                                                                                     <div className="rounded-[1.5rem] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.88),rgba(255,255,255,0.92))] p-5">
                                                                                         <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-600">
-                                                                                            {isShadowingMode ? "重点建议" : isDictationMode ? "听写建议" : "更自然表达"}
+                                                                                            {isShadowingMode ? "句级指标" : isDictationMode ? "听写建议" : "更自然表达"}
                                                                                         </div>
                                                                                         {isShadowingMode ? (
-                                                                                            <div className="mt-4 space-y-3">
-                                                                                                {primaryAdvice ? <p className="text-base leading-7 text-stone-800">{primaryAdvice}</p> : <p className="text-sm text-stone-500">本题没有额外口语建议。</p>}
-                                                                                                {secondaryAdvice ? <p className="text-sm leading-6 text-stone-500">{secondaryAdvice}</p> : null}
-                                                                                            </div>
+                                                                                            renderListeningMetricCards()
                                                                                         ) : drillFeedback.improved_version ? (
                                                                                             <div className="mt-4 space-y-2">
                                                                                                 <p className="text-[1.6rem] leading-tight font-newsreader">
@@ -6963,22 +7081,6 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                 </div>
 
                                                                                 {null}
-
-                                                                                <div className="mt-4 rounded-[1.4rem] border border-stone-200/80 bg-stone-50/70 p-3.5">
-                                                                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                                                                        <div>
-                                                                                            <p className="text-sm font-semibold text-stone-700">完整解析</p>
-                                                                                            <p className="text-xs text-stone-400">查看对照修订、参考答案和完整说明。</p>
-                                                                                        </div>
-                                                                                        <button
-                                                                                            onClick={() => setAnalysisDetailsOpen(prev => !prev)}
-                                                                                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-stone-200 bg-white px-4 py-2 text-sm font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 hover:bg-white"
-                                                                                        >
-                                                                                            {analysisDetailsOpen ? "收起详情" : "展开详情"}
-                                                                                            <ChevronRight className={cn("w-4 h-4 transition-transform", analysisDetailsOpen && "rotate-90")} />
-                                                                                        </button>
-                                                                                    </div>
-                                                                                </div>
                                                                             </div>
                                                                         </div>
 
@@ -6992,7 +7094,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                     className="space-y-4"
                                                                                 >
                                                                                     {renderDiff()}
-                                                                                    {drillFeedback.feedback && (
+                                                                                    {renderListeningMetricCards()}
+                                                                                    {mode !== "listening" && drillFeedback.feedback && (
                                                                                         <div className="rounded-[1.75rem] border border-stone-100 bg-white/90 p-5 shadow-[0_12px_30px_rgba(28,25,23,0.04)]">
                                                                                             <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-600">
                                                                                                 <Sparkles className="w-3.5 h-3.5" />
