@@ -4,6 +4,7 @@ const Module = require("module");
 const net = require("net");
 const path = require("path");
 const { createSpeechModelController } = require("./speech-model.cjs");
+const { createPronunciationServiceController } = require("./pronunciation-service.cjs");
 
 const SERVER_PORT = 3131;
 const SERVER_HOST = "localhost";
@@ -29,6 +30,7 @@ let mainWindow = null;
 let serverStarted = false;
 let isQuitting = false;
 const speechModelController = createSpeechModelController({ app, BrowserWindow });
+const pronunciationServiceController = createPronunciationServiceController({ app });
 
 function toProxyUrl(rule) {
     const [scheme, host] = rule.trim().split(/\s+/, 2);
@@ -170,6 +172,8 @@ function startNextServer() {
         HOSTNAME: "127.0.0.1",
         NODE_ENV: "production",
         YASI_SERVER_ROOT: serverRoot,
+        YASI_PRONUNCIATION_SERVICE_URL: pronunciationServiceController.getServiceUrl(),
+        YASI_TTS_CACHE_DIR: process.env.YASI_TTS_CACHE_DIR || path.join(app.getPath("userData"), "cache", "tts"),
     });
 
     if (fs.existsSync(runtimeNodeModulesDir)) {
@@ -273,6 +277,7 @@ async function waitForServerReady() {
 
 async function createMainWindow() {
     await hydrateProxyEnvFromSystem();
+    await pronunciationServiceController.start();
     if (!DEV_SERVER_URL) {
         startNextServer();
     }
@@ -320,6 +325,7 @@ async function createMainWindow() {
 
 function stopNextServer() {
     isQuitting = true;
+    pronunciationServiceController.stop();
 }
 
 const gotLock = app.requestSingleInstanceLock();

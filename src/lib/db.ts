@@ -138,6 +138,7 @@ export interface LocalUserProfile extends SyncTracked {
     streak_count: number;
     max_elo: number;
     last_practice: number;
+    listening_scoring_version?: number;
     listening_elo?: number;
     listening_streak?: number;
     listening_max_elo?: number;
@@ -712,6 +713,43 @@ export class YasiDB extends Dexie {
             await tx.table('sync_meta').put({
                 key: 'elo_reset_2026_03_21',
                 value: true,
+                updated_at: nowMs,
+            });
+        });
+
+        // Version 28: listening pronunciation scoring season reset.
+        this.version(28).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            const nowMs = Date.now();
+            const nowIso = new Date(nowMs).toISOString();
+
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                profile.listening_scoring_version = 2;
+                profile.listening_elo = 400;
+                profile.listening_streak = 0;
+                profile.listening_max_elo = 400;
+                profile.updated_at = nowIso;
+                profile.sync_status = 'pending';
+            });
+
+            await tx.table('elo_history')
+                .filter((item: EloHistoryItem) => item.mode === 'listening')
+                .delete();
+
+            await tx.table('sync_meta').put({
+                key: 'listening_scoring_version',
+                value: 2,
                 updated_at: nowMs,
             });
         });

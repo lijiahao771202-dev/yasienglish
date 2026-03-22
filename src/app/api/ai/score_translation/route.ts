@@ -6,7 +6,6 @@ import {
     normalizeDictationScore,
 } from "@/lib/dictation-guardrails";
 
-const LISTENING_MAX_TOKENS = 128;
 const TRANSLATION_MAX_TOKENS = 96;
 const DICTATION_MAX_TOKENS = 128;
 const SCORING_TEMPERATURE = 0.2;
@@ -33,11 +32,10 @@ export async function POST(req: NextRequest) {
         let voiceInstruction = "";
 
         if (mode === 'listening') {
-            voiceInstruction = `**IMPORTANT: TASK IS ORAL SHADOWING (SPEAKING)**
-               - The user is repeating what they heard.
-               - **PHONETIC MATCHING IS PARAMOUNT**.
-               - Ignore strictly written rules (spelling, punctuation, capitalization).
-               - If it SOUNDS correct, it IS correct.`;
+            return NextResponse.json({
+                error: "Listening moved to pronunciation scoring",
+                details: "Listening 模式已经切换到本地发音评分接口。",
+            }, { status: 400 });
         } else {
             // Translation Mode (Written Task)
             if (input_source === 'voice') {
@@ -48,68 +46,7 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // Dynamic Listening Grading Standards based on Elo
-        let listeningGradingStandard = "";
-        if (userElo < 1200) {
-            // BEGINNER MODE: Encouragement (High Reward, Minimal Risk)
-            listeningGradingStandard = `
-            Rating Logic (Beginner Mode - Encouragement):
-            - **Perfect Echo (+25)**: User repeated the sentence clearly (minor ASR typos ok).
-            - **Good (+12)**: Missed 1-2 words but got the main flow.
-            - **Mumble (+3)**: Hard to understand, but at least tried to speak.
-            - **Silent/Wrong (-3)**: Completely off or no attempt.`;
-        } else if (userElo < 2000) {
-            // INTERMEDIATE MODE: Standard
-            listeningGradingStandard = `
-            Rating Logic (Intermediate Mode - Standard):
-            - **Perfect Echo (+20)**: User repeated the sentence clearly (minor ASR typos ok).
-            - **Good (+10)**: Missed 1-2 words but got the main flow.
-            - **Mumble (0)**: Hard to understand / wrong words.
-            - **Silent/Wrong (-8)**: Completely off or no attempt.`;
-        } else {
-            // ADVANCED MODE: Hardcore (Low Reward, Higher Risk)
-            listeningGradingStandard = `
-            Rating Logic (Advanced Mode - Hardcore):
-            - **Perfect Echo (+12)**: User repeated the sentence clearly with good pronunciation.
-            - **Good (+5)**: Missed 1-2 words but got the main flow.
-            - **Mumble (-3)**: Unclear pronunciation is unacceptable at this level.
-            - **Silent/Wrong (-12)**: Completely off or no attempt.`;
-        }
-
-        if (mode === "listening") {
-            // Listening Mode Prompt (Phonetic Alignment + Smart Elo)
-            prompt = `
-            Act as an expert English Speaking Coach AND a Ranking Judge.
-            
-            Context:
-            - Input Method: ${input_source.toUpperCase()}
-            - User Elo: ${userElo}
-            - Task: **Spoken Shadowing** (User repeats the audio).
-            - Reference: "${reference_english}"
-            - User Input: "${user_translation}"
-
-            ${voiceInstruction}
- 
-            **CRITICAL ALIGNMENT RULES** (Phonetic Priority):
-            1. **MATCH BY SOUND**: "right" matches "write". "transmission" does NOT match "threatens".
-            2. **NUMBER EQUIVALENCE**: Numeric forms and word forms are equivalent. "7" = "seven", "700" = "seven hundred", "1st" = "first", "2024" = "twenty twenty-four".
-            3. **IGNORE DISFLUENCIES**: "um", "ah", "I... I..." should be ignored.
-            4. **IGNORE PUNCTUATION**: Full stop, comma, question mark -> Irrelevant.
-            
-            ${listeningGradingStandard}
-
-            **LANGUAGE REQUIREMENT**:
-            - Output 'judge_reasoning' in **Simplified Chinese (简体中文)**.
-            - Keep 'judge_reasoning' to one short sentence focused on pronunciation/fluency.
- 
-            **CRITICAL OUTPUT FORMAT**:
-            Output JSON:
-            {
-                "score": 0-10, 
-                "judge_reasoning": "一句简短口语表现评价"
-            }
-            `;
-        } else if (mode === "dictation") {
+        if (mode === "dictation") {
             // Dictation Mode Prompt (English audio -> Chinese writing)
             prompt = `
             Act as an expert bilingual dictation coach.
@@ -211,11 +148,9 @@ export async function POST(req: NextRequest) {
 
         console.log("[score_translation] Calling DeepSeek API...");
         const MAX_RETRIES = 3;
-        const maxTokens = mode === "listening"
-            ? LISTENING_MAX_TOKENS
-            : mode === "dictation"
-                ? DICTATION_MAX_TOKENS
-                : TRANSLATION_MAX_TOKENS;
+        const maxTokens = mode === "dictation"
+            ? DICTATION_MAX_TOKENS
+            : TRANSLATION_MAX_TOKENS;
         let lastError: Error | null = null;
         let completion: ScoreCompletion | null = null;
 

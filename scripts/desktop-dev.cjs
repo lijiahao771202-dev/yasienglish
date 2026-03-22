@@ -1,4 +1,7 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const { spawn } = require("child_process");
+const fs = require("fs");
+const path = require("path");
 
 const projectRoot = process.cwd();
 const configuredDevUrl = process.env.YASI_DESKTOP_DEV_URL;
@@ -11,6 +14,14 @@ const devPort = Number(
         : "3000"),
 );
 const devUrl = configuredDevUrl || `http://${devHost}:${devPort}`;
+const desktopSpeechDevModelDir = path.join(projectRoot, ".cache", "speech-models", "en-us");
+const ttsCacheDir = process.env.YASI_TTS_CACHE_DIR || path.join(projectRoot, ".cache", "tts");
+const pronunciationServiceUrl = process.env.YASI_PRONUNCIATION_SERVICE_URL || "http://127.0.0.1:3132";
+const defaultPronunciationPython = path.join(projectRoot, "services", "pronunciation", ".venv-pronunciation", "bin", "python");
+const defaultCharsiuRepo = path.join(projectRoot, ".cache", "charsiu");
+const canRunCharsiu = [defaultPronunciationPython, defaultCharsiuRepo]
+    .every((target) => fs.existsSync(target));
+const pronunciationBackend = process.env.YASI_PRONUNCIATION_BACKEND || (canRunCharsiu ? "charsiu" : "mock");
 
 function getRouteUrl(baseUrl, route) {
     return new URL(route, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
@@ -28,6 +39,19 @@ async function isServerReady() {
     try {
         const response = await fetch(getRouteUrl(devUrl, "login"), { method: "GET" });
         return response.ok || response.redirected;
+    } catch {
+        return false;
+    }
+}
+
+async function isDesktopServerCompatible() {
+    try {
+        const response = await fetch(getRouteUrl(devUrl, "api/ai/transcribe"), { method: "GET" });
+        const payload = await response.json().catch(() => ({}));
+        if (payload?.mode === "maintenance" && typeof payload?.message === "string" && payload.message.includes("只在桌面 App 提供")) {
+            return false;
+        }
+        return true;
     } catch {
         return false;
     }
@@ -72,14 +96,33 @@ function shutdown(code = 0) {
 }
 
 async function main() {
-    if (!(await isServerReady())) {
+    const serverReady = await isServerReady();
+    if (serverReady && !(await isDesktopServerCompatible())) {
+        throw new Error(
+            `A Next dev server is already running at ${devUrl}, but it is not in desktop mode. `
+            + "Stop that process first, then rerun `npm run desktop:dev`.",
+        );
+    }
+
+    if (!serverReady) {
         nextDevProcess = spawn(
             npmCommand(),
             ["run", "dev", "--", "--hostname", devHost, "--port", String(devPort)],
             {
                 cwd: projectRoot,
                 stdio: "inherit",
-                env: process.env,
+                env: {
+                    ...process.env,
+                    YASI_DESKTOP_APP: "1",
+                    YASI_SPEECH_DEV_MODEL_DIR: desktopSpeechDevModelDir,
+                    YASI_TTS_CACHE_DIR: ttsCacheDir,
+                    YASI_PRONUNCIATION_SERVICE_URL: pronunciationServiceUrl,
+                    YASI_PRONUNCIATION_BACKEND: pronunciationBackend,
+                    YASI_PRONUNCIATION_PYTHON: process.env.YASI_PRONUNCIATION_PYTHON || defaultPronunciationPython,
+                    YASI_CHARSIU_REPO: process.env.YASI_CHARSIU_REPO || defaultCharsiuRepo,
+                    YASI_PRONUNCIATION_SERVICE_TIMEOUT_MS: process.env.YASI_PRONUNCIATION_SERVICE_TIMEOUT_MS || "45000",
+                    HF_HUB_DISABLE_XET: process.env.HF_HUB_DISABLE_XET || "1",
+                },
             },
         );
 
@@ -98,7 +141,16 @@ async function main() {
         stdio: "inherit",
         env: {
             ...process.env,
+            YASI_DESKTOP_APP: "1",
+            YASI_SPEECH_DEV_MODEL_DIR: desktopSpeechDevModelDir,
+            YASI_TTS_CACHE_DIR: ttsCacheDir,
+            YASI_PRONUNCIATION_SERVICE_URL: pronunciationServiceUrl,
             YASI_DESKTOP_DEV_URL: devUrl,
+            YASI_PRONUNCIATION_BACKEND: pronunciationBackend,
+            YASI_PRONUNCIATION_PYTHON: process.env.YASI_PRONUNCIATION_PYTHON || defaultPronunciationPython,
+            YASI_CHARSIU_REPO: process.env.YASI_CHARSIU_REPO || defaultCharsiuRepo,
+            YASI_PRONUNCIATION_SERVICE_TIMEOUT_MS: process.env.YASI_PRONUNCIATION_SERVICE_TIMEOUT_MS || "45000",
+            HF_HUB_DISABLE_XET: process.env.HF_HUB_DISABLE_XET || "1",
         },
     });
 

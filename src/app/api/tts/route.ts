@@ -1,7 +1,28 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { EdgeTTS } from "@andresaya/edge-tts";
+
+interface TtsMark {
+    time: number;
+    type: string;
+    start: number;
+    end: number;
+    value: string;
+}
+
+interface CachedTtsPayload {
+    audio: string;
+    marks: TtsMark[];
+}
+
+interface CachedTtsMeta {
+    marks: TtsMark[];
+}
+
+const inflightSynthesis = new Map<string, Promise<CachedTtsPayload>>();
 
 async function collectSynthesis(
     tts: EdgeTTS,
@@ -39,6 +60,159 @@ async function collectSynthesis(
     }
 }
 
+function getTtsCacheDir() {
+    return process.env.YASI_TTS_CACHE_DIR || path.join(os.tmpdir(), "yasi-tts-cache");
+}
+
+function buildCacheKey(text: string, voice: string, rate: string) {
+    return crypto
+        .createHash("sha256")
+        .update(JSON.stringify({ text, voice, rate }))
+        .digest("hex");
+}
+
+function getCachePaths(cacheKey: string) {
+    const cacheDir = getTtsCacheDir();
+    return {
+        cacheDir,
+        audioPath: path.join(cacheDir, `${cacheKey}.mp3`),
+        metaPath: path.join(cacheDir, `${cacheKey}.json`),
+        tmpAudioPath: path.join(cacheDir, `${cacheKey}.${process.pid}.${Date.now()}.mp3.tmp`),
+        tmpMetaPath: path.join(cacheDir, `${cacheKey}.${process.pid}.${Date.now()}.json.tmp`),
+    };
+}
+
+function buildAudioUrl(cacheKey: string) {
+    return `/api/tts?key=${cacheKey}`;
+}
+
+function isValidCacheKey(cacheKey: string) {
+    return /^[a-f0-9]{64}$/i.test(cacheKey);
+}
+
+async function readCachedMeta(cacheKey: string) {
+    const { audioPath, metaPath } = getCachePaths(cacheKey);
+    try {
+        await fs.promises.access(audioPath, fs.constants.R_OK);
+        const raw = await fs.promises.readFile(metaPath, "utf8");
+        return JSON.parse(raw) as CachedTtsMeta;
+    } catch (error) {
+        const nodeError = error as NodeJS.ErrnoException;
+        if (nodeError?.code === "ENOENT") {
+            return null;
+        }
+
+        console.warn("[TTS] Failed to read cache payload, regenerating.", error);
+        return null;
+    }
+}
+
+async function writeCachedPayload(cacheKey: string, audioBuffer: Buffer, payload: CachedTtsMeta) {
+    const { cacheDir, audioPath, metaPath, tmpAudioPath, tmpMetaPath } = getCachePaths(cacheKey);
+    await fs.promises.mkdir(cacheDir, { recursive: true });
+    await fs.promises.writeFile(tmpAudioPath, audioBuffer);
+    await fs.promises.writeFile(tmpMetaPath, JSON.stringify(payload), "utf8");
+    await fs.promises.rename(tmpAudioPath, audioPath);
+    await fs.promises.rename(tmpMetaPath, metaPath);
+}
+
+async function synthesizePayload(text: string, voice: string, rate: string) {
+    const tts = new EdgeTTS();
+
+    let audioBuffer: Buffer;
+
+    try {
+        audioBuffer = await collectSynthesis(tts, text, voice, rate);
+    } catch (initialError) {
+        console.warn("[TTS] Rate-adjusted synthesis failed, retrying without rate.", initialError);
+        audioBuffer = await collectSynthesis(tts, text, voice);
+    }
+
+    if (audioBuffer.length === 0) {
+        throw new Error("Generated audio buffer is empty");
+    }
+
+    const marks: TtsMark[] = [];
+
+    if (typeof tts.getWordBoundaries === "function") {
+        marks.push(...tts.getWordBoundaries().map((item) => ({
+            time: item.offset / 10000,
+            type: "word",
+            start: item.offset / 10000,
+            end: (item.offset + item.duration) / 10000,
+            value: item.text,
+        })));
+    }
+
+    return {
+        audioBuffer,
+        marks,
+    };
+}
+
+async function getOrCreatePayload(text: string, voice: string, rate: string) {
+    const cacheKey = buildCacheKey(text, voice, rate);
+    const cachedMeta = await readCachedMeta(cacheKey);
+    if (cachedMeta) {
+        return {
+            audio: buildAudioUrl(cacheKey),
+            marks: cachedMeta.marks,
+        };
+    }
+
+    const existingPromise = inflightSynthesis.get(cacheKey);
+    if (existingPromise) {
+        return existingPromise;
+    }
+
+    const synthesisPromise = (async () => {
+        const payload = await synthesizePayload(text, voice, rate);
+        await writeCachedPayload(cacheKey, payload.audioBuffer, { marks: payload.marks });
+        return {
+            audio: buildAudioUrl(cacheKey),
+            marks: payload.marks,
+        };
+    })();
+
+    inflightSynthesis.set(cacheKey, synthesisPromise);
+
+    try {
+        return await synthesisPromise;
+    } finally {
+        inflightSynthesis.delete(cacheKey);
+    }
+}
+
+export async function GET(req: Request) {
+    const { searchParams } = new URL(req.url);
+    const cacheKey = searchParams.get("key");
+
+    if (!cacheKey || !isValidCacheKey(cacheKey)) {
+        return new Response("Not found", { status: 404 });
+    }
+
+    const { audioPath } = getCachePaths(cacheKey);
+
+    try {
+        const audioBuffer = await fs.promises.readFile(audioPath);
+        return new Response(audioBuffer, {
+            status: 200,
+            headers: {
+                "Content-Type": "audio/mpeg",
+                "Cache-Control": "public, max-age=31536000, immutable",
+            },
+        });
+    } catch (error) {
+        const nodeError = error as NodeJS.ErrnoException;
+        if (nodeError?.code === "ENOENT") {
+            return new Response("Not found", { status: 404 });
+        }
+
+        console.error("[TTS] Failed to read cached audio:", error);
+        return new Response("Internal Server Error", { status: 500 });
+    }
+}
+
 export async function POST(req: Request) {
     let step = "Init";
 
@@ -49,49 +223,11 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Text is required" }, { status: 400 });
         }
 
-        step = "Setup";
-        const tts = new EdgeTTS();
-
         step = "Generating";
-        let audioBuffer: Buffer;
+        const payload = await getOrCreatePayload(text, voice, rate);
 
-        try {
-            audioBuffer = await collectSynthesis(tts, text, voice, rate);
-        } catch (initialError) {
-            console.warn("[TTS] Rate-adjusted synthesis failed, retrying without rate.", initialError);
-            step = "Generating Fallback";
-            audioBuffer = await collectSynthesis(tts, text, voice);
-        }
-
-        if (audioBuffer.length === 0) {
-            throw new Error("Generated audio buffer is empty");
-        }
-
-        const marks: Array<{
-            time: number;
-            type: string;
-            start: number;
-            end: number;
-            value: string;
-        }> = [];
-
-        if (typeof tts.getWordBoundaries === "function") {
-            marks.push(...tts.getWordBoundaries().map((item) => ({
-                time: item.offset / 10000,
-                type: "word",
-                start: item.offset / 10000,
-                end: (item.offset + item.duration) / 10000,
-                value: item.text,
-            })));
-        }
-
-        const audioBase64 = audioBuffer.toString("base64");
-
-        return NextResponse.json({
-            audio: `data:audio/mp3;base64,${audioBase64}`,
-            marks: marks
-        });
-    } catch (error: any) {
+        return NextResponse.json(payload);
+    } catch (error: unknown) {
         console.error(`[TTS] Error at step ${step}:`, error);
 
         // DEBUG LOGGING

@@ -91,6 +91,10 @@
       {
         "from": "dist-electron/server",
         "to": "server"
+      },
+      {
+        "from": "services/pronunciation",
+        "to": "pronunciation-service"
       }
     ],
     "directories": {

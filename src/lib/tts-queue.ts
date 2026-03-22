@@ -1,10 +1,10 @@
 import { saveAudioToCache } from "./tts-cache";
-import { dataUrlToAudioBlob, requestTtsPayload } from "./tts-client";
+import { requestTtsPayload, resolveTtsAudioBlob } from "./tts-client";
 
 type TTSRequest = {
     text: string;
     resolve: (blob: Blob) => void;
-    reject: (error: any) => void;
+    reject: (error: unknown) => void;
 };
 
 class TTSQueueManager {
@@ -51,7 +51,7 @@ class TTSQueueManager {
 
         try {
             const payload = await requestTtsPayload(request.text);
-            const blob = dataUrlToAudioBlob(payload.audio);
+            const blob = await resolveTtsAudioBlob(payload.audio);
 
             // 2. Save to Cache
             saveAudioToCache(request.text, blob);

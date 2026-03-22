@@ -7,8 +7,6 @@ import {
     type SpeechInputResult,
     LOCAL_SPEECH_DESKTOP_ONLY_MESSAGE,
     LOCAL_SPEECH_MODEL_FAILED_MESSAGE,
-    LOCAL_SPEECH_MODEL_MISSING_MESSAGE,
-    LOCAL_SPEECH_TRANSCRIBE_FAILED_MESSAGE,
     formatSpeechModelStatusMessage,
 } from "@/lib/speech-input";
 
@@ -18,6 +16,7 @@ export function useSpeechInput() {
     const { progress, isDesktopApp, isReady, downloadModel } = useDesktopSpeechModel();
     const [result, setResult] = useState<SpeechInputResult>(EMPTY_RESULT);
     const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+    const [wavBlob, setWavBlob] = useState<Blob | null>(null);
     const [audioLevel, setAudioLevel] = useState(0);
     const [isRecording, setIsRecording] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -117,6 +116,7 @@ export function useSpeechInput() {
     const resetResult = useCallback(() => {
         setResult(EMPTY_RESULT);
         setAudioBlob(null);
+        setWavBlob(null);
         setError(null);
     }, []);
 
@@ -181,31 +181,15 @@ export function useSpeechInput() {
                     const sourceBlob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
                     setAudioBlob(sourceBlob);
                     const wavBlob = await normalizeRecordingBlob(sourceBlob);
-                    const formData = new FormData();
-                    formData.append("audio", wavBlob, "recording.wav");
-                    formData.append("context", inputContextRef.current);
-
-                    const response = await fetch("/api/ai/transcribe", {
-                        method: "POST",
-                        headers: {
-                            "x-yasi-desktop": "1",
-                        },
-                        body: formData,
-                    });
-                    const payload = await response.json();
-
-                    if (!response.ok) {
-                        throw new Error(payload.details || payload.error || LOCAL_SPEECH_TRANSCRIBE_FAILED_MESSAGE);
-                    }
-
+                    setWavBlob(wavBlob);
                     setResult({
-                        text: typeof payload.text === "string" ? payload.text : "",
+                        text: "",
                         isEndpoint: true,
                         isFinal: true,
                     });
                     setError(null);
-                } catch (transcribeError) {
-                    setError(transcribeError instanceof Error ? transcribeError.message : LOCAL_SPEECH_TRANSCRIBE_FAILED_MESSAGE);
+                } catch (processingError) {
+                    setError(processingError instanceof Error ? processingError.message : LOCAL_SPEECH_MODEL_FAILED_MESSAGE);
                     setResult(EMPTY_RESULT);
                 } finally {
                     setIsProcessing(false);
@@ -242,6 +226,7 @@ export function useSpeechInput() {
         isProcessing,
         result,
         audioBlob,
+        wavBlob,
         audioLevel,
         error,
         modelStatus: progress.status,

@@ -1,0 +1,11 @@
+torch
+transformers
+datasets
+librosa
+praatio
+g2p-en
+g2pM
+soundfile
+nltk
+numpy
+scipy
