@@ -1,5 +1,6 @@
 export interface TtsPayload {
     audio: string;
+    audioDataUrl?: string;
     marks: Array<{
         time: number;
         type: string;

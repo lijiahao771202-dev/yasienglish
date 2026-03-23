@@ -350,3 +350,11 @@
     at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__a5a854a8._.js:90:28)
     at listOnTimeout (node:internal/timers:594:17)
     at process.processTimers (node:internal/timers:529:7)
+[2026-03-23T14:00:35.886Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/server/chunks/[root-of-the-server]__c01ab85b._.js:1:2033)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-03-23T14:00:35.890Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/server/chunks/[root-of-the-server]__c01ab85b._.js:1:2033)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)

@@ -89,6 +89,8 @@ describe("tts route", () => {
         expect(synthesizeStreamMock).toHaveBeenCalledTimes(1);
         expect(firstJson.audio).toBe(secondJson.audio);
         expect(firstJson.audio).toMatch(/^\/api\/tts\?key=/);
+        expect(firstJson.audioDataUrl).toMatch(/^data:audio\/mpeg;base64,/);
+        expect(secondJson.audioDataUrl).toMatch(/^data:audio\/mpeg;base64,/);
         expect(secondJson.marks).toEqual(firstJson.marks);
         expect(fs.readdirSync(cacheDir).length).toBeGreaterThan(0);
     });
@@ -117,6 +119,7 @@ describe("tts route", () => {
         expect(edgeTtsConstructorMock).toHaveBeenCalledTimes(1);
         expect(synthesizeStreamMock).toHaveBeenCalledTimes(1);
         expect(firstJson.audio).toBe(secondJson.audio);
+        expect(firstJson.audioDataUrl).toMatch(/^data:audio\/mpeg;base64,/);
     });
 
     it("serves cached mp3 bytes via GET after synthesis", async () => {

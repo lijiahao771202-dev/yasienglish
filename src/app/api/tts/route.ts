@@ -15,6 +15,7 @@ interface TtsMark {
 
 interface CachedTtsPayload {
     audio: string;
+    audioDataUrl: string;
     marks: TtsMark[];
 }
 
@@ -86,6 +87,10 @@ function buildAudioUrl(cacheKey: string) {
     return `/api/tts?key=${cacheKey}`;
 }
 
+function buildAudioDataUrl(audioBuffer: Buffer) {
+    return `data:audio/mpeg;base64,${audioBuffer.toString("base64")}`;
+}
+
 function isValidCacheKey(cacheKey: string) {
     return /^[a-f0-9]{64}$/i.test(cacheKey);
 }
@@ -154,8 +159,11 @@ async function getOrCreatePayload(text: string, voice: string, rate: string) {
     const cacheKey = buildCacheKey(text, voice, rate);
     const cachedMeta = await readCachedMeta(cacheKey);
     if (cachedMeta) {
+        const { audioPath } = getCachePaths(cacheKey);
+        const cachedAudioBuffer = await fs.promises.readFile(audioPath);
         return {
             audio: buildAudioUrl(cacheKey),
+            audioDataUrl: buildAudioDataUrl(cachedAudioBuffer),
             marks: cachedMeta.marks,
         };
     }
@@ -170,6 +178,7 @@ async function getOrCreatePayload(text: string, voice: string, rate: string) {
         await writeCachedPayload(cacheKey, payload.audioBuffer, { marks: payload.marks });
         return {
             audio: buildAudioUrl(cacheKey),
+            audioDataUrl: buildAudioDataUrl(payload.audioBuffer),
             marks: payload.marks,
         };
     })();
