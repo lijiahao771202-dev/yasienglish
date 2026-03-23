@@ -229,17 +229,16 @@ export async function POST(req: Request) {
         return NextResponse.json(payload);
     } catch (error: unknown) {
         console.error(`[TTS] Error at step ${step}:`, error);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
 
         // DEBUG LOGGING
         try {
-            const logMsg = `[${new Date().toISOString()}] Step: ${step} | Error: ${error.message} | Stack: ${error.stack}\n`;
+            const logMsg = `[${new Date().toISOString()}] Step: ${step} | Error: ${errorMessage} | Stack: ${errorStack ?? "N/A"}\n`;
             fs.appendFileSync(path.join(process.cwd(), "tts_error.log"), logMsg);
         } catch (e) {
             console.error("Failed to write log", e);
         }
-
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const errorStack = error instanceof Error ? error.stack : undefined;
 
         return NextResponse.json({
             error: `TTS Failed at ${step} (${new Date().toLocaleTimeString()})`,

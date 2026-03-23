@@ -15,6 +15,9 @@ export interface PronunciationUtteranceScores {
     fluency: number;
     prosody: number;
     total: number;
+    content_reproduction?: number;
+    rhythm_fluency?: number;
+    pronunciation_clarity?: number;
 }
 
 export interface PronunciationScorePayload {
@@ -87,6 +90,9 @@ export function normalizeUtteranceScores(value: unknown) {
         fluency: clampScore(scores.fluency),
         prosody: clampScore(scores.prosody),
         total: clampScore(scores.total),
+        content_reproduction: scores.content_reproduction === undefined ? undefined : clampScore(scores.content_reproduction),
+        rhythm_fluency: scores.rhythm_fluency === undefined ? undefined : clampScore(scores.rhythm_fluency),
+        pronunciation_clarity: scores.pronunciation_clarity === undefined ? undefined : clampScore(scores.pronunciation_clarity),
     };
 }
 
@@ -179,7 +185,7 @@ export function normalizePronunciationPayload(
         (typeof payload.coverage_ratio === "number" ? payload.coverage_ratio : computeCoverageRatio(wordResults)) * 10,
     ) / 10;
     const pronunciationScore = clampScore(
-        utteranceScores?.total
+        utteranceScores?.pronunciation_clarity
         ?? payload.pronunciation_score
         ?? payload.score
         ?? (wordResults.length
@@ -189,10 +195,11 @@ export function normalizePronunciationPayload(
     const contentScore = clampScore(
         typeof payload.content_score === "number"
             ? payload.content_score
-            : (utteranceScores?.completeness ?? computeContentScore(wordResults, coverageRatio)),
+            : (utteranceScores?.content_reproduction ?? utteranceScores?.completeness ?? computeContentScore(wordResults, coverageRatio)),
     );
     const fluencyScore = clampScore(
         payload.fluency_score
+        ?? utteranceScores?.rhythm_fluency
         ?? utteranceScores?.fluency
         ?? pronunciationScore,
     );

@@ -59,6 +59,9 @@ export async function POST(request: Request) {
         const referenceText = typeof formData.get("reference_english") === "string"
             ? String(formData.get("reference_english")).trim()
             : "";
+        const currentElo = typeof formData.get("current_elo") === "string"
+            ? Number(formData.get("current_elo"))
+            : undefined;
         if (!(audio instanceof File)) {
             return NextResponse.json({
                 error: "Missing audio",
@@ -95,6 +98,7 @@ export async function POST(request: Request) {
         const rawPayload = await scorePronunciationWithService({
             audioBase64: Buffer.from(arrayBuffer).toString("base64"),
             referenceText,
+            eloRating: Number.isFinite(currentElo) ? currentElo : undefined,
         });
 
         const normalized = normalizePronunciationPayload(rawPayload);

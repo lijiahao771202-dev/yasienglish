@@ -27,11 +27,14 @@ describe("pronunciation scoring helpers", () => {
             pronunciation_score: 8.8,
             fluency_score: 7.2,
             utterance_scores: {
-                accuracy: 8.4,
+                accuracy: 7.4,
                 completeness: 8.9,
                 fluency: 7.2,
                 prosody: 7.6,
                 total: 8.1,
+                content_reproduction: 8.9,
+                rhythm_fluency: 7.2,
+                pronunciation_clarity: 7.4,
             },
             word_results: [
                 { word: "the", status: "correct", score: 9.8, accuracy_score: 9.7, stress_score: 9.8 },
@@ -47,10 +50,14 @@ describe("pronunciation scoring helpers", () => {
         expect(payload.engine).toBe("charsiu");
         expect(payload.transcript).toBe("the open");
         expect(payload.score).toBe(8.1);
-        expect(payload.pronunciation_score).toBe(8.1);
+        expect(payload.pronunciation_score).toBe(7.4);
         expect(payload.content_score).toBe(8.9);
+        expect(payload.fluency_score).toBe(7.2);
         expect(payload.tips_cn).toHaveLength(0);
         expect(payload.utterance_scores?.prosody).toBe(7.6);
+        expect(payload.utterance_scores?.content_reproduction).toBe(8.9);
+        expect(payload.utterance_scores?.rhythm_fluency).toBe(7.2);
+        expect(payload.utterance_scores?.pronunciation_clarity).toBe(7.4);
         expect(payload.word_results[2].accuracy_score).toBe(4.1);
         expect(payload.word_results[2].status).toBe("mispronounced");
     });

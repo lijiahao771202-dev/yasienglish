@@ -15,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" data-hydrated="0">
+    <html lang="en" data-hydrated="0" suppressHydrationWarning>
         <body className={`${inter.variable} ${merriweather.variable} ${lora.variable} ${roboto_mono.variable} ${libre_baskerville.variable} ${source_serif_4.variable} ${work_sans.variable} ${comic_neue.variable} ${newsreader.variable} antialiased font-sans`}>
         <Script id="liquid-glass-hydration-guard" strategy="beforeInteractive">
           {`document.documentElement.setAttribute("data-hydrated","1");`}

@@ -18,16 +18,186 @@ type DifficultyExpectation = {
     cefr: string;
 };
 
-function getListeningDifficultyExpectation(elo: number): DifficultyExpectation {
-    if (elo < 400) return { min: 5, max: 8, tier: "新手", cefr: "A1" };
-    if (elo < 800) return { min: 8, max: 12, tier: "青铜", cefr: "A2-" };
-    if (elo < 1200) return { min: 8, max: 14, tier: "白银", cefr: "A2+" };
-    if (elo < 1600) return { min: 12, max: 18, tier: "黄金", cefr: "B1" };
-    if (elo < 2000) return { min: 14, max: 22, tier: "铂金", cefr: "B2" };
-    if (elo < 2400) return { min: 16, max: 26, tier: "钻石", cefr: "C1" };
-    if (elo < 2800) return { min: 20, max: 32, tier: "大师", cefr: "C2" };
-    if (elo < 3200) return { min: 24, max: 40, tier: "王者", cefr: "C2+" };
-    return { min: 35, max: 999, tier: "处决", cefr: "∞" };
+type ListeningMemoryLoad = "low" | "medium" | "high";
+type ListeningNaturalness = "low" | "medium" | "high";
+type ListeningReducedFormsPresence = "minimal" | "some" | "frequent";
+
+type ListeningFeatureTarget = DifficultyExpectation & {
+    clauseMax: number;
+    memoryLoad: ListeningMemoryLoad;
+    spokenNaturalness: ListeningNaturalness;
+    reducedFormsPresence: ListeningReducedFormsPresence;
+    trainingFocus: string;
+    downgraded?: boolean;
+};
+
+type ListeningFeatureReport = {
+    wordCount: number | null;
+    clauseCount: number | null;
+    memoryLoad: ListeningMemoryLoad | null;
+    spokenNaturalness: ListeningNaturalness | null;
+    reducedFormsPresence: ListeningReducedFormsPresence | null;
+};
+
+type ListeningValidation = {
+    actualWordCount: number;
+    status: DifficultyStatus;
+    isValid: boolean;
+    reportedCefr: string | null;
+    featureReport: ListeningFeatureReport;
+    issues: string[];
+};
+
+const listeningMemoryRank: Record<ListeningMemoryLoad, number> = { low: 1, medium: 2, high: 3 };
+const listeningNaturalnessRank: Record<ListeningNaturalness, number> = { low: 1, medium: 2, high: 3 };
+const listeningReducedFormsRank: Record<ListeningReducedFormsPresence, number> = { minimal: 1, some: 2, frequent: 3 };
+
+function normalizeMemoryLoad(value: unknown): ListeningMemoryLoad | null {
+    const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (normalized === "low") return "low";
+    if (normalized === "medium") return "medium";
+    if (normalized === "high") return "high";
+    return null;
+}
+
+function normalizeNaturalness(value: unknown): ListeningNaturalness | null {
+    const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (normalized === "low") return "low";
+    if (normalized === "medium") return "medium";
+    if (normalized === "high") return "high";
+    return null;
+}
+
+function normalizeReducedForms(value: unknown): ListeningReducedFormsPresence | null {
+    const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+    if (normalized === "minimal") return "minimal";
+    if (normalized === "some") return "some";
+    if (normalized === "frequent") return "frequent";
+    return null;
+}
+
+function parseInteger(value: unknown) {
+    if (typeof value === "number" && Number.isFinite(value)) return Math.round(value);
+    if (typeof value === "string" && value.trim()) {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+}
+
+function estimateClauseCount(text: string) {
+    const normalized = text.toLowerCase();
+    const connectorHits = (normalized.match(/\b(that|because|when|while|although|though|since|unless|where|which|who|if)\b/g) || []).length;
+    return Math.min(3, connectorHits);
+}
+
+function getListeningDifficultyExpectation(elo: number): ListeningFeatureTarget {
+    if (elo < 400) return { min: 5, max: 8, tier: "新手", cefr: "A1", clauseMax: 0, memoryLoad: "low", spokenNaturalness: "low", reducedFormsPresence: "minimal", trainingFocus: "短句复现" };
+    if (elo < 800) return { min: 8, max: 12, tier: "青铜", cefr: "A2-", clauseMax: 0, memoryLoad: "low", spokenNaturalness: "medium", reducedFormsPresence: "minimal", trainingFocus: "基础口语" };
+    if (elo < 1200) return { min: 8, max: 14, tier: "白银", cefr: "A2+", clauseMax: 1, memoryLoad: "medium", spokenNaturalness: "medium", reducedFormsPresence: "some", trainingFocus: "基础连贯表达" };
+    if (elo < 1600) return { min: 12, max: 18, tier: "黄金", cefr: "B1", clauseMax: 1, memoryLoad: "medium", spokenNaturalness: "medium", reducedFormsPresence: "some", trainingFocus: "自然语流" };
+    if (elo < 2000) return { min: 14, max: 22, tier: "铂金", cefr: "B2", clauseMax: 2, memoryLoad: "high", spokenNaturalness: "high", reducedFormsPresence: "frequent", trainingFocus: "高信息密度" };
+    if (elo < 2400) return { min: 16, max: 26, tier: "钻石", cefr: "C1", clauseMax: 2, memoryLoad: "high", spokenNaturalness: "high", reducedFormsPresence: "frequent", trainingFocus: "高自然度口语" };
+    if (elo < 2800) return { min: 20, max: 32, tier: "大师", cefr: "C2", clauseMax: 3, memoryLoad: "high", spokenNaturalness: "high", reducedFormsPresence: "frequent", trainingFocus: "复杂口语复现" };
+    return { min: 20, max: 32, tier: "王者", cefr: "C2+", clauseMax: 3, memoryLoad: "high", spokenNaturalness: "high", reducedFormsPresence: "frequent", trainingFocus: "高压自然口语" };
+}
+
+function downgradeListeningDifficultyTarget(target: ListeningFeatureTarget): ListeningFeatureTarget {
+    const memoryLoad = target.memoryLoad === "high" ? "medium" : target.memoryLoad === "medium" ? "low" : "low";
+    const spokenNaturalness = target.spokenNaturalness === "high" ? "medium" : target.spokenNaturalness;
+    const reducedFormsPresence = target.reducedFormsPresence === "frequent" ? "some" : target.reducedFormsPresence;
+    return {
+        ...target,
+        memoryLoad,
+        spokenNaturalness,
+        reducedFormsPresence,
+        downgraded: true,
+    };
+}
+
+function validateListeningDifficulty(payload: Record<string, unknown>, target: ListeningFeatureTarget): ListeningValidation {
+    const generatedText = typeof payload.reference_english === "string" ? payload.reference_english : "";
+    const actualWordCount = countWords(generatedText);
+    const listeningFeatures = payload._listening_features && typeof payload._listening_features === "object"
+        ? payload._listening_features as Record<string, unknown>
+        : {};
+    const aiReport = payload._ai_difficulty_report && typeof payload._ai_difficulty_report === "object"
+        ? payload._ai_difficulty_report as Record<string, unknown>
+        : {};
+
+    const featureReport: ListeningFeatureReport = {
+        wordCount: parseInteger(listeningFeatures.word_count),
+        clauseCount: parseInteger(listeningFeatures.clause_count) ?? estimateClauseCount(generatedText),
+        memoryLoad: normalizeMemoryLoad(listeningFeatures.memory_load),
+        spokenNaturalness: normalizeNaturalness(listeningFeatures.spoken_naturalness),
+        reducedFormsPresence: normalizeReducedForms(listeningFeatures.reduced_forms_presence),
+    };
+
+    const issues: string[] = [];
+    const reportedCefr = typeof aiReport.cefr === "string" ? aiReport.cefr : null;
+
+    let status: DifficultyStatus = "MATCHED";
+    if (actualWordCount < target.min) {
+        status = "TOO_EASY";
+        issues.push(`word count ${actualWordCount} is below ${target.min}`);
+    } else if (actualWordCount > target.max) {
+        status = "TOO_HARD";
+        issues.push(`word count ${actualWordCount} is above ${target.max}`);
+    }
+
+    if (reportedCefr !== target.cefr) {
+        status = status === "TOO_EASY" ? status : "TOO_HARD";
+        issues.push(`reported CEFR ${reportedCefr ?? "missing"} does not match ${target.cefr}`);
+    }
+
+    if (featureReport.clauseCount === null || featureReport.clauseCount > target.clauseMax) {
+        status = status === "TOO_EASY" ? status : "TOO_HARD";
+        issues.push(`clause count ${featureReport.clauseCount ?? "missing"} exceeds ${target.clauseMax}`);
+    }
+
+    if (!featureReport.memoryLoad || listeningMemoryRank[featureReport.memoryLoad] > listeningMemoryRank[target.memoryLoad]) {
+        status = status === "TOO_EASY" ? status : "TOO_HARD";
+        issues.push(`memory load ${featureReport.memoryLoad ?? "missing"} exceeds ${target.memoryLoad}`);
+    }
+
+    if (!featureReport.spokenNaturalness || listeningNaturalnessRank[featureReport.spokenNaturalness] > listeningNaturalnessRank[target.spokenNaturalness]) {
+        status = status === "TOO_EASY" ? status : "TOO_HARD";
+        issues.push(`spoken naturalness ${featureReport.spokenNaturalness ?? "missing"} exceeds ${target.spokenNaturalness}`);
+    }
+
+    if (!featureReport.reducedFormsPresence || listeningReducedFormsRank[featureReport.reducedFormsPresence] > listeningReducedFormsRank[target.reducedFormsPresence]) {
+        status = status === "TOO_EASY" ? status : "TOO_HARD";
+        issues.push(`reduced forms ${featureReport.reducedFormsPresence ?? "missing"} exceeds ${target.reducedFormsPresence}`);
+    }
+
+    return {
+        actualWordCount,
+        status,
+        isValid: issues.length === 0,
+        reportedCefr,
+        featureReport,
+        issues,
+    };
+}
+
+function buildListeningRetryInstruction(args: {
+    attempt: number;
+    maxAttempts: number;
+    validation: ListeningValidation;
+    target: ListeningFeatureTarget;
+}) {
+    const issueSummary = args.validation.issues.join("; ");
+    return [
+        `RETRY FEEDBACK (${args.attempt}/${args.maxAttempts}):`,
+        `The previous listening sentence failed validation because ${issueSummary}.`,
+        `You MUST keep CEFR at ${args.target.cefr}.`,
+        `Next attempt MUST stay within ${args.target.min}-${args.target.max} words.`,
+        `Clause count must be <= ${args.target.clauseMax}.`,
+        `Memory load must be ${args.target.memoryLoad} or easier.`,
+        `Spoken naturalness must be ${args.target.spokenNaturalness} or easier.`,
+        `Reduced forms presence must be ${args.target.reducedFormsPresence} or lighter.`,
+        "Do not become more written or more academic than the target.",
+    ].join("\n");
 }
 
 function getListeningDifficultyScale(): string {
@@ -116,6 +286,7 @@ export async function POST(req: NextRequest) {
 
         const translationTarget = !isListening ? getTranslationDifficultyTarget(currentElo) : null;
         const listeningInstruction = isListening ? getListeningSpecificInstruction(currentElo) : null;
+        const listeningTarget = isListening ? getListeningDifficultyExpectation(currentElo) : null;
 
         const difficultyScale = isListening
             ? getListeningDifficultyScale()
@@ -123,7 +294,14 @@ export async function POST(req: NextRequest) {
 
         const targetTier = isListening ? listeningInstruction!.tier : translationTarget!.tier.tier;
         const specificInstruction = isListening
-            ? `${listeningInstruction!.instruction} ⚠️ CRITICAL: COUNT YOUR WORDS! If you exceed the limit, SHORTEN the sentence. The word limit is STRICT.`
+            ? `${listeningInstruction!.instruction} ⚠️ CRITICAL: COUNT YOUR WORDS! If you exceed the limit, SHORTEN the sentence. The word limit is STRICT.
+LISTENING FEATURE TARGETS:
+- CEFR MUST be exactly ${listeningTarget!.cefr}
+- Clause count must be <= ${listeningTarget!.clauseMax}
+- Memory load must be ${listeningTarget!.memoryLoad}
+- Spoken naturalness must be ${listeningTarget!.spokenNaturalness}
+- Reduced forms presence must be ${listeningTarget!.reducedFormsPresence}
+- Training focus: ${listeningTarget!.trainingFocus}`
             : `TIER: ${translationTarget!.tier.tier} (${translationTarget!.tier.cefr}). CURRENT TARGET RANGE: ${translationTarget!.wordRange.min}-${translationTarget!.wordRange.max} words. ${translationTarget!.syntaxBand.promptInstruction}`;
 
         const difficultyPrompt = `
@@ -217,6 +395,13 @@ Output strictly in JSON format:
     "cefr": "Your target CEFR level",
     "word_count": "Number of words in your reference_english",
     "target_range": "Expected word range for this tier"
+  },
+  "_listening_features": {
+    "word_count": 0,
+    "clause_count": 0,
+    "memory_load": "low | medium | high",
+    "spoken_naturalness": "low | medium | high",
+    "reduced_forms_presence": "minimal | some | frequent"
   }
 }
                 `.trim();
@@ -259,16 +444,25 @@ Output strictly in JSON format:
     "cefr": "Your target CEFR level",
     "word_count": "Number of words in your reference_english",
     "target_range": "Expected word range for this tier"
+  },
+  "_listening_features": {
+    "word_count": 0,
+    "clause_count": 0,
+    "memory_load": "low | medium | high",
+    "spoken_naturalness": "low | medium | high",
+    "reduced_forms_presence": "minimal | some | frequent"
   }
 }
             `.trim();
         };
 
-        const maxDifficultyAttempts = isListening ? 1 : 3;
-        let lastGeneratedData: any = null;
+        const maxDifficultyAttempts = 3;
+        let lastGeneratedData: Record<string, unknown> | null = null;
         let lastDifficultyStatus: DifficultyStatus = "MATCHED";
         let lastActualWordCount = 0;
         let finalExpected: DifficultyExpectation;
+        let finalListeningTarget: ListeningFeatureTarget | null = listeningTarget;
+        let lastListeningValidation: ListeningValidation | null = null;
 
         if (isListening) {
             finalExpected = getListeningDifficultyExpectation(currentElo);
@@ -282,6 +476,7 @@ Output strictly in JSON format:
         }
 
         let retryInstruction = "";
+        let activeListeningTarget = listeningTarget;
 
         for (let generationAttempt = 1; generationAttempt <= maxDifficultyAttempts; generationAttempt++) {
             console.log(`[API] Difficulty attempt ${generationAttempt}/${maxDifficultyAttempts} for Elo ${currentElo}`);
@@ -296,13 +491,31 @@ Output strictly in JSON format:
             lastGeneratedData = data;
 
             if (isListening) {
-                lastActualWordCount = countWords(generatedText);
-                lastDifficultyStatus = lastActualWordCount < finalExpected.min
-                    ? "TOO_EASY"
-                    : lastActualWordCount > finalExpected.max
-                        ? "TOO_HARD"
-                        : "MATCHED";
-                break;
+                const validation = validateListeningDifficulty(data, activeListeningTarget!);
+                lastListeningValidation = validation;
+                lastActualWordCount = validation.actualWordCount;
+                lastDifficultyStatus = validation.status;
+                finalExpected = activeListeningTarget!;
+                finalListeningTarget = activeListeningTarget!;
+
+                console.log(`[Listening Difficulty] Target CEFR=${activeListeningTarget!.cefr}, range=${activeListeningTarget!.min}-${activeListeningTarget!.max}, status=${validation.status}`);
+
+                if (validation.isValid || generationAttempt === maxDifficultyAttempts) {
+                    break;
+                }
+
+                if (generationAttempt === maxDifficultyAttempts - 1) {
+                    activeListeningTarget = downgradeListeningDifficultyTarget(listeningTarget!);
+                    finalListeningTarget = activeListeningTarget;
+                }
+
+                retryInstruction = buildListeningRetryInstruction({
+                    attempt: generationAttempt,
+                    maxAttempts: maxDifficultyAttempts,
+                    validation,
+                    target: activeListeningTarget!,
+                });
+                continue;
             }
 
             const validation = validateTranslationDifficulty(generatedText, currentElo);
@@ -337,15 +550,19 @@ Output strictly in JSON format:
             throw new Error("Failed to generate drill");
         }
 
-        const aiReport = lastGeneratedData._ai_difficulty_report || null;
-        const aiReportedWordCount = aiReport?.word_count ? parseInt(aiReport.word_count, 10) : null;
+        const aiReport = lastGeneratedData._ai_difficulty_report && typeof lastGeneratedData._ai_difficulty_report === "object"
+            ? lastGeneratedData._ai_difficulty_report as Record<string, unknown>
+            : null;
+        const aiReportedWordCount = typeof aiReport?.word_count === "string" || typeof aiReport?.word_count === "number"
+            ? parseInt(String(aiReport.word_count), 10)
+            : null;
         const wordCountMismatch = aiReportedWordCount !== null && aiReportedWordCount !== lastActualWordCount;
 
         console.log(`[Difficulty Result] Elo: ${currentElo}, Mode: ${drillMode}`);
         console.log(`  Expected: ${finalExpected.min}-${finalExpected.max} words (${finalExpected.tier} / ${finalExpected.cefr})`);
         console.log(`  Actual: ${lastActualWordCount} words | AI Reported: ${aiReportedWordCount ?? 'N/A'} | Status: ${lastDifficultyStatus}`);
         if (aiReport) {
-            console.log(`  AI Self-Report: Tier=${aiReport.tier}, CEFR=${aiReport.cefr}, Range=${aiReport.target_range}`);
+            console.log(`  AI Self-Report: Tier=${String(aiReport.tier ?? "N/A")}, CEFR=${String(aiReport.cefr ?? "N/A")}, Range=${String(aiReport.target_range ?? "N/A")}`);
         }
         if (wordCountMismatch) {
             console.log(`  ⚠️ AI WORD COUNT MISMATCH: Reported ${aiReportedWordCount} but actual is ${lastActualWordCount}`);
@@ -373,6 +590,21 @@ Output strictly in JSON format:
                     targetRange: aiReport.target_range,
                     wordCountAccurate: !wordCountMismatch,
                 } : null,
+                ...(isListening ? {
+                    listeningFeatures: {
+                        memoryLoad: finalListeningTarget?.memoryLoad ?? null,
+                        spokenNaturalness: finalListeningTarget?.spokenNaturalness ?? null,
+                        reducedFormsPresence: finalListeningTarget?.reducedFormsPresence ?? null,
+                        clauseMax: finalListeningTarget?.clauseMax ?? null,
+                        trainingFocus: finalListeningTarget?.trainingFocus ?? null,
+                        downgraded: Boolean(finalListeningTarget?.downgraded),
+                    },
+                    listeningValidation: lastListeningValidation ? {
+                        reportedCefr: lastListeningValidation.reportedCefr,
+                        issues: lastListeningValidation.issues,
+                        featureReport: lastListeningValidation.featureReport,
+                    } : null,
+                } : {}),
             }
         });
     } catch (error) {

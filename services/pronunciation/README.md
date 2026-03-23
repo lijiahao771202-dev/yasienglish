@@ -9,6 +9,8 @@ This folder contains the desktop-only pronunciation sidecar used by `listening` 
 
 The app calls `service.py`. When `YASI_PRONUNCIATION_BACKEND=charsiu`, the service keeps a Charsiu aligner in memory and returns app-ready pronunciation scores.
 
+The service can also run an optional transcript gate with `faster-whisper` to detect unrelated speech. This keeps `charsiu` responsible for pronunciation / rhythm while the transcript gate limits scores when the spoken content does not actually resemble the reference sentence.
+
 ## Quick start
 
 1. Create a Python runtime:
@@ -36,6 +38,15 @@ HF_HUB_DISABLE_XET=1
 ```
 
 The first startup downloads the Charsiu aligner weights from Hugging Face and NLTK resources. After that, the service reuses the loaded runtime in memory.
+
+Optional transcript gate tuning:
+
+```bash
+YASI_ENABLE_TRANSCRIPT_GATE=1
+YASI_FASTER_WHISPER_MODEL=small.en
+YASI_FASTER_WHISPER_DEVICE=cpu
+YASI_FASTER_WHISPER_COMPUTE_TYPE=int8
+```
 
 ## HTTP contract
 
@@ -93,3 +104,11 @@ The service then builds:
 - utterance-level `accuracy / completeness / fluency / prosody / total`
 
 These are rule-based scores derived from the alignment output, not GOPT inference.
+
+## Guardrails
+
+The listening scorer now uses two guardrail layers:
+
+- `charsiu` scoring profiles still change by Elo band
+- a transcript gate can cap content / total scores when the recognized utterance is unrelated to the reference
+- additional total-score caps prevent low-band attempts with very weak pronunciation from earning overly generous scores
