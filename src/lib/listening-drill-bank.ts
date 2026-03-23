@@ -3,6 +3,7 @@ import {
     buildRebuildTokenBank,
     collectRebuildDistractors,
     getRebuildBandPosition,
+    getRebuildDistractorCount,
     getRebuildPracticeTier,
     tokenizeRebuildSentence,
 } from "@/lib/rebuild-mode";
@@ -69,6 +70,18 @@ export type RebuildDrillMeta = {
     theme: string;
     scene: string;
     feedbackStyle: "strong";
+    candidateId?: string;
+    candidateSource?: "ai";
+};
+
+export type RebuildAiPayload = {
+    chinese: string;
+    referenceEnglish: string;
+    theme: string;
+    scene: string;
+    answerTokens?: string[];
+    distractorTokens?: string[];
+    candidateId?: string;
 };
 
 const memoryRank: Record<ListeningMemoryLoad, number> = { low: 1, medium: 2, high: 3 };
@@ -310,6 +323,80 @@ export function buildRebuildDrill(item: ListeningBankItem, effectiveElo: number)
             theme: item.theme,
             scene: item.scene,
             feedbackStyle: "strong",
+        } satisfies RebuildDrillMeta,
+    };
+}
+
+export function buildRebuildAiDrill(payload: RebuildAiPayload, effectiveElo: number) {
+    const practiceTier = getRebuildPracticeTier(effectiveElo);
+    const bandPosition = getRebuildBandPosition(effectiveElo);
+    const listeningTarget = getListeningDifficultyExpectation(effectiveElo);
+    const answerTokens = payload.answerTokens?.length
+        ? payload.answerTokens
+        : tokenizeRebuildSentence(payload.referenceEnglish);
+    const cleanedAnswerTokens = answerTokens.length > 0 ? answerTokens : tokenizeRebuildSentence(payload.referenceEnglish);
+    const desiredDistractorCount = getRebuildDistractorCount(effectiveElo, () => 0.51);
+    const normalizedAnswerSet = new Set(cleanedAnswerTokens.map((token) => token.toLowerCase()));
+    const aiDistractors = (payload.distractorTokens ?? [])
+        .map((token) => token.trim())
+        .filter((token) => token.length > 0 && !normalizedAnswerSet.has(token.toLowerCase()));
+    const supplementDistractors = collectRebuildDistractors({
+        answerTokens: cleanedAnswerTokens,
+        effectiveElo,
+        relatedBankTokens: tokenizeRebuildSentence(`${payload.theme} ${payload.scene}`),
+    });
+    const distractorTokens = Array.from(new Set([...aiDistractors, ...supplementDistractors])).slice(0, desiredDistractorCount);
+    const tokenBank = buildRebuildTokenBank({
+        answerTokens: cleanedAnswerTokens,
+        distractorTokens,
+    });
+
+    return {
+        chinese: payload.chinese,
+        target_english_vocab: cleanedAnswerTokens
+            .map((token) => token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, ""))
+            .filter((token) => token.length > 0)
+            .slice(0, 8),
+        reference_english: payload.referenceEnglish,
+        _topicMeta: {
+            topic: payload.theme,
+            subTopic: payload.scene,
+            isScenario: true,
+        },
+        _sourceMeta: {
+            sourceMode: "ai" as DrillSourceMode,
+            bandPosition,
+            candidateId: payload.candidateId,
+        },
+        _difficultyMeta: {
+            requestedElo: effectiveElo,
+            tier: listeningTarget.tier,
+            cefr: practiceTier.cefr,
+            expectedWordRange: { min: listeningTarget.min, max: listeningTarget.max },
+            actualWordCount: countWords(payload.referenceEnglish),
+            isValid: true,
+            status: "MATCHED" as ListeningDifficultyStatus,
+            aiSelfReport: null,
+            listeningFeatures: {
+                memoryLoad: listeningTarget.memoryLoad,
+                spokenNaturalness: listeningTarget.spokenNaturalness,
+                reducedFormsPresence: listeningTarget.reducedFormsPresence,
+                clauseMax: listeningTarget.clauseMax,
+                trainingFocus: listeningTarget.trainingFocus,
+                downgraded: false,
+            },
+        },
+        _rebuildMeta: {
+            effectiveElo,
+            bandPosition,
+            answerTokens: cleanedAnswerTokens,
+            tokenBank,
+            distractorTokens,
+            theme: payload.theme,
+            scene: payload.scene,
+            feedbackStyle: "strong",
+            candidateId: payload.candidateId,
+            candidateSource: "ai",
         } satisfies RebuildDrillMeta,
     };
 }

@@ -45,6 +45,22 @@ export interface RebuildEvaluationResult {
     tokenFeedback: RebuildEvaluationToken[];
 }
 
+export interface RebuildDisplayToken {
+    text: string;
+    kind: "correct" | "misplaced" | "replacement" | "inserted";
+    originalText?: string;
+}
+
+export interface RebuildDisplayExtraToken {
+    text: string;
+    kind: "removed";
+}
+
+export interface RebuildDisplaySentence {
+    tokens: RebuildDisplayToken[];
+    extraTokens: RebuildDisplayExtraToken[];
+}
+
 const FUNCTION_WORDS = new Set([
     "a", "an", "and", "are", "as", "at", "be", "been", "being", "but", "by",
     "for", "from", "had", "has", "have", "he", "her", "hers", "him", "his",
@@ -328,6 +344,65 @@ export function evaluateRebuildSelection(params: {
         tailCoverage: tailContentIndexes.length > 0 ? tailHitCount / tailContentIndexes.length : 1,
         userSentence: selectedTokens.join(" "),
         tokenFeedback,
+    };
+}
+
+export function buildRebuildDisplaySentence(params: {
+    answerTokens: string[];
+    evaluation: RebuildEvaluationResult;
+}): RebuildDisplaySentence {
+    const { answerTokens, evaluation } = params;
+    const selectedFeedback = [...evaluation.tokenFeedback]
+        .filter((token) => token.selectedIndex !== null)
+        .sort((left, right) => (left.selectedIndex ?? 0) - (right.selectedIndex ?? 0));
+    const feedbackBySelectedIndex = new Map<number, RebuildEvaluationToken>();
+    selectedFeedback.forEach((token) => {
+        if (token.selectedIndex !== null) {
+            feedbackBySelectedIndex.set(token.selectedIndex, token);
+        }
+    });
+
+    const tokens: RebuildDisplayToken[] = answerTokens.map((answerToken, index) => {
+        const feedbackAtIndex = feedbackBySelectedIndex.get(index);
+        if (!feedbackAtIndex) {
+            return {
+                text: answerToken,
+                kind: "inserted",
+            };
+        }
+
+        if (feedbackAtIndex.status === "correct") {
+            return {
+                text: answerToken,
+                kind: "correct",
+            };
+        }
+
+        if (feedbackAtIndex.status === "misplaced") {
+            return {
+                text: answerToken,
+                kind: "misplaced",
+                originalText: feedbackAtIndex.text,
+            };
+        }
+
+        return {
+            text: answerToken,
+            kind: "replacement",
+            originalText: feedbackAtIndex.text,
+        };
+    });
+
+    const extraTokens = selectedFeedback
+        .filter((token) => (token.selectedIndex ?? -1) >= answerTokens.length)
+        .map((token) => ({
+            text: token.text,
+            kind: "removed" as const,
+        }));
+
+    return {
+        tokens,
+        extraTokens,
     };
 }
 

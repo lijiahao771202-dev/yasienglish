@@ -13,7 +13,7 @@ export interface SyncTracked {
 export interface AICacheItem {
     id?: number;
     key: string; // Unique identifier (e.g., text content or hash)
-    type: 'grammar' | 'translation' | 'tts' | 'ask_ai' | 'quiz';
+    type: 'grammar' | 'translation' | 'tts' | 'ask_ai' | 'quiz' | 'rebuild_candidate';
     data: any;
     timestamp: number;
 }

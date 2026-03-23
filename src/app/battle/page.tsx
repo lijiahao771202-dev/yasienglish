@@ -810,16 +810,11 @@ export default function BattlePage() {
                                     {battleMode === "listening"
                                         ? "Listening 现在可以切换 AI 出题和题库题。"
                                         : battleMode === "rebuild"
-                                            ? "Rebuild 固定使用 Listening 题库，不走 AI 出题，也不改正式 Elo。"
-                                        : "题库模式当前只开放给 Listening；其它模式继续走 AI 生成。"}
+                                            ? "Rebuild 现在也支持 AI 出题和题库题，仍然不改正式 Elo。"
+                                            : "题库模式当前只开放给 Listening / Rebuild；其它模式继续走 AI 生成。"}
                                 </p>
                             </div>
-                            {battleMode === "rebuild" ? (
-                                <div className="inline-flex items-center gap-2 rounded-full border border-teal-200/70 bg-teal-50/75 px-4 py-2 text-sm font-semibold text-teal-700">
-                                    <Blocks className="h-4 w-4" />
-                                    Listening Bank Only
-                                </div>
-                            ) : (
+                            {(battleMode === "listening" || battleMode === "rebuild") ? (
                                 <div className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/55 p-1">
                                     <button
                                         type="button"
@@ -845,6 +840,11 @@ export default function BattlePage() {
                                     >
                                         题库题
                                     </button>
+                                </div>
+                            ) : (
+                                <div className="inline-flex items-center gap-2 rounded-full border border-teal-200/70 bg-teal-50/75 px-4 py-2 text-sm font-semibold text-teal-700">
+                                    <Blocks className="h-4 w-4" />
+                                    AI Only
                                 </div>
                             )}
                         </div>

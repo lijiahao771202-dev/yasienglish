@@ -93,13 +93,37 @@ describe("drill next route", () => {
     });
 
     it("returns rebuild payload from the listening bank", async () => {
-        const response = await POST(buildRequest({ eloRating: 830, mode: "rebuild", sourceMode: "ai" }));
+        const response = await POST(buildRequest({ eloRating: 830, mode: "rebuild", sourceMode: "bank" }));
         const data = await response.json();
 
         expect(data._sourceMeta.sourceMode).toBe("bank");
         expect(data._rebuildMeta.effectiveElo).toBe(830);
         expect(data._rebuildMeta.answerTokens.length).toBeGreaterThan(0);
         expect(data._rebuildMeta.tokenBank.length).toBeGreaterThan(data._rebuildMeta.answerTokens.length);
+    });
+
+    it("returns rebuild ai payload using the requested topic", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletionPayload({
+                chinese: "下课后在前门等我。",
+                reference_english: "Meet me by the front gate after class.",
+                _scenario_topic: "课后碰面",
+                answer_tokens: ["Meet", "me", "by", "the", "front", "gate", "after", "class."],
+                distractor_tokens: ["before", "hall", "teacher"],
+            }),
+        );
+
+        const response = await POST(buildRequest({ sourceMode: "ai", mode: "rebuild", eloRating: 830 }));
+        const data = await response.json();
+
+        expect(createCompletionMock).toHaveBeenCalledTimes(1);
+        expect(data._sourceMeta.sourceMode).toBe("ai");
+        expect(data._topicMeta.topic).toBe("Battle Test Topic");
+        expect(data._topicMeta.subTopic).toBe("课后碰面");
+        expect(data._rebuildMeta.effectiveElo).toBe(830);
+        expect(data._rebuildMeta.answerTokens).toEqual(["Meet", "me", "by", "the", "front", "gate", "after", "class."]);
+        expect(data._rebuildMeta.distractorTokens.length).toBeGreaterThan(0);
+        expect(data._rebuildMeta.theme).toBe("Battle Test Topic");
     });
 
     it("delegates to ai generation when ai mode is requested", async () => {
