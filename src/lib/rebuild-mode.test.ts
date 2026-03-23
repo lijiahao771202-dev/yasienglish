@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+    buildRebuildDisplaySentence,
     buildRebuildTokenBank,
     clampRebuildDifficultyDelta,
     collectRebuildDistractors,
@@ -90,6 +91,30 @@ describe("rebuild mode helpers", () => {
         expect(result.contentWordHitRate).toBeCloseTo(0.5, 5);
         expect(result.tailCoverage).toBeCloseTo(0, 5);
         expect(result.distractorPickRatio).toBeCloseTo(0.25, 5);
+    });
+
+    it("builds an inline repaired display sentence for incorrect answers", () => {
+        const answerTokens = tokenizeRebuildSentence("Meet me by the front gate after class.");
+        const evaluation = evaluateRebuildSelection({
+            answerTokens,
+            selectedTokens: ["Meet", "gate", "by", "the", "front", "before", "class.", "after"],
+        });
+        const display = buildRebuildDisplaySentence({ answerTokens, evaluation });
+
+        expect(display.tokens.map((token) => token.kind)).toEqual([
+            "correct",
+            "misplaced",
+            "correct",
+            "correct",
+            "correct",
+            "replacement",
+            "misplaced",
+            "misplaced",
+        ]);
+        expect(display.tokens[1]).toMatchObject({ text: "me", originalText: "gate" });
+        expect(display.tokens[5]).toMatchObject({ text: "gate", originalText: "before" });
+        expect(display.tokens[6]).toMatchObject({ text: "after", originalText: "class." });
+        expect(display.tokens[7]).toMatchObject({ text: "class.", originalText: "after" });
     });
 
     it("computes hidden difficulty deltas from self-eval and rich system signals", () => {

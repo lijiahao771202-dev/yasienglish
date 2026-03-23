@@ -32,6 +32,7 @@ import { resolveBattleScenarioTopic } from "@/lib/battle-quickmatch-topics";
 import { getBattleInteractiveWordClassName } from "@/lib/drill-interactive-word";
 import { calculateListeningElo } from "@/lib/listening-elo";
 import {
+    buildRebuildDisplaySentence,
     clampRebuildDifficultyDelta,
     evaluateRebuildSelection,
     getRebuildPracticeTier,
@@ -44,6 +45,7 @@ import {
     type RebuildSelfEvaluation,
     type RebuildSystemAssessment,
 } from "@/lib/rebuild-mode";
+import { playRebuildSfx } from "@/lib/rebuild-sfx";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 import { buildTranslationHighlights, normalizeTranslationForComparison } from "@/lib/translation-diff";
 import { requestTtsPayload } from "@/lib/tts-client";
@@ -135,6 +137,7 @@ interface DrillData {
     _sourceMeta?: {
         sourceMode: "ai" | "bank";
         bankItemId?: string;
+        candidateId?: string;
         bandPosition?: "entry" | "mid" | "exit" | null;
         reviewStatus?: "curated" | "draft";
     };
@@ -147,6 +150,8 @@ interface DrillData {
         theme: string;
         scene: string;
         feedbackStyle: "strong";
+        candidateId?: string;
+        candidateSource?: "ai";
     };
 }
 
@@ -255,6 +260,7 @@ interface RebuildFeedbackState {
     editCount: number;
     skipped: boolean;
     exceededSoftLimit: boolean;
+    resolvedAt: number;
 }
 
 // --- State --- 
@@ -1032,6 +1038,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [rebuildEditCount, setRebuildEditCount] = useState(0);
     const [rebuildStartedAt, setRebuildStartedAt] = useState<number | null>(null);
     const [pendingRebuildAdvanceElo, setPendingRebuildAdvanceElo] = useState<number | null>(null);
+    const lastRebuildResolvedAtRef = useRef<number | null>(null);
     const activeCosmeticTheme = COSMETIC_THEMES[cosmeticTheme] || COSMETIC_THEMES[DEFAULT_FREE_THEME];
     const activeCosmeticUi = COSMETIC_THEME_UI[cosmeticTheme] || COSMETIC_THEME_UI.morning_coffee;
     const isShopInventoryExpanded = shouldExpandShopInventoryDock({
@@ -1152,6 +1159,43 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             return nextIds;
         });
     }, [drillData?._sourceMeta?.bankItemId, drillData?._sourceMeta?.sourceMode, isRebuildMode, persistRebuildRecentIds]);
+
+    useEffect(() => {
+        if (!isRebuildMode) return;
+        if (drillData?._sourceMeta?.sourceMode !== "ai") return;
+        const candidateId = drillData?._rebuildMeta?.candidateId ?? drillData?._sourceMeta?.candidateId;
+        if (!candidateId || !drillData?._rebuildMeta) return;
+
+        void db.ai_cache.put({
+            key: candidateId,
+            type: "rebuild_candidate",
+            data: {
+                candidateId,
+                topic: drillData._topicMeta?.topic ?? context.articleTitle ?? context.topic ?? "随机场景",
+                scene: drillData._rebuildMeta.scene,
+                effectiveElo: drillData._rebuildMeta.effectiveElo,
+                bandPosition: drillData._rebuildMeta.bandPosition,
+                referenceEnglish: drillData.reference_english,
+                chinese: drillData.chinese,
+                answerTokens: drillData._rebuildMeta.answerTokens,
+                distractorTokens: drillData._rebuildMeta.distractorTokens,
+                createdAt: Date.now(),
+            },
+            timestamp: Date.now(),
+        }).catch((error) => {
+            console.error("Failed to persist rebuild ai candidate", error);
+        });
+    }, [
+        context.articleTitle,
+        context.topic,
+        drillData?._rebuildMeta,
+        drillData?._sourceMeta?.candidateId,
+        drillData?._sourceMeta?.sourceMode,
+        drillData?._topicMeta?.topic,
+        drillData?.chinese,
+        drillData?.reference_english,
+        isRebuildMode,
+    ]);
 
     const getGuidedSessionSnapshot = useCallback((): GuidedSessionState => ({
         status: guidedModeStatus,
@@ -1910,7 +1954,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 ? listeningElo
                 : eloRating;
     const currentStreak = isRebuildMode ? 0 : isDictationMode ? dictationStreak : isListeningMode ? listeningStreak : streakCount;
-    const activeDrillSourceMode: "ai" | "bank" = isRebuildMode ? "bank" : isListeningMode ? listeningSourceMode : "ai";
+    const activeDrillSourceMode: "ai" | "bank" = (isListeningMode || isRebuildMode) ? listeningSourceMode : "ai";
     const currentListeningBankId = (isListeningMode || isRebuildMode) && drillData?._sourceMeta?.sourceMode === "bank"
         ? drillData._sourceMeta.bankItemId
         : undefined;
@@ -2572,6 +2616,29 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             setContext(prompt);
         }
     }, [drillData, context, setContext]);
+
+    useEffect(() => {
+        if (!rebuildFeedback?.resolvedAt) return;
+        if (lastRebuildResolvedAtRef.current === rebuildFeedback.resolvedAt) return;
+        lastRebuildResolvedAtRef.current = rebuildFeedback.resolvedAt;
+
+        if (rebuildFeedback.evaluation.isCorrect && !rebuildFeedback.skipped) {
+            playRebuildSfx("success");
+            if (!prefersReducedMotion) {
+                confetti({
+                    particleCount: 70,
+                    spread: 72,
+                    startVelocity: 26,
+                    scalar: 0.82,
+                    origin: { y: 0.72 },
+                    colors: ["#34d399", "#2dd4bf", "#fbbf24", "#ffffff"],
+                });
+            }
+            return;
+        }
+
+        playRebuildSfx("error");
+    }, [prefersReducedMotion, rebuildFeedback]);
 
 
     // --- Spacebar Logic ---
@@ -4489,6 +4556,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setRebuildAvailableTokens((currentTokens) => {
             const token = currentTokens.find((item) => item.id === tokenId);
             if (!token) return currentTokens;
+            playRebuildSfx("pick");
             setRebuildAnswerTokens((answerTokens) => (
                 answerTokens.some((item) => item.id === token.id)
                     ? answerTokens
@@ -4503,6 +4571,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setRebuildAnswerTokens((currentTokens) => {
             const token = currentTokens.find((item) => item.id === tokenId);
             if (!token) return currentTokens;
+            playRebuildSfx("remove");
             setRebuildEditCount((prev) => prev + 1);
             setRebuildAvailableTokens((availableTokens) => (
                 availableTokens.some((item) => item.id === token.id)
@@ -4516,6 +4585,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const handleSubmitRebuild = useCallback((skipped = false) => {
         if (!isRebuildMode || !drillData?._rebuildMeta || rebuildFeedback) return false;
         if (!skipped && rebuildAnswerTokens.length === 0) return false;
+
+        playRebuildSfx("submit");
 
         const selectedTokens = skipped ? [] : rebuildAnswerTokens.map((token) => token.text);
         const evaluation = evaluateRebuildSelection({
@@ -4550,6 +4621,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             editCount: rebuildEditCount,
             skipped,
             exceededSoftLimit,
+            resolvedAt: Date.now(),
         });
         setAnalysisRequested(false);
         setAnalysisDetailsOpen(false);
@@ -5479,9 +5551,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         {rebuildAnswerTokens.length > 0 ? (
                             <div className="flex flex-wrap gap-2">
                                 {rebuildAnswerTokens.map((token) => (
-                                    <button
+                                    <motion.button
                                         key={token.id}
                                         type="button"
+                                        layout
+                                        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.9, y: 8 }}
+                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                        exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.88, y: -6 }}
+                                        transition={{ type: "spring", stiffness: 420, damping: 28, mass: 0.65 }}
+                                        whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
                                         onClick={() => handleRebuildRemoveToken(token.id)}
                                         className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-white px-3 py-1.5 text-sm font-semibold text-teal-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-teal-50"
                                     >
@@ -5491,7 +5569,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                 {token.repeatIndex}
                                             </span>
                                         )}
-                                    </button>
+                                    </motion.button>
                                 ))}
                             </div>
                         ) : (
@@ -5504,9 +5582,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     <div className="mt-2 max-h-[148px] overflow-y-auto rounded-[1.15rem] border border-stone-100 bg-stone-50/60 p-3">
                         <div className="flex flex-wrap gap-2">
                             {rebuildAvailableTokens.map((token) => (
-                                <button
+                                <motion.button
                                     key={token.id}
                                     type="button"
+                                    layout
+                                    initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.92, y: 10 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                    exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.9, y: -8 }}
+                                    transition={{ type: "spring", stiffness: 420, damping: 28, mass: 0.68 }}
+                                    whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                                     onClick={() => handleRebuildSelectToken(token.id)}
                                     className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-stone-700 transition hover:-translate-y-0.5 hover:bg-stone-50"
                                 >
@@ -5516,7 +5600,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                             {token.repeatIndex}
                                         </span>
                                     )}
-                                </button>
+                                </motion.button>
                             ))}
                         </div>
                     </div>
@@ -5553,103 +5637,202 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const renderRebuildFeedback = () => {
         if (!drillData?._rebuildMeta || !rebuildFeedback) return null;
         const practiceTier = getRebuildPracticeTier(rebuildFeedback.effectiveElo);
+        const displaySentence = buildRebuildDisplaySentence({
+            answerTokens: drillData._rebuildMeta.answerTokens,
+            evaluation: rebuildFeedback.evaluation,
+        });
+        const rebuildTone = rebuildFeedback.evaluation.isCorrect
+            ? "success"
+            : rebuildFeedback.skipped
+                ? "miss"
+                : "partial";
+        const metrics = [
+            { label: "正确率", value: `${Math.round(rebuildFeedback.evaluation.accuracyRatio * 100)}%` },
+            { label: "完成度", value: `${Math.round(rebuildFeedback.evaluation.completionRatio * 100)}%` },
+            { label: "顺序", value: `${Math.round(rebuildFeedback.evaluation.misplacementRatio * 100)}%` },
+            { label: "干扰词", value: `${Math.round(rebuildFeedback.evaluation.distractorPickRatio * 100)}%` },
+            { label: "内容词", value: `${Math.round(rebuildFeedback.evaluation.contentWordHitRate * 100)}%` },
+            { label: "尾部", value: `${Math.round(rebuildFeedback.evaluation.tailCoverage * 100)}%` },
+            { label: "重播", value: `${rebuildFeedback.replayCount}` },
+            { label: "编辑", value: `${rebuildFeedback.editCount}` },
+            { label: "系统判断", value: rebuildFeedback.systemAssessmentLabel },
+        ];
 
         return (
             <div className="max-w-4xl mx-auto w-full space-y-4">
-                <div className="rounded-[2rem] border border-teal-100 bg-[linear-gradient(180deg,rgba(240,253,250,0.96),rgba(255,255,255,0.95))] p-6 shadow-[0_18px_40px_rgba(20,184,166,0.1)]">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                        <div>
-                            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-teal-700">Rebuild Feedback</p>
+                <motion.div
+                    key={`rebuild-result-head-${rebuildFeedback.resolvedAt}`}
+                    initial={prefersReducedMotion ? false : { opacity: 0, y: 22, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ duration: prefersReducedMotion ? 0.18 : 0.42, ease: "easeOut" }}
+                    className={cn(
+                        "relative overflow-hidden rounded-[2rem] border p-6 shadow-[0_18px_40px_rgba(20,184,166,0.1)]",
+                        rebuildTone === "success"
+                            ? "border-emerald-200/80 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(255,255,255,0.95))]"
+                            : rebuildTone === "miss"
+                                ? "border-stone-200/80 bg-[linear-gradient(180deg,rgba(250,250,249,0.98),rgba(255,255,255,0.95))]"
+                                : "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,251,235,0.98),rgba(255,255,255,0.95))]"
+                    )}
+                >
+                    {rebuildTone === "success" && !prefersReducedMotion ? (
+                        <>
+                            <motion.div
+                                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.22),transparent_60%)]"
+                                initial={{ opacity: 0.2, scale: 0.95 }}
+                                animate={{ opacity: [0.25, 0.58, 0.28], scale: [0.96, 1.03, 1] }}
+                                transition={{ duration: 1.05, ease: "easeOut" }}
+                            />
+                            <motion.div
+                                className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.8),transparent)] blur-md"
+                                initial={{ x: "-20%" }}
+                                animate={{ x: "440%" }}
+                                transition={{ duration: 0.95, ease: "easeOut" }}
+                            />
+                        </>
+                    ) : null}
+                    <div className="relative flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <motion.div
+                            initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, delay: prefersReducedMotion ? 0 : 0.08 }}
+                        >
+                            <p className={cn(
+                                "text-[11px] font-black uppercase tracking-[0.18em]",
+                                rebuildTone === "success"
+                                    ? "text-emerald-700"
+                                    : rebuildTone === "partial"
+                                        ? "text-amber-700"
+                                        : "text-stone-500"
+                            )}>
+                                Rebuild Result
+                            </p>
                             <h3 className="mt-2 text-3xl font-bold text-slate-900">
-                                {rebuildFeedback.evaluation.isCorrect ? "拼对了" : rebuildFeedback.skipped ? "已跳过本题" : "这题没拼准"}
+                                {rebuildFeedback.evaluation.isCorrect ? "这句你拼出来了" : rebuildFeedback.skipped ? "这题先跳过" : "系统已经帮你修顺了"}
                             </h3>
                             <p className="mt-2 text-sm leading-7 text-stone-600">
-                                正确 {rebuildFeedback.evaluation.correctCount}/{rebuildFeedback.evaluation.totalCount}，
                                 当前练习层 {practiceTier.label}。系统判断这题{rebuildFeedback.systemAssessmentLabel}。
+                                {rebuildFeedback.evaluation.isCorrect
+                                    ? " 节奏不错，继续往上刷。"
+                                    : rebuildFeedback.skipped
+                                        ? " 先保留手感，下一题继续。"
+                                        : " 下面直接按正确表达替你修订。"}
                             </p>
-                        </div>
-                        <div className="rounded-[1.4rem] border border-teal-200/70 bg-white/75 px-5 py-4">
-                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-teal-600">系统判断</div>
+                        </motion.div>
+                        <motion.div
+                            initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, delay: prefersReducedMotion ? 0 : 0.16 }}
+                            className={cn(
+                                "rounded-[1.4rem] border px-5 py-4 shadow-sm",
+                                rebuildTone === "success"
+                                    ? "border-emerald-200/70 bg-white/85"
+                                    : rebuildTone === "partial"
+                                        ? "border-amber-200/70 bg-white/85"
+                                        : "border-stone-200/70 bg-white/80"
+                            )}
+                        >
+                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-stone-500">系统判断</div>
                             <div className="mt-2 text-2xl font-bold text-slate-900">{rebuildFeedback.systemAssessmentLabel}</div>
-                        </div>
+                        </motion.div>
                     </div>
-                </div>
+                </motion.div>
 
-                <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-[1.8rem] border border-stone-100 bg-white/92 p-5 shadow-[0_18px_34px_rgba(15,23,42,0.05)]">
-                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">正确句子</p>
-                        <p className="mt-3 font-newsreader text-2xl italic leading-relaxed text-stone-900">{drillData.reference_english}</p>
-                        <p className="mt-4 text-sm leading-7 text-stone-500">{drillData.chinese}</p>
+                <motion.div
+                    key={`rebuild-result-body-${rebuildFeedback.resolvedAt}`}
+                    initial={prefersReducedMotion ? false : { opacity: 0, y: 18 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: prefersReducedMotion ? 0.16 : 0.34, delay: prefersReducedMotion ? 0 : 0.12 }}
+                    className="rounded-[1.9rem] border border-stone-100 bg-white/94 p-5 shadow-[0_18px_34px_rgba(15,23,42,0.05)]"
+                >
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">你的句子</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                        {displaySentence.tokens.map((token, index) => (
+                            <motion.div
+                                key={`${token.text}-${token.kind}-${index}-${token.originalText ?? ""}`}
+                                initial={prefersReducedMotion ? false : { opacity: 0, y: 12, scale: 0.97 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                transition={{ duration: prefersReducedMotion ? 0.14 : 0.24, delay: prefersReducedMotion ? 0 : 0.08 + (index * 0.03) }}
+                                className={cn(
+                                    "inline-flex min-h-[42px] items-center rounded-2xl border px-3 py-2 text-base shadow-sm",
+                                    token.kind === "correct" && (rebuildTone === "success"
+                                        ? "border-emerald-200 bg-emerald-50/85 text-emerald-800"
+                                        : "border-stone-200 bg-stone-50/85 text-stone-800"),
+                                    token.kind === "misplaced" && "border-amber-200 bg-amber-50/90 text-amber-800",
+                                    token.kind === "replacement" && "border-rose-200 bg-rose-50/88 text-rose-800",
+                                    token.kind === "inserted" && "border-sky-200 bg-sky-50/88 text-sky-800"
+                                )}
+                            >
+                                {token.kind === "correct" ? (
+                                    <span className="font-newsreader text-[1.15rem] italic">{token.text}</span>
+                                ) : token.kind === "inserted" ? (
+                                    <span className="flex items-center gap-2">
+                                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] text-sky-700">补上</span>
+                                        <span className="font-newsreader text-[1.12rem] italic">{token.text}</span>
+                                    </span>
+                                ) : (
+                                    <span className="flex flex-wrap items-center gap-2">
+                                        <span className={cn(
+                                            "font-newsreader text-[1rem] italic line-through opacity-70",
+                                            token.kind === "misplaced" ? "text-amber-600" : "text-rose-500"
+                                        )}>
+                                            {token.originalText}
+                                        </span>
+                                        <span className="text-xs font-black uppercase tracking-[0.12em] text-stone-400">→</span>
+                                        <span className="font-newsreader text-[1.12rem] italic">{token.text}</span>
+                                    </span>
+                                )}
+                            </motion.div>
+                        ))}
+                        {displaySentence.extraTokens.map((token, index) => (
+                            <motion.div
+                                key={`extra-${token.text}-${index}`}
+                                initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: prefersReducedMotion ? 0.14 : 0.22, delay: prefersReducedMotion ? 0 : 0.18 + (index * 0.04) }}
+                                className="inline-flex min-h-[42px] items-center rounded-2xl border border-rose-200/80 bg-rose-50/75 px-3 py-2 text-rose-600 shadow-sm"
+                            >
+                                <span className="font-newsreader text-[1rem] italic line-through opacity-80">{token.text}</span>
+                            </motion.div>
+                        ))}
                     </div>
-                    <div className="rounded-[1.8rem] border border-stone-100 bg-white/92 p-5 shadow-[0_18px_34px_rgba(15,23,42,0.05)]">
-                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">你的重建</p>
-                        <p className="mt-3 font-newsreader text-2xl italic leading-relaxed text-stone-900">
-                            {rebuildFeedback.evaluation.userSentence || "（本题已跳过）"}
-                        </p>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                            {rebuildFeedback.evaluation.tokenFeedback.map((token, index) => (
-                                <span
-                                    key={`${token.text}-${index}-${token.status}`}
-                                    className={cn(
-                                        "rounded-full px-3 py-1.5 text-xs font-bold",
-                                        token.status === "correct"
-                                            ? "bg-emerald-100 text-emerald-700"
-                                            : token.status === "misplaced"
-                                                ? "bg-amber-100 text-amber-700"
-                                                : token.status === "missing"
-                                                    ? "bg-sky-100 text-sky-700"
-                                                    : "bg-rose-100 text-rose-700"
-                                    )}
-                                >
-                                    {token.status === "missing" ? `缺失 ${token.text}` : token.text}
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                </div>
 
-                <div className="rounded-[1.8rem] border border-stone-100 bg-white/92 p-5 shadow-[0_18px_34px_rgba(15,23,42,0.05)]">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <p className="mt-4 text-sm leading-7 text-stone-500">
+                        {rebuildFeedback.evaluation.isCorrect
+                            ? "这句你已经完整重建出来了。"
+                            : rebuildFeedback.skipped
+                                ? "这题已跳过，系统保留了正确表达给你快速过一遍。"
+                                : "系统已经按正确表达替你修订，重点看错位、替换和漏掉的部分。"}
+                    </p>
+                    <p className="mt-2 text-sm leading-7 text-stone-400">{drillData.chinese}</p>
+                </motion.div>
+
+                <motion.div
+                    initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, delay: prefersReducedMotion ? 0 : 0.22 }}
+                    className="rounded-[1.8rem] border border-stone-100 bg-white/90 p-5 shadow-[0_16px_30px_rgba(15,23,42,0.04)]"
+                >
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                         <div>
                             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">难度信号</p>
-                            <p className="mt-2 text-sm leading-7 text-stone-600">底部悬浮栏里直接点 `简单 / 刚好 / 难`。系统会立刻记下你的自评并自动进入下一题。</p>
+                            <p className="mt-2 text-sm leading-7 text-stone-500">底部选一下你的主观感受，系统会结合这些指标调整下一题。</p>
                         </div>
                     </div>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">正确率</div>
-                            <div className="mt-2 text-xl font-bold text-stone-900">{Math.round(rebuildFeedback.evaluation.accuracyRatio * 100)}%</div>
-                        </div>
-                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">完成度</div>
-                            <div className="mt-2 text-xl font-bold text-stone-900">{Math.round(rebuildFeedback.evaluation.completionRatio * 100)}%</div>
-                        </div>
-                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">顺序</div>
-                            <div className="mt-2 text-xl font-bold text-stone-900">{Math.round(rebuildFeedback.evaluation.misplacementRatio * 100)}%</div>
-                        </div>
-                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">干扰词</div>
-                            <div className="mt-2 text-xl font-bold text-stone-900">{Math.round(rebuildFeedback.evaluation.distractorPickRatio * 100)}%</div>
-                        </div>
-                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">内容词</div>
-                            <div className="mt-2 text-xl font-bold text-stone-900">{Math.round(rebuildFeedback.evaluation.contentWordHitRate * 100)}%</div>
-                        </div>
-                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">尾部</div>
-                            <div className="mt-2 text-xl font-bold text-stone-900">{Math.round(rebuildFeedback.evaluation.tailCoverage * 100)}%</div>
-                        </div>
-                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">重播</div>
-                            <div className="mt-2 text-xl font-bold text-stone-900">{rebuildFeedback.replayCount}</div>
-                        </div>
-                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
-                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">编辑</div>
-                            <div className="mt-2 text-xl font-bold text-stone-900">{rebuildFeedback.editCount}</div>
-                        </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        {metrics.map((metric, index) => (
+                            <motion.div
+                                key={metric.label}
+                                initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: prefersReducedMotion ? 0.12 : 0.2, delay: prefersReducedMotion ? 0 : 0.24 + (index * 0.025) }}
+                                className="rounded-2xl border border-stone-100 bg-stone-50/72 p-4"
+                            >
+                                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">{metric.label}</div>
+                                <div className="mt-2 text-xl font-bold text-stone-900">{metric.value}</div>
+                            </motion.div>
+                        ))}
                     </div>
-                </div>
+                </motion.div>
             </div>
         );
     };
