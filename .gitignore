@@ -45,6 +45,7 @@ next-env.d.ts
 
 # local binaries and media
 /bin/
+services/pronunciation/.venv-pronunciation/
 *.mp4
 *.mkv
 *.webm

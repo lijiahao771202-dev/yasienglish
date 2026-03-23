@@ -58,12 +58,16 @@ describe("pronunciation score route", () => {
         scorePronunciationWithServiceMock.mockResolvedValueOnce({
             pronunciation_score: 8.9,
             fluency_score: 8.1,
+            transcript: "the market opens before sunrise",
             utterance_scores: {
-                accuracy: 8.7,
+                accuracy: 7.1,
                 completeness: 8.8,
-                fluency: 8.1,
-                prosody: 7.9,
-                total: 8.6,
+                fluency: 7.8,
+                prosody: 7.4,
+                total: 8.2,
+                content_reproduction: 8.8,
+                rhythm_fluency: 7.8,
+                pronunciation_clarity: 7.1,
             },
             word_results: [
                 { word: "the", status: "correct", score: 9.8, accuracy_score: 9.7, stress_score: 9.8 },
@@ -83,8 +87,12 @@ describe("pronunciation score route", () => {
 
         expect(response.status).toBe(200);
         expect(data.engine).toBe("charsiu");
+        expect(data.transcript).toBe("the market opens before sunrise");
         expect(data.word_results).toHaveLength(5);
-        expect(data.utterance_scores.total).toBe(8.6);
+        expect(data.utterance_scores.total).toBe(8.2);
+        expect(data.utterance_scores.content_reproduction).toBe(8.8);
+        expect(data.utterance_scores.rhythm_fluency).toBe(7.8);
+        expect(data.utterance_scores.pronunciation_clarity).toBe(7.1);
         expect(data.word_results[1].accuracy_score).toBe(4.3);
         expect(data.feedback).toBeUndefined();
         expect(data.judge_reasoning).toBeUndefined();

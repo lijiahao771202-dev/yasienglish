@@ -44,6 +44,25 @@ export function resampleLinear(samples: Float32Array, fromSampleRate: number, to
     return result;
 }
 
+export function concatSampleChunks(chunks: Float32Array[]) {
+    const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const result = new Float32Array(totalLength);
+    let offset = 0;
+
+    for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.length;
+    }
+
+    return result;
+}
+
+export function encodeWavFromChunks(chunks: Float32Array[], sampleRate: number, targetSampleRate = 16000) {
+    const merged = concatSampleChunks(chunks);
+    const resampled = resampleLinear(merged, sampleRate, targetSampleRate);
+    return encodeWavPcm16(resampled, targetSampleRate);
+}
+
 export function encodeWavPcm16(samples: Float32Array, sampleRate: number) {
     const bytesPerSample = 2;
     const blockAlign = bytesPerSample;

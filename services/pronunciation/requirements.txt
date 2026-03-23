@@ -3,6 +3,7 @@ transformers
 datasets
 librosa
 praatio
+faster-whisper
 g2p-en
 g2pM
 soundfile

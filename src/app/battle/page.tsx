@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useCallback, type ComponentType } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DrillCore } from "@/components/drill/DrillCore";
-import { Zap, Flame, ChevronRight, Lock, House, Sword, CircleHelp, X, Headphones, BookOpen, Feather, Gauge, Coins, Gift } from "lucide-react";
+import { Zap, Flame, ChevronRight, Lock, House, Sword, CircleHelp, X, Headphones, BookOpen, Feather, Gauge, Coins, Gift, Blocks } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRank } from "@/lib/rankUtils";
 import { db } from "@/lib/db";
@@ -17,6 +17,7 @@ import { applyBackgroundThemeToDocument, BACKGROUND_CHANGED_EVENT, getBackground
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { getRebuildPracticeTier } from "@/lib/rebuild-mode";
 
 type GuideSectionId = "overview" | "elo" | "listening" | "dictation" | "translation" | "items" | "drops";
 
@@ -43,8 +44,9 @@ const GUIDE_MARKDOWN: Record<GuideSectionId, string> = {
 Battle 是一个 **输入 -> 理解 -> 输出** 的闭环训练系统：
 
 1. **Shadowing**：先把英语声音吃进去，再跟着说出来  
-2. **Dictation**：把听到的意思重建成中文  
-3. **Translation**：再把中文转回自然英文
+2. **Rebuild**：只听音频，用词块把整句拼回去  
+3. **Dictation**：把听到的意思重建成中文  
+4. **Translation**：再把中文转回自然英文
 
 ### 推荐节奏
 
@@ -60,6 +62,7 @@ Battle 是一个 **输入 -> 理解 -> 输出** 的闭环训练系统：
 Elo 是 **每个模式的实力分**，不是总分。
 
 - Listening / Dictation / Translation 各有独立 Elo
+- Rebuild 不改正式 Elo，只维护本地练习难度
 - 某一模式涨分，不会直接带动另外两个模式
 
 ## Elo 怎么涨跌（当前版本）
@@ -315,15 +318,18 @@ const GACHA_POOL_TABLE = [
 ] as const;
 
 export default function BattlePage() {
-    type BattleMode = "listening" | "dictation" | "translation";
+    type BattleMode = "listening" | "rebuild" | "dictation" | "translation";
+    type ListeningSourceMode = "ai" | "bank";
     const router = useRouter();
     const sessionUser = useAuthSessionUser();
     const [activeDrill, setActiveDrill] = useState<BattleDrillSelection | null>(null);
     const [eloRating, setEloRating] = useState(400); // Translation
     const [listeningElo, setListeningElo] = useState(400); // Listening
     const [dictationElo, setDictationElo] = useState(400); // Dictation
+    const [rebuildPracticeElo, setRebuildPracticeElo] = useState(400);
     const [streak, setStreak] = useState(0);
     const [battleMode, setBattleMode] = useState<BattleMode>('listening');
+    const [listeningSourceMode, setListeningSourceMode] = useState<ListeningSourceMode>("ai");
     const [showGuide, setShowGuide] = useState(false);
     const [activeGuideSection, setActiveGuideSection] = useState<GuideSectionId>("overview");
     const [refreshCount, setRefreshCount] = useState(0);
@@ -331,12 +337,16 @@ export default function BattlePage() {
     const [, forceBackgroundRefresh] = useState(0);
 
     const loadProfile = useCallback(() => {
-        db.user_profile.orderBy('id').first().then(profile => {
+        db.user_profile.orderBy('id').first().then(async (profile) => {
             if (profile) {
                 setEloRating(profile.elo_rating || 400);
                 setListeningElo(profile.listening_elo || 400);
                 setDictationElo(profile.dictation_elo ?? profile.listening_elo ?? 400);
                 setStreak(profile.streak_count);
+                const activeUserMeta = await db.sync_meta.get("active_user_id");
+                const activeUserId = typeof activeUserMeta?.value === "string" ? activeUserMeta.value : "local";
+                const hiddenMeta = await db.sync_meta.get(`rebuild_hidden_elo::${activeUserId}`);
+                setRebuildPracticeElo(typeof hiddenMeta?.value === "number" ? hiddenMeta.value : (profile.listening_elo || 400));
             }
         });
     }, []);
@@ -344,6 +354,19 @@ export default function BattlePage() {
     useEffect(() => {
         loadProfile();
     }, [loadProfile]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const saved = window.localStorage.getItem("battle-listening-source-mode");
+        if (saved === "ai" || saved === "bank") {
+            setListeningSourceMode(saved);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        window.localStorage.setItem("battle-listening-source-mode", listeningSourceMode);
+    }, [listeningSourceMode]);
 
     const handleCloseDrill = () => {
         if (shouldRefreshBattleChart(activeDrill, null)) {
@@ -364,14 +387,24 @@ export default function BattlePage() {
     const transRank = getRank(eloRating);
     const listenRank = getRank(listeningElo);
     const dictationRank = getRank(dictationElo);
+    const rebuildTier = getRebuildPracticeTier(rebuildPracticeElo);
+    const activeModeDifficultyElo = battleMode === "translation"
+        ? eloRating
+        : battleMode === "dictation"
+            ? dictationElo
+            : battleMode === "rebuild"
+                ? rebuildPracticeElo
+                : listeningElo;
     const sectionByMode: Record<BattleMode, GuideSectionId> = {
         listening: "listening",
+        rebuild: "overview",
         dictation: "dictation",
         translation: "translation",
     };
     const activeGuideMeta = GUIDE_SECTIONS.find((item) => item.id === activeGuideSection) ?? GUIDE_SECTIONS[0];
     const battleModeTabs: Array<{ key: BattleMode; label: string; dotClass: string; }> = [
         { key: "listening", label: "Listening", dotClass: "bg-emerald-500" },
+        { key: "rebuild", label: "Rebuild", dotClass: "bg-teal-500" },
         { key: "dictation", label: "Dictation", dotClass: "bg-purple-500" },
         { key: "translation", label: "Translation", dotClass: "bg-indigo-500" },
     ];
@@ -380,9 +413,11 @@ export default function BattlePage() {
     const backgroundSpec = getBackgroundThemeSpec(backgroundTheme);
     const glassBlendTransition = { duration: 1.85, ease: [0.22, 1, 0.36, 1] as const };
     const glassListeningLayer = "bg-[linear-gradient(140deg,rgba(228,242,255,0.56),rgba(172,210,255,0.26))]";
+    const glassRebuildLayer = "bg-[linear-gradient(140deg,rgba(228,255,248,0.58),rgba(167,243,208,0.28))]";
     const glassDictationLayer = "bg-[linear-gradient(140deg,rgba(248,239,255,0.58),rgba(216,180,254,0.3))]";
     const glassTranslationLayer = "bg-[linear-gradient(140deg,rgba(255,239,217,0.58),rgba(255,192,120,0.28))]";
     const glassListeningHeroLayer = "bg-[linear-gradient(138deg,rgba(226,241,255,0.58),rgba(167,205,255,0.24))]";
+    const glassRebuildHeroLayer = "bg-[linear-gradient(138deg,rgba(229,255,249,0.62),rgba(134,239,172,0.22))]";
     const glassDictationHeroLayer = "bg-[linear-gradient(138deg,rgba(247,238,255,0.6),rgba(206,162,247,0.26))]";
     const glassTranslationHeroLayer = "bg-[linear-gradient(138deg,rgba(255,240,220,0.58),rgba(255,194,132,0.24))]";
     const modeOpacity = (targetMode: BattleMode) => (battleMode === targetMode ? 1 : 0);
@@ -407,6 +442,17 @@ export default function BattlePage() {
             marker: "bg-blue-500",
             chevron: "text-blue-600",
             textTag: "text-blue-700 bg-blue-50/80 border-blue-200/70",
+        },
+        rebuild: {
+            soft: "border-white/45 shadow-[0_20px_42px_-28px_rgba(13,148,136,0.78),inset_0_1px_0_rgba(255,255,255,0.72)] hover:shadow-[0_24px_48px_-26px_rgba(13,148,136,0.92),inset_0_1px_0_rgba(255,255,255,0.8)]",
+            pill: "border-white/45 shadow-[0_16px_38px_-24px_rgba(13,148,136,0.72),inset_0_1px_0_rgba(255,255,255,0.74)]",
+            active: "bg-[linear-gradient(135deg,rgba(240,253,250,0.84),rgba(167,243,208,0.5))] shadow-[0_14px_28px_-20px_rgba(13,148,136,0.84),inset_0_1px_0_rgba(255,255,255,0.78)]",
+            hero: "shadow-[0_28px_55px_-32px_rgba(13,148,136,0.82),inset_0_1px_0_rgba(255,255,255,0.78)] hover:shadow-[0_34px_70px_-30px_rgba(13,148,136,0.96),inset_0_1px_0_rgba(255,255,255,0.86)]",
+            badge: "bg-teal-100/65 text-teal-700",
+            icon: "bg-[linear-gradient(140deg,rgba(245,255,252,0.92),rgba(153,246,228,0.58))] text-teal-700 shadow-[0_12px_26px_-16px_rgba(13,148,136,0.85)]",
+            marker: "bg-teal-500",
+            chevron: "text-teal-600",
+            textTag: "text-teal-700 bg-teal-50/80 border-teal-200/70",
         },
         dictation: {
             soft: "border-white/45 shadow-[0_20px_42px_-28px_rgba(147,51,234,0.78),inset_0_1px_0_rgba(255,255,255,0.72)] hover:shadow-[0_24px_48px_-26px_rgba(126,34,206,0.92),inset_0_1px_0_rgba(255,255,255,0.8)]",
@@ -462,6 +508,11 @@ export default function BattlePage() {
                 <motion.div
                     className="absolute inset-0 bg-[radial-gradient(90%_70%_at_15%_0%,rgba(126,181,255,0.22),rgba(64,139,255,0.08)_42%,transparent_72%)]"
                     animate={{ opacity: modeOpacity("listening") }}
+                    transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
+                />
+                <motion.div
+                    className="absolute inset-0 bg-[radial-gradient(90%_72%_at_50%_0%,rgba(45,212,191,0.22),rgba(20,184,166,0.08)_42%,transparent_74%)]"
+                    animate={{ opacity: modeOpacity("rebuild") }}
                     transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
                 />
                 <motion.div
@@ -574,6 +625,7 @@ export default function BattlePage() {
                             className={cn("relative overflow-hidden flex items-center gap-5 p-3 pr-6 rounded-[1.55rem] border backdrop-blur-2xl saturate-[1.42] transition duration-300 hover:-translate-y-0.5", glassTone.soft)}
                         >
                             <motion.div className={cn("absolute inset-0", glassListeningLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
+                            <motion.div className={cn("absolute inset-0", glassRebuildLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
                             <motion.div className={cn("absolute inset-0", glassDictationLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
                             <motion.div className={cn("absolute inset-0", glassTranslationLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
                             <div className={cn("relative z-10 w-16 h-16 rounded-xl flex items-center justify-center shadow-md text-white bg-gradient-to-br border-2 border-white/20 overflow-hidden", listenRank.gradient)}>
@@ -606,6 +658,7 @@ export default function BattlePage() {
                             className={cn("relative overflow-hidden flex items-center gap-5 p-3 pr-6 rounded-[1.55rem] border backdrop-blur-2xl saturate-[1.42] transition duration-300 hover:-translate-y-0.5", glassTone.soft)}
                         >
                             <motion.div className={cn("absolute inset-0", glassListeningLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
+                            <motion.div className={cn("absolute inset-0", glassRebuildLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
                             <motion.div className={cn("absolute inset-0", glassDictationLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
                             <motion.div className={cn("absolute inset-0", glassTranslationLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
                             <div className={cn("relative z-10 w-16 h-16 rounded-xl flex items-center justify-center shadow-md text-white bg-gradient-to-br border-2 border-white/20 overflow-hidden", dictationRank.gradient)}>
@@ -632,6 +685,7 @@ export default function BattlePage() {
                             className={cn("relative overflow-hidden flex items-center gap-5 p-3 pr-6 rounded-[1.55rem] border backdrop-blur-2xl saturate-[1.42] transition duration-300 hover:-translate-y-0.5", glassTone.soft)}
                         >
                             <motion.div className={cn("absolute inset-0", glassListeningLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
+                            <motion.div className={cn("absolute inset-0", glassRebuildLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
                             <motion.div className={cn("absolute inset-0", glassDictationLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
                             <motion.div className={cn("absolute inset-0", glassTranslationLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
                             <div className={cn("relative z-10 w-16 h-16 rounded-xl flex items-center justify-center shadow-md text-white bg-gradient-to-br border-2 border-white/20 overflow-hidden", transRank.gradient)}>
@@ -649,6 +703,32 @@ export default function BattlePage() {
                                 </div>
                             </div>
                         </motion.div>
+
+                        <motion.div
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.42 }}
+                            className={cn("relative overflow-hidden flex items-center gap-5 p-3 pr-6 rounded-[1.55rem] border backdrop-blur-2xl saturate-[1.42] transition duration-300 hover:-translate-y-0.5", glassTone.soft)}
+                        >
+                            <motion.div className={cn("absolute inset-0", glassListeningLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
+                            <motion.div className={cn("absolute inset-0", glassRebuildLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
+                            <motion.div className={cn("absolute inset-0", glassDictationLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
+                            <motion.div className={cn("absolute inset-0", glassTranslationLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
+                            <div className={cn("relative z-10 w-16 h-16 rounded-xl flex items-center justify-center shadow-md border-2 border-white/20 overflow-hidden", glassTone.icon)}>
+                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20" />
+                                <Blocks className="w-8 h-8 relative z-10" />
+                            </div>
+                            <div className="relative z-10">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className={cn("text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full border", glassTone.textTag)}>Rebuild</span>
+                                    <span className="text-xs font-bold text-slate-500">Practice Tier</span>
+                                </div>
+                                <div className="flex items-baseline gap-2">
+                                    <span className="text-2xl font-bold text-slate-900 tracking-tight">{rebuildTier.cefr}</span>
+                                    <span className="rounded-full border border-teal-200/80 bg-teal-50/80 px-2 py-0.5 text-xs font-bold text-teal-700">{rebuildTier.bandPosition}</span>
+                                </div>
+                            </div>
+                        </motion.div>
                     </div>
                 </div>
 
@@ -662,7 +742,27 @@ export default function BattlePage() {
                             exit={{ opacity: 0, y: -10, scale: 0.99, filter: "blur(6px)" }}
                             transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
                         >
-                            <EloChart mode={battleMode} />
+                            {battleMode === "rebuild" ? (
+                                <div className={cn("relative overflow-hidden rounded-[2rem] border border-white/45 p-6 backdrop-blur-2xl saturate-[1.4]", glassTone.soft)}>
+                                    <motion.div className={cn("absolute inset-0", glassRebuildHeroLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
+                                    <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">Rebuild Practice</p>
+                                            <h3 className="mt-2 text-2xl font-bold text-slate-900">当前练习层：{rebuildTier.label}</h3>
+                                            <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">Rebuild 不改正式 Elo。系统会根据你的自评、重播次数、提示使用和拼句表现，在后台轻微上调或下调下一题难度。</p>
+                                        </div>
+                                        <div className="rounded-[1.4rem] border border-teal-200/70 bg-white/70 px-5 py-4 shadow-[0_20px_40px_-30px_rgba(13,148,136,0.8)]">
+                                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-teal-600">Practice Tier</div>
+                                            <div className="mt-2 flex items-center gap-2">
+                                                <span className="text-3xl font-bold text-slate-900">{rebuildTier.cefr}</span>
+                                                <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-700">{rebuildTier.bandPosition}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <EloChart mode={battleMode} />
+                            )}
                         </motion.div>
                     </AnimatePresence>
                 </div>
@@ -671,14 +771,15 @@ export default function BattlePage() {
                 <div className="flex justify-center mb-12">
                     <div className={cn("relative flex items-center gap-2 backdrop-blur-2xl saturate-[1.45] p-1.5 rounded-full border", glassTone.pill)}>
                         <motion.div className={cn("absolute inset-0 rounded-full", glassListeningLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
+                        <motion.div className={cn("absolute inset-0 rounded-full", glassRebuildLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
                         <motion.div className={cn("absolute inset-0 rounded-full", glassDictationLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
                         <motion.div className={cn("absolute inset-0 rounded-full", glassTranslationLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
                         <motion.div
                             className={cn("absolute h-[calc(100%-12px)] top-[6px] rounded-full border border-white/50", glassTone.active)}
                             initial={false}
                             animate={{
-                                left: `calc(${activeBattleModeIndex} * ((100% - 12px) / 3) + 6px)`,
-                                width: "calc((100% - 12px) / 3)",
+                                left: `calc(${activeBattleModeIndex} * ((100% - 12px) / 4) + 6px)`,
+                                width: "calc((100% - 12px) / 4)",
                             }}
                             transition={{ type: "spring", stiffness: 210, damping: 24, mass: 0.84 }}
                         />
@@ -700,6 +801,56 @@ export default function BattlePage() {
                     </div>
                 </div>
 
+                <div className="mb-12 flex justify-center">
+                    <div className={cn("w-full max-w-2xl rounded-[1.6rem] border border-white/55 px-5 py-4 backdrop-blur-2xl saturate-[1.35]", glassTone.soft)}>
+                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">Drill Source</p>
+                                <p className="mt-1 text-sm text-slate-700">
+                                    {battleMode === "listening"
+                                        ? "Listening 现在可以切换 AI 出题和题库题。"
+                                        : battleMode === "rebuild"
+                                            ? "Rebuild 固定使用 Listening 题库，不走 AI 出题，也不改正式 Elo。"
+                                        : "题库模式当前只开放给 Listening；其它模式继续走 AI 生成。"}
+                                </p>
+                            </div>
+                            {battleMode === "rebuild" ? (
+                                <div className="inline-flex items-center gap-2 rounded-full border border-teal-200/70 bg-teal-50/75 px-4 py-2 text-sm font-semibold text-teal-700">
+                                    <Blocks className="h-4 w-4" />
+                                    Listening Bank Only
+                                </div>
+                            ) : (
+                                <div className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/55 p-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setListeningSourceMode("ai")}
+                                        className={cn(
+                                            "rounded-full px-4 py-2 text-sm font-semibold transition",
+                                            listeningSourceMode === "ai"
+                                                ? "bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
+                                                : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
+                                        )}
+                                    >
+                                        AI 出题
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setListeningSourceMode("bank")}
+                                        className={cn(
+                                            "rounded-full px-4 py-2 text-sm font-semibold transition",
+                                            listeningSourceMode === "bank"
+                                                ? "bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
+                                                : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
+                                        )}
+                                    >
+                                        题库题
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
                 {/* Quick Start Hero */}
                 <motion.div
                     initial={{ opacity: 0, y: 30 }}
@@ -712,6 +863,7 @@ export default function BattlePage() {
                         className={cn("group relative w-full overflow-hidden rounded-[2.1rem] border border-white/45 text-slate-900 backdrop-blur-[22px] saturate-[1.5] transition-all hover:scale-[1.01]", glassTone.hero)}
                     >
                         <motion.div className={cn("absolute inset-0 z-0", glassListeningHeroLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
+                        <motion.div className={cn("absolute inset-0 z-0", glassRebuildHeroLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
                         <motion.div className={cn("absolute inset-0 z-0", glassDictationHeroLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
                         <motion.div className={cn("absolute inset-0 z-0", glassTranslationHeroLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
                         <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_8%_0%,rgba(255,255,255,0.6),rgba(255,255,255,0.12)_44%,transparent_70%)] z-0" />
@@ -739,7 +891,7 @@ export default function BattlePage() {
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {TOPICS.map((topic, i) => {
-                            const isLocked = eloRating < topic.minElo;
+                            const isLocked = activeModeDifficultyElo < topic.minElo;
                             return (
                                 <motion.div
                                     key={topic.id}
@@ -760,6 +912,7 @@ export default function BattlePage() {
                                         {!isLocked && (
                                             <>
                                                 <motion.div className={cn("absolute inset-0 z-0", glassListeningLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
+                                                <motion.div className={cn("absolute inset-0 z-0", glassRebuildLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
                                                 <motion.div className={cn("absolute inset-0 z-0", glassDictationLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
                                                 <motion.div className={cn("absolute inset-0 z-0", glassTranslationLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
                                             </>
@@ -1117,9 +1270,11 @@ export default function BattlePage() {
             <AnimatePresence>
                 {activeDrill && (
                     <DrillCore
+                        key={`${battleMode}-${activeDrill.type}-${activeDrill.topic || "drill"}`}
                         context={activeDrill}
                         onClose={handleCloseDrill}
                         initialMode={battleMode}
+                        listeningSourceMode={listeningSourceMode}
                     />
                 )}
             </AnimatePresence>

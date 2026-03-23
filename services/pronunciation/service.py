@@ -13,8 +13,10 @@ from pathlib import Path
 
 from charsiu_backend import PipelineError as CharsiuPipelineError
 from charsiu_backend import get_runtime as get_charsiu_runtime
+from charsiu_backend import get_whisper_runtime
 from charsiu_backend import healthcheck as charsiu_healthcheck
 from charsiu_backend import score_request as score_with_charsiu_request
+from charsiu_backend import TRANSCRIPT_GATE_ENABLED
 
 PORT = int(os.environ.get("YASI_PRONUNCIATION_SERVICE_PORT", "3132"))
 BACKEND = os.environ.get("YASI_PRONUNCIATION_BACKEND", "mock").strip().lower() or "mock"
@@ -124,18 +126,26 @@ def maybe_prewarm_charsiu_runtime():
         return
 
     def _prewarm():
-        started_at = time.perf_counter()
         try:
+            started_at = time.perf_counter()
             get_charsiu_runtime()
-            elapsed_ms = round((time.perf_counter() - started_at) * 1000)
-            sys.stdout.write(f"[pronunciation-service] charsiu runtime warmed in {elapsed_ms}ms\n")
+            charsiu_elapsed_ms = round((time.perf_counter() - started_at) * 1000)
+            sys.stdout.write(f"[pronunciation-service] charsiu runtime warmed in {charsiu_elapsed_ms}ms\n")
+
+            if TRANSCRIPT_GATE_ENABLED:
+                whisper_started_at = time.perf_counter()
+                get_whisper_runtime()
+                whisper_elapsed_ms = round((time.perf_counter() - whisper_started_at) * 1000)
+                sys.stdout.write(
+                    f"[pronunciation-service] faster-whisper runtime warmed in {whisper_elapsed_ms}ms\n"
+                )
         except Exception as exc:
             sys.stdout.write(f"[pronunciation-service] charsiu runtime prewarm failed: {exc}\n")
 
     threading.Thread(target=_prewarm, daemon=True).start()
 
 
-def score_with_charsiu(audio_base64, reference_text):
+def score_with_charsiu(audio_base64, reference_text, elo_rating=None):
     try:
         audio_bytes = base64.b64decode(audio_base64, validate=True)
     except Exception as exc:
@@ -148,6 +158,7 @@ def score_with_charsiu(audio_base64, reference_text):
             payload = score_with_charsiu_request({
                 "audio_path": audio_path,
                 "reference_text": reference_text,
+                "elo_rating": elo_rating,
             })
         except CharsiuPipelineError as exc:
             raise RuntimeError(str(exc)) from exc
@@ -231,6 +242,7 @@ class Handler(BaseHTTPRequestHandler):
         reference_text = (payload.get("reference_text") or "").strip()
         transcript = (payload.get("transcript") or "").strip()
         audio_base64 = payload.get("audio_base64") or ""
+        elo_rating = payload.get("elo_rating")
 
         if not reference_text:
             self._send_json(400, {"error": "Missing reference_text."})
@@ -241,7 +253,7 @@ class Handler(BaseHTTPRequestHandler):
             if BACKEND == "mock":
                 result = score_with_mock(reference_text, transcript)
             elif BACKEND == "charsiu":
-                result = score_with_charsiu(audio_base64, reference_text)
+                result = score_with_charsiu(audio_base64, reference_text, elo_rating=elo_rating)
                 execution_mode = "direct"
                 result.setdefault("debug", {})
                 if isinstance(result["debug"], dict):

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { mergeChannels, encodeWavPcm16, resampleLinear } from "@/lib/speech-audio";
-import { ensureMicrophoneAccess, getMicrophoneErrorMessage } from "@/lib/desktop-media";
+import { encodeWavFromChunks, mergeChannels, encodeWavPcm16, resampleLinear } from "@/lib/speech-audio";
+import { createAudioMediaRecorder, ensureMicrophoneAccess, getMicrophoneErrorMessage } from "@/lib/desktop-media";
 import { useDesktopSpeechModel } from "@/hooks/useDesktopSpeechModel";
 import {
     type SpeechInputResult,
@@ -30,7 +30,11 @@ export function useSpeechInput() {
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const analyzerRef = useRef<AnalyserNode | null>(null);
+    const captureProcessorRef = useRef<ScriptProcessorNode | null>(null);
+    const captureSinkRef = useRef<GainNode | null>(null);
     const inputContextRef = useRef<string>("");
+    const pcmChunksRef = useRef<Float32Array[]>([]);
+    const captureSampleRateRef = useRef<number>(16000);
 
     const clearAudioMeter = useCallback(() => {
         if (analyzerFrameRef.current != null) {
@@ -40,6 +44,10 @@ export function useSpeechInput() {
 
         analyzerRef.current?.disconnect();
         analyzerRef.current = null;
+        captureProcessorRef.current?.disconnect();
+        captureProcessorRef.current = null;
+        captureSinkRef.current?.disconnect();
+        captureSinkRef.current = null;
         audioContextRef.current?.close().catch(() => undefined);
         audioContextRef.current = null;
         setAudioLevel(0);
@@ -68,6 +76,17 @@ export function useSpeechInput() {
         analyser.fftSize = 512;
         source.connect(analyser);
 
+        const captureProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+        const captureSink = audioContext.createGain();
+        captureSink.gain.value = 0;
+        source.connect(captureProcessor);
+        captureProcessor.connect(captureSink);
+        captureSink.connect(audioContext.destination);
+        captureProcessor.onaudioprocess = (event) => {
+            const channelData = event.inputBuffer.getChannelData(0);
+            pcmChunksRef.current.push(channelData.slice());
+        };
+
         const data = new Uint8Array(analyser.frequencyBinCount);
 
         const tick = () => {
@@ -83,6 +102,9 @@ export function useSpeechInput() {
 
         audioContextRef.current = audioContext;
         analyzerRef.current = analyser;
+        captureProcessorRef.current = captureProcessor;
+        captureSinkRef.current = captureSink;
+        captureSampleRateRef.current = audioContext.sampleRate;
         analyzerFrameRef.current = window.requestAnimationFrame(tick);
     }, []);
 
@@ -94,6 +116,14 @@ export function useSpeechInput() {
         const resampled = resampleLinear(merged, decoded.sampleRate, 16000);
         await audioContext.close();
         return encodeWavPcm16(resampled, 16000);
+    }, []);
+
+    const buildCapturedWavBlob = useCallback(() => {
+        if (!pcmChunksRef.current.length) {
+            throw new Error("录音里没有采集到有效音频，请重新录一遍。");
+        }
+
+        return encodeWavFromChunks(pcmChunksRef.current, captureSampleRateRef.current, 16000);
     }, []);
 
     const playRecording = useCallback(() => {
@@ -159,13 +189,12 @@ export function useSpeechInput() {
             });
 
             chunksRef.current = [];
+            pcmChunksRef.current = [];
             resetResult();
             mediaStreamRef.current = stream;
             watchAudioLevel(stream);
 
-            const recorder = new MediaRecorder(stream, MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-                ? { mimeType: "audio/webm;codecs=opus" }
-                : undefined);
+            const recorder = createAudioMediaRecorder(stream);
             recorderRef.current = recorder;
 
             recorder.ondataavailable = (event) => {
@@ -179,8 +208,14 @@ export function useSpeechInput() {
                 clearAudioMeter();
                 try {
                     const sourceBlob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
-                    setAudioBlob(sourceBlob);
-                    const wavBlob = await normalizeRecordingBlob(sourceBlob);
+                    let wavBlob: Blob;
+                    try {
+                        wavBlob = buildCapturedWavBlob();
+                    } catch (captureError) {
+                        wavBlob = await normalizeRecordingBlob(sourceBlob);
+                        console.warn("[useSpeechInput] Fell back to decodeAudioData normalization:", captureError);
+                    }
+                    setAudioBlob(wavBlob);
                     setWavBlob(wavBlob);
                     setResult({
                         text: "",
@@ -206,7 +241,7 @@ export function useSpeechInput() {
             setError(message);
             window.alert(message);
         }
-    }, [clearAudioMeter, downloadModel, isDesktopApp, normalizeRecordingBlob, progress, resetResult, watchAudioLevel]);
+    }, [buildCapturedWavBlob, clearAudioMeter, downloadModel, isDesktopApp, normalizeRecordingBlob, progress, resetResult, watchAudioLevel]);
 
     const stopRecognition = useCallback(() => {
         const recorder = recorderRef.current;

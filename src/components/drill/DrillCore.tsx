@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Sparkles, RefreshCw, Send, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock } from "lucide-react";
+import { Sparkles, RefreshCw, Send, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock, Shuffle, SkipForward, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as Diff from 'diff';
@@ -30,6 +30,20 @@ import { LottieJsonPlayer } from "../shared/LottieJsonPlayer";
 import { SpeechModelStatusPanel } from "../speech/SpeechModelStatusPanel";
 import { resolveBattleScenarioTopic } from "@/lib/battle-quickmatch-topics";
 import { getBattleInteractiveWordClassName } from "@/lib/drill-interactive-word";
+import { calculateListeningElo } from "@/lib/listening-elo";
+import {
+    clampRebuildDifficultyDelta,
+    evaluateRebuildSelection,
+    getRebuildPracticeTier,
+    getRebuildSelfEvaluationDelta,
+    getRebuildSoftTimeLimitMs,
+    getRebuildSystemAssessment,
+    getRebuildSystemAssessmentLabel,
+    getRebuildSystemDelta,
+    type RebuildEvaluationResult,
+    type RebuildSelfEvaluation,
+    type RebuildSystemAssessment,
+} from "@/lib/rebuild-mode";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 import { buildTranslationHighlights, normalizeTranslationForComparison } from "@/lib/translation-diff";
 import { requestTtsPayload } from "@/lib/tts-client";
@@ -68,7 +82,7 @@ import type { PronunciationWordResult } from "@/lib/pronunciation-scoring";
 
 // --- Interfaces ---
 
-export type DrillMode = "translation" | "listening" | "dictation";
+export type DrillMode = "translation" | "listening" | "dictation" | "rebuild";
 type GuidedInnerMode = "teacher_guided" | "gestalt_cloze";
 
 export interface DrillCoreProps {
@@ -80,6 +94,7 @@ export interface DrillCoreProps {
         topic?: string; // For scenario mode
     };
     initialMode?: DrillMode;
+    listeningSourceMode?: "ai" | "bank";
     onClose?: () => void;
 }
 
@@ -103,11 +118,35 @@ interface DrillData {
             targetRange: string;
             wordCountAccurate: boolean;
         } | null;
+        listeningFeatures?: {
+            memoryLoad: string | null;
+            spokenNaturalness: string | null;
+            reducedFormsPresence: string | null;
+            clauseMax: number | null;
+            trainingFocus: string | null;
+            downgraded: boolean;
+        } | null;
     };
     _topicMeta?: {
         topic: string;
         subTopic?: string | null;
         isScenario: boolean;
+    };
+    _sourceMeta?: {
+        sourceMode: "ai" | "bank";
+        bankItemId?: string;
+        bandPosition?: "entry" | "mid" | "exit" | null;
+        reviewStatus?: "curated" | "draft";
+    };
+    _rebuildMeta?: {
+        effectiveElo: number;
+        bandPosition: "entry" | "mid" | "exit" | null;
+        answerTokens: string[];
+        tokenBank: string[];
+        distractorTokens: string[];
+        theme: string;
+        scene: string;
+        feedbackStyle: "strong";
     };
 }
 
@@ -136,6 +175,9 @@ interface DrillFeedback {
         fluency: number;
         prosody: number;
         total: number;
+        content_reproduction?: number;
+        rhythm_fluency?: number;
+        pronunciation_clarity?: number;
     };
     transcript?: string;
     summary_cn?: string;
@@ -192,6 +234,27 @@ interface DictionaryData {
     audio?: string;
     translation?: string;
     definition?: string;
+}
+
+interface RebuildTokenInstance {
+    id: string;
+    text: string;
+    origin: "answer" | "distractor";
+    repeatIndex?: number;
+    repeatTotal?: number;
+}
+
+interface RebuildFeedbackState {
+    evaluation: RebuildEvaluationResult;
+    systemDelta: number;
+    systemAssessment: RebuildSystemAssessment;
+    systemAssessmentLabel: string;
+    selfEvaluation: RebuildSelfEvaluation | null;
+    effectiveElo: number;
+    replayCount: number;
+    editCount: number;
+    skipped: boolean;
+    exceededSoftLimit: boolean;
 }
 
 // --- State --- 
@@ -282,6 +345,10 @@ const DEFAULT_INVENTORY: InventoryState = {
     audio_ticket: 10,
     refresh_ticket: 10,
 };
+
+const LISTENING_BANK_RECENT_STORAGE_KEY = "battle-listening-bank-recent-ids";
+const LISTENING_BANK_RECENT_LIMIT = 20;
+const REBUILD_RECENT_LIMIT = 20;
 
 const ITEM_CATALOG: Record<ShopItemId, { id: ShopItemId; name: string; price: number; icon: string; consumeAction: string; description: string; }> = {
     capsule: {
@@ -786,14 +853,22 @@ const STREAK_TIER_VISUALS: Record<StreakTier, StreakTierVisual> = {
     },
 };
 
-export function DrillCore({ context, initialMode = "translation", onClose }: DrillCoreProps) {
+export function DrillCore({ context, initialMode = "translation", listeningSourceMode = "ai", onClose }: DrillCoreProps) {
     // Mode State
     const [mode, setMode] = useState<DrillMode>(initialMode);
     const isListeningMode = mode === "listening";
+    const isRebuildMode = mode === "rebuild";
     const isDictationMode = mode === "dictation";
     const isListeningFamilyMode = isListeningMode || isDictationMode;
-    const canUseModeShop = mode === "translation" || mode === "dictation";
-    const generationMode: "translation" | "listening" = isListeningFamilyMode ? "listening" : "translation";
+    const isAudioPracticeMode = isListeningFamilyMode || isRebuildMode;
+    const canUseModeShop = mode === "translation" || isListeningFamilyMode || isRebuildMode;
+    const generationMode: "translation" | "listening" | "rebuild" = isDictationMode
+        ? "listening"
+        : isRebuildMode
+            ? "rebuild"
+            : isListeningMode
+                ? "listening"
+                : "translation";
 
     // Drill State
     const [drillData, setDrillData] = useState<DrillData | null>(null);
@@ -801,6 +876,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isGeneratingDrill, setIsGeneratingDrill] = useState(false);
     const [isSubmittingDrill, setIsSubmittingDrill] = useState(false);
     const [drillFeedback, setDrillFeedback] = useState<DrillFeedback | null>(null);
+    const [rebuildFeedback, setRebuildFeedback] = useState<RebuildFeedbackState | null>(null);
     const [hasRatedDrill, setHasRatedDrill] = useState(false);
     const [analysisRequested, setAnalysisRequested] = useState(false);
     const [isGeneratingAnalysis, setIsGeneratingAnalysis] = useState(false);
@@ -820,8 +896,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [isPlaying, setIsPlaying] = useState(false);
     const [isAudioLoading, setIsAudioLoading] = useState(false);
     const [isPrefetching, setIsPrefetching] = useState(false); // Track background audio prefetch
-    const [prefetchedDrillData, setPrefetchedDrillData] = useState<(DrillData & { mode?: string }) | null>(null);
+    const [prefetchedDrillData, setPrefetchedDrillData] = useState<(DrillData & { mode?: string; sourceMode?: "ai" | "bank" }) | null>(null);
     const abortPrefetchRef = useRef<AbortController | null>(null);
+    const recentListeningBankIdsRef = useRef<string[]>([]);
+    const rebuildMetaNamespaceRef = useRef("local");
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const audioCache = useRef<Map<string, { url?: string; blob?: Blob; marks?: any[] }>>(new Map());
     const audioInflight = useRef<Map<string, Promise<{ blob: Blob; marks: any[] }>>>(new Map());
@@ -897,7 +975,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // UI State
     const [isBlindMode, setIsBlindMode] = useState(true);
     const [showChinese, setShowChinese] = useState(false);
-    const [dictationVisibleUnlockConsumed, setDictationVisibleUnlockConsumed] = useState(false);
+    const [blindVisibleUnlockConsumed, setBlindVisibleUnlockConsumed] = useState(false);
     const [difficulty, setDifficulty] = useState<string>('Level 3');
     const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
 
@@ -909,6 +987,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     const [listeningStreak, setListeningStreak] = useState(0);
     const [dictationElo, setDictationElo] = useState(DEFAULT_BASE_ELO);
     const [dictationStreak, setDictationStreak] = useState(0);
+    const [rebuildHiddenElo, setRebuildHiddenElo] = useState(DEFAULT_BASE_ELO);
+    const [rebuildRecentBankIds, setRebuildRecentBankIds] = useState<string[]>([]);
     const [isEloLoaded, setIsEloLoaded] = useState(false); // Track if Elo has been loaded from DB
     const eloRatingRef = useRef(DEFAULT_BASE_ELO);
     const listeningEloRef = useRef(DEFAULT_BASE_ELO);
@@ -946,12 +1026,66 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     // Cosmetic Theme State
     const [cosmeticTheme, setCosmeticTheme] = useState<CosmeticThemeId>('morning_coffee');
     const [ownedThemes, setOwnedThemes] = useState<CosmeticThemeId[]>([DEFAULT_FREE_THEME]);
+    const [rebuildAvailableTokens, setRebuildAvailableTokens] = useState<RebuildTokenInstance[]>([]);
+    const [rebuildAnswerTokens, setRebuildAnswerTokens] = useState<RebuildTokenInstance[]>([]);
+    const [rebuildReplayCount, setRebuildReplayCount] = useState(0);
+    const [rebuildEditCount, setRebuildEditCount] = useState(0);
+    const [rebuildStartedAt, setRebuildStartedAt] = useState<number | null>(null);
+    const [pendingRebuildAdvanceElo, setPendingRebuildAdvanceElo] = useState<number | null>(null);
     const activeCosmeticTheme = COSMETIC_THEMES[cosmeticTheme] || COSMETIC_THEMES[DEFAULT_FREE_THEME];
     const activeCosmeticUi = COSMETIC_THEME_UI[cosmeticTheme] || COSMETIC_THEME_UI.morning_coffee;
     const isShopInventoryExpanded = shouldExpandShopInventoryDock({
         hasHoverSupport: shopDockHasHoverSupport,
         isShopHovered: isShopDockHovered,
     });
+
+    const buildRebuildMetaKey = useCallback((suffix: "hidden_elo" | "recent_bank_ids" | "last_session") => {
+        return `rebuild_${suffix}::${rebuildMetaNamespaceRef.current}`;
+    }, []);
+
+    const persistRebuildHiddenElo = useCallback(async (nextElo: number) => {
+        await db.sync_meta.put({
+            key: buildRebuildMetaKey("hidden_elo"),
+            value: nextElo,
+            updated_at: Date.now(),
+        });
+    }, [buildRebuildMetaKey]);
+
+    const persistRebuildRecentIds = useCallback(async (ids: string[]) => {
+        await db.sync_meta.put({
+            key: buildRebuildMetaKey("recent_bank_ids"),
+            value: ids,
+            updated_at: Date.now(),
+        });
+    }, [buildRebuildMetaKey]);
+
+    const initializeRebuildTokens = useCallback((nextDrillData: DrillData | null) => {
+        const tokenBank = nextDrillData?._rebuildMeta?.tokenBank ?? [];
+        const distractorSet = new Set(nextDrillData?._rebuildMeta?.distractorTokens ?? []);
+        const tokenTotals = new Map<string, number>();
+        const tokenSeen = new Map<string, number>();
+
+        for (const token of tokenBank) {
+            tokenTotals.set(token, (tokenTotals.get(token) ?? 0) + 1);
+        }
+
+        const tokenInstances: RebuildTokenInstance[] = tokenBank.map((text, index) => ({
+            id: `token-${index}-${text}`,
+            text,
+            origin: distractorSet.has(text) ? "distractor" : "answer",
+            repeatIndex: (() => {
+                const nextIndex = (tokenSeen.get(text) ?? 0) + 1;
+                tokenSeen.set(text, nextIndex);
+                return nextIndex;
+            })(),
+            repeatTotal: tokenTotals.get(text) ?? 1,
+        }));
+        setRebuildAvailableTokens(tokenInstances);
+        setRebuildAnswerTokens([]);
+        setRebuildReplayCount(0);
+        setRebuildEditCount(0);
+        setRebuildStartedAt(nextDrillData?._rebuildMeta ? Date.now() : null);
+    }, []);
 
     useEffect(() => {
         if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
@@ -971,6 +1105,53 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             hoverMediaQuery.removeEventListener("change", syncHoverSupport);
         };
     }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        try {
+            const raw = window.localStorage.getItem(LISTENING_BANK_RECENT_STORAGE_KEY);
+            const parsed = raw ? JSON.parse(raw) : [];
+            recentListeningBankIdsRef.current = Array.isArray(parsed)
+                ? parsed.filter((item): item is string => typeof item === "string").slice(0, LISTENING_BANK_RECENT_LIMIT)
+                : [];
+        } catch (error) {
+            console.error("Failed to load recent listening bank ids", error);
+            recentListeningBankIdsRef.current = [];
+        }
+    }, []);
+
+    useEffect(() => {
+        const bankItemId = drillData?._sourceMeta?.sourceMode === "bank" ? drillData._sourceMeta.bankItemId : undefined;
+        if (!bankItemId) return;
+
+        const nextIds = [bankItemId, ...recentListeningBankIdsRef.current.filter((id) => id !== bankItemId)]
+            .slice(0, LISTENING_BANK_RECENT_LIMIT);
+        recentListeningBankIdsRef.current = nextIds;
+
+        if (typeof window !== "undefined") {
+            window.localStorage.setItem(LISTENING_BANK_RECENT_STORAGE_KEY, JSON.stringify(nextIds));
+        }
+    }, [drillData?._sourceMeta?.bankItemId, drillData?._sourceMeta?.sourceMode]);
+
+    useEffect(() => {
+        if (!isRebuildMode) return;
+        initializeRebuildTokens(drillData);
+    }, [drillData, initializeRebuildTokens, isRebuildMode]);
+
+    useEffect(() => {
+        if (!isRebuildMode) return;
+        const bankItemId = drillData?._sourceMeta?.sourceMode === "bank" ? drillData._sourceMeta.bankItemId : undefined;
+        if (!bankItemId) return;
+
+        setRebuildRecentBankIds((currentIds) => {
+            const nextIds = [bankItemId, ...currentIds.filter((id) => id !== bankItemId)].slice(0, REBUILD_RECENT_LIMIT);
+            if (nextIds.length === currentIds.length && nextIds.every((id, index) => id === currentIds[index])) {
+                return currentIds;
+            }
+            void persistRebuildRecentIds(nextIds);
+            return nextIds;
+        });
+    }, [drillData?._sourceMeta?.bankItemId, drillData?._sourceMeta?.sourceMode, isRebuildMode, persistRebuildRecentIds]);
 
     const getGuidedSessionSnapshot = useCallback((): GuidedSessionState => ({
         status: guidedModeStatus,
@@ -1721,8 +1902,28 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     // Computed Elo based on Mode
     const isShadowingMode = isListeningMode;
-    const currentElo = isDictationMode ? dictationElo : isListeningMode ? listeningElo : eloRating;
-    const currentStreak = isDictationMode ? dictationStreak : isListeningMode ? listeningStreak : streakCount;
+    const currentElo = isRebuildMode
+        ? rebuildHiddenElo
+        : isDictationMode
+            ? dictationElo
+            : isListeningMode
+                ? listeningElo
+                : eloRating;
+    const currentStreak = isRebuildMode ? 0 : isDictationMode ? dictationStreak : isListeningMode ? listeningStreak : streakCount;
+    const activeDrillSourceMode: "ai" | "bank" = isRebuildMode ? "bank" : isListeningMode ? listeningSourceMode : "ai";
+    const currentListeningBankId = (isListeningMode || isRebuildMode) && drillData?._sourceMeta?.sourceMode === "bank"
+        ? drillData._sourceMeta.bankItemId
+        : undefined;
+    const prefetchedListeningBankId = (isListeningMode || isRebuildMode) && prefetchedDrillData?._sourceMeta?.sourceMode === "bank"
+        ? prefetchedDrillData._sourceMeta.bankItemId
+        : undefined;
+    const listeningBankExcludeIds = activeDrillSourceMode === "bank"
+        ? Array.from(new Set([
+            ...(isRebuildMode ? rebuildRecentBankIds : recentListeningBankIdsRef.current),
+            ...(currentListeningBankId ? [currentListeningBankId] : []),
+            ...(prefetchedListeningBankId ? [prefetchedListeningBankId] : []),
+        ]))
+        : [];
     const capsuleCount = inventory.capsule;
     const hintTicketCount = inventory.hint_ticket;
     const vocabTicketCount = inventory.vocab_ticket;
@@ -1999,15 +2200,15 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             };
         }
 
-        if (elo < 400) return { level: 'Level 1', label: 'A1 新手', cefr: 'A1', color: 'text-stone-500', desc: '简单SVO句子' };
-        if (elo < 800) return { level: 'Level 2', label: 'A2- 青铜', cefr: 'A2-', color: 'text-amber-600', desc: '日常复合句' };
-        if (elo < 1200) return { level: 'Level 3', label: 'A2+ 白银', cefr: 'A2+', color: 'text-slate-500', desc: '简单从句' };
-        if (elo < 1600) return { level: 'Level 4', label: 'B1 黄金', cefr: 'B1', color: 'text-yellow-600', desc: '被动+关系从句' };
-        if (elo < 2000) return { level: 'Level 5', label: 'B2 铂金', cefr: 'B2', color: 'text-cyan-600', desc: '条件句+分词' };
-        if (elo < 2400) return { level: 'Level 6', label: 'C1 钻石', cefr: 'C1', color: 'text-blue-500', desc: '倒装+虚拟语气' };
-        if (elo < 2800) return { level: 'Level 7', label: 'C2 大师', cefr: 'C2', color: 'text-fuchsia-600', desc: '母语级表达' };
-        if (elo < 3200) return { level: 'Level 8', label: 'C2+ 王者', cefr: 'C2+', color: 'text-purple-600', desc: '极限挑战' };
-        return { level: 'Level 9', label: '☠️ 处决', cefr: '∞', color: 'text-red-500', desc: '惩罚级难度' };
+        if (elo < 400) return { level: 'Level 1', label: 'A1 新手', cefr: 'A1', color: 'text-stone-500', desc: '短句复现' };
+        if (elo < 800) return { level: 'Level 2', label: 'A2- 青铜', cefr: 'A2-', color: 'text-amber-600', desc: '基础口语' };
+        if (elo < 1200) return { level: 'Level 3', label: 'A2+ 白银', cefr: 'A2+', color: 'text-slate-500', desc: '基础连贯表达' };
+        if (elo < 1600) return { level: 'Level 4', label: 'B1 黄金', cefr: 'B1', color: 'text-yellow-600', desc: '自然语流' };
+        if (elo < 2000) return { level: 'Level 5', label: 'B2 铂金', cefr: 'B2', color: 'text-cyan-600', desc: '高信息密度' };
+        if (elo < 2400) return { level: 'Level 6', label: 'C1 钻石', cefr: 'C1', color: 'text-blue-500', desc: '高自然度口语' };
+        if (elo < 2800) return { level: 'Level 7', label: 'C2 大师', cefr: 'C2', color: 'text-fuchsia-600', desc: '复杂口语复现' };
+        if (elo < 3200) return { level: 'Level 8', label: 'C2+ 王者', cefr: 'C2+', color: 'text-purple-600', desc: '高压自然口语' };
+        return { level: 'Level 9', label: '☠️ 处决', cefr: '∞', color: 'text-red-500', desc: '极限挑战' };
     };
     const eloDifficulty = getEloDifficulty(currentElo || DEFAULT_BASE_ELO, mode);
 
@@ -2076,6 +2277,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     useEffect(() => {
         const loadProfile = async () => {
             const profile = await db.user_profile.orderBy('id').first();
+            const activeUserMeta = await db.sync_meta.get("active_user_id");
+            rebuildMetaNamespaceRef.current = typeof activeUserMeta?.value === "string" ? activeUserMeta.value : "local";
             if (profile) {
                 setEloRating(profile.elo_rating);
                 setStreakCount(profile.streak_count);
@@ -2107,6 +2310,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     ? profile.active_theme as CosmeticThemeId
                     : DEFAULT_FREE_THEME;
                 setCosmeticTheme(loadedActive);
+                const hiddenMeta = await db.sync_meta.get(buildRebuildMetaKey("hidden_elo"));
+                const recentMeta = await db.sync_meta.get(buildRebuildMetaKey("recent_bank_ids"));
+                setRebuildHiddenElo(typeof hiddenMeta?.value === "number" ? hiddenMeta.value : (profile.listening_elo ?? DEFAULT_BASE_ELO));
+                setRebuildRecentBankIds(
+                    Array.isArray(recentMeta?.value)
+                        ? recentMeta.value.filter((item): item is string => typeof item === "string").slice(0, REBUILD_RECENT_LIMIT)
+                        : [],
+                );
 
                 setIsEloLoaded(true); // Mark Elo as loaded
             } else {
@@ -2126,6 +2337,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 setInventory(initialInventory);
                 setOwnedThemes([DEFAULT_FREE_THEME]);
                 setCosmeticTheme(DEFAULT_FREE_THEME);
+                setRebuildHiddenElo(DEFAULT_BASE_ELO);
+                setRebuildRecentBankIds([]);
                 setIsEloLoaded(true); // Mark Elo as loaded (new profile)
             }
         };
@@ -2189,9 +2402,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         return nextRequest;
     }, [fetchTtsAudio]);
 
-    // Pre-generate audio when listening drill loads (translation stays lazy-loaded)
+    // Pre-generate audio when audio practice drills load (translation stays lazy-loaded)
     useEffect(() => {
-        if (mode !== 'listening' || !drillData?.reference_english) {
+        if (!isListeningMode && !isRebuildMode || !drillData?.reference_english) {
             setIsPrefetching(false);
             return;
         }
@@ -2225,7 +2438,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         return () => {
             isCancelled = true;
         };
-    }, [drillData?.reference_english, ensureAudioCached, mode]);
+    }, [drillData?.reference_english, ensureAudioCached, isListeningMode, isRebuildMode]);
 
     const lastPlayTime = useRef(0);
 
@@ -2235,7 +2448,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (audioRef.current) audioRef.current.currentTime = time / 1000;
     };
 
-    const playAudio = async () => {
+    const playAudio = useCallback(async () => {
         if (!drillData?.reference_english) return false;
 
         // Debounce (Prevent Double Click)
@@ -2331,6 +2544,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             }
 
             await audio.play();
+            if (isRebuildMode && !rebuildFeedback) {
+                setRebuildReplayCount((prev) => prev + 1);
+            }
             setIsPlaying(!audio.paused);
 
             // Start Lightning countdown when audio plays
@@ -2344,7 +2560,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setIsAudioLoading(false);
             return false;
         }
-    };
+    }, [bossState.active, bossState.type, drillData?.reference_english, ensureAudioCached, isRebuildMode, playbackSpeed, rebuildFeedback]);
 
 
     useEffect(() => {
@@ -2618,7 +2834,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
         const targetTopic = resolveBattleScenarioTopic(context.articleTitle || context.topic, nextElo);
 
-        fetch("/api/ai/generate_drill", {
+        fetch("/api/drill/next", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -2627,16 +2843,21 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 difficulty: getEloDifficulty(nextElo, mode).level,
                 eloRating: Math.max(0, nextElo),
                 mode: generationMode,
+                sourceMode: activeDrillSourceMode,
+                excludeBankIds: activeDrillSourceMode === "bank" ? listeningBankExcludeIds : undefined,
                 bossType: nextBossType,
                 _t: Date.now()
             }),
             signal: abortPrefetchRef.current.signal,
-        }).then(res => res.json())
-            .then(data => {
+        }).then(async (res) => ({ ok: res.ok, data: await res.json() }))
+            .then(({ ok, data }) => {
+                if (!ok || data?.error) {
+                    throw new Error(data?.error || "Failed to prefetch drill");
+                }
                 if (!abortPrefetchRef.current?.signal.aborted) {
                     console.log("[Prefetch] Background prefetch completed and stored!");
-                    setPrefetchedDrillData({ ...data, mode });
-                    if (mode === "listening" && typeof data?.reference_english === "string" && data.reference_english.trim()) {
+                    setPrefetchedDrillData({ ...data, mode, sourceMode: activeDrillSourceMode });
+                    if ((isListeningMode || isRebuildMode) && typeof data?.reference_english === "string" && data.reference_english.trim()) {
                         ensureAudioCached(data.reference_english).catch((error) => {
                             console.error("[Prefetch] Audio prewarm failed:", error);
                         });
@@ -2649,14 +2870,20 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
     // --- Core Actions ---
 
-    const handleGenerateDrill = async (targetDifficulty = difficulty, overrideBossType?: string, skipPrefetched = false) => {
+    const handleGenerateDrill = async (targetDifficulty = difficulty, overrideBossType?: string, skipPrefetched = false, forcedElo?: number) => {
         if (showGacha) return;
         // Abort any pending generation or prefetch requests
         if (abortControllerRef.current) abortControllerRef.current.abort();
         if (abortPrefetchRef.current) abortPrefetchRef.current.abort();
 
         // If we have prefetched data ready AND it matches the current mode, consume it instantly
-        if (prefetchedDrillData && prefetchedDrillData.mode === mode && !overrideBossType && !skipPrefetched) {
+        if (
+            prefetchedDrillData
+            && prefetchedDrillData.mode === mode
+            && prefetchedDrillData.sourceMode === activeDrillSourceMode
+            && !overrideBossType
+            && !skipPrefetched
+        ) {
             console.log("[Prefetch] Consuming prefetched drill data! Zero ms latency.");
             setDrillData(prefetchedDrillData);
             setPrefetchedDrillData(null); // Clear buffer
@@ -2665,6 +2892,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             // Reset UI states quickly
             setIsGeneratingDrill(false);
             setDrillFeedback(null);
+            setRebuildFeedback(null);
             setUserTranslation("");
             setFullReferenceHint((prev) => ({ version: prev.version + 1, text: "" }));
             setTutorAnswer(null);
@@ -2693,7 +2921,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             setIsHintLoading(false);
             setIsVocabHintRevealed(false);
             setIsTranslationAudioUnlocked(false);
-            setDictationVisibleUnlockConsumed(false);
+            setBlindVisibleUnlockConsumed(false);
             if (isDictationMode) {
                 setIsBlindMode(true);
                 setShowChinese(false);
@@ -2736,6 +2964,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setDrillData(null);
         resetGuidedLearningState(false);
         setDrillFeedback(null);
+        setRebuildFeedback(null);
         setUserTranslation("");
         setFullReferenceHint((prev) => ({ version: prev.version + 1, text: "" }));
         setTutorAnswer(null);
@@ -2764,7 +2993,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         setIsHintLoading(false);
         setIsVocabHintRevealed(false);
         setIsTranslationAudioUnlocked(false);
-        setDictationVisibleUnlockConsumed(false);
+        setBlindVisibleUnlockConsumed(false);
         if (isDictationMode) {
             setIsBlindMode(true);
             setShowChinese(false);
@@ -2844,9 +3073,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
 
         try {
-            console.log(`[DEBUG] Sending to API: bossType=${nextBossType}, eloRating=${currentElo}`);
+            const effectiveElo = Math.max(0, forcedElo ?? currentElo);
+            const effectiveDifficulty = getEloDifficulty(effectiveElo, mode);
+            console.log(`[DEBUG] Sending to API: bossType=${nextBossType}, eloRating=${effectiveElo}`);
             // --- DETERMINE TOPIC ---
-            const targetTopic = resolveBattleScenarioTopic(context.articleTitle || context.topic, currentElo);
+            const targetTopic = resolveBattleScenarioTopic(context.articleTitle || context.topic, effectiveElo);
 
             // --- RANDOM SURPRISE DROP ---
             if (currentStreak > 0 && Math.random() < 0.05) { // 5% chance on new drill load (only if they aren't totally failing)
@@ -2863,7 +3094,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 }, 1000); // 1 second after generation starts
             }
 
-            const response = await fetch("/api/ai/generate_drill", {
+            const response = await fetch("/api/drill/next", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -2871,9 +3102,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                 body: JSON.stringify({
                     articleTitle: targetTopic,
                     articleContent: context.articleContent || "",
-                    difficulty: eloDifficulty.level, // Auto-calculated from ELO
-                    eloRating: currentElo,
+                    difficulty: effectiveDifficulty.level,
+                    eloRating: effectiveElo,
                     mode: generationMode,
+                    sourceMode: activeDrillSourceMode,
+                    excludeBankIds: activeDrillSourceMode === "bank" ? listeningBankExcludeIds : undefined,
                     bossType: nextBossType, // Inject Boss Context for Custom Scenarios
                     _t: Date.now() // Cache buster to prevent repeated drills
                 }),
@@ -2887,6 +3120,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
             // Check again after JSON parsing
             if (signal.aborted) return;
+
+            if (!response.ok || data?.error) {
+                throw new Error(data?.error || "Failed to generate drill");
+            }
 
             setDrillData(data);
 
@@ -2902,7 +3139,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                         body: JSON.stringify({
                             chinese: data.chinese,
                             reference_english: data.reference_english,
-                            elo: currentElo,
+                            elo: effectiveElo,
                         }),
                     });
                     if (!signal.aborted) {
@@ -3223,6 +3460,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (showGacha) return;
         const translationToScore = (submittedTranslation ?? userTranslation).trim();
         if (!drillData) return;
+        if (isRebuildMode) {
+            handleSubmitRebuild(false);
+            return;
+        }
         if (!isListeningMode && !translationToScore) return;
         if (isListeningMode && !wavBlob) {
             setDrillFeedback({
@@ -3248,13 +3489,18 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         try {
             // Use correct Elo based on mode
             const activeElo = isDictationMode ? dictationElo : isListeningMode ? listeningElo : eloRating;
-            const scoreMode: "translation" | "listening" | "dictation" = isDictationMode ? "dictation" : generationMode;
+            const scoreMode: "translation" | "listening" | "dictation" = isDictationMode
+                ? "dictation"
+                : isListeningMode
+                    ? "listening"
+                    : "translation";
             const scoringInputSource = isListeningFamilyMode && !isDictationMode ? "voice" : "keyboard";
             const response = isListeningMode
                 ? await (async () => {
                     const formData = new FormData();
                     formData.append("audio", wavBlob!, "shadowing.wav");
                     formData.append("reference_english", drillData.reference_english);
+                    formData.append("current_elo", String(activeElo || DEFAULT_BASE_ELO));
                     return fetch("/api/ai/pronunciation/score", {
                         method: "POST",
                         body: formData,
@@ -3349,6 +3595,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                 // --- Advanced Elo Logic (UIUXProMax) ---
                 const calculateAdvancedElo = (playerElo: number, difficultyElo: number, actualScore: number, streak: number) => {
+                    if (isListening) {
+                        return calculateListeningElo(playerElo, difficultyElo, actualScore, streak);
+                    }
+
                     const expectedScore = 1 / (1 + Math.pow(10, (difficultyElo - playerElo) / 400));
                     const normalizedScore = Math.max(0, Math.min(1, (actualScore - 3) / 7));
 
@@ -3518,9 +3768,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                 setEloBreakdown(result.breakdown);
 
-                if (data.score >= 9) {
+                const streakThreshold = isListening ? 8.8 : 9.0;
+                if (data.score >= streakThreshold) {
                     newStreak += 1;
-                    if (newStreak >= 3) change += 2;
+                    if (!isListening && newStreak >= 3) change += 2;
 
                     // Fever Logic
                     const newCombo = comboCount + 1;
@@ -3635,8 +3886,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                 // --- GACHA TRIGGER ---
                 let gachaTriggered = false;
+                const gachaMode: "translation" | "listening" = isListeningMode ? "listening" : "translation";
                 if (!hasExistingLoot && shouldTriggerGacha({
-                    mode: generationMode,
+                    mode: gachaMode,
                     score: data.score,
                     learningSession: learningSessionActive,
                     roll: Math.random(),
@@ -3741,7 +3993,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
         try {
             const activeElo = isDictationMode ? dictationEloRef.current : isListeningMode ? listeningEloRef.current : eloRatingRef.current;
-            const analysisMode: "translation" | "listening" | "dictation" = isDictationMode ? "dictation" : generationMode;
+            const analysisMode: "translation" | "listening" | "dictation" = isDictationMode
+                ? "dictation"
+                : isListeningMode
+                    ? "listening"
+                    : "translation";
             const analysisResponse = await fetch("/api/ai/analyze_drill", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -4190,7 +4446,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
     }, [applyEconomyPatch, getItemCount, isDictationMode, openShopForItem, pushEconomyFx]);
 
     const handleBlindVisibilityToggle = useCallback(() => {
-        if (!isDictationMode) {
+        if (!isListeningFamilyMode) {
             setIsBlindMode((prev) => !prev);
             return;
         }
@@ -4201,8 +4457,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
             return;
         }
 
-        // BLIND -> VISIBLE in dictation: consume once per drill
-        if (dictationVisibleUnlockConsumed) {
+        // BLIND -> VISIBLE in listening/dictation: consume once per drill
+        if (blindVisibleUnlockConsumed) {
             setIsBlindMode(false);
             return;
         }
@@ -4210,22 +4466,118 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (getItemCount('hint_ticket') <= 0) {
             setIsHintShake(true);
             setTimeout(() => setIsHintShake(false), 500);
-            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: 'Hint 道具不足，请先去商场购买' });
+            openShopForItem('hint_ticket', 'Hint 道具不足，请先去商场购买');
             return;
         }
 
         applyEconomyPatch({ itemDelta: { hint_ticket: -1 } });
         pushEconomyFx({ kind: 'item_consume', itemId: 'hint_ticket', amount: 1, message: '已消耗 1 Hint 道具', source: 'hint' });
-        setDictationVisibleUnlockConsumed(true);
+        setBlindVisibleUnlockConsumed(true);
         setIsBlindMode(false);
     }, [
         applyEconomyPatch,
-        dictationVisibleUnlockConsumed,
+        blindVisibleUnlockConsumed,
         getItemCount,
         isBlindMode,
-        isDictationMode,
+        isListeningFamilyMode,
+        openShopForItem,
         pushEconomyFx,
     ]);
+
+    const handleRebuildSelectToken = useCallback((tokenId: string) => {
+        if (!isRebuildMode || rebuildFeedback) return;
+        setRebuildAvailableTokens((currentTokens) => {
+            const token = currentTokens.find((item) => item.id === tokenId);
+            if (!token) return currentTokens;
+            setRebuildAnswerTokens((answerTokens) => (
+                answerTokens.some((item) => item.id === token.id)
+                    ? answerTokens
+                    : [...answerTokens, token]
+            ));
+            return currentTokens.filter((item) => item.id !== tokenId);
+        });
+    }, [isRebuildMode, rebuildFeedback]);
+
+    const handleRebuildRemoveToken = useCallback((tokenId: string) => {
+        if (!isRebuildMode || rebuildFeedback) return;
+        setRebuildAnswerTokens((currentTokens) => {
+            const token = currentTokens.find((item) => item.id === tokenId);
+            if (!token) return currentTokens;
+            setRebuildEditCount((prev) => prev + 1);
+            setRebuildAvailableTokens((availableTokens) => (
+                availableTokens.some((item) => item.id === token.id)
+                    ? availableTokens
+                    : [...availableTokens, token]
+            ));
+            return currentTokens.filter((item) => item.id !== tokenId);
+        });
+    }, [isRebuildMode, rebuildFeedback]);
+
+    const handleSubmitRebuild = useCallback((skipped = false) => {
+        if (!isRebuildMode || !drillData?._rebuildMeta || rebuildFeedback) return false;
+        if (!skipped && rebuildAnswerTokens.length === 0) return false;
+
+        const selectedTokens = skipped ? [] : rebuildAnswerTokens.map((token) => token.text);
+        const evaluation = evaluateRebuildSelection({
+            answerTokens: drillData._rebuildMeta.answerTokens,
+            selectedTokens,
+        });
+        const exceededSoftLimit = rebuildStartedAt !== null
+            ? (Date.now() - rebuildStartedAt) > getRebuildSoftTimeLimitMs(drillData._rebuildMeta.answerTokens.length, rebuildHiddenElo)
+            : false;
+        const systemDelta = getRebuildSystemDelta({
+            accuracyRatio: evaluation.accuracyRatio,
+            completionRatio: evaluation.completionRatio,
+            misplacementRatio: evaluation.misplacementRatio,
+            distractorPickRatio: evaluation.distractorPickRatio,
+            contentWordHitRate: evaluation.contentWordHitRate,
+            tailCoverage: evaluation.tailCoverage,
+            replayCount: rebuildReplayCount,
+            tokenEditCount: rebuildEditCount,
+            exceededSoftLimit,
+            skipped,
+        });
+        const systemAssessment = getRebuildSystemAssessment(systemDelta);
+
+        setRebuildFeedback({
+            evaluation,
+            systemDelta,
+            systemAssessment,
+            systemAssessmentLabel: getRebuildSystemAssessmentLabel(systemAssessment),
+            selfEvaluation: null,
+            effectiveElo: rebuildHiddenElo,
+            replayCount: rebuildReplayCount,
+            editCount: rebuildEditCount,
+            skipped,
+            exceededSoftLimit,
+        });
+        setAnalysisRequested(false);
+        setAnalysisDetailsOpen(false);
+        return true;
+    }, [
+        drillData?._rebuildMeta,
+        isRebuildMode,
+        rebuildAnswerTokens,
+        rebuildFeedback,
+        rebuildHiddenElo,
+        rebuildEditCount,
+        rebuildReplayCount,
+        rebuildStartedAt,
+    ]);
+
+    const handleSkipRebuild = useCallback(() => {
+        return handleSubmitRebuild(true);
+    }, [handleSubmitRebuild]);
+
+    const handleRebuildSelfEvaluate = useCallback((evaluation: RebuildSelfEvaluation) => {
+        if (!rebuildFeedback) return;
+        const delta = clampRebuildDifficultyDelta(rebuildFeedback.systemDelta + getRebuildSelfEvaluationDelta(evaluation));
+        const nextElo = Math.max(0, Math.min(3200, rebuildHiddenElo + delta));
+        setRebuildHiddenElo(nextElo);
+        void persistRebuildHiddenElo(nextElo);
+        setRebuildFeedback((currentFeedback) => currentFeedback ? { ...currentFeedback, selfEvaluation: evaluation } : currentFeedback);
+        setPendingRebuildAdvanceElo(nextElo);
+    }, [persistRebuildHiddenElo, rebuildFeedback, rebuildHiddenElo]);
 
     const handleMagicHint = async () => {
         if (learningSessionActive) return;
@@ -4662,26 +5014,64 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         if (mode !== "listening" || !drillFeedback) return null;
 
         return (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-[1.4rem] border border-emerald-100 bg-emerald-50/70 p-4">
                     <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">总分</p>
                     <p className="mt-2 text-2xl font-semibold text-emerald-900">{drillFeedback.utterance_scores?.total?.toFixed?.(1) ?? drillFeedback.pronunciation_score?.toFixed?.(1) ?? "--"}</p>
                 </div>
                 <div className="rounded-[1.4rem] border border-sky-100 bg-sky-50/70 p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-700">准确度</p>
-                    <p className="mt-2 text-2xl font-semibold text-sky-900">{drillFeedback.utterance_scores?.accuracy?.toFixed?.(1) ?? "--"}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-700">内容复现</p>
+                    <p className="mt-2 text-2xl font-semibold text-sky-900">{drillFeedback.utterance_scores?.content_reproduction?.toFixed?.(1) ?? drillFeedback.utterance_scores?.completeness?.toFixed?.(1) ?? "--"}</p>
                 </div>
                 <div className="rounded-[1.4rem] border border-amber-100 bg-amber-50/70 p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-700">完整度</p>
-                    <p className="mt-2 text-2xl font-semibold text-amber-900">{drillFeedback.utterance_scores?.completeness?.toFixed?.(1) ?? "--"}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-700">语流节奏</p>
+                    <p className="mt-2 text-2xl font-semibold text-amber-900">{drillFeedback.utterance_scores?.rhythm_fluency?.toFixed?.(1) ?? drillFeedback.utterance_scores?.fluency?.toFixed?.(1) ?? drillFeedback.fluency_score?.toFixed?.(1) ?? "--"}</p>
                 </div>
                 <div className="rounded-[1.4rem] border border-violet-100 bg-violet-50/70 p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-700">流利度</p>
-                    <p className="mt-2 text-2xl font-semibold text-violet-900">{drillFeedback.utterance_scores?.fluency?.toFixed?.(1) ?? drillFeedback.fluency_score?.toFixed?.(1) ?? "--"}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-700">发音清晰</p>
+                    <p className="mt-2 text-2xl font-semibold text-violet-900">{drillFeedback.utterance_scores?.pronunciation_clarity?.toFixed?.(1) ?? drillFeedback.utterance_scores?.accuracy?.toFixed?.(1) ?? drillFeedback.pronunciation_score?.toFixed?.(1) ?? "--"}</p>
                 </div>
-                <div className="rounded-[1.4rem] border border-stone-200 bg-white/90 p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">韵律</p>
-                    <p className="mt-2 text-2xl font-semibold text-stone-900">{drillFeedback.utterance_scores?.prosody?.toFixed?.(1) ?? "--"}</p>
+            </div>
+        );
+    };
+
+    const renderListeningReplayPanel = () => {
+        if (mode !== "listening" || !drillFeedback) return null;
+
+        const transcriptText = drillFeedback.transcript?.trim();
+
+        return (
+            <div className="rounded-[1.6rem] border border-stone-200/80 bg-white/80 p-5 shadow-[0_16px_34px_rgba(28,25,23,0.05)]">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">
+                            <Mic className="h-3.5 w-3.5 text-stone-400" />
+                            Whisper Transcript
+                        </div>
+                        <div className="mt-3 rounded-[1.35rem] border border-sky-100 bg-sky-50/70 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">系统识别到你说的是</p>
+                            <p className="mt-2 font-newsreader text-[1.45rem] leading-relaxed text-stone-800">
+                                {transcriptText ? `“${transcriptText}”` : "这次没有拿到稳定转录，通常意味着录音太短、太轻，或者内容与目标句差距很大。"}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-2 self-start">
+                        <button
+                            onClick={playRecording}
+                            disabled={!wavBlob}
+                            className={cn(
+                                "inline-flex min-h-11 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all",
+                                wavBlob
+                                    ? "border-rose-200/80 bg-rose-50 text-rose-600 hover:-translate-y-0.5 hover:bg-rose-100"
+                                    : "cursor-not-allowed border-stone-200 bg-stone-100/60 text-stone-400",
+                            )}
+                            title="播放我的录音"
+                        >
+                            <Play className="h-4 w-4 fill-current" />
+                            播放我的录音
+                        </button>
+                    </div>
                 </div>
             </div>
         );
@@ -5070,6 +5460,200 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         );
     };
 
+    const renderRebuildQuestion = () => {
+        if (!drillData?._rebuildMeta) return null;
+
+        return (
+            <div className="w-full max-w-4xl">
+                <div className="rounded-[1.5rem] border border-teal-100/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(245,255,252,0.94))] p-3 shadow-[0_18px_36px_rgba(20,184,166,0.08)]">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-teal-700">
+                            Rebuild
+                        </div>
+                        <div className="text-[11px] font-medium text-stone-400">
+                            听完就交
+                        </div>
+                    </div>
+
+                    <div className="min-h-[82px] rounded-[1.15rem] border border-dashed border-teal-200/90 bg-teal-50/45 p-3">
+                        {rebuildAnswerTokens.length > 0 ? (
+                            <div className="flex flex-wrap gap-2">
+                                {rebuildAnswerTokens.map((token) => (
+                                    <button
+                                        key={token.id}
+                                        type="button"
+                                        onClick={() => handleRebuildRemoveToken(token.id)}
+                                        className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-white px-3 py-1.5 text-sm font-semibold text-teal-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-teal-50"
+                                    >
+                                        {token.text}
+                                        {(token.repeatTotal ?? 1) > 1 && (
+                                            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-stone-100 px-1 text-[10px] font-black text-stone-500">
+                                                {token.repeatIndex}
+                                            </span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="flex min-h-[58px] items-center justify-center rounded-[1rem] border border-white/80 bg-white/70 px-4 text-center text-sm text-stone-400">
+                                直接点下面词块，把整句拼出来。
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="mt-2 max-h-[148px] overflow-y-auto rounded-[1.15rem] border border-stone-100 bg-stone-50/60 p-3">
+                        <div className="flex flex-wrap gap-2">
+                            {rebuildAvailableTokens.map((token) => (
+                                <button
+                                    key={token.id}
+                                    type="button"
+                                    onClick={() => handleRebuildSelectToken(token.id)}
+                                    className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-stone-700 transition hover:-translate-y-0.5 hover:bg-stone-50"
+                                >
+                                    {token.text}
+                                    {(token.repeatTotal ?? 1) > 1 && (
+                                        <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-stone-100 px-1 text-[10px] font-black text-stone-500">
+                                            {token.repeatIndex}
+                                        </span>
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="mt-3 flex gap-3">
+                        <button
+                            type="button"
+                            onClick={handleSkipRebuild}
+                            className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full border border-rose-200 bg-rose-50/80 px-4 text-sm font-semibold text-rose-700 transition hover:-translate-y-0.5"
+                        >
+                            <SkipForward className="h-4 w-4" />
+                            跳过
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => { void handleSubmitDrill(); }}
+                            disabled={rebuildAnswerTokens.length === 0}
+                            className={cn(
+                                "inline-flex h-11 flex-[1.2] items-center justify-center gap-2 rounded-full px-5 text-sm font-bold transition",
+                                rebuildAnswerTokens.length === 0
+                                    ? "cursor-not-allowed border border-stone-300/70 bg-white/60 text-stone-400"
+                                    : "border border-teal-500 bg-teal-500 text-white shadow-[0_12px_26px_rgba(20,184,166,0.28)] hover:-translate-y-0.5 hover:bg-teal-600"
+                            )}
+                        >
+                            <CheckCircle2 className="h-4 w-4" />
+                            发送
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const renderRebuildFeedback = () => {
+        if (!drillData?._rebuildMeta || !rebuildFeedback) return null;
+        const practiceTier = getRebuildPracticeTier(rebuildFeedback.effectiveElo);
+
+        return (
+            <div className="max-w-4xl mx-auto w-full space-y-4">
+                <div className="rounded-[2rem] border border-teal-100 bg-[linear-gradient(180deg,rgba(240,253,250,0.96),rgba(255,255,255,0.95))] p-6 shadow-[0_18px_40px_rgba(20,184,166,0.1)]">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-teal-700">Rebuild Feedback</p>
+                            <h3 className="mt-2 text-3xl font-bold text-slate-900">
+                                {rebuildFeedback.evaluation.isCorrect ? "拼对了" : rebuildFeedback.skipped ? "已跳过本题" : "这题没拼准"}
+                            </h3>
+                            <p className="mt-2 text-sm leading-7 text-stone-600">
+                                正确 {rebuildFeedback.evaluation.correctCount}/{rebuildFeedback.evaluation.totalCount}，
+                                当前练习层 {practiceTier.label}。系统判断这题{rebuildFeedback.systemAssessmentLabel}。
+                            </p>
+                        </div>
+                        <div className="rounded-[1.4rem] border border-teal-200/70 bg-white/75 px-5 py-4">
+                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-teal-600">系统判断</div>
+                            <div className="mt-2 text-2xl font-bold text-slate-900">{rebuildFeedback.systemAssessmentLabel}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-[1.8rem] border border-stone-100 bg-white/92 p-5 shadow-[0_18px_34px_rgba(15,23,42,0.05)]">
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">正确句子</p>
+                        <p className="mt-3 font-newsreader text-2xl italic leading-relaxed text-stone-900">{drillData.reference_english}</p>
+                        <p className="mt-4 text-sm leading-7 text-stone-500">{drillData.chinese}</p>
+                    </div>
+                    <div className="rounded-[1.8rem] border border-stone-100 bg-white/92 p-5 shadow-[0_18px_34px_rgba(15,23,42,0.05)]">
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">你的重建</p>
+                        <p className="mt-3 font-newsreader text-2xl italic leading-relaxed text-stone-900">
+                            {rebuildFeedback.evaluation.userSentence || "（本题已跳过）"}
+                        </p>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            {rebuildFeedback.evaluation.tokenFeedback.map((token, index) => (
+                                <span
+                                    key={`${token.text}-${index}-${token.status}`}
+                                    className={cn(
+                                        "rounded-full px-3 py-1.5 text-xs font-bold",
+                                        token.status === "correct"
+                                            ? "bg-emerald-100 text-emerald-700"
+                                            : token.status === "misplaced"
+                                                ? "bg-amber-100 text-amber-700"
+                                                : token.status === "missing"
+                                                    ? "bg-sky-100 text-sky-700"
+                                                    : "bg-rose-100 text-rose-700"
+                                    )}
+                                >
+                                    {token.status === "missing" ? `缺失 ${token.text}` : token.text}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded-[1.8rem] border border-stone-100 bg-white/92 p-5 shadow-[0_18px_34px_rgba(15,23,42,0.05)]">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">难度信号</p>
+                            <p className="mt-2 text-sm leading-7 text-stone-600">底部悬浮栏里直接点 `简单 / 刚好 / 难`。系统会立刻记下你的自评并自动进入下一题。</p>
+                        </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">正确率</div>
+                            <div className="mt-2 text-xl font-bold text-stone-900">{Math.round(rebuildFeedback.evaluation.accuracyRatio * 100)}%</div>
+                        </div>
+                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">完成度</div>
+                            <div className="mt-2 text-xl font-bold text-stone-900">{Math.round(rebuildFeedback.evaluation.completionRatio * 100)}%</div>
+                        </div>
+                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">顺序</div>
+                            <div className="mt-2 text-xl font-bold text-stone-900">{Math.round(rebuildFeedback.evaluation.misplacementRatio * 100)}%</div>
+                        </div>
+                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">干扰词</div>
+                            <div className="mt-2 text-xl font-bold text-stone-900">{Math.round(rebuildFeedback.evaluation.distractorPickRatio * 100)}%</div>
+                        </div>
+                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">内容词</div>
+                            <div className="mt-2 text-xl font-bold text-stone-900">{Math.round(rebuildFeedback.evaluation.contentWordHitRate * 100)}%</div>
+                        </div>
+                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">尾部</div>
+                            <div className="mt-2 text-xl font-bold text-stone-900">{Math.round(rebuildFeedback.evaluation.tailCoverage * 100)}%</div>
+                        </div>
+                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">重播</div>
+                            <div className="mt-2 text-xl font-bold text-stone-900">{rebuildFeedback.replayCount}</div>
+                        </div>
+                        <div className="rounded-2xl border border-stone-100 bg-stone-50/70 p-4">
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-400">编辑</div>
+                            <div className="mt-2 text-xl font-bold text-stone-900">{rebuildFeedback.editCount}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const hasDetailedAnalysis = Boolean(
             drillFeedback && (
                 (drillFeedback.word_results && drillFeedback.word_results.length > 0) ||
@@ -5102,6 +5686,16 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [mode, isEloLoaded]);
+
+    useEffect(() => {
+        if (!isRebuildMode || pendingRebuildAdvanceElo === null || isGeneratingDrill) return;
+        const timeoutId = window.setTimeout(() => {
+            setPendingRebuildAdvanceElo(null);
+            void handleGenerateDrill(undefined, undefined, true, pendingRebuildAdvanceElo);
+        }, 120);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [handleGenerateDrill, isGeneratingDrill, isRebuildMode, pendingRebuildAdvanceElo]);
 
 
 
@@ -5786,7 +6380,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     })()}
 
                                     {/* Difficulty Section - Simplified to Word Count */}
-                                    {drillData?._difficultyMeta && (
+                                    {drillData?._difficultyMeta && !isRebuildMode && (
                                         <>
                                             <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5" />
                                             <div className={cn(
@@ -5799,6 +6393,14 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                             )}>
                                                 <span>{drillData._difficultyMeta.actualWordCount}词</span>
                                             </div>
+                                            {mode === "listening" && drillData._difficultyMeta.listeningFeatures?.trainingFocus ? (
+                                                <>
+                                                    <div className="w-[1px] h-3 bg-stone-300/40 rounded-full mx-0.5" />
+                                                    <div className="flex items-center px-2.5 h-full rounded-full text-[11px] font-bold text-sky-700/80 transition-colors hover:bg-sky-50">
+                                                        <span>{drillData._difficultyMeta.listeningFeatures.trainingFocus}</span>
+                                                    </div>
+                                                </>
+                                            ) : null}
                                         </>
                                     )}
 
@@ -6079,24 +6681,38 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                     <div className="flex-1 relative overflow-y-auto flex flex-col">
 
                         {/* Scoring Flip Card Animation */}
-                        <ScoringFlipCard
-                            isScoring={isSubmittingDrill && !drillFeedback}
-                            userAnswer={userTranslation}
-                            mode={mode}
-                            streakTier={streakTier}
-                        />
+                        {!isRebuildMode && (
+                            <ScoringFlipCard
+                                isScoring={isSubmittingDrill && !drillFeedback}
+                                userAnswer={userTranslation}
+                                mode={mode}
+                                streakTier={streakTier}
+                            />
+                        )}
 
 
                         {drillSurfacePhase !== "ready" ? (
                             renderDrillLoadingState({
-                                title: mode === "translation" ? "正在生成句子..." : mode === "dictation" ? "正在准备听写..." : "正在准备音频...",
-                                subtitle: mode === "translation" ? "Crafting your phrase" : mode === "dictation" ? "Preparing dictation stream" : "Preparing audio stream",
+                                title: mode === "translation"
+                                    ? "正在生成句子..."
+                                    : mode === "dictation"
+                                        ? "正在准备听写..."
+                                        : mode === "rebuild"
+                                            ? "正在准备 Rebuild 练习..."
+                                            : "正在准备音频...",
+                                subtitle: mode === "translation"
+                                    ? "Crafting your phrase"
+                                    : mode === "dictation"
+                                        ? "Preparing dictation stream"
+                                        : mode === "rebuild"
+                                            ? "Preparing rebuild puzzle"
+                                            : "Preparing audio stream",
                                 backgroundClass: "bg-gradient-to-br from-stone-50 via-white to-slate-50/70",
                                 variant: mode,
                             })
                         ) : drillData ? (
                             <AnimatePresence mode="popLayout" initial={false}>
-                                {!drillFeedback ? (
+                                {!(isRebuildMode ? rebuildFeedback : drillFeedback) ? (
                                     <motion.div
                                         key="question"
                                         initial={{ x: -20, opacity: 0 }}
@@ -6105,14 +6721,18 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                         transition={{ duration: 0.4, ease: "easeOut" }}
                                         className={cn(
                                             "absolute inset-0 overflow-y-auto custom-scrollbar flex flex-col",
-                                            isDictationMode ? "p-4 md:p-5 pb-6 md:pb-8" : "p-6 md:p-8 pb-10 md:pb-12"
+                                            isRebuildMode
+                                                ? "p-4 md:p-5 pb-5 md:pb-6"
+                                                : isDictationMode
+                                                    ? "p-4 md:p-5 pb-6 md:pb-8"
+                                                    : "p-6 md:p-8 pb-10 md:pb-12"
                                         )}
                                     >
-                                        <div className={cn("mx-auto w-full", isDictationMode ? "max-w-2xl space-y-3" : "max-w-3xl space-y-4")}>
+                                        <div className={cn("mx-auto w-full", isRebuildMode ? "max-w-4xl space-y-2" : isDictationMode ? "max-w-2xl space-y-3" : "max-w-3xl space-y-4")}>
                                             {/* Source / Listening Area */}
-                                            <div className={cn("text-center w-full", isDictationMode ? "space-y-4" : "space-y-6")}>
-                                                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={cn("relative flex flex-col items-center w-full", isDictationMode ? "gap-4" : "gap-6")}>
-                                                    {isListeningFamilyMode ? (
+                                            <div className={cn("text-center w-full", isRebuildMode ? "space-y-2" : isDictationMode ? "space-y-4" : "space-y-6")}>
+                                                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={cn("relative flex flex-col items-center w-full", isRebuildMode ? "gap-2" : isDictationMode ? "gap-4" : "gap-6")}>
+                                                    {isAudioPracticeMode ? (
                                                         <div className="w-full flex flex-col items-center justify-center relative">
                                                             {/* Big Play Button */}
                                                             <button
@@ -6120,7 +6740,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                 disabled={isPlaying || isAudioLoading || (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)}
                                                                 className={cn(
                                                                     "group relative flex items-center justify-center transition-all duration-500",
-                                                                    isDictationMode ? "w-20 h-20 mb-4 mt-2" : "w-24 h-24 mb-8 mt-4",
+                                                                    isRebuildMode ? "w-20 h-20 mb-3 mt-0" : isDictationMode ? "w-20 h-20 mb-4 mt-2" : "w-24 h-24 mb-8 mt-4",
                                                                     (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)
                                                                         ? "grayscale opacity-50 cursor-not-allowed scale-95"
                                                                         : "hover:scale-105 active:scale-95 disabled:opacity-80 disabled:scale-100"
@@ -6162,40 +6782,43 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                             {/* Composite Control Bar */}
                                                             <div className={cn(
                                                                 "flex items-center justify-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150",
-                                                                isDictationMode ? "mb-4" : "mb-8",
+                                                                isRebuildMode ? "mb-3" : isDictationMode ? "mb-4" : "mb-8",
                                                             )}>
                                                                 <div className="flex items-center bg-stone-200/50 backdrop-blur-md p-1.5 rounded-full shadow-inner border border-stone-100/20">
                                                                     {/* Blind Toggle */}
-                                                                    <button
-                                                                        onClick={handleBlindVisibilityToggle}
-                                                                        className={cn(
-                                                                            "px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-2",
-                                                                            isBlindMode
-                                                                                ? "text-stone-500 hover:text-stone-700"
-                                                                                : isDictationMode
-                                                                                    ? "bg-purple-50 text-purple-700 shadow-sm"
-                                                                                    : "bg-white text-stone-800 shadow-sm"
-                                                                        )}
-                                                                        title={isDictationMode && isBlindMode && !dictationVisibleUnlockConsumed ? "开启 VISIBLE 将消耗 1 个 Hint 道具" : undefined}
-                                                                    >
-                                                                        {isBlindMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                                                        {isBlindMode ? "BLIND TEXT" : "VISIBLE"}
-                                                                    </button>
-
-                                                                    {!isDictationMode && (
+                                                                    {!isRebuildMode && (
                                                                         <>
-                                                                            <div className="w-px h-4 bg-stone-300 mx-2" />
-
-                                                                            {/* Chinese Toggle */}
                                                                             <button
-                                                                                onClick={() => setShowChinese(!showChinese)}
-                                                                                className={cn("w-8 h-8 rounded-full text-xs font-bold transition-all flex items-center justify-center", showChinese ? "bg-white text-stone-800 shadow-sm" : "text-stone-400 hover:text-stone-600")}
-                                                                                title="Toggle Chinese Translation"
+                                                                                onClick={handleBlindVisibilityToggle}
+                                                                                className={cn(
+                                                                                    "px-4 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-2",
+                                                                                    isBlindMode
+                                                                                        ? "text-stone-500 hover:text-stone-700"
+                                                                                        : isDictationMode
+                                                                                            ? "bg-purple-50 text-purple-700 shadow-sm"
+                                                                                            : "bg-white text-stone-800 shadow-sm"
+                                                                                )}
+                                                                                title={isListeningFamilyMode && isBlindMode && !blindVisibleUnlockConsumed ? "开启 VISIBLE 将消耗 1 个 Hint 道具" : undefined}
                                                                             >
-                                                                                中
+                                                                                {isBlindMode ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                                                                {isBlindMode ? "BLIND TEXT" : "VISIBLE"}
                                                                             </button>
 
-                                                                            <div className="w-px h-4 bg-stone-300 mx-2" />
+                                                                            {!isDictationMode && (
+                                                                                <>
+                                                                                    <div className="w-px h-4 bg-stone-300 mx-2" />
+
+                                                                                    <button
+                                                                                        onClick={() => setShowChinese(!showChinese)}
+                                                                                        className={cn("w-8 h-8 rounded-full text-xs font-bold transition-all flex items-center justify-center", showChinese ? "bg-white text-stone-800 shadow-sm" : "text-stone-400 hover:text-stone-600")}
+                                                                                        title="Toggle Chinese Translation"
+                                                                                    >
+                                                                                        中
+                                                                                    </button>
+
+                                                                                    <div className="w-px h-4 bg-stone-300 mx-2" />
+                                                                                </>
+                                                                            )}
                                                                         </>
                                                                     )}
 
@@ -6219,7 +6842,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         ))}
                                                                     </div>
 
-                                                                    {isListeningFamilyMode && (
+                                                                    {isAudioPracticeMode && (
                                                                         <>
                                                                             <div className="w-px h-5 bg-stone-300 mx-2" />
 
@@ -6325,10 +6948,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
 
                                                             {/* Text Reveal / Hint Area - Check Manual Toggle OR Boss Force */}
-                                                            {!((bossState.active && bossState.type === 'blind') || isBlindMode) ? (
+                                                            {(isRebuildMode || !((bossState.active && bossState.type === 'blind') || isBlindMode)) ? (
                                                                 <div className={cn(
                                                                     "relative w-full max-w-4xl mx-auto px-4 animate-in fade-in zoom-in-95 duration-500",
-                                                                    isDictationMode ? "pt-6 pb-4" : "pt-12 pb-8",
+                                                                    isRebuildMode ? "pt-2 pb-2" : isDictationMode ? "pt-6 pb-4" : "pt-12 pb-8",
                                                                 )}>
                                                                     <div className="text-center font-newsreader italic text-2xl md:text-3xl leading-relaxed text-stone-800 tracking-wide selection:bg-indigo-100">
                                                                         {((gambleState.active && gambleState.wager !== 'safe')) && !isSubmittingDrill ? (
@@ -6346,9 +6969,11 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                     ))}
                                                                                 </div>
                                                                             </div>
+                                                                        ) : isRebuildMode ? (
+                                                                            <div className="h-1" />
                                                                         ) : renderInteractiveText(drillData.reference_english)}
                                                                     </div>
-                                                                    {showChinese && <p className="mt-4 text-stone-500 text-lg text-center font-medium animate-in fade-in slide-in-from-top-2">{drillData.chinese}</p>}
+                                                                    {showChinese && !isRebuildMode && <p className="mt-4 text-stone-500 text-lg text-center font-medium animate-in fade-in slide-in-from-top-2">{drillData.chinese}</p>}
                                                                 </div>
                                                             ) : (
                                                                 <div className="relative w-full max-w-2xl mx-auto px-4 py-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -6494,15 +7119,24 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                 </motion.div>
                                             </div>
 
-                                            <div className="my-3 h-px w-full max-w-xs mx-auto bg-gradient-to-r from-transparent via-stone-200 to-transparent md:my-4" />
+                                            {!isRebuildMode && (
+                                                <div className="my-3 h-px w-full max-w-xs mx-auto bg-gradient-to-r from-transparent via-stone-200 to-transparent md:my-4" />
+                                            )}
 
                                             {/* Teaching Card removed - now in floating panel */}
 
                                             {/* Interactive Area */}
 
-                                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="w-full space-y-4">
+                                            <motion.div
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                transition={{ delay: 0.1 }}
+                                                className={cn("w-full", isRebuildMode ? "space-y-0" : "space-y-4")}
+                                            >
                                                 <div className="relative group">
-                                                    {isShadowingMode ? (
+                                                    {isRebuildMode ? (
+                                                        renderRebuildQuestion()
+                                                    ) : isShadowingMode ? (
                                                         <div className="flex flex-col items-center justify-center gap-4 py-2">
                                                             {whisperProcessing ? (
                                                                 <div className="flex items-center gap-3 px-6 py-3 bg-indigo-50 rounded-full">
@@ -6745,7 +7379,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                     </motion.div>
                                 ) : (
                                     <AnimatePresence mode="wait">
-                                        {(bossState.active || (gambleState.active && gambleState.introAck)) ? (
+                                        {drillFeedback && (bossState.active || (gambleState.active && gambleState.introAck)) ? (
                                             <BossScoreReveal
                                                 key="boss-feedback"
                                                 score={drillFeedback.score}
@@ -6787,14 +7421,21 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                             />
                                         ) : (
                                             <motion.div key="feedback" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 20, opacity: 0 }} transition={{ duration: 0.4, ease: "easeOut" }} className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 md:p-6 pb-48">
+                                                {isRebuildMode ? (
+                                                    renderRebuildFeedback()
+                                                ) : drillFeedback ? (
+                                                    (() => {
+                                                        const currentDrillFeedback = drillFeedback;
+                                                        return (
+                                                            <>
                                                 {/* Error State: Show retry when API fails */}
-                                                {drillFeedback._error ? (
+                                                {currentDrillFeedback._error ? (
                                                     <div className="flex flex-col items-center justify-center gap-4 py-16">
                                                         <div className="text-4xl">⚠️</div>
                                                         <p className="text-stone-600 font-medium text-center">评分服务暂时不可用</p>
                                                         <p className="text-stone-400 text-sm text-center">
-                                                            {typeof drillFeedback.judge_reasoning === "string" && drillFeedback.judge_reasoning.trim().length > 0
-                                                                ? drillFeedback.judge_reasoning
+                                                            {typeof currentDrillFeedback.judge_reasoning === "string" && currentDrillFeedback.judge_reasoning.trim().length > 0
+                                                                ? currentDrillFeedback.judge_reasoning
                                                                 : "请重试。"}
                                                         </p>
                                                         <button
@@ -6822,15 +7463,15 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                         </button>
                                                     </div>
                                                 ) : (
-                                                    <div className={cn("max-w-4xl mx-auto w-full space-y-4 transition-transform duration-100", drillFeedback.score <= 4 && "animate-[shake_0.5s_ease-in-out]")}>
+                                                    <div className={cn("max-w-4xl mx-auto w-full space-y-4 transition-transform duration-100", currentDrillFeedback.score <= 4 && "animate-[shake_0.5s_ease-in-out]")}>
                                                         <div className="flex flex-col items-center gap-1">
                                                             <div
-                                                                className={cn("text-5xl font-bold font-newsreader transition-all duration-500", drillFeedback.score >= 8 ? "text-emerald-600" : drillFeedback.score >= 6 ? "text-amber-500" : "text-rose-500")}
-                                                                style={streakTier > 0 && drillFeedback.score >= 8 ? { textShadow: streakVisual.scoreGlow } : undefined}
+                                                                className={cn("text-5xl font-bold font-newsreader transition-all duration-500", currentDrillFeedback.score >= 8 ? "text-emerald-600" : currentDrillFeedback.score >= 6 ? "text-amber-500" : "text-rose-500")}
+                                                                style={streakTier > 0 && currentDrillFeedback.score >= 8 ? { textShadow: streakVisual.scoreGlow } : undefined}
                                                             >
-                                                                {drillFeedback.score}<span className="text-xl text-stone-300 font-normal">/10</span>
+                                                                {currentDrillFeedback.score}<span className="text-xl text-stone-300 font-normal">/10</span>
                                                             </div>
-                                                            <p className="text-stone-500 font-medium text-xs uppercase tracking-wider">Accuracy Score</p>
+                                                            <p className="text-stone-500 font-medium text-xs uppercase tracking-wider">{mode === "listening" ? "Listening Score" : "Accuracy Score"}</p>
                                                             {eloChange !== null && eloChange !== 0 ? (
                                                                 <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150 mt-4 w-full max-w-sm">
                                                                     {/* Rank Progress Bar */}
@@ -6939,7 +7580,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                                                                     {mode !== "listening" && drillFeedback.judge_reasoning && (
                                                                         <p className="text-[10px] text-stone-400 mt-3 max-w-lg text-center leading-relaxed">
-                                                                            <span className="font-bold text-stone-500 mr-1">{mode === "listening" ? "Pronunciation:" : "AI Judge:"}</span>
+                                                                            <span className="font-bold text-stone-500 mr-1">AI Judge:</span>
                                                                             {drillFeedback.judge_reasoning}
                                                                         </p>
                                                                     )}
@@ -6995,6 +7636,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                         />
                                                                     ) : mode === "listening" ? (
                                                                         <div className="space-y-4">
+                                                                            {renderListeningReplayPanel()}
                                                                             {renderDiff()}
                                                                             {renderListeningMetricCards()}
                                                                         </div>
@@ -7016,11 +7658,9 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                         <p className="mt-4 text-[1.8rem] leading-tight text-stone-900 font-newsreader">
                                                                                             {analysisLead}
                                                                                         </p>
-                                                                                        {mode !== "listening" && (
-                                                                                            <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500">
-                                                                                                你的答案：<span className="font-newsreader italic text-stone-700">&ldquo;{userTranslation.length > 140 ? userTranslation.slice(0, 140) + "..." : userTranslation}&rdquo;</span>
-                                                                                            </p>
-                                                                                        )}
+                                                                                        <p className="mt-3 max-w-2xl text-sm leading-6 text-stone-500">
+                                                                                            你的答案：<span className="font-newsreader italic text-stone-700">&ldquo;{userTranslation.length > 140 ? userTranslation.slice(0, 140) + "..." : userTranslation}&rdquo;</span>
+                                                                                        </p>
                                                                                     </div>
 
                                                                                     <div className="flex gap-2">
@@ -7095,7 +7735,7 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                                                 >
                                                                                     {renderDiff()}
                                                                                     {renderListeningMetricCards()}
-                                                                                    {mode !== "listening" && drillFeedback.feedback && (
+                                                                                    {drillFeedback.feedback && (
                                                                                         <div className="rounded-[1.75rem] border border-stone-100 bg-white/90 p-5 shadow-[0_12px_30px_rgba(28,25,23,0.04)]">
                                                                                             <h4 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-indigo-600">
                                                                                                 <Sparkles className="w-3.5 h-3.5" />
@@ -7192,6 +7832,10 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                                         )}
                                                     </div>
                                                 )}
+                                                            </>
+                                                        );
+                                                    })()
+                                                ) : null}
                                             </motion.div>
                                         )}
                                     </AnimatePresence>
@@ -7279,7 +7923,49 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
 
                     {/* Floating Action Bar - Redesigned */}
                     <AnimatePresence>
-                        {drillFeedback && !bossState.active && !gambleState.active && (
+                        {isRebuildMode && rebuildFeedback && !bossState.active && !gambleState.active && (
+                            <motion.div
+                                initial={{ y: 40, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: 40, opacity: 0 }}
+                                className="absolute bottom-6 left-1/2 z-50 w-[calc(100%-2rem)] max-w-[520px] -translate-x-1/2 pointer-events-none md:bottom-8"
+                            >
+                                <div className="pointer-events-auto rounded-full border border-white/65 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(247,250,252,0.88))] p-2 shadow-[0_20px_50px_rgba(15,23,42,0.16)] backdrop-blur-[24px]">
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {([
+                                            {
+                                                value: "easy",
+                                                label: "简单",
+                                                className: "border-emerald-200/90 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(209,250,229,0.92))] text-emerald-700 shadow-[0_10px_24px_rgba(16,185,129,0.12)] hover:border-emerald-300 hover:text-emerald-800 hover:shadow-[0_14px_28px_rgba(16,185,129,0.18)]",
+                                            },
+                                            {
+                                                value: "just_right",
+                                                label: "刚好",
+                                                className: "border-sky-200/90 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(224,242,254,0.92))] text-sky-700 shadow-[0_10px_24px_rgba(14,165,233,0.12)] hover:border-sky-300 hover:text-sky-800 hover:shadow-[0_14px_28px_rgba(14,165,233,0.18)]",
+                                            },
+                                            {
+                                                value: "hard",
+                                                label: "难",
+                                                className: "border-amber-200/90 bg-[linear-gradient(180deg,rgba(255,251,235,0.98),rgba(254,243,199,0.92))] text-amber-700 shadow-[0_10px_24px_rgba(245,158,11,0.12)] hover:border-amber-300 hover:text-amber-800 hover:shadow-[0_14px_28px_rgba(245,158,11,0.18)]",
+                                            },
+                                        ] as const).map((option) => (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                onClick={() => handleRebuildSelfEvaluate(option.value)}
+                                                className={cn(
+                                                    "inline-flex h-12 items-center justify-center rounded-full border px-4 text-sm font-bold transition hover:-translate-y-0.5",
+                                                    option.className
+                                                )}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                        {(isRebuildMode ? false : Boolean(drillFeedback)) && !bossState.active && !gambleState.active && (
                             <motion.div
                                 initial={{ y: 50, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
@@ -7289,7 +7975,8 @@ export function DrillCore({ context, initialMode = "translation", onClose }: Dri
                                 <div className="pointer-events-auto filter drop-shadow-2xl">
                                     <button
                                         onClick={() => handleGenerateDrill()}
-                                        className="group relative flex items-center gap-3 px-8 py-3.5 text-white rounded-full font-bold hover:scale-105 active:scale-95 transition-all text-sm md:text-base tracking-wide overflow-hidden"
+                                        disabled={isRebuildMode && !rebuildFeedback?.selfEvaluation}
+                                        className="group relative flex items-center gap-3 px-8 py-3.5 text-white rounded-full font-bold hover:scale-105 active:scale-95 transition-all text-sm md:text-base tracking-wide overflow-hidden disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:scale-100"
                                         style={{
                                             backgroundImage: streakTier > 0 ? streakVisual.nextGradient : activeCosmeticUi.nextButtonGradient,
                                             boxShadow: streakTier > 0 ? streakVisual.nextShadow : activeCosmeticUi.nextButtonShadow,

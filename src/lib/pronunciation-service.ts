@@ -46,6 +46,7 @@ export async function scorePronunciationWithService(input: {
     audioBase64: string;
     referenceText: string;
     transcript?: string;
+    eloRating?: number;
 }) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PRONUNCIATION_SERVICE_TIMEOUT_MS);
@@ -59,6 +60,7 @@ export async function scorePronunciationWithService(input: {
             body: JSON.stringify({
                 audio_base64: input.audioBase64,
                 reference_text: input.referenceText,
+                ...(typeof input.eloRating === "number" ? { elo_rating: input.eloRating } : {}),
             }),
             signal: controller.signal,
         });
