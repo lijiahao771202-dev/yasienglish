@@ -263,19 +263,6 @@ interface RebuildFeedbackState {
     resolvedAt: number;
 }
 
-interface RebuildFlyingTokenFx {
-    id: string;
-    text: string;
-    from: { left: number; top: number; width: number; height: number };
-    to: { left: number; top: number; width: number; height: number };
-}
-
-interface SuccessBurstState {
-    id: number;
-    label: string;
-    accent: "emerald" | "teal";
-}
-
 // --- State --- 
 
 interface LootDrop {
@@ -1051,17 +1038,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [rebuildReplayCount, setRebuildReplayCount] = useState(0);
     const [rebuildEditCount, setRebuildEditCount] = useState(0);
     const [rebuildStartedAt, setRebuildStartedAt] = useState<number | null>(null);
-    const [rebuildFlyingTokens, setRebuildFlyingTokens] = useState<RebuildFlyingTokenFx[]>([]);
-    const [successBurst, setSuccessBurst] = useState<SuccessBurstState | null>(null);
-    const [rebuildPerfectBurstId, setRebuildPerfectBurstId] = useState<number | null>(null);
     const [pendingRebuildAdvanceElo, setPendingRebuildAdvanceElo] = useState<number | null>(null);
     const lastRebuildResolvedAtRef = useRef<number | null>(null);
     const lastScoreCelebrationRef = useRef<string>("");
     const rebuildTokenOrderRef = useRef<Map<string, number>>(new Map());
-    const rebuildBankTokenRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-    const rebuildAnswerZoneRef = useRef<HTMLDivElement | null>(null);
-    const successBurstTimeoutRef = useRef<number | null>(null);
-    const rebuildPerfectBurstTimeoutRef = useRef<number | null>(null);
+    const prefersReducedMotion = useReducedMotion();
     const activeCosmeticTheme = COSMETIC_THEMES[cosmeticTheme] || COSMETIC_THEMES[DEFAULT_FREE_THEME];
     const activeCosmeticUi = COSMETIC_THEME_UI[cosmeticTheme] || COSMETIC_THEME_UI.morning_coffee;
     const isShopInventoryExpanded = shouldExpandShopInventoryDock({
@@ -1088,18 +1069,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             updated_at: Date.now(),
         });
     }, [buildRebuildMetaKey]);
-
-    const triggerSuccessBurst = useCallback((label: string, accent: SuccessBurstState["accent"] = "emerald") => {
-        if (successBurstTimeoutRef.current !== null) {
-            window.clearTimeout(successBurstTimeoutRef.current);
-        }
-        const id = Date.now();
-        setSuccessBurst({ id, label, accent });
-        successBurstTimeoutRef.current = window.setTimeout(() => {
-            setSuccessBurst((current) => current?.id === id ? null : current);
-            successBurstTimeoutRef.current = null;
-        }, prefersReducedMotion ? 700 : 1180);
-    }, [prefersReducedMotion]);
 
     const initializeRebuildTokens = useCallback((nextDrillData: DrillData | null) => {
         const tokenBank = nextDrillData?._rebuildMeta?.tokenBank ?? [];
@@ -1146,17 +1115,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
         return () => {
             hoverMediaQuery.removeEventListener("change", syncHoverSupport);
-        };
-    }, []);
-
-    useEffect(() => {
-        return () => {
-            if (successBurstTimeoutRef.current !== null) {
-                window.clearTimeout(successBurstTimeoutRef.current);
-            }
-            if (rebuildPerfectBurstTimeoutRef.current !== null) {
-                window.clearTimeout(rebuildPerfectBurstTimeoutRef.current);
-            }
         };
     }, []);
 
@@ -2020,7 +1978,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const vocabTicketCount = inventory.vocab_ticket;
     const audioTicketCount = inventory.audio_ticket;
     const refreshTicketCount = inventory.refresh_ticket;
-    const prefersReducedMotion = useReducedMotion();
     const [streakTransition, setStreakTransition] = useState<'surge' | 'cooldown' | null>(null);
     const [cooldownTier, setCooldownTier] = useState<StreakTier>(0);
     const [cooldownStreak, setCooldownStreak] = useState(0);
@@ -2710,22 +2667,43 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
         if (rebuildFeedback.evaluation.isCorrect && !rebuildFeedback.skipped) {
             playRebuildSfx("success");
-            triggerSuccessBurst("Perfect Rebuild", "teal");
             if (!prefersReducedMotion) {
                 confetti({
-                    particleCount: 70,
-                    spread: 72,
-                    startVelocity: 26,
-                    scalar: 0.82,
-                    origin: { y: 0.72 },
+                    particleCount: 180,
+                    spread: 84,
+                    startVelocity: 34,
+                    scalar: 0.98,
+                    origin: { y: 0.68, x: 0.5 },
                     colors: ["#34d399", "#2dd4bf", "#fbbf24", "#ffffff"],
                 });
+                window.setTimeout(() => {
+                    confetti({
+                        particleCount: 120,
+                        spread: 70,
+                        startVelocity: 30,
+                        scalar: 0.9,
+                        origin: { y: 0.62, x: 0.18 },
+                        angle: 58,
+                        colors: ["#34d399", "#a7f3d0", "#fbbf24", "#ffffff"],
+                    });
+                }, 120);
+                window.setTimeout(() => {
+                    confetti({
+                        particleCount: 120,
+                        spread: 70,
+                        startVelocity: 30,
+                        scalar: 0.9,
+                        origin: { y: 0.62, x: 0.82 },
+                        angle: 122,
+                        colors: ["#2dd4bf", "#99f6e4", "#fde68a", "#ffffff"],
+                    });
+                }, 220);
             }
             return;
         }
 
         playRebuildSfx("error");
-    }, [prefersReducedMotion, rebuildFeedback, triggerSuccessBurst]);
+    }, [prefersReducedMotion, rebuildFeedback]);
 
 
     // --- Spacebar Logic ---
@@ -2743,20 +2721,20 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             if (!prefersReducedMotion) {
                 const strongHit = drillFeedback.score >= 9;
                 confetti({
-                    particleCount: strongHit ? 150 : 100,
-                    spread: strongHit ? 86 : 70,
-                    startVelocity: strongHit ? 42 : 30,
-                    scalar: strongHit ? 1.04 : 0.92,
+                    particleCount: strongHit ? 190 : 120,
+                    spread: strongHit ? 92 : 74,
+                    startVelocity: strongHit ? 46 : 32,
+                    scalar: strongHit ? 1.08 : 0.96,
                     origin: { y: 0.62, x: 0.5 },
                     colors: ['#10b981', '#34d399', '#6ee7b7', '#fcd34d', '#ffffff'],
                 });
                 if (strongHit) {
                     timeoutIds.push(window.setTimeout(() => {
                         confetti({
-                            particleCount: 120,
-                            spread: 64,
-                            startVelocity: 36,
-                            scalar: 0.96,
+                            particleCount: 150,
+                            spread: 72,
+                            startVelocity: 40,
+                            scalar: 1,
                             origin: { y: 0.56, x: 0.18 },
                             angle: 58,
                             colors: ['#34d399', '#a7f3d0', '#fcd34d', '#ffffff'],
@@ -2764,19 +2742,26 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     }, 140));
                     timeoutIds.push(window.setTimeout(() => {
                         confetti({
-                            particleCount: 120,
-                            spread: 64,
-                            startVelocity: 36,
-                            scalar: 0.96,
+                            particleCount: 150,
+                            spread: 72,
+                            startVelocity: 40,
+                            scalar: 1,
                             origin: { y: 0.56, x: 0.82 },
                             angle: 122,
                             colors: ['#10b981', '#6ee7b7', '#fde68a', '#ffffff'],
                         });
                     }, 220));
+                    timeoutIds.push(window.setTimeout(() => {
+                        confetti({
+                            particleCount: 110,
+                            spread: 120,
+                            startVelocity: 28,
+                            scalar: 0.88,
+                            origin: { y: 0.48, x: 0.5 },
+                            colors: ['#10b981', '#34d399', '#fcd34d', '#ffffff'],
+                        });
+                    }, 320));
                 }
-            }
-            if (drillFeedback.score >= 9) {
-                triggerSuccessBurst(mode === "listening" ? "Listening Cleared" : "Perfect Hit", "emerald");
             }
             new Audio('https://assets.mixkit.co/sfx/preview/mixkit-achievement-bell-600.mp3').play().catch(() => { });
             return () => {
@@ -2797,7 +2782,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         return () => {
             timeoutIds.forEach((id) => window.clearTimeout(id));
         };
-    }, [drillData?.reference_english, drillFeedback, mode, prefersReducedMotion, triggerSuccessBurst]);
+    }, [drillData?.reference_english, drillFeedback, mode, prefersReducedMotion]);
 
     // --- Keyboard listeners removed - now using click-to-record UI ---
     // Space key no longer triggers recording
@@ -4686,48 +4671,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     const handleRebuildSelectToken = useCallback((tokenId: string) => {
         if (!isRebuildMode || rebuildFeedback) return;
-        const sourceRect = rebuildBankTokenRefs.current[tokenId]?.getBoundingClientRect();
-        const answerRect = rebuildAnswerZoneRef.current?.getBoundingClientRect();
         setRebuildAvailableTokens((currentTokens) => {
             const token = currentTokens.find((item) => item.id === tokenId);
             if (!token) return currentTokens;
             playRebuildSfx("pick");
-            if (sourceRect && answerRect) {
-                const column = rebuildAnswerTokens.length % 4;
-                const row = Math.floor(rebuildAnswerTokens.length / 4);
-                const chipWidth = Math.min(Math.max(sourceRect.width, 88), 150);
-                const targetLeft = Math.min(
-                    answerRect.left + 18 + (column * Math.min(chipWidth + 10, 120)),
-                    answerRect.right - chipWidth - 18,
-                );
-                const targetTop = Math.min(
-                    answerRect.top + 14 + (row * 46),
-                    answerRect.bottom - sourceRect.height - 10,
-                );
-                const fxId = `${token.id}-${Date.now()}`;
-                setRebuildFlyingTokens((current) => [
-                    ...current,
-                    {
-                        id: fxId,
-                        text: token.text,
-                        from: {
-                            left: sourceRect.left,
-                            top: sourceRect.top,
-                            width: sourceRect.width,
-                            height: sourceRect.height,
-                        },
-                        to: {
-                            left: targetLeft,
-                            top: targetTop,
-                            width: sourceRect.width,
-                            height: sourceRect.height,
-                        },
-                    },
-                ]);
-                window.setTimeout(() => {
-                    setRebuildFlyingTokens((current) => current.filter((item) => item.id !== fxId));
-                }, prefersReducedMotion ? 160 : 480);
-            }
             setRebuildAnswerTokens((answerTokens) => (
                 answerTokens.some((item) => item.id === token.id)
                     ? answerTokens
@@ -4735,7 +4682,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             ));
             return currentTokens.filter((item) => item.id !== tokenId);
         });
-    }, [isRebuildMode, prefersReducedMotion, rebuildAnswerTokens.length, rebuildFeedback]);
+    }, [isRebuildMode, rebuildFeedback]);
 
     const handleRebuildRemoveToken = useCallback((tokenId: string) => {
         if (!isRebuildMode || rebuildFeedback) return;
@@ -5406,6 +5353,60 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         return <>&ldquo;{drillData.reference_english}&rdquo;</>;
     };
 
+    const renderFeedbackSentenceRecap = () => {
+        if (!drillData) return null;
+
+        const chineseText = drillData.chinese?.trim();
+        const englishText = drillData.reference_english?.trim();
+
+        if (!chineseText && !englishText) return null;
+
+        return (
+            <div className="overflow-hidden rounded-[2rem] border border-stone-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(247,248,250,0.95))] shadow-[0_18px_40px_rgba(28,25,23,0.05)]">
+                <div className="p-5 md:p-6">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+                                <BookOpen className="h-3.5 w-3.5 text-stone-400" />
+                                句意回看
+                            </div>
+
+                            {chineseText ? (
+                                <div className="mt-4 rounded-[1.6rem] border border-amber-100/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.96),rgba(255,255,255,0.92))] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-700">中文意思</p>
+                                    <p className="mt-2 text-[1.35rem] leading-relaxed text-stone-900 font-newsreader md:text-[1.55rem]">
+                                        {chineseText}
+                                    </p>
+                                </div>
+                            ) : null}
+
+                            {englishText ? (
+                                <div className="mt-3 rounded-[1.5rem] border border-sky-100/80 bg-sky-50/55 px-4 py-4">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-700">英文原句</p>
+                                    <div className="mt-2 text-base leading-8 text-stone-800 font-newsreader md:text-[1.05rem]">
+                                        {renderInteractiveText(englishText)}
+                                    </div>
+                                </div>
+                            ) : null}
+                        </div>
+
+                        {englishText ? (
+                            <button
+                                type="button"
+                                onClick={() => { void playAudio(); }}
+                                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full border border-indigo-200/80 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 transition-all hover:-translate-y-0.5 hover:bg-indigo-100"
+                                title="重听英文原句"
+                            >
+                                <Volume2 className="h-4 w-4" />
+                                重听英文
+                            </button>
+                        ) : null}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     const renderTranslationTutorModal = () => {
         if (mode !== "translation" || !drillData || !isTutorOpen) return null;
 
@@ -5726,7 +5727,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         </div>
                     </div>
 
-                    <div ref={rebuildAnswerZoneRef} className="min-h-[82px] rounded-[1.15rem] border border-dashed border-teal-200/90 bg-teal-50/45 p-3">
+                    <div className="relative min-h-[82px] rounded-[1.15rem] border border-dashed border-teal-200/90 bg-teal-50/45 p-3">
                         {rebuildAnswerTokens.length > 0 ? (
                             <AnimatePresence initial={false}>
                                 <div className="flex flex-wrap gap-2">
@@ -5734,15 +5735,16 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                         <motion.button
                                             key={token.id}
                                             type="button"
-                                            initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.96, y: 12 }}
-                                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                                            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.985, y: -6 }}
+                                            initial={prefersReducedMotion ? false : { opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
                                             transition={prefersReducedMotion
                                                 ? { duration: 0.12 }
-                                                : { type: "spring", stiffness: 420, damping: 30, mass: 0.82 }}
+                                                : { duration: 0.18, ease: "easeOut" }}
                                             whileTap={prefersReducedMotion ? undefined : { scale: 0.97 }}
                                             onClick={() => handleRebuildRemoveToken(token.id)}
-                                            className="inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-white px-3 py-1.5 text-sm font-semibold text-teal-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-teal-50"
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-teal-200/90 bg-white px-3 py-1.5 text-sm font-semibold text-teal-800 shadow-[0_8px_18px_rgba(20,184,166,0.08)] transition hover:-translate-y-0.5 hover:bg-teal-50"
+                                            style={{ willChange: "opacity" }}
                                         >
                                             {token.text}
                                             {(token.repeatTotal ?? 1) > 1 && (
@@ -5768,16 +5770,16 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     <motion.button
                                         key={token.id}
                                         type="button"
-                                        ref={(node) => { rebuildBankTokenRefs.current[token.id] = node; }}
-                                        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.96, y: 8 }}
-                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                        exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.94, y: -8 }}
+                                        initial={prefersReducedMotion ? false : { opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        exit={{ opacity: 0 }}
                                         transition={prefersReducedMotion
                                             ? { duration: 0.12 }
-                                            : { duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+                                            : { duration: 0.16, ease: "easeOut" }}
                                         whileTap={prefersReducedMotion ? undefined : { scale: 0.97 }}
                                         onClick={() => handleRebuildSelectToken(token.id)}
                                         className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-stone-700 transition hover:-translate-y-0.5 hover:bg-stone-50 hover:shadow-sm active:scale-[0.98]"
+                                        style={{ willChange: "opacity" }}
                                     >
                                         {token.text}
                                         {(token.repeatTotal ?? 1) > 1 && (
@@ -5942,17 +5944,36 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, delay: prefersReducedMotion ? 0 : 0.16 }}
-                            className={cn(
-                                "rounded-[1.4rem] border px-5 py-4 shadow-sm",
-                                rebuildTone === "success"
-                                    ? "border-emerald-200/70 bg-white/85"
-                                    : rebuildTone === "partial"
-                                        ? "border-amber-200/70 bg-white/85"
-                                        : "border-stone-200/70 bg-white/80"
-                            )}
+                            className="flex flex-col gap-3"
                         >
-                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-stone-500">系统判断</div>
-                            <div className="mt-2 text-2xl font-bold text-slate-900">{rebuildFeedback.systemAssessmentLabel}</div>
+                            <div
+                                className={cn(
+                                    "rounded-[1.4rem] border px-5 py-4 shadow-sm",
+                                    rebuildTone === "success"
+                                        ? "border-emerald-200/70 bg-white/85"
+                                        : rebuildTone === "partial"
+                                            ? "border-amber-200/70 bg-white/85"
+                                            : "border-stone-200/70 bg-white/80"
+                                )}
+                            >
+                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-stone-500">系统判断</div>
+                                <div className="mt-2 text-2xl font-bold text-slate-900">{rebuildFeedback.systemAssessmentLabel}</div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => { void playAudio(); }}
+                                disabled={isAudioLoading}
+                                className={cn(
+                                    "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all",
+                                    isAudioLoading
+                                        ? "cursor-wait border-stone-200 bg-stone-100/80 text-stone-400"
+                                        : "border-indigo-200/80 bg-indigo-50 text-indigo-700 hover:-translate-y-0.5 hover:bg-indigo-100"
+                                )}
+                                title="重播英文原句"
+                            >
+                                <Volume2 className={cn("h-4 w-4", isAudioLoading && "animate-pulse")} />
+                                {isAudioLoading ? "加载音频..." : isPlaying ? "播放中..." : "重播英文"}
+                            </button>
                         </motion.div>
                     </div>
                 </motion.div>
@@ -7886,85 +7907,21 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                     <div className={cn("max-w-4xl mx-auto w-full space-y-4 transition-transform duration-100", currentDrillFeedback.score <= 4 && "animate-[shake_0.5s_ease-in-out]")}>
                                                         <div className="flex flex-col items-center gap-1">
                                                             {(() => {
-                                                                const isScoreCelebration = currentDrillFeedback.score >= 9;
                                                                 const isScorePositive = currentDrillFeedback.score >= 8;
                                                                 return (
                                                                     <motion.div
                                                                         initial={prefersReducedMotion ? false : { opacity: 0, y: 18, scale: 0.96 }}
                                                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                                                         transition={{ duration: prefersReducedMotion ? 0.18 : 0.32, ease: "easeOut" }}
-                                                                        className={cn(
-                                                                            "relative flex flex-col items-center overflow-hidden rounded-[2rem] px-8 py-6",
-                                                                            isScoreCelebration
-                                                                                ? "border border-emerald-200/80 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.18),rgba(255,255,255,0.96)_58%)] shadow-[0_18px_50px_rgba(16,185,129,0.12)]"
-                                                                                : "bg-transparent"
-                                                                        )}
+                                                                        className="relative flex flex-col items-center px-8 py-6"
                                                                     >
-                                                                        {isScoreCelebration && !prefersReducedMotion ? (
-                                                                            <>
-                                                                                <motion.div
-                                                                                    className="pointer-events-none absolute inset-0 rounded-[2rem] border border-emerald-300/70"
-                                                                                    initial={{ opacity: 0.8, scale: 0.92 }}
-                                                                                    animate={{ opacity: [0.72, 0], scale: [0.94, 1.16] }}
-                                                                                    transition={{ duration: 0.72, ease: "easeOut" }}
-                                                                                />
-                                                                                <motion.div
-                                                                                    className="pointer-events-none absolute inset-x-[18%] top-0 h-24 rounded-full bg-emerald-300/25 blur-3xl"
-                                                                                    animate={{ opacity: [0.28, 0.64, 0.32], scale: [0.92, 1.08, 0.96] }}
-                                                                                    transition={{ duration: 1.2, ease: "easeInOut" }}
-                                                                                />
-                                                                                <motion.div
-                                                                                    className="pointer-events-none absolute inset-x-[10%] top-1/2 h-32 -translate-y-1/2 rounded-full bg-emerald-200/30 blur-3xl"
-                                                                                    animate={{ opacity: [0.18, 0.42, 0.18], scale: [0.88, 1.14, 0.94] }}
-                                                                                    transition={{ duration: 0.86, ease: "easeOut" }}
-                                                                                />
-                                                                                <motion.div
-                                                                                    className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.92),transparent)] blur-md"
-                                                                                    initial={{ x: "-15%" }}
-                                                                                    animate={{ x: "420%" }}
-                                                                                    transition={{ duration: 0.9, ease: "easeOut" }}
-                                                                                />
-                                                                                {Array.from({ length: 6 }).map((_, index) => (
-                                                                                    <motion.span
-                                                                                        key={`score-ray-${index}`}
-                                                                                        className="pointer-events-none absolute left-1/2 top-1/2 h-16 w-[2px] origin-bottom rounded-full bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(52,211,153,0))]"
-                                                                                        style={{ rotate: `${index * 30}deg` }}
-                                                                                        initial={{ opacity: 0, scaleY: 0.4 }}
-                                                                                        animate={{ opacity: [0, 0.82, 0.24], scaleY: [0.4, 1.18, 0.92] }}
-                                                                                        transition={{ duration: 0.7, ease: "easeOut", delay: index * 0.03 }}
-                                                                                    />
-                                                                                ))}
-                                                                            </>
-                                                                        ) : null}
-                                                                        {isScoreCelebration ? (
-                                                                            <motion.div
-                                                                                initial={prefersReducedMotion ? false : { opacity: 0, y: 8, scale: 0.94 }}
-                                                                                animate={{ opacity: 1, y: 0, scale: [0.96, 1.06, 1] }}
-                                                                                transition={{ duration: prefersReducedMotion ? 0.16 : 0.42, delay: prefersReducedMotion ? 0 : 0.08 }}
-                                                                                className="mb-3 inline-flex items-center rounded-full border border-emerald-200 bg-white/92 px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.24em] text-emerald-700 shadow-[0_12px_30px_rgba(16,185,129,0.16)]"
-                                                                            >
-                                                                                Perfect Hit
-                                                                            </motion.div>
-                                                                        ) : null}
-                                                                        <motion.div
-                                                                            animate={isScoreCelebration && !prefersReducedMotion ? { scale: [0.96, 1.12, 1.04, 1], y: [10, -6, 0] } : {}}
-                                                                            transition={{ duration: 0.72, ease: "easeOut", delay: 0.04 }}
+                                                                        <div
                                                                             className={cn("relative text-5xl font-bold font-newsreader transition-all duration-500", isScorePositive ? "text-emerald-600" : currentDrillFeedback.score >= 6 ? "text-amber-500" : "text-rose-500")}
-                                                                            style={streakTier > 0 && isScorePositive ? { textShadow: streakVisual.scoreGlow } : isScoreCelebration ? { textShadow: "0 0 36px rgba(16,185,129,0.28)" } : undefined}
+                                                                            style={streakTier > 0 && isScorePositive ? { textShadow: streakVisual.scoreGlow } : undefined}
                                                                         >
                                                                             {currentDrillFeedback.score}<span className="text-xl text-stone-300 font-normal">/10</span>
-                                                                        </motion.div>
+                                                                        </div>
                                                                         <p className="mt-1 text-stone-500 font-medium text-xs uppercase tracking-wider">{mode === "listening" ? "Listening Score" : "Accuracy Score"}</p>
-                                                                        {isScoreCelebration ? (
-                                                                            <motion.p
-                                                                                initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
-                                                                                animate={{ opacity: 1, y: 0 }}
-                                                                                transition={{ duration: prefersReducedMotion ? 0.16 : 0.28, delay: prefersReducedMotion ? 0 : 0.14 }}
-                                                                                className="mt-2 text-sm font-semibold text-emerald-700"
-                                                                            >
-                                                                                答对了，这题给你一次强正反馈。
-                                                                            </motion.p>
-                                                                        ) : null}
                                                                     </motion.div>
                                                                 );
                                                             })()}
@@ -8083,6 +8040,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                 </div>
                                                             ) : null}
                                                         </div>
+
+                                                        {renderFeedbackSentenceRecap()}
 
                                                         {analysisRequested ? (
                                                             <div className="bg-white/90 p-6 rounded-[2rem] shadow-xl shadow-stone-200/50 border border-stone-100 backdrop-blur-sm">
@@ -8745,111 +8704,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         document.body
                     )
                     : null}
-
-                {typeof window !== "undefined" && rebuildFlyingTokens.length > 0
-                    ? createPortal(
-                        <AnimatePresence>
-                            {rebuildFlyingTokens.map((token) => (
-                                <motion.div
-                                    key={token.id}
-                                    initial={{
-                                        opacity: 0.96,
-                                        left: token.from.left,
-                                        top: token.from.top,
-                                        width: token.from.width,
-                                        height: token.from.height,
-                                        scale: 1,
-                                    }}
-                                    animate={{
-                                        opacity: [0.98, 1, 0.18],
-                                        left: token.to.left,
-                                        top: token.to.top,
-                                        width: token.to.width,
-                                        height: token.to.height,
-                                        scale: [1, 1.05, 0.92],
-                                    }}
-                                    exit={{ opacity: 0 }}
-                                    transition={prefersReducedMotion
-                                        ? { duration: 0.16 }
-                                        : { duration: 0.46, ease: [0.22, 1, 0.36, 1] }}
-                                    className="pointer-events-none fixed z-[140] inline-flex items-center justify-center rounded-full border border-teal-200 bg-white px-3 py-1.5 text-sm font-semibold text-teal-800 shadow-[0_16px_32px_rgba(20,184,166,0.18)]"
-                                >
-                                    {token.text}
-                                </motion.div>
-                            ))}
-                        </AnimatePresence>,
-                        document.body
-                    )
-                    : null}
-
-                <AnimatePresence>
-                    {successBurst ? (
-                        <motion.div
-                            key={successBurst.id}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="pointer-events-none absolute inset-0 z-[130] flex items-center justify-center overflow-hidden"
-                        >
-                            <motion.div
-                                className={cn(
-                                    "absolute inset-0",
-                                    successBurst.accent === "teal"
-                                        ? "bg-[radial-gradient(circle_at_center,rgba(45,212,191,0.22),transparent_55%)]"
-                                        : "bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.22),transparent_55%)]"
-                                )}
-                                initial={{ opacity: 0, scale: 0.82 }}
-                                animate={{ opacity: [0, 1, 0.2], scale: [0.82, 1.08, 1.18] }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: prefersReducedMotion ? 0.36 : 0.82, ease: "easeOut" }}
-                            />
-                            <motion.div
-                                initial={{ scale: 0.74, opacity: 0, y: 18 }}
-                                animate={{ scale: [0.74, 1.08, 1], opacity: 1, y: 0 }}
-                                exit={{ scale: 0.94, opacity: 0 }}
-                                transition={{ duration: prefersReducedMotion ? 0.26 : 0.58, ease: [0.22, 1, 0.36, 1] }}
-                                className={cn(
-                                    "relative flex flex-col items-center rounded-[2.2rem] border px-10 py-8 shadow-[0_30px_80px_rgba(15,23,42,0.22)] backdrop-blur-xl",
-                                    successBurst.accent === "teal"
-                                        ? "border-teal-200/80 bg-[linear-gradient(180deg,rgba(240,253,250,0.95),rgba(255,255,255,0.9))]"
-                                        : "border-emerald-200/80 bg-[linear-gradient(180deg,rgba(236,253,245,0.95),rgba(255,255,255,0.9))]"
-                                )}
-                            >
-                                {!prefersReducedMotion ? (
-                                    <>
-                                        <motion.div
-                                            className="absolute inset-0 rounded-[2.2rem] border border-white/80"
-                                            initial={{ opacity: 0.75, scale: 0.9 }}
-                                            animate={{ opacity: [0.75, 0], scale: [0.9, 1.16] }}
-                                            transition={{ duration: 0.8, ease: "easeOut" }}
-                                        />
-                                        <motion.div
-                                            className="absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.92),transparent)] blur-md"
-                                            initial={{ x: "-10%" }}
-                                            animate={{ x: "430%" }}
-                                            transition={{ duration: 0.72, ease: "easeOut" }}
-                                        />
-                                    </>
-                                ) : null}
-                                <div className={cn(
-                                    "mb-3 rounded-full px-4 py-1 text-[11px] font-black uppercase tracking-[0.28em]",
-                                    successBurst.accent === "teal"
-                                        ? "bg-teal-100 text-teal-700"
-                                        : "bg-emerald-100 text-emerald-700"
-                                )}>
-                                    Correct
-                                </div>
-                                <div className={cn(
-                                    "text-center font-newsreader text-5xl font-bold italic",
-                                    successBurst.accent === "teal" ? "text-teal-700" : "text-emerald-700"
-                                )}>
-                                    {successBurst.label}
-                                </div>
-                                <div className="mt-2 text-sm font-semibold text-stone-600">这次答对了</div>
-                            </motion.div>
-                        </motion.div>
-                    ) : null}
-                </AnimatePresence>
 
                 <AnimatePresence>
                     {renderTranslationTutorModal()}
