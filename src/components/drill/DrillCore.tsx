@@ -1042,6 +1042,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const lastRebuildResolvedAtRef = useRef<number | null>(null);
     const lastScoreCelebrationRef = useRef<string>("");
     const rebuildTokenOrderRef = useRef<Map<string, number>>(new Map());
+    const rebuildAutoSubmitTimeoutRef = useRef<number | null>(null);
     const prefersReducedMotion = useReducedMotion();
     const activeCosmeticTheme = COSMETIC_THEMES[cosmeticTheme] || COSMETIC_THEMES[DEFAULT_FREE_THEME];
     const activeCosmeticUi = COSMETIC_THEME_UI[cosmeticTheme] || COSMETIC_THEME_UI.morning_coffee;
@@ -1115,6 +1116,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
         return () => {
             hoverMediaQuery.removeEventListener("change", syncHoverSupport);
+        };
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (rebuildAutoSubmitTimeoutRef.current !== null) {
+                window.clearTimeout(rebuildAutoSubmitTimeoutRef.current);
+            }
         };
     }, []);
 
@@ -4761,6 +4770,53 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         return handleSubmitRebuild(true);
     }, [handleSubmitRebuild]);
 
+    useEffect(() => {
+        if (!isRebuildMode || !drillData?._rebuildMeta || rebuildFeedback) {
+            if (rebuildAutoSubmitTimeoutRef.current !== null) {
+                window.clearTimeout(rebuildAutoSubmitTimeoutRef.current);
+                rebuildAutoSubmitTimeoutRef.current = null;
+            }
+            return;
+        }
+
+        const answerTokens = drillData._rebuildMeta.answerTokens;
+        if (rebuildAnswerTokens.length !== answerTokens.length) {
+            if (rebuildAutoSubmitTimeoutRef.current !== null) {
+                window.clearTimeout(rebuildAutoSubmitTimeoutRef.current);
+                rebuildAutoSubmitTimeoutRef.current = null;
+            }
+            return;
+        }
+
+        const isExactMatch = rebuildAnswerTokens.every((token, index) => token.text === answerTokens[index]);
+        if (!isExactMatch) {
+            if (rebuildAutoSubmitTimeoutRef.current !== null) {
+                window.clearTimeout(rebuildAutoSubmitTimeoutRef.current);
+                rebuildAutoSubmitTimeoutRef.current = null;
+            }
+            return;
+        }
+
+        rebuildAutoSubmitTimeoutRef.current = window.setTimeout(() => {
+            rebuildAutoSubmitTimeoutRef.current = null;
+            handleSubmitRebuild(false);
+        }, prefersReducedMotion ? 40 : 140);
+
+        return () => {
+            if (rebuildAutoSubmitTimeoutRef.current !== null) {
+                window.clearTimeout(rebuildAutoSubmitTimeoutRef.current);
+                rebuildAutoSubmitTimeoutRef.current = null;
+            }
+        };
+    }, [
+        drillData?._rebuildMeta,
+        handleSubmitRebuild,
+        isRebuildMode,
+        prefersReducedMotion,
+        rebuildAnswerTokens,
+        rebuildFeedback,
+    ]);
+
     const handleRebuildSelfEvaluate = useCallback((evaluation: RebuildSelfEvaluation) => {
         if (!rebuildFeedback) return;
         const delta = clampRebuildDifficultyDelta(rebuildFeedback.systemDelta + getRebuildSelfEvaluationDelta(evaluation));
@@ -5723,7 +5779,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             Rebuild
                         </div>
                         <div className="text-[11px] font-medium text-stone-400">
-                            听完就交
+                            选对自动发送
                         </div>
                     </div>
 
@@ -5834,6 +5890,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             : rebuildFeedback.skipped
                 ? "miss"
                 : "partial";
+        const isSkippedRebuild = rebuildFeedback.skipped;
+        const isCorrectRebuild = rebuildFeedback.evaluation.isCorrect;
         const metrics = [
             { label: "正确率", value: `${Math.round(rebuildFeedback.evaluation.accuracyRatio * 100)}%` },
             { label: "完成度", value: `${Math.round(rebuildFeedback.evaluation.completionRatio * 100)}%` },
@@ -5912,59 +5970,52 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             />
                         </>
                     ) : null}
-                    <div className="relative flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className="relative flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
                         <motion.div
                             initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, delay: prefersReducedMotion ? 0 : 0.08 }}
+                            className="min-w-0 flex-1"
                         >
-                            <p className={cn(
-                                "text-[11px] font-black uppercase tracking-[0.18em]",
-                                rebuildTone === "success"
-                                    ? "text-emerald-700"
-                                    : rebuildTone === "partial"
-                                        ? "text-amber-700"
-                                        : "text-stone-500"
-                            )}>
-                                Rebuild Result
-                            </p>
-                            <h3 className="mt-2 text-3xl font-bold text-slate-900">
-                                {rebuildFeedback.evaluation.isCorrect ? "这句你拼出来了" : rebuildFeedback.skipped ? "这题先跳过" : "系统已经帮你修顺了"}
+                            <div className="flex flex-wrap items-center gap-2">
+                                <span className={cn(
+                                    "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em]",
+                                    rebuildTone === "success"
+                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                        : rebuildTone === "partial"
+                                            ? "border-amber-200 bg-amber-50 text-amber-700"
+                                            : "border-stone-200 bg-white/80 text-stone-500"
+                                )}>
+                                    Rebuild Result
+                                </span>
+                                <span className="inline-flex items-center rounded-full border border-stone-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-stone-500">
+                                    系统判断 {rebuildFeedback.systemAssessmentLabel}
+                                </span>
+                            </div>
+                            <h3 className="mt-3 text-3xl font-bold text-slate-900">
+                                {isCorrectRebuild ? "这句你拼出来了" : isSkippedRebuild ? "这题先跳过" : "先看标准表达"}
                             </h3>
-                            <p className="mt-2 text-sm leading-7 text-stone-600">
-                                当前练习层 {practiceTier.label}。系统判断这题{rebuildFeedback.systemAssessmentLabel}。
-                                {rebuildFeedback.evaluation.isCorrect
+                            <p className="mt-2 max-w-2xl text-sm leading-7 text-stone-600">
+                                当前练习层 {practiceTier.label}。
+                                {isCorrectRebuild
                                     ? " 节奏不错，继续往上刷。"
-                                    : rebuildFeedback.skipped
-                                        ? " 先保留手感，下一题继续。"
-                                        : " 下面直接按正确表达替你修订。"}
+                                    : isSkippedRebuild
+                                        ? " 这题先别纠结，先听一遍标准句，把意思和表达带过去。"
+                                        : " 先记住标准表达，再看你这次错在什么地方。"}
                             </p>
                         </motion.div>
                         <motion.div
                             initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, delay: prefersReducedMotion ? 0 : 0.16 }}
-                            className="flex flex-col gap-3"
+                            className="flex shrink-0 items-center gap-3 self-start"
                         >
-                            <div
-                                className={cn(
-                                    "rounded-[1.4rem] border px-5 py-4 shadow-sm",
-                                    rebuildTone === "success"
-                                        ? "border-emerald-200/70 bg-white/85"
-                                        : rebuildTone === "partial"
-                                            ? "border-amber-200/70 bg-white/85"
-                                            : "border-stone-200/70 bg-white/80"
-                                )}
-                            >
-                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-stone-500">系统判断</div>
-                                <div className="mt-2 text-2xl font-bold text-slate-900">{rebuildFeedback.systemAssessmentLabel}</div>
-                            </div>
                             <button
                                 type="button"
                                 onClick={() => { void playAudio(); }}
                                 disabled={isAudioLoading}
                                 className={cn(
-                                    "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all",
+                                    "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition-all",
                                     isAudioLoading
                                         ? "cursor-wait border-stone-200 bg-stone-100/80 text-stone-400"
                                         : "border-indigo-200/80 bg-indigo-50 text-indigo-700 hover:-translate-y-0.5 hover:bg-indigo-100"
@@ -5979,90 +6030,98 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 </motion.div>
 
                 <motion.div
-                    key={`rebuild-result-body-${rebuildFeedback.resolvedAt}`}
+                    key={`rebuild-reference-${rebuildFeedback.resolvedAt}`}
                     initial={prefersReducedMotion ? false : { opacity: 0, y: 18 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: prefersReducedMotion ? 0.16 : 0.34, delay: prefersReducedMotion ? 0 : 0.12 }}
                     className="rounded-[1.9rem] border border-stone-100 bg-white/94 p-5 shadow-[0_18px_34px_rgba(15,23,42,0.05)]"
                 >
-                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">修订后的句子</p>
-                    <div className="mt-4 flex flex-wrap gap-3">
-                        {displaySentence.tokens.map((token, index) => (
-                            <motion.button
-                                key={`${token.text}-${token.kind}-${index}-${token.originalText ?? ""}`}
-                                type="button"
-                                initial={prefersReducedMotion ? false : { opacity: 0, y: 10, scale: 0.98 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                transition={{ duration: prefersReducedMotion ? 0.12 : 0.2, delay: prefersReducedMotion ? 0 : 0.04 + (index * 0.02) }}
-                                onClick={(e) => openWordPopupAtElement(e.currentTarget, token.text, drillData.reference_english)}
-                                className={cn(
-                                    "text-left",
-                                    token.kind === "correct" && getInteractiveTokenClassName(token.text, "plain"),
-                                    (token.kind === "misplaced" || token.kind === "replacement") && getInteractiveTokenClassName(token.text, "changed"),
-                                    token.kind === "inserted" && getInteractiveTokenClassName(token.text, "inserted"),
-                                )}
-                            >
-                                {token.kind === "correct" ? (
-                                    <span className="font-newsreader text-[1.18rem] italic">{token.text}</span>
-                                ) : token.kind === "inserted" ? (
-                                    <span className="flex items-center gap-2">
-                                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-black tracking-[0.14em] text-sky-700">补上</span>
-                                        <span className="font-newsreader text-[1.18rem] italic">{token.text}</span>
-                                    </span>
-                                ) : (
-                                    <span className="flex flex-col leading-none">
-                                        <span className="font-newsreader text-[0.96rem] italic text-rose-400 line-through opacity-80">
-                                            {token.originalText}
-                                        </span>
-                                        <span className="mt-1 font-newsreader text-[1.18rem] italic text-amber-900">
-                                            {token.text}
-                                        </span>
-                                    </span>
-                                )}
-                            </motion.button>
-                        ))}
-                    </div>
-
-                    {displaySentence.extraTokens.length > 0 ? (
-                        <div className="mt-4 flex flex-wrap items-center gap-2">
-                            <span className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-400">删掉这些</span>
-                            {displaySentence.extraTokens.map((token, index) => (
-                                <button
-                                    key={`extra-${token.text}-${index}`}
-                                    type="button"
-                                    onClick={(e) => openWordPopupAtElement(e.currentTarget, token.text, rebuildFeedback.evaluation.userSentence || drillData.reference_english)}
-                                    className={getInteractiveTokenClassName(token.text, "removed")}
-                                >
-                                    <span className="font-newsreader text-[1rem] italic line-through opacity-85">{token.text}</span>
-                                </button>
-                            ))}
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                        <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">标准表达</p>
+                            <div className="mt-4 rounded-[1.45rem] border border-stone-200/80 bg-stone-50/70 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                                <div className="text-[1.2rem] leading-9 text-stone-800 font-newsreader md:text-[1.35rem]">
+                                    {renderInteractiveText(drillData.reference_english)}
+                                </div>
+                            </div>
+                            <div className="mt-4 rounded-[1.35rem] border border-amber-100/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.92),rgba(255,255,255,0.92))] px-4 py-3">
+                                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-700">中文意思</p>
+                                <p className="mt-2 text-base leading-8 text-stone-700 md:text-[1.05rem]">{drillData.chinese}</p>
+                            </div>
                         </div>
-                    ) : null}
-
-                    <p className="mt-5 text-sm leading-7 text-stone-500">
-                        {rebuildFeedback.evaluation.isCorrect
-                            ? "这句你已经完整重建出来了。"
-                            : rebuildFeedback.skipped
-                                ? "这题已跳过，系统保留了正确表达给你快速过一遍。"
-                                : "重点看橙色和蓝色词块：橙色是替换或错位，蓝色是漏掉补回的部分。"}
-                    </p>
-                    <div className="mt-4 rounded-[1.3rem] border border-stone-200/80 bg-stone-50/70 px-4 py-3">
-                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-stone-500">标准表达</div>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                            {drillData._rebuildMeta.answerTokens.map((token, index) => (
-                                <button
-                                    key={`reference-${token}-${index}`}
-                                    type="button"
-                                    onClick={(e) => openWordPopupAtElement(e.currentTarget, token, drillData.reference_english)}
-                                    className="rounded-full px-1.5 py-0.5 font-newsreader text-[1.02rem] italic text-stone-700 transition hover:bg-stone-200/70"
-                                >
-                                    {token}
-                                </button>
-                            ))}
+                        <div className="shrink-0 rounded-[1.3rem] border border-stone-200/80 bg-white/80 px-4 py-3 text-sm text-stone-500 shadow-sm">
+                            点击英文单词可查词
                         </div>
                     </div>
-                    <p className="mt-2 text-sm leading-7 text-stone-400">{drillData.chinese}</p>
                 </motion.div>
+
+                {!isSkippedRebuild && !isCorrectRebuild ? (
+                    <motion.div
+                        key={`rebuild-diff-${rebuildFeedback.resolvedAt}`}
+                        initial={prefersReducedMotion ? false : { opacity: 0, y: 18 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, delay: prefersReducedMotion ? 0 : 0.16 }}
+                        className="rounded-[1.9rem] border border-stone-100 bg-white/94 p-5 shadow-[0_18px_34px_rgba(15,23,42,0.05)]"
+                    >
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">你这次错在哪里</p>
+                        <div className="mt-4 flex flex-wrap gap-3">
+                            {displaySentence.tokens.map((token, index) => (
+                                <motion.button
+                                    key={`${token.text}-${token.kind}-${index}-${token.originalText ?? ""}`}
+                                    type="button"
+                                    initial={prefersReducedMotion ? false : { opacity: 0, y: 8, scale: 0.98 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    transition={{ duration: prefersReducedMotion ? 0.12 : 0.18, delay: prefersReducedMotion ? 0 : 0.03 + (index * 0.02) }}
+                                    onClick={(e) => openWordPopupAtElement(e.currentTarget, token.text, drillData.reference_english)}
+                                    className={cn(
+                                        "text-left",
+                                        token.kind === "correct" && getInteractiveTokenClassName(token.text, "plain"),
+                                        (token.kind === "misplaced" || token.kind === "replacement") && getInteractiveTokenClassName(token.text, "changed"),
+                                        token.kind === "inserted" && getInteractiveTokenClassName(token.text, "inserted"),
+                                    )}
+                                >
+                                    {token.kind === "correct" ? (
+                                        <span className="font-newsreader text-[1.18rem] italic">{token.text}</span>
+                                    ) : token.kind === "inserted" ? (
+                                        <span className="flex items-center gap-2">
+                                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-black tracking-[0.14em] text-sky-700">漏词</span>
+                                            <span className="font-newsreader text-[1.18rem] italic">{token.text}</span>
+                                        </span>
+                                    ) : (
+                                        <span className="flex flex-col leading-none">
+                                            <span className="font-newsreader text-[0.96rem] italic text-rose-400 line-through opacity-80">
+                                                {token.originalText}
+                                            </span>
+                                            <span className="mt-1 font-newsreader text-[1.18rem] italic text-amber-900">
+                                                {token.text}
+                                            </span>
+                                        </span>
+                                    )}
+                                </motion.button>
+                            ))}
+                        </div>
+
+                        {displaySentence.extraTokens.length > 0 ? (
+                            <div className="mt-4 flex flex-wrap items-center gap-2">
+                                <span className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-400">多选了这些</span>
+                                {displaySentence.extraTokens.map((token, index) => (
+                                    <button
+                                        key={`extra-${token.text}-${index}`}
+                                        type="button"
+                                        onClick={(e) => openWordPopupAtElement(e.currentTarget, token.text, rebuildFeedback.evaluation.userSentence || drillData.reference_english)}
+                                        className={getInteractiveTokenClassName(token.text, "removed")}
+                                    >
+                                        <span className="font-newsreader text-[1rem] italic line-through opacity-85">{token.text}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : null}
+
+                        <p className="mt-5 text-sm leading-7 text-stone-500">
+                            先记标准句，再重点看橙色和蓝色词块：橙色是错位或替换，蓝色是漏掉的部分。
+                        </p>
+                    </motion.div>
+                ) : null}
 
                 <motion.div
                     initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
@@ -7153,7 +7212,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             })
                         ) : drillData ? (
                             <AnimatePresence mode="popLayout" initial={false}>
-                                {!(isRebuildMode ? rebuildFeedback : drillFeedback) ? (
+                                {(!drillFeedback || isRebuildMode) ? (
                                     <motion.div
                                         key="question"
                                         initial={{ x: -20, opacity: 0 }}
@@ -7161,12 +7220,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                         exit={{ x: -20, opacity: 0 }}
                                         transition={{ duration: 0.4, ease: "easeOut" }}
                                         className={cn(
-                                            "absolute inset-0 overflow-y-auto custom-scrollbar flex flex-col",
+                                            "absolute inset-0 overflow-y-auto custom-scrollbar flex flex-col transition-[filter,opacity,transform] duration-300",
                                             isRebuildMode
                                                 ? "p-4 md:p-5 pb-5 md:pb-6"
                                                 : isDictationMode
                                                     ? "p-4 md:p-5 pb-6 md:pb-8"
-                                                    : "p-6 md:p-8 pb-10 md:pb-12"
+                                                    : "p-6 md:p-8 pb-10 md:pb-12",
+                                            isRebuildMode && rebuildFeedback
+                                                ? "pointer-events-none scale-[0.985] opacity-70 blur-[1.5px]"
+                                                : ""
                                         )}
                                     >
                                         <div className={cn("mx-auto w-full", isRebuildMode ? "max-w-4xl space-y-2" : isDictationMode ? "max-w-2xl space-y-3" : "max-w-3xl space-y-4")}>
@@ -7862,9 +7924,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                             />
                                         ) : (
                                             <motion.div key="feedback" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 20, opacity: 0 }} transition={{ duration: 0.4, ease: "easeOut" }} className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 md:p-6 pb-48">
-                                                {isRebuildMode ? (
-                                                    renderRebuildFeedback()
-                                                ) : drillFeedback ? (
+                                                {drillFeedback ? (
                                                     (() => {
                                                         const currentDrillFeedback = drillFeedback;
                                                         return (
@@ -8297,6 +8357,28 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 )}
                             </AnimatePresence>
                         ) : null}
+
+                        <AnimatePresence>
+                            {isRebuildMode && rebuildFeedback ? (
+                                <motion.div
+                                    key={`rebuild-feedback-modal-${rebuildFeedback.resolvedAt}`}
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="absolute inset-0 z-40 overflow-y-auto custom-scrollbar bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.72),rgba(248,250,252,0.86)_34%,rgba(15,23,42,0.1))] p-4 md:p-6 pb-48 backdrop-blur-[3px]"
+                                >
+                                    <motion.div
+                                        initial={prefersReducedMotion ? false : { opacity: 0, y: 22, scale: 0.98 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}
+                                        transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, ease: "easeOut" }}
+                                        className="mx-auto w-full max-w-5xl pt-10 md:pt-14"
+                                    >
+                                        {renderRebuildFeedback()}
+                                    </motion.div>
+                                </motion.div>
+                            ) : null}
+                        </AnimatePresence>
                     </div>
 
                     <GuidedLearningOverlay
