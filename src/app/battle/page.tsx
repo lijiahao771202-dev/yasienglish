@@ -320,6 +320,11 @@ const GACHA_POOL_TABLE = [
 export default function BattlePage() {
     type BattleMode = "listening" | "rebuild" | "dictation" | "translation";
     type ListeningSourceMode = "ai" | "bank";
+    const resolveInitialListeningSourceMode = (): ListeningSourceMode => {
+        if (typeof window === "undefined") return "ai";
+        const saved = window.localStorage.getItem("battle-listening-source-mode");
+        return saved === "bank" ? "bank" : "ai";
+    };
     const router = useRouter();
     const sessionUser = useAuthSessionUser();
     const [activeDrill, setActiveDrill] = useState<BattleDrillSelection | null>(null);
@@ -329,7 +334,7 @@ export default function BattlePage() {
     const [rebuildPracticeElo, setRebuildPracticeElo] = useState(400);
     const [streak, setStreak] = useState(0);
     const [battleMode, setBattleMode] = useState<BattleMode>('listening');
-    const [listeningSourceMode, setListeningSourceMode] = useState<ListeningSourceMode>("ai");
+    const [listeningSourceMode, setListeningSourceMode] = useState<ListeningSourceMode>(resolveInitialListeningSourceMode);
     const [showGuide, setShowGuide] = useState(false);
     const [activeGuideSection, setActiveGuideSection] = useState<GuideSectionId>("overview");
     const [refreshCount, setRefreshCount] = useState(0);
@@ -346,7 +351,11 @@ export default function BattlePage() {
                 const activeUserMeta = await db.sync_meta.get("active_user_id");
                 const activeUserId = typeof activeUserMeta?.value === "string" ? activeUserMeta.value : "local";
                 const hiddenMeta = await db.sync_meta.get(`rebuild_hidden_elo::${activeUserId}`);
-                setRebuildPracticeElo(typeof hiddenMeta?.value === "number" ? hiddenMeta.value : (profile.listening_elo || 400));
+                setRebuildPracticeElo(
+                    typeof profile.rebuild_hidden_elo === "number"
+                        ? profile.rebuild_hidden_elo
+                        : (typeof hiddenMeta?.value === "number" ? hiddenMeta.value : (profile.listening_elo || 400)),
+                );
             }
         });
     }, []);
@@ -354,14 +363,6 @@ export default function BattlePage() {
     useEffect(() => {
         loadProfile();
     }, [loadProfile]);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        const saved = window.localStorage.getItem("battle-listening-source-mode");
-        if (saved === "ai" || saved === "bank") {
-            setListeningSourceMode(saved);
-        }
-    }, []);
 
     useEffect(() => {
         if (typeof window === "undefined") return;

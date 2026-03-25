@@ -11,6 +11,11 @@ describe("Dexie schema regressions", () => {
         expect(getIndexNames("ai_cache")).toContain("[key+type]");
     });
 
+    it("keeps the generated rebuild bank table available for local draft storage", () => {
+        expect(db.tables.some((table) => table.name === "rebuild_bank_generated")).toBe(true);
+        expect(getIndexNames("rebuild_bank_generated")).toContain("candidate_id");
+    });
+
     it("keeps the due index on vocabulary for review queries", () => {
         expect(getIndexNames("vocabulary")).toContain("due");
     });

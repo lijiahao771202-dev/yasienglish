@@ -309,6 +309,7 @@ async function ensureRemoteProfile(userId: string) {
             user_id: userId,
             translation_elo: localProfile.elo_rating,
             listening_elo: localProfile.listening_elo ?? DEFAULT_BASE_ELO,
+            rebuild_hidden_elo: localProfile.rebuild_hidden_elo ?? localProfile.listening_elo ?? DEFAULT_BASE_ELO,
             dictation_elo: localProfile.dictation_elo ?? localProfile.listening_elo ?? DEFAULT_BASE_ELO,
             streak_count: localProfile.streak_count,
             listening_streak: localProfile.listening_streak ?? 0,
@@ -342,6 +343,7 @@ async function ensureRemoteProfile(userId: string) {
             user_id: userId,
             translation_elo: DEFAULT_BASE_ELO,
             listening_elo: DEFAULT_BASE_ELO,
+            rebuild_hidden_elo: DEFAULT_BASE_ELO,
             dictation_elo: DEFAULT_BASE_ELO,
             streak_count: 0,
             listening_streak: 0,
@@ -451,6 +453,9 @@ async function pullRemoteSnapshot(userId: string) {
         dictation_elo: typeof remoteProfileRow.dictation_elo === "number"
             ? remoteProfileRow.dictation_elo
             : (existingLocalProfile?.dictation_elo ?? remoteLocalProfile.dictation_elo ?? remoteLocalProfile.listening_elo ?? DEFAULT_BASE_ELO),
+        rebuild_hidden_elo: typeof remoteProfileRow.rebuild_hidden_elo === "number"
+            ? remoteProfileRow.rebuild_hidden_elo
+            : (existingLocalProfile?.rebuild_hidden_elo ?? remoteLocalProfile.rebuild_hidden_elo ?? remoteLocalProfile.listening_elo ?? DEFAULT_BASE_ELO),
         dictation_streak: typeof remoteProfileRow.dictation_streak === "number"
             ? remoteProfileRow.dictation_streak
             : (existingLocalProfile?.dictation_streak ?? remoteLocalProfile.dictation_streak ?? remoteLocalProfile.listening_streak ?? 0),
@@ -532,6 +537,7 @@ async function migrateLegacyData(userId: string) {
             dictation_elo: profile.dictation_elo,
             dictation_streak: profile.dictation_streak,
             dictation_max_elo: profile.dictation_max_elo,
+            rebuild_hidden_elo: profile.rebuild_hidden_elo,
             last_practice_at: new Date(profile.last_practice).toISOString(),
         });
 
@@ -876,6 +882,7 @@ async function ensureListeningScoringVersion(profile: LocalUserProfile | undefin
         listening_elo: DEFAULT_BASE_ELO,
         listening_streak: 0,
         listening_max_elo: DEFAULT_BASE_ELO,
+        rebuild_hidden_elo: profile.rebuild_hidden_elo ?? profile.listening_elo ?? profile.elo_rating ?? DEFAULT_BASE_ELO,
         updated_at: nextUpdatedAt,
         sync_status: "pending",
     };
@@ -895,6 +902,7 @@ async function ensureListeningScoringVersion(profile: LocalUserProfile | undefin
             payload: {
                 translation_elo: nextProfile.elo_rating,
                 listening_elo: nextProfile.listening_elo ?? DEFAULT_BASE_ELO,
+                rebuild_hidden_elo: nextProfile.rebuild_hidden_elo ?? nextProfile.listening_elo ?? DEFAULT_BASE_ELO,
                 streak_count: nextProfile.streak_count,
                 listening_streak: nextProfile.listening_streak ?? 0,
                 max_translation_elo: nextProfile.max_elo,
@@ -1013,7 +1021,7 @@ export async function saveProfilePatch(
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
             | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
-            | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
+            | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo" | "rebuild_hidden_elo"
         >
     > & {
         last_practice_at?: string | number | null;
@@ -1051,7 +1059,7 @@ export async function applyServerProfilePatchToLocal(
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
             | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
-            | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
+            | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo" | "rebuild_hidden_elo"
         >
     > & {
         last_practice_at?: string | number | null;

@@ -155,6 +155,8 @@ interface DrillData {
     };
 }
 
+type PrefetchedDrillData = DrillData & { mode?: string; sourceMode?: "ai" | "bank" };
+
 function getGuidedScriptKey(
     drillData: Pick<DrillData, "chinese" | "reference_english" | "_topicMeta">,
     elo: number,
@@ -230,7 +232,7 @@ interface DrillFeedback {
 }
 
 type TutorQuestionType = "pattern" | "word_choice" | "example" | "unlock_answer" | "follow_up";
-type TutorIntent = "translate" | "grammar" | "lexical";
+type TutorIntent = "translate" | "grammar" | "lexical" | "rebuild";
 type TutorAction = "ask";
 
 interface DictionaryData {
@@ -354,7 +356,17 @@ const DEFAULT_INVENTORY: InventoryState = {
 
 const LISTENING_BANK_RECENT_STORAGE_KEY = "battle-listening-bank-recent-ids";
 const LISTENING_BANK_RECENT_LIMIT = 20;
-const REBUILD_RECENT_LIMIT = 20;
+
+function buildGeneratedRebuildBankContentKey(topic: string, referenceEnglish: string) {
+    const normalizedTopic = topic.trim().toLowerCase();
+    const normalizedEnglish = referenceEnglish
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+    return `${normalizedTopic}::${normalizedEnglish}`;
+}
 
 const ITEM_CATALOG: Record<ShopItemId, { id: ShopItemId; name: string; price: number; icon: string; consumeAction: string; description: string; }> = {
     capsule: {
@@ -902,8 +914,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [isPlaying, setIsPlaying] = useState(false);
     const [isAudioLoading, setIsAudioLoading] = useState(false);
     const [isPrefetching, setIsPrefetching] = useState(false); // Track background audio prefetch
-    const [prefetchedDrillData, setPrefetchedDrillData] = useState<(DrillData & { mode?: string; sourceMode?: "ai" | "bank" }) | null>(null);
+    const [prefetchedDrillData, setPrefetchedDrillData] = useState<PrefetchedDrillData | null>(null);
     const abortPrefetchRef = useRef<AbortController | null>(null);
+    const rebuildChoicePrefetchAbortRef = useRef<AbortController | null>(null);
+    const prefetchedRebuildChoicesRef = useRef<Partial<Record<RebuildSelfEvaluation, PrefetchedDrillData>>>({});
     const recentListeningBankIdsRef = useRef<string[]>([]);
     const rebuildMetaNamespaceRef = useRef("local");
     const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -995,7 +1009,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [dictationElo, setDictationElo] = useState(DEFAULT_BASE_ELO);
     const [dictationStreak, setDictationStreak] = useState(0);
     const [rebuildHiddenElo, setRebuildHiddenElo] = useState(DEFAULT_BASE_ELO);
-    const [rebuildRecentBankIds, setRebuildRecentBankIds] = useState<string[]>([]);
+    const [rebuildTypingBuffer, setRebuildTypingBuffer] = useState("");
+    const [rebuildAutocorrect, setRebuildAutocorrect] = useState(false);
+    const [rebuildHideTokens, setRebuildHideTokens] = useState(false);
     const [isEloLoaded, setIsEloLoaded] = useState(false); // Track if Elo has been loaded from DB
     const eloRatingRef = useRef(DEFAULT_BASE_ELO);
     const listeningEloRef = useRef(DEFAULT_BASE_ELO);
@@ -1051,23 +1067,20 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         isShopHovered: isShopDockHovered,
     });
 
-    const buildRebuildMetaKey = useCallback((suffix: "hidden_elo" | "recent_bank_ids" | "last_session") => {
+    const buildRebuildMetaKey = useCallback((suffix: "hidden_elo" | "last_session") => {
         return `rebuild_${suffix}::${rebuildMetaNamespaceRef.current}`;
     }, []);
 
     const persistRebuildHiddenElo = useCallback(async (nextElo: number) => {
+        const updatedAt = Date.now();
         await db.sync_meta.put({
             key: buildRebuildMetaKey("hidden_elo"),
             value: nextElo,
-            updated_at: Date.now(),
+            updated_at: updatedAt,
         });
-    }, [buildRebuildMetaKey]);
-
-    const persistRebuildRecentIds = useCallback(async (ids: string[]) => {
-        await db.sync_meta.put({
-            key: buildRebuildMetaKey("recent_bank_ids"),
-            value: ids,
-            updated_at: Date.now(),
+        await saveProfilePatch({
+            rebuild_hidden_elo: nextElo,
+            last_practice_at: updatedAt,
         });
     }, [buildRebuildMetaKey]);
 
@@ -1161,43 +1174,30 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     useEffect(() => {
         if (!isRebuildMode) return;
-        const bankItemId = drillData?._sourceMeta?.sourceMode === "bank" ? drillData._sourceMeta.bankItemId : undefined;
-        if (!bankItemId) return;
-
-        setRebuildRecentBankIds((currentIds) => {
-            const nextIds = [bankItemId, ...currentIds.filter((id) => id !== bankItemId)].slice(0, REBUILD_RECENT_LIMIT);
-            if (nextIds.length === currentIds.length && nextIds.every((id, index) => id === currentIds[index])) {
-                return currentIds;
-            }
-            void persistRebuildRecentIds(nextIds);
-            return nextIds;
-        });
-    }, [drillData?._sourceMeta?.bankItemId, drillData?._sourceMeta?.sourceMode, isRebuildMode, persistRebuildRecentIds]);
-
-    useEffect(() => {
-        if (!isRebuildMode) return;
         if (drillData?._sourceMeta?.sourceMode !== "ai") return;
         const candidateId = drillData?._rebuildMeta?.candidateId ?? drillData?._sourceMeta?.candidateId;
         if (!candidateId || !drillData?._rebuildMeta) return;
+        const topic = drillData._topicMeta?.topic ?? context.articleTitle ?? context.topic ?? "随机场景";
+        const contentKey = buildGeneratedRebuildBankContentKey(topic, drillData.reference_english);
+        const now = Date.now();
 
-        void db.ai_cache.put({
-            key: candidateId,
-            type: "rebuild_candidate",
-            data: {
-                candidateId,
-                topic: drillData._topicMeta?.topic ?? context.articleTitle ?? context.topic ?? "随机场景",
-                scene: drillData._rebuildMeta.scene,
-                effectiveElo: drillData._rebuildMeta.effectiveElo,
-                bandPosition: drillData._rebuildMeta.bandPosition,
-                referenceEnglish: drillData.reference_english,
-                chinese: drillData.chinese,
-                answerTokens: drillData._rebuildMeta.answerTokens,
-                distractorTokens: drillData._rebuildMeta.distractorTokens,
-                createdAt: Date.now(),
-            },
-            timestamp: Date.now(),
+        void db.rebuild_bank_generated.put({
+            content_key: contentKey,
+            candidate_id: candidateId,
+            topic,
+            scene: drillData._rebuildMeta.scene,
+            effective_elo: drillData._rebuildMeta.effectiveElo,
+            band_position: drillData._rebuildMeta.bandPosition,
+            reference_english: drillData.reference_english,
+            chinese: drillData.chinese,
+            answer_tokens: drillData._rebuildMeta.answerTokens,
+            distractor_tokens: drillData._rebuildMeta.distractorTokens,
+            source: "ai",
+            review_status: "draft",
+            created_at: now,
+            updated_at: now,
         }).catch((error) => {
-            console.error("Failed to persist rebuild ai candidate", error);
+            console.error("Failed to persist rebuild ai drill into local bank", error);
         });
     }, [
         context.articleTitle,
@@ -1968,20 +1968,21 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 ? listeningElo
                 : eloRating;
     const currentStreak = isRebuildMode ? 0 : isDictationMode ? dictationStreak : isListeningMode ? listeningStreak : streakCount;
-    const activeDrillSourceMode: "ai" | "bank" = (isListeningMode || isRebuildMode) ? listeningSourceMode : "ai";
-    const currentListeningBankId = (isListeningMode || isRebuildMode) && drillData?._sourceMeta?.sourceMode === "bank"
+    const activeDrillSourceMode: "ai" | "bank" = isListeningMode ? listeningSourceMode : "ai";
+    const currentListeningBankId = isListeningMode && drillData?._sourceMeta?.sourceMode === "bank"
         ? drillData._sourceMeta.bankItemId
         : undefined;
-    const prefetchedListeningBankId = (isListeningMode || isRebuildMode) && prefetchedDrillData?._sourceMeta?.sourceMode === "bank"
+    const prefetchedListeningBankId = isListeningMode && prefetchedDrillData?._sourceMeta?.sourceMode === "bank"
         ? prefetchedDrillData._sourceMeta.bankItemId
         : undefined;
     const listeningBankExcludeIds = activeDrillSourceMode === "bank"
         ? Array.from(new Set([
-            ...(isRebuildMode ? rebuildRecentBankIds : recentListeningBankIdsRef.current),
+            ...recentListeningBankIdsRef.current,
             ...(currentListeningBankId ? [currentListeningBankId] : []),
             ...(prefetchedListeningBankId ? [prefetchedListeningBankId] : []),
         ]))
         : [];
+    const listeningBankExcludeIdsKey = listeningBankExcludeIds.join("|");
     const capsuleCount = inventory.capsule;
     const hintTicketCount = inventory.hint_ticket;
     const vocabTicketCount = inventory.vocab_ticket;
@@ -2368,13 +2369,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     : DEFAULT_FREE_THEME;
                 setCosmeticTheme(loadedActive);
                 const hiddenMeta = await db.sync_meta.get(buildRebuildMetaKey("hidden_elo"));
-                const recentMeta = await db.sync_meta.get(buildRebuildMetaKey("recent_bank_ids"));
-                setRebuildHiddenElo(typeof hiddenMeta?.value === "number" ? hiddenMeta.value : (profile.listening_elo ?? DEFAULT_BASE_ELO));
-                setRebuildRecentBankIds(
-                    Array.isArray(recentMeta?.value)
-                        ? recentMeta.value.filter((item): item is string => typeof item === "string").slice(0, REBUILD_RECENT_LIMIT)
-                        : [],
-                );
+                const syncedRebuildElo = typeof profile.rebuild_hidden_elo === "number"
+                    ? profile.rebuild_hidden_elo
+                    : undefined;
+                const legacyRebuildElo = typeof hiddenMeta?.value === "number"
+                    ? hiddenMeta.value
+                    : undefined;
+                const nextRebuildHiddenElo = syncedRebuildElo ?? legacyRebuildElo ?? (profile.listening_elo ?? DEFAULT_BASE_ELO);
+                setRebuildHiddenElo(nextRebuildHiddenElo);
 
                 setIsEloLoaded(true); // Mark Elo as loaded
             } else {
@@ -2395,7 +2397,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 setOwnedThemes([DEFAULT_FREE_THEME]);
                 setCosmeticTheme(DEFAULT_FREE_THEME);
                 setRebuildHiddenElo(DEFAULT_BASE_ELO);
-                setRebuildRecentBankIds([]);
                 setIsEloLoaded(true); // Mark Elo as loaded (new profile)
             }
         };
@@ -2457,6 +2458,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         audioInflight.current.set(textKey, nextRequest);
         return nextRequest;
     }, [fetchTtsAudio]);
+
+    const clearRebuildChoicePrefetch = useCallback(() => {
+        if (rebuildChoicePrefetchAbortRef.current) {
+            rebuildChoicePrefetchAbortRef.current.abort();
+            rebuildChoicePrefetchAbortRef.current = null;
+        }
+        prefetchedRebuildChoicesRef.current = {};
+    }, []);
 
     // Pre-generate audio when audio practice drills load (translation stays lazy-loaded)
     useEffect(() => {
@@ -3009,6 +3018,75 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         }
     };
 
+    const consumeNextDrill = useCallback((nextDrill: PrefetchedDrillData) => {
+        setDrillData(nextDrill);
+        setPrefetchedDrillData(null);
+        clearRebuildChoicePrefetch();
+        setPendingRebuildAdvanceElo(null);
+        resetGuidedLearningState(false);
+
+        setIsGeneratingDrill(false);
+        setDrillFeedback(null);
+        setRebuildFeedback(null);
+        setRebuildTypingBuffer("");
+        setUserTranslation("");
+        setFullReferenceHint((prev) => ({ version: prev.version + 1, text: "" }));
+        setTutorAnswer(null);
+        setTutorThread([]);
+        setTutorResponse(null);
+        setTutorPendingQuestion(null);
+        setTutorQuery("");
+        setIsTutorOpen(false);
+        setWordPopup(null);
+        setIsPlaying(false);
+        setHasRatedDrill(false);
+        setAnalysisRequested(false);
+        setIsGeneratingAnalysis(false);
+        setAnalysisError(null);
+        setAnalysisDetailsOpen(false);
+        setFullAnalysisRequested(false);
+        setIsGeneratingFullAnalysis(false);
+        setFullAnalysisError(null);
+        setFullAnalysisOpen(false);
+        setFullAnalysisData(null);
+        setIsGeneratingGrammar(false);
+        setGrammarError(null);
+        setReferenceGrammarAnalysis(null);
+        setReferenceGrammarDisplayMode("core");
+        setEloChange(null);
+        setIsHintLoading(false);
+        setIsVocabHintRevealed(false);
+        setIsTranslationAudioUnlocked(false);
+        setBlindVisibleUnlockConsumed(false);
+        if (isDictationMode) {
+            setIsBlindMode(true);
+            setShowChinese(false);
+        }
+        vocabHintRevealRef.current = false;
+        translationAudioUnlockRef.current = false;
+        resetResult();
+        if (audioRef.current) audioRef.current.pause();
+        hasPlayedEchoRef.current = false;
+        setLightningStarted(false);
+
+        if (teachingMode && mode === 'translation') {
+            setIsLoadingTeaching(true);
+            fetch("/api/ai/teach", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    chinese: nextDrill.chinese,
+                    reference_english: nextDrill.reference_english,
+                    elo: currentElo,
+                }),
+            })
+                .then(res => res.json())
+                .then(data => setTeachingData(data))
+                .catch(console.error)
+                .finally(() => setIsLoadingTeaching(false));
+        }
+    }, [clearRebuildChoicePrefetch, currentElo, isDictationMode, mode, resetGuidedLearningState, resetResult, teachingMode]);
+
     const prefetchNextDrill = (nextElo: number) => {
         console.log("[Prefetch] Starting background prefetch for next drill...");
         if (abortPrefetchRef.current) abortPrefetchRef.current.abort();
@@ -3069,6 +3147,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         // Abort any pending generation or prefetch requests
         if (abortControllerRef.current) abortControllerRef.current.abort();
         if (abortPrefetchRef.current) abortPrefetchRef.current.abort();
+        clearRebuildChoicePrefetch();
 
         // If we have prefetched data ready AND it matches the current mode, consume it instantly
         if (
@@ -3079,72 +3158,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             && !skipPrefetched
         ) {
             console.log("[Prefetch] Consuming prefetched drill data! Zero ms latency.");
-            setDrillData(prefetchedDrillData);
-            setPrefetchedDrillData(null); // Clear buffer
-            resetGuidedLearningState(false);
-
-            // Reset UI states quickly
-            setIsGeneratingDrill(false);
-            setDrillFeedback(null);
-            setRebuildFeedback(null);
-            setUserTranslation("");
-            setFullReferenceHint((prev) => ({ version: prev.version + 1, text: "" }));
-            setTutorAnswer(null);
-            setTutorThread([]);
-            setTutorResponse(null);
-            setTutorPendingQuestion(null);
-            setTutorQuery("");
-            setIsTutorOpen(false);
-            setWordPopup(null);
-            setIsPlaying(false);
-            setHasRatedDrill(false);
-            setAnalysisRequested(false);
-            setIsGeneratingAnalysis(false);
-            setAnalysisError(null);
-            setAnalysisDetailsOpen(false);
-            setFullAnalysisRequested(false);
-            setIsGeneratingFullAnalysis(false);
-            setFullAnalysisError(null);
-            setFullAnalysisOpen(false);
-            setFullAnalysisData(null);
-            setIsGeneratingGrammar(false);
-            setGrammarError(null);
-            setReferenceGrammarAnalysis(null);
-            setReferenceGrammarDisplayMode("core");
-            setEloChange(null);
-            setIsHintLoading(false);
-            setIsVocabHintRevealed(false);
-            setIsTranslationAudioUnlocked(false);
-            setBlindVisibleUnlockConsumed(false);
-            if (isDictationMode) {
-                setIsBlindMode(true);
-                setShowChinese(false);
-            }
-            vocabHintRevealRef.current = false;
-            translationAudioUnlockRef.current = false;
-            resetResult();
-            if (audioRef.current) audioRef.current.pause();
-            hasPlayedEchoRef.current = false;
-            setLightningStarted(false);
-
-            // Trigger teaching content fetch if needed
-            if (teachingMode && mode === 'translation') {
-                setIsLoadingTeaching(true);
-                fetch("/api/ai/teach", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        chinese: prefetchedDrillData.chinese,
-                        reference_english: prefetchedDrillData.reference_english,
-                        elo: currentElo,
-                    }),
-                })
-                    .then(res => res.json())
-                    .then(data => setTeachingData(data))
-                    .catch(console.error)
-                    .finally(() => setIsLoadingTeaching(false));
-            }
-
+            consumeNextDrill(prefetchedDrillData);
             return; // Skip normal generation!
         }
 
@@ -3159,6 +3173,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         resetGuidedLearningState(false);
         setDrillFeedback(null);
         setRebuildFeedback(null);
+        setRebuildTypingBuffer("");
         setUserTranslation("");
         setFullReferenceHint((prev) => ({ version: prev.version + 1, text: "" }));
         setTutorAnswer(null);
@@ -4323,9 +4338,25 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     };
 
     const inferTutorIntent = (questionType: TutorQuestionType, teachingPoint: string): TutorIntent => {
+        if (isRebuildMode) return "rebuild";
         if (questionType === "word_choice" || /词汇|搭配/.test(teachingPoint)) return "lexical";
         if (/语序|从句|时态|语法/.test(teachingPoint)) return "grammar";
         return "translate";
+    };
+
+    const isRebuildTutorSurface = isRebuildMode && Boolean(drillData?._rebuildMeta && rebuildFeedback);
+
+    const inferRebuildTeachingPoint = () => {
+        if (!rebuildFeedback) return "词序与标准表达";
+        if (rebuildFeedback.evaluation.distractorPickRatio < 1) return "词义辨认与干扰词区分";
+        if (rebuildFeedback.evaluation.misplacementRatio < 1) return "词序与句子骨架";
+        if (rebuildFeedback.evaluation.contentWordHitRate < 1) return "内容词定位与短语搭配";
+        return "标准表达与短语搭配";
+    };
+
+    const inferActiveTeachingPoint = () => {
+        if (isRebuildTutorSurface) return inferRebuildTeachingPoint();
+        return inferTeachingPoint();
     };
 
     const inferFocusSpan = (question: string) => {
@@ -4392,10 +4423,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     }) => {
         const question = (options?.question ?? tutorQuery).trim();
         if (!question || !drillData) return;
+        const assistantLabel = isRebuildTutorSurface ? "英语问答" : "AI Teacher";
         if (coinsRef.current < 10) {
-            setTutorAnswer("AI Teacher 每次提问会消耗 10 星光币。你当前星光币不够了。");
+            setTutorAnswer(`${assistantLabel} 每次提问会消耗 10 星光币。你当前星光币不够了。`);
             setTutorPendingQuestion(null);
-            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: 'AI Teacher 提问需要 10 星光币' });
+            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: `${assistantLabel} 提问需要 10 星光币` });
             return;
         }
         setIsAskingTutor(true);
@@ -4403,17 +4435,27 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setTutorQuery("");
         setTutorAnswer("");
 
-        const teachingPoint = tutorResponse?.teaching_point || inferTeachingPoint();
+        const teachingPoint = tutorResponse?.teaching_point || inferActiveTeachingPoint();
         const requestedType = options?.questionType ?? "follow_up";
         const unlockRequested = requestedType === "unlock_answer" || options?.forceReveal === true;
         const shouldReveal = unlockRequested;
         const outgoingQuestionType: TutorQuestionType = shouldReveal ? "unlock_answer" : requestedType;
         const outgoingIntent = inferTutorIntent(outgoingQuestionType, teachingPoint);
         const outgoingFocusSpan = inferFocusSpan(question);
+                    const outgoingSurface: "battle" | "score" = isRebuildTutorSurface ? "score" : "battle";
+        const userAttemptText = isRebuildTutorSurface
+            ? (rebuildFeedback?.evaluation.userSentence || "")
+            : userTranslation;
+        const improvedVersionText = isRebuildTutorSurface
+            ? drillData.reference_english
+            : drillFeedback?.improved_version;
+        const scoreValue = isRebuildTutorSurface
+            ? Math.round((rebuildFeedback?.evaluation.accuracyRatio ?? 0) * 100)
+            : drillFeedback?.score;
 
         try {
             applyEconomyPatch({ coinsDelta: -10 });
-            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: 'AI Teacher 提问 -10 星光币' });
+            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: `${assistantLabel} 提问 -10 星光币` });
             const response = await fetch("/api/ai/ask_tutor", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -4421,13 +4463,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     action: "ask" as TutorAction,
                     query: question,
                     questionType: outgoingQuestionType,
-                    uiSurface: "battle",
+                    uiSurface: outgoingSurface,
                     intent: outgoingIntent,
                     focusSpan: outgoingFocusSpan,
-                    userAttempt: userTranslation,
-                    improvedVersion: drillFeedback?.improved_version,
-                    score: drillFeedback?.score,
-                    recentTurns: tutorThread.slice(-4).map((item) => ({
+                    userAttempt: userAttemptText,
+                    improvedVersion: improvedVersionText,
+                    score: scoreValue,
+                    recentTurns: tutorThread.slice(-6).map((item) => ({
                         question: item.question,
                         answer: item.coach_markdown,
                     })),
@@ -4499,7 +4541,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 );
                                 continue;
                             }
-                            setTutorAnswer("AI Teacher 刚才的流式讲解中断了。你可以直接再问一次，或者换个更具体的卡点来问。");
+                            setTutorAnswer(`${assistantLabel} 刚才的流式讲解中断了。你可以直接再问一次，或者换个更具体的卡点来问。`);
                             setTutorPendingQuestion(null);
                             continue;
                         }
@@ -4555,14 +4597,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     question_type: outgoingQuestionType,
                     ...normalized,
                 },
-            ].slice(-6));
+            ].slice(-8));
             setTutorPendingQuestion(null);
         } catch (error) {
             console.error(error);
-            setTutorAnswer("AI Teacher 暂时不可用，请稍后重试。");
+            setTutorAnswer(`${assistantLabel} 暂时不可用，请稍后重试。`);
             setTutorPendingQuestion(null);
             applyEconomyPatch({ coinsDelta: 10 });
-            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: 'AI Teacher 提问失败，已退还 10 星光币' });
+            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: `${assistantLabel} 提问失败，已退还 10 星光币` });
         } finally {
             setIsAskingTutor(false);
         }
@@ -4770,6 +4812,140 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         return handleSubmitRebuild(true);
     }, [handleSubmitRebuild]);
 
+    const rebuildTypingBufferRef = useRef("");
+
+    useEffect(() => {
+        if (!isRebuildMode || rebuildFeedback || !drillData?._rebuildMeta) return;
+
+        // Strip ALL non-alphanumeric chars (including apostrophes, periods, commas) for fuzzy matching
+        const cleanForMatch = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+        // Levenshtein distance for autocorrect mode
+        const levenshtein = (a: string, b: string): number => {
+            if (a.length === 0) return b.length;
+            if (b.length === 0) return a.length;
+            const matrix: number[][] = [];
+            for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+            for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+            for (let i = 1; i <= b.length; i++) {
+                for (let j = 1; j <= a.length; j++) {
+                    if (b[i - 1] === a[j - 1]) {
+                        matrix[i][j] = matrix[i - 1][j - 1];
+                    } else {
+                        matrix[i][j] = Math.min(
+                            matrix[i - 1][j - 1] + 1,
+                            matrix[i][j - 1] + 1,
+                            matrix[i - 1][j] + 1
+                        );
+                    }
+                }
+            }
+            return matrix[b.length][a.length];
+        };
+
+        const fuzzyMatch = (input: string, tokens: typeof rebuildAvailableTokens) => {
+            const inputClean = cleanForMatch(input);
+            if (inputClean.length < 2) return null;
+            let bestIdx = -1;
+            let bestDist = Infinity;
+            for (let i = 0; i < tokens.length; i++) {
+                const tokenClean = cleanForMatch(tokens[i].text);
+                const dist = levenshtein(inputClean, tokenClean);
+                const threshold = Math.max(1, Math.floor(tokenClean.length / 4));
+                if (dist <= threshold && dist < bestDist) {
+                    bestDist = dist;
+                    bestIdx = i;
+                }
+            }
+            return bestIdx >= 0 ? tokens[bestIdx] : null;
+        };
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+            if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+            if (e.key === "Backspace") {
+                if (rebuildTypingBufferRef.current.length > 0) {
+                    const next = rebuildTypingBufferRef.current.slice(0, -1);
+                    rebuildTypingBufferRef.current = next;
+                    setRebuildTypingBuffer(next);
+                } else if (rebuildAnswerTokens.length > 0) {
+                    const lastToken = rebuildAnswerTokens[rebuildAnswerTokens.length - 1];
+                    handleRebuildRemoveToken(lastToken.id);
+                }
+                return;
+            }
+
+            if (e.key === "Enter") {
+                if (rebuildAnswerTokens.length > 0 && rebuildAvailableTokens.length === 0) {
+                    void handleSubmitRebuild();
+                }
+                return;
+            }
+
+            if (e.key === " " || e.key === "Spacebar") {
+                e.preventDefault();
+                const buf = rebuildTypingBufferRef.current;
+                if (buf.length > 0) {
+                    const currentClean = cleanForMatch(buf);
+                    // 1. Try exact match first
+                    const exactMatchIndex = rebuildAvailableTokens.findIndex(t => cleanForMatch(t.text) === currentClean);
+                    if (exactMatchIndex !== -1) {
+                        handleRebuildSelectToken(rebuildAvailableTokens[exactMatchIndex].id);
+                        rebuildTypingBufferRef.current = "";
+                        setRebuildTypingBuffer("");
+                    } else if (rebuildAutocorrect) {
+                        // 2. Autocorrect: fuzzy match fallback
+                        const fuzzyResult = fuzzyMatch(buf, rebuildAvailableTokens);
+                        if (fuzzyResult) {
+                            handleRebuildSelectToken(fuzzyResult.id);
+                            rebuildTypingBufferRef.current = "";
+                            setRebuildTypingBuffer("");
+                        }
+                    }
+                    // If no match, just do nothing (don't play audio)
+                } else {
+                    // Empty buffer -> Play audio!
+                    if (!isPlaying) {
+                        void playAudio();
+                    }
+                }
+                return;
+            }
+
+            if (e.key.length === 1 && e.key.match(/[a-zA-Z0-9']/)) {
+                const nextBuf = rebuildTypingBufferRef.current + e.key;
+                rebuildTypingBufferRef.current = nextBuf;
+                setRebuildTypingBuffer(nextBuf);
+
+                const nextClean = cleanForMatch(nextBuf);
+                const prefixMatches = rebuildAvailableTokens.filter(t => cleanForMatch(t.text).startsWith(nextClean));
+                const exactMatches = prefixMatches.filter(t => cleanForMatch(t.text) === nextClean);
+
+                if (exactMatches.length > 0 && prefixMatches.length === exactMatches.length) {
+                    setTimeout(() => {
+                        handleRebuildSelectToken(exactMatches[0].id);
+                        rebuildTypingBufferRef.current = "";
+                        setRebuildTypingBuffer("");
+                    }, 0);
+                } else if (rebuildAutocorrect && prefixMatches.length === 0) {
+                    // No prefix matches at all — try fuzzy autocorrect immediately
+                    const fuzzyResult = fuzzyMatch(nextBuf, rebuildAvailableTokens);
+                    if (fuzzyResult) {
+                        setTimeout(() => {
+                            handleRebuildSelectToken(fuzzyResult.id);
+                            rebuildTypingBufferRef.current = "";
+                            setRebuildTypingBuffer("");
+                        }, 0);
+                    }
+                }
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isRebuildMode, rebuildFeedback, drillData?._rebuildMeta, rebuildAnswerTokens, rebuildAvailableTokens, handleRebuildRemoveToken, handleRebuildSelectToken, handleSubmitRebuild, isPlaying, playAudio, rebuildAutocorrect]);
+
     useEffect(() => {
         if (!isRebuildMode || !drillData?._rebuildMeta || rebuildFeedback) {
             if (rebuildAutoSubmitTimeoutRef.current !== null) {
@@ -4826,6 +5002,136 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setRebuildFeedback((currentFeedback) => currentFeedback ? { ...currentFeedback, selfEvaluation: evaluation } : currentFeedback);
         setPendingRebuildAdvanceElo(nextElo);
     }, [persistRebuildHiddenElo, rebuildFeedback, rebuildHiddenElo]);
+
+    // 1/2/3 keys for self-evaluation + spacebar audio on Rebuild feedback page
+    useEffect(() => {
+        if (!isRebuildMode || !rebuildFeedback) return;
+
+        const handleFeedbackKey = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+            if (e.altKey || e.ctrlKey || e.metaKey) return;
+
+            // Spacebar -> play audio on scoring page
+            if (e.key === " " || e.key === "Spacebar") {
+                e.preventDefault();
+                if (!isPlaying) {
+                    void playAudio();
+                }
+                return;
+            }
+
+            // 1/2/3 -> self evaluation (only before already evaluated)
+            if (!rebuildFeedback.selfEvaluation) {
+                if (e.key === "1") { e.preventDefault(); handleRebuildSelfEvaluate("easy"); }
+                else if (e.key === "2") { e.preventDefault(); handleRebuildSelfEvaluate("just_right"); }
+                else if (e.key === "3") { e.preventDefault(); handleRebuildSelfEvaluate("hard"); }
+            }
+        };
+
+        window.addEventListener("keydown", handleFeedbackKey);
+        return () => window.removeEventListener("keydown", handleFeedbackKey);
+    }, [isRebuildMode, rebuildFeedback, handleRebuildSelfEvaluate, isPlaying, playAudio]);
+
+    useEffect(() => {
+        if (!isRebuildMode || activeDrillSourceMode !== "bank" || !rebuildFeedback || rebuildFeedback.selfEvaluation || isGeneratingDrill) {
+            clearRebuildChoicePrefetch();
+            return;
+        }
+
+        clearRebuildChoicePrefetch();
+        const controller = new AbortController();
+        rebuildChoicePrefetchAbortRef.current = controller;
+
+        const baseExcludeIds = listeningBankExcludeIdsKey
+            ? listeningBankExcludeIdsKey.split("|").filter(Boolean)
+            : [];
+
+        const prefetchChoices = async () => {
+            const nextChoices: Partial<Record<RebuildSelfEvaluation, PrefetchedDrillData>> = {};
+            const usedExcludeIds = new Set(baseExcludeIds);
+            const options: RebuildSelfEvaluation[] = ["easy", "just_right", "hard"];
+
+            for (const evaluation of options) {
+                const delta = clampRebuildDifficultyDelta(rebuildFeedback.systemDelta + getRebuildSelfEvaluationDelta(evaluation));
+                const nextElo = Math.max(0, Math.min(3200, rebuildHiddenElo + delta));
+                const targetTopic = resolveBattleScenarioTopic(context.articleTitle || context.topic, nextElo);
+
+                const response = await fetch("/api/drill/next", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        articleTitle: targetTopic,
+                        articleContent: context.articleContent || "",
+                        difficulty: getEloDifficulty(nextElo, mode).level,
+                        eloRating: nextElo,
+                        mode: generationMode,
+                        sourceMode: activeDrillSourceMode,
+                        excludeBankIds: Array.from(usedExcludeIds),
+                        _t: Date.now() + Math.random(),
+                    }),
+                    signal: controller.signal,
+                });
+
+                if (controller.signal.aborted) return;
+
+                const data = await response.json();
+                if (controller.signal.aborted) return;
+                if (!response.ok || data?.error) {
+                    throw new Error(data?.error || `Failed to prefetch rebuild drill for ${evaluation}`);
+                }
+
+                const nextChoice: PrefetchedDrillData = { ...data, mode, sourceMode: activeDrillSourceMode };
+                nextChoices[evaluation] = nextChoice;
+
+                const bankId = nextChoice._sourceMeta?.sourceMode === "bank"
+                    ? nextChoice._sourceMeta.bankItemId
+                    : undefined;
+                if (bankId) {
+                    usedExcludeIds.add(bankId);
+                }
+
+                if (typeof nextChoice.reference_english === "string" && nextChoice.reference_english.trim()) {
+                    try {
+                        await ensureAudioCached(nextChoice.reference_english);
+                    } catch (error) {
+                        console.error(`[Rebuild Prefetch] Audio prewarm failed for ${evaluation}:`, error);
+                    }
+                }
+            }
+
+            if (!controller.signal.aborted) {
+                prefetchedRebuildChoicesRef.current = nextChoices;
+            }
+        };
+
+        prefetchChoices().catch((error) => {
+            if ((error as { name?: string })?.name !== "AbortError") {
+                console.error("[Rebuild Prefetch] Failed to prefetch difficulty branches:", error);
+            }
+        });
+
+        return () => {
+            controller.abort();
+            if (rebuildChoicePrefetchAbortRef.current === controller) {
+                rebuildChoicePrefetchAbortRef.current = null;
+            }
+            prefetchedRebuildChoicesRef.current = {};
+        };
+    }, [
+        activeDrillSourceMode,
+        clearRebuildChoicePrefetch,
+        context.articleContent,
+        context.articleTitle,
+        context.topic,
+        ensureAudioCached,
+        generationMode,
+        isGeneratingDrill,
+        isRebuildMode,
+        listeningBankExcludeIdsKey,
+        mode,
+        rebuildFeedback,
+        rebuildHiddenElo,
+    ]);
 
     const handleMagicHint = async () => {
         if (learningSessionActive) return;
@@ -5464,8 +5770,31 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     };
 
     const renderTranslationTutorModal = () => {
-        if (mode !== "translation" || !drillData || !isTutorOpen) return null;
+        const isTranslationTutorSurface = mode === "translation";
+        const isEnglishQaSurface = isRebuildTutorSurface;
+        if ((!isTranslationTutorSurface && !isEnglishQaSurface) || !drillData || !isTutorOpen) return null;
 
+        const title = isEnglishQaSurface ? "英语问答" : "AI Teacher";
+        const teachingPoint = tutorResponse?.teaching_point || inferActiveTeachingPoint();
+        const description = isEnglishQaSurface
+            ? "围着这句英文直接问词义、短语、搭配或语法，不讲评分，只回答你卡住的那个点。"
+            : "翻译过程中卡住时，把它当老师来问：先从你已经会的点出发，再帮你补当前词、搭配或句型。";
+        const inputPlaceholder = isEnglishQaSurface
+            ? "问这个词、短语或语法点..."
+            : "继续问这个词、搭配或句型...";
+        const submitLabel = isEnglishQaSurface ? "开始提问" : "继续提问";
+        const presetActions = isEnglishQaSurface
+            ? [
+                { label: "这个短语什么意思", question: "这个短语在这句里是什么意思？", questionType: "word_choice" as TutorQuestionType },
+                { label: "为什么这样排", question: "这句为什么这样排词序？请只讲这句的结构。", questionType: "pattern" as TutorQuestionType },
+                { label: "这个词怎么搭配", question: "这个词在这句里怎么搭配更自然？", questionType: "word_choice" as TutorQuestionType },
+                { label: "同结构例句", question: "再给我一个同结构的例句让我模仿。", questionType: "example" as TutorQuestionType },
+            ]
+            : [
+                { label: "给我模板", question: "给我一个这题可复用的句型模板。", questionType: "pattern" as TutorQuestionType },
+                { label: "搭配怎么用", question: "这里更自然的说法是什么？只告诉我这个词或搭配怎么用。", questionType: "word_choice" as TutorQuestionType },
+                { label: "同结构例句", question: "再给我一个同结构的例句让我模仿。", questionType: "example" as TutorQuestionType },
+            ];
         return (
             <motion.div
                 initial={{ opacity: 0 }}
@@ -5487,14 +5816,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             <div className="flex flex-wrap items-center gap-2">
                                 <span className={cn("text-sm font-semibold flex items-center gap-1.5", activeCosmeticUi.tutorSendClass)}>
                                     <MessageCircle className="w-4 h-4" />
-                                    AI Teacher
+                                    {title}
                                 </span>
                                 <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold text-amber-700">
-                                    {tutorResponse?.teaching_point || inferTeachingPoint()}
+                                    {teachingPoint}
                                 </span>
                             </div>
                             <p className="mt-2 text-xs leading-5 text-stone-500">
-                                翻译过程中卡住时，把它当老师来问：先从你已经会的点出发，再帮你补当前词、搭配或句型。
+                                {description}
                             </p>
                         </div>
                         <button type="button" onClick={() => setIsTutorOpen(false)} className="rounded-full border border-stone-200 bg-white/80 p-2 text-stone-500 transition-all hover:bg-white hover:text-stone-700">
@@ -5503,33 +5832,17 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     </div>
 
                     <div className="mt-4 flex flex-nowrap gap-2 overflow-x-auto pb-1 pr-1">
-                        <button
-                            type="button"
-                            onClick={() => handleAskTutor({ question: "给我一个这题可复用的句型模板。", questionType: "pattern" })}
-                            disabled={isAskingTutor}
-                            className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            给我模板
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => handleAskTutor({
-                                question: "这里更自然的说法是什么？只告诉我这个词或搭配怎么用。",
-                                questionType: "word_choice",
-                            })}
-                            disabled={isAskingTutor}
-                            className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            搭配怎么用
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => handleAskTutor({ question: "再给我一个同结构的例句让我模仿。", questionType: "example" })}
-                            disabled={isAskingTutor}
-                            className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            同结构例句
-                        </button>
+                        {presetActions.map((preset) => (
+                            <button
+                                key={preset.label}
+                                type="button"
+                                onClick={() => handleAskTutor({ question: preset.question, questionType: preset.questionType })}
+                                disabled={isAskingTutor}
+                                className="inline-flex min-h-9 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {preset.label}
+                            </button>
+                        ))}
                     </div>
 
                     <div ref={tutorConversationRef} className="mt-4 max-h-[calc(min(84vh,760px)-13rem)] overflow-y-auto pr-1">
@@ -5543,7 +5856,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             />
                         ) : (
                             <p className="text-xs text-stone-500">
-                                先问一个具体卡点，比如某个词、搭配或语序；老师会先接住你已经会的，再补新的。
+                                {isEnglishQaSurface
+                                    ? "先问一个具体点，比如某个词、短语、搭配或语法；它会围着这句英文直接拆给你。"
+                                    : "先问一个具体卡点，比如某个词、搭配或语序；老师会先接住你已经会的，再补新的。"}
                             </p>
                         )}
                     </div>
@@ -5559,7 +5874,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             type="text"
                             value={tutorQuery}
                             onChange={(e) => setTutorQuery(e.target.value)}
-                            placeholder="继续问这个词、搭配或句型..."
+                            placeholder={inputPlaceholder}
                             className={cn("h-11 flex-1 rounded-xl border px-3 text-sm focus:outline-none focus:ring-1", activeCosmeticUi.tutorInputClass)}
                         />
                         <button
@@ -5568,11 +5883,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             className={cn("inline-flex h-11 min-w-[110px] items-center justify-center gap-1.5 rounded-xl border border-transparent px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50", activeCosmeticUi.analysisButtonClass)}
                         >
                             {isAskingTutor ? <Sparkles className="w-4 h-4 animate-spin" /> : <MessageCircle className="w-4 h-4" />}
-                            {isAskingTutor ? "思考中" : "继续提问"}
+                            {isAskingTutor ? "思考中" : submitLabel}
                         </button>
                     </form>
 
-                    {!tutorResponse?.answer_revealed && (
+                    {!isEnglishQaSurface && !tutorResponse?.answer_revealed && (
                         <div className="mt-2 flex items-center justify-start gap-2">
                             <button
                                 type="button"
@@ -5772,74 +6087,122 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         if (!drillData?._rebuildMeta) return null;
 
         return (
-            <div className="w-full max-w-4xl">
-                <div className="rounded-[1.5rem] border border-teal-100/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(245,255,252,0.94))] p-3 shadow-[0_18px_36px_rgba(20,184,166,0.08)]">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                        <div className="text-[11px] font-black uppercase tracking-[0.18em] text-teal-700">
-                            Rebuild
+            <motion.div 
+                className="w-full max-w-4xl"
+                initial={prefersReducedMotion ? false : { opacity: 0, y: 20, filter: "blur(4px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={prefersReducedMotion ? { duration: 0.15 } : { duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            >
+                <div className="rounded-[1.75rem] border border-teal-100/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,253,250,0.85))] p-4 shadow-[0_20px_48px_rgba(20,184,166,0.1),inset_0_1px_0_rgba(255,255,255,1)] backdrop-blur-2xl ring-1 ring-teal-200/20">
+                    <div className="mb-3 flex items-center justify-between gap-3 px-1">
+                        <div className="flex items-center gap-2">
+                            <Sparkles className="h-4 w-4 text-teal-400" />
+                            <div className="text-[12px] font-black uppercase tracking-[0.2em] text-teal-700">
+                                Rebuild
+                            </div>
                         </div>
-                        <div className="text-[11px] font-medium text-stone-400">
-                            选对自动发送
+                        <div className="flex items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={() => setRebuildAutocorrect(v => !v)}
+                                className={cn(
+                                    "rounded-full px-2.5 py-0.5 text-[10px] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,1)] border backdrop-blur-sm transition-all",
+                                    rebuildAutocorrect
+                                        ? "border-teal-300/80 bg-teal-100/80 text-teal-700"
+                                        : "border-stone-100/50 bg-white/60 text-stone-400 hover:text-stone-600 hover:border-stone-200"
+                                )}
+                            >
+                                🔤 纠正
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRebuildHideTokens(v => !v)}
+                                className={cn(
+                                    "rounded-full px-2.5 py-0.5 text-[10px] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,1)] border backdrop-blur-sm transition-all",
+                                    rebuildHideTokens
+                                        ? "border-teal-300/80 bg-teal-100/80 text-teal-700"
+                                        : "border-stone-100/50 bg-white/60 text-stone-400 hover:text-stone-600 hover:border-stone-200"
+                                )}
+                            >
+                                👁 隐藏词
+                            </button>
+                            <div className="rounded-full bg-white/60 px-2.5 py-0.5 text-[10px] font-bold text-stone-400 shadow-[inset_0_1px_0_rgba(255,255,255,1)] border border-stone-100/50 backdrop-blur-sm">
+                                选对自动发送
+                            </div>
                         </div>
                     </div>
 
-                    <div className="relative min-h-[82px] rounded-[1.15rem] border border-dashed border-teal-200/90 bg-teal-50/45 p-3">
-                        {rebuildAnswerTokens.length > 0 ? (
-                            <AnimatePresence initial={false}>
-                                <div className="flex flex-wrap gap-2">
+                    <div className="relative min-h-[96px] w-full rounded-[1.25rem] border border-dashed border-teal-300/80 bg-teal-50/40 p-4 shadow-[inset_0_4px_16px_rgba(20,184,166,0.03)] transition-colors duration-500 ease-in-out">
+                        {rebuildAnswerTokens.length > 0 || rebuildTypingBuffer ? (
+                            <AnimatePresence mode="sync" initial={false}>
+                                <div className="flex flex-wrap items-center gap-2.5">
                                     {rebuildAnswerTokens.map((token) => (
                                         <motion.button
-                                            key={token.id}
+                                            key={`ans-${token.id}`}
                                             type="button"
-                                            initial={prefersReducedMotion ? false : { opacity: 0 }}
-                                            animate={{ opacity: 1 }}
-                                            exit={{ opacity: 0 }}
-                                            transition={prefersReducedMotion
-                                                ? { duration: 0.12 }
-                                                : { duration: 0.18, ease: "easeOut" }}
-                                            whileTap={prefersReducedMotion ? undefined : { scale: 0.97 }}
+                                            initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.9 }}
+                                            transition={{ duration: 0.15, ease: "easeOut" }}
+                                            whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
                                             onClick={() => handleRebuildRemoveToken(token.id)}
-                                            className="inline-flex items-center gap-1.5 rounded-full border border-teal-200/90 bg-white px-3 py-1.5 text-sm font-semibold text-teal-800 shadow-[0_8px_18px_rgba(20,184,166,0.08)] transition hover:-translate-y-0.5 hover:bg-teal-50"
-                                            style={{ willChange: "opacity" }}
+                                            className="inline-flex min-h-[38px] items-center gap-1.5 rounded-full border border-teal-200/90 bg-white px-4 py-1.5 text-[14px] font-bold text-teal-800 shadow-[0_6px_16px_rgba(20,184,166,0.12),inset_0_1px_0_rgba(255,255,255,1)] transition-colors hover:border-teal-300"
                                         >
                                             {token.text}
                                             {(token.repeatTotal ?? 1) > 1 && (
-                                                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-stone-100 px-1 text-[10px] font-black text-stone-500">
+                                                <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-teal-100/80 px-1 pt-[1px] text-[10px] font-black text-teal-700">
                                                     {token.repeatIndex}
                                                 </span>
                                             )}
                                         </motion.button>
                                     ))}
+                                    {rebuildTypingBuffer && (
+                                        <motion.div
+                                            key="typing-ghost"
+                                            initial={{ opacity: 0, scale: 0.9 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.9 }}
+                                            transition={{ duration: 0.12, ease: "easeOut" }}
+                                            className="inline-flex min-h-[38px] items-center gap-1.5 rounded-full border border-teal-300/40 bg-teal-50/50 px-4 py-1.5 text-[14px] font-bold text-teal-700/70"
+                                        >
+                                            {rebuildTypingBuffer}
+                                            <span className="h-4 w-[2px] animate-pulse rounded-full bg-teal-400/60" />
+                                        </motion.div>
+                                    )}
                                 </div>
                             </AnimatePresence>
                         ) : (
-                            <div className="flex min-h-[58px] items-center justify-center rounded-[1rem] border border-white/80 bg-white/70 px-4 text-center text-sm text-stone-400">
-                                直接点下面词块，把整句拼出来。
-                            </div>
+                            <motion.div 
+                                className="flex h-full min-h-[64px] items-center justify-center text-center text-sm font-semibold text-stone-400"
+                                animate={{ opacity: [0.5, 0.9, 0.5] }}
+                                transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+                            >
+                                {rebuildHideTokens
+                                    ? (rebuildAutocorrect ? "纯打字模式，拼写相近自动纠正" : "纯打字模式，键盘输入匹配词块")
+                                    : (rebuildAutocorrect ? "直接点下面词块，或键盘打字（已开启纠正）" : "直接点下面词块，或键盘直接打字。")}
+                            </motion.div>
                         )}
                     </div>
 
-                    <div className="mt-2 max-h-[148px] overflow-y-auto rounded-[1.15rem] border border-stone-100 bg-stone-50/60 p-3">
-                        <AnimatePresence initial={false}>
-                            <div className="flex flex-wrap gap-2">
+                    {!rebuildHideTokens && (
+                    <div className="mt-4 max-h-[160px] overflow-y-auto rounded-[1.25rem] border border-stone-100/60 bg-white/70 p-4 shadow-[inset_0_2px_8px_rgba(0,0,0,0.02)] backdrop-blur-xl">
+                        <AnimatePresence mode="sync" initial={false}>
+                            <div className="flex flex-wrap gap-2.5">
                                 {rebuildAvailableTokens.map((token) => (
                                     <motion.button
-                                        key={token.id}
+                                        key={`avail-${token.id}`}
                                         type="button"
-                                        initial={prefersReducedMotion ? false : { opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        exit={{ opacity: 0 }}
-                                        transition={prefersReducedMotion
-                                            ? { duration: 0.12 }
-                                            : { duration: 0.16, ease: "easeOut" }}
-                                        whileTap={prefersReducedMotion ? undefined : { scale: 0.97 }}
+                                        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.9 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.9 }}
+                                        transition={{ duration: 0.15, ease: "easeOut" }}
+                                        whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
                                         onClick={() => handleRebuildSelectToken(token.id)}
-                                        className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-stone-700 transition hover:-translate-y-0.5 hover:bg-stone-50 hover:shadow-sm active:scale-[0.98]"
-                                        style={{ willChange: "opacity" }}
+                                        className="inline-flex min-h-[38px] items-center gap-1.5 rounded-full border border-stone-200/90 bg-white px-4 py-1.5 text-[14px] font-bold text-stone-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),inset_0_1px_0_rgba(255,255,255,1)] transition-all hover:border-stone-300 hover:shadow-[0_8px_20px_rgba(0,0,0,0.08)]"
                                     >
                                         {token.text}
                                         {(token.repeatTotal ?? 1) > 1 && (
-                                            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-stone-100 px-1 text-[10px] font-black text-stone-500">
+                                            <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-stone-100/90 px-1 pt-[1px] text-[10px] font-black text-stone-500">
                                                 {token.repeatIndex}
                                             </span>
                                         )}
@@ -5848,14 +6211,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             </div>
                         </AnimatePresence>
                     </div>
+                    )}
 
-                    <div className="mt-3 flex gap-3">
+                    <div className="mt-5 flex gap-3 px-1">
                         <button
                             type="button"
                             onClick={handleSkipRebuild}
-                            className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full border border-rose-200 bg-rose-50/80 px-4 text-sm font-semibold text-rose-700 transition hover:-translate-y-0.5"
+                            className="group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full border border-rose-200/80 bg-[linear-gradient(180deg,rgba(255,241,242,0.9),rgba(255,228,230,0.8))] px-4 text-[15px] font-bold text-rose-500 shadow-[0_4px_12px_rgba(244,63,94,0.06),inset_0_1px_0_rgba(255,255,255,0.8)] transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgba(244,63,94,0.12)] active:scale-[0.98]"
                         >
-                            <SkipForward className="h-4 w-4" />
+                            <SkipForward className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                             跳过
                         </button>
                         <button
@@ -5863,18 +6227,18 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             onClick={() => { void handleSubmitDrill(); }}
                             disabled={rebuildAnswerTokens.length === 0}
                             className={cn(
-                                "inline-flex h-11 flex-[1.2] items-center justify-center gap-2 rounded-full px-5 text-sm font-bold transition",
+                                "group inline-flex h-12 flex-[1.4] items-center justify-center gap-2 rounded-full px-6 text-[15px] font-black tracking-wide transition-all duration-300",
                                 rebuildAnswerTokens.length === 0
-                                    ? "cursor-not-allowed border border-stone-300/70 bg-white/60 text-stone-400"
-                                    : "border border-teal-500 bg-teal-500 text-white shadow-[0_12px_26px_rgba(20,184,166,0.28)] hover:-translate-y-0.5 hover:bg-teal-600"
+                                    ? "cursor-not-allowed border border-stone-200/80 bg-white/80 text-stone-300 shadow-[inset_0_1px_0_rgba(255,255,255,1)]"
+                                    : "border border-teal-400 bg-[linear-gradient(180deg,rgba(45,212,191,1),rgba(20,184,166,1))] text-white shadow-[0_12px_28px_rgba(20,184,166,0.35),inset_0_1px_0_rgba(255,255,255,0.4)] hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(20,184,166,0.45)] active:scale-[0.98]"
                             )}
                         >
-                            <CheckCircle2 className="h-4 w-4" />
+                            <CheckCircle2 className={cn("h-4 w-4", rebuildAnswerTokens.length > 0 && "transition-transform group-hover:scale-110")} />
                             发送
                         </button>
                     </div>
                 </div>
-            </div>
+            </motion.div>
         );
     };
 
@@ -5978,53 +6342,30 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             className="min-w-0 flex-1"
                         >
                             <div className="flex flex-wrap items-center gap-2">
+                                <span className="inline-flex items-center rounded-full border border-stone-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-stone-500">
+                                    {practiceTier.label}
+                                </span>
                                 <span className={cn(
-                                    "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em]",
+                                    "inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-bold tracking-[0.08em] shadow-sm",
                                     rebuildTone === "success"
                                         ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                                         : rebuildTone === "partial"
                                             ? "border-amber-200 bg-amber-50 text-amber-700"
-                                            : "border-stone-200 bg-white/80 text-stone-500"
+                                            : "border-rose-200 bg-rose-50 text-rose-700"
                                 )}>
-                                    Rebuild Result
-                                </span>
-                                <span className="inline-flex items-center rounded-full border border-stone-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-stone-500">
-                                    系统判断 {rebuildFeedback.systemAssessmentLabel}
+                                    {rebuildFeedback.systemAssessmentLabel}
                                 </span>
                             </div>
                             <h3 className="mt-3 text-3xl font-bold text-slate-900">
                                 {isCorrectRebuild ? "这句你拼出来了" : isSkippedRebuild ? "这题先跳过" : "先看标准表达"}
                             </h3>
-                            <p className="mt-2 max-w-2xl text-sm leading-7 text-stone-600">
-                                当前练习层 {practiceTier.label}。
+                            <p className="mt-2 max-w-2xl text-base leading-7 text-stone-600">
                                 {isCorrectRebuild
-                                    ? " 节奏不错，继续往上刷。"
+                                    ? "过一遍标准句，确认表达已经进脑子。"
                                     : isSkippedRebuild
-                                        ? " 这题先别纠结，先听一遍标准句，把意思和表达带过去。"
-                                        : " 先记住标准表达，再看你这次错在什么地方。"}
+                                        ? "偏难，先听一遍标准句，把意思和表达带过去。"
+                                        : "先记标准句，再看这次错位和漏词。"}
                             </p>
-                        </motion.div>
-                        <motion.div
-                            initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, delay: prefersReducedMotion ? 0 : 0.16 }}
-                            className="flex shrink-0 items-center gap-3 self-start"
-                        >
-                            <button
-                                type="button"
-                                onClick={() => { void playAudio(); }}
-                                disabled={isAudioLoading}
-                                className={cn(
-                                    "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold transition-all",
-                                    isAudioLoading
-                                        ? "cursor-wait border-stone-200 bg-stone-100/80 text-stone-400"
-                                        : "border-indigo-200/80 bg-indigo-50 text-indigo-700 hover:-translate-y-0.5 hover:bg-indigo-100"
-                                )}
-                                title="重播英文原句"
-                            >
-                                <Volume2 className={cn("h-4 w-4", isAudioLoading && "animate-pulse")} />
-                                {isAudioLoading ? "加载音频..." : isPlaying ? "播放中..." : "重播英文"}
-                            </button>
                         </motion.div>
                     </div>
                 </motion.div>
@@ -6036,21 +6377,43 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     transition={{ duration: prefersReducedMotion ? 0.16 : 0.34, delay: prefersReducedMotion ? 0 : 0.12 }}
                     className="rounded-[1.9rem] border border-stone-100 bg-white/94 p-5 shadow-[0_18px_34px_rgba(15,23,42,0.05)]"
                 >
-                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                        <div className="min-w-0 flex-1">
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
                             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">标准表达</p>
-                            <div className="mt-4 rounded-[1.45rem] border border-stone-200/80 bg-stone-50/70 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-                                <div className="text-[1.2rem] leading-9 text-stone-800 font-newsreader md:text-[1.35rem]">
+                            <button
+                                type="button"
+                                onClick={openTutorModal}
+                                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300"
+                                title="打开英语问答"
+                            >
+                                <HelpCircle className="h-4 w-4" />
+                                问这句英文
+                            </button>
+                        </div>
+                        <div className="mt-4 rounded-[1.45rem] border border-stone-200/80 bg-stone-50/70 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
+                            <div className="flex items-start gap-3">
+                                <div className="min-w-0 flex-1 text-[1.2rem] leading-9 text-stone-800 font-newsreader md:text-[1.35rem]">
                                     {renderInteractiveText(drillData.reference_english)}
                                 </div>
-                            </div>
-                            <div className="mt-4 rounded-[1.35rem] border border-amber-100/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.92),rgba(255,255,255,0.92))] px-4 py-3">
-                                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-700">中文意思</p>
-                                <p className="mt-2 text-base leading-8 text-stone-700 md:text-[1.05rem]">{drillData.chinese}</p>
+                                <button
+                                    type="button"
+                                    onClick={() => { void playAudio(); }}
+                                    disabled={isAudioLoading}
+                                    className={cn(
+                                        "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition-all",
+                                        isAudioLoading
+                                            ? "cursor-wait border-stone-200 bg-stone-100/80 text-stone-400"
+                                            : "border-indigo-200/80 bg-white text-indigo-600 hover:-translate-y-0.5 hover:bg-indigo-50"
+                                    )}
+                                    title="重播英文原句"
+                                >
+                                    <Volume2 className={cn("h-4 w-4", isAudioLoading && "animate-pulse")} />
+                                </button>
                             </div>
                         </div>
-                        <div className="shrink-0 rounded-[1.3rem] border border-stone-200/80 bg-white/80 px-4 py-3 text-sm text-stone-500 shadow-sm">
-                            点击英文单词可查词
+                        <div className="mt-4 rounded-[1.35rem] border border-amber-100/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.92),rgba(255,255,255,0.92))] px-4 py-3">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-700">中文意思</p>
+                            <p className="mt-2 text-base leading-8 text-stone-700 md:text-[1.05rem]">{drillData.chinese}</p>
                         </div>
                     </div>
                 </motion.div>
@@ -6190,12 +6553,20 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     useEffect(() => {
         if (!isRebuildMode || pendingRebuildAdvanceElo === null || isGeneratingDrill) return;
         const timeoutId = window.setTimeout(() => {
+            const selectedEvaluation = rebuildFeedback?.selfEvaluation;
+            const prefetchedChoice = selectedEvaluation
+                ? prefetchedRebuildChoicesRef.current[selectedEvaluation]
+                : null;
             setPendingRebuildAdvanceElo(null);
+            if (prefetchedChoice) {
+                consumeNextDrill(prefetchedChoice);
+                return;
+            }
             void handleGenerateDrill(undefined, undefined, true, pendingRebuildAdvanceElo);
         }, 120);
 
         return () => window.clearTimeout(timeoutId);
-    }, [handleGenerateDrill, isGeneratingDrill, isRebuildMode, pendingRebuildAdvanceElo]);
+    }, [consumeNextDrill, handleGenerateDrill, isGeneratingDrill, isRebuildMode, pendingRebuildAdvanceElo, rebuildFeedback]);
 
 
 
@@ -7227,7 +7598,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                     ? "p-4 md:p-5 pb-6 md:pb-8"
                                                     : "p-6 md:p-8 pb-10 md:pb-12",
                                             isRebuildMode && rebuildFeedback
-                                                ? "pointer-events-none scale-[0.985] opacity-70 blur-[1.5px]"
+                                                ? "pointer-events-none opacity-15 blur-[3px]"
                                                 : ""
                                         )}
                                     >
@@ -8365,14 +8736,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
                                     exit={{ opacity: 0 }}
-                                    className="absolute inset-0 z-40 overflow-y-auto custom-scrollbar bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.72),rgba(248,250,252,0.86)_34%,rgba(15,23,42,0.1))] p-4 md:p-6 pb-48 backdrop-blur-[3px]"
+                                    className="absolute inset-0 z-[60] overflow-y-auto custom-scrollbar bg-[rgba(248,250,252,0.78)] p-4 md:p-6 pb-28 backdrop-blur-[10px]"
                                 >
                                     <motion.div
                                         initial={prefersReducedMotion ? false : { opacity: 0, y: 22, scale: 0.98 }}
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}
                                         transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, ease: "easeOut" }}
-                                        className="mx-auto w-full max-w-5xl pt-10 md:pt-14"
+                                        className="mx-auto w-full max-w-4xl pt-8 md:pt-10"
                                     >
                                         {renderRebuildFeedback()}
                                     </motion.div>
@@ -8465,9 +8836,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 initial={{ y: 40, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
                                 exit={{ y: 40, opacity: 0 }}
-                                className="absolute bottom-6 left-1/2 z-50 w-[calc(100%-2rem)] max-w-[520px] -translate-x-1/2 pointer-events-none md:bottom-8"
+                                className="absolute bottom-6 left-1/2 z-[70] w-[calc(100%-2rem)] max-w-[520px] -translate-x-1/2 pointer-events-none md:bottom-8"
                             >
-                                <div className="pointer-events-auto rounded-full border border-white/65 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(247,250,252,0.88))] p-2 shadow-[0_20px_50px_rgba(15,23,42,0.16)] backdrop-blur-[24px]">
+                                <div className="pointer-events-auto rounded-full border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(247,250,252,0.92))] p-2 shadow-[0_20px_50px_rgba(15,23,42,0.18)] backdrop-blur-[24px]">
                                     <div className="grid grid-cols-3 gap-2">
                                         {([
                                             {

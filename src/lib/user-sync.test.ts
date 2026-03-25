@@ -22,6 +22,7 @@ describe("user sync helpers", () => {
         expect(profile.user_id).toBe("user-1");
         expect(profile.elo_rating).toBe(400);
         expect(profile.listening_elo).toBe(400);
+        expect(profile.rebuild_hidden_elo).toBe(400);
         expect(profile.dictation_elo).toBe(400);
         expect(profile.max_elo).toBe(400);
         expect(profile.listening_scoring_version).toBe(2);
@@ -49,6 +50,7 @@ describe("user sync helpers", () => {
             user_id: "user-1",
             translation_elo: 900,
             listening_elo: 720,
+            rebuild_hidden_elo: 665,
             dictation_elo: 680,
             streak_count: 4,
             listening_streak: 2,
@@ -82,6 +84,7 @@ describe("user sync helpers", () => {
         expect(localProfile.elo_rating).toBe(900);
         expect(localProfile.listening_scoring_version).toBe(0);
         expect(localProfile.listening_elo).toBe(720);
+        expect(localProfile.rebuild_hidden_elo).toBe(665);
         expect(localProfile.dictation_elo).toBe(680);
         expect(localProfile.dictation_streak).toBe(3);
         expect(localProfile.hints).toBe(18);
@@ -99,6 +102,7 @@ describe("user sync helpers", () => {
             username: "Nova",
             avatar_preset: "mint-orbit",
             bio: "Focused and playful.",
+            rebuild_hidden_elo: 588,
             dictation_elo: 512,
             dictation_streak: 6,
             dictation_max_elo: 640,
@@ -117,6 +121,7 @@ describe("user sync helpers", () => {
             username: "Nova",
             avatar_preset: "mint-orbit",
             bio: "Focused and playful.",
+            rebuild_hidden_elo: 588,
             dictation_elo: 512,
             dictation_streak: 6,
             dictation_max_elo: 640,
