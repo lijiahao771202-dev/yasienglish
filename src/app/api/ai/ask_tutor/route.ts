@@ -9,7 +9,7 @@ interface TutorTurn {
 type TutorQuestionType = "pattern" | "word_choice" | "example" | "unlock_answer" | "follow_up";
 type TutorAction = "ask" | "drill_check";
 type TutorUiSurface = "battle" | "score";
-type TutorIntent = "translate" | "grammar" | "lexical";
+type TutorIntent = "translate" | "grammar" | "lexical" | "rebuild";
 type TutorResponseIntent =
     | "word_meaning"
     | "collocation"
@@ -254,7 +254,7 @@ function normalizeUiSurface(value: unknown): TutorUiSurface {
 
 function normalizeIntent(value: unknown): TutorIntent {
     const normalized = safeString(value);
-    if (normalized === "grammar" || normalized === "lexical") return normalized;
+    if (normalized === "grammar" || normalized === "lexical" || normalized === "rebuild") return normalized;
     return "translate";
 }
 
@@ -341,7 +341,7 @@ function autoMarkCoachText(text: string, patterns: string[]): string {
         .map((term) => term.trim())
         .filter(Boolean);
 
-    const candidates = [...chinesePriority, ...englishTerms];
+    const candidates = [...englishTerms, ...chinesePriority];
     let marked = text;
     let count = 0;
 
@@ -355,6 +355,75 @@ function autoMarkCoachText(text: string, patterns: string[]): string {
     }
 
     return marked;
+}
+
+function normalizeMarkdownSyntax(text: string): string {
+    if (!text) return text;
+
+    return text
+        .replace(/(^|\n)(#{1,6})([^\s#])/g, "$1$2 $3")
+        .replace(/(^|\n)\s*([-*_])(?:\s*\2){2,}\s*(?=\n|$)/g, "$1---");
+}
+
+function softenMarkdownNoise(text: string): string {
+    if (!text) return text;
+
+    let headingCount = 0;
+    let boldCount = 0;
+    let codeCount = 0;
+
+    const softenedLines = normalizeMarkdownSyntax(text).split("\n").map((line) => {
+        let nextLine = line;
+
+        if (/^\s*#{1,6}\s+/.test(nextLine)) {
+            headingCount += 1;
+            if (headingCount > 1) {
+                nextLine = nextLine.replace(/^\s*#{1,6}\s+/, "- ");
+            }
+        }
+
+        nextLine = nextLine.replace(/\*\*([^*]+)\*\*/g, (_, inner: string) => {
+            boldCount += 1;
+            return boldCount <= 3 ? `**${inner}**` : inner;
+        });
+
+        nextLine = nextLine.replace(/`([^`]+)`/g, (_, inner: string) => {
+            codeCount += 1;
+            return codeCount <= 4 ? `\`${inner}\`` : inner;
+        });
+
+        return nextLine;
+    });
+
+    return softenedLines
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/(?:\n\s*---\s*\n){2,}/g, "\n---\n")
+        .trim();
+}
+
+function hasMarkdownStructure(text: string): boolean {
+    if (!text) return false;
+    return /(^|\n)\s*(#{1,6}\s|[-*+]\s|\d+\.\s|>\s|---\s*$|\|.+\|)/m.test(text) || /\*\*[^*]+\*\*/.test(text) || /`[^`]+`/.test(text);
+}
+
+function ensureReadableMarkdown(text: string): string {
+    const normalized = normalizeMarkdownSyntax(safeString(text));
+    if (!normalized) return normalized;
+    if (hasMarkdownStructure(normalized)) return normalized;
+
+    const sentences = normalized
+        .split(/(?<=[。！？!?])\s*/u)
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+    if (sentences.length <= 1) {
+        return `### 直接回答\n\n${normalized}`;
+    }
+
+    const [first, ...rest] = sentences;
+    const bullets = rest.slice(0, 3).map((item) => `- ${item}`).join("\n");
+    return `### 直接回答\n\n${first}\n\n---\n\n${bullets}`.trim();
 }
 
 function normalizeCollapsedEnglish(text: string): string {
@@ -392,7 +461,46 @@ function normalizeCollapsedEnglish(text: string): string {
         .replace(/\b([a-z]{2,})someone([a-z]{2,})\b/gi, "$1 someone $2")
         .replace(/\b([a-z]{2,})something([a-z]{2,})\b/gi, "$1 something $2")
         .replace(/\b([a-z]{2,})tosomeone\b/gi, "$1 to someone")
-        .replace(/\b([a-z]{2,})tosomething\b/gi, "$1 to something");
+        .replace(/\b([a-z]{2,})tosomething\b/gi, "$1 to something")
+        .replace(/\b([a-z]{3,})as(a|an|the)([a-z]{3,})\b/gi, "$1 as $2 $3")
+        .replace(/\b([a-z]{3,})(a|an|the)([a-z]{3,})\b/gi, "$1 $2 $3");
+
+    return normalized;
+}
+
+function expandCollapsedReferenceRuns(text: string, referenceEnglish: string): string {
+    const source = safeString(text);
+    const reference = safeString(referenceEnglish);
+    if (!source || !reference) return source;
+
+    const referenceTokens = reference
+        .match(/[A-Za-z]+(?:'[A-Za-z]+)?/g)
+        ?.map((token) => token.toLowerCase())
+        .filter((token) => token.length >= 2) || [];
+
+    if (referenceTokens.length < 2) return source;
+
+    const candidateMap = new Map<string, string>();
+
+    for (let start = 0; start < referenceTokens.length; start += 1) {
+        let joined = "";
+        const parts: string[] = [];
+        for (let end = start; end < Math.min(referenceTokens.length, start + 5); end += 1) {
+            parts.push(referenceTokens[end]);
+            joined += referenceTokens[end];
+            if (parts.length >= 2 && joined.length >= 8) {
+                candidateMap.set(joined, parts.join(" "));
+            }
+        }
+    }
+
+    const sortedCandidates = Array.from(candidateMap.entries()).sort((a, b) => b[0].length - a[0].length);
+    let normalized = source;
+
+    for (const [collapsed, spaced] of sortedCandidates) {
+        const pattern = new RegExp(`\\b${escapeRegExp(collapsed)}\\b`, "gi");
+        normalized = normalized.replace(pattern, spaced);
+    }
 
     return normalized;
 }
@@ -672,25 +780,28 @@ function collectQualityFlags(payload: TutorResponsePayload, ctx: PayloadBuildCon
 }
 
 function applyQualityGuards(payload: TutorResponsePayload, ctx: PayloadBuildContext): { payload: TutorResponsePayload; shouldRetry: boolean } {
+    const normalizeWithReference = (value: string | undefined) =>
+        value ? softenMarkdownNoise(expandCollapsedReferenceRuns(normalizeCollapsedEnglish(value), ctx.referenceEnglish)) : value;
+
     const patched: TutorResponsePayload = {
         ...payload,
-        coach_markdown: normalizeListLayout(normalizeCollapsedEnglish(payload.coach_markdown)),
-        coach_cn: payload.coach_cn ? normalizeListLayout(normalizeCollapsedEnglish(payload.coach_cn)) : undefined,
-        contrast: payload.contrast ? normalizeListLayout(normalizeCollapsedEnglish(payload.contrast)) : undefined,
-        next_task: payload.next_task ? normalizeListLayout(normalizeCollapsedEnglish(payload.next_task)) : undefined,
-        direct_answer_en: payload.direct_answer_en ? normalizeCollapsedEnglish(payload.direct_answer_en) : undefined,
+        coach_markdown: ensureReadableMarkdown(normalizeListLayout(normalizeWithReference(payload.coach_markdown) || "")),
+        coach_cn: payload.coach_cn ? normalizeListLayout(normalizeWithReference(payload.coach_cn) || "") : undefined,
+        contrast: payload.contrast ? normalizeListLayout(normalizeWithReference(payload.contrast) || "") : undefined,
+        next_task: payload.next_task ? normalizeListLayout(normalizeWithReference(payload.next_task) || "") : undefined,
+        direct_answer_en: normalizeWithReference(payload.direct_answer_en),
         micro_drill: payload.micro_drill
             ? {
                 prompt_cn: payload.micro_drill.prompt_cn,
-                expected_pattern_en: normalizeCollapsedEnglish(payload.micro_drill.expected_pattern_en),
+                expected_pattern_en: expandCollapsedReferenceRuns(normalizeCollapsedEnglish(payload.micro_drill.expected_pattern_en), ctx.referenceEnglish),
             }
             : undefined,
-        drill_feedback_cn: payload.drill_feedback_cn ? normalizeCollapsedEnglish(payload.drill_feedback_cn) : undefined,
-        revised_sentence_en: payload.revised_sentence_en ? normalizeCollapsedEnglish(payload.revised_sentence_en) : undefined,
+        drill_feedback_cn: payload.drill_feedback_cn ? normalizeWithReference(payload.drill_feedback_cn) : undefined,
+        revised_sentence_en: payload.revised_sentence_en ? normalizeWithReference(payload.revised_sentence_en) : undefined,
         next_micro_drill: payload.next_micro_drill
             ? {
                 prompt_cn: payload.next_micro_drill.prompt_cn,
-                expected_pattern_en: normalizeCollapsedEnglish(payload.next_micro_drill.expected_pattern_en),
+                expected_pattern_en: expandCollapsedReferenceRuns(normalizeCollapsedEnglish(payload.next_micro_drill.expected_pattern_en), ctx.referenceEnglish),
             }
             : undefined,
     };
@@ -770,9 +881,14 @@ function buildPrompt(params: {
         repairMode,
     } = params;
 
+    const roleInstruction = intent === "rebuild"
+        ? "You are a patient English teacher for Chinese learners. The learner is weak in grammar, phrases, collocations, and word usage. Explain why this English sentence is written this way, in clear Chinese, without sounding like a scoring judge."
+        : uiSurface === "score" && intent !== "translate"
+            ? "You are an English usage coach for Chinese learners. Focus on questions about English wording, phrases, collocations, and grammar inside one finished sentence. Do not roleplay as a tutor or scoring judge."
+            : "You are an IELTS translation tutor for Chinese native speakers. Teaching style must be: teacher-like guidance + Chinese explanation + gentle correction + teach from known to new.";
+
     const baseContext = `
-You are an IELTS translation tutor for Chinese native speakers.
-Teaching style must be: teacher-like guidance + Chinese explanation + gentle correction + teach from known to new.
+${roleInstruction}
 
 Context:
 - Surface: "${uiSurface}"
@@ -860,6 +976,44 @@ ${repairMode ? '15) REPAIR MODE: 这次回复必须补齐之前缺失字段，�
         `;
     }
 
+    if (intent === "rebuild") {
+        return `
+${baseContext}
+
+Output STRICT JSON ONLY with this exact schema:
+{
+  "coach_markdown": "Markdown 中文回答，直接回答用户的英文问题",
+  "answer_revealed": false,
+  "full_answer": "仅当允许公开答案时提供",
+  "answer_reason_cn": "仅当允许公开答案时提供，解释标准句为何这样组织",
+  "teaching_point": "围绕语法/短语/搭配/词序的教学点",
+  "error_tags": ["word_choice","word_order"]
+}
+
+Rules:
+1) 你是英语老师，不是评分官，不要写评分讲评。
+2) 用户在语法、短语、搭配上比较弱，解释时要照顾这一点，但不要太啰嗦。
+3) 只围绕这句标准英文回答：为什么这样写、这个短语什么意思、这个语法点怎么理解。
+4) 把 Recent turns 当成同一题内的连续对话。若用户在追问，必须接着上一轮讲，不要假装忘记前文。
+5) 第一行必须直接回答用户当前问题，不要空泛开场。
+6) 默认简洁清楚；只有当用户明显追问细节时，才展开多讲一点。
+7) 如果用户只问一个词、短语或局部语法，就只解释那个点，不要把整句全拆一遍。
+8) coach_markdown 必须始终输出 Markdown，不能只给纯段落。
+9) 至少包含 1 个 Markdown 结构：\`###\` 小标题、项目列表、编号列表、引用块、表格，任选其一；如果适合比较词义/语法/搭配，优先使用表格。
+10) 推荐写法：先用一个短标题 + 1 小段直接回答；如有必要，再补一个最多 3 条的短列表或一个 2-3 行的小表格。
+11) 表格要小而清楚，优先 2 列：\`点\` / \`解释\`，不要做大表。
+12) 如果使用 **重点**，优先标英文词、英文短语，或“英文 + 极短中文标签”；不要只高亮整段中文解释。
+13) 不要写成长文，不要堆太多高亮，不要把很多短语都包成 code。
+14) 行内代码 \`...\` 只用于单个英文词或很短的短语。
+15) Must anchor explanation to this exact English sentence: quote at least one word, phrase, or chunk from the sentence.
+16) English phrases must use normal spaces. Never output collapsed tokens.
+17) If Allow full answer now is NO, set answer_revealed to false and DO NOT provide full_answer.
+18) If Allow full answer now is YES, you may provide full_answer + answer_reason_cn.
+19) error_tags 只用: word_choice, word_order, grammar, register, collocation, tense。
+${repairMode ? '20) REPAIR MODE: 这次回复必须补齐之前缺失字段，并贴合当前这句英文与前文上下文。' : ""}
+        `;
+    }
+
     return `
 ${baseContext}
 
@@ -879,28 +1033,29 @@ Output STRICT JSON ONLY with this exact schema:
 }
 
 Rules:
-1) If Allow full answer now is NO, set answer_revealed to false and DO NOT provide full_answer.
-2) If Allow full answer now is YES, you may provide full_answer + answer_reason_cn.
-3) pattern_en must contain 1-2 short reusable patterns.
-4) Keep concise and practical for immediate reuse.
-5) In coach_cn, automatically mark 2-3 key learning points using markdown bold: **key point**.
-6) Markdown is fully allowed in coach_cn/contrast/next_task: headings, blockquotes, lists, inline code, code fences, tables.
-7) Use 0-2 relevant emojis when helpful (e.g., ✨🧠📌), avoid overuse.
-8) Answer the user's current question directly in the FIRST sentence; avoid generic opening.
-9) Must anchor explanation to this exact drill: reference at least one phrase from Chinese sentence or user attempt.
-10) If Recent turns is not N/A, connect to prior turn briefly so the user feels continuity.
-11) If user asks "怎么翻译/英文怎么说", first sentence MUST give one direct translation in backticks, then explain.
-12) English phrases must use normal spaces. Never output collapsed tokens like "asksomeoneabout" or "gathercouragetodosomething".
-13) Always include micro_drill with prompt_cn + expected_pattern_en.
-14) error_tags 只用: word_choice, word_order, grammar, register, collocation, tense。
-${repairMode ? '15) REPAIR MODE: 这次回复必须补齐之前缺失字段，并强制贴合当前题目上下文。' : ""}
+1) 这是评分页里的英文问答弹窗，不是 tutor，不要用“老师”口吻，不要写评分讲评。
+2) 优先回答英文里的词义、短语、搭配、语法或词序问题，不要泛泛而谈。
+3) 第一行必须直接回答用户当前问题，不能空泛开场。
+4) If Allow full answer now is NO, set answer_revealed to false and DO NOT provide full_answer.
+5) If Allow full answer now is YES, you may provide full_answer + answer_reason_cn.
+6) pattern_en must contain 1-2 short reusable patterns.
+7) Keep concise and practical for immediate reuse.
+8) In coach_cn, automatically mark 2-3 key learning points using markdown bold: **key point**.
+9) Markdown is fully allowed in coach_cn/contrast/next_task: headings, blockquotes, lists, inline code, code fences, tables.
+10) Must anchor explanation to this exact drill: reference at least one phrase from the English sentence or user attempt.
+11) If Recent turns is not N/A, connect to prior turn briefly so the user feels continuity.
+12) If user asks "怎么翻译/英文怎么说", first sentence MUST give one direct translation in backticks, then explain.
+13) English phrases must use normal spaces. Never output collapsed tokens like "asksomeoneabout" or "gathercouragetodosomething".
+14) Always include micro_drill with prompt_cn + expected_pattern_en.
+15) error_tags 只用: word_choice, word_order, grammar, register, collocation, tense。
+${repairMode ? '16) REPAIR MODE: 这次回复必须补齐之前缺失字段，并强制贴合当前题目上下文。' : ""}
     `;
 }
 
 async function runNonStreamModel(prompt: string): Promise<string> {
     const completion = await deepseek.chat.completions.create({
         messages: [
-            { role: "system", content: "You are a structured IELTS tutor. Output strict JSON only." },
+            { role: "system", content: "You are a structured English learning assistant. Output strict JSON only." },
             { role: "user", content: prompt },
         ],
         model: "deepseek-chat",
@@ -1048,7 +1203,7 @@ export async function POST(req: NextRequest) {
 
         const completionStream = await deepseek.chat.completions.create({
             messages: [
-                { role: "system", content: "You are a structured IELTS tutor. Output strict JSON only." },
+                { role: "system", content: "You are a structured English learning assistant. Output strict JSON only." },
                 { role: "user", content: makePrompt(false) },
             ],
             model: "deepseek-chat",
@@ -1068,7 +1223,12 @@ export async function POST(req: NextRequest) {
                         if (!delta) continue;
 
                         fullContent += delta;
-                        const partialCoach = extractCoachMarkdownPartial(fullContent);
+                        const partialCoach = ensureReadableMarkdown(softenMarkdownNoise(
+                            expandCollapsedReferenceRuns(
+                                normalizeCollapsedEnglish(extractCoachMarkdownPartial(fullContent)),
+                                payloadContext.referenceEnglish
+                            )
+                        ));
                         if (partialCoach && partialCoach !== lastPartialCoach) {
                             lastPartialCoach = partialCoach;
                             controller.enqueue(encoder.encode(sseChunk("chunk", { coach_markdown: partialCoach })));
@@ -1078,7 +1238,7 @@ export async function POST(req: NextRequest) {
                     let result = buildValidatedPayload(fullContent);
                     if (!result.parsed && lastPartialCoach) {
                         result.payload.coach_markdown = autoMarkCoachText(
-                            normalizeCollapsedEnglish(lastPartialCoach),
+                            softenMarkdownNoise(expandCollapsedReferenceRuns(normalizeCollapsedEnglish(lastPartialCoach), payloadContext.referenceEnglish)),
                             result.payload.pattern_en || []
                         );
                     }

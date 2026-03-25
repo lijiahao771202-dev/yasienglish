@@ -35,6 +35,7 @@ export interface RemoteProfileRow {
     user_id: string;
     translation_elo: number;
     listening_elo: number;
+    rebuild_hidden_elo?: number;
     dictation_elo?: number;
     streak_count: number;
     listening_streak?: number;
@@ -163,6 +164,7 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
         last_practice: now,
         listening_scoring_version: 2,
         listening_elo: DEFAULT_BASE_ELO,
+        rebuild_hidden_elo: DEFAULT_BASE_ELO,
         listening_streak: 0,
         listening_max_elo: DEFAULT_BASE_ELO,
         dictation_elo: DEFAULT_BASE_ELO,
@@ -208,6 +210,7 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
         last_practice: Date.parse(remote.last_practice_at),
         listening_scoring_version: 0,
         listening_elo: remote.listening_elo,
+        rebuild_hidden_elo: typeof remote.rebuild_hidden_elo === "number" ? remote.rebuild_hidden_elo : remote.listening_elo,
         listening_streak: remote.listening_streak ?? 0,
         listening_max_elo: remote.max_listening_elo,
         dictation_elo: dictationElo,
@@ -246,6 +249,7 @@ export function buildProfilePatch(
             | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
             | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
+            | "rebuild_hidden_elo"
         >
     > & {
         last_practice_at?: string | number | null;
@@ -281,6 +285,7 @@ export function buildProfilePatch(
     if (patch.dictation_elo !== undefined) nextPatch.dictation_elo = patch.dictation_elo;
     if (patch.dictation_streak !== undefined) nextPatch.dictation_streak = patch.dictation_streak;
     if (patch.dictation_max_elo !== undefined) nextPatch.dictation_max_elo = patch.dictation_max_elo;
+    if (patch.rebuild_hidden_elo !== undefined) nextPatch.rebuild_hidden_elo = patch.rebuild_hidden_elo;
     if (patch.last_practice_at !== undefined && patch.last_practice_at !== null) {
         nextPatch.last_practice_at = new Date(patch.last_practice_at).toISOString();
     }

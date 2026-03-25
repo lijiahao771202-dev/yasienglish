@@ -382,3 +382,11 @@
     at async handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:447:24)
     at async requestHandlerImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:496:13)
     at async Server.requestListener (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/start-server.js:226:13)
+[2026-03-24T13:54:16.441Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__e752bd9d._.js:109:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-03-24T13:54:16.448Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__e752bd9d._.js:109:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)

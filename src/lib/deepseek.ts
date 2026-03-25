@@ -10,7 +10,15 @@ import type { Stream } from "openai/streaming";
 import { createServerClient } from "@/lib/supabase/server";
 
 const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
+const DEEPSEEK_PROFILE_KEY_CACHE_TTL_MS = 60_000;
 type CompletionRequestOptions = Parameters<OpenAI["chat"]["completions"]["create"]>[1];
+type CachedApiKeyEntry = {
+    apiKey: string | null;
+    expiresAt: number;
+};
+
+const cachedProfileKeys = new Map<string, CachedApiKeyEntry>();
+const cachedClientsByApiKey = new Map<string, OpenAI>();
 
 function getFallbackDeepSeekApiKey() {
     return process.env.DEEPSEEK_API_KEY?.trim() || null;
@@ -24,6 +32,11 @@ export async function getDeepSeekApiKeyForCurrentUser() {
         } = await supabase.auth.getUser();
 
         if (user) {
+            const cached = cachedProfileKeys.get(user.id);
+            if (cached && cached.expiresAt > Date.now()) {
+                return cached.apiKey || getFallbackDeepSeekApiKey();
+            }
+
             const { data, error } = await supabase
                 .from("profiles")
                 .select("deepseek_api_key")
@@ -32,6 +45,10 @@ export async function getDeepSeekApiKeyForCurrentUser() {
 
             if (!error) {
                 const profileKey = typeof data?.deepseek_api_key === "string" ? data.deepseek_api_key.trim() : "";
+                cachedProfileKeys.set(user.id, {
+                    apiKey: profileKey || null,
+                    expiresAt: Date.now() + DEEPSEEK_PROFILE_KEY_CACHE_TTL_MS,
+                });
                 if (profileKey) {
                     return profileKey;
                 }
@@ -51,10 +68,17 @@ export async function createDeepSeekClientForCurrentUser() {
         throw new Error("Missing DeepSeek API key. Add your DeepSeek key in profile settings or configure DEEPSEEK_API_KEY on the server.");
     }
 
-    return new OpenAI({
+    const cachedClient = cachedClientsByApiKey.get(apiKey);
+    if (cachedClient) {
+        return cachedClient;
+    }
+
+    const client = new OpenAI({
         apiKey,
         baseURL: DEEPSEEK_BASE_URL,
     });
+    cachedClientsByApiKey.set(apiKey, client);
+    return client;
 }
 
 async function createCompletion(

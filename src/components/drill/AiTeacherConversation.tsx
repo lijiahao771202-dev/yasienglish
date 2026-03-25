@@ -34,29 +34,52 @@ export interface TutorHistoryTurn extends TutorStructuredResponse {
 
 export function TutorMarkdown({ content, className }: { content: string; className?: string }) {
     return (
-        <div className={cn("prose prose-sm max-w-none text-inherit leading-7 prose-p:my-2 prose-ol:my-3 prose-ol:space-y-2 prose-ul:my-3 prose-ul:space-y-1.5", className)}>
+        <div className={cn("prose prose-sm max-w-none text-inherit leading-7 prose-p:my-2 prose-ol:my-2 prose-ol:space-y-1.5 prose-ul:my-2 prose-ul:space-y-1 prose-headings:mb-1 prose-headings:mt-0", className)}>
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
+                    h1: ({ children }) => <h1 className="text-base font-semibold text-amber-700">{children}</h1>,
+                    h2: ({ children }) => <h2 className="text-[0.98rem] font-semibold text-amber-700">{children}</h2>,
+                    h3: ({ children }) => <h3 className="text-sm font-semibold text-amber-700">{children}</h3>,
+                    h4: ({ children }) => <h4 className="text-sm font-medium text-stone-700">{children}</h4>,
                     p: ({ children }) => <p className="my-2 text-inherit">{children}</p>,
-                    ol: ({ children }) => <ol className="my-3 list-decimal space-y-2.5 pl-6 marker:font-semibold marker:text-amber-700">{children}</ol>,
-                    ul: ({ children }) => <ul className="my-3 list-disc space-y-1.5 pl-5 marker:text-stone-400">{children}</ul>,
-                    li: ({ children }) => <li className="my-1 leading-7">{children}</li>,
+                    ol: ({ children }) => <ol className="my-2 list-decimal space-y-1.5 pl-5 marker:font-medium marker:text-stone-400">{children}</ol>,
+                    ul: ({ children }) => <ul className="my-2 list-disc space-y-1.5 pl-4 marker:text-stone-300">{children}</ul>,
+                    li: ({ children }) => <li className="my-0.5 leading-7">{children}</li>,
                     blockquote: ({ children }) => (
-                        <blockquote className="my-2 rounded-r-lg border-l-4 border-sky-300 bg-sky-50/60 px-3 py-2 text-sky-900">
+                        <blockquote className="my-3 border-l-2 border-stone-200 pl-3 text-stone-600">
                             {children}
                         </blockquote>
                     ),
+                    table: ({ children }) => (
+                        <div className="my-4 overflow-hidden rounded-2xl border border-stone-200/90 bg-stone-50/70">
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full border-collapse text-left text-[14px] leading-6 text-stone-700">
+                                    {children}
+                                </table>
+                            </div>
+                        </div>
+                    ),
+                    thead: ({ children }) => <thead className="bg-white/90 text-stone-500">{children}</thead>,
+                    tbody: ({ children }) => <tbody className="divide-y divide-stone-200/80">{children}</tbody>,
+                    tr: ({ children }) => <tr className="align-top">{children}</tr>,
+                    th: ({ children }) => (
+                        <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-500">
+                            {children}
+                        </th>
+                    ),
+                    td: ({ children }) => <td className="px-4 py-3 text-[14px] leading-6 text-stone-700">{children}</td>,
                     strong: ({ children }) => (
-                        <strong className="rounded-[6px] bg-amber-100/90 px-1.5 py-0.5 font-semibold text-amber-950 shadow-[inset_0_-1px_0_rgba(251,191,36,0.35)]">
+                        <strong className="font-semibold text-stone-900 decoration-amber-500/85 underline underline-offset-[3px]">
                             {children}
                         </strong>
                     ),
+                    hr: () => <hr className="my-5 border-0 border-t border-dashed border-amber-200" />,
                     code: ({ children, className: codeClassName, ...props }) => {
                         const isInline = !String(codeClassName || "").includes("language-");
                         if (isInline) {
                             return (
-                                <code className="rounded-md border border-sky-100 bg-sky-50/85 px-1.5 py-0.5 text-[0.9em] font-medium text-sky-800">
+                                <code className="font-mono text-[0.95em] text-stone-800">
                                     {children}
                                 </code>
                             );

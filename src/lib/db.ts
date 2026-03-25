@@ -24,6 +24,23 @@ export interface FeedCacheItem {
     timestamp: number;
 }
 
+export interface GeneratedRebuildBankItem {
+    content_key: string;
+    candidate_id: string;
+    topic: string;
+    scene: string;
+    effective_elo: number;
+    band_position: string | null;
+    reference_english: string;
+    chinese: string;
+    answer_tokens: string[];
+    distractor_tokens: string[];
+    source: 'ai';
+    review_status: 'draft' | 'curated';
+    created_at: number;
+    updated_at: number;
+}
+
 export interface ReadArticleItem {
     url: string;
     timestamp: number;
@@ -142,6 +159,7 @@ export interface LocalUserProfile extends SyncTracked {
     listening_elo?: number;
     listening_streak?: number;
     listening_max_elo?: number;
+    rebuild_hidden_elo?: number;
     dictation_elo?: number;
     dictation_streak?: number;
     dictation_max_elo?: number;
@@ -188,6 +206,7 @@ export interface SyncMetaItem {
 
 export class YasiDB extends Dexie {
     ai_cache!: Table<AICacheItem>;
+    rebuild_bank_generated!: Table<GeneratedRebuildBankItem, string>;
     feeds!: Table<FeedCacheItem>;
     read_articles!: Table<ReadArticleItem>;
     vocabulary!: Table<VocabItem>;
@@ -751,6 +770,44 @@ export class YasiDB extends Dexie {
                 key: 'listening_scoring_version',
                 value: 2,
                 updated_at: nowMs,
+            });
+        });
+
+        // Version 29: store AI-generated rebuild drills as a local draft bank.
+        this.version(29).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        });
+
+        // Version 30: persist rebuild hidden elo in the profile for cross-device sync.
+        this.version(30).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                if (typeof profile.rebuild_hidden_elo !== 'number') {
+                    profile.rebuild_hidden_elo = profile.listening_elo ?? profile.elo_rating ?? 400;
+                }
             });
         });
     }

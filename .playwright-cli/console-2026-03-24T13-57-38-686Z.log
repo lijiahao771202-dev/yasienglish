@@ -1,0 +1,354 @@
+[  183899ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  183901ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  512762ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  512763ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  557767ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  557767ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  949144ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=_n332z2Z8jwRwGoEWlXBw' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[  950147ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=_n332z2Z8jwRwGoEWlXBw' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[  951149ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=_n332z2Z8jwRwGoEWlXBw' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[  952151ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=_n332z2Z8jwRwGoEWlXBw' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[  953155ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=_n332z2Z8jwRwGoEWlXBw' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[  958163ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:3000/_next/webpack-hmr?id=_n332z2Z8jwRwGoEWlXBw' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[  966454ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  966454ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1165553ms] ReferenceError: Cannot access 'handleRebuildSelfEvaluate' before initialization
+    at DrillCore (http://127.0.0.1:3000/_next/static/chunks/src_components_drill_DrillCore_tsx_b139bd3c._.js?id=%255Bproject%255D%252Fsrc%252Fcomponents%252Fdrill%252FDrillCore.tsx+%255Bapp-client%255D+%2528ecmascript%2529:5464:9)
+    at Object.react_stack_bottom_frame (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:14826:24)
+    at renderWithHooks (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:4651:24)
+    at updateFunctionComponent (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:6112:21)
+    at beginWork (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:6708:24)
+    at runWithFiberInDEV (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:965:74)
+    at performUnitOfWork (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:9562:97)
+    at workLoopSync (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:9456:40)
+    at renderRootSync (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:9440:13)
+    at performWorkOnRoot (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:9105:47)
+    at performSyncWorkOnRoot (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:10238:9)
+    at flushSyncWorkAcrossRoots_impl (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:10154:316)
+    at processRootScheduleInMicrotask (http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:10175:106)
+    at http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_compiled_react-dom_1e674e59._.js:10249:158
+[ 1173115ms] [WARNING] [Fast Refresh] performing full reload because your application had an unrecoverable error @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1173672ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1173672ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2926294ms] [ERROR] Audio chain failed AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22 @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 2926295ms] [ERROR] Audio chain failed AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22 @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 2926295ms] [ERROR] Audio chain failed AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22 @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 2926295ms] [ERROR] Audio chain failed AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22 @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 2926295ms] [ERROR] Audio chain failed AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22 @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 2926296ms] [ERROR] Audio chain failed AbortError: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22 @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 2960875ms] [ERROR] The final argument passed to %s changed size between renders. The order and size of this array must remain constant.
+
+Previous: %s
+Incoming: %s useEffect [true, , (evaluation)=>{
+            if (!rebuildFeedback) return;
+            const delta = (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$rebuild$2d$mode$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["clampRebuildDifficultyDelta"])(rebuildFeedback.systemDelta + (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$rebuild$2d$mode$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getRebuildSelfEvaluationDelta"])(evaluation));
+            const nextElo = Math.max(0, Math.min(3200, rebuildHiddenElo + delta));
+            setRebuildHiddenElo(nextElo);
+            void persistRebuildHiddenElo(nextElo);
+            setRebuildFeedback({
+                "DrillCore.useCallback[handleRebuildSelfEvaluate]": (currentFeedback)=>currentFeedback ? {
+                        ...currentFeedback,
+                        selfEvaluation: evaluation
+                    } : currentFeedback
+            }["DrillCore.useCallback[handleRebuildSelfEvaluate]"]);
+            setPendingRebuildAdvanceElo(nextElo);
+        }] [true, , (evaluation)=>{
+            if (!rebuildFeedback) return;
+            const delta = (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$rebuild$2d$mode$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["clampRebuildDifficultyDelta"])(rebuildFeedback.systemDelta + (0, __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$rebuild$2d$mode$2e$ts__$5b$app$2d$client$5d$__$28$ecmascript$29$__["getRebuildSelfEvaluationDelta"])(evaluation));
+            const nextElo = Math.max(0, Math.min(3200, rebuildHiddenElo + delta));
+            setRebuildHiddenElo(nextElo);
+            void persistRebuildHiddenElo(nextElo);
+            setRebuildFeedback({
+                "DrillCore.useCallback[handleRebuildSelfEvaluate]": (currentFeedback)=>currentFeedback ? {
+                        ...currentFeedback,
+                        selfEvaluation: evaluation
+                    } : currentFeedback
+            }["DrillCore.useCallback[handleRebuildSelfEvaluate]"]);
+            setPendingRebuildAdvanceElo(nextElo);
+        }, false, async ()=>{
+            if (!drillData?.reference_english) return false;
+            // Debounce (Prevent Double Click)
+            const now = Date.now();
+            if (now - lastPlayTime.current < 500) return false;
+            lastPlayTime.current = now;
+            // Echo Beast Constraint: One-time playback
+            if (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current) {
+                // Audio "Broken" effect
+                new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch({
+                    "DrillCore.useCallback[playAudio]": ()=>{}
+                }["DrillCore.useCallback[playAudio]"]);
+                setShake(true);
+                return false;
+            }
+            const textKey = "SENTENCE_" + drillData.reference_english;
+            // setIsPlaying(true); 
+            setWordPopup(null);
+            try {
+                let cached = audioCache.current.get(textKey);
+                if (!cached) {
+                    setIsAudioLoading(true);
+                    setIsPlaying(false);
+                    cached = await ensureAudioCached(drillData.reference_english);
+                    setIsAudioLoading(false);
+                }
+                resetAudioPlayback();
+                // Create fresh URL from cached blob (always use blob now)
+                const audioUrl = cached.blob ? URL.createObjectURL(cached.blob) : cached.url || '';
+                if (cached.blob) {
+                    audioObjectUrlRef.current = audioUrl;
+                }
+                console.log('[Audio Play] Creating audio from cache, blob size:', cached.blob?.size, 'url:', audioUrl.substring(0, 50));
+                const audio = new Audio(audioUrl);
+                audioRef.current = audio;
+                // Add error handler
+                audio.onerror = ({
+                    "DrillCore.useCallback[playAudio]": (e)=>{
+                        console.error('[Audio Play] Error loading audio:', audio.error?.message, audio.error?.code);
+                        resetAudioPlayback();
+                    }
+                })["DrillCore.useCallback[playAudio]"];
+                audio.onabort = ({
+                    "DrillCore.useCallback[playAudio]": ()=>{
+                        resetAudioPlayback();
+                    }
+                })["DrillCore.useCallback[playAudio]"];
+                audio.onstalled = ({
+                    "DrillCore.useCallback[playAudio]": ()=>{
+                        setIsPlaying(false);
+                    }
+                })["DrillCore.useCallback[playAudio]"];
+                audio.onemptied = ({
+                    "DrillCore.useCallback[playAudio]": ()=>{
+                        resetAudioPlayback();
+                    }
+                })["DrillCore.useCallback[playAudio]"];
+                audio.onplay = ({
+                    "DrillCore.useCallback[playAudio]": ()=>{
+                        setIsPlaying(true);
+                        setIsAudioLoading(false);
+                    }
+                })["DrillCore.useCallback[playAudio]"];
+                audio.onpause = ({
+                    "DrillCore.useCallback[playAudio]": ()=>{
+                        if (!audio.ended) {
+                            setIsPlaying(false);
+                        }
+                    }
+                })["DrillCore.useCallback[playAudio]"];
+                audio.onloadedmetadata = ({
+                    "DrillCore.useCallback[playAudio]": ()=>setAudioDuration(audio.duration * 1000)
+                })["DrillCore.useCallback[playAudio]"];
+                if (audio.duration && !isNaN(audio.duration)) setAudioDuration(audio.duration * 1000);
+                audio.ontimeupdate = ({
+                    "DrillCore.useCallback[playAudio]": ()=>{
+                        if (!audio.paused) {
+                            setCurrentAudioTime(audio.currentTime * 1000);
+                        }
+                    }
+                })["DrillCore.useCallback[playAudio]"];
+                audio.onended = ({
+                    "DrillCore.useCallback[playAudio]": ()=>{
+                        resetAudioPlayback();
+                    }
+                })["DrillCore.useCallback[playAudio]"];
+                audio.playbackRate = playbackSpeed;
+                // Echo Beast Constraint
+                if (bossState.active && bossState.type === 'echo') {
+                    if (hasPlayedEchoRef.current) {
+                        new Audio('https://assets.mixkit.co/sfx/preview/mixkit-glass-breaking-1551.mp3').play().catch({
+                            "DrillCore.useCallback[playAudio]": ()=>{}
+                        }["DrillCore.useCallback[playAudio]"]);
+                        setShake(true);
+                        setIsPlaying(false);
+                        return false;
+                    }
+                    hasPlayedEchoRef.current = true;
+                }
+                await audio.play();
+                if (isRebuildMode && !rebuildFeedback) {
+                    setRebuildReplayCount({
+                        "DrillCore.useCallback[playAudio]": (prev)=>prev + 1
+                    }["DrillCore.useCallback[playAudio]"]);
+                }
+                setIsPlaying(!audio.paused);
+                // Start Lightning countdown when audio plays
+                if (bossState.active && bossState.type === 'lightning') {
+                    setLightningStarted(true);
+                }
+                return true;
+            } catch (error) {
+                console.error("Audio chain failed", error);
+                resetAudioPlayback();
+                return false;
+            }
+        }] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3599813ms] [ERROR] ./src/components/drill/DrillCore.tsx:6244:26
+Parsing ecmascript source code failed
+  6242 |                     </div>
+  6243 |
+> 6244 |                     <div className="mt-5 flex gap-3 px-1">
+       |                          ^^^^^^^^^
+  6245 |                         <button
+  6246 |                             type="button"
+  6247 |                             onClick={handleSkipRebuild}
+
+Expected '</', got 'className'
+
+Import traces:
+  Client Component Browser:
+    ./src/components/drill/DrillCore.tsx [Client Component Browser]
+    ./src/app/battle/page.tsx [Client Component Browser]
+    ./src/app/battle/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/drill/DrillCore.tsx [Client Component SSR]
+    ./src/app/battle/page.tsx [Client Component SSR]
+    ./src/app/battle/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3637066ms] [ERROR] ./src/components/drill/DrillCore.tsx:6215:26
+Parsing ecmascript source code failed
+  6213 |                     </div>
+  6214 |
+> 6215 |                     <div className="mt-5 flex gap-3 px-1">
+       |                          ^^^^^^^^^
+  6216 |                         <button
+  6217 |                             type="button"
+  6218 |                             onClick={handleSkipRebuild}
+
+Expected '</', got 'className'
+
+Import traces:
+  Client Component Browser:
+    ./src/components/drill/DrillCore.tsx [Client Component Browser]
+    ./src/app/battle/page.tsx [Client Component Browser]
+    ./src/app/battle/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/drill/DrillCore.tsx [Client Component SSR]
+    ./src/app/battle/page.tsx [Client Component SSR]
+    ./src/app/battle/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3646588ms] [ERROR] ./src/components/drill/DrillCore.tsx:6215:26
+Parsing ecmascript source code failed
+  6213 |                     </div>
+  6214 |
+> 6215 |                     <div className="mt-5 flex gap-3 px-1">
+       |                          ^^^^^^^^^
+  6216 |                         <button
+  6217 |                             type="button"
+  6218 |                             onClick={handleSkipRebuild}
+
+Expected '</', got 'className'
+
+Import traces:
+  Client Component Browser:
+    ./src/components/drill/DrillCore.tsx [Client Component Browser]
+    ./src/app/battle/page.tsx [Client Component Browser]
+    ./src/app/battle/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/drill/DrillCore.tsx [Client Component SSR]
+    ./src/app/battle/page.tsx [Client Component SSR]
+    ./src/app/battle/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3658936ms] [ERROR] ./src/components/drill/DrillCore.tsx:6215:26
+Parsing ecmascript source code failed
+  6213 |                     </div>
+  6214 |
+> 6215 |                     <div className="mt-5 flex gap-3 px-1">
+       |                          ^^^^^^^^^
+  6216 |                         <button
+  6217 |                             type="button"
+  6218 |                             onClick={handleSkipRebuild}
+
+Expected '</', got 'className'
+
+Import traces:
+  Client Component Browser:
+    ./src/components/drill/DrillCore.tsx [Client Component Browser]
+    ./src/app/battle/page.tsx [Client Component Browser]
+    ./src/app/battle/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/drill/DrillCore.tsx [Client Component SSR]
+    ./src/app/battle/page.tsx [Client Component SSR]
+    ./src/app/battle/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3672807ms] [ERROR] ./src/components/drill/DrillCore.tsx:6215:26
+Parsing ecmascript source code failed
+  6213 |                     </div>
+  6214 |
+> 6215 |                     <div className="mt-5 flex gap-3 px-1">
+       |                          ^^^^^^^^^
+  6216 |                         <button
+  6217 |                             type="button"
+  6218 |                             onClick={handleSkipRebuild}
+
+Expected '</', got 'className'
+
+Import traces:
+  Client Component Browser:
+    ./src/components/drill/DrillCore.tsx [Client Component Browser]
+    ./src/app/battle/page.tsx [Client Component Browser]
+    ./src/app/battle/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/drill/DrillCore.tsx [Client Component SSR]
+    ./src/app/battle/page.tsx [Client Component SSR]
+    ./src/app/battle/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3694251ms] [ERROR] ./src/components/drill/DrillCore.tsx:6215:26
+Parsing ecmascript source code failed
+  6213 |                     </div>
+  6214 |
+> 6215 |                     <div className="mt-5 flex gap-3 px-1">
+       |                          ^^^^^^^^^
+  6216 |                         <button
+  6217 |                             type="button"
+  6218 |                             onClick={handleSkipRebuild}
+
+Expected '</', got 'className'
+
+Import traces:
+  Client Component Browser:
+    ./src/components/drill/DrillCore.tsx [Client Component Browser]
+    ./src/app/battle/page.tsx [Client Component Browser]
+    ./src/app/battle/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/drill/DrillCore.tsx [Client Component SSR]
+    ./src/app/battle/page.tsx [Client Component SSR]
+    ./src/app/battle/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 4116921ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 4116922ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
