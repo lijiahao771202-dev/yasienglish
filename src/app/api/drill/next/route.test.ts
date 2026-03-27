@@ -36,6 +36,8 @@ function buildRequest(
         eloRating: number;
         mode: "translation" | "listening" | "rebuild";
         sourceMode: "ai" | "bank";
+        rebuildVariant: "sentence" | "passage";
+        segmentCount: 2 | 3 | 5;
     }> = {},
 ) {
     return {
@@ -46,6 +48,8 @@ function buildRequest(
             eloRating: 820,
             mode: "listening",
             sourceMode: "bank",
+            rebuildVariant: "sentence",
+            segmentCount: 3,
             ...overrides,
         }),
     } as Parameters<typeof POST>[0];
@@ -131,6 +135,46 @@ describe("drill next route", () => {
         expect(data._rebuildMeta.answerTokens).toEqual(["Meet", "me", "by", "the", "front", "gate", "after", "class."]);
         expect(data._rebuildMeta.distractorTokens.length).toBeGreaterThan(0);
         expect(data._rebuildMeta.theme).toBe("Battle Test Topic");
+    });
+
+    it("returns a passage rebuild session with natural segment metadata", async () => {
+        createCompletionMock.mockResolvedValue(
+            createCompletionPayload({
+                _scenario_topic: "机场接人",
+                segments: [
+                    {
+                        chinese: "先在到达口旁边等我。",
+                        reference_english: "Wait for me near the arrivals gate first.",
+                    },
+                    {
+                        chinese: "如果行李出来晚了，就给司机发消息。",
+                        reference_english: "If the bags are late, text the driver right away.",
+                    },
+                    {
+                        chinese: "确认车牌以后，再带大家去短停区。",
+                        reference_english: "After you confirm the plate, lead everyone to short stay parking.",
+                    },
+                ],
+            }),
+        );
+
+        const response = await POST(buildRequest({
+            sourceMode: "ai",
+            mode: "rebuild",
+            rebuildVariant: "passage",
+            segmentCount: 3,
+            eloRating: 830,
+        }));
+        const data = await response.json();
+
+        expect(data._rebuildMeta.variant).toBe("passage");
+        expect(data._rebuildMeta.passageSession.segmentCount).toBe(3);
+        expect(data._rebuildMeta.passageSession.currentIndex).toBe(0);
+        expect(data._rebuildMeta.passageSession.segments).toHaveLength(3);
+        expect(data._rebuildMeta.passageSession.segments[0].tokenBank.length)
+            .toBeGreaterThan(data._rebuildMeta.passageSession.segments[0].answerTokens.length);
+        expect(data.reference_english).toBe("Wait for me near the arrivals gate first.");
+        expect(data._topicMeta.subTopic).toBe("机场接人");
     });
 
     it("delegates to ai generation when ai mode is requested", async () => {

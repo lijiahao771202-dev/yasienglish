@@ -9,7 +9,7 @@ import { Headphones, Feather, TrendingUp, Crown, ArrowUp, ArrowDown, Zap, Flame,
 import { getRank } from '@/lib/rankUtils';
 
 interface EloChartProps {
-    mode: 'listening' | 'translation' | 'dictation';
+    mode: 'listening' | 'translation' | 'dictation' | 'rebuild';
 }
 
 // Rank boundaries
@@ -293,7 +293,14 @@ export function EloChart({ mode }: EloChartProps) {
 
     const isListening = mode === 'listening';
     const isDictation = mode === 'dictation';
-    const baseColor = isListening ? '#0ea5e9' : isDictation ? '#a855f7' : '#8b5cf6';
+    const isRebuild = mode === 'rebuild';
+    const baseColor = isListening
+        ? '#0ea5e9'
+        : isDictation
+            ? '#a855f7'
+            : isRebuild
+                ? '#14b8a6'
+                : '#8b5cf6';
     const trendColor = trend === 'up' ? '#22c55e' : trend === 'down' ? '#ef4444' : baseColor;
     const gradientId = `colorElo-${mode}`;
     const currentRank = getRank(currentElo || 400);

@@ -23,10 +23,12 @@ describe("user sync helpers", () => {
         expect(profile.elo_rating).toBe(400);
         expect(profile.listening_elo).toBe(400);
         expect(profile.rebuild_hidden_elo).toBe(400);
+        expect(profile.rebuild_elo).toBe(400);
         expect(profile.dictation_elo).toBe(400);
         expect(profile.max_elo).toBe(400);
         expect(profile.listening_scoring_version).toBe(2);
         expect(profile.listening_max_elo).toBe(400);
+        expect(profile.rebuild_max_elo).toBe(400);
         expect(profile.dictation_max_elo).toBe(400);
         expect(profile.coins).toBe(500);
         expect(profile.inventory).toEqual({
@@ -51,12 +53,15 @@ describe("user sync helpers", () => {
             translation_elo: 900,
             listening_elo: 720,
             rebuild_hidden_elo: 665,
+            rebuild_elo: 690,
             dictation_elo: 680,
             streak_count: 4,
             listening_streak: 2,
+            rebuild_streak: 5,
             dictation_streak: 3,
             max_translation_elo: 910,
             max_listening_elo: 730,
+            rebuild_max_elo: 710,
             dictation_max_elo: 740,
             coins: 25,
             inventory: {
@@ -85,6 +90,9 @@ describe("user sync helpers", () => {
         expect(localProfile.listening_scoring_version).toBe(0);
         expect(localProfile.listening_elo).toBe(720);
         expect(localProfile.rebuild_hidden_elo).toBe(665);
+        expect(localProfile.rebuild_elo).toBe(690);
+        expect(localProfile.rebuild_streak).toBe(5);
+        expect(localProfile.rebuild_max_elo).toBe(710);
         expect(localProfile.dictation_elo).toBe(680);
         expect(localProfile.dictation_streak).toBe(3);
         expect(localProfile.hints).toBe(18);
@@ -103,6 +111,9 @@ describe("user sync helpers", () => {
             avatar_preset: "mint-orbit",
             bio: "Focused and playful.",
             rebuild_hidden_elo: 588,
+            rebuild_elo: 640,
+            rebuild_streak: 3,
+            rebuild_max_elo: 700,
             dictation_elo: 512,
             dictation_streak: 6,
             dictation_max_elo: 640,
@@ -122,6 +133,9 @@ describe("user sync helpers", () => {
             avatar_preset: "mint-orbit",
             bio: "Focused and playful.",
             rebuild_hidden_elo: 588,
+            rebuild_elo: 640,
+            rebuild_streak: 3,
+            rebuild_max_elo: 700,
             dictation_elo: 512,
             dictation_streak: 6,
             dictation_max_elo: 640,

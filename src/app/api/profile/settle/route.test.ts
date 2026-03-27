@@ -106,4 +106,62 @@ describe("profile settle route", () => {
         expect(data.profile.translation_elo).toBe(840);
         expect(data.profile.coins).toBe(18);
     });
+
+    it("forwards rebuild settlements to the same rpc function", async () => {
+        const rpc = vi.fn().mockResolvedValue({
+            data: {
+                user_id: "user-1",
+                translation_elo: 840,
+                listening_elo: 400,
+                rebuild_elo: 760,
+                streak_count: 3,
+                listening_streak: 0,
+                rebuild_streak: 2,
+                max_translation_elo: 840,
+                max_listening_elo: 400,
+                rebuild_max_elo: 760,
+                coins: 18,
+                inventory: { capsule: 10 },
+                owned_themes: ["morning_coffee"],
+                active_theme: "morning_coffee",
+                updated_at: "2026-03-13T12:00:00.000Z",
+                last_practice_at: "2026-03-13T12:00:00.000Z",
+            },
+            error: null,
+        });
+
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({
+                    data: { user: { id: "user-1" } },
+                    error: null,
+                }),
+            },
+            rpc,
+        });
+
+        const response = await POST(buildRequest({
+            mode: "rebuild",
+            eloAfter: 760,
+            change: 11,
+            streak: 2,
+            maxElo: 760,
+            coins: 25,
+            source: "battle",
+        }));
+
+        expect(response.status).toBe(200);
+        expect(rpc).toHaveBeenCalledWith("apply_battle_settlement", {
+            p_mode: "rebuild",
+            p_elo_after: 760,
+            p_elo_change: 11,
+            p_streak_count: 2,
+            p_max_elo: 760,
+            p_coins: 25,
+            p_inventory: null,
+            p_owned_themes: null,
+            p_active_theme: null,
+            p_source: "battle",
+        });
+    });
 });

@@ -62,6 +62,7 @@ export type ListeningBankValidation = {
 };
 
 export type RebuildDrillMeta = {
+    variant?: "sentence" | "passage";
     effectiveElo: number;
     bandPosition: ListeningBandPosition | null;
     answerTokens: string[];
@@ -72,6 +73,57 @@ export type RebuildDrillMeta = {
     feedbackStyle: "strong";
     candidateId?: string;
     candidateSource?: "ai";
+    passageSession?: {
+        sessionId: string;
+        segmentCount: 2 | 3 | 5;
+        currentIndex: number;
+        difficultyProfile: {
+            effectiveElo: number;
+            segmentCount: 2 | 3 | 5;
+            practiceTier: {
+                cefr: "A1" | "A2-" | "A2+" | "B1" | "B2" | "C1" | "C2" | "C2+";
+                bandPosition: "entry" | "mid" | "exit";
+                label: string;
+            };
+            bandPosition: "entry" | "mid" | "exit";
+            syntaxComplexity: {
+                clauseMax: number;
+                memoryLoad: string;
+                spokenNaturalness: string;
+                reducedFormsPresence: string;
+                trainingFocus: string;
+            };
+            perSegmentWordWindow: {
+                min: number;
+                max: number;
+                mean: number;
+                sigma: number;
+                softMin: number;
+                softMax: number;
+                hardMin: number;
+                hardMax: number;
+            };
+            totalWordWindow: {
+                min: number;
+                max: number;
+                mean: number;
+                sigma: number;
+                softMin: number;
+                softMax: number;
+                hardMin: number;
+                hardMax: number;
+            };
+        };
+        segments: Array<{
+            id: string;
+            chinese: string;
+            referenceEnglish: string;
+            answerTokens: string[];
+            distractorTokens: string[];
+            tokenBank: string[];
+            wordCount: number;
+        }>;
+    };
 };
 
 export type RebuildAiPayload = {
@@ -315,6 +367,7 @@ export function buildRebuildDrill(item: ListeningBankItem, effectiveElo: number)
             bandPosition: item.bandPosition ?? getRebuildBandPosition(effectiveElo),
         },
         _rebuildMeta: {
+            variant: "sentence",
             effectiveElo,
             bandPosition: item.bandPosition ?? getRebuildBandPosition(effectiveElo),
             answerTokens,
@@ -387,6 +440,7 @@ export function buildRebuildAiDrill(payload: RebuildAiPayload, effectiveElo: num
             },
         },
         _rebuildMeta: {
+            variant: "sentence",
             effectiveElo,
             bandPosition,
             answerTokens: cleanedAnswerTokens,

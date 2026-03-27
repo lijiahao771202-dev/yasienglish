@@ -310,12 +310,15 @@ async function ensureRemoteProfile(userId: string) {
             translation_elo: localProfile.elo_rating,
             listening_elo: localProfile.listening_elo ?? DEFAULT_BASE_ELO,
             rebuild_hidden_elo: localProfile.rebuild_hidden_elo ?? localProfile.listening_elo ?? DEFAULT_BASE_ELO,
+            rebuild_elo: localProfile.rebuild_elo ?? localProfile.rebuild_hidden_elo ?? localProfile.listening_elo ?? DEFAULT_BASE_ELO,
             dictation_elo: localProfile.dictation_elo ?? localProfile.listening_elo ?? DEFAULT_BASE_ELO,
             streak_count: localProfile.streak_count,
             listening_streak: localProfile.listening_streak ?? 0,
+            rebuild_streak: localProfile.rebuild_streak ?? 0,
             dictation_streak: localProfile.dictation_streak ?? localProfile.listening_streak ?? 0,
             max_translation_elo: localProfile.max_elo,
             max_listening_elo: localProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
+            rebuild_max_elo: localProfile.rebuild_max_elo ?? localProfile.rebuild_elo ?? localProfile.rebuild_hidden_elo ?? DEFAULT_BASE_ELO,
             dictation_max_elo: localProfile.dictation_max_elo ?? localProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
             coins: localProfile.coins ?? DEFAULT_STARTING_COINS,
             inventory: normalizeInventory(localProfile.inventory, localProfile.hints),
@@ -344,12 +347,15 @@ async function ensureRemoteProfile(userId: string) {
             translation_elo: DEFAULT_BASE_ELO,
             listening_elo: DEFAULT_BASE_ELO,
             rebuild_hidden_elo: DEFAULT_BASE_ELO,
+            rebuild_elo: DEFAULT_BASE_ELO,
             dictation_elo: DEFAULT_BASE_ELO,
             streak_count: 0,
             listening_streak: 0,
+            rebuild_streak: 0,
             dictation_streak: 0,
             max_translation_elo: DEFAULT_BASE_ELO,
             max_listening_elo: DEFAULT_BASE_ELO,
+            rebuild_max_elo: DEFAULT_BASE_ELO,
             dictation_max_elo: DEFAULT_BASE_ELO,
             coins: DEFAULT_STARTING_COINS,
             inventory: { ...DEFAULT_INVENTORY },
@@ -456,6 +462,15 @@ async function pullRemoteSnapshot(userId: string) {
         rebuild_hidden_elo: typeof remoteProfileRow.rebuild_hidden_elo === "number"
             ? remoteProfileRow.rebuild_hidden_elo
             : (existingLocalProfile?.rebuild_hidden_elo ?? remoteLocalProfile.rebuild_hidden_elo ?? remoteLocalProfile.listening_elo ?? DEFAULT_BASE_ELO),
+        rebuild_elo: typeof remoteProfileRow.rebuild_elo === "number"
+            ? remoteProfileRow.rebuild_elo
+            : (existingLocalProfile?.rebuild_elo ?? remoteLocalProfile.rebuild_elo ?? remoteLocalProfile.rebuild_hidden_elo ?? remoteLocalProfile.listening_elo ?? DEFAULT_BASE_ELO),
+        rebuild_streak: typeof remoteProfileRow.rebuild_streak === "number"
+            ? remoteProfileRow.rebuild_streak
+            : (existingLocalProfile?.rebuild_streak ?? remoteLocalProfile.rebuild_streak ?? 0),
+        rebuild_max_elo: typeof remoteProfileRow.rebuild_max_elo === "number"
+            ? remoteProfileRow.rebuild_max_elo
+            : (existingLocalProfile?.rebuild_max_elo ?? remoteLocalProfile.rebuild_max_elo ?? remoteLocalProfile.rebuild_elo ?? remoteLocalProfile.rebuild_hidden_elo ?? DEFAULT_BASE_ELO),
         dictation_streak: typeof remoteProfileRow.dictation_streak === "number"
             ? remoteProfileRow.dictation_streak
             : (existingLocalProfile?.dictation_streak ?? remoteLocalProfile.dictation_streak ?? remoteLocalProfile.listening_streak ?? 0),
@@ -538,6 +553,9 @@ async function migrateLegacyData(userId: string) {
             dictation_streak: profile.dictation_streak,
             dictation_max_elo: profile.dictation_max_elo,
             rebuild_hidden_elo: profile.rebuild_hidden_elo,
+            rebuild_elo: profile.rebuild_elo,
+            rebuild_streak: profile.rebuild_streak,
+            rebuild_max_elo: profile.rebuild_max_elo,
             last_practice_at: new Date(profile.last_practice).toISOString(),
         });
 
@@ -883,6 +901,9 @@ async function ensureListeningScoringVersion(profile: LocalUserProfile | undefin
         listening_streak: 0,
         listening_max_elo: DEFAULT_BASE_ELO,
         rebuild_hidden_elo: profile.rebuild_hidden_elo ?? profile.listening_elo ?? profile.elo_rating ?? DEFAULT_BASE_ELO,
+        rebuild_elo: profile.rebuild_elo ?? profile.rebuild_hidden_elo ?? profile.listening_elo ?? profile.elo_rating ?? DEFAULT_BASE_ELO,
+        rebuild_streak: profile.rebuild_streak ?? 0,
+        rebuild_max_elo: profile.rebuild_max_elo ?? profile.rebuild_elo ?? profile.rebuild_hidden_elo ?? profile.listening_elo ?? profile.elo_rating ?? DEFAULT_BASE_ELO,
         updated_at: nextUpdatedAt,
         sync_status: "pending",
     };
@@ -903,10 +924,13 @@ async function ensureListeningScoringVersion(profile: LocalUserProfile | undefin
                 translation_elo: nextProfile.elo_rating,
                 listening_elo: nextProfile.listening_elo ?? DEFAULT_BASE_ELO,
                 rebuild_hidden_elo: nextProfile.rebuild_hidden_elo ?? nextProfile.listening_elo ?? DEFAULT_BASE_ELO,
+                rebuild_elo: nextProfile.rebuild_elo ?? nextProfile.rebuild_hidden_elo ?? nextProfile.listening_elo ?? DEFAULT_BASE_ELO,
                 streak_count: nextProfile.streak_count,
                 listening_streak: nextProfile.listening_streak ?? 0,
+                rebuild_streak: nextProfile.rebuild_streak ?? 0,
                 max_translation_elo: nextProfile.max_elo,
                 max_listening_elo: nextProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
+                rebuild_max_elo: nextProfile.rebuild_max_elo ?? nextProfile.rebuild_elo ?? nextProfile.rebuild_hidden_elo ?? DEFAULT_BASE_ELO,
                 coins: nextProfile.coins ?? DEFAULT_STARTING_COINS,
                 inventory: normalizeInventory(nextProfile.inventory, nextProfile.hints),
                 owned_themes: nextProfile.owned_themes ?? [DEFAULT_FREE_THEME],
@@ -1021,7 +1045,8 @@ export async function saveProfilePatch(
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
             | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
-            | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo" | "rebuild_hidden_elo"
+            | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
+            | "rebuild_hidden_elo" | "rebuild_elo" | "rebuild_streak" | "rebuild_max_elo"
         >
     > & {
         last_practice_at?: string | number | null;
@@ -1059,7 +1084,8 @@ export async function applyServerProfilePatchToLocal(
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
             | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
-            | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo" | "rebuild_hidden_elo"
+            | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
+            | "rebuild_hidden_elo" | "rebuild_elo" | "rebuild_streak" | "rebuild_max_elo"
         >
     > & {
         last_practice_at?: string | number | null;
@@ -1082,7 +1108,7 @@ export async function applyServerProfilePatchToLocal(
 }
 
 export async function settleBattle(payload: {
-    mode: "translation" | "listening";
+    mode: "translation" | "listening" | "rebuild";
     eloAfter: number;
     change: number;
     streak: number;
@@ -1104,18 +1130,24 @@ export async function settleBattle(payload: {
     const nextOwnedThemes = payload.ownedThemes ?? profile.owned_themes ?? [DEFAULT_FREE_THEME];
     const nextActiveTheme = payload.activeTheme ?? profile.active_theme ?? DEFAULT_FREE_THEME;
     const isListening = payload.mode === "listening";
+    const isRebuild = payload.mode === "rebuild";
 
     const localProfile: LocalUserProfile = {
         ...profile,
         user_id: userId,
         remote_id: userId,
-        elo_rating: isListening ? profile.elo_rating : payload.eloAfter,
-        streak_count: isListening ? profile.streak_count : payload.streak,
-        max_elo: isListening ? profile.max_elo : payload.maxElo,
+        elo_rating: isListening || isRebuild ? profile.elo_rating : payload.eloAfter,
+        streak_count: isListening || isRebuild ? profile.streak_count : payload.streak,
+        max_elo: isListening || isRebuild ? profile.max_elo : payload.maxElo,
         listening_scoring_version: LISTENING_SCORING_VERSION,
         listening_elo: isListening ? payload.eloAfter : (profile.listening_elo ?? DEFAULT_BASE_ELO),
         listening_streak: isListening ? payload.streak : (profile.listening_streak ?? 0),
         listening_max_elo: isListening ? payload.maxElo : (profile.listening_max_elo ?? DEFAULT_BASE_ELO),
+        rebuild_elo: isRebuild ? payload.eloAfter : (profile.rebuild_elo ?? profile.rebuild_hidden_elo ?? DEFAULT_BASE_ELO),
+        rebuild_streak: isRebuild ? payload.streak : (profile.rebuild_streak ?? 0),
+        rebuild_max_elo: isRebuild
+            ? payload.maxElo
+            : (profile.rebuild_max_elo ?? profile.rebuild_elo ?? profile.rebuild_hidden_elo ?? DEFAULT_BASE_ELO),
         coins: payload.coins ?? profile.coins ?? DEFAULT_STARTING_COINS,
         inventory: nextInventory,
         hints: nextInventory.capsule,
@@ -1151,10 +1183,14 @@ export async function settleBattle(payload: {
         payload: {
             translation_elo: localProfile.elo_rating,
             listening_elo: localProfile.listening_elo ?? DEFAULT_BASE_ELO,
+            rebuild_hidden_elo: localProfile.rebuild_hidden_elo ?? localProfile.listening_elo ?? DEFAULT_BASE_ELO,
+            rebuild_elo: localProfile.rebuild_elo ?? localProfile.rebuild_hidden_elo ?? DEFAULT_BASE_ELO,
             streak_count: localProfile.streak_count,
             listening_streak: localProfile.listening_streak ?? 0,
+            rebuild_streak: localProfile.rebuild_streak ?? 0,
             max_translation_elo: localProfile.max_elo,
             max_listening_elo: localProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
+            rebuild_max_elo: localProfile.rebuild_max_elo ?? localProfile.rebuild_elo ?? localProfile.rebuild_hidden_elo ?? DEFAULT_BASE_ELO,
             coins: localProfile.coins ?? DEFAULT_STARTING_COINS,
             inventory: nextInventory,
             owned_themes: nextOwnedThemes,

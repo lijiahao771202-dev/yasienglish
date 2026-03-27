@@ -1,6 +1,8 @@
 export interface BattleDrillSelection {
     type: "scenario";
     topic: string;
+    rebuildVariant?: "sentence" | "passage";
+    segmentCount?: 2 | 3 | 5;
 }
 
 export interface DrillSurfacePhaseInput {
