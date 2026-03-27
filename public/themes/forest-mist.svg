@@ -1,0 +1,53 @@
+<svg width="1920" height="1080" viewBox="0 0 1920 1080" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sky" x1="960" y1="0" x2="960" y2="1080" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EAF8EF"/>
+      <stop offset="0.55" stop-color="#DDF1E5"/>
+      <stop offset="1" stop-color="#CDE7D9"/>
+    </linearGradient>
+    <linearGradient id="hillBack" x1="960" y1="560" x2="960" y2="1080" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8DBBA2" stop-opacity="0.72"/>
+      <stop offset="1" stop-color="#5B9075" stop-opacity="0.86"/>
+    </linearGradient>
+    <linearGradient id="hillMid" x1="960" y1="620" x2="960" y2="1080" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#74A78B" stop-opacity="0.78"/>
+      <stop offset="1" stop-color="#3C7258" stop-opacity="0.94"/>
+    </linearGradient>
+    <linearGradient id="hillFront" x1="960" y1="700" x2="960" y2="1080" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5D9076"/>
+      <stop offset="1" stop-color="#25503E"/>
+    </linearGradient>
+    <radialGradient id="fogLeft" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(360 690) rotate(4.2) scale(760 230)">
+      <stop stop-color="#F6FFFB" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#F6FFFB" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="fogRight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1540 760) rotate(-6.2) scale(640 210)">
+      <stop stop-color="#EFFFF7" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#EFFFF7" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+
+  <path d="M0 692C169 630 360 596 539 610C774 628 893 736 1130 708C1359 681 1567 571 1920 642V1080H0V692Z" fill="url(#hillBack)"/>
+  <path d="M0 768C220 676 426 672 615 720C801 767 1036 864 1296 808C1552 754 1740 676 1920 720V1080H0V768Z" fill="url(#hillMid)"/>
+  <path d="M0 852C172 790 374 792 566 842C737 887 935 972 1190 938C1456 904 1652 812 1920 842V1080H0V852Z" fill="url(#hillFront)"/>
+
+  <rect x="0" y="628" width="1920" height="452" fill="url(#fogLeft)"/>
+  <rect x="0" y="636" width="1920" height="444" fill="url(#fogRight)"/>
+
+  <g opacity="0.22" fill="#1F4535">
+    <path d="M118 1080V772L78 828L104 832L84 874L116 876L90 930L130 932L118 1080Z"/>
+    <path d="M220 1080V742L176 804L206 810L184 860L220 862L194 918L238 920L220 1080Z"/>
+    <path d="M330 1080V786L292 840L318 844L300 890L330 892L306 934L348 936L330 1080Z"/>
+    <path d="M476 1080V730L430 792L462 798L438 856L476 858L450 914L498 916L476 1080Z"/>
+    <path d="M640 1080V774L602 826L626 830L610 874L640 876L614 920L656 922L640 1080Z"/>
+    <path d="M820 1080V734L770 802L804 808L778 866L820 868L792 928L844 930L820 1080Z"/>
+    <path d="M980 1080V770L940 822L966 826L948 870L980 872L952 922L994 924L980 1080Z"/>
+    <path d="M1152 1080V726L1102 794L1138 800L1112 862L1152 864L1124 926L1176 928L1152 1080Z"/>
+    <path d="M1330 1080V782L1292 834L1318 838L1302 882L1330 884L1304 928L1346 930L1330 1080Z"/>
+    <path d="M1508 1080V742L1464 804L1494 810L1472 864L1508 866L1480 926L1526 928L1508 1080Z"/>
+    <path d="M1686 1080V780L1648 832L1674 836L1658 880L1686 882L1660 928L1702 930L1686 1080Z"/>
+    <path d="M1832 1080V748L1788 808L1818 814L1796 868L1832 870L1804 928L1850 930L1832 1080Z"/>
+  </g>
+</svg>
