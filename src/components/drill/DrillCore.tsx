@@ -32,6 +32,7 @@ import { resolveBattleScenarioTopic } from "@/lib/battle-quickmatch-topics";
 import { getBattleInteractiveWordClassName } from "@/lib/drill-interactive-word";
 import { calculateListeningElo } from "@/lib/listening-elo";
 import { calculateRebuildBattleElo } from "@/lib/rebuild-battle-elo";
+import { applyTranslationTooHardPenalty, TRANSLATION_TOO_HARD_PENALTY } from "@/lib/translation-elo";
 import {
     buildRebuildDisplaySentence,
     clampRebuildDifficultyDelta,
@@ -648,7 +649,7 @@ const normalizeInventory = (inventory: unknown, legacyCapsule?: number): Invento
 };
 
 // ===== COSMETIC THEMES =====
-type CosmeticThemeId = 'morning_coffee' | 'sakura' | 'golden_hour' | 'holo_pearl' | 'cloud_nine' | 'lilac_dream';
+type CosmeticThemeId = 'morning_coffee' | 'verdant_atelier' | 'sakura' | 'golden_hour' | 'holo_pearl' | 'cloud_nine' | 'lilac_dream';
 
 interface CosmeticTheme {
     id: CosmeticThemeId;
@@ -706,6 +707,20 @@ const COSMETIC_THEMES: Record<CosmeticThemeId, CosmeticTheme> = {
         textClass: 'text-stone-900',
         mutedClass: 'text-stone-500',
         headerBg: 'bg-white/80',
+        isDark: false,
+    },
+    verdant_atelier: {
+        id: 'verdant_atelier',
+        name: '🌿 翡绿雅境',
+        icon: '🌿',
+        price: 0,
+        description: '高端祖母绿与玉石质感，护眼而克制',
+        preview: '祖母绿 + 雾面玻璃 + 雅致高光',
+        bgClass: 'bg-gradient-to-br from-[#ecf9f1] via-[#e0f4e8] to-[#f6fbf7]',
+        cardClass: 'bg-[linear-gradient(180deg,rgba(255,255,255,0.28),rgba(236,253,245,0.22))] backdrop-blur-[24px] border border-emerald-100/45 shadow-[0_20px_52px_rgba(2,44,34,0.34),inset_0_1px_0_rgba(255,255,255,0.56)] ring-1 ring-emerald-100/28 saturate-[1.08]',
+        textClass: 'text-emerald-950',
+        mutedClass: 'text-emerald-700/60',
+        headerBg: 'bg-white/82',
         isDark: false,
     },
     sakura: {
@@ -806,6 +821,32 @@ const COSMETIC_THEME_UI: Record<CosmeticThemeId, CosmeticThemeUi> = {
         nextButtonGradient: "linear-gradient(90deg, #78716c 0%, #57534e 100%)",
         nextButtonShadow: "0 18px 34px -12px rgba(87,83,78,0.42)",
         nextButtonGlow: "rgba(120,113,108,0.18)",
+    },
+    verdant_atelier: {
+        ledgerClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.32),rgba(220,252,231,0.2))] backdrop-blur-[20px] border-emerald-100/45 ring-emerald-100/20 shadow-[0_14px_34px_rgba(2,44,34,0.2),inset_0_1px_0_rgba(255,255,255,0.42)]",
+        toolbarClass: "border-emerald-100/50 bg-[linear-gradient(180deg,rgba(255,255,255,0.42),rgba(220,252,231,0.24))] backdrop-blur-[16px] shadow-[0_12px_34px_rgba(2,44,34,0.18),inset_0_1px_0_rgba(255,255,255,0.46)]",
+        inputShellClass: "border-emerald-100/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.4),rgba(236,253,245,0.24))] backdrop-blur-[14px] shadow-[0_14px_40px_rgba(2,44,34,0.18),inset_0_1px_0_rgba(255,255,255,0.5)] hover:shadow-[0_20px_48px_rgba(2,44,34,0.24),inset_0_1px_0_rgba(255,255,255,0.56)] focus-within:border-emerald-200/80 focus-within:ring-[4px] focus-within:ring-emerald-300/12",
+        textareaClass: "text-emerald-950 placeholder:text-emerald-500/60",
+        audioLockedClass: "border-emerald-300/90 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(187,247,208,0.9))] text-emerald-800 shadow-[0_10px_24px_rgba(5,150,105,0.14)] hover:border-emerald-400 hover:text-emerald-900",
+        audioUnlockedClass: "border-teal-200/90 bg-[linear-gradient(180deg,rgba(240,253,250,0.98),rgba(204,251,241,0.92))] text-teal-700 shadow-[0_10px_24px_rgba(13,148,136,0.12)] hover:border-teal-300 hover:text-teal-800",
+        speedShellClass: "border-emerald-100/60 bg-white/34 backdrop-blur-[10px] shadow-[inset_0_1px_0_rgba(255,255,255,0.56)]",
+        speedActiveClass: "bg-[linear-gradient(180deg,rgba(16,185,129,0.96),rgba(4,120,87,0.98))] text-white shadow-[0_10px_18px_rgba(5,150,105,0.22)]",
+        speedIdleClass: "text-emerald-700 hover:bg-emerald-50 hover:text-emerald-900",
+        vocabButtonClass: "border-emerald-200/85 bg-[linear-gradient(180deg,rgba(240,253,244,0.96),rgba(220,252,231,0.88))] text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100/90",
+        keywordChipClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.7),rgba(236,253,245,0.44))] border-emerald-100/75 text-emerald-800 hover:bg-emerald-50/76 hover:border-emerald-200 hover:text-emerald-950 shadow-[0_10px_24px_rgba(2,44,34,0.14)] backdrop-blur-[8px]",
+        wordBadgeActiveClass: "border-emerald-200/85 bg-white/94 text-emerald-700 shadow-[0_8px_18px_rgba(5,150,105,0.08)]",
+        wordBadgeIdleClass: "bg-transparent text-emerald-500/70",
+        hintButtonClass: "border-emerald-100/70 bg-[linear-gradient(180deg,rgba(240,253,244,0.56),rgba(220,252,231,0.36))] text-emerald-700 shadow-[0_8px_18px_rgba(2,44,34,0.14)] hover:border-emerald-200 hover:text-emerald-900 hover:shadow-[0_12px_24px_rgba(2,44,34,0.2)] backdrop-blur-[10px]",
+        iconButtonClass: "border-emerald-100/70 bg-white/38 text-emerald-700 shadow-[0_8px_18px_rgba(2,44,34,0.12)] hover:border-emerald-200 hover:bg-emerald-50/46 hover:text-emerald-900 backdrop-blur-[10px]",
+        checkButtonClass: "border-emerald-400/85 bg-[linear-gradient(180deg,rgba(16,185,129,0.96),rgba(5,150,105,0.98),rgba(6,95,70,0.98))] text-white shadow-[0_14px_30px_rgba(5,150,105,0.32)] hover:shadow-[0_18px_36px_rgba(5,150,105,0.4)]",
+        tutorPanelClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.44),rgba(236,253,245,0.3))] border-emerald-100/55 backdrop-blur-[18px] shadow-[0_20px_50px_rgba(2,44,34,0.24)]",
+        tutorAnswerClass: "bg-emerald-50/62 text-emerald-950",
+        tutorInputClass: "bg-white/48 border-emerald-100 text-emerald-900 focus:ring-emerald-300 backdrop-blur-[8px]",
+        tutorSendClass: "text-emerald-700",
+        analysisButtonClass: "bg-[linear-gradient(180deg,rgba(16,185,129,0.96),rgba(4,120,87,0.98))] text-white hover:brightness-105",
+        nextButtonGradient: "linear-gradient(90deg, #10b981 0%, #059669 54%, #047857 100%)",
+        nextButtonShadow: "0 20px 38px -12px rgba(5,150,105,0.46)",
+        nextButtonGlow: "rgba(16,185,129,0.24)",
     },
     sakura: {
         ledgerClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(252,231,243,0.66))] border-pink-200/60 ring-pink-100/40 shadow-[0_12px_30px_rgba(236,72,153,0.08)]",
@@ -940,13 +981,16 @@ const COSMETIC_THEME_UI: Record<CosmeticThemeId, CosmeticThemeUi> = {
 };
 
 const ALL_THEME_IDS = Object.keys(COSMETIC_THEMES) as CosmeticThemeId[];
+const FREE_THEME_IDS = ALL_THEME_IDS.filter((themeId) => COSMETIC_THEMES[themeId].price === 0);
 const DEFAULT_BASE_ELO = 400;
 const DEFAULT_STARTING_COINS = 500;
 const DEFAULT_FREE_THEME: CosmeticThemeId = "morning_coffee";
 
 const normalizeOwnedThemes = (ownedThemes?: string[] | null): CosmeticThemeId[] => {
     const validThemes = (ownedThemes ?? []).filter((themeId): themeId is CosmeticThemeId => themeId in COSMETIC_THEMES);
-    return validThemes.length ? Array.from(new Set(validThemes)) : [DEFAULT_FREE_THEME];
+    return validThemes.length
+        ? Array.from(new Set([...validThemes, ...FREE_THEME_IDS]))
+        : [...FREE_THEME_IDS];
 };
 
 const getStreakTier = (streak: number): StreakTier => {
@@ -1102,6 +1146,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [userTranslation, setUserTranslation] = useState("");
     const [isGeneratingDrill, setIsGeneratingDrill] = useState(false);
     const [isSubmittingDrill, setIsSubmittingDrill] = useState(false);
+    const [isReportingTooHard, setIsReportingTooHard] = useState(false);
     const [drillFeedback, setDrillFeedback] = useState<DrillFeedback | null>(null);
     const [rebuildFeedback, setRebuildFeedback] = useState<RebuildFeedbackState | null>(null);
     const [hasRatedDrill, setHasRatedDrill] = useState(false);
@@ -1222,7 +1267,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [rebuildBattleStreak, setRebuildBattleStreak] = useState(0);
     const [audioSourceText, setAudioSourceText] = useState<string | null>(null);
     const [rebuildTypingBuffer, setRebuildTypingBuffer] = useState("");
-    const [rebuildAutocorrect, setRebuildAutocorrect] = useState(false);
+    const [rebuildAutocorrect, setRebuildAutocorrect] = useState(true);
     const [rebuildHideTokens, setRebuildHideTokens] = useState(false);
     const [isEloLoaded, setIsEloLoaded] = useState(false); // Track if Elo has been loaded from DB
     const eloRatingRef = useRef(DEFAULT_BASE_ELO);
@@ -1260,7 +1305,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     // Cosmetic Theme State
     const [cosmeticTheme, setCosmeticTheme] = useState<CosmeticThemeId>('morning_coffee');
-    const [ownedThemes, setOwnedThemes] = useState<CosmeticThemeId[]>([DEFAULT_FREE_THEME]);
+    const [ownedThemes, setOwnedThemes] = useState<CosmeticThemeId[]>([...FREE_THEME_IDS]);
     const [rebuildAvailableTokens, setRebuildAvailableTokens] = useState<RebuildTokenInstance[]>([]);
     const [rebuildAnswerTokens, setRebuildAnswerTokens] = useState<RebuildTokenInstance[]>([]);
     const [rebuildReplayCount, setRebuildReplayCount] = useState(0);
@@ -1290,6 +1335,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const rebuildVariant = context.rebuildVariant ?? "sentence";
     const rebuildSegmentCount = context.segmentCount ?? 3;
     const isRebuildPassage = isRebuildMode && rebuildVariant === "passage";
+    const isVerdantRebuild = cosmeticTheme === "verdant_atelier" && isRebuildMode;
     const passageSession = isRebuildPassage ? (drillData?._rebuildMeta?.passageSession ?? null) : null;
     const activePassageResult = isRebuildPassage
         ? (rebuildPassageResults.find((item) => item.segmentIndex === activePassageSegmentIndex) ?? null)
@@ -1450,7 +1496,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setActivePassageSegmentIndex(initialSegmentIndex);
         setRebuildPassageDrafts(nextDrafts);
         setRebuildPassageResults([]);
-        setRebuildPassageUiState(passageSession.segments.map(() => ({ chineseExpanded: false })));
+        setRebuildPassageUiState(passageSession.segments.map(() => ({ chineseExpanded: true })));
         setRebuildPassageScores([]);
         setRebuildPassageSummary(null);
         setRebuildFeedback(null);
@@ -2739,7 +2785,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 inventoryRef.current = initialInventory;
                 setCoins(DEFAULT_STARTING_COINS);
                 setInventory(initialInventory);
-                setOwnedThemes([DEFAULT_FREE_THEME]);
+                setOwnedThemes([...FREE_THEME_IDS]);
                 setCosmeticTheme(DEFAULT_FREE_THEME);
                 setRebuildHiddenElo(DEFAULT_BASE_ELO);
                 setIsEloLoaded(true); // Mark Elo as loaded (new profile)
@@ -2812,9 +2858,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         prefetchedRebuildChoicesRef.current = {};
     }, []);
 
-    // Pre-generate audio when audio practice drills load (translation stays lazy-loaded)
+    // Pre-generate audio for sentence drills (translation/listening/rebuild sentence).
+    // Passage has dedicated all-segment prefetch below.
     useEffect(() => {
-        if (!isListeningMode && !isRebuildMode || !drillData?.reference_english) {
+        const shouldPrefetchSentenceAudio =
+            (mode === "translation" || isListeningMode || isRebuildMode) && !isRebuildPassage;
+
+        if (!shouldPrefetchSentenceAudio || !drillData?.reference_english) {
             setIsPrefetching(false);
             return;
         }
@@ -2848,7 +2898,48 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         return () => {
             isCancelled = true;
         };
-    }, [drillData?.reference_english, ensureAudioCached, isListeningMode, isRebuildMode]);
+    }, [drillData?.reference_english, ensureAudioCached, isListeningMode, isRebuildMode, isRebuildPassage, mode]);
+
+    // Passage mode: pre-synthesize all segment audios up front to avoid inter-segment wait.
+    useEffect(() => {
+        if (!isRebuildPassage || !passageSession?.segments?.length) return;
+
+        const uniqueTexts = Array.from(new Set(
+            passageSession.segments
+                .map((segment) => segment.referenceEnglish?.trim())
+                .filter((text): text is string => Boolean(text))
+        ));
+        const pendingTexts = uniqueTexts.filter((text) => {
+            const textKey = "SENTENCE_" + text;
+            return !audioCache.current.has(textKey) && !audioInflight.current.has(textKey);
+        });
+        if (pendingTexts.length === 0) return;
+
+        let isCancelled = false;
+
+        const prefetchAllPassageAudio = async () => {
+            setIsPrefetching(true);
+            try {
+                await Promise.allSettled(
+                    pendingTexts.map((text) => ensureAudioCached(text))
+                );
+            } catch (error) {
+                if (!isCancelled) {
+                    console.error("[Passage Audio Prefetch] Error:", error);
+                }
+            } finally {
+                if (!isCancelled) {
+                    setIsPrefetching(false);
+                }
+            }
+        };
+
+        void prefetchAllPassageAudio();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [ensureAudioCached, isRebuildPassage, passageSession?.sessionId, passageSession?.segments]);
 
     const lastPlayTime = useRef(0);
 
@@ -3039,6 +3130,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     const launchRebuildSuccessCelebration = useCallback(() => {
         playRebuildSfx("success");
+        playRebuildSfx("celebrate");
         if (prefersReducedMotion) return;
 
         confetti({
@@ -5113,7 +5205,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const togglePassageChinese = useCallback((segmentIndex: number) => {
         setRebuildPassageUiState((currentState) => {
             const nextState = [...currentState];
-            const existing = nextState[segmentIndex] ?? { chineseExpanded: false };
+            const existing = nextState[segmentIndex] ?? { chineseExpanded: true };
             nextState[segmentIndex] = {
                 ...existing,
                 chineseExpanded: !existing.chineseExpanded,
@@ -5266,7 +5358,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             setRebuildPassageResults(nextResults);
             setRebuildPassageUiState((currentState) => {
                 const nextState = [...currentState];
-                const existing = nextState[activePassageSegmentIndex] ?? { chineseExpanded: false };
+                const existing = nextState[activePassageSegmentIndex] ?? { chineseExpanded: true };
                 nextState[activePassageSegmentIndex] = {
                     ...existing,
                     chineseExpanded: false,
@@ -5842,6 +5934,77 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         pushEconomyFx({ kind: 'item_consume', itemId: 'audio_ticket', amount: 1, message: '已消耗 1 朗读券', source: 'audio' });
     };
 
+    const handleReportTooHardAndAdvance = useCallback(async () => {
+        if (
+            mode !== "translation"
+            || learningSessionActive
+            || !drillData
+            || Boolean(drillFeedback)
+            || isSubmittingDrill
+            || isGeneratingDrill
+            || showGacha
+            || isReportingTooHard
+        ) {
+            return false;
+        }
+
+        const penalty = TRANSLATION_TOO_HARD_PENALTY;
+        const currentTranslationElo = eloRatingRef.current || eloRating || DEFAULT_BASE_ELO;
+        const newElo = applyTranslationTooHardPenalty(currentTranslationElo, penalty);
+
+        setIsReportingTooHard(true);
+        setEloRating(newElo);
+        setStreakCount(0);
+        setEloChange(-penalty);
+        setLootDrop({
+            type: "exp",
+            amount: -penalty,
+            rarity: "common",
+            message: "已报告太难，Elo -25，已切到更简单题目",
+        });
+
+        try {
+            const profile = await loadLocalProfile();
+            if (profile) {
+                await settleBattle({
+                    mode: "translation",
+                    eloAfter: newElo,
+                    change: -penalty,
+                    streak: 0,
+                    maxElo: Math.max(profile.max_elo ?? DEFAULT_BASE_ELO, newElo),
+                    coins: coinsRef.current ?? profile.coins ?? DEFAULT_STARTING_COINS,
+                    inventory: inventoryRef.current,
+                    ownedThemes: ownedThemes,
+                    activeTheme: cosmeticTheme,
+                    source: "too_hard_skip",
+                });
+            }
+        } catch (error) {
+            console.error("Failed to sync too-hard skip penalty", error);
+        }
+
+        try {
+            await handleGenerateDrill(undefined, undefined, true, newElo);
+        } finally {
+            setIsReportingTooHard(false);
+        }
+
+        return true;
+    }, [
+        cosmeticTheme,
+        drillData,
+        drillFeedback,
+        eloRating,
+        handleGenerateDrill,
+        isGeneratingDrill,
+        isReportingTooHard,
+        isSubmittingDrill,
+        learningSessionActive,
+        mode,
+        ownedThemes,
+        showGacha,
+    ]);
+
     const handleRefreshDrill = useCallback(() => {
         if (learningSessionActive) return false;
         if (isGeneratingDrill || !drillData || !!drillFeedback) return false;
@@ -6327,8 +6490,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
         const chineseText = drillData.chinese?.trim();
         const englishText = drillData.reference_english?.trim();
+        const feedbackUserTranslation = (drillFeedback as any)?.user_translation;
+        const learnerText = (
+            typeof feedbackUserTranslation === "string"
+                ? feedbackUserTranslation
+                : userTranslation
+        )?.trim();
 
-        if (!chineseText && !englishText) return null;
+        if (!chineseText && !englishText && !learnerText) return null;
 
         return (
             <div className="overflow-hidden rounded-[2rem] border border-stone-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(247,248,250,0.95))] shadow-[0_18px_40px_rgba(28,25,23,0.05)]">
@@ -6354,6 +6523,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-700">英文原句</p>
                                     <div className="mt-2 text-base leading-8 text-stone-800 font-newsreader md:text-[1.05rem]">
                                         {renderInteractiveText(englishText)}
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            {learnerText ? (
+                                <div className="mt-3 rounded-[1.5rem] border border-emerald-100/80 bg-emerald-50/55 px-4 py-4">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-700">你的作答</p>
+                                    <div className="mt-2 text-base leading-8 text-stone-800 font-newsreader md:text-[1.05rem]">
+                                        {renderInteractiveText(learnerText)}
                                     </div>
                                 </div>
                             ) : null}
@@ -6694,6 +6872,36 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         if (!drillData?._rebuildMeta) return null;
 
         const localPassageSession = drillData._rebuildMeta.variant === "passage" ? drillData._rebuildMeta.passageSession : null;
+        const rebuildLedgerClass = isVerdantRebuild
+            ? "bg-[#eef6f1]/94 border-emerald-200/80 shadow-[0_10px_24px_rgba(2,44,34,0.12)]"
+            : activeCosmeticUi.ledgerClass;
+        const rebuildInputShellClass = isVerdantRebuild
+            ? "bg-[#f4faf6] border-emerald-200/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]"
+            : activeCosmeticUi.inputShellClass;
+        const rebuildToggleClass = isVerdantRebuild
+            ? "rounded-full px-2.5 py-0.5 text-[10px] font-bold border bg-white/92 shadow-[0_2px_10px_rgba(2,44,34,0.08)] transition-all"
+            : "rounded-full px-2.5 py-0.5 text-[10px] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,1)] border backdrop-blur-sm transition-all";
+        const rebuildTokenDividerClass = isVerdantRebuild
+            ? "mt-3 border-t border-emerald-200/70 pt-3"
+            : "mt-3 border-t border-white/60 pt-3";
+        const rebuildKeywordChipClass = isVerdantRebuild
+            ? "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border border-emerald-200/85 bg-[#ecf8f0] px-4 py-1.5 text-[14px] font-semibold text-emerald-800 shadow-[0_3px_10px_rgba(2,44,34,0.08)] transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-[#e3f4e9]"
+            : activeCosmeticUi.keywordChipClass;
+        const rebuildSummaryMetricCardClass = isVerdantRebuild
+            ? "rounded-[1.25rem] border border-emerald-200/75 bg-[#f7fcf8] p-4 shadow-[0_5px_14px_rgba(2,44,34,0.08)]"
+            : cn("rounded-[1.25rem] border p-4", activeCosmeticUi.inputShellClass);
+        const rebuildSummarySegmentCardClass = isVerdantRebuild
+            ? "rounded-[1.35rem] border border-emerald-200/75 bg-[#f8fcf9] px-4 py-4 shadow-[0_6px_16px_rgba(2,44,34,0.08)]"
+            : cn("rounded-[1.35rem] border px-4 py-4", activeCosmeticUi.inputShellClass);
+        const rebuildSummaryPillClass = isVerdantRebuild
+            ? "border-emerald-200/80 bg-white/90 text-emerald-700 shadow-[0_3px_10px_rgba(2,44,34,0.07)]"
+            : activeCosmeticUi.iconButtonClass;
+        const rebuildSummaryAccentPillClass = isVerdantRebuild
+            ? "border-emerald-300/80 bg-emerald-100/80 text-emerald-800 shadow-[0_3px_10px_rgba(2,44,34,0.08)]"
+            : activeCosmeticUi.wordBadgeActiveClass;
+        const rebuildControlButtonClass = isVerdantRebuild
+            ? "border-emerald-200/80 bg-white/92 text-emerald-700 shadow-[0_4px_12px_rgba(2,44,34,0.08)] hover:bg-emerald-50/80 hover:border-emerald-300"
+            : activeCosmeticUi.iconButtonClass;
         const themedNextButtonStyle = {
             backgroundImage: activeCosmeticUi.nextButtonGradient,
             boxShadow: activeCosmeticUi.nextButtonShadow,
@@ -6721,6 +6929,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 && activePassageResult
                 && !activePassageResult.feedback.evaluation.isCorrect
             );
+            const showInlinePassageCorrection = Boolean(shouldShowPassageCorrection && activePassageCorrection);
             const activePassageSystemAssessmentClass = activePassageResult
                 ? activePassageResult.feedback.systemAssessment === "too_hard"
                     ? activeCosmeticUi.audioLockedClass
@@ -6732,7 +6941,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             return (
                 <div className={cn(
                     "border p-4 transition-colors rounded-[1.55rem]",
-                    activeCosmeticUi.ledgerClass
+                    rebuildLedgerClass
                 )}>
                 <div className="mb-3 flex items-center justify-between gap-3 px-1">
                     <div className="flex items-center gap-2">
@@ -6759,10 +6968,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             type="button"
                             onClick={() => setRebuildAutocorrect(v => !v)}
                             className={cn(
-                                "rounded-full px-2.5 py-0.5 text-[10px] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,1)] border backdrop-blur-sm transition-all",
+                                rebuildToggleClass,
                                 rebuildAutocorrect
-                                    ? activeCosmeticUi.audioUnlockedClass
-                                    : activeCosmeticUi.iconButtonClass
+                                    ? (isVerdantRebuild
+                                        ? "border-emerald-300/80 bg-emerald-100/80 text-emerald-800"
+                                        : activeCosmeticUi.audioUnlockedClass)
+                                    : (isVerdantRebuild
+                                        ? "border-emerald-200/80 bg-white/92 text-emerald-700"
+                                        : activeCosmeticUi.iconButtonClass)
                             )}
                         >
                             <span className="inline-flex items-center gap-1"><Wand2 className="h-3 w-3" />纠正</span>
@@ -6771,10 +6984,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             type="button"
                             onClick={() => setRebuildHideTokens(v => !v)}
                             className={cn(
-                                "rounded-full px-2.5 py-0.5 text-[10px] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,1)] border backdrop-blur-sm transition-all",
+                                rebuildToggleClass,
                                 rebuildHideTokens
-                                    ? activeCosmeticUi.audioLockedClass
-                                    : activeCosmeticUi.iconButtonClass
+                                    ? (isVerdantRebuild
+                                        ? "border-emerald-300/80 bg-emerald-50/90 text-emerald-800"
+                                        : activeCosmeticUi.audioLockedClass)
+                                    : (isVerdantRebuild
+                                        ? "border-emerald-200/80 bg-white/92 text-emerald-700"
+                                        : activeCosmeticUi.iconButtonClass)
                             )}
                         >
                             <span className="inline-flex items-center gap-1">{rebuildHideTokens ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}隐藏词</span>
@@ -6784,15 +7001,60 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
                 <div className={cn(
                     "rounded-[1.25rem] border p-3 transition-colors duration-500 ease-in-out",
-                    activeCosmeticUi.inputShellClass
+                    rebuildInputShellClass
                 )}>
                     <div className={cn(
                         "relative rounded-[1rem] border px-3 py-3",
-                        compact
-                            ? "min-h-[82px] border-white/60 bg-white/88"
-                            : "min-h-[90px] border-white/60 bg-white/86"
+                        isVerdantRebuild
+                            ? (compact
+                                ? "min-h-[82px] border-emerald-200/80 bg-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]"
+                                : "min-h-[90px] border-emerald-200/80 bg-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]")
+                            : (compact
+                                ? "min-h-[82px] border-white/60 bg-white/88"
+                                : "min-h-[90px] border-white/60 bg-white/86")
                     )}>
-                        {rebuildAnswerTokens.length > 0 || rebuildTypingBuffer ? (
+                        {showInlinePassageCorrection && activePassageCorrection ? (
+                            <div className="space-y-3">
+                                <div className="flex flex-wrap gap-2.5">
+                                    {activePassageCorrection.tokens.map((token, index) => (
+                                        <span
+                                            key={`passage-inline-correction-${index}-${token.text}`}
+                                            className={cn(
+                                                "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border px-4 py-1.5 text-[14px] font-semibold",
+                                                token.kind === "correct"
+                                                    ? activeCosmeticUi.wordBadgeActiveClass
+                                                    : token.kind === "inserted"
+                                                        ? activeCosmeticUi.hintButtonClass
+                                                        : activeCosmeticUi.audioLockedClass
+                                            )}
+                                        >
+                                            {token.text}
+                                            {token.kind !== "correct" && token.originalText ? (
+                                                <span className={cn("text-[11px] line-through", activeCosmeticTheme.mutedClass)}>
+                                                    {token.originalText}
+                                                </span>
+                                            ) : null}
+                                        </span>
+                                    ))}
+                                </div>
+                                {activePassageCorrection.extraTokens.length > 0 ? (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className={cn("text-[11px] font-semibold", activeCosmeticTheme.mutedClass)}>多余词：</span>
+                                        {activePassageCorrection.extraTokens.map((token, index) => (
+                                            <span
+                                                key={`passage-inline-extra-${index}-${token.text}`}
+                                                className={cn(
+                                                    "inline-flex min-h-[30px] items-center rounded-full border px-3 py-1 text-[12px] font-semibold line-through",
+                                                    activeCosmeticUi.audioLockedClass
+                                                )}
+                                            >
+                                                {token.text}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : rebuildAnswerTokens.length > 0 || rebuildTypingBuffer ? (
                             <AnimatePresence mode="sync" initial={false}>
                                 <div className="flex flex-wrap items-center gap-2.5">
                                     {rebuildAnswerTokens.map((token) => (
@@ -6856,7 +7118,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     </div>
 
                     {!rebuildHideTokens && (
-                        <div className="mt-3 border-t border-white/60 pt-3">
+                        <div className={rebuildTokenDividerClass}>
                             <div className="mb-2 flex items-center justify-between gap-3">
                                 <p className={cn("text-[11px] font-medium tracking-[0.02em]", activeCosmeticTheme.mutedClass)}>
                                     快捷键：空格选词 · Backspace 撤回 · Enter 提交
@@ -6876,8 +7138,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                 whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
                                                 onClick={() => handleRebuildSelectToken(token.id)}
                                                 className={cn(
-                                                    "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border px-4 py-1.5 text-[14px] font-semibold transition-all hover:-translate-y-0.5",
-                                                    activeCosmeticUi.keywordChipClass
+                                                    isVerdantRebuild
+                                                        ? rebuildKeywordChipClass
+                                                        : "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border px-4 py-1.5 text-[14px] font-semibold transition-all hover:-translate-y-0.5",
+                                                    !isVerdantRebuild && activeCosmeticUi.keywordChipClass
                                                 )}
                                             >
                                                 {token.text}
@@ -6940,57 +7204,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 </button>
                             ) : null}
                         </div>
-
-                        {shouldShowPassageCorrection && activePassageResult && activePassageCorrection ? (
-                            <div className={cn("rounded-[1.15rem] border p-3", activeCosmeticUi.inputShellClass)}>
-                                <div className="mb-2 flex flex-wrap items-center gap-2">
-                                    <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold", activeCosmeticUi.audioLockedClass)}>
-                                        错序 {activePassageResult.feedback.evaluation.misplacedCount}
-                                    </span>
-                                    <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold", activeCosmeticUi.audioLockedClass)}>
-                                        干扰 {activePassageResult.feedback.evaluation.distractorCount}
-                                    </span>
-                                    <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold", activeCosmeticUi.audioLockedClass)}>
-                                        漏词 {activePassageResult.feedback.evaluation.missingCount}
-                                    </span>
-                                </div>
-                                <div className="flex flex-wrap gap-2.5">
-                                    {activePassageCorrection.tokens.map((token, index) => (
-                                        <span
-                                            key={`passage-correction-${index}-${token.text}`}
-                                            className={cn(
-                                                "inline-flex min-h-[34px] items-center gap-1 rounded-full border px-3 py-1.5 text-[13px] font-semibold",
-                                                token.kind === "correct"
-                                                    ? activeCosmeticUi.wordBadgeActiveClass
-                                                    : token.kind === "inserted"
-                                                        ? activeCosmeticUi.hintButtonClass
-                                                        : activeCosmeticUi.audioLockedClass
-                                            )}
-                                        >
-                                            {token.text}
-                                            {token.kind !== "correct" && token.originalText ? (
-                                                <span className={cn("text-[11px] line-through", activeCosmeticTheme.mutedClass)}>
-                                                    {token.originalText}
-                                                </span>
-                                            ) : null}
-                                        </span>
-                                    ))}
-                                </div>
-                                {activePassageCorrection.extraTokens.length > 0 ? (
-                                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                                        <span className={cn("text-[11px] font-semibold", activeCosmeticTheme.mutedClass)}>多余词：</span>
-                                        {activePassageCorrection.extraTokens.map((token, index) => (
-                                            <span
-                                                key={`passage-extra-${index}-${token.text}`}
-                                                className={cn("inline-flex min-h-[30px] items-center rounded-full border px-3 py-1 text-[12px] font-semibold line-through", activeCosmeticUi.audioLockedClass)}
-                                            >
-                                                {token.text}
-                                            </span>
-                                        ))}
-                                    </div>
-                                ) : null}
-                            </div>
-                        ) : null}
                     </div>
                 ) : (
                     <div className="mt-5 flex gap-3 px-1">
@@ -7042,7 +7255,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             );
         }
 
-        const speedOptions = [0.75, 1, 1.25, 1.5] as const;
+        const speedOptions = [0.5, 0.75, 1, 1.25, 1.5] as const;
         const resultMap = new Map(
             rebuildPassageResults.map((item) => [item.segmentIndex, item]),
         );
@@ -7065,11 +7278,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     : right + totalSegments - activePassageSegmentIndex;
                 return leftDistance - rightDistance;
             })[0] ?? -1;
-        const waitingForNextSegment = Boolean(activeSegmentResult && nextPendingSegmentIndex >= 0);
-        const submittedCountForDisplay = waitingForNextSegment ? Math.max(0, submittedCount - 1) : submittedCount;
         const currentStageNumber = activePassageSegmentIndex + 1;
+        const stageProgressDisplayCount = Math.min(
+            totalSegments,
+            Math.max(submittedCount, currentStageNumber),
+        );
         const stageProgressPercent = totalSegments > 0
-            ? Math.round((submittedCountForDisplay / totalSegments) * 100)
+            ? Math.round((stageProgressDisplayCount / totalSegments) * 100)
             : 0;
         const completedSegments = localPassageSession.segments
             .map((segment, index) => ({
@@ -7111,7 +7326,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 transition={prefersReducedMotion ? { duration: 0.15 } : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             >
                 {!rebuildPassageSummary && submittedCount < totalSegments ? (
-                    <section className={cn("rounded-[2rem] border p-5 md:px-7 md:py-7", activeCosmeticUi.ledgerClass)}>
+                    <section className={cn("rounded-[2rem] border p-5 md:px-7 md:py-7", rebuildLedgerClass)}>
                         <div className="flex flex-col gap-4 border-b border-stone-100/80 px-1 pb-4 md:flex-row md:items-center md:justify-between">
                             <div className="flex min-w-0 flex-1 items-center gap-3">
                                 <span className={cn("shrink-0 text-[11px] font-semibold tracking-[0.06em]", activeCosmeticTheme.mutedClass)}>
@@ -7130,7 +7345,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     />
                                 </div>
                                 <span className={cn("shrink-0 text-[11px] font-semibold tracking-[0.06em]", activeCosmeticTheme.mutedClass)}>
-                                    {submittedCountForDisplay} / {totalSegments}
+                                    {stageProgressDisplayCount} / {totalSegments}
                                 </span>
                             </div>
 
@@ -7141,8 +7356,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     className={cn(
                                         "inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border px-3 transition-all",
                                         audioSourceText === activeSegment.referenceEnglish && (isPlaying || isAudioLoading)
-                                            ? activeCosmeticUi.audioUnlockedClass
-                                            : activeCosmeticUi.iconButtonClass
+                                            ? (isVerdantRebuild ? "border-emerald-300/80 bg-emerald-100/85 text-emerald-800" : activeCosmeticUi.audioUnlockedClass)
+                                            : rebuildControlButtonClass
                                     )}
                                     title="播放当前段"
                                 >
@@ -7158,8 +7373,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     className={cn(
                                         "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-3 text-xs font-bold transition-all",
                                         rebuildPassageUiState[activePassageSegmentIndex]?.chineseExpanded
-                                            ? activeCosmeticUi.audioLockedClass
-                                            : activeCosmeticUi.iconButtonClass
+                                            ? (isVerdantRebuild ? "border-emerald-300/80 bg-emerald-50/90 text-emerald-800" : activeCosmeticUi.audioLockedClass)
+                                            : rebuildControlButtonClass
                                     )}
                                 >
                                     {rebuildPassageUiState[activePassageSegmentIndex]?.chineseExpanded ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -7175,14 +7390,19 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                             audioRef.current.playbackRate = nextSpeed;
                                         }
                                     }}
-                                    className={cn("inline-flex min-h-11 items-center justify-center rounded-full border px-3 text-[11px] font-bold transition hover:-translate-y-0.5", activeCosmeticUi.iconButtonClass)}
+                                    className={cn("inline-flex min-h-11 items-center justify-center rounded-full border px-3 text-[11px] font-bold transition hover:-translate-y-0.5", rebuildControlButtonClass)}
                                 >
                                     {playbackSpeed}x
                                 </button>
                             </div>
                         </div>
 
-                        <div className={cn("mt-4 rounded-[1.75rem] border px-5 py-8 text-center md:px-8 md:py-10", activeCosmeticUi.inputShellClass)}>
+                        <div className={cn(
+                            "mt-4 rounded-[1.75rem] border px-5 py-8 text-center md:px-8 md:py-10",
+                            isVerdantRebuild
+                                ? "border-emerald-200/80 bg-[#f7fcf8] shadow-[0_8px_18px_rgba(2,44,34,0.08)]"
+                                : activeCosmeticUi.inputShellClass
+                        )}>
                             {renderPassageSentence(activeSegment, Boolean(activeSegmentResult))}
                             {rebuildPassageUiState[activePassageSegmentIndex]?.chineseExpanded ? (
                                 <p className={cn(
@@ -7205,7 +7425,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: prefersReducedMotion ? 0.16 : 0.28, delay: prefersReducedMotion ? 0 : 0.05 }}
-                        className={cn("rounded-[1.8rem] border p-5", activeCosmeticUi.ledgerClass)}
+                        className={cn("rounded-[1.8rem] border p-5", rebuildLedgerClass)}
                     >
                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                             <div>
@@ -7215,7 +7435,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     所有段落都完成了。现在只用对整篇短文给一次整体难度判断。
                                 </p>
                             </div>
-                            <div className={cn("rounded-full border px-4 py-2 text-sm font-bold", activeCosmeticUi.wordBadgeActiveClass)}>
+                            <div className={cn("rounded-full border px-4 py-2 text-sm font-bold", rebuildSummaryAccentPillClass)}>
                                 当前客观总分 {sessionObjectivePreview}
                             </div>
                         </div>
@@ -7258,14 +7478,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, delay: prefersReducedMotion ? 0 : 0.08 }}
-                        className={cn("rounded-[1.85rem] border p-5", activeCosmeticUi.ledgerClass)}
+                        className={cn("rounded-[1.85rem] border p-5", rebuildLedgerClass)}
                     >
                         <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                             <div>
                                 <p className={cn("text-[11px] font-black uppercase tracking-[0.18em]", activeCosmeticTheme.mutedClass)}>Passage Summary</p>
                                 <h4 className={cn("mt-2 text-2xl font-bold tracking-tight", activeCosmeticTheme.textClass)}>短文分段综合结算</h4>
                             </div>
-                            <div className={cn("rounded-full border px-4 py-2 text-sm font-bold", activeCosmeticUi.wordBadgeActiveClass)}>
+                            <div className={cn("rounded-full border px-4 py-2 text-sm font-bold", rebuildSummaryAccentPillClass)}>
                                 {rebuildPassageSummary.segmentCount} 段 · Shadowing {rebuildPassageSummary.sessionBattleScore10.toFixed(1)}
                             </div>
                         </div>
@@ -7276,7 +7496,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 { label: "综合分", value: `${rebuildPassageSummary.sessionScore100}` },
                                 { label: "Elo 变化", value: `${rebuildPassageSummary.change >= 0 ? "+" : ""}${rebuildPassageSummary.change}` },
                             ].map((metric) => (
-                                <div key={metric.label} className={cn("rounded-[1.25rem] border p-4", activeCosmeticUi.inputShellClass)}>
+                                <div key={metric.label} className={rebuildSummaryMetricCardClass}>
                                     <div className={cn("text-[10px] font-bold uppercase tracking-[0.18em]", activeCosmeticTheme.mutedClass)}>{metric.label}</div>
                                     <div className={cn("mt-2 text-xl font-bold", activeCosmeticTheme.textClass)}>{metric.value}</div>
                                 </div>
@@ -7284,17 +7504,17 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         </div>
                         <div className="mt-5 space-y-3">
                             {completedSegments.map(({ segment, index, result }) => (
-                                <div key={`summary-segment-${segment.id}`} className={cn("rounded-[1.35rem] border px-4 py-4", activeCosmeticUi.inputShellClass)}>
+                                <div key={`summary-segment-${segment.id}`} className={rebuildSummarySegmentCardClass}>
                                     <div className="flex flex-wrap items-center justify-between gap-2">
                                         <div className="flex items-center gap-2">
-                                            <span className={cn("rounded-full border px-3 py-1 text-[11px] font-bold", activeCosmeticUi.iconButtonClass)}>
+                                            <span className={cn("rounded-full border px-3 py-1 text-[11px] font-bold", rebuildSummaryPillClass)}>
                                                 第 {index + 1} 段
                                             </span>
-                                            <span className={cn("rounded-full border px-3 py-1 text-[11px] font-bold", activeCosmeticUi.wordBadgeActiveClass)}>
+                                            <span className={cn("rounded-full border px-3 py-1 text-[11px] font-bold", rebuildSummaryAccentPillClass)}>
                                                 Shadowing {result?.objectiveScore100 ?? 0}
                                             </span>
                                         </div>
-                                        <span className={cn("rounded-full border px-3 py-1 text-[11px] font-bold", activeCosmeticUi.iconButtonClass)}>
+                                        <span className={cn("rounded-full border px-3 py-1 text-[11px] font-bold", rebuildSummaryPillClass)}>
                                             {result?.feedback.skipped ? "已跳过" : `综合 ${result?.finalScore100 ?? 0}`}
                                         </span>
                                     </div>
@@ -8211,6 +8431,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     </>
                                 )}
 
+                                {/* Verdant Atelier — forest still image + emerald mist */}
+                                {cosmeticTheme === 'verdant_atelier' && (
+                                    <>
+                                        <div className="absolute inset-0 bg-[url('/themes/forest-photo.jpg')] bg-cover bg-center bg-no-repeat opacity-[0.78]" />
+                                        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,44,34,0.1),rgba(2,44,34,0.06),rgba(2,44,34,0.16))]" />
+                                    </>
+                                )}
+
                                 {/* Cloud Nine — Ultra-clean white background with breathable cyan/blue pastel gradients */}
                                 {cosmeticTheme === 'cloud_nine' && (
                                     <div className="absolute inset-0 overflow-hidden mix-blend-multiply opacity-50">
@@ -8958,7 +9186,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
                                                                     {/* Speed Controls */}
                                                                     <div className="flex items-center gap-1">
-                                                                        {[0.75, 1.0, 1.25, 1.5].map((speed) => (
+                                                                        {[0.5, 0.75, 1.0, 1.25, 1.5].map((speed) => (
                                                                             <button
                                                                                 key={speed}
                                                                                 onClick={() => { setPlaybackSpeed(speed); if (audioRef.current) audioRef.current.playbackRate = speed; }}
@@ -9159,7 +9387,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                     </button>
 
                                                                     <div className={cn("flex items-center gap-1 rounded-full border p-1", activeCosmeticUi.speedShellClass)}>
-                                                                        {[1, 0.85, 0.7].map((speed) => (
+                                                                        {[1, 0.85, 0.7, 0.5].map((speed) => (
                                                                             <button
                                                                                 key={`translation-speed-${speed}`}
                                                                                 onClick={() => {
@@ -9482,6 +9710,21 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                             title="Ask AI Teacher"
                                                                         >
                                                                             <HelpCircle className="w-4 h-4" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { void handleReportTooHardAndAdvance(); }}
+                                                                            disabled={isSubmittingDrill || isGeneratingDrill || isReportingTooHard || learningSessionActive}
+                                                                            className={cn(
+                                                                                "flex h-10 items-center justify-center gap-1.5 rounded-full px-4 text-[11px] font-bold transition-all md:px-5 md:text-sm",
+                                                                                "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0",
+                                                                                (isSubmittingDrill || isGeneratingDrill || isReportingTooHard || learningSessionActive)
+                                                                                    ? "border border-stone-300/60 bg-white/50 text-stone-400 shadow-sm"
+                                                                                    : "border border-rose-300/80 bg-rose-50/80 text-rose-700 hover:-translate-y-0.5 hover:bg-rose-100"
+                                                                            )}
+                                                                            title="跳过本题并扣 25 Elo，下一题会更容易"
+                                                                        >
+                                                                            {isReportingTooHard ? <RefreshCw className="w-4 h-4 animate-spin" /> : <SkipForward className="w-4 h-4" />}
+                                                                            {isReportingTooHard ? "切题中..." : "太难了（-25）"}
                                                                         </button>
                                                                         <button
                                                                             onClick={() => {

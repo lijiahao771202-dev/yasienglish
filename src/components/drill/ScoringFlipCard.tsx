@@ -8,6 +8,7 @@ interface ScoringFlipCardProps {
     userAnswer: string;
     mode: 'listening' | 'translation' | 'dictation';
     streakTier: 0 | 1 | 2 | 3 | 4;
+    glassVariant?: "default" | "verdant";
 }
 
 const SCORING_PHASES: Record<ScoringFlipCardProps["mode"], Array<{ label: string; detail: string }>> = {
@@ -138,11 +139,15 @@ const SCORING_STREAK_PALETTES: Record<ScoringFlipCardProps["streakTier"], {
     },
 };
 
-export function ScoringFlipCard({ isScoring, userAnswer, mode, streakTier }: ScoringFlipCardProps) {
+export function ScoringFlipCard({ isScoring, userAnswer, mode, streakTier, glassVariant = "default" }: ScoringFlipCardProps) {
     const [phaseIndex, setPhaseIndex] = useState(0);
     const prefersReducedMotion = useReducedMotion();
     const phases = SCORING_PHASES[mode];
     const streakPalette = SCORING_STREAK_PALETTES[streakTier];
+    const isVerdantGlass = glassVariant === "verdant";
+    const overlayBackdrop = isVerdantGlass
+        ? "linear-gradient(180deg, rgba(2,44,34,0.28), rgba(2,44,34,0.36))"
+        : streakPalette.backdrop;
 
     useEffect(() => {
         if (!isScoring) return;
@@ -160,8 +165,11 @@ export function ScoringFlipCard({ isScoring, userAnswer, mode, streakTier }: Sco
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.25, ease: "easeOut" }}
-                    className="absolute inset-0 z-50 flex items-center justify-center overflow-hidden backdrop-blur-[10px]"
-                    style={{ backgroundImage: streakPalette.backdrop }}
+                    className={[
+                        "absolute inset-0 z-50 flex items-center justify-center overflow-hidden",
+                        isVerdantGlass ? "backdrop-blur-[16px]" : "backdrop-blur-[10px]",
+                    ].join(" ")}
+                    style={{ backgroundImage: overlayBackdrop }}
                 >
                     <motion.div
                         className="absolute inset-x-[18%] top-[18%] h-40 rounded-full blur-3xl"
@@ -183,8 +191,18 @@ export function ScoringFlipCard({ isScoring, userAnswer, mode, streakTier }: Sco
                         className="relative z-10 w-full max-w-[34rem] px-6"
                     >
                         <div
-                            className="overflow-hidden rounded-[2rem] border bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(252,250,247,0.9))]"
-                            style={{ borderColor: streakPalette.cardBorder, boxShadow: streakPalette.cardShadow }}
+                            className={[
+                                "overflow-hidden rounded-[2rem] border",
+                                isVerdantGlass
+                                    ? "bg-[linear-gradient(180deg,rgba(255,255,255,0.34),rgba(220,252,231,0.24))] backdrop-blur-[18px]"
+                                    : "bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(252,250,247,0.9))]",
+                            ].join(" ")}
+                            style={{
+                                borderColor: isVerdantGlass ? "rgba(209,250,229,0.52)" : streakPalette.cardBorder,
+                                boxShadow: isVerdantGlass
+                                    ? "0 28px 70px rgba(2,44,34,0.26), inset 0 1px 0 rgba(255,255,255,0.44)"
+                                    : streakPalette.cardShadow,
+                            }}
                         >
                             {streakTier >= 3 && (
                                 <motion.div
@@ -194,7 +212,7 @@ export function ScoringFlipCard({ isScoring, userAnswer, mode, streakTier }: Sco
                                     transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
                                 />
                             )}
-                            <div className="border-b border-stone-200/70 bg-white/60 px-6 py-4">
+                            <div className={isVerdantGlass ? "border-b border-emerald-100/40 bg-white/30 px-6 py-4" : "border-b border-stone-200/70 bg-white/60 px-6 py-4"}>
                                 <div className="flex items-center justify-between gap-4">
                                     <div className="flex items-center gap-3">
                                         <motion.div
@@ -213,7 +231,7 @@ export function ScoringFlipCard({ isScoring, userAnswer, mode, streakTier }: Sco
                                         </motion.div>
                                         <div>
                                             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-stone-400">AI Judge</p>
-                                            <p className="mt-0.5 text-base font-semibold text-stone-700">Scoring in progress</p>
+                                            <p className={isVerdantGlass ? "mt-0.5 text-base font-semibold text-emerald-900" : "mt-0.5 text-base font-semibold text-stone-700"}>Scoring in progress</p>
                                         </div>
                                     </div>
                                     <div className="hidden items-center gap-2 rounded-full border border-stone-200/80 bg-white/80 px-3 py-1.5 text-[11px] font-medium text-stone-500 md:flex">
@@ -225,7 +243,7 @@ export function ScoringFlipCard({ isScoring, userAnswer, mode, streakTier }: Sco
                             </div>
 
                             <div className="px-6 py-6 md:px-7 md:py-7">
-                                <div className="relative mb-6 overflow-hidden rounded-full bg-stone-100/90 p-[3px]">
+                                <div className={isVerdantGlass ? "relative mb-6 overflow-hidden rounded-full bg-emerald-50/55 p-[3px]" : "relative mb-6 overflow-hidden rounded-full bg-stone-100/90 p-[3px]"}>
                                     <div className="h-2 rounded-full" style={{ backgroundImage: streakPalette.railBg }} />
                                     <motion.div
                                         className="absolute inset-y-[3px] left-0 w-1/3 rounded-full blur-[1px]"
@@ -286,10 +304,10 @@ export function ScoringFlipCard({ isScoring, userAnswer, mode, streakTier }: Sco
                                 </div>
                             </div>
 
-                            {userAnswer && (
-                                <div className="border-t border-stone-200/70 bg-stone-50/80 px-6 py-4 md:px-7">
+                        {userAnswer && (
+                                <div className={isVerdantGlass ? "border-t border-emerald-100/45 bg-emerald-50/36 px-6 py-4 md:px-7" : "border-t border-stone-200/70 bg-stone-50/80 px-6 py-4 md:px-7"}>
                                     <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-stone-400">Current Answer</p>
-                                    <p className="mt-2 line-clamp-2 text-base leading-7 text-stone-600 font-newsreader italic">
+                                    <p className={isVerdantGlass ? "mt-2 line-clamp-2 text-base leading-7 text-emerald-800/85 font-newsreader italic" : "mt-2 line-clamp-2 text-base leading-7 text-stone-600 font-newsreader italic"}>
                                         &ldquo;{userAnswer.length > 120 ? userAnswer.slice(0, 120) + "..." : userAnswer}&rdquo;
                                     </p>
                                 </div>
