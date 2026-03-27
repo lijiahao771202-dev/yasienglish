@@ -62,7 +62,9 @@ Battle 是一个 **输入 -> 理解 -> 输出** 的闭环训练系统：
 Elo 是 **每个模式的实力分**，不是总分。
 
 - Listening / Dictation / Translation 各有独立 Elo
-- Rebuild 不改正式 Elo，只维护本地练习难度
+- Rebuild 分成两条线：
+- \`sentence\` 只维护本地练习难度
+- \`passage\` 使用独立正式 Elo
 - 某一模式涨分，不会直接带动另外两个模式
 
 ## Elo 怎么涨跌（当前版本）
@@ -332,9 +334,13 @@ export default function BattlePage() {
     const [listeningElo, setListeningElo] = useState(400); // Listening
     const [dictationElo, setDictationElo] = useState(400); // Dictation
     const [rebuildPracticeElo, setRebuildPracticeElo] = useState(400);
+    const [rebuildBattleElo, setRebuildBattleElo] = useState(400);
+    const [rebuildBattleStreak, setRebuildBattleStreak] = useState(0);
     const [streak, setStreak] = useState(0);
     const [battleMode, setBattleMode] = useState<BattleMode>('listening');
     const [listeningSourceMode, setListeningSourceMode] = useState<ListeningSourceMode>(resolveInitialListeningSourceMode);
+    const [rebuildVariant, setRebuildVariant] = useState<"sentence" | "passage">("sentence");
+    const [rebuildSegmentCount, setRebuildSegmentCount] = useState<2 | 3 | 5>(3);
     const [showGuide, setShowGuide] = useState(false);
     const [activeGuideSection, setActiveGuideSection] = useState<GuideSectionId>("overview");
     const [refreshCount, setRefreshCount] = useState(0);
@@ -347,6 +353,8 @@ export default function BattlePage() {
                 setEloRating(profile.elo_rating || 400);
                 setListeningElo(profile.listening_elo || 400);
                 setDictationElo(profile.dictation_elo ?? profile.listening_elo ?? 400);
+                setRebuildBattleElo(profile.rebuild_elo ?? profile.rebuild_hidden_elo ?? profile.listening_elo ?? 400);
+                setRebuildBattleStreak(profile.rebuild_streak ?? 0);
                 setStreak(profile.streak_count);
                 const activeUserMeta = await db.sync_meta.get("active_user_id");
                 const activeUserId = typeof activeUserMeta?.value === "string" ? activeUserMeta.value : "local";
@@ -388,14 +396,28 @@ export default function BattlePage() {
     const transRank = getRank(eloRating);
     const listenRank = getRank(listeningElo);
     const dictationRank = getRank(dictationElo);
+    const rebuildBattleRank = getRank(rebuildBattleElo);
     const rebuildTier = getRebuildPracticeTier(rebuildPracticeElo);
     const activeModeDifficultyElo = battleMode === "translation"
         ? eloRating
         : battleMode === "dictation"
             ? dictationElo
             : battleMode === "rebuild"
-                ? rebuildPracticeElo
+                ? (rebuildVariant === "passage" ? rebuildBattleElo : rebuildPracticeElo)
                 : listeningElo;
+    const buildBattleSelection = useCallback((topic: string): BattleDrillSelection => (
+        battleMode === "rebuild"
+            ? {
+                type: "scenario",
+                topic,
+                rebuildVariant,
+                segmentCount: rebuildVariant === "passage" ? rebuildSegmentCount : 3,
+            }
+            : {
+                type: "scenario",
+                topic,
+            }
+    ), [battleMode, rebuildSegmentCount, rebuildVariant]);
     const sectionByMode: Record<BattleMode, GuideSectionId> = {
         listening: "listening",
         rebuild: "overview",
@@ -722,11 +744,20 @@ export default function BattlePage() {
                             <div className="relative z-10">
                                 <div className="flex items-center gap-2 mb-1">
                                     <span className={cn("text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full border", glassTone.textTag)}>Rebuild</span>
-                                    <span className="text-xs font-bold text-slate-500">Practice Tier</span>
+                                    <span className="text-xs font-bold text-slate-500">{rebuildVariant === "passage" ? "Battle Elo" : "Practice Tier"}</span>
                                 </div>
                                 <div className="flex items-baseline gap-2">
-                                    <span className="text-2xl font-bold text-slate-900 tracking-tight">{rebuildTier.cefr}</span>
-                                    <span className="rounded-full border border-teal-200/80 bg-teal-50/80 px-2 py-0.5 text-xs font-bold text-teal-700">{rebuildTier.bandPosition}</span>
+                                    {rebuildVariant === "passage" ? (
+                                        <>
+                                            <span className="text-3xl font-bold text-slate-900 tracking-tight tabular-nums">{rebuildBattleElo}</span>
+                                            <span className="rounded-full border border-teal-200/80 bg-teal-50/80 px-2 py-0.5 text-xs font-bold text-teal-700">{rebuildBattleRank.title}</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span className="text-2xl font-bold text-slate-900 tracking-tight">{rebuildTier.cefr}</span>
+                                            <span className="rounded-full border border-teal-200/80 bg-teal-50/80 px-2 py-0.5 text-xs font-bold text-teal-700">{rebuildTier.bandPosition}</span>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </motion.div>
@@ -744,23 +775,47 @@ export default function BattlePage() {
                             transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
                         >
                             {battleMode === "rebuild" ? (
-                                <div className={cn("relative overflow-hidden rounded-[2rem] border border-white/45 p-6 backdrop-blur-2xl saturate-[1.4]", glassTone.soft)}>
-                                    <motion.div className={cn("absolute inset-0", glassRebuildHeroLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
-                                    <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                                        <div>
-                                            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">Rebuild Practice</p>
-                                            <h3 className="mt-2 text-2xl font-bold text-slate-900">当前练习层：{rebuildTier.label}</h3>
-                                            <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">Rebuild 不改正式 Elo。系统会根据你的自评、重播次数、提示使用和拼句表现，在后台轻微上调或下调下一题难度。</p>
+                                rebuildVariant === "passage" ? (
+                                    <div className={cn("relative overflow-hidden rounded-[2rem] border border-white/45 p-6 backdrop-blur-2xl saturate-[1.4]", glassTone.soft)}>
+                                        <motion.div className={cn("absolute inset-0", glassRebuildHeroLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
+                                        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">Rebuild Passage Battle</p>
+                                                <h3 className="mt-2 text-2xl font-bold text-slate-900">短文分段正式 Elo</h3>
+                                                <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">整篇短文只结算一次正式 Rebuild Elo。每段保留词块重建和自评，最后自动合成为整场 shadowing 结算。</p>
+                                            </div>
+                                            <div className="rounded-[1.4rem] border border-teal-200/70 bg-white/70 px-5 py-4 shadow-[0_20px_40px_-30px_rgba(13,148,136,0.8)]">
+                                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-teal-600">Rebuild Elo</div>
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <span className="text-3xl font-bold text-slate-900">{rebuildBattleElo}</span>
+                                                    <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-700">{rebuildBattleRank.title}</span>
+                                                </div>
+                                                <div className="mt-2 text-xs font-semibold text-teal-700">当前连胜 {rebuildBattleStreak}</div>
+                                            </div>
                                         </div>
-                                        <div className="rounded-[1.4rem] border border-teal-200/70 bg-white/70 px-5 py-4 shadow-[0_20px_40px_-30px_rgba(13,148,136,0.8)]">
-                                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-teal-600">Practice Tier</div>
-                                            <div className="mt-2 flex items-center gap-2">
-                                                <span className="text-3xl font-bold text-slate-900">{rebuildTier.cefr}</span>
-                                                <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-700">{rebuildTier.bandPosition}</span>
+                                        <div className="relative z-10 mt-6">
+                                            <EloChart mode="rebuild" />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className={cn("relative overflow-hidden rounded-[2rem] border border-white/45 p-6 backdrop-blur-2xl saturate-[1.4]", glassTone.soft)}>
+                                        <motion.div className={cn("absolute inset-0", glassRebuildHeroLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
+                                        <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">Rebuild Practice</p>
+                                                <h3 className="mt-2 text-2xl font-bold text-slate-900">当前练习层：{rebuildTier.label}</h3>
+                                                <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">单句 Rebuild 不改正式 Elo。系统会根据你的自评、重播次数、提示使用和拼句表现，在后台轻微上调或下调下一题难度。</p>
+                                            </div>
+                                            <div className="rounded-[1.4rem] border border-teal-200/70 bg-white/70 px-5 py-4 shadow-[0_20px_40px_-30px_rgba(13,148,136,0.8)]">
+                                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-teal-600">Practice Tier</div>
+                                                <div className="mt-2 flex items-center gap-2">
+                                                    <span className="text-3xl font-bold text-slate-900">{rebuildTier.cefr}</span>
+                                                    <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-700">{rebuildTier.bandPosition}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
+                                )
                             ) : (
                                 <EloChart mode={battleMode} />
                             )}
@@ -811,11 +866,13 @@ export default function BattlePage() {
                                     {battleMode === "listening"
                                         ? "Listening 现在可以切换 AI 出题和题库题。"
                                         : battleMode === "rebuild"
-                                            ? "Rebuild 现在也支持 AI 出题和题库题，仍然不改正式 Elo。"
+                                            ? rebuildVariant === "passage"
+                                                ? "短文分段当前只开放 AI 出题，并在整篇结束后统一结算正式 Rebuild Elo。"
+                                                : "单句 Rebuild 维持 AI 练习模式，只调整隐藏练习难度。"
                                             : "题库模式当前只开放给 Listening / Rebuild；其它模式继续走 AI 生成。"}
                                 </p>
                             </div>
-                            {(battleMode === "listening" || battleMode === "rebuild") ? (
+                            {battleMode === "listening" ? (
                                 <div className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/55 p-1">
                                     <button
                                         type="button"
@@ -849,6 +906,67 @@ export default function BattlePage() {
                                 </div>
                             )}
                         </div>
+                        {battleMode === "rebuild" ? (
+                            <div className="mt-4 space-y-4 border-t border-white/65 pt-4">
+                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                    <div>
+                                        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">Rebuild Branch</p>
+                                        <p className="mt-1 text-sm text-slate-700">单句保留隐藏练习难度，短文分段使用正式 Elo 和历史曲线。</p>
+                                    </div>
+                                    <div className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/55 p-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setRebuildVariant("sentence")}
+                                            className={cn(
+                                                "rounded-full px-4 py-2 text-sm font-semibold transition",
+                                                rebuildVariant === "sentence"
+                                                    ? "bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
+                                                    : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
+                                            )}
+                                        >
+                                            单句
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setRebuildVariant("passage")}
+                                            className={cn(
+                                                "rounded-full px-4 py-2 text-sm font-semibold transition",
+                                                rebuildVariant === "passage"
+                                                    ? "bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
+                                                    : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
+                                            )}
+                                        >
+                                            短文分段
+                                        </button>
+                                    </div>
+                                </div>
+                                {rebuildVariant === "passage" ? (
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">Segments</p>
+                                            <p className="mt-1 text-sm text-slate-700">一篇短文先按自然语义切段，再逐段完成词块重建。</p>
+                                        </div>
+                                        <div className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/55 p-1">
+                                            {([2, 3, 5] as const).map((count) => (
+                                                <button
+                                                    key={count}
+                                                    type="button"
+                                                    onClick={() => setRebuildSegmentCount(count)}
+                                                    className={cn(
+                                                        "rounded-full px-4 py-2 text-sm font-semibold transition",
+                                                        rebuildSegmentCount === count
+                                                            ? "bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
+                                                            : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
+                                                    )}
+                                                >
+                                                    {count} 段
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : null}
                     </div>
                 </div>
 
@@ -860,7 +978,7 @@ export default function BattlePage() {
                     className="mb-20"
                 >
                     <button
-                        onClick={() => setActiveDrill({ type: 'scenario', topic: RANDOM_SCENARIO_TOPIC })}
+                        onClick={() => setActiveDrill(buildBattleSelection(RANDOM_SCENARIO_TOPIC))}
                         className={cn("group relative w-full overflow-hidden rounded-[2.1rem] border border-white/45 text-slate-900 backdrop-blur-[22px] saturate-[1.5] transition-all hover:scale-[1.01]", glassTone.hero)}
                     >
                         <motion.div className={cn("absolute inset-0 z-0", glassListeningHeroLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
@@ -901,7 +1019,7 @@ export default function BattlePage() {
                                     transition={{ delay: 0.4 + (i * 0.1) }}
                                 >
                                     <button
-                                        onClick={() => !isLocked && setActiveDrill({ type: 'scenario', topic: topic.title })}
+                                        onClick={() => !isLocked && setActiveDrill(buildBattleSelection(topic.title))}
                                         disabled={isLocked}
                                         className={cn(
                                             "w-full h-full text-left p-6 rounded-[1.8rem] border transition-all duration-300 relative overflow-hidden group",
@@ -1271,7 +1389,7 @@ export default function BattlePage() {
             <AnimatePresence>
                 {activeDrill && (
                     <DrillCore
-                        key={`${battleMode}-${activeDrill.type}-${activeDrill.topic || "drill"}`}
+                        key={`${battleMode}-${activeDrill.type}-${activeDrill.topic || "drill"}-${activeDrill.rebuildVariant || "sentence"}-${activeDrill.segmentCount || 3}`}
                         context={activeDrill}
                         onClose={handleCloseDrill}
                         initialMode={battleMode}

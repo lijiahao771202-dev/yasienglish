@@ -31,6 +31,7 @@ import { SpeechModelStatusPanel } from "../speech/SpeechModelStatusPanel";
 import { resolveBattleScenarioTopic } from "@/lib/battle-quickmatch-topics";
 import { getBattleInteractiveWordClassName } from "@/lib/drill-interactive-word";
 import { calculateListeningElo } from "@/lib/listening-elo";
+import { calculateRebuildBattleElo } from "@/lib/rebuild-battle-elo";
 import {
     buildRebuildDisplaySentence,
     clampRebuildDifficultyDelta,
@@ -45,6 +46,11 @@ import {
     type RebuildSelfEvaluation,
     type RebuildSystemAssessment,
 } from "@/lib/rebuild-mode";
+import {
+    aggregateRebuildPassageScores,
+    calculateRebuildPassageObjectiveScore,
+    getRebuildPassageSelfScore,
+} from "@/lib/rebuild-passage";
 import { playRebuildSfx } from "@/lib/rebuild-sfx";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 import { buildTranslationHighlights, normalizeTranslationForComparison } from "@/lib/translation-diff";
@@ -94,6 +100,8 @@ export interface DrillCoreProps {
         articleTitle?: string;
         articleContent?: string;
         topic?: string; // For scenario mode
+        rebuildVariant?: "sentence" | "passage";
+        segmentCount?: 2 | 3 | 5;
     };
     initialMode?: DrillMode;
     listeningSourceMode?: "ai" | "bank";
@@ -142,6 +150,7 @@ interface DrillData {
         reviewStatus?: "curated" | "draft";
     };
     _rebuildMeta?: {
+        variant?: "sentence" | "passage";
         effectiveElo: number;
         bandPosition: "entry" | "mid" | "exit" | null;
         answerTokens: string[];
@@ -152,10 +161,165 @@ interface DrillData {
         feedbackStyle: "strong";
         candidateId?: string;
         candidateSource?: "ai";
+        passageSession?: {
+            sessionId: string;
+            segmentCount: 2 | 3 | 5;
+            currentIndex: number;
+            difficultyProfile: {
+                effectiveElo: number;
+                segmentCount: 2 | 3 | 5;
+                practiceTier: {
+                    cefr: "A1" | "A2-" | "A2+" | "B1" | "B2" | "C1" | "C2" | "C2+";
+                    bandPosition: "entry" | "mid" | "exit";
+                    label: string;
+                };
+                bandPosition: "entry" | "mid" | "exit";
+                syntaxComplexity: {
+                    clauseMax: number;
+                    memoryLoad: string;
+                    spokenNaturalness: string;
+                    reducedFormsPresence: string;
+                    trainingFocus: string;
+                };
+                perSegmentWordWindow: {
+                    min: number;
+                    max: number;
+                    mean: number;
+                    sigma: number;
+                    softMin: number;
+                    softMax: number;
+                    hardMin: number;
+                    hardMax: number;
+                };
+                totalWordWindow: {
+                    min: number;
+                    max: number;
+                    mean: number;
+                    sigma: number;
+                    softMin: number;
+                    softMax: number;
+                    hardMin: number;
+                    hardMax: number;
+                };
+            };
+            segments: Array<{
+                id: string;
+                chinese: string;
+                referenceEnglish: string;
+                answerTokens: string[];
+                distractorTokens: string[];
+                tokenBank: string[];
+                wordCount: number;
+            }>;
+        };
     };
 }
 
 type PrefetchedDrillData = DrillData & { mode?: string; sourceMode?: "ai" | "bank" };
+type PassageSession = NonNullable<NonNullable<DrillData["_rebuildMeta"]>["passageSession"]>;
+type PassageSegment = PassageSession["segments"][number];
+
+function buildRebuildTokenInstances(params: {
+    tokenBank: string[];
+    distractorTokens: string[];
+    prefix: string;
+}) {
+    const { tokenBank, distractorTokens, prefix } = params;
+    const distractorSet = new Set(distractorTokens);
+    const tokenTotals = new Map<string, number>();
+    const tokenSeen = new Map<string, number>();
+
+    for (const token of tokenBank) {
+        tokenTotals.set(token, (tokenTotals.get(token) ?? 0) + 1);
+    }
+
+    const tokenInstances: RebuildTokenInstance[] = tokenBank.map((text, index) => ({
+        id: `${prefix}-token-${index}-${text}`,
+        text,
+        origin: distractorSet.has(text) ? "distractor" : "answer",
+        repeatIndex: (() => {
+            const nextIndex = (tokenSeen.get(text) ?? 0) + 1;
+            tokenSeen.set(text, nextIndex);
+            return nextIndex;
+        })(),
+        repeatTotal: tokenTotals.get(text) ?? 1,
+    }));
+
+    return {
+        tokenInstances,
+        tokenOrder: Object.fromEntries(tokenInstances.map((token, index) => [token.id, index])),
+    };
+}
+
+function createRebuildPassageDraftState(segment: PassageSegment, index: number): RebuildPassageSegmentDraftState {
+    const { tokenInstances, tokenOrder } = buildRebuildTokenInstances({
+        tokenBank: segment.tokenBank,
+        distractorTokens: segment.distractorTokens,
+        prefix: segment.id,
+    });
+
+    return {
+        segmentIndex: index,
+        availableTokens: tokenInstances,
+        answerTokens: [],
+        typingBuffer: "",
+        replayCount: 0,
+        editCount: 0,
+        startedAt: null,
+        tokenOrder,
+    };
+}
+
+function areRebuildTokenOrdersEqual(left: Record<string, number>, right: Record<string, number>) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    if (leftKeys.length !== rightKeys.length) return false;
+    return leftKeys.every((key) => left[key] === right[key]);
+}
+
+function normalizeRebuildTokenForMatch(text: string) {
+    return text.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function pickPreferredRebuildTokenCandidate(params: {
+    candidates: RebuildTokenInstance[];
+    typedRaw: string;
+    expectedRaw?: string | null;
+}) {
+    const { candidates, typedRaw, expectedRaw } = params;
+    if (candidates.length === 0) return null;
+    if (candidates.length === 1) return candidates[0];
+
+    const typedTrimmed = typedRaw.trim();
+    const typedNormalized = normalizeRebuildTokenForMatch(typedTrimmed);
+    const expectedTrimmed = expectedRaw?.trim() ?? "";
+    const expectedNormalized = normalizeRebuildTokenForMatch(expectedTrimmed);
+
+    const scoredCandidates = candidates
+        .map((token, index) => {
+            const tokenNormalized = normalizeRebuildTokenForMatch(token.text);
+            let score = 0;
+
+            if (expectedTrimmed && token.text === expectedTrimmed) score += 120;
+            if (expectedNormalized && tokenNormalized === expectedNormalized) score += 90;
+            if (typedTrimmed && token.text === typedTrimmed) score += 45;
+            if (typedNormalized && tokenNormalized === typedNormalized) score += 35;
+            if (expectedTrimmed && token.text.toLowerCase() === expectedTrimmed.toLowerCase()) score += 20;
+            if (typedTrimmed && token.text.toLowerCase() === typedTrimmed.toLowerCase()) score += 10;
+
+            return {
+                token,
+                score,
+                index,
+            };
+        })
+        .sort((left, right) => {
+            if (right.score !== left.score) return right.score - left.score;
+            return left.index - right.index;
+        });
+
+    return scoredCandidates[0]?.token ?? null;
+}
 
 function getGuidedScriptKey(
     drillData: Pick<DrillData, "chinese" | "reference_english" | "_topicMeta">,
@@ -263,6 +427,51 @@ interface RebuildFeedbackState {
     skipped: boolean;
     exceededSoftLimit: boolean;
     resolvedAt: number;
+}
+
+interface RebuildPassageSegmentScore {
+    segmentIndex: number;
+    objectiveScore100: number;
+    selfScore100: number;
+    finalScore100: number;
+}
+
+interface RebuildPassageSegmentDraftState {
+    segmentIndex: number;
+    availableTokens: RebuildTokenInstance[];
+    answerTokens: RebuildTokenInstance[];
+    typingBuffer: string;
+    replayCount: number;
+    editCount: number;
+    startedAt: number | null;
+    tokenOrder: Record<string, number>;
+}
+
+interface RebuildPassageSegmentResultState {
+    segmentIndex: number;
+    feedback: RebuildFeedbackState;
+    objectiveScore100: number;
+    selfScore100: number | null;
+    finalScore100: number | null;
+    selfEvaluation: RebuildSelfEvaluation | null;
+}
+
+interface RebuildPassageSegmentUiState {
+    chineseExpanded: boolean;
+}
+
+interface RebuildPassageSummaryState {
+    sessionObjectiveScore100: number;
+    sessionSelfScore100: number;
+    sessionScore100: number;
+    sessionBattleScore10: number;
+    segmentCount: number;
+    eloAfter: number;
+    change: number;
+    streak: number;
+    maxElo: number;
+    coinsEarned: number;
+    settledAt: number;
 }
 
 // --- State --- 
@@ -1009,6 +1218,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [dictationElo, setDictationElo] = useState(DEFAULT_BASE_ELO);
     const [dictationStreak, setDictationStreak] = useState(0);
     const [rebuildHiddenElo, setRebuildHiddenElo] = useState(DEFAULT_BASE_ELO);
+    const [rebuildBattleElo, setRebuildBattleElo] = useState(DEFAULT_BASE_ELO);
+    const [rebuildBattleStreak, setRebuildBattleStreak] = useState(0);
+    const [audioSourceText, setAudioSourceText] = useState<string | null>(null);
     const [rebuildTypingBuffer, setRebuildTypingBuffer] = useState("");
     const [rebuildAutocorrect, setRebuildAutocorrect] = useState(false);
     const [rebuildHideTokens, setRebuildHideTokens] = useState(false);
@@ -1054,11 +1266,16 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [rebuildReplayCount, setRebuildReplayCount] = useState(0);
     const [rebuildEditCount, setRebuildEditCount] = useState(0);
     const [rebuildStartedAt, setRebuildStartedAt] = useState<number | null>(null);
+    const [activePassageSegmentIndex, setActivePassageSegmentIndex] = useState(0);
+    const [rebuildPassageDrafts, setRebuildPassageDrafts] = useState<RebuildPassageSegmentDraftState[]>([]);
+    const [rebuildPassageResults, setRebuildPassageResults] = useState<RebuildPassageSegmentResultState[]>([]);
+    const [rebuildPassageUiState, setRebuildPassageUiState] = useState<RebuildPassageSegmentUiState[]>([]);
+    const [rebuildPassageScores, setRebuildPassageScores] = useState<RebuildPassageSegmentScore[]>([]);
+    const [rebuildPassageSummary, setRebuildPassageSummary] = useState<RebuildPassageSummaryState | null>(null);
     const [pendingRebuildAdvanceElo, setPendingRebuildAdvanceElo] = useState<number | null>(null);
     const lastRebuildResolvedAtRef = useRef<number | null>(null);
     const lastScoreCelebrationRef = useRef<string>("");
     const rebuildTokenOrderRef = useRef<Map<string, number>>(new Map());
-    const rebuildAutoSubmitTimeoutRef = useRef<number | null>(null);
     const prefersReducedMotion = useReducedMotion();
     const activeCosmeticTheme = COSMETIC_THEMES[cosmeticTheme] || COSMETIC_THEMES[DEFAULT_FREE_THEME];
     const activeCosmeticUi = COSMETIC_THEME_UI[cosmeticTheme] || COSMETIC_THEME_UI.morning_coffee;
@@ -1070,6 +1287,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const buildRebuildMetaKey = useCallback((suffix: "hidden_elo" | "last_session") => {
         return `rebuild_${suffix}::${rebuildMetaNamespaceRef.current}`;
     }, []);
+    const rebuildVariant = context.rebuildVariant ?? "sentence";
+    const rebuildSegmentCount = context.segmentCount ?? 3;
+    const isRebuildPassage = isRebuildMode && rebuildVariant === "passage";
+    const passageSession = isRebuildPassage ? (drillData?._rebuildMeta?.passageSession ?? null) : null;
+    const activePassageResult = isRebuildPassage
+        ? (rebuildPassageResults.find((item) => item.segmentIndex === activePassageSegmentIndex) ?? null)
+        : null;
 
     const persistRebuildHiddenElo = useCallback(async (nextElo: number) => {
         const updatedAt = Date.now();
@@ -1084,34 +1308,75 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         });
     }, [buildRebuildMetaKey]);
 
-    const initializeRebuildTokens = useCallback((nextDrillData: DrillData | null) => {
-        const tokenBank = nextDrillData?._rebuildMeta?.tokenBank ?? [];
-        const distractorSet = new Set(nextDrillData?._rebuildMeta?.distractorTokens ?? []);
-        const tokenTotals = new Map<string, number>();
-        const tokenSeen = new Map<string, number>();
-
-        for (const token of tokenBank) {
-            tokenTotals.set(token, (tokenTotals.get(token) ?? 0) + 1);
+    const hydratePassageSegmentDrill = useCallback((sourceDrill: DrillData, segmentIndex: number): DrillData => {
+        if (sourceDrill._rebuildMeta?.variant !== "passage" || !sourceDrill._rebuildMeta.passageSession) {
+            return sourceDrill;
         }
 
-        const tokenInstances: RebuildTokenInstance[] = tokenBank.map((text, index) => ({
-            id: `token-${index}-${text}`,
-            text,
-            origin: distractorSet.has(text) ? "distractor" : "answer",
-            repeatIndex: (() => {
-                const nextIndex = (tokenSeen.get(text) ?? 0) + 1;
-                tokenSeen.set(text, nextIndex);
-                return nextIndex;
-            })(),
-            repeatTotal: tokenTotals.get(text) ?? 1,
-        }));
-        rebuildTokenOrderRef.current = new Map(tokenInstances.map((token, index) => [token.id, index]));
+        const session = sourceDrill._rebuildMeta.passageSession;
+        const segment = session.segments[segmentIndex] ?? session.segments[0];
+        if (!segment) return sourceDrill;
+
+        return {
+            ...sourceDrill,
+            chinese: segment.chinese,
+            reference_english: segment.referenceEnglish,
+            _rebuildMeta: {
+                ...sourceDrill._rebuildMeta,
+                answerTokens: segment.answerTokens,
+                tokenBank: segment.tokenBank,
+                distractorTokens: segment.distractorTokens,
+                passageSession: {
+                    ...session,
+                    currentIndex: segmentIndex,
+                },
+            },
+        };
+    }, []);
+
+    const initializeRebuildTokens = useCallback((nextDrillData: DrillData | null) => {
+        const tokenBank = nextDrillData?._rebuildMeta?.tokenBank ?? [];
+        const { tokenInstances, tokenOrder } = buildRebuildTokenInstances({
+            tokenBank,
+            distractorTokens: nextDrillData?._rebuildMeta?.distractorTokens ?? [],
+            prefix: "active",
+        });
+        rebuildTokenOrderRef.current = new Map(Object.entries(tokenOrder));
         setRebuildAvailableTokens(tokenInstances);
         setRebuildAnswerTokens([]);
         setRebuildReplayCount(0);
         setRebuildEditCount(0);
         setRebuildStartedAt(nextDrillData?._rebuildMeta ? Date.now() : null);
+        setRebuildTypingBuffer("");
     }, []);
+
+    const applyPassageDraftToActiveState = useCallback((draft: RebuildPassageSegmentDraftState) => {
+        rebuildTokenOrderRef.current = new Map(Object.entries(draft.tokenOrder));
+        setRebuildAvailableTokens(draft.availableTokens);
+        setRebuildAnswerTokens(draft.answerTokens);
+        setRebuildReplayCount(draft.replayCount);
+        setRebuildEditCount(draft.editCount);
+        setRebuildStartedAt(draft.startedAt);
+        setRebuildTypingBuffer(draft.typingBuffer);
+        rebuildTypingBufferRef.current = draft.typingBuffer;
+    }, []);
+
+    const buildActivePassageDraftSnapshot = useCallback((baseDraft: RebuildPassageSegmentDraftState): RebuildPassageSegmentDraftState => ({
+        ...baseDraft,
+        availableTokens: rebuildAvailableTokens,
+        answerTokens: rebuildAnswerTokens,
+        typingBuffer: rebuildTypingBufferRef.current,
+        replayCount: rebuildReplayCount,
+        editCount: rebuildEditCount,
+        startedAt: rebuildStartedAt,
+        tokenOrder: Object.fromEntries(rebuildTokenOrderRef.current.entries()),
+    }), [
+        rebuildAnswerTokens,
+        rebuildAvailableTokens,
+        rebuildEditCount,
+        rebuildReplayCount,
+        rebuildStartedAt,
+    ]);
 
     useEffect(() => {
         if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
@@ -1129,14 +1394,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
         return () => {
             hoverMediaQuery.removeEventListener("change", syncHoverSupport);
-        };
-    }, []);
-
-    useEffect(() => {
-        return () => {
-            if (rebuildAutoSubmitTimeoutRef.current !== null) {
-                window.clearTimeout(rebuildAutoSubmitTimeoutRef.current);
-            }
         };
     }, []);
 
@@ -1169,12 +1426,90 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     useEffect(() => {
         if (!isRebuildMode) return;
+        if (isRebuildPassage) return;
         initializeRebuildTokens(drillData);
-    }, [drillData, initializeRebuildTokens, isRebuildMode]);
+    }, [drillData, initializeRebuildTokens, isRebuildMode, isRebuildPassage]);
+
+    useEffect(() => {
+        if (!isRebuildPassage || !passageSession) return;
+
+        const initialSegmentIndex = Math.min(
+            Math.max(passageSession.currentIndex ?? 0, 0),
+            Math.max(0, passageSession.segments.length - 1),
+        );
+        const nextDrafts = passageSession.segments.map((segment, index) => (
+            createRebuildPassageDraftState(segment, index)
+        ));
+        if (nextDrafts[initialSegmentIndex]) {
+            nextDrafts[initialSegmentIndex] = {
+                ...nextDrafts[initialSegmentIndex],
+                startedAt: Date.now(),
+            };
+        }
+
+        setActivePassageSegmentIndex(initialSegmentIndex);
+        setRebuildPassageDrafts(nextDrafts);
+        setRebuildPassageResults([]);
+        setRebuildPassageUiState(passageSession.segments.map(() => ({ chineseExpanded: false })));
+        setRebuildPassageScores([]);
+        setRebuildPassageSummary(null);
+        setRebuildFeedback(null);
+
+        const activeDraft = nextDrafts[initialSegmentIndex];
+        if (activeDraft) {
+            applyPassageDraftToActiveState(activeDraft);
+        }
+    }, [applyPassageDraftToActiveState, isRebuildPassage, passageSession?.sessionId]);
+
+    useEffect(() => {
+        if (!isRebuildPassage || rebuildPassageDrafts.length === 0) return;
+
+        setRebuildPassageDrafts((currentDrafts) => {
+            const currentDraft = currentDrafts[activePassageSegmentIndex];
+            if (!currentDraft) return currentDrafts;
+
+            const nextTokenOrder = Object.fromEntries(rebuildTokenOrderRef.current.entries());
+            if (
+                currentDraft.availableTokens === rebuildAvailableTokens
+                && currentDraft.answerTokens === rebuildAnswerTokens
+                && currentDraft.typingBuffer === rebuildTypingBuffer
+                && currentDraft.replayCount === rebuildReplayCount
+                && currentDraft.editCount === rebuildEditCount
+                && currentDraft.startedAt === rebuildStartedAt
+                && areRebuildTokenOrdersEqual(currentDraft.tokenOrder, nextTokenOrder)
+            ) {
+                return currentDrafts;
+            }
+
+            const nextDrafts = [...currentDrafts];
+            nextDrafts[activePassageSegmentIndex] = {
+                ...currentDraft,
+                availableTokens: rebuildAvailableTokens,
+                answerTokens: rebuildAnswerTokens,
+                typingBuffer: rebuildTypingBuffer,
+                replayCount: rebuildReplayCount,
+                editCount: rebuildEditCount,
+                startedAt: rebuildStartedAt,
+                tokenOrder: nextTokenOrder,
+            };
+            return nextDrafts;
+        });
+    }, [
+        activePassageSegmentIndex,
+        isRebuildPassage,
+        rebuildAnswerTokens,
+        rebuildAvailableTokens,
+        rebuildEditCount,
+        rebuildPassageDrafts.length,
+        rebuildReplayCount,
+        rebuildStartedAt,
+        rebuildTypingBuffer,
+    ]);
 
     useEffect(() => {
         if (!isRebuildMode) return;
         if (drillData?._sourceMeta?.sourceMode !== "ai") return;
+        if (drillData?._rebuildMeta?.variant === "passage") return;
         const candidateId = drillData?._rebuildMeta?.candidateId ?? drillData?._sourceMeta?.candidateId;
         if (!candidateId || !drillData?._rebuildMeta) return;
         const topic = drillData._topicMeta?.topic ?? context.articleTitle ?? context.topic ?? "随机场景";
@@ -1961,13 +2296,19 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     // Computed Elo based on Mode
     const isShadowingMode = isListeningMode;
     const currentElo = isRebuildMode
-        ? rebuildHiddenElo
+        ? (isRebuildPassage ? rebuildBattleElo : rebuildHiddenElo)
         : isDictationMode
             ? dictationElo
             : isListeningMode
                 ? listeningElo
                 : eloRating;
-    const currentStreak = isRebuildMode ? 0 : isDictationMode ? dictationStreak : isListeningMode ? listeningStreak : streakCount;
+    const currentStreak = isRebuildMode
+        ? (isRebuildPassage ? rebuildBattleStreak : 0)
+        : isDictationMode
+            ? dictationStreak
+            : isListeningMode
+                ? listeningStreak
+                : streakCount;
     const activeDrillSourceMode: "ai" | "bank" = isListeningMode ? listeningSourceMode : "ai";
     const currentListeningBankId = isListeningMode && drillData?._sourceMeta?.sourceMode === "bank"
         ? drillData._sourceMeta.bankItemId
@@ -2346,6 +2687,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 setListeningStreak(profile.listening_streak ?? 0);
                 setDictationElo(profile.dictation_elo ?? profile.listening_elo ?? DEFAULT_BASE_ELO);
                 setDictationStreak(profile.dictation_streak ?? 0);
+                setRebuildBattleElo(profile.rebuild_elo ?? profile.rebuild_hidden_elo ?? profile.listening_elo ?? DEFAULT_BASE_ELO);
+                setRebuildBattleStreak(profile.rebuild_streak ?? 0);
                 eloRatingRef.current = profile.elo_rating;
                 listeningEloRef.current = profile.listening_elo ?? DEFAULT_BASE_ELO;
                 dictationEloRef.current = profile.dictation_elo ?? profile.listening_elo ?? DEFAULT_BASE_ELO;
@@ -2387,6 +2730,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 setListeningStreak(0);
                 setDictationElo(DEFAULT_BASE_ELO);
                 setDictationStreak(0);
+                setRebuildBattleElo(DEFAULT_BASE_ELO);
+                setRebuildBattleStreak(0);
                 eloRatingRef.current = DEFAULT_BASE_ELO;
                 listeningEloRef.current = DEFAULT_BASE_ELO;
                 dictationEloRef.current = DEFAULT_BASE_ELO;
@@ -2539,10 +2884,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setIsAudioLoading(false);
         setCurrentAudioTime(0);
         setAudioDuration(0);
+        setAudioSourceText(null);
     }, []);
 
-    const playAudio = useCallback(async () => {
-        if (!drillData?.reference_english) return false;
+    const playAudio = useCallback(async (explicitText?: string) => {
+        const resolvedText = explicitText ?? drillData?.reference_english;
+        if (!resolvedText) return false;
 
         // Debounce (Prevent Double Click)
         const now = Date.now();
@@ -2557,7 +2904,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             return false;
         }
 
-        const textKey = "SENTENCE_" + drillData.reference_english;
+        const textKey = "SENTENCE_" + resolvedText;
         // setIsPlaying(true); 
         setWordPopup(null);
 
@@ -2568,11 +2915,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 setIsAudioLoading(true);
                 setIsPlaying(false);
 
-                cached = await ensureAudioCached(drillData.reference_english);
+                cached = await ensureAudioCached(resolvedText);
                 setIsAudioLoading(false);
             }
 
             resetAudioPlayback();
+            setAudioSourceText(resolvedText);
 
             // Create fresh URL from cached blob (always use blob now)
             const audioUrl = cached.blob
@@ -2643,7 +2991,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             }
 
             await audio.play();
-            if (isRebuildMode && !rebuildFeedback) {
+            if (isRebuildMode && (isRebuildPassage ? !activePassageResult : !rebuildFeedback)) {
                 setRebuildReplayCount((prev) => prev + 1);
             }
             setIsPlaying(!audio.paused);
@@ -2658,7 +3006,18 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             resetAudioPlayback();
             return false;
         }
-    }, [bossState.active, bossState.type, drillData?.reference_english, ensureAudioCached, isRebuildMode, playbackSpeed, rebuildFeedback, resetAudioPlayback]);
+    }, [
+        activePassageResult,
+        bossState.active,
+        bossState.type,
+        drillData?.reference_english,
+        ensureAudioCached,
+        isRebuildMode,
+        isRebuildPassage,
+        playbackSpeed,
+        rebuildFeedback,
+        resetAudioPlayback,
+    ]);
 
     useEffect(() => {
         resetAudioPlayback();
@@ -2678,50 +3037,54 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         }
     }, [drillData, context, setContext]);
 
+    const launchRebuildSuccessCelebration = useCallback(() => {
+        playRebuildSfx("success");
+        if (prefersReducedMotion) return;
+
+        confetti({
+            particleCount: 180,
+            spread: 84,
+            startVelocity: 34,
+            scalar: 0.98,
+            origin: { y: 0.68, x: 0.5 },
+            colors: ["#34d399", "#2dd4bf", "#fbbf24", "#ffffff"],
+        });
+        window.setTimeout(() => {
+            confetti({
+                particleCount: 120,
+                spread: 70,
+                startVelocity: 30,
+                scalar: 0.9,
+                origin: { y: 0.62, x: 0.18 },
+                angle: 58,
+                colors: ["#34d399", "#a7f3d0", "#fbbf24", "#ffffff"],
+            });
+        }, 120);
+        window.setTimeout(() => {
+            confetti({
+                particleCount: 120,
+                spread: 70,
+                startVelocity: 30,
+                scalar: 0.9,
+                origin: { y: 0.62, x: 0.82 },
+                angle: 122,
+                colors: ["#2dd4bf", "#99f6e4", "#fde68a", "#ffffff"],
+            });
+        }, 220);
+    }, [playRebuildSfx, prefersReducedMotion]);
+
     useEffect(() => {
         if (!rebuildFeedback?.resolvedAt) return;
         if (lastRebuildResolvedAtRef.current === rebuildFeedback.resolvedAt) return;
         lastRebuildResolvedAtRef.current = rebuildFeedback.resolvedAt;
 
         if (rebuildFeedback.evaluation.isCorrect && !rebuildFeedback.skipped) {
-            playRebuildSfx("success");
-            if (!prefersReducedMotion) {
-                confetti({
-                    particleCount: 180,
-                    spread: 84,
-                    startVelocity: 34,
-                    scalar: 0.98,
-                    origin: { y: 0.68, x: 0.5 },
-                    colors: ["#34d399", "#2dd4bf", "#fbbf24", "#ffffff"],
-                });
-                window.setTimeout(() => {
-                    confetti({
-                        particleCount: 120,
-                        spread: 70,
-                        startVelocity: 30,
-                        scalar: 0.9,
-                        origin: { y: 0.62, x: 0.18 },
-                        angle: 58,
-                        colors: ["#34d399", "#a7f3d0", "#fbbf24", "#ffffff"],
-                    });
-                }, 120);
-                window.setTimeout(() => {
-                    confetti({
-                        particleCount: 120,
-                        spread: 70,
-                        startVelocity: 30,
-                        scalar: 0.9,
-                        origin: { y: 0.62, x: 0.82 },
-                        angle: 122,
-                        colors: ["#2dd4bf", "#99f6e4", "#fde68a", "#ffffff"],
-                    });
-                }, 220);
-            }
+            launchRebuildSuccessCelebration();
             return;
         }
 
         playRebuildSfx("error");
-    }, [prefersReducedMotion, rebuildFeedback]);
+    }, [launchRebuildSuccessCelebration, rebuildFeedback, playRebuildSfx]);
 
 
     // --- Spacebar Logic ---
@@ -3019,10 +3382,23 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     };
 
     const consumeNextDrill = useCallback((nextDrill: PrefetchedDrillData) => {
-        setDrillData(nextDrill);
+        const hydratedDrill = nextDrill._rebuildMeta?.variant === "passage"
+            ? {
+                ...hydratePassageSegmentDrill(nextDrill, nextDrill._rebuildMeta.passageSession?.currentIndex ?? 0),
+                mode: nextDrill.mode,
+                sourceMode: nextDrill.sourceMode,
+            }
+            : nextDrill;
+        setDrillData(hydratedDrill);
         setPrefetchedDrillData(null);
         clearRebuildChoicePrefetch();
         setPendingRebuildAdvanceElo(null);
+        setActivePassageSegmentIndex(0);
+        setRebuildPassageDrafts([]);
+        setRebuildPassageResults([]);
+        setRebuildPassageUiState([]);
+        setRebuildPassageScores([]);
+        setRebuildPassageSummary(null);
         resetGuidedLearningState(false);
 
         setIsGeneratingDrill(false);
@@ -3085,7 +3461,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 .catch(console.error)
                 .finally(() => setIsLoadingTeaching(false));
         }
-    }, [clearRebuildChoicePrefetch, currentElo, isDictationMode, mode, resetGuidedLearningState, resetResult, teachingMode]);
+    }, [clearRebuildChoicePrefetch, currentElo, hydratePassageSegmentDrill, isDictationMode, mode, resetGuidedLearningState, resetResult, teachingMode]);
 
     const prefetchNextDrill = (nextElo: number) => {
         console.log("[Prefetch] Starting background prefetch for next drill...");
@@ -3117,6 +3493,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 mode: generationMode,
                 sourceMode: activeDrillSourceMode,
                 excludeBankIds: activeDrillSourceMode === "bank" ? listeningBankExcludeIds : undefined,
+                rebuildVariant: isRebuildMode ? rebuildVariant : undefined,
+                segmentCount: isRebuildPassage ? rebuildSegmentCount : undefined,
                 bossType: nextBossType,
                 _t: Date.now()
             }),
@@ -3173,7 +3551,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         resetGuidedLearningState(false);
         setDrillFeedback(null);
         setRebuildFeedback(null);
+        setActivePassageSegmentIndex(0);
+        setRebuildPassageDrafts([]);
+        setRebuildPassageResults([]);
+        setRebuildPassageUiState([]);
         setRebuildTypingBuffer("");
+        setRebuildPassageScores([]);
+        setRebuildPassageSummary(null);
         setUserTranslation("");
         setFullReferenceHint((prev) => ({ version: prev.version + 1, text: "" }));
         setTutorAnswer(null);
@@ -3316,6 +3700,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     mode: generationMode,
                     sourceMode: activeDrillSourceMode,
                     excludeBankIds: activeDrillSourceMode === "bank" ? listeningBankExcludeIds : undefined,
+                    rebuildVariant: isRebuildMode ? rebuildVariant : undefined,
+                    segmentCount: isRebuildPassage ? rebuildSegmentCount : undefined,
                     bossType: nextBossType, // Inject Boss Context for Custom Scenarios
                     _t: Date.now() // Cache buster to prevent repeated drills
                 }),
@@ -3334,7 +3720,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 throw new Error(data?.error || "Failed to generate drill");
             }
 
-            setDrillData(data);
+            setDrillData(
+                data?._rebuildMeta?.variant === "passage"
+                    ? hydratePassageSegmentDrill(data, data._rebuildMeta?.passageSession?.currentIndex ?? 0)
+                    : data,
+            );
 
             // Fetch teaching content if teaching mode is ON and in translation mode
             if (teachingMode && mode === 'translation' && data.chinese && data.reference_english) {
@@ -4720,8 +5110,59 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         pushEconomyFx,
     ]);
 
+    const togglePassageChinese = useCallback((segmentIndex: number) => {
+        setRebuildPassageUiState((currentState) => {
+            const nextState = [...currentState];
+            const existing = nextState[segmentIndex] ?? { chineseExpanded: false };
+            nextState[segmentIndex] = {
+                ...existing,
+                chineseExpanded: !existing.chineseExpanded,
+            };
+            return nextState;
+        });
+    }, []);
+
+    const activatePassageSegment = useCallback((segmentIndex: number) => {
+        if (!isRebuildPassage || !passageSession) return;
+        const targetSegment = passageSession.segments[segmentIndex];
+        if (!targetSegment) return;
+
+        const nextDrafts = [...rebuildPassageDrafts];
+        const currentDraft = nextDrafts[activePassageSegmentIndex];
+        if (currentDraft) {
+            nextDrafts[activePassageSegmentIndex] = buildActivePassageDraftSnapshot(currentDraft);
+        }
+
+        const targetResult = rebuildPassageResults.find((item) => item.segmentIndex === segmentIndex) ?? null;
+        const nextTargetDraftBase = nextDrafts[segmentIndex] ?? createRebuildPassageDraftState(targetSegment, segmentIndex);
+        const nextTargetDraft = (nextTargetDraftBase.startedAt === null && !targetResult)
+            ? { ...nextTargetDraftBase, startedAt: Date.now() }
+            : nextTargetDraftBase;
+        nextDrafts[segmentIndex] = nextTargetDraft;
+
+        setRebuildPassageDrafts(nextDrafts);
+        setActivePassageSegmentIndex(segmentIndex);
+        applyPassageDraftToActiveState(nextTargetDraft);
+        setDrillData((current) => current ? hydratePassageSegmentDrill(current, segmentIndex) : current);
+        setRebuildFeedback(null);
+        setAnalysisRequested(false);
+        setAnalysisDetailsOpen(false);
+        setWordPopup(null);
+    }, [
+        activePassageSegmentIndex,
+        applyPassageDraftToActiveState,
+        buildActivePassageDraftSnapshot,
+        hydratePassageSegmentDrill,
+        isRebuildPassage,
+        passageSession,
+        rebuildPassageDrafts,
+        rebuildPassageResults,
+    ]);
+
     const handleRebuildSelectToken = useCallback((tokenId: string) => {
-        if (!isRebuildMode || rebuildFeedback) return;
+        if (!isRebuildMode) return;
+        if (isRebuildPassage && activePassageResult) return;
+        if (!isRebuildPassage && rebuildFeedback) return;
         setRebuildAvailableTokens((currentTokens) => {
             const token = currentTokens.find((item) => item.id === tokenId);
             if (!token) return currentTokens;
@@ -4733,10 +5174,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             ));
             return currentTokens.filter((item) => item.id !== tokenId);
         });
-    }, [isRebuildMode, rebuildFeedback]);
+    }, [activePassageResult, isRebuildMode, isRebuildPassage, rebuildFeedback]);
 
     const handleRebuildRemoveToken = useCallback((tokenId: string) => {
-        if (!isRebuildMode || rebuildFeedback) return;
+        if (!isRebuildMode) return;
+        if (isRebuildPassage && activePassageResult) return;
+        if (!isRebuildPassage && rebuildFeedback) return;
         setRebuildAnswerTokens((currentTokens) => {
             const token = currentTokens.find((item) => item.id === tokenId);
             if (!token) return currentTokens;
@@ -4751,10 +5194,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             ));
             return currentTokens.filter((item) => item.id !== tokenId);
         });
-    }, [isRebuildMode, rebuildFeedback]);
+    }, [activePassageResult, isRebuildMode, isRebuildPassage, rebuildFeedback]);
 
     const handleSubmitRebuild = useCallback((skipped = false) => {
-        if (!isRebuildMode || !drillData?._rebuildMeta || rebuildFeedback) return false;
+        if (!isRebuildMode || !drillData?._rebuildMeta) return false;
+        if (isRebuildPassage && activePassageResult) return false;
+        if (!isRebuildPassage && rebuildFeedback) return false;
         if (!skipped && rebuildAnswerTokens.length === 0) return false;
 
         playRebuildSfx("submit");
@@ -4765,7 +5210,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             selectedTokens,
         });
         const exceededSoftLimit = rebuildStartedAt !== null
-            ? (Date.now() - rebuildStartedAt) > getRebuildSoftTimeLimitMs(drillData._rebuildMeta.answerTokens.length, rebuildHiddenElo)
+            ? (Date.now() - rebuildStartedAt) > getRebuildSoftTimeLimitMs(drillData._rebuildMeta.answerTokens.length, currentElo)
             : false;
         const systemDelta = getRebuildSystemDelta({
             accuracyRatio: evaluation.accuracyRatio,
@@ -4780,32 +5225,81 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             skipped,
         });
         const systemAssessment = getRebuildSystemAssessment(systemDelta);
-
-        setRebuildFeedback({
+        const nextFeedback: RebuildFeedbackState = {
             evaluation,
             systemDelta,
             systemAssessment,
             systemAssessmentLabel: getRebuildSystemAssessmentLabel(systemAssessment),
             selfEvaluation: null,
-            effectiveElo: rebuildHiddenElo,
+            effectiveElo: currentElo,
             replayCount: rebuildReplayCount,
             editCount: rebuildEditCount,
             skipped,
             exceededSoftLimit,
             resolvedAt: Date.now(),
-        });
+        };
+
+        if (isRebuildPassage) {
+            const objectiveScore100 = calculateRebuildPassageObjectiveScore({
+                accuracyRatio: evaluation.accuracyRatio,
+                completionRatio: evaluation.completionRatio,
+                misplacementRatio: evaluation.misplacementRatio,
+                distractorPickRatio: evaluation.distractorPickRatio,
+                contentWordHitRate: evaluation.contentWordHitRate,
+                tailCoverage: evaluation.tailCoverage,
+                replayCount: rebuildReplayCount,
+                tokenEditCount: rebuildEditCount,
+                exceededSoftLimit,
+                skipped,
+            });
+            const nextResults = rebuildPassageResults
+                .filter((item) => item.segmentIndex !== activePassageSegmentIndex);
+            nextResults.push({
+                segmentIndex: activePassageSegmentIndex,
+                feedback: nextFeedback,
+                objectiveScore100,
+                selfScore100: null,
+                finalScore100: null,
+                selfEvaluation: null,
+            });
+            nextResults.sort((left, right) => left.segmentIndex - right.segmentIndex);
+            setRebuildPassageResults(nextResults);
+            setRebuildPassageUiState((currentState) => {
+                const nextState = [...currentState];
+                const existing = nextState[activePassageSegmentIndex] ?? { chineseExpanded: false };
+                nextState[activePassageSegmentIndex] = {
+                    ...existing,
+                    chineseExpanded: false,
+                };
+                return nextState;
+            });
+
+            if (evaluation.isCorrect && !skipped) {
+                launchRebuildSuccessCelebration();
+            } else {
+                playRebuildSfx("error");
+            }
+        } else {
+            setRebuildFeedback(nextFeedback);
+        }
         setAnalysisRequested(false);
         setAnalysisDetailsOpen(false);
         return true;
     }, [
+        activePassageResult,
+        activePassageSegmentIndex,
         drillData?._rebuildMeta,
         isRebuildMode,
+        isRebuildPassage,
         rebuildAnswerTokens,
         rebuildFeedback,
-        rebuildHiddenElo,
+        rebuildPassageResults,
+        currentElo,
         rebuildEditCount,
         rebuildReplayCount,
         rebuildStartedAt,
+        launchRebuildSuccessCelebration,
+        playRebuildSfx,
     ]);
 
     const handleSkipRebuild = useCallback(() => {
@@ -4815,10 +5309,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const rebuildTypingBufferRef = useRef("");
 
     useEffect(() => {
-        if (!isRebuildMode || rebuildFeedback || !drillData?._rebuildMeta) return;
+        rebuildTypingBufferRef.current = rebuildTypingBuffer;
+    }, [rebuildTypingBuffer]);
 
-        // Strip ALL non-alphanumeric chars (including apostrophes, periods, commas) for fuzzy matching
-        const cleanForMatch = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '');
+    useEffect(() => {
+        if (!isRebuildMode || !drillData?._rebuildMeta) return;
+        if (isRebuildPassage && activePassageResult) return;
+        if (!isRebuildPassage && rebuildFeedback) return;
+
+        const expectedNextAnswerToken = drillData._rebuildMeta.answerTokens[rebuildAnswerTokens.length] ?? null;
 
         // Levenshtein distance for autocorrect mode
         const levenshtein = (a: string, b: string): number => {
@@ -4844,20 +5343,29 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         };
 
         const fuzzyMatch = (input: string, tokens: typeof rebuildAvailableTokens) => {
-            const inputClean = cleanForMatch(input);
+            const inputClean = normalizeRebuildTokenForMatch(input);
             if (inputClean.length < 2) return null;
-            let bestIdx = -1;
+            const fuzzyCandidates: Array<{ token: RebuildTokenInstance; distance: number }> = [];
             let bestDist = Infinity;
-            for (let i = 0; i < tokens.length; i++) {
-                const tokenClean = cleanForMatch(tokens[i].text);
+            for (const token of tokens) {
+                const tokenClean = normalizeRebuildTokenForMatch(token.text);
                 const dist = levenshtein(inputClean, tokenClean);
                 const threshold = Math.max(1, Math.floor(tokenClean.length / 4));
                 if (dist <= threshold && dist < bestDist) {
                     bestDist = dist;
-                    bestIdx = i;
                 }
+                if (dist <= threshold) fuzzyCandidates.push({ token, distance: dist });
             }
-            return bestIdx >= 0 ? tokens[bestIdx] : null;
+            if (!Number.isFinite(bestDist)) return null;
+
+            const bestCandidates = fuzzyCandidates
+                .filter((candidate) => candidate.distance === bestDist)
+                .map((candidate) => candidate.token);
+            return pickPreferredRebuildTokenCandidate({
+                candidates: bestCandidates,
+                typedRaw: input,
+                expectedRaw: expectedNextAnswerToken,
+            });
         };
 
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -4887,11 +5395,18 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 e.preventDefault();
                 const buf = rebuildTypingBufferRef.current;
                 if (buf.length > 0) {
-                    const currentClean = cleanForMatch(buf);
+                    const currentClean = normalizeRebuildTokenForMatch(buf);
                     // 1. Try exact match first
-                    const exactMatchIndex = rebuildAvailableTokens.findIndex(t => cleanForMatch(t.text) === currentClean);
-                    if (exactMatchIndex !== -1) {
-                        handleRebuildSelectToken(rebuildAvailableTokens[exactMatchIndex].id);
+                    const exactMatches = rebuildAvailableTokens.filter((token) => (
+                        normalizeRebuildTokenForMatch(token.text) === currentClean
+                    ));
+                    if (exactMatches.length > 0) {
+                        const matchedToken = pickPreferredRebuildTokenCandidate({
+                            candidates: exactMatches,
+                            typedRaw: buf,
+                            expectedRaw: expectedNextAnswerToken,
+                        }) ?? exactMatches[0];
+                        handleRebuildSelectToken(matchedToken.id);
                         rebuildTypingBufferRef.current = "";
                         setRebuildTypingBuffer("");
                     } else if (rebuildAutocorrect) {
@@ -4918,13 +5433,22 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 rebuildTypingBufferRef.current = nextBuf;
                 setRebuildTypingBuffer(nextBuf);
 
-                const nextClean = cleanForMatch(nextBuf);
-                const prefixMatches = rebuildAvailableTokens.filter(t => cleanForMatch(t.text).startsWith(nextClean));
-                const exactMatches = prefixMatches.filter(t => cleanForMatch(t.text) === nextClean);
+                const nextClean = normalizeRebuildTokenForMatch(nextBuf);
+                const prefixMatches = rebuildAvailableTokens.filter((token) => (
+                    normalizeRebuildTokenForMatch(token.text).startsWith(nextClean)
+                ));
+                const exactMatches = prefixMatches.filter((token) => (
+                    normalizeRebuildTokenForMatch(token.text) === nextClean
+                ));
 
                 if (exactMatches.length > 0 && prefixMatches.length === exactMatches.length) {
                     setTimeout(() => {
-                        handleRebuildSelectToken(exactMatches[0].id);
+                        const matchedToken = pickPreferredRebuildTokenCandidate({
+                            candidates: exactMatches,
+                            typedRaw: nextBuf,
+                            expectedRaw: expectedNextAnswerToken,
+                        }) ?? exactMatches[0];
+                        handleRebuildSelectToken(matchedToken.id);
                         rebuildTypingBufferRef.current = "";
                         setRebuildTypingBuffer("");
                     }, 0);
@@ -4944,68 +5468,151 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [isRebuildMode, rebuildFeedback, drillData?._rebuildMeta, rebuildAnswerTokens, rebuildAvailableTokens, handleRebuildRemoveToken, handleRebuildSelectToken, handleSubmitRebuild, isPlaying, playAudio, rebuildAutocorrect]);
-
-    useEffect(() => {
-        if (!isRebuildMode || !drillData?._rebuildMeta || rebuildFeedback) {
-            if (rebuildAutoSubmitTimeoutRef.current !== null) {
-                window.clearTimeout(rebuildAutoSubmitTimeoutRef.current);
-                rebuildAutoSubmitTimeoutRef.current = null;
-            }
-            return;
-        }
-
-        const answerTokens = drillData._rebuildMeta.answerTokens;
-        if (rebuildAnswerTokens.length !== answerTokens.length) {
-            if (rebuildAutoSubmitTimeoutRef.current !== null) {
-                window.clearTimeout(rebuildAutoSubmitTimeoutRef.current);
-                rebuildAutoSubmitTimeoutRef.current = null;
-            }
-            return;
-        }
-
-        const isExactMatch = rebuildAnswerTokens.every((token, index) => token.text === answerTokens[index]);
-        if (!isExactMatch) {
-            if (rebuildAutoSubmitTimeoutRef.current !== null) {
-                window.clearTimeout(rebuildAutoSubmitTimeoutRef.current);
-                rebuildAutoSubmitTimeoutRef.current = null;
-            }
-            return;
-        }
-
-        rebuildAutoSubmitTimeoutRef.current = window.setTimeout(() => {
-            rebuildAutoSubmitTimeoutRef.current = null;
-            handleSubmitRebuild(false);
-        }, prefersReducedMotion ? 40 : 140);
-
-        return () => {
-            if (rebuildAutoSubmitTimeoutRef.current !== null) {
-                window.clearTimeout(rebuildAutoSubmitTimeoutRef.current);
-                rebuildAutoSubmitTimeoutRef.current = null;
-            }
-        };
     }, [
+        activePassageResult,
         drillData?._rebuildMeta,
+        handleRebuildRemoveToken,
+        handleRebuildSelectToken,
         handleSubmitRebuild,
+        isPlaying,
         isRebuildMode,
-        prefersReducedMotion,
+        isRebuildPassage,
+        playAudio,
         rebuildAnswerTokens,
+        rebuildAutocorrect,
+        rebuildAvailableTokens,
         rebuildFeedback,
     ]);
 
-    const handleRebuildSelfEvaluate = useCallback((evaluation: RebuildSelfEvaluation) => {
-        if (!rebuildFeedback) return;
-        const delta = clampRebuildDifficultyDelta(rebuildFeedback.systemDelta + getRebuildSelfEvaluationDelta(evaluation));
-        const nextElo = Math.max(0, Math.min(3200, rebuildHiddenElo + delta));
-        setRebuildHiddenElo(nextElo);
-        void persistRebuildHiddenElo(nextElo);
-        setRebuildFeedback((currentFeedback) => currentFeedback ? { ...currentFeedback, selfEvaluation: evaluation } : currentFeedback);
-        setPendingRebuildAdvanceElo(nextElo);
-    }, [persistRebuildHiddenElo, rebuildFeedback, rebuildHiddenElo]);
+    const handleRebuildSelfEvaluate = useCallback((evaluation: RebuildSelfEvaluation, targetSegmentIndex?: number) => {
+        if (!isRebuildPassage) {
+            if (!rebuildFeedback) return;
+            const delta = clampRebuildDifficultyDelta(rebuildFeedback.systemDelta + getRebuildSelfEvaluationDelta(evaluation));
+            const nextElo = Math.max(0, Math.min(3200, rebuildHiddenElo + delta));
+            setRebuildHiddenElo(nextElo);
+            void persistRebuildHiddenElo(nextElo);
+            setRebuildFeedback((currentFeedback) => currentFeedback ? { ...currentFeedback, selfEvaluation: evaluation } : currentFeedback);
+            setPendingRebuildAdvanceElo(nextElo);
+            return;
+        }
+
+        const segmentCount = passageSession?.segments.length ?? 0;
+        if (segmentCount === 0 || rebuildPassageResults.length !== segmentCount || rebuildPassageSummary) return;
+
+        const sessionObjectiveScore100 = Math.round(
+            rebuildPassageResults.reduce((total, item) => total + item.objectiveScore100, 0) / segmentCount
+        );
+        const skippedSegments = rebuildPassageResults.filter((item) => item.feedback.skipped).length;
+        const selfScore100 = getRebuildPassageSelfScore(evaluation, {
+            objectiveScore100: sessionObjectiveScore100,
+            skippedSegments,
+            totalSegments: segmentCount,
+        });
+        const nextResults = rebuildPassageResults
+            .map((item) => ({
+                ...item,
+                feedback: { ...item.feedback, selfEvaluation: evaluation },
+                selfEvaluation: evaluation,
+                selfScore100,
+                finalScore100: Math.round((item.objectiveScore100 * 0.5) + (selfScore100 * 0.5)),
+            }))
+            .sort((left, right) => left.segmentIndex - right.segmentIndex);
+        const finalizedScores = nextResults
+            .filter((item) => item.selfScore100 !== null && item.finalScore100 !== null)
+            .map((item) => ({
+                segmentIndex: item.segmentIndex,
+                objectiveScore100: item.objectiveScore100,
+                selfScore100: item.selfScore100 as number,
+                finalScore100: item.finalScore100 as number,
+            }));
+
+        setRebuildPassageResults(nextResults);
+        setRebuildPassageScores(finalizedScores);
+
+        const aggregate = aggregateRebuildPassageScores(finalizedScores.map((item) => ({
+            objectiveScore100: item.objectiveScore100,
+            selfScore100: item.selfScore100,
+        })));
+        const sessionSystemDelta = Math.round(
+            rebuildPassageResults.reduce((total, item) => total + item.feedback.systemDelta, 0) / segmentCount
+        );
+        const eloResult = calculateRebuildBattleElo({
+            playerElo: rebuildBattleElo || DEFAULT_BASE_ELO,
+            sessionSystemDelta,
+            selfEvaluation: evaluation,
+            streak: rebuildBattleStreak,
+        });
+        const change = eloResult.total;
+        const nextElo = Math.max(0, Math.min(3200, (rebuildBattleElo || DEFAULT_BASE_ELO) + change));
+        const nextStreak = change > 0 ? rebuildBattleStreak + 1 : 0;
+        const earnedCoins = aggregate.sessionBattleScore10 < 6
+            ? 2
+            : aggregate.sessionBattleScore10 <= 8
+                ? 5
+                : 10;
+        const finalCoins = applyEconomyPatch({ coinsDelta: earnedCoins }).coins;
+        if (earnedCoins > 0) {
+            pushEconomyFx({ kind: "coin_gain", amount: earnedCoins, message: `+${earnedCoins} 星光币`, source: "reward" });
+        }
+
+        setRebuildBattleElo(nextElo);
+        setRebuildBattleStreak(nextStreak);
+        setEloChange(change);
+        setEloBreakdown(eloResult.breakdown);
+
+        void loadLocalProfile().then(async (profile) => {
+            const nextMaxElo = Math.max(profile?.rebuild_max_elo ?? rebuildBattleElo ?? DEFAULT_BASE_ELO, nextElo);
+            if (profile) {
+                await settleBattle({
+                    mode: "rebuild",
+                    eloAfter: nextElo,
+                    change,
+                    streak: nextStreak,
+                    maxElo: nextMaxElo,
+                    coins: finalCoins,
+                    inventory: inventoryRef.current,
+                    ownedThemes: ownedThemes,
+                    activeTheme: cosmeticTheme,
+                    source: "battle",
+                });
+            }
+            setRebuildPassageSummary({
+                sessionObjectiveScore100: aggregate.sessionObjectiveScore100,
+                sessionSelfScore100: aggregate.sessionSelfScore100,
+                sessionScore100: aggregate.sessionScore100,
+                sessionBattleScore10: aggregate.sessionBattleScore10,
+                segmentCount,
+                eloAfter: nextElo,
+                change,
+                streak: nextStreak,
+                maxElo: nextMaxElo,
+                coinsEarned: earnedCoins,
+                settledAt: Date.now(),
+            });
+        }).catch((error) => {
+            console.error("Failed to settle rebuild passage battle", error);
+        });
+    }, [
+        applyEconomyPatch,
+        cosmeticTheme,
+        drillData,
+        isRebuildPassage,
+        ownedThemes,
+        passageSession?.segments.length,
+        persistRebuildHiddenElo,
+        pushEconomyFx,
+        rebuildPassageResults,
+        rebuildBattleElo,
+        rebuildBattleStreak,
+        rebuildPassageSummary,
+        rebuildFeedback,
+        rebuildHiddenElo,
+        activePassageSegmentIndex,
+    ]);
 
     // 1/2/3 keys for self-evaluation + spacebar audio on Rebuild feedback page
     useEffect(() => {
-        if (!isRebuildMode || !rebuildFeedback) return;
+        if (!isRebuildMode || !rebuildFeedback || isRebuildPassage) return;
 
         const handleFeedbackKey = (e: KeyboardEvent) => {
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -5030,7 +5637,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
         window.addEventListener("keydown", handleFeedbackKey);
         return () => window.removeEventListener("keydown", handleFeedbackKey);
-    }, [isRebuildMode, rebuildFeedback, handleRebuildSelfEvaluate, isPlaying, playAudio]);
+    }, [isRebuildMode, isRebuildPassage, rebuildFeedback, handleRebuildSelfEvaluate, isPlaying, playAudio]);
 
     useEffect(() => {
         if (!isRebuildMode || activeDrillSourceMode !== "bank" || !rebuildFeedback || rebuildFeedback.selfEvaluation || isGeneratingDrill) {
@@ -6086,53 +6693,105 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const renderRebuildQuestion = () => {
         if (!drillData?._rebuildMeta) return null;
 
-        return (
-            <motion.div 
-                className="w-full max-w-4xl"
-                initial={prefersReducedMotion ? false : { opacity: 0, y: 20, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={prefersReducedMotion ? { duration: 0.15 } : { duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            >
-                <div className="rounded-[1.75rem] border border-teal-100/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,253,250,0.85))] p-4 shadow-[0_20px_48px_rgba(20,184,166,0.1),inset_0_1px_0_rgba(255,255,255,1)] backdrop-blur-2xl ring-1 ring-teal-200/20">
-                    <div className="mb-3 flex items-center justify-between gap-3 px-1">
-                        <div className="flex items-center gap-2">
-                            <Sparkles className="h-4 w-4 text-teal-400" />
-                            <div className="text-[12px] font-black uppercase tracking-[0.2em] text-teal-700">
-                                Rebuild
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <button
-                                type="button"
-                                onClick={() => setRebuildAutocorrect(v => !v)}
-                                className={cn(
-                                    "rounded-full px-2.5 py-0.5 text-[10px] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,1)] border backdrop-blur-sm transition-all",
-                                    rebuildAutocorrect
-                                        ? "border-teal-300/80 bg-teal-100/80 text-teal-700"
-                                        : "border-stone-100/50 bg-white/60 text-stone-400 hover:text-stone-600 hover:border-stone-200"
-                                )}
-                            >
-                                🔤 纠正
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setRebuildHideTokens(v => !v)}
-                                className={cn(
-                                    "rounded-full px-2.5 py-0.5 text-[10px] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,1)] border backdrop-blur-sm transition-all",
-                                    rebuildHideTokens
-                                        ? "border-teal-300/80 bg-teal-100/80 text-teal-700"
-                                        : "border-stone-100/50 bg-white/60 text-stone-400 hover:text-stone-600 hover:border-stone-200"
-                                )}
-                            >
-                                👁 隐藏词
-                            </button>
-                            <div className="rounded-full bg-white/60 px-2.5 py-0.5 text-[10px] font-bold text-stone-400 shadow-[inset_0_1px_0_rgba(255,255,255,1)] border border-stone-100/50 backdrop-blur-sm">
-                                选对自动发送
-                            </div>
-                        </div>
-                    </div>
+        const localPassageSession = drillData._rebuildMeta.variant === "passage" ? drillData._rebuildMeta.passageSession : null;
+        const themedNextButtonStyle = {
+            backgroundImage: activeCosmeticUi.nextButtonGradient,
+            boxShadow: activeCosmeticUi.nextButtonShadow,
+        } as const;
 
-                    <div className="relative min-h-[96px] w-full rounded-[1.25rem] border border-dashed border-teal-300/80 bg-teal-50/40 p-4 shadow-[inset_0_4px_16px_rgba(20,184,166,0.03)] transition-colors duration-500 ease-in-out">
+        const renderRebuildComposer = (submitLabel = "发送", compact = false, readOnlyAfterSubmit = false) => {
+            const answerTotal = drillData._rebuildMeta?.answerTokens.length ?? 0;
+            const answerFilled = rebuildAnswerTokens.length;
+            const isReadyToSubmit = answerTotal > 0 && answerFilled === answerTotal;
+            const isCurrentSegmentSolved = Boolean(
+                isRebuildPassage
+                && activePassageResult
+                && activePassageResult.feedback.evaluation.isCorrect
+                && !activePassageResult.feedback.skipped
+            );
+            const activePassageCorrection = isRebuildPassage && activePassageResult
+                ? buildRebuildDisplaySentence({
+                    answerTokens: drillData._rebuildMeta?.answerTokens ?? [],
+                    evaluation: activePassageResult.feedback.evaluation,
+                })
+                : null;
+            const shouldShowPassageCorrection = Boolean(
+                readOnlyAfterSubmit
+                && isRebuildPassage
+                && activePassageResult
+                && !activePassageResult.feedback.evaluation.isCorrect
+            );
+            const activePassageSystemAssessmentClass = activePassageResult
+                ? activePassageResult.feedback.systemAssessment === "too_hard"
+                    ? activeCosmeticUi.audioLockedClass
+                    : activePassageResult.feedback.systemAssessment === "too_easy"
+                        ? activeCosmeticUi.audioUnlockedClass
+                        : activeCosmeticUi.wordBadgeActiveClass
+                : activeCosmeticUi.wordBadgeActiveClass;
+
+            return (
+                <div className={cn(
+                    "border p-4 transition-colors rounded-[1.55rem]",
+                    activeCosmeticUi.ledgerClass
+                )}>
+                <div className="mb-3 flex items-center justify-between gap-3 px-1">
+                    <div className="flex items-center gap-2">
+                        <Sparkles className={cn("h-4 w-4", activeCosmeticTheme.mutedClass)} />
+                        <div className={cn(
+                            "font-source-serif text-[13px] font-semibold tracking-[0.08em]",
+                            activeCosmeticTheme.textClass
+                        )}>
+                            {compact ? "Rebuild Atelier" : "Rebuild Atelier"}
+                        </div>
+                        <span className={cn(
+                            "hidden rounded-full px-2 py-0.5 text-[10px] font-semibold md:inline-flex",
+                            readOnlyAfterSubmit
+                                ? cn("border", activeCosmeticUi.audioUnlockedClass)
+                                : isReadyToSubmit
+                                    ? cn("border", activeCosmeticUi.wordBadgeActiveClass)
+                                    : cn("border", activeCosmeticUi.wordBadgeIdleClass)
+                        )}>
+                            {readOnlyAfterSubmit ? "已提交" : isReadyToSubmit ? "可提交" : "构建中"}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => setRebuildAutocorrect(v => !v)}
+                            className={cn(
+                                "rounded-full px-2.5 py-0.5 text-[10px] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,1)] border backdrop-blur-sm transition-all",
+                                rebuildAutocorrect
+                                    ? activeCosmeticUi.audioUnlockedClass
+                                    : activeCosmeticUi.iconButtonClass
+                            )}
+                        >
+                            <span className="inline-flex items-center gap-1"><Wand2 className="h-3 w-3" />纠正</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setRebuildHideTokens(v => !v)}
+                            className={cn(
+                                "rounded-full px-2.5 py-0.5 text-[10px] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,1)] border backdrop-blur-sm transition-all",
+                                rebuildHideTokens
+                                    ? activeCosmeticUi.audioLockedClass
+                                    : activeCosmeticUi.iconButtonClass
+                            )}
+                        >
+                            <span className="inline-flex items-center gap-1">{rebuildHideTokens ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}隐藏词</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div className={cn(
+                    "rounded-[1.25rem] border p-3 transition-colors duration-500 ease-in-out",
+                    activeCosmeticUi.inputShellClass
+                )}>
+                    <div className={cn(
+                        "relative rounded-[1rem] border px-3 py-3",
+                        compact
+                            ? "min-h-[82px] border-white/60 bg-white/88"
+                            : "min-h-[90px] border-white/60 bg-white/86"
+                    )}>
                         {rebuildAnswerTokens.length > 0 || rebuildTypingBuffer ? (
                             <AnimatePresence mode="sync" initial={false}>
                                 <div className="flex flex-wrap items-center gap-2.5">
@@ -6146,11 +6805,17 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                             transition={{ duration: 0.15, ease: "easeOut" }}
                                             whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
                                             onClick={() => handleRebuildRemoveToken(token.id)}
-                                            className="inline-flex min-h-[38px] items-center gap-1.5 rounded-full border border-teal-200/90 bg-white px-4 py-1.5 text-[14px] font-bold text-teal-800 shadow-[0_6px_16px_rgba(20,184,166,0.12),inset_0_1px_0_rgba(255,255,255,1)] transition-colors hover:border-teal-300"
+                                            className={cn(
+                                                "inline-flex min-h-[38px] items-center gap-1.5 rounded-full px-4 py-1.5 text-[14px] font-semibold transition-all hover:-translate-y-0.5",
+                                                activeCosmeticUi.wordBadgeActiveClass
+                                            )}
                                         >
                                             {token.text}
                                             {(token.repeatTotal ?? 1) > 1 && (
-                                                <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-teal-100/80 px-1 pt-[1px] text-[10px] font-black text-teal-700">
+                                                <span className={cn(
+                                                    "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 pt-[1px] text-[10px] font-black",
+                                                    activeCosmeticTheme.mutedClass
+                                                )}>
                                                     {token.repeatIndex}
                                                 </span>
                                             )}
@@ -6163,61 +6828,181 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                             animate={{ opacity: 1, scale: 1 }}
                                             exit={{ opacity: 0, scale: 0.9 }}
                                             transition={{ duration: 0.12, ease: "easeOut" }}
-                                            className="inline-flex min-h-[38px] items-center gap-1.5 rounded-full border border-teal-300/40 bg-teal-50/50 px-4 py-1.5 text-[14px] font-bold text-teal-700/70"
+                                            className={cn(
+                                                "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border px-4 py-1.5 text-[14px] font-bold",
+                                                activeCosmeticUi.wordBadgeIdleClass
+                                            )}
                                         >
                                             {rebuildTypingBuffer}
-                                            <span className="h-4 w-[2px] animate-pulse rounded-full bg-teal-400/60" />
+                                            <span className="h-4 w-[2px] animate-pulse rounded-full bg-current/70" />
                                         </motion.div>
                                     )}
                                 </div>
                             </AnimatePresence>
                         ) : (
-                            <motion.div 
-                                className="flex h-full min-h-[64px] items-center justify-center text-center text-sm font-semibold text-stone-400"
+                            <motion.div
+                                className={cn(
+                                    "flex h-full min-h-[56px] items-center justify-center text-center text-sm font-semibold",
+                                    activeCosmeticTheme.mutedClass
+                                )}
                                 animate={{ opacity: [0.5, 0.9, 0.5] }}
                                 transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
                             >
                                 {rebuildHideTokens
-                                    ? (rebuildAutocorrect ? "纯打字模式，拼写相近自动纠正" : "纯打字模式，键盘输入匹配词块")
-                                    : (rebuildAutocorrect ? "直接点下面词块，或键盘打字（已开启纠正）" : "直接点下面词块，或键盘直接打字。")}
+                                    ? (rebuildAutocorrect ? "纯打字模式 · 智能纠正已开" : "纯打字模式")
+                                    : (rebuildAutocorrect ? "点击词块或直接输入（支持大小写智能匹配）" : "点击词块开始拼句")}
                             </motion.div>
                         )}
                     </div>
 
                     {!rebuildHideTokens && (
-                    <div className="mt-4 max-h-[160px] overflow-y-auto rounded-[1.25rem] border border-stone-100/60 bg-white/70 p-4 shadow-[inset_0_2px_8px_rgba(0,0,0,0.02)] backdrop-blur-xl">
-                        <AnimatePresence mode="sync" initial={false}>
-                            <div className="flex flex-wrap gap-2.5">
-                                {rebuildAvailableTokens.map((token) => (
-                                    <motion.button
-                                        key={`avail-${token.id}`}
-                                        type="button"
-                                        initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.9 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        exit={{ opacity: 0, scale: 0.9 }}
-                                        transition={{ duration: 0.15, ease: "easeOut" }}
-                                        whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
-                                        onClick={() => handleRebuildSelectToken(token.id)}
-                                        className="inline-flex min-h-[38px] items-center gap-1.5 rounded-full border border-stone-200/90 bg-white px-4 py-1.5 text-[14px] font-bold text-stone-700 shadow-[0_2px_8px_rgba(0,0,0,0.04),inset_0_1px_0_rgba(255,255,255,1)] transition-all hover:border-stone-300 hover:shadow-[0_8px_20px_rgba(0,0,0,0.08)]"
-                                    >
-                                        {token.text}
-                                        {(token.repeatTotal ?? 1) > 1 && (
-                                            <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-stone-100/90 px-1 pt-[1px] text-[10px] font-black text-stone-500">
-                                                {token.repeatIndex}
-                                            </span>
-                                        )}
-                                    </motion.button>
-                                ))}
+                        <div className="mt-3 border-t border-white/60 pt-3">
+                            <div className="mb-2 flex items-center justify-between gap-3">
+                                <p className={cn("text-[11px] font-medium tracking-[0.02em]", activeCosmeticTheme.mutedClass)}>
+                                    快捷键：空格选词 · Backspace 撤回 · Enter 提交
+                                </p>
                             </div>
-                        </AnimatePresence>
-                    </div>
+                            <div className="max-h-[140px] overflow-y-auto pr-1">
+                                <AnimatePresence mode="sync" initial={false}>
+                                    <div className="flex flex-wrap gap-2.5">
+                                        {rebuildAvailableTokens.map((token) => (
+                                            <motion.button
+                                                key={`avail-${token.id}`}
+                                                type="button"
+                                                initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.9 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                exit={{ opacity: 0, scale: 0.9 }}
+                                                transition={{ duration: 0.15, ease: "easeOut" }}
+                                                whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
+                                                onClick={() => handleRebuildSelectToken(token.id)}
+                                                className={cn(
+                                                    "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border px-4 py-1.5 text-[14px] font-semibold transition-all hover:-translate-y-0.5",
+                                                    activeCosmeticUi.keywordChipClass
+                                                )}
+                                            >
+                                                {token.text}
+                                                {(token.repeatTotal ?? 1) > 1 && (
+                                                    <span className={cn(
+                                                        "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 pt-[1px] text-[10px] font-black",
+                                                        activeCosmeticUi.wordBadgeActiveClass
+                                                    )}>
+                                                        {token.repeatIndex}
+                                                    </span>
+                                                )}
+                                            </motion.button>
+                                        ))}
+                                    </div>
+                                </AnimatePresence>
+                            </div>
+                        </div>
                     )}
+                </div>
 
+                {readOnlyAfterSubmit ? (
+                    <div className="mt-5 space-y-3 px-1">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex min-h-6 items-center gap-2">
+                            {isCurrentSegmentSolved ? (
+                                <motion.div
+                                    initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className={cn(
+                                        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold",
+                                        activeCosmeticUi.audioUnlockedClass
+                                    )}
+                                >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    本段答对
+                                </motion.div>
+                            ) : null}
+                            {activePassageResult ? (
+                                <motion.div
+                                    initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className={cn(
+                                        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold",
+                                        activePassageSystemAssessmentClass
+                                    )}
+                                >
+                                    <BrainCircuit className="h-3.5 w-3.5" />
+                                    系统判断：{activePassageResult.feedback.systemAssessmentLabel}
+                                </motion.div>
+                            ) : null}
+                            </div>
+                            {nextPendingSegmentIndex >= 0 ? (
+                                <button
+                                    type="button"
+                                    onClick={() => activatePassageSegment(nextPendingSegmentIndex)}
+                                    className="inline-flex h-11 items-center justify-center rounded-full border border-transparent px-6 text-sm font-black tracking-wide text-white transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.98]"
+                                    style={themedNextButtonStyle}
+                                >
+                                    下一段
+                                </button>
+                            ) : null}
+                        </div>
+
+                        {shouldShowPassageCorrection && activePassageResult && activePassageCorrection ? (
+                            <div className={cn("rounded-[1.15rem] border p-3", activeCosmeticUi.inputShellClass)}>
+                                <div className="mb-2 flex flex-wrap items-center gap-2">
+                                    <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold", activeCosmeticUi.audioLockedClass)}>
+                                        错序 {activePassageResult.feedback.evaluation.misplacedCount}
+                                    </span>
+                                    <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold", activeCosmeticUi.audioLockedClass)}>
+                                        干扰 {activePassageResult.feedback.evaluation.distractorCount}
+                                    </span>
+                                    <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold", activeCosmeticUi.audioLockedClass)}>
+                                        漏词 {activePassageResult.feedback.evaluation.missingCount}
+                                    </span>
+                                </div>
+                                <div className="flex flex-wrap gap-2.5">
+                                    {activePassageCorrection.tokens.map((token, index) => (
+                                        <span
+                                            key={`passage-correction-${index}-${token.text}`}
+                                            className={cn(
+                                                "inline-flex min-h-[34px] items-center gap-1 rounded-full border px-3 py-1.5 text-[13px] font-semibold",
+                                                token.kind === "correct"
+                                                    ? activeCosmeticUi.wordBadgeActiveClass
+                                                    : token.kind === "inserted"
+                                                        ? activeCosmeticUi.hintButtonClass
+                                                        : activeCosmeticUi.audioLockedClass
+                                            )}
+                                        >
+                                            {token.text}
+                                            {token.kind !== "correct" && token.originalText ? (
+                                                <span className={cn("text-[11px] line-through", activeCosmeticTheme.mutedClass)}>
+                                                    {token.originalText}
+                                                </span>
+                                            ) : null}
+                                        </span>
+                                    ))}
+                                </div>
+                                {activePassageCorrection.extraTokens.length > 0 ? (
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <span className={cn("text-[11px] font-semibold", activeCosmeticTheme.mutedClass)}>多余词：</span>
+                                        {activePassageCorrection.extraTokens.map((token, index) => (
+                                            <span
+                                                key={`passage-extra-${index}-${token.text}`}
+                                                className={cn("inline-flex min-h-[30px] items-center rounded-full border px-3 py-1 text-[12px] font-semibold line-through", activeCosmeticUi.audioLockedClass)}
+                                            >
+                                                {token.text}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : null}
+                            </div>
+                        ) : null}
+                    </div>
+                ) : (
                     <div className="mt-5 flex gap-3 px-1">
                         <button
                             type="button"
                             onClick={handleSkipRebuild}
-                            className="group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full border border-rose-200/80 bg-[linear-gradient(180deg,rgba(255,241,242,0.9),rgba(255,228,230,0.8))] px-4 text-[15px] font-bold text-rose-500 shadow-[0_4px_12px_rgba(244,63,94,0.06),inset_0_1px_0_rgba(255,255,255,0.8)] transition-all hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgba(244,63,94,0.12)] active:scale-[0.98]"
+                            className={cn(
+                                "group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full border px-4 text-[15px] font-semibold transition-all active:scale-[0.98]",
+                                compact
+                                    ? activeCosmeticUi.iconButtonClass
+                                    : activeCosmeticUi.hintButtonClass
+                            )}
                         >
                             <SkipForward className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                             跳过
@@ -6230,21 +7015,317 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 "group inline-flex h-12 flex-[1.4] items-center justify-center gap-2 rounded-full px-6 text-[15px] font-black tracking-wide transition-all duration-300",
                                 rebuildAnswerTokens.length === 0
                                     ? "cursor-not-allowed border border-stone-200/80 bg-white/80 text-stone-300 shadow-[inset_0_1px_0_rgba(255,255,255,1)]"
-                                    : "border border-teal-400 bg-[linear-gradient(180deg,rgba(45,212,191,1),rgba(20,184,166,1))] text-white shadow-[0_12px_28px_rgba(20,184,166,0.35),inset_0_1px_0_rgba(255,255,255,0.4)] hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(20,184,166,0.45)] active:scale-[0.98]"
+                                    : compact
+                                        ? activeCosmeticUi.checkButtonClass
+                                        : activeCosmeticUi.checkButtonClass
                             )}
                         >
                             <CheckCircle2 className={cn("h-4 w-4", rebuildAnswerTokens.length > 0 && "transition-transform group-hover:scale-110")} />
-                            发送
+                            {submitLabel}
                         </button>
                     </div>
-                </div>
+                )}
+            </div>
+        );
+        };
+
+        if (!localPassageSession) {
+            return (
+                <motion.div
+                    className="w-full max-w-4xl"
+                    initial={prefersReducedMotion ? false : { opacity: 0, y: 20, filter: "blur(4px)" }}
+                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                    transition={prefersReducedMotion ? { duration: 0.15 } : { duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                >
+                    {renderRebuildComposer()}
+                </motion.div>
+            );
+        }
+
+        const speedOptions = [0.75, 1, 1.25, 1.5] as const;
+        const resultMap = new Map(
+            rebuildPassageResults.map((item) => [item.segmentIndex, item]),
+        );
+        const submittedCount = rebuildPassageResults.length;
+        const sessionObjectivePreview = submittedCount > 0
+            ? Math.round(rebuildPassageResults.reduce((total, item) => total + item.objectiveScore100, 0) / submittedCount)
+            : 0;
+        const totalSegments = localPassageSession.segmentCount;
+        const activeSegment = localPassageSession.segments[activePassageSegmentIndex] ?? localPassageSession.segments[0];
+        const activeSegmentResult = resultMap.get(activePassageSegmentIndex) ?? null;
+        const nextPendingSegmentIndex = localPassageSession.segments
+            .map((_, index) => index)
+            .filter((index) => !resultMap.has(index) && index !== activePassageSegmentIndex)
+            .sort((left, right) => {
+                const leftDistance = left > activePassageSegmentIndex
+                    ? left - activePassageSegmentIndex
+                    : left + totalSegments - activePassageSegmentIndex;
+                const rightDistance = right > activePassageSegmentIndex
+                    ? right - activePassageSegmentIndex
+                    : right + totalSegments - activePassageSegmentIndex;
+                return leftDistance - rightDistance;
+            })[0] ?? -1;
+        const waitingForNextSegment = Boolean(activeSegmentResult && nextPendingSegmentIndex >= 0);
+        const submittedCountForDisplay = waitingForNextSegment ? Math.max(0, submittedCount - 1) : submittedCount;
+        const currentStageNumber = activePassageSegmentIndex + 1;
+        const stageProgressPercent = totalSegments > 0
+            ? Math.round((submittedCountForDisplay / totalSegments) * 100)
+            : 0;
+        const completedSegments = localPassageSession.segments
+            .map((segment, index) => ({
+                segment,
+                index,
+                result: resultMap.get(index) ?? null,
+            }))
+            .filter((item) => Boolean(item.result));
+
+        if (!activeSegment) return null;
+
+        const renderPassageSentence = (segment: PassageSegment, revealed: boolean) => {
+            if (revealed) {
+                return (
+                    <p className={cn(
+                        "mx-auto max-w-[35rem] font-sans text-[1.12rem] font-medium leading-[2rem] tracking-[0.01em] md:max-w-[39rem] md:text-[1.22rem] md:leading-[2.18rem]",
+                        activeCosmeticTheme.textClass
+                    )}>
+                        {segment.referenceEnglish}
+                    </p>
+                );
+            }
+
+            return (
+                <p className={cn(
+                    "mx-auto max-w-[35rem] select-none font-sans text-[1.12rem] font-medium leading-[2rem] tracking-[0.01em] blur-[7px] md:max-w-[39rem] md:text-[1.22rem] md:leading-[2.18rem]",
+                    activeCosmeticTheme.mutedClass
+                )}>
+                    {segment.referenceEnglish}
+                </p>
+            );
+        };
+
+        return (
+            <motion.div
+                className="mx-auto w-full max-w-[820px] space-y-5"
+                initial={prefersReducedMotion ? false : { opacity: 0, y: 20, filter: "blur(4px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={prefersReducedMotion ? { duration: 0.15 } : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+            >
+                {!rebuildPassageSummary && submittedCount < totalSegments ? (
+                    <section className={cn("rounded-[2rem] border p-5 md:px-7 md:py-7", activeCosmeticUi.ledgerClass)}>
+                        <div className="flex flex-col gap-4 border-b border-stone-100/80 px-1 pb-4 md:flex-row md:items-center md:justify-between">
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
+                                <span className={cn("shrink-0 text-[11px] font-semibold tracking-[0.06em]", activeCosmeticTheme.mutedClass)}>
+                                    第 {currentStageNumber} / {totalSegments} 段
+                                </span>
+                                <div
+                                    className="relative h-1.5 min-w-0 flex-1 overflow-hidden rounded-full"
+                                    style={{ backgroundColor: activeCosmeticUi.nextButtonGlow }}
+                                >
+                                    <motion.div
+                                        className="h-full rounded-full"
+                                        style={{ backgroundImage: activeCosmeticUi.nextButtonGradient }}
+                                        initial={false}
+                                        animate={{ width: `${stageProgressPercent}%` }}
+                                        transition={{ duration: prefersReducedMotion ? 0.12 : 0.32, ease: "easeOut" }}
+                                    />
+                                </div>
+                                <span className={cn("shrink-0 text-[11px] font-semibold tracking-[0.06em]", activeCosmeticTheme.mutedClass)}>
+                                    {submittedCountForDisplay} / {totalSegments}
+                                </span>
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => { void playAudio(activeSegment.referenceEnglish); }}
+                                    className={cn(
+                                        "inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border px-3 transition-all",
+                                        audioSourceText === activeSegment.referenceEnglish && (isPlaying || isAudioLoading)
+                                            ? activeCosmeticUi.audioUnlockedClass
+                                            : activeCosmeticUi.iconButtonClass
+                                    )}
+                                    title="播放当前段"
+                                >
+                                    {isAudioLoading && audioSourceText === activeSegment.referenceEnglish ? (
+                                        <RefreshCw className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Volume2 className={cn("h-4 w-4", audioSourceText === activeSegment.referenceEnglish && isPlaying && "animate-pulse")} />
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => togglePassageChinese(activePassageSegmentIndex)}
+                                    className={cn(
+                                        "inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-3 text-xs font-bold transition-all",
+                                        rebuildPassageUiState[activePassageSegmentIndex]?.chineseExpanded
+                                            ? activeCosmeticUi.audioLockedClass
+                                            : activeCosmeticUi.iconButtonClass
+                                    )}
+                                >
+                                    {rebuildPassageUiState[activePassageSegmentIndex]?.chineseExpanded ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                                    中文
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const speedIndex = speedOptions.findIndex((speed) => speed === playbackSpeed);
+                                        const nextSpeed = speedOptions[(speedIndex + 1) % speedOptions.length] ?? 1;
+                                        setPlaybackSpeed(nextSpeed);
+                                        if (audioRef.current) {
+                                            audioRef.current.playbackRate = nextSpeed;
+                                        }
+                                    }}
+                                    className={cn("inline-flex min-h-11 items-center justify-center rounded-full border px-3 text-[11px] font-bold transition hover:-translate-y-0.5", activeCosmeticUi.iconButtonClass)}
+                                >
+                                    {playbackSpeed}x
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className={cn("mt-4 rounded-[1.75rem] border px-5 py-8 text-center md:px-8 md:py-10", activeCosmeticUi.inputShellClass)}>
+                            {renderPassageSentence(activeSegment, Boolean(activeSegmentResult))}
+                            {rebuildPassageUiState[activePassageSegmentIndex]?.chineseExpanded ? (
+                                <p className={cn(
+                                    "mx-auto mt-4 max-w-[42rem] font-sans text-[15px] leading-8 md:text-base",
+                                    activeCosmeticTheme.mutedClass
+                                )}>
+                                    {activeSegment.chinese}
+                                </p>
+                            ) : null}
+                        </div>
+
+                        <div className="mt-5">
+                            {renderRebuildComposer(`提交第 ${activePassageSegmentIndex + 1} 段`, true, Boolean(activeSegmentResult))}
+                        </div>
+                    </section>
+                ) : null}
+
+                {!rebuildPassageSummary && submittedCount === totalSegments ? (
+                    <motion.section
+                        initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: prefersReducedMotion ? 0.16 : 0.28, delay: prefersReducedMotion ? 0 : 0.05 }}
+                        className={cn("rounded-[1.8rem] border p-5", activeCosmeticUi.ledgerClass)}
+                    >
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <p className={cn("text-[11px] font-black uppercase tracking-[0.18em]", activeCosmeticTheme.mutedClass)}>Session Review</p>
+                                <h4 className={cn("mt-2 text-2xl font-bold tracking-tight", activeCosmeticTheme.textClass)}>整篇做一次总自评</h4>
+                                <p className={cn("mt-2 max-w-2xl text-sm leading-7", activeCosmeticTheme.mutedClass)}>
+                                    所有段落都完成了。现在只用对整篇短文给一次整体难度判断。
+                                </p>
+                            </div>
+                            <div className={cn("rounded-full border px-4 py-2 text-sm font-bold", activeCosmeticUi.wordBadgeActiveClass)}>
+                                当前客观总分 {sessionObjectivePreview}
+                            </div>
+                        </div>
+                        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                            {([
+                                {
+                                    value: "easy",
+                                    label: "简单",
+                                    className: activeCosmeticUi.audioUnlockedClass,
+                                },
+                                {
+                                    value: "just_right",
+                                    label: "刚好",
+                                    className: activeCosmeticUi.checkButtonClass,
+                                },
+                                {
+                                    value: "hard",
+                                    label: "难",
+                                    className: activeCosmeticUi.audioLockedClass,
+                                },
+                            ] as const).map((option) => (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => handleRebuildSelfEvaluate(option.value)}
+                                    className={cn(
+                                        "inline-flex min-h-14 items-center justify-center rounded-[1.2rem] border px-4 text-sm font-bold transition hover:-translate-y-0.5",
+                                        option.className
+                                    )}
+                                >
+                                    {option.label}
+                                </button>
+                            ))}
+                        </div>
+                    </motion.section>
+                ) : null}
+
+                {rebuildPassageSummary ? (
+                    <motion.section
+                        initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, delay: prefersReducedMotion ? 0 : 0.08 }}
+                        className={cn("rounded-[1.85rem] border p-5", activeCosmeticUi.ledgerClass)}
+                    >
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <p className={cn("text-[11px] font-black uppercase tracking-[0.18em]", activeCosmeticTheme.mutedClass)}>Passage Summary</p>
+                                <h4 className={cn("mt-2 text-2xl font-bold tracking-tight", activeCosmeticTheme.textClass)}>短文分段综合结算</h4>
+                            </div>
+                            <div className={cn("rounded-full border px-4 py-2 text-sm font-bold", activeCosmeticUi.wordBadgeActiveClass)}>
+                                {rebuildPassageSummary.segmentCount} 段 · Shadowing {rebuildPassageSummary.sessionBattleScore10.toFixed(1)}
+                            </div>
+                        </div>
+                        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            {[
+                                { label: "客观总分", value: `${rebuildPassageSummary.sessionObjectiveScore100}` },
+                                { label: "总自评", value: `${rebuildPassageSummary.sessionSelfScore100}` },
+                                { label: "综合分", value: `${rebuildPassageSummary.sessionScore100}` },
+                                { label: "Elo 变化", value: `${rebuildPassageSummary.change >= 0 ? "+" : ""}${rebuildPassageSummary.change}` },
+                            ].map((metric) => (
+                                <div key={metric.label} className={cn("rounded-[1.25rem] border p-4", activeCosmeticUi.inputShellClass)}>
+                                    <div className={cn("text-[10px] font-bold uppercase tracking-[0.18em]", activeCosmeticTheme.mutedClass)}>{metric.label}</div>
+                                    <div className={cn("mt-2 text-xl font-bold", activeCosmeticTheme.textClass)}>{metric.value}</div>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="mt-5 space-y-3">
+                            {completedSegments.map(({ segment, index, result }) => (
+                                <div key={`summary-segment-${segment.id}`} className={cn("rounded-[1.35rem] border px-4 py-4", activeCosmeticUi.inputShellClass)}>
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <span className={cn("rounded-full border px-3 py-1 text-[11px] font-bold", activeCosmeticUi.iconButtonClass)}>
+                                                第 {index + 1} 段
+                                            </span>
+                                            <span className={cn("rounded-full border px-3 py-1 text-[11px] font-bold", activeCosmeticUi.wordBadgeActiveClass)}>
+                                                Shadowing {result?.objectiveScore100 ?? 0}
+                                            </span>
+                                        </div>
+                                        <span className={cn("rounded-full border px-3 py-1 text-[11px] font-bold", activeCosmeticUi.iconButtonClass)}>
+                                            {result?.feedback.skipped ? "已跳过" : `综合 ${result?.finalScore100 ?? 0}`}
+                                        </span>
+                                    </div>
+                                    <p className={cn("mt-3 font-source-serif text-[1.1rem] leading-8 tracking-[-0.01em]", activeCosmeticTheme.textClass)}>
+                                        {segment.referenceEnglish}
+                                    </p>
+                                    <p className={cn("mt-2 text-sm leading-7", activeCosmeticTheme.mutedClass)}>
+                                        {segment.chinese}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                        <p className={cn("mt-5 text-sm leading-7", activeCosmeticTheme.mutedClass)}>
+                            结算后 Elo 为 <span className={cn("font-bold", activeCosmeticTheme.textClass)}>{rebuildPassageSummary.eloAfter}</span>，
+                            本场获得 <span className={cn("font-bold", activeCosmeticTheme.textClass)}>{rebuildPassageSummary.coinsEarned}</span> 星光币。
+                        </p>
+                    </motion.section>
+                ) : null}
             </motion.div>
         );
     };
 
     const renderRebuildFeedback = () => {
-        if (!drillData?._rebuildMeta || !rebuildFeedback) return null;
+        if (!drillData?._rebuildMeta || !rebuildFeedback || isRebuildPassage) return null;
         const practiceTier = getRebuildPracticeTier(rebuildFeedback.effectiveElo);
+        const passageSession = drillData._rebuildMeta.variant === "passage" ? drillData._rebuildMeta.passageSession : null;
+        const isPassageFeedback = Boolean(passageSession);
+        const segmentLabel = passageSession ? `第 ${passageSession.currentIndex + 1} / ${passageSession.segmentCount} 段` : null;
+        const completedSegmentMap = new Map(
+            rebuildPassageScores.map((item) => [item.segmentIndex, item]),
+        );
         const displaySentence = buildRebuildDisplaySentence({
             answerTokens: drillData._rebuildMeta.answerTokens,
             evaluation: rebuildFeedback.evaluation,
@@ -6345,6 +7426,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 <span className="inline-flex items-center rounded-full border border-stone-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-stone-500">
                                     {practiceTier.label}
                                 </span>
+                                {segmentLabel ? (
+                                    <span className="inline-flex items-center rounded-full border border-[#d6c38e] bg-[#fff8e7] px-3 py-1 text-[11px] font-semibold text-[#7a5b16]">
+                                        {segmentLabel}
+                                    </span>
+                                ) : null}
                                 <span className={cn(
                                     "inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-bold tracking-[0.08em] shadow-sm",
                                     rebuildTone === "success"
@@ -6357,18 +7443,89 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 </span>
                             </div>
                             <h3 className="mt-3 text-3xl font-bold text-slate-900">
-                                {isCorrectRebuild ? "这句你拼出来了" : isSkippedRebuild ? "这题先跳过" : "先看标准表达"}
+                                {rebuildPassageSummary
+                                    ? "这篇短文已经结算"
+                                    : isCorrectRebuild
+                                        ? "这句你拼出来了"
+                                        : isSkippedRebuild
+                                            ? "这题先跳过"
+                                            : "先看标准表达"}
                             </h3>
                             <p className="mt-2 max-w-2xl text-base leading-7 text-stone-600">
-                                {isCorrectRebuild
-                                    ? "过一遍标准句，确认表达已经进脑子。"
-                                    : isSkippedRebuild
-                                        ? "偏难，先听一遍标准句，把意思和表达带过去。"
-                                        : "先记标准句，再看这次错位和漏词。"}
+                                {rebuildPassageSummary
+                                    ? "各段自评已经自动合成为总自评，下面可以直接看本场 shadowing 结果和 Elo 结算。"
+                                    : isCorrectRebuild
+                                        ? "过一遍标准句，确认表达已经进脑子。"
+                                        : isSkippedRebuild
+                                            ? "偏难，先听一遍标准句，把意思和表达带过去。"
+                                            : "先记标准句，再看这次错位和漏词。"}
                             </p>
                         </motion.div>
                     </div>
                 </motion.div>
+
+                {passageSession ? (
+                    <motion.div
+                        initial={prefersReducedMotion ? false : { opacity: 0, y: 18 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: prefersReducedMotion ? 0.16 : 0.3, delay: prefersReducedMotion ? 0 : 0.1 }}
+                        className="rounded-[1.85rem] border border-[#e7dcc4] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(252,248,239,0.95))] p-5 shadow-[0_16px_32px_rgba(120,103,72,0.1)]"
+                    >
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-amber-700">Passage Context</p>
+                                <p className="mt-1 text-sm leading-7 text-stone-600">
+                                    全文结构保留在这里。当前段先看反馈，其它段继续按顺序推进。
+                                </p>
+                            </div>
+                            <div className="rounded-full border border-[#d6c38e] bg-[#fff8e7] px-3 py-1 text-xs font-bold text-[#7a5b16]">
+                                第 {passageSession.currentIndex + 1} / {passageSession.segmentCount} 段
+                            </div>
+                        </div>
+                        <div className="mt-4 grid gap-3">
+                            {passageSession.segments.map((segment, index) => {
+                                const score = completedSegmentMap.get(index);
+                                const isCurrentSegment = index === passageSession.currentIndex;
+                                const statusLabel = score
+                                    ? `已完成 · ${score.finalScore100}`
+                                    : isCurrentSegment
+                                        ? "当前反馈"
+                                        : "后续段";
+
+                                return (
+                                    <div
+                                        key={`feedback-${segment.id}`}
+                                        className={cn(
+                                            "rounded-[1.2rem] border px-4 py-3",
+                                            isCurrentSegment
+                                                ? "border-[#d6c38e] bg-white shadow-[0_10px_22px_rgba(120,103,72,0.12)]"
+                                                : score
+                                                    ? "border-emerald-100 bg-white/92"
+                                                    : "border-stone-200/80 bg-white/75"
+                                        )}
+                                    >
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <span className="text-xs font-bold uppercase tracking-[0.18em] text-stone-400">
+                                                第 {index + 1} 段
+                                            </span>
+                                            <span className={cn(
+                                                "rounded-full border px-2.5 py-1 text-[10px] font-bold",
+                                                score
+                                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                                    : isCurrentSegment
+                                                        ? "border-[#d6c38e] bg-[#fff8e7] text-[#7a5b16]"
+                                                        : "border-stone-200 bg-white text-stone-500"
+                                            )}>
+                                                {statusLabel}
+                                            </span>
+                                        </div>
+                                        <p className="mt-3 text-[15px] leading-7 text-stone-700">{segment.chinese}</p>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </motion.div>
+                ) : null}
 
                 <motion.div
                     key={`rebuild-reference-${rebuildFeedback.resolvedAt}`}
@@ -6495,7 +7652,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                         <div>
                             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">难度信号</p>
-                            <p className="mt-2 text-sm leading-7 text-stone-500">底部选一下你的主观感受，系统会结合这些指标调整下一题。</p>
+                            <p className="mt-2 text-sm leading-7 text-stone-500">
+                                {isPassageFeedback
+                                    ? "每段都会先看本段客观指标，再选一次主观感受。最后一段会自动合成为整篇总自评。"
+                                    : "底部选一下你的主观感受，系统会结合这些指标调整下一题。"}
+                            </p>
                         </div>
                     </div>
                     <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -6513,6 +7674,42 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         ))}
                     </div>
                 </motion.div>
+
+                {rebuildPassageSummary ? (
+                    <motion.div
+                        initial={prefersReducedMotion ? false : { opacity: 0, y: 16 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, delay: prefersReducedMotion ? 0 : 0.28 }}
+                        className="rounded-[1.8rem] border border-teal-100 bg-[linear-gradient(180deg,rgba(240,253,250,0.96),rgba(255,255,255,0.94))] p-5 shadow-[0_16px_30px_rgba(20,184,166,0.08)]"
+                    >
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                            <div>
+                                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-teal-600">Passage Summary</p>
+                                <h4 className="mt-2 text-2xl font-bold text-slate-900">短文分段综合结算</h4>
+                            </div>
+                            <div className="rounded-full border border-teal-200 bg-white/80 px-4 py-2 text-sm font-bold text-teal-700">
+                                {rebuildPassageSummary.segmentCount} 段 · Shadowing {rebuildPassageSummary.sessionBattleScore10.toFixed(1)}
+                            </div>
+                        </div>
+                        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                            {[
+                                { label: "客观总分", value: `${rebuildPassageSummary.sessionObjectiveScore100}` },
+                                { label: "总自评", value: `${rebuildPassageSummary.sessionSelfScore100}` },
+                                { label: "综合分", value: `${rebuildPassageSummary.sessionScore100}` },
+                                { label: "Elo 变化", value: `${rebuildPassageSummary.change >= 0 ? "+" : ""}${rebuildPassageSummary.change}` },
+                            ].map((metric) => (
+                                <div key={metric.label} className="rounded-2xl border border-teal-100 bg-white/90 p-4">
+                                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-teal-500">{metric.label}</div>
+                                    <div className="mt-2 text-xl font-bold text-slate-900">{metric.value}</div>
+                                </div>
+                            ))}
+                        </div>
+                        <p className="mt-4 text-sm leading-7 text-stone-600">
+                            结算后 Elo 为 <span className="font-bold text-slate-900">{rebuildPassageSummary.eloAfter}</span>，
+                            本场获得 <span className="font-bold text-slate-900">{rebuildPassageSummary.coinsEarned}</span> 星光币。
+                        </p>
+                    </motion.div>
+                ) : null}
             </div>
         );
     };
@@ -6551,7 +7748,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     }, [mode, isEloLoaded]);
 
     useEffect(() => {
-        if (!isRebuildMode || pendingRebuildAdvanceElo === null || isGeneratingDrill) return;
+        if (!isRebuildMode || isRebuildPassage || pendingRebuildAdvanceElo === null || isGeneratingDrill) return;
         const timeoutId = window.setTimeout(() => {
             const selectedEvaluation = rebuildFeedback?.selfEvaluation;
             const prefetchedChoice = selectedEvaluation
@@ -6566,7 +7763,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         }, 120);
 
         return () => window.clearTimeout(timeoutId);
-    }, [consumeNextDrill, handleGenerateDrill, isGeneratingDrill, isRebuildMode, pendingRebuildAdvanceElo, rebuildFeedback]);
+    }, [consumeNextDrill, handleGenerateDrill, isGeneratingDrill, isRebuildMode, isRebuildPassage, pendingRebuildAdvanceElo, rebuildFeedback]);
 
 
 
@@ -6726,33 +7923,80 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     accentText: "text-amber-700",
                 }
                 : {
-                    mode: "Translate Mode",
-                    icon: Globe,
-                    auraPrimary: "from-amber-200/45 via-orange-200/35 to-transparent",
-                    auraSecondary: "from-rose-200/35 via-orange-100/28 to-transparent",
-                    badgeClass: "border-amber-200/80 bg-amber-50/85 text-amber-700",
-                    progressGradient: "from-amber-400 via-orange-500 to-amber-500",
-                    beamGradient: "from-transparent via-orange-400/85 to-transparent",
+                    mode: "Rebuild Mode",
+                    icon: BookOpen,
+                    auraPrimary: "from-sky-200/45 via-cyan-200/32 to-transparent",
+                    auraSecondary: "from-teal-200/32 via-slate-100/24 to-transparent",
+                    badgeClass: "border-sky-200/80 bg-sky-50/85 text-sky-700",
+                    progressGradient: "from-sky-400 via-cyan-500 to-teal-500",
+                    beamGradient: "from-transparent via-sky-400/85 to-transparent",
                     bounceGradients: [
-                        "linear-gradient(180deg, rgba(255,251,245,0.99) 0%, rgba(255,227,210,0.95) 42%, rgba(255,179,151,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(255,249,243,0.99) 0%, rgba(255,220,196,0.95) 44%, rgba(255,151,138,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(255,252,245,0.99) 0%, rgba(255,233,204,0.95) 46%, rgba(255,188,136,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(255,248,242,0.99) 0%, rgba(255,214,202,0.95) 44%, rgba(251,146,60,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(248,252,255,0.99) 0%, rgba(224,242,254,0.95) 42%, rgba(125,211,252,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(246,251,255,0.99) 0%, rgba(207,250,254,0.95) 44%, rgba(45,212,191,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(248,252,255,0.99) 0%, rgba(224,242,254,0.95) 46%, rgba(56,189,248,0.92) 100%)",
+                        "linear-gradient(180deg, rgba(246,252,252,0.99) 0%, rgba(204,251,241,0.95) 44%, rgba(20,184,166,0.92) 100%)",
                     ],
-                    bounceGlow: "radial-gradient(circle, rgba(255,205,171,0.4) 0%, rgba(255,225,205,0.18) 44%, transparent 76%)",
-                    loaderShell: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,247,241,0.78) 100%)",
-                    loaderBase: "linear-gradient(90deg, rgba(255,220,203,0.22) 0%, rgba(255,196,162,0.5) 50%, rgba(255,210,184,0.24) 100%)",
-                    sparkleClass: "bg-rose-200/90",
-                    attackGradient: "linear-gradient(180deg, rgba(255,255,255,0.97) 0%, rgba(255,220,203,0.94) 38%, rgba(251,146,60,0.92) 100%)",
-                    attackStroke: "rgba(255,214,188,0.95)",
-                    stages: ["语义草拟", "语法校准", "句式润色"],
-                    comfortCopy: "正在为你打磨更自然、地道的表达难度",
-                    accentText: "text-amber-700",
+                    bounceGlow: "radial-gradient(circle, rgba(125,211,252,0.34) 0%, rgba(153,246,228,0.14) 44%, transparent 76%)",
+                    loaderShell: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(240,249,255,0.8) 100%)",
+                    loaderBase: "linear-gradient(90deg, rgba(224,242,254,0.22) 0%, rgba(125,211,252,0.48) 50%, rgba(153,246,228,0.24) 100%)",
+                    sparkleClass: "bg-sky-200/90",
+                    attackGradient: "linear-gradient(180deg, rgba(255,255,255,0.97) 0%, rgba(224,242,254,0.94) 38%, rgba(20,184,166,0.92) 100%)",
+                    attackStroke: "rgba(125,211,252,0.95)",
+                    stages: ["语义构稿", "词块切分", "短文就绪"],
+                    comfortCopy: "正在按你的 Rebuild Elo 生成更自然的短文段落",
+                    accentText: "text-sky-700",
                 };
 
         const ModeIcon = variantUi.icon;
         const stageIndex = Math.min(variantUi.stages.length - 1, Math.floor(loaderTick / 4));
         const pseudoProgress = Math.round(18 + (1 - Math.exp(-loaderTick / 6)) * 74);
+        const isPassageLoading = variant === "rebuild" && isRebuildPassage;
+
+        if (isPassageLoading) {
+            return (
+                <div className="flex h-full items-center justify-center px-4 py-8 md:px-8">
+                    <div className="relative w-full max-w-[720px] overflow-hidden rounded-[2.25rem] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-6 py-8 shadow-[0_28px_80px_rgba(15,23,42,0.08)] backdrop-blur-[18px] md:px-10 md:py-10">
+                        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(125,211,252,0.16),transparent_72%)]" />
+                        <div className="relative text-center">
+                            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-700">Passage Rebuild</p>
+                            <h3 className="mt-4 font-source-serif text-[2rem] leading-tight tracking-[-0.03em] text-stone-900 md:text-[2.35rem]">
+                                {title}
+                            </h3>
+                            <p className="mx-auto mt-3 max-w-[32rem] text-sm leading-7 text-stone-500 md:text-[15px]">
+                                {variantUi.comfortCopy}
+                            </p>
+                        </div>
+
+                        <div className="relative mt-10 rounded-[1.5rem] border border-stone-200/80 bg-white/82 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:px-5">
+                            <div className="flex items-center justify-between gap-3 text-[11px] font-semibold tracking-[0.06em] text-stone-500">
+                                <span>短文分段 · {rebuildSegmentCount} 段</span>
+                                <motion.span
+                                    key={variantUi.stages[stageIndex]}
+                                    initial={prefersReducedMotion ? false : { opacity: 0, y: 3 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.35, ease: "easeOut" }}
+                                    className="text-sky-700"
+                                >
+                                    {variantUi.stages[stageIndex]}
+                                </motion.span>
+                            </div>
+                            <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-stone-100">
+                                <div
+                                    className={cn("absolute left-0 top-0 h-full rounded-full bg-gradient-to-r transition-[width] duration-700 ease-out", variantUi.progressGradient)}
+                                    style={{ width: `${pseudoProgress}%` }}
+                                />
+                                <motion.div
+                                    className={cn("absolute left-0 top-0 h-full w-20 bg-gradient-to-r", variantUi.beamGradient)}
+                                    animate={prefersReducedMotion ? { x: 180 } : { x: [-95, 470] }}
+                                    transition={{ duration: 2.6, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="h-full flex flex-col items-center justify-center relative overflow-hidden px-4">
                 <div className={cn("absolute inset-0", backgroundClass)} />
@@ -6848,7 +8092,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 className={cn(
-                    "fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 transition-colors duration-1000",
+                    "fixed inset-0 z-50 transition-colors duration-1000",
+                    isRebuildPassage
+                        ? "flex items-start justify-center p-0 md:px-6 md:pb-6 md:pt-2"
+                        : "flex items-center justify-center p-4 md:p-8",
                     theme === 'default' ? "bg-black/40 backdrop-blur-sm" : "bg-transparent",
                     shake && "animate-shake"
                 )}
@@ -7015,7 +8262,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     layout
                     ref={battleShellRef}
                     className={cn(
-                        "relative w-full max-w-5xl h-[85vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col transition-all duration-700",
+                        "relative w-full overflow-hidden flex flex-col transition-all duration-700",
+                        isRebuildPassage
+                            ? "h-full md:h-[calc(100vh-3rem)] max-w-none md:max-w-[980px] rounded-none md:rounded-[2.15rem] shadow-[0_28px_80px_rgba(15,23,42,0.12)]"
+                            : "max-w-5xl h-[85vh] rounded-[2.5rem] shadow-2xl",
                         theme === 'fever' ? "bg-[#0a0a12]/95 backdrop-blur-xl border border-orange-500/40 shadow-[0_0_80px_rgba(249,115,22,0.15),0_0_40px_rgba(251,146,60,0.1)] text-white ring-1 ring-orange-500/20" :
                             theme === 'boss' ? currentBoss.style :
                                 theme === 'crimson' ? "bg-[#1a0505]/95 border border-red-500/30 shadow-[0_0_60px_rgba(220,38,38,0.2)] text-red-50" :
@@ -7222,7 +8472,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         )}
                     </AnimatePresence>
                     {/* Header - Compact Info Bar */}
-                    <div className="flex items-center justify-between p-3 md:p-4 border-b border-stone-100/50 shrink-0">
+                    <div
+                        className={cn(
+                            "flex items-center p-3 md:p-4 shrink-0",
+                            isRebuildPassage
+                                ? "justify-between"
+                                : "justify-between border-b border-stone-100/50"
+                        )}
+                    >
                         <div className="flex items-center gap-2 flex-wrap">
                             {/* Unified Info Pill */}
                             {drillData && (
@@ -7593,7 +8850,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                         className={cn(
                                             "absolute inset-0 overflow-y-auto custom-scrollbar flex flex-col transition-[filter,opacity,transform] duration-300",
                                             isRebuildMode
-                                                ? "p-4 md:p-5 pb-5 md:pb-6"
+                                                ? (isRebuildPassage ? "p-4 md:px-8 md:py-8 pb-10 md:pb-12" : "p-4 md:p-5 pb-5 md:pb-6")
                                                 : isDictationMode
                                                     ? "p-4 md:p-5 pb-6 md:pb-8"
                                                     : "p-6 md:p-8 pb-10 md:pb-12",
@@ -7602,15 +8859,18 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                 : ""
                                         )}
                                     >
-                                        <div className={cn("mx-auto w-full", isRebuildMode ? "max-w-4xl space-y-2" : isDictationMode ? "max-w-2xl space-y-3" : "max-w-3xl space-y-4")}>
+                                        <div className={cn("mx-auto w-full", isRebuildMode ? (isRebuildPassage ? "max-w-[820px] space-y-5" : "max-w-4xl space-y-2") : isDictationMode ? "max-w-2xl space-y-3" : "max-w-3xl space-y-4")}>
                                             {/* Source / Listening Area */}
                                             <div className={cn("text-center w-full", isRebuildMode ? "space-y-2" : isDictationMode ? "space-y-4" : "space-y-6")}>
                                                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className={cn("relative flex flex-col items-center w-full", isRebuildMode ? "gap-2" : isDictationMode ? "gap-4" : "gap-6")}>
                                                     {isAudioPracticeMode ? (
-                                                        <div className="w-full flex flex-col items-center justify-center relative">
+                                                        <div
+                                                            className={cn("w-full flex flex-col items-center justify-center relative", isRebuildPassage && "hidden")}
+                                                            aria-hidden={isRebuildPassage}
+                                                        >
                                                             {/* Big Play Button */}
                                                             <button
-                                                                onClick={playAudio}
+                                                                onClick={() => { void playAudio(); }}
                                                                 disabled={isPlaying || isAudioLoading || (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)}
                                                                 className={cn(
                                                                     "group relative flex items-center justify-center transition-all duration-500",
@@ -7811,9 +9071,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                                     )}
                                                                                     style={{ width: `${Math.min(100, fuseTime)}%` }}
                                                                                 />
-                                                                            </div>
-                                                                        </div>
-                                                                    ) : null}
+                                                            </div>
+                                                        </div>
+                                                    ) : null}
                                                                 </div>
                                                             )}
 
@@ -8553,7 +9813,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                                         {isShadowingMode && (
                                                                                             <button onClick={playRecording} className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-rose-200/80 bg-rose-50 px-4 py-2 text-xs font-semibold text-rose-600 transition-all hover:-translate-y-0.5 hover:bg-rose-100" title="Play My Recording"><Mic className="w-3.5 h-3.5" /> Play Mine</button>
                                                                                         )}
-                                                                                        <button onClick={playAudio} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-indigo-200/80 bg-indigo-50 text-indigo-600 transition-all hover:-translate-y-0.5 hover:bg-indigo-100" title="Listen to Correct Version"><Volume2 className="w-4 h-4" /></button>
+                                                                                        <button onClick={() => { void playAudio(); }} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-indigo-200/80 bg-indigo-50 text-indigo-600 transition-all hover:-translate-y-0.5 hover:bg-indigo-100" title="Listen to Correct Version"><Volume2 className="w-4 h-4" /></button>
                                                                                     </div>
                                                                                 </div>
 
@@ -8730,7 +9990,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         ) : null}
 
                         <AnimatePresence>
-                            {isRebuildMode && rebuildFeedback ? (
+                            {isRebuildMode && rebuildFeedback && !isRebuildPassage ? (
                                 <motion.div
                                     key={`rebuild-feedback-modal-${rebuildFeedback.resolvedAt}`}
                                     initial={{ opacity: 0 }}
@@ -8831,7 +10091,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
                     {/* Floating Action Bar - Redesigned */}
                     <AnimatePresence>
-                        {isRebuildMode && rebuildFeedback && !bossState.active && !gambleState.active && (
+                        {isRebuildMode && rebuildFeedback && !isRebuildPassage && !rebuildPassageSummary && !bossState.active && !gambleState.active && (
                             <motion.div
                                 initial={{ y: 40, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
@@ -8861,8 +10121,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                 key={option.value}
                                                 type="button"
                                                 onClick={() => handleRebuildSelfEvaluate(option.value)}
+                                                disabled={Boolean(rebuildFeedback.selfEvaluation)}
                                                 className={cn(
-                                                    "inline-flex h-12 items-center justify-center rounded-full border px-4 text-sm font-bold transition hover:-translate-y-0.5",
+                                                    "inline-flex h-12 items-center justify-center rounded-full border px-4 text-sm font-bold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0",
                                                     option.className
                                                 )}
                                             >
@@ -8870,6 +10131,29 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                             </button>
                                         ))}
                                     </div>
+                                </div>
+                            </motion.div>
+                        )}
+                        {isRebuildMode && Boolean(rebuildPassageSummary) && !bossState.active && !gambleState.active && (
+                            <motion.div
+                                initial={{ y: 40, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: 40, opacity: 0 }}
+                                className="absolute bottom-6 left-1/2 z-[70] w-[calc(100%-2rem)] max-w-[420px] -translate-x-1/2 pointer-events-none md:bottom-8"
+                            >
+                                <div className="pointer-events-auto filter drop-shadow-2xl">
+                                    <button
+                                        onClick={() => void handleGenerateDrill(undefined, undefined, true)}
+                                        className="group relative flex w-full items-center justify-center gap-3 rounded-full px-8 py-3.5 text-sm font-bold tracking-wide text-white transition-all hover:scale-105 active:scale-95 md:text-base"
+                                        style={{
+                                            backgroundImage: activeCosmeticUi.nextButtonGradient,
+                                            boxShadow: activeCosmeticUi.nextButtonShadow,
+                                        }}
+                                    >
+                                        <span className="relative z-10 font-bold">{isRebuildPassage ? "Next Passage" : "Next Question"}</span>
+                                        <ArrowRight className="relative z-10 h-5 w-5 transition-transform group-hover:translate-x-1" />
+                                        <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/35 to-transparent group-hover:animate-[shimmer_1.5s_infinite] z-0" />
+                                    </button>
                                 </div>
                             </motion.div>
                         )}

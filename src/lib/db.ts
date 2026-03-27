@@ -100,7 +100,7 @@ export interface EloHistoryItem {
     id?: number;
     remote_id?: string;
     user_id?: string;
-    mode: 'translation' | 'listening' | 'dictation';
+    mode: 'translation' | 'listening' | 'dictation' | 'rebuild';
     elo: number;
     change: number;
     timestamp: number;
@@ -160,6 +160,9 @@ export interface LocalUserProfile extends SyncTracked {
     listening_streak?: number;
     listening_max_elo?: number;
     rebuild_hidden_elo?: number;
+    rebuild_elo?: number;
+    rebuild_streak?: number;
+    rebuild_max_elo?: number;
     dictation_elo?: number;
     dictation_streak?: number;
     dictation_max_elo?: number;
@@ -808,6 +811,32 @@ export class YasiDB extends Dexie {
                 if (typeof profile.rebuild_hidden_elo !== 'number') {
                     profile.rebuild_hidden_elo = profile.listening_elo ?? profile.elo_rating ?? 400;
                 }
+            });
+        });
+
+        // Version 31: add official rebuild Elo/streak fields alongside hidden practice Elo.
+        this.version(31).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                const rebuildBase = typeof profile.rebuild_hidden_elo === 'number'
+                    ? profile.rebuild_hidden_elo
+                    : (profile.listening_elo ?? profile.elo_rating ?? 400);
+                if (typeof profile.rebuild_hidden_elo !== 'number') profile.rebuild_hidden_elo = rebuildBase;
+                if (typeof profile.rebuild_elo !== 'number') profile.rebuild_elo = rebuildBase;
+                if (typeof profile.rebuild_streak !== 'number') profile.rebuild_streak = 0;
+                if (typeof profile.rebuild_max_elo !== 'number') profile.rebuild_max_elo = profile.rebuild_elo ?? rebuildBase;
             });
         });
     }

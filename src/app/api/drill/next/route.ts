@@ -6,7 +6,7 @@ import {
     type DrillSourceMode,
     selectListeningBankItem,
 } from "@/lib/listening-drill-bank";
-import { generateRebuildAiDrill } from "@/lib/rebuild-ai";
+import { generateRebuildAiDrill, generateRebuildPassageAiDrill } from "@/lib/rebuild-ai";
 
 type DrillRouteBody = {
     articleTitle?: string;
@@ -17,6 +17,8 @@ type DrillRouteBody = {
     bossType?: string;
     sourceMode?: DrillSourceMode;
     excludeBankIds?: string[];
+    rebuildVariant?: "sentence" | "passage";
+    segmentCount?: 2 | 3 | 5;
 };
 
 export async function POST(req: NextRequest) {
@@ -51,11 +53,19 @@ export async function POST(req: NextRequest) {
         const topic = typeof body.articleTitle === "string" && body.articleTitle.trim()
             ? body.articleTitle.trim()
             : "随机场景";
+        const rebuildVariant = body.rebuildVariant === "passage" ? "passage" : "sentence";
+        const segmentCount = body.segmentCount === 2 || body.segmentCount === 5 ? body.segmentCount : 3;
         try {
-            const drill = await generateRebuildAiDrill({
-                topic,
-                effectiveElo: eloRating,
-            });
+            const drill = rebuildVariant === "passage"
+                ? await generateRebuildPassageAiDrill({
+                    topic,
+                    effectiveElo: eloRating,
+                    segmentCount,
+                })
+                : await generateRebuildAiDrill({
+                    topic,
+                    effectiveElo: eloRating,
+                });
             return NextResponse.json(drill);
         } catch (error) {
             console.error("Rebuild AI generation failed:", error);
