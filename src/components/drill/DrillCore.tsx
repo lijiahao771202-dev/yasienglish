@@ -9,6 +9,7 @@ import * as Diff from 'diff';
 import confetti from 'canvas-confetti';
 import { WordPopup, PopupState } from "../reading/WordPopup";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
+import { useIPA } from "@/hooks/useIPA";
 import { db } from "@/lib/db";
 import { getRank } from "@/lib/rankUtils";
 import { DeathFX } from "./DeathFX";
@@ -333,6 +334,37 @@ function getGuidedScriptKey(
         topic: drillData._topicMeta?.topic || contextTopic || "",
         elo,
     });
+}
+
+const IPA_SENTENCE_WORD_REGEX = /[A-Za-z]+(?:'[A-Za-z]+)?/g;
+const IPA_VOWEL_START_REGEX = /^[ˈˌ]?[iɪeɛæɑɒɔoʊuʊʌəɜɝɚaɐ]/i;
+const IPA_CONSONANT_END_REGEX = /[pbtdkgfvðθszʃʒhmnŋlrɹwjʧʤxɾ]$/i;
+
+function normalizeIpaValue(rawIpa: string) {
+    return rawIpa.replace(/^[/[\s]+|[/\]\s]+$/g, "").trim();
+}
+
+function buildConnectedSentenceIpa(
+    sentence: string,
+    getWordIpa: (text: string) => string,
+) {
+    const words = sentence.match(IPA_SENTENCE_WORD_REGEX) ?? [];
+    if (words.length === 0) return "";
+
+    const ipaWords = words.map((word) => {
+        const resolved = normalizeIpaValue(getWordIpa(word));
+        return resolved || word.toLowerCase();
+    });
+
+    let combined = ipaWords[0] ?? "";
+    for (let i = 1; i < ipaWords.length; i += 1) {
+        const prev = ipaWords[i - 1] ?? "";
+        const next = ipaWords[i] ?? "";
+        const useLiaison = IPA_CONSONANT_END_REGEX.test(prev) && IPA_VOWEL_START_REGEX.test(next);
+        combined += useLiaison ? `‿${next}` : ` ${next}`;
+    }
+
+    return combined ? `/${combined}/` : "";
 }
 
 interface DrillFeedback {
@@ -1149,6 +1181,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [isReportingTooHard, setIsReportingTooHard] = useState(false);
     const [drillFeedback, setDrillFeedback] = useState<DrillFeedback | null>(null);
     const [rebuildFeedback, setRebuildFeedback] = useState<RebuildFeedbackState | null>(null);
+    const { isReady: isIpaReady, getIPA } = useIPA(isRebuildMode);
     const [hasRatedDrill, setHasRatedDrill] = useState(false);
     const [analysisRequested, setAnalysisRequested] = useState(false);
     const [isGeneratingAnalysis, setIsGeneratingAnalysis] = useState(false);
@@ -2129,26 +2162,17 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             payload.eloAfter,
         );
 
-        await saveProfilePatch({
-            coins: payload.coins ?? profile.coins ?? DEFAULT_STARTING_COINS,
-            inventory: payload.inventory ?? profile.inventory,
-            owned_themes: payload.ownedThemes ?? profile.owned_themes,
-            active_theme: payload.activeTheme ?? profile.active_theme,
-            dictation_elo: payload.eloAfter,
-            dictation_streak: payload.streak,
-            dictation_max_elo: nextMaxElo,
-            last_practice_at: new Date().toISOString(),
-        });
-
-        await db.elo_history.add({
-            user_id: profile.user_id,
+        await settleBattle({
             mode: "dictation",
-            elo: payload.eloAfter,
+            eloAfter: payload.eloAfter,
             change: payload.change,
-            timestamp: Date.now(),
+            streak: payload.streak,
+            maxElo: nextMaxElo,
+            coins: payload.coins ?? profile.coins ?? DEFAULT_STARTING_COINS,
+            inventory: (payload.inventory ?? profile.inventory) as Record<string, number> | undefined,
+            ownedThemes: payload.ownedThemes ?? profile.owned_themes,
+            activeTheme: payload.activeTheme ?? profile.active_theme,
             source: payload.source || "battle",
-            updated_at: new Date().toISOString(),
-            sync_status: "synced",
         });
 
         return nextMaxElo;
@@ -2225,12 +2249,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 return;
                             }
 
+                            const isActiveRebuildMode = mode === "rebuild";
                             const maxElo = isActiveListeningMode
                                 ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
-                                : Math.max(profile.max_elo, newElo);
+                                : isActiveRebuildMode
+                                    ? Math.max(profile.rebuild_max_elo || profile.rebuild_elo || DEFAULT_BASE_ELO, newElo)
+                                    : Math.max(profile.max_elo, newElo);
 
                             await settleBattle({
-                                mode: isActiveListeningMode ? 'listening' : 'translation',
+                                mode: isActiveListeningMode ? 'listening' : isActiveRebuildMode ? 'rebuild' : 'translation',
                                 eloAfter: newElo,
                                 change: -penalty,
                                 streak: 0,
@@ -2815,7 +2842,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     */
 
     const fetchTtsAudio = useCallback(async (text: string) => {
-        const data = await requestTtsPayload(text, "en-US-JennyNeural", "+0%");
+        const data = await requestTtsPayload(text);
         const blob = await resolveTtsAudioBlob(data.audioDataUrl || data.audio);
 
         if (blob.size < 100) {
@@ -3441,12 +3468,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     return;
                 }
 
+                const isRebuild = mode === "rebuild";
                 const maxElo = isListening
                     ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
-                    : Math.max(profile.max_elo, newElo);
+                    : isRebuild
+                        ? Math.max(profile.rebuild_max_elo || profile.rebuild_elo || DEFAULT_BASE_ELO, newElo)
+                        : Math.max(profile.max_elo, newElo);
 
                 await settleBattle({
-                    mode: isListening ? 'listening' : 'translation',
+                    mode: isListening ? 'listening' : isRebuild ? 'rebuild' : 'translation',
                     eloAfter: newElo,
                     change: -penalty,
                     streak: 0,
@@ -6885,7 +6915,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             ? "mt-3 border-t border-emerald-200/70 pt-3"
             : "mt-3 border-t border-white/60 pt-3";
         const rebuildKeywordChipClass = isVerdantRebuild
-            ? "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border border-emerald-200/85 bg-[#ecf8f0] px-4 py-1.5 text-[14px] font-semibold text-emerald-800 shadow-[0_3px_10px_rgba(2,44,34,0.08)] transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-[#e3f4e9]"
+            ? "inline-flex min-h-[38px] min-w-0 max-w-full items-start gap-1.5 rounded-full border border-emerald-200/85 bg-[#ecf8f0] px-4 py-1.5 text-[14px] font-semibold text-emerald-800 shadow-[0_3px_10px_rgba(2,44,34,0.08)] transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-[#e3f4e9] whitespace-normal break-all"
             : activeCosmeticUi.keywordChipClass;
         const rebuildSummaryMetricCardClass = isVerdantRebuild
             ? "rounded-[1.25rem] border border-emerald-200/75 bg-[#f7fcf8] p-4 shadow-[0_5px_14px_rgba(2,44,34,0.08)]"
@@ -6940,7 +6970,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
             return (
                 <div className={cn(
-                    "border p-4 transition-colors rounded-[1.55rem]",
+                    "min-w-0 border p-4 transition-colors rounded-[1.55rem]",
                     rebuildLedgerClass
                 )}>
                 <div className="mb-3 flex items-center justify-between gap-3 px-1">
@@ -7000,7 +7030,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 </div>
 
                 <div className={cn(
-                    "rounded-[1.25rem] border p-3 transition-colors duration-500 ease-in-out",
+                    "min-w-0 rounded-[1.25rem] border p-3 transition-colors duration-500 ease-in-out",
                     rebuildInputShellClass
                 )}>
                     <div className={cn(
@@ -7056,7 +7086,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             </div>
                         ) : rebuildAnswerTokens.length > 0 || rebuildTypingBuffer ? (
                             <AnimatePresence mode="sync" initial={false}>
-                                <div className="flex flex-wrap items-center gap-2.5">
+                                <div className="w-full min-w-0 flex flex-wrap items-center gap-2.5">
                                     {rebuildAnswerTokens.map((token) => (
                                         <motion.button
                                             key={`ans-${token.id}`}
@@ -7068,11 +7098,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                             whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
                                             onClick={() => handleRebuildRemoveToken(token.id)}
                                             className={cn(
-                                                "inline-flex min-h-[38px] items-center gap-1.5 rounded-full px-4 py-1.5 text-[14px] font-semibold transition-all hover:-translate-y-0.5",
+                                                "inline-flex min-h-[38px] min-w-0 max-w-full items-start gap-1.5 rounded-full px-4 py-1.5 text-left text-[14px] font-semibold whitespace-normal break-all transition-all hover:-translate-y-0.5",
                                                 activeCosmeticUi.wordBadgeActiveClass
                                             )}
                                         >
-                                            {token.text}
+                                            <span className="block min-w-0 max-w-full break-all">{token.text}</span>
                                             {(token.repeatTotal ?? 1) > 1 && (
                                                 <span className={cn(
                                                     "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 pt-[1px] text-[10px] font-black",
@@ -7091,11 +7121,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                             exit={{ opacity: 0, scale: 0.9 }}
                                             transition={{ duration: 0.12, ease: "easeOut" }}
                                             className={cn(
-                                                "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border px-4 py-1.5 text-[14px] font-bold",
+                                                "inline-flex min-h-[38px] min-w-0 max-w-full items-start gap-1.5 rounded-full border px-4 py-1.5 text-left text-[14px] font-bold whitespace-normal break-all",
                                                 activeCosmeticUi.wordBadgeIdleClass
                                             )}
                                         >
-                                            {rebuildTypingBuffer}
+                                            <span className="block min-w-0 max-w-full break-all">{rebuildTypingBuffer}</span>
                                             <span className="h-4 w-[2px] animate-pulse rounded-full bg-current/70" />
                                         </motion.div>
                                     )}
@@ -7124,9 +7154,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     快捷键：空格选词 · Backspace 撤回 · Enter 提交
                                 </p>
                             </div>
-                            <div className="max-h-[140px] overflow-y-auto pr-1">
+                            <div className="w-full min-w-0 max-h-[140px] overflow-x-hidden overflow-y-auto py-1 pr-1">
                                 <AnimatePresence mode="sync" initial={false}>
-                                    <div className="flex flex-wrap gap-2.5">
+                                    <div className="w-full min-w-0 flex flex-wrap gap-2.5">
                                         {rebuildAvailableTokens.map((token) => (
                                             <motion.button
                                                 key={`avail-${token.id}`}
@@ -7138,13 +7168,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                 whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
                                                 onClick={() => handleRebuildSelectToken(token.id)}
                                                 className={cn(
+                                                    "min-w-0 max-w-full text-left whitespace-normal break-all",
                                                     isVerdantRebuild
                                                         ? rebuildKeywordChipClass
                                                         : "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border px-4 py-1.5 text-[14px] font-semibold transition-all hover:-translate-y-0.5",
                                                     !isVerdantRebuild && activeCosmeticUi.keywordChipClass
                                                 )}
                                             >
-                                                {token.text}
+                                                <span className="block min-w-0 max-w-full break-all">{token.text}</span>
                                                 {(token.repeatTotal ?? 1) > 1 && (
                                                     <span className={cn(
                                                         "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 pt-[1px] text-[10px] font-black",
@@ -7266,6 +7297,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         const totalSegments = localPassageSession.segmentCount;
         const activeSegment = localPassageSession.segments[activePassageSegmentIndex] ?? localPassageSession.segments[0];
         const activeSegmentResult = resultMap.get(activePassageSegmentIndex) ?? null;
+        const activeSegmentSentenceIpa = (activeSegmentResult && isIpaReady)
+            ? buildConnectedSentenceIpa(activeSegment.referenceEnglish, getIPA)
+            : "";
         const nextPendingSegmentIndex = localPassageSession.segments
             .map((_, index) => index)
             .filter((index) => !resultMap.has(index) && index !== activePassageSegmentIndex)
@@ -7303,7 +7337,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         "mx-auto max-w-[35rem] font-sans text-[1.12rem] font-medium leading-[2rem] tracking-[0.01em] md:max-w-[39rem] md:text-[1.22rem] md:leading-[2.18rem]",
                         activeCosmeticTheme.textClass
                     )}>
-                        {segment.referenceEnglish}
+                        {renderInteractiveText(segment.referenceEnglish)}
                     </p>
                 );
             }
@@ -7404,6 +7438,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 : activeCosmeticUi.inputShellClass
                         )}>
                             {renderPassageSentence(activeSegment, Boolean(activeSegmentResult))}
+                            {activeSegmentResult ? (
+                                <p className={cn(
+                                    "mx-auto mt-3 max-w-[42rem] font-mono text-[13px] leading-7 md:text-[14px]",
+                                    isVerdantRebuild ? "text-emerald-700/85" : activeCosmeticTheme.mutedClass
+                                )}>
+                                    {activeSegmentSentenceIpa || (isIpaReady ? "暂未命中完整音标词典，可先对照原句和音频。" : "正在加载音标词典...")}
+                                </p>
+                            ) : null}
                             {rebuildPassageUiState[activePassageSegmentIndex]?.chineseExpanded ? (
                                 <p className={cn(
                                     "mx-auto mt-4 max-w-[42rem] font-sans text-[15px] leading-8 md:text-base",
@@ -7557,6 +7599,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 : "partial";
         const isSkippedRebuild = rebuildFeedback.skipped;
         const isCorrectRebuild = rebuildFeedback.evaluation.isCorrect;
+        const sentenceIpa = isIpaReady
+            ? buildConnectedSentenceIpa(drillData.reference_english, getIPA)
+            : "";
         const metrics = [
             { label: "正确率", value: `${Math.round(rebuildFeedback.evaluation.accuracyRatio * 100)}%` },
             { label: "完成度", value: `${Math.round(rebuildFeedback.evaluation.completionRatio * 100)}%` },
@@ -7787,6 +7832,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     <Volume2 className={cn("h-4 w-4", isAudioLoading && "animate-pulse")} />
                                 </button>
                             </div>
+                        </div>
+                        <div className="mt-3 rounded-[1.2rem] border border-sky-100/80 bg-sky-50/55 px-4 py-3">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-700">整句音标（连读近似）</p>
+                            <p className="mt-2 font-mono text-[13px] leading-7 text-sky-900 md:text-[14px]">
+                                {sentenceIpa || (isIpaReady ? "暂未命中完整音标词典，可先对照原句和音频。" : "正在加载音标词典...")}
+                            </p>
                         </div>
                         <div className="mt-4 rounded-[1.35rem] border border-amber-100/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.92),rgba(255,255,255,0.92))] px-4 py-3">
                             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-700">中文意思</p>

@@ -12,7 +12,8 @@ import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 import { db } from "@/lib/db";
 import { useSyncStatusStore } from "@/lib/sync-status";
 import { getUserFacingSyncError, saveProfilePatch, syncNow } from "@/lib/user-repository";
-import { DEFAULT_AVATAR_PRESET, DEFAULT_LEARNING_PREFERENCES, DEFAULT_PROFILE_USERNAME } from "@/lib/user-sync";
+import { DEFAULT_AVATAR_PRESET, DEFAULT_PROFILE_USERNAME } from "@/lib/user-sync";
+import { normalizeLearningPreferences } from "@/lib/profile-settings";
 
 export function ProfilePageClient() {
     const sessionUser = useAuthSessionUser();
@@ -99,7 +100,7 @@ export function ProfilePageClient() {
                             avatar_preset: profile.avatar_preset || DEFAULT_AVATAR_PRESET,
                             bio: profile.bio || "",
                             deepseek_api_key: profile.deepseek_api_key || "",
-                            learning_preferences: profile.learning_preferences || DEFAULT_LEARNING_PREFERENCES,
+                            learning_preferences: normalizeLearningPreferences(profile.learning_preferences),
                         }}
                         onSave={async (payload) => {
                             await saveProfilePatch(payload);

@@ -31,6 +31,8 @@ export interface DefinitionData {
     phonetic?: string;
 }
 
+const POPUP_EDGE_PADDING = 16;
+
 interface WordPopupProps {
     popup: PopupState;
     onClose: () => void;
@@ -88,7 +90,23 @@ export function WordPopup({
     const [saveError, setSaveError] = useState<string | null>(null);
     const [readingError, setReadingError] = useState<string | null>(null);
     const popupRef = useRef<HTMLDivElement>(null);
+    const dragStateRef = useRef<{ startX: number; startY: number; originLeft: number; originTop: number } | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const [position, setPosition] = useState({ left: POPUP_EDGE_PADDING, top: POPUP_EDGE_PADDING });
+    const positionRef = useRef(position);
     const isReadingMode = mode === "reading";
+
+    const clampPopupPosition = useCallback((left: number, top: number) => {
+        if (typeof window === "undefined") return { left, top };
+        const width = popupRef.current?.offsetWidth ?? 336;
+        const height = popupRef.current?.offsetHeight ?? 420;
+        const maxLeft = Math.max(POPUP_EDGE_PADDING, window.innerWidth - width - POPUP_EDGE_PADDING);
+        const maxTop = Math.max(POPUP_EDGE_PADDING, window.innerHeight - height - POPUP_EDGE_PADDING);
+        return {
+            left: Math.min(maxLeft, Math.max(POPUP_EDGE_PADDING, left)),
+            top: Math.min(maxTop, Math.max(POPUP_EDGE_PADDING, top)),
+        };
+    }, []);
     const syncReadingBalance = useCallback(async (
         payload: unknown,
         fallbackAction?: ReadingEconomyAction,
@@ -120,6 +138,53 @@ export function WordPopup({
             dispatchReadingCoinFx({ delta, action: action as ReadingEconomyAction });
         }
     }, [isReadingMode]);
+
+    useEffect(() => {
+        positionRef.current = position;
+    }, [position]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const next = clampPopupPosition(popup.x - 160, popup.y + 8);
+        setPosition(next);
+    }, [popup.x, popup.y, popup.word, clampPopupPosition]);
+
+    useEffect(() => {
+        if (!isDragging) return;
+
+        const handleMouseMove = (event: MouseEvent) => {
+            const dragState = dragStateRef.current;
+            if (!dragState) return;
+            const next = clampPopupPosition(
+                dragState.originLeft + (event.clientX - dragState.startX),
+                dragState.originTop + (event.clientY - dragState.startY),
+            );
+            setPosition(next);
+        };
+
+        const handleMouseUp = () => {
+            dragStateRef.current = null;
+            setIsDragging(false);
+        };
+
+        window.addEventListener("mousemove", handleMouseMove);
+        window.addEventListener("mouseup", handleMouseUp);
+
+        return () => {
+            window.removeEventListener("mousemove", handleMouseMove);
+            window.removeEventListener("mouseup", handleMouseUp);
+        };
+    }, [isDragging, clampPopupPosition]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const handleResize = () => {
+            const current = positionRef.current;
+            setPosition(clampPopupPosition(current.left, current.top));
+        };
+        window.addEventListener("resize", handleResize);
+        return () => window.removeEventListener("resize", handleResize);
+    }, [clampPopupPosition]);
 
     // Initial Load & Dictionary Search
     useEffect(() => {
@@ -284,6 +349,8 @@ export function WordPopup({
     const handleAddToVocab = async () => {
         if (isSaved || isSaving) return;
 
+        // Optimistic UI: mark as saved immediately, persist in background.
+        setIsSaved(true);
         setIsSaving(true);
         setSaveError(null);
 
@@ -356,10 +423,24 @@ export function WordPopup({
             setIsSaved(true);
         } catch (error) {
             console.error("Failed to save vocab:", error);
+            setIsSaved(false);
             setSaveError("保存失败，请重试");
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const handleDragStart = (event: React.MouseEvent<HTMLDivElement>) => {
+        const target = event.target as HTMLElement;
+        if (target.closest("button")) return;
+        event.preventDefault();
+        dragStateRef.current = {
+            startX: event.clientX,
+            startY: event.clientY,
+            originLeft: position.left,
+            originTop: position.top,
+        };
+        setIsDragging(true);
     };
 
     // Use portal to render at document.body level to avoid parent overflow clipping
@@ -374,15 +455,19 @@ export function WordPopup({
             ref={popupRef}
             style={{
                 position: 'fixed',
-                // Center popup on clicked word, clamp to viewport
-                left: Math.max(16, Math.min(popup.x - 160, window.innerWidth - 336)),
-                // Show below the word with some offset (+8px gap)
-                top: Math.min(popup.y + 8, window.innerHeight - 420),
+                left: position.left,
+                top: position.top,
             }}
             className="z-[9999] w-[320px] rounded-2xl backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/40 overflow-hidden bg-white/95 ring-1 ring-black/5 text-left"
         >
             {/* Header: Word & Audio */}
-            <div className="bg-gradient-to-br from-amber-50/80 to-white/50 p-4 border-b border-white/50 relative">
+            <div
+                onMouseDown={handleDragStart}
+                className={cn(
+                    "bg-gradient-to-br from-amber-50/80 to-white/50 p-4 border-b border-white/50 relative select-none",
+                    isDragging ? "cursor-grabbing" : "cursor-grab",
+                )}
+            >
                 <div className="flex justify-between items-start">
                     <div>
                         <h3 className="text-2xl font-serif font-bold text-stone-800 tracking-tight flex items-center gap-2">
@@ -414,16 +499,14 @@ export function WordPopup({
                             onClick={handleAddToVocab}
                             disabled={isSaved || isSaving}
                             className={cn(
-                                "p-2 rounded-full transition-colors shadow-sm disabled:cursor-wait",
+                                "p-2 rounded-full transition-colors shadow-sm disabled:cursor-not-allowed",
                                 isSaved
                                     ? "bg-emerald-100 text-emerald-600"
                                     : "bg-white/80 hover:bg-amber-100 text-stone-500 hover:text-amber-600"
                             )}
                             title={isSaved ? "已加入生词本" : "加入生词本"}
                         >
-                            {isSaving ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : isSaved ? (
+                            {isSaved ? (
                                 <Check className="w-4 h-4" />
                             ) : (
                                 <BookPlus className="w-4 h-4" />

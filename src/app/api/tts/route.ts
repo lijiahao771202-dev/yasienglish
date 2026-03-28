@@ -4,6 +4,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { EdgeTTS } from "@andresaya/edge-tts";
+import { DEFAULT_TTS_VOICE } from "@/lib/profile-settings";
 
 interface TtsMark {
     time: number;
@@ -226,7 +227,7 @@ export async function POST(req: Request) {
     let step = "Init";
 
     try {
-        const { text, voice = "en-US-JennyNeural", rate = "+0%" } = await req.json();
+        const { text, voice = DEFAULT_TTS_VOICE, rate = "+0%" } = await req.json();
 
         if (!text) {
             return NextResponse.json({ error: "Text is required" }, { status: 400 });

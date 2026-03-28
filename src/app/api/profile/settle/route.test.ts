@@ -164,4 +164,65 @@ describe("profile settle route", () => {
             p_source: "battle",
         });
     });
+
+    it("forwards dictation settlements to the same rpc function", async () => {
+        const rpc = vi.fn().mockResolvedValue({
+            data: {
+                user_id: "user-1",
+                translation_elo: 840,
+                listening_elo: 400,
+                rebuild_elo: 760,
+                dictation_elo: 720,
+                streak_count: 3,
+                listening_streak: 0,
+                rebuild_streak: 2,
+                dictation_streak: 4,
+                max_translation_elo: 840,
+                max_listening_elo: 400,
+                rebuild_max_elo: 760,
+                dictation_max_elo: 720,
+                coins: 18,
+                inventory: { capsule: 10 },
+                owned_themes: ["morning_coffee"],
+                active_theme: "morning_coffee",
+                updated_at: "2026-03-13T12:00:00.000Z",
+                last_practice_at: "2026-03-13T12:00:00.000Z",
+            },
+            error: null,
+        });
+
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({
+                    data: { user: { id: "user-1" } },
+                    error: null,
+                }),
+            },
+            rpc,
+        });
+
+        const response = await POST(buildRequest({
+            mode: "dictation",
+            eloAfter: 720,
+            change: 14,
+            streak: 4,
+            maxElo: 720,
+            coins: 30,
+            source: "guided_session",
+        }));
+
+        expect(response.status).toBe(200);
+        expect(rpc).toHaveBeenCalledWith("apply_battle_settlement", {
+            p_mode: "dictation",
+            p_elo_after: 720,
+            p_elo_change: 14,
+            p_streak_count: 4,
+            p_max_elo: 720,
+            p_coins: 30,
+            p_inventory: null,
+            p_owned_themes: null,
+            p_active_theme: null,
+            p_source: "guided_session",
+        });
+    });
 });

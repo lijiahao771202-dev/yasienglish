@@ -12,10 +12,43 @@ interface DictionaryResponsePayload {
     translation: string;
     phonetic: string;
     audio: string;
+    pos_groups?: Array<{ pos: string; meanings: string[] }>;
 }
 
 const DICT_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const dictCache = new Map<string, { data: DictionaryResponsePayload; expiresAt: number }>();
+
+function parsePosGroupsFromDefinitionLines(lines: string[]) {
+    const posOrder = ["n.", "v.", "adj.", "adv.", "prep.", "pron.", "conj.", "aux.", "num.", "int."];
+    const grouped = new Map<string, string[]>();
+    const posPrefixRe = /^(n|v|adj|adv|prep|pron|conj|aux|num|int)\.\s*/i;
+
+    for (const rawLine of lines) {
+        const line = String(rawLine || "").replace(/\s+/g, " ").trim();
+        if (!line) continue;
+        const matchedPos = line.match(/^(n|v|adj|adv|prep|pron|conj|aux|num|int)\./i)?.[1]?.toLowerCase();
+        if (!matchedPos) continue;
+
+        const pos = `${matchedPos}.`;
+        const meanings = line
+            .replace(posPrefixRe, "")
+            .split(/[；;]/)
+            .map((part) => part.trim())
+            .filter(Boolean);
+        if (meanings.length === 0) continue;
+
+        const existing = grouped.get(pos) ?? [];
+        grouped.set(pos, [...existing, ...meanings]);
+    }
+
+    const ordered = posOrder.filter((pos) => grouped.has(pos));
+    const rest = Array.from(grouped.keys()).filter((pos) => !posOrder.includes(pos));
+
+    return [...ordered, ...rest].map((pos) => ({
+        pos,
+        meanings: Array.from(new Set(grouped.get(pos) ?? [])).slice(0, 6),
+    }));
+}
 
 function getCached(word: string): DictionaryResponsePayload | null {
     const key = word.toLowerCase();
@@ -110,6 +143,7 @@ export async function POST(req: Request) {
         let translation = "";
         let phonetic = "";
         let audio = "";
+        let posGroups: Array<{ pos: string; meanings: string[] }> = [];
 
         if (youdaoRes.ok) {
             const data = await youdaoRes.json();
@@ -128,14 +162,20 @@ export async function POST(req: Request) {
 
             // 2. Extract Definition (EC - Exam Category / Chinese)
             if (ec && ec.trs && ec.trs.length > 0) {
-                const firstTr = ec.trs[0]; // First translation group
-                // Usually structure: tr[0].tr[0].l.i[0] -> "int. 喂..."
-                const defRaw = firstTr.tr?.[0]?.l?.i?.[0];
+                const trsLines = ec.trs
+                    .map((trItem: unknown) => {
+                        if (!trItem || typeof trItem !== "object") return "";
+                        const tr0 = (trItem as { tr?: Array<{ l?: { i?: string[] } }> }).tr?.[0];
+                        const line = tr0?.l?.i?.[0];
+                        return typeof line === "string" ? line : "";
+                    })
+                    .filter((line: string): line is string => Boolean(line.trim()));
 
-                if (defRaw) {
-                    definition = defRaw;
-                    // Clean up part of speech part if needed, or keep it
-                    translation = defRaw.split(/；|，/).slice(0, 2).join("；"); // Shorten for UI
+                posGroups = parsePosGroupsFromDefinitionLines(trsLines);
+                if (trsLines.length > 0) {
+                    definition = trsLines.join("；");
+                    const firstLine = trsLines[0];
+                    translation = firstLine.replace(/^(n|v|adj|adv|prep|pron|conj|aux|num|int)\.\s*/i, "").split(/；|，/).slice(0, 2).join("；");
                 }
             } else if (data.web_trans?.["web-translation"]?.[0]) {
                 // Fallback to web translation for names/brands
@@ -151,6 +191,7 @@ export async function POST(req: Request) {
                 translation,
                 phonetic,
                 audio,
+                pos_groups: posGroups,
             };
             setCached(normalizedWord, payload);
             return NextResponse.json({

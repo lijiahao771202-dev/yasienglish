@@ -16,6 +16,7 @@ interface AuthSyncProviderProps {
 }
 
 const AUTH_SESSION_TIMEOUT_MS = 5_000;
+const DESKTOP_CLOSE_SYNC_TIMEOUT_MS = 2_000;
 
 async function getSessionWithTimeout(supabase: ReturnType<typeof createBrowserClientSingleton>) {
     return Promise.race([
@@ -58,6 +59,34 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
         return () => {
             window.removeEventListener("online", updateOnlineState);
             window.removeEventListener("offline", updateOnlineState);
+        };
+    }, []);
+
+    useEffect(() => {
+        if (typeof window === "undefined" || !window.yasiDesktop?.isDesktopApp) {
+            return;
+        }
+
+        const target = window as Window & {
+            __YASI_SYNC_BEFORE_QUIT__?: () => Promise<{ ok: boolean; timedOut?: boolean }>;
+        };
+
+        target.__YASI_SYNC_BEFORE_QUIT__ = async () => {
+            try {
+                await Promise.race([
+                    scheduleBackgroundSync({ pullSnapshot: false }),
+                    new Promise<void>((resolve) => {
+                        window.setTimeout(resolve, DESKTOP_CLOSE_SYNC_TIMEOUT_MS);
+                    }),
+                ]);
+                return { ok: true };
+            } catch {
+                return { ok: false };
+            }
+        };
+
+        return () => {
+            delete target.__YASI_SYNC_BEFORE_QUIT__;
         };
     }, []);
 

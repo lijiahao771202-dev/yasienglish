@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
 import { EdgeTTS } from "@andresaya/edge-tts";
+import { DEFAULT_TTS_VOICE } from "@/lib/profile-settings";
 
 // Keep a warm TTS instance for faster subsequent requests
 let warmTts: EdgeTTS | null = null;
 
 export async function POST(req: NextRequest) {
     try {
-        const { text, voice = "en-US-JennyNeural", rate = "+0%" } = await req.json();
+        const { text, voice = DEFAULT_TTS_VOICE, rate = "+0%" } = await req.json();
 
         if (!text) {
             return new Response(JSON.stringify({ error: "Text is required" }), {

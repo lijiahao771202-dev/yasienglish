@@ -15,11 +15,12 @@ function setInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSel
 
 describe("ProfileSettingsPanel", () => {
     afterEach(() => {
+        vi.unstubAllGlobals();
         document.body.innerHTML = "";
     });
 
     it("submits profile edits and password changes through the provided callbacks", async () => {
-        globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+        vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
         const onSave = vi.fn().mockResolvedValue(undefined);
         const onChangePassword = vi.fn().mockResolvedValue(undefined);
         const container = document.createElement("div");
@@ -40,6 +41,7 @@ describe("ProfileSettingsPanel", () => {
                             english_level: "B1",
                             daily_goal_minutes: 20,
                             ui_theme_preference: "bubblegum_pop",
+                            tts_voice: "en-US-EmmaNeural",
                         },
                     }}
                     onSave={onSave}
@@ -87,6 +89,7 @@ describe("ProfileSettingsPanel", () => {
                 english_level: "C1",
                 daily_goal_minutes: 45,
                 ui_theme_preference: "starlight_arcade",
+                tts_voice: "en-US-EmmaNeural",
             },
         });
 
