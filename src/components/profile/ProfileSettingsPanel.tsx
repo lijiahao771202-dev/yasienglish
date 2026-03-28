@@ -59,6 +59,7 @@ export function ProfileSettingsPanel({
                 bio,
                 deepseek_api_key: deepSeekApiKey,
                 learning_preferences: {
+                    ...initialProfile.learning_preferences,
                     target_mode: targetMode,
                     english_level: englishLevel,
                     daily_goal_minutes: Number(dailyGoal),

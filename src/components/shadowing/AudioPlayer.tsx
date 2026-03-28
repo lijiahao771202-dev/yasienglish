@@ -12,7 +12,7 @@ interface AudioPlayerProps {
     voice?: string;
 }
 
-export function AudioPlayer({ text, voice = "en-US-JennyNeural" }: AudioPlayerProps) {
+export function AudioPlayer({ text, voice }: AudioPlayerProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const userContainerRef = useRef<HTMLDivElement>(null);
     const wavesurfer = useRef<WaveSurfer | null>(null);

@@ -44,6 +44,7 @@ describe("home-data", () => {
                     english_level: "C1",
                     daily_goal_minutes: 45,
                     ui_theme_preference: "peach_glow",
+                    tts_voice: "en-US-AndrewNeural",
                 },
             },
             readArticles: [
@@ -96,7 +97,7 @@ describe("home-data", () => {
             now: new Date(2026, 2, 14),
         });
 
-        expect(model.headline).toBe("Hi, Luna!");
+        expect(model.headline).toBe("Luna");
         expect(model.monthLabel).toBe("March");
         expect(model.glowMetrics).toEqual([
             { id: "streak", label: "day streak", value: "6" },
@@ -112,7 +113,7 @@ describe("home-data", () => {
             eloRating: 780,
             maxElo: 920,
         });
-        expect(model.learningLanes.map((lane) => lane.title)).toEqual(["Read", "Battle", "Vocab", "Writing"]);
+        expect(model.learningLanes.map((lane) => lane.title)).toEqual(["阅读", "对战", "生词本", "写作"]);
         expect(model.learningLanes[0]?.valueLabel).toBe("3 pieces");
         expect(model.learningLanes[1]?.valueLabel).toBe("Elo 780");
         expect(model.learningLanes[2]?.valueLabel).toBe("2 saved");

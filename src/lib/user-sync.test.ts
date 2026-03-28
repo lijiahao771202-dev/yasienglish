@@ -9,6 +9,7 @@ import {
     DEFAULT_PROFILE_USERNAME,
     normalizeWordKey,
     toLocalProfile,
+    toRemoteEloHistoryRow,
 } from "./user-sync";
 
 describe("user sync helpers", () => {
@@ -81,6 +82,7 @@ describe("user sync helpers", () => {
                 english_level: "B2",
                 daily_goal_minutes: 35,
                 ui_theme_preference: "bubblegum_pop",
+                tts_voice: "en-US-AriaNeural",
             },
             updated_at: "2026-03-13T12:00:00.000Z",
             last_practice_at: "2026-03-13T11:59:00.000Z",
@@ -100,6 +102,7 @@ describe("user sync helpers", () => {
         expect(localProfile.avatar_preset).toBe("peach-spark");
         expect(localProfile.bio).toBe("Practice makes flow.");
         expect(localProfile.learning_preferences?.target_mode).toBe("battle");
+        expect(localProfile.learning_preferences?.tts_voice).toBe("en-US-AriaNeural");
         expect(localProfile.sync_status).toBe("synced");
     });
 
@@ -123,6 +126,7 @@ describe("user sync helpers", () => {
                 english_level: "C1",
                 daily_goal_minutes: 45,
                 ui_theme_preference: "starlight_arcade",
+                tts_voice: "en-US-BrianNeural",
             },
         });
 
@@ -145,6 +149,7 @@ describe("user sync helpers", () => {
                 english_level: "C1",
                 daily_goal_minutes: 45,
                 ui_theme_preference: "starlight_arcade",
+                tts_voice: "en-US-BrianNeural",
             },
         });
     });
@@ -170,5 +175,20 @@ describe("user sync helpers", () => {
         expect(item.user_id).toBe("user-1");
         expect(item.word_key).toBe("resilient");
         expect(item.sync_status).toBe("pending");
+    });
+
+    it("maps dictation elo history rows to remote payloads", () => {
+        const row = toRemoteEloHistoryRow("user-1", {
+            mode: "dictation",
+            elo: 721,
+            change: 13,
+            timestamp: 1234567890,
+        });
+
+        expect(row.user_id).toBe("user-1");
+        expect(row.mode).toBe("dictation");
+        expect(row.elo).toBe(721);
+        expect(row.change).toBe(13);
+        expect(row.timestamp_ms).toBe(1234567890);
     });
 });

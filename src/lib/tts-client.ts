@@ -1,3 +1,6 @@
+import { db } from "./db";
+import { DEFAULT_TTS_VOICE, normalizeTtsVoice } from "./profile-settings";
+
 export interface TtsPayload {
     audio: string;
     audioDataUrl?: string;
@@ -10,14 +13,24 @@ export interface TtsPayload {
     }>;
 }
 
-export async function requestTtsPayload(text: string, voice = "en-US-JennyNeural", rate = "+0%") {
+async function resolvePreferredVoice(voice?: string) {
+    if (voice?.trim()) {
+        return normalizeTtsVoice(voice);
+    }
+
+    const profile = await db.user_profile.orderBy("id").first();
+    return normalizeTtsVoice(profile?.learning_preferences?.tts_voice || DEFAULT_TTS_VOICE);
+}
+
+export async function requestTtsPayload(text: string, voice?: string, rate = "+0%") {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const resolvedVoice = await resolvePreferredVoice(voice);
 
     const response = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, voice, rate }),
+        body: JSON.stringify({ text, voice: resolvedVoice, rate }),
         signal: controller.signal,
     }).finally(() => {
         clearTimeout(timeoutId);

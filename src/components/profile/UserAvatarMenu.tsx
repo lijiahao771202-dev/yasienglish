@@ -4,14 +4,15 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, CloudUpload, Image as ImageIcon, LogOut, Mail, RefreshCw, Settings2, X } from "lucide-react";
+import { BadgeCheck, Check, ChevronRight, CloudUpload, Image as ImageIcon, Loader2, LogOut, Mail, Play, RefreshCw, Settings2, Volume2, X } from "lucide-react";
 
 import { PresetAvatar } from "@/components/profile/PresetAvatar";
 import { SpeechModelStatusPanel } from "@/components/speech/SpeechModelStatusPanel";
 import { db } from "@/lib/db";
 import { useDesktopSpeechModel } from "@/hooks/useDesktopSpeechModel";
-import { getUserFacingSyncError, syncNow } from "@/lib/user-repository";
-import { DEFAULT_AVATAR_PRESET, DEFAULT_PROFILE_USERNAME } from "@/lib/user-sync";
+import { getUserFacingSyncError, saveProfilePatch, syncNow } from "@/lib/user-repository";
+import { DEFAULT_AVATAR_PRESET, DEFAULT_PROFILE_USERNAME, TTS_VOICE_OPTIONS, normalizeLearningPreferences, normalizeTtsVoice, type LearningPreferences, type TtsVoice, type TtsVoiceOption } from "@/lib/profile-settings";
+import { requestTtsPayload } from "@/lib/tts-client";
 import { useSyncStatusStore } from "@/lib/sync-status";
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
@@ -23,6 +24,7 @@ interface UserAvatarMenuProps {
     email: string;
     displayName: string;
     avatarPreset: string;
+    learningPreferences: LearningPreferences;
     syncLabel: string;
     syncDescription: string;
     unreadCount?: number;
@@ -68,11 +70,33 @@ function formatSyncDescription(lastSyncedAt: number | null, fallbackError: strin
     return `Last sync ${elapsedHours} hours ago`;
 }
 
+const TTS_VOICE_GROUPS: Array<{
+    title: string;
+    subtitle: string;
+    voices: TtsVoiceOption[];
+}> = [
+    {
+        title: "中文发言人",
+        subtitle: "适合中文讲解、跟读和中英混读。",
+        voices: TTS_VOICE_OPTIONS.filter((option) => option.voice.startsWith("zh-CN-")),
+    },
+    {
+        title: "英文发言人",
+        subtitle: "适合英语跟读、慢速讲解和句子拆解。",
+        voices: TTS_VOICE_OPTIONS.filter((option) => option.voice.startsWith("en-US-")),
+    },
+];
+
+function getVoiceOption(voice: TtsVoice) {
+    return TTS_VOICE_OPTIONS.find((option) => option.voice === voice);
+}
+
 export function UserAvatarMenu({
     userId,
     email,
     displayName,
     avatarPreset,
+    learningPreferences,
     syncLabel,
     syncDescription,
     unreadCount = 0,
@@ -83,11 +107,20 @@ export function UserAvatarMenu({
     const [logoutBusy, setLogoutBusy] = useState(false);
     const [mailboxOpen, setMailboxOpen] = useState(false);
     const [backgroundOpen, setBackgroundOpen] = useState(false);
+    const [ttsVoiceOpen, setTtsVoiceOpen] = useState(false);
+    const [ttsVoiceBusy, setTtsVoiceBusy] = useState(false);
+    const [previewVoice, setPreviewVoice] = useState<TtsVoice | null>(null);
+    const [selectedVoice, setSelectedVoice] = useState<TtsVoice>(normalizeTtsVoice(learningPreferences.tts_voice));
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const router = useRouter();
     const speechModel = useDesktopSpeechModel();
     const isSidebar = placement === "sidebar";
     const isHeader = placement === "header";
+    const selectedVoiceOption = useMemo(
+        () => getVoiceOption(selectedVoice) ?? TTS_VOICE_OPTIONS[0],
+        [selectedVoice],
+    );
 
     useEffect(() => {
         const handlePointerDown = (event: MouseEvent) => {
@@ -95,6 +128,7 @@ export function UserAvatarMenu({
                 setOpen(false);
                 setMailboxOpen(false);
                 setBackgroundOpen(false);
+                setTtsVoiceOpen(false);
             }
         };
 
@@ -105,16 +139,73 @@ export function UserAvatarMenu({
     }, []);
 
     useEffect(() => {
-        if (!mailboxOpen && !backgroundOpen) return;
+        if (!mailboxOpen && !backgroundOpen && !ttsVoiceOpen) return;
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Escape") {
                 setMailboxOpen(false);
                 setBackgroundOpen(false);
+                setTtsVoiceOpen(false);
             }
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [backgroundOpen, mailboxOpen]);
+    }, [backgroundOpen, mailboxOpen, ttsVoiceOpen]);
+
+    useEffect(() => {
+        setSelectedVoice(normalizeTtsVoice(learningPreferences.tts_voice));
+    }, [learningPreferences.tts_voice]);
+
+    useEffect(() => {
+        return () => {
+            previewAudioRef.current?.pause();
+            previewAudioRef.current = null;
+        };
+    }, []);
+
+    const handleSelectVoice = async (nextVoice: TtsVoice) => {
+        if (nextVoice === selectedVoice) {
+            setTtsVoiceOpen(false);
+            return;
+        }
+
+        setTtsVoiceBusy(true);
+        try {
+            await saveProfilePatch({
+                learning_preferences: {
+                    ...learningPreferences,
+                    tts_voice: nextVoice,
+                },
+            });
+            setSelectedVoice(nextVoice);
+            setTtsVoiceOpen(false);
+        } catch (error) {
+            window.alert(error instanceof Error ? error.message : "切换发言人失败，请重试。");
+        } finally {
+            setTtsVoiceBusy(false);
+        }
+    };
+
+    const handlePreviewVoice = async (voice: TtsVoice) => {
+        setPreviewVoice(voice);
+        try {
+            previewAudioRef.current?.pause();
+            previewAudioRef.current = null;
+
+            const payload = await requestTtsPayload("This is a preview of your speaking voice.", voice);
+            const audio = new Audio(payload.audioDataUrl || payload.audio);
+            previewAudioRef.current = audio;
+            audio.onended = () => {
+                if (previewAudioRef.current === audio) {
+                    previewAudioRef.current = null;
+                }
+            };
+            await audio.play();
+        } catch (error) {
+            window.alert(error instanceof Error ? error.message : "试听失败，请重试。");
+        } finally {
+            setPreviewVoice(null);
+        }
+    };
 
     return (
         <div
@@ -234,6 +325,24 @@ export function UserAvatarMenu({
                             <span className="text-xs text-slate-400">主题可切换</span>
                         </button>
                     </div>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setTtsVoiceOpen((current) => !current);
+                            setMailboxOpen(false);
+                            setBackgroundOpen(false);
+                        }}
+                        className="mt-2 flex w-full items-center justify-between rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3.5 text-left text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                    >
+                        <span className="flex items-center gap-2">
+                            <Volume2 className="h-4 w-4" />
+                            发言人
+                        </span>
+                        <span className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
+                            {selectedVoiceOption.label}
+                            <ChevronRight className="h-3.5 w-3.5" />
+                        </span>
+                    </button>
                     <div className="mt-2 space-y-2">
                         <Link
                             href="/profile"
@@ -266,6 +375,134 @@ export function UserAvatarMenu({
                                 {logoutBusy ? "退出中…" : "退出登录"}
                             </span>
                         </button>
+                    </div>
+                </div>
+            ) : null}
+            {ttsVoiceOpen ? (
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label="发言人选择"
+                    className="fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/28 px-4 py-6 backdrop-blur-[2px]"
+                    onClick={() => setTtsVoiceOpen(false)}
+                >
+                    <div
+                        className="relative w-[min(92vw,32rem)] max-h-[min(84vh,42rem)] overflow-hidden rounded-[1.5rem] border border-white/80 bg-white p-3 shadow-[0_32px_90px_-44px_rgba(15,23,42,0.48)]"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <button
+                            type="button"
+                            onClick={() => setTtsVoiceOpen(false)}
+                            className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#dfe3ec] bg-white text-[#3f4a5a]"
+                            aria-label="Close voice picker"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                        <div className="pr-10">
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">发言人列表</p>
+                            <p className="mt-1 text-base font-semibold text-slate-900">选择一个声音</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">切换后，后续合成会跟着这个发言人走。</p>
+                            <div className="mt-3 flex items-center justify-between gap-2 rounded-[0.95rem] border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold text-slate-800">当前：{selectedVoiceOption.label}</p>
+                                    <p className="truncate text-[11px] text-slate-500">{selectedVoiceOption.description}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => void handlePreviewVoice(selectedVoice)}
+                                    disabled={ttsVoiceBusy || previewVoice !== null}
+                                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {previewVoice === selectedVoice ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                                    试听当前
+                                </button>
+                            </div>
+                        </div>
+                        <div className="mt-3 max-h-[calc(84vh-10rem)] space-y-4 overflow-y-auto pr-0.5">
+                            {TTS_VOICE_GROUPS.map((group) => (
+                                <section key={group.title} className="space-y-2">
+                                    <div className="px-1">
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{group.title}</p>
+                                        <p className="mt-1 text-[11px] leading-4 text-slate-500">{group.subtitle}</p>
+                                    </div>
+                                    <div className="overflow-hidden rounded-[1rem] border border-slate-200 bg-white">
+                                        <table className="w-full border-collapse text-left">
+                                            <thead className="bg-slate-50">
+                                                <tr className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
+                                                    <th className="px-3 py-2.5 font-semibold">发言人</th>
+                                                    <th className="px-3 py-2.5 font-semibold">说明</th>
+                                                    <th className="px-3 py-2.5 text-center font-semibold">试听</th>
+                                                    <th className="px-3 py-2.5 text-center font-semibold">选择</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {group.voices.map((option) => {
+                                                    const selected = option.voice === selectedVoice;
+                                                    return (
+                                                        <tr
+                                                            key={option.voice}
+                                                            className={`border-t border-slate-100 transition ${
+                                                                selected ? "bg-indigo-50/80" : "bg-white hover:bg-slate-50"
+                                                            }`}
+                                                        >
+                                                            <td className="px-3 py-3 align-top">
+                                                                <div className="flex items-start gap-2">
+                                                                    <span
+                                                                        className={`mt-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full border ${
+                                                                            selected ? "border-indigo-600 bg-indigo-600" : "border-slate-300 bg-white"
+                                                                        }`}
+                                                                    />
+                                                                    <div className="min-w-0">
+                                                                        <p className="truncate text-sm font-semibold text-slate-900">{option.label}</p>
+                                                                        <p className="mt-0.5 text-[11px] text-slate-500">{option.voice}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-3 py-3 align-top">
+                                                                <p className="text-[11px] leading-5 text-slate-500">{option.description}</p>
+                                                            </td>
+                                                            <td className="px-3 py-3 align-top text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    aria-label={`试听 ${option.label}`}
+                                                                    onClick={() => void handlePreviewVoice(option.voice)}
+                                                                    disabled={ttsVoiceBusy || previewVoice !== null}
+                                                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                >
+                                                                    {previewVoice === option.voice ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                                                                </button>
+                                                            </td>
+                                                            <td className="px-3 py-3 align-top text-center">
+                                                                <button
+                                                                    type="button"
+                                                                    aria-label={`${selected ? "当前" : "选择"} ${option.label}`}
+                                                                    onClick={() => void handleSelectVoice(option.voice)}
+                                                                    disabled={ttsVoiceBusy}
+                                                                    className={`inline-flex h-9 items-center justify-center rounded-full px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
+                                                                        selected
+                                                                            ? "border border-indigo-300 bg-indigo-100 text-indigo-700"
+                                                                            : "border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-950"
+                                                                    }`}
+                                                                >
+                                                                    {selected ? (
+                                                                        <span className="inline-flex items-center gap-1">
+                                                                            <Check className="h-3.5 w-3.5" />
+                                                                            当前
+                                                                        </span>
+                                                                    ) : (
+                                                                        "选择"
+                                                                    )}
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+                            ))}
+                        </div>
                     </div>
                 </div>
             ) : null}
@@ -368,12 +605,13 @@ export function ConnectedUserAvatarMenu({
     const summary = useMemo(() => ({
         displayName: profile?.username || email.split("@")[0] || DEFAULT_PROFILE_USERNAME,
         avatarPreset: profile?.avatar_preset || DEFAULT_AVATAR_PRESET,
+        learningPreferences: normalizeLearningPreferences(profile?.learning_preferences),
         syncLabel: formatSyncLabel(phase),
         syncDescription: formatSyncDescription(
             typeof syncMeta?.value === "number" ? syncMeta.value : null,
             phase === "error" ? error : null,
         ),
-    }), [email, error, phase, profile?.avatar_preset, profile?.username, syncMeta?.value]);
+    }), [email, error, phase, profile?.avatar_preset, profile?.learning_preferences, profile?.username, syncMeta?.value]);
 
     return (
         <UserAvatarMenu
@@ -381,6 +619,7 @@ export function ConnectedUserAvatarMenu({
             email={email}
             displayName={summary.displayName}
             avatarPreset={summary.avatarPreset}
+            learningPreferences={summary.learningPreferences}
             syncLabel={summary.syncLabel}
             syncDescription={summary.syncDescription}
             unreadCount={unreadCount}

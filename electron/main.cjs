@@ -13,6 +13,7 @@ const DEV_SERVER_URL = process.env.YASI_DESKTOP_DEV_URL || "";
 const DEV_SERVER_ORIGIN = DEV_SERVER_URL ? new URL(DEV_SERVER_URL).origin : "";
 const APP_URL = DEV_SERVER_URL || SERVER_URL;
 const IS_DESKTOP_DEV_MODE = Boolean(DEV_SERVER_URL);
+const CLOSE_SYNC_TIMEOUT_MS = 2_200;
 const TRUSTED_APP_ORIGINS = new Set(
     [
         `http://localhost:${SERVER_PORT}`,
@@ -29,8 +30,36 @@ if (IS_DESKTOP_DEV_MODE) {
 let mainWindow = null;
 let serverStarted = false;
 let isQuitting = false;
+let quitSyncInProgress = false;
 const speechModelController = createSpeechModelController({ app, BrowserWindow });
 const pronunciationServiceController = createPronunciationServiceController({ app });
+
+async function runRendererShutdownSync(windowRef) {
+    if (!windowRef || windowRef.isDestroyed()) {
+        return;
+    }
+
+    const syncPromise = windowRef.webContents
+        .executeJavaScript(
+            `(async () => {
+                try {
+                    if (typeof window.__YASI_SYNC_BEFORE_QUIT__ === "function") {
+                        return await window.__YASI_SYNC_BEFORE_QUIT__();
+                    }
+                    return { ok: true, skipped: true };
+                } catch (error) {
+                    return { ok: false, error: String(error) };
+                }
+            })();`,
+            true,
+        )
+        .catch(() => ({ ok: false, error: "renderer-sync-failed" }));
+
+    await Promise.race([
+        syncPromise,
+        new Promise((resolve) => setTimeout(resolve, CLOSE_SYNC_TIMEOUT_MS)),
+    ]);
+}
 
 function toProxyUrl(rule) {
     const [scheme, host] = rule.trim().split(/\s+/, 2);
@@ -277,7 +306,7 @@ async function waitForServerReady() {
 
 async function createMainWindow() {
     await hydrateProxyEnvFromSystem();
-    await pronunciationServiceController.start();
+    void pronunciationServiceController.start();
     if (!DEV_SERVER_URL) {
         startNextServer();
     }
@@ -318,13 +347,35 @@ async function createMainWindow() {
 
     await mainWindow.loadURL(APP_URL);
 
+    mainWindow.on("close", (event) => {
+        if (isQuitting || quitSyncInProgress) {
+            return;
+        }
+
+        event.preventDefault();
+        quitSyncInProgress = true;
+
+        void (async () => {
+            try {
+                await runRendererShutdownSync(mainWindow);
+            } catch {
+                // Best effort only.
+            } finally {
+                isQuitting = true;
+                quitSyncInProgress = false;
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.close();
+                }
+            }
+        })();
+    });
+
     mainWindow.on("closed", () => {
         mainWindow = null;
     });
 }
 
 function stopNextServer() {
-    isQuitting = true;
     pronunciationServiceController.stop();
 }
 
@@ -390,6 +441,10 @@ if (!gotLock) {
     });
 
     app.on("before-quit", () => {
+        // close hook handles a best-effort renderer sync before final shutdown.
+    });
+
+    app.on("will-quit", () => {
         isQuitting = true;
         stopNextServer();
     });

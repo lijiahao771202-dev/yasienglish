@@ -88,6 +88,24 @@ function nowIso() {
     return new Date().toISOString();
 }
 
+function parseUpdatedAtMs(value?: string | null) {
+    if (!value) return null;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function shouldPushLocalRecord(localUpdatedAt?: string | null, remoteUpdatedAt?: string | null, localSyncStatus?: "synced" | "pending" | "error") {
+    if (localSyncStatus === "pending" || localSyncStatus === "error") {
+        return true;
+    }
+
+    const localMs = parseUpdatedAtMs(localUpdatedAt);
+    const remoteMs = parseUpdatedAtMs(remoteUpdatedAt);
+    if (remoteMs === null) return true;
+    if (localMs === null) return false;
+    return localMs > remoteMs;
+}
+
 export function getUserFacingSyncError(error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to sync your cloud backup.";
     const normalized = message.toLowerCase();
@@ -391,6 +409,241 @@ async function ensureRemoteProfile(userId: string) {
     return inserted as RemoteProfileRow;
 }
 
+async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfileRow) {
+    const supabase = createBrowserClientSingleton();
+
+    const localProfile = await db.user_profile.orderBy("id").first();
+    if (localProfile?.id) {
+        const shouldPushProfile = shouldPushLocalRecord(
+            localProfile.updated_at,
+            remoteProfile.updated_at,
+            localProfile.sync_status,
+        );
+
+        if (shouldPushProfile) {
+            const payload = {
+                translation_elo: localProfile.elo_rating,
+                listening_elo: localProfile.listening_elo ?? DEFAULT_BASE_ELO,
+                rebuild_hidden_elo: localProfile.rebuild_hidden_elo ?? localProfile.listening_elo ?? DEFAULT_BASE_ELO,
+                rebuild_elo: localProfile.rebuild_elo ?? localProfile.rebuild_hidden_elo ?? localProfile.listening_elo ?? DEFAULT_BASE_ELO,
+                dictation_elo: localProfile.dictation_elo ?? localProfile.listening_elo ?? DEFAULT_BASE_ELO,
+                streak_count: localProfile.streak_count,
+                listening_streak: localProfile.listening_streak ?? 0,
+                rebuild_streak: localProfile.rebuild_streak ?? 0,
+                dictation_streak: localProfile.dictation_streak ?? 0,
+                max_translation_elo: localProfile.max_elo,
+                max_listening_elo: localProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
+                rebuild_max_elo: localProfile.rebuild_max_elo ?? localProfile.rebuild_elo ?? localProfile.rebuild_hidden_elo ?? DEFAULT_BASE_ELO,
+                dictation_max_elo: localProfile.dictation_max_elo ?? localProfile.dictation_elo ?? localProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
+                coins: localProfile.coins ?? DEFAULT_STARTING_COINS,
+                inventory: normalizeInventory(localProfile.inventory, localProfile.hints),
+                owned_themes: localProfile.owned_themes ?? [DEFAULT_FREE_THEME],
+                active_theme: localProfile.active_theme ?? DEFAULT_FREE_THEME,
+                username: normalizeProfileUsername(localProfile.username),
+                avatar_preset: normalizeAvatarPreset(localProfile.avatar_preset),
+                bio: normalizeProfileBio(localProfile.bio),
+                deepseek_api_key: localProfile.deepseek_api_key ?? "",
+                learning_preferences: normalizeLearningPreferences(localProfile.learning_preferences ?? DEFAULT_LEARNING_PREFERENCES),
+                reading_coins: localProfile.reading_coins ?? DEFAULT_READING_COINS,
+                reading_streak: localProfile.reading_streak ?? 0,
+                reading_last_daily_grant_at: localProfile.reading_last_daily_grant_at ?? null,
+                cat_score: localProfile.cat_score ?? DEFAULT_CAT_SCORE,
+                cat_level: localProfile.cat_level ?? DEFAULT_CAT_LEVEL,
+                cat_theta: localProfile.cat_theta ?? DEFAULT_CAT_THETA,
+                cat_se: localProfile.cat_se ?? DEFAULT_CAT_SE,
+                cat_points: localProfile.cat_points ?? DEFAULT_CAT_POINTS,
+                cat_current_band: localProfile.cat_current_band ?? DEFAULT_CAT_BAND,
+                cat_updated_at: localProfile.cat_updated_at ?? nowIso(),
+                last_practice_at: new Date(localProfile.last_practice).toISOString(),
+                updated_at: localProfile.updated_at || nowIso(),
+            };
+
+            const profileResult = await supabase
+                .from("profiles")
+                .update(payload)
+                .eq("user_id", userId);
+            assertSupabaseMutationSucceeded(profileResult, "profile push-newer");
+
+            await db.user_profile.update(localProfile.id, {
+                user_id: userId,
+                sync_status: "synced",
+                updated_at: payload.updated_at,
+            });
+        }
+    }
+
+    const [localVocabulary, remoteVocabularyRes] = await Promise.all([
+        db.vocabulary.toArray(),
+        supabase
+            .from("vocabulary")
+            .select("id, word_key, updated_at")
+            .eq("user_id", userId),
+    ]);
+    if (remoteVocabularyRes.error) throw remoteVocabularyRes.error;
+    const remoteVocabularyByWordKey = new Map<string, Pick<RemoteVocabularyRow, "id" | "word_key" | "updated_at">>();
+    for (const row of (remoteVocabularyRes.data ?? []) as Array<Pick<RemoteVocabularyRow, "id" | "word_key" | "updated_at">>) {
+        remoteVocabularyByWordKey.set(row.word_key, row);
+    }
+
+    for (const item of localVocabulary) {
+        const wordKey = item.word_key || normalizeWordKey(item.word);
+        const remote = remoteVocabularyByWordKey.get(wordKey);
+        if (!shouldPushLocalRecord(item.updated_at, remote?.updated_at, item.sync_status)) {
+            continue;
+        }
+
+        const remoteId = item.remote_id || remote?.id || crypto.randomUUID();
+        const updatedAt = item.updated_at || nowIso();
+        const payload = toRemoteVocabularyRow(userId, {
+            ...item,
+            remote_id: remoteId,
+            user_id: userId,
+            word_key: wordKey,
+            updated_at: updatedAt,
+            sync_status: "pending",
+        });
+
+        const vocabResult = await supabase
+            .from("vocabulary")
+            .upsert(payload, { onConflict: "user_id,word_key" });
+        assertSupabaseMutationSucceeded(vocabResult, "vocabulary push-newer");
+
+        await db.vocabulary.update(item.word, {
+            user_id: userId,
+            remote_id: remoteId,
+            word_key: wordKey,
+            updated_at: updatedAt,
+            sync_status: "synced",
+        });
+    }
+
+    const [localWritingHistory, remoteWritingRes] = await Promise.all([
+        db.writing_history.toArray(),
+        supabase
+            .from("writing_history")
+            .select("id, updated_at")
+            .eq("user_id", userId),
+    ]);
+    if (remoteWritingRes.error) throw remoteWritingRes.error;
+    const remoteWritingById = new Map<string, Pick<RemoteWritingHistoryRow, "id" | "updated_at">>();
+    for (const row of (remoteWritingRes.data ?? []) as Array<Pick<RemoteWritingHistoryRow, "id" | "updated_at">>) {
+        remoteWritingById.set(row.id, row);
+    }
+
+    for (const entry of localWritingHistory) {
+        if (!entry.id) continue;
+        const remoteId = entry.remote_id || crypto.randomUUID();
+        const remote = remoteWritingById.get(remoteId);
+        if (!shouldPushLocalRecord(entry.updated_at, remote?.updated_at, entry.sync_status)) {
+            continue;
+        }
+
+        const updatedAt = entry.updated_at || nowIso();
+        const payload = toRemoteWritingEntry(userId, {
+            ...entry,
+            remote_id: remoteId,
+            user_id: userId,
+            updated_at: updatedAt,
+            sync_status: "pending",
+        });
+        const writingResult = await supabase
+            .from("writing_history")
+            .upsert(payload);
+        assertSupabaseMutationSucceeded(writingResult, "writing_history push-newer");
+
+        await db.writing_history.update(entry.id, {
+            user_id: userId,
+            remote_id: remoteId,
+            updated_at: updatedAt,
+            sync_status: "synced",
+        });
+    }
+
+    const [localReadArticles, remoteReadRes] = await Promise.all([
+        db.read_articles.toArray(),
+        supabase
+            .from("read_articles")
+            .select("url, updated_at")
+            .eq("user_id", userId),
+    ]);
+    if (remoteReadRes.error) throw remoteReadRes.error;
+    const remoteReadByUrl = new Map<string, Pick<RemoteReadArticleRow, "url" | "updated_at">>();
+    for (const row of (remoteReadRes.data ?? []) as Array<Pick<RemoteReadArticleRow, "url" | "updated_at">>) {
+        remoteReadByUrl.set(row.url, row);
+    }
+
+    for (const item of localReadArticles) {
+        const remote = remoteReadByUrl.get(item.url);
+        if (!shouldPushLocalRecord(item.updated_at, remote?.updated_at, item.sync_status)) {
+            continue;
+        }
+
+        const remoteId = item.remote_id || crypto.randomUUID();
+        const updatedAt = item.updated_at || nowIso();
+        const payload = toRemoteReadArticle(userId, {
+            ...item,
+            remote_id: remoteId,
+            user_id: userId,
+            read_at: item.read_at || item.timestamp,
+            updated_at: updatedAt,
+            sync_status: "pending",
+        });
+        const readResult = await supabase
+            .from("read_articles")
+            .upsert(payload, { onConflict: "user_id,url" });
+        assertSupabaseMutationSucceeded(readResult, "read_articles push-newer");
+
+        await db.read_articles.update(item.url, {
+            user_id: userId,
+            remote_id: remoteId,
+            updated_at: updatedAt,
+            sync_status: "synced",
+        });
+    }
+
+    const [localEloHistory, remoteEloRes] = await Promise.all([
+        db.elo_history.toArray(),
+        supabase
+            .from("elo_history")
+            .select("id, updated_at")
+            .eq("user_id", userId),
+    ]);
+    if (remoteEloRes.error) throw remoteEloRes.error;
+    const remoteEloById = new Map<string, Pick<RemoteEloHistoryRow, "id" | "updated_at">>();
+    for (const row of (remoteEloRes.data ?? []) as Array<Pick<RemoteEloHistoryRow, "id" | "updated_at">>) {
+        remoteEloById.set(row.id, row);
+    }
+
+    for (const item of localEloHistory) {
+        if (!item.id) continue;
+        const remoteId = item.remote_id || crypto.randomUUID();
+        const remote = remoteEloById.get(remoteId);
+        if (!shouldPushLocalRecord(item.updated_at, remote?.updated_at, item.sync_status)) {
+            continue;
+        }
+
+        const updatedAt = item.updated_at || nowIso();
+        const payload = toRemoteEloHistoryRow(userId, {
+            ...item,
+            remote_id: remoteId,
+            user_id: userId,
+            updated_at: updatedAt,
+            sync_status: "pending",
+        });
+        const eloResult = await supabase
+            .from("elo_history")
+            .upsert(payload);
+        assertSupabaseMutationSucceeded(eloResult, "elo_history push-newer");
+
+        await db.elo_history.update(item.id, {
+            user_id: userId,
+            remote_id: remoteId,
+            updated_at: updatedAt,
+            sync_status: "synced",
+        });
+    }
+}
+
 async function queueOutboxItem({ entity, operation, recordKey, payload }: OutboxPayload) {
     const existing = await db.sync_outbox
         .where("[entity+record_key]")
@@ -427,10 +680,7 @@ async function queueOutboxItem({ entity, operation, recordKey, payload }: Outbox
 
 async function pullRemoteSnapshot(userId: string) {
     const supabase = createBrowserClientSingleton();
-    const [existingLocalProfile, existingDictationHistory] = await Promise.all([
-        db.user_profile.orderBy("id").first(),
-        db.elo_history.where("mode").equals("dictation").toArray(),
-    ]);
+    const existingLocalProfile = await db.user_profile.orderBy("id").first();
 
     const [
         profileRes,
@@ -481,15 +731,7 @@ async function pullRemoteSnapshot(userId: string) {
     const localVocabulary = (vocabRes.data as RemoteVocabularyRow[]).map(toLocalVocabularyItem);
     const localWriting = (writingRes.data as RemoteWritingHistoryRow[]).map(toLocalWritingEntry);
     const localRead = (readRes.data as RemoteReadArticleRow[]).map(toLocalReadArticle);
-    const syncedRemoteElo = (eloRes.data as RemoteEloHistoryRow[]).map(toLocalEloHistoryItem);
-    const retainedLocalDictationElo = existingDictationHistory.map((item) => ({
-        ...item,
-        id: undefined,
-        user_id: userId,
-        sync_status: "synced" as const,
-        updated_at: item.updated_at || nowIso(),
-    }));
-    const localElo = [...syncedRemoteElo, ...retainedLocalDictationElo];
+    const localElo = (eloRes.data as RemoteEloHistoryRow[]).map(toLocalEloHistoryItem);
 
     await db.transaction(
         "rw",
@@ -634,16 +876,6 @@ async function migrateLegacyData(userId: string) {
     }
 
     for (const item of eloHistory) {
-        if (item.mode === "dictation") {
-            await db.elo_history.put({
-                ...item,
-                user_id: userId,
-                updated_at: item.updated_at || nowIso(),
-                sync_status: "synced",
-            });
-            continue;
-        }
-
         const remoteId = item.remote_id || crypto.randomUUID();
         await db.elo_history.put({
             ...item,
@@ -667,6 +899,48 @@ async function migrateLegacyData(userId: string) {
 
     await db.sync_meta.put({
         key: `migration:${userId}`,
+        value: true,
+        updated_at: Date.now(),
+    });
+}
+
+async function enqueueLegacyDictationEloForSync(userId: string) {
+    const backfillMetaKey = `dictation_elo_backfill:${userId}`;
+    const backfillMeta = await db.sync_meta.get(backfillMetaKey);
+    if (backfillMeta?.value) {
+        return;
+    }
+
+    const legacyItems = await db.elo_history.where("mode").equals("dictation").toArray();
+    for (const item of legacyItems) {
+        const remoteId = item.remote_id || crypto.randomUUID();
+        const updatedAt = item.updated_at || nowIso();
+
+        if (item.id) {
+            await db.elo_history.update(item.id, {
+                remote_id: remoteId,
+                user_id: userId,
+                updated_at: updatedAt,
+                sync_status: "pending",
+            });
+        }
+
+        await queueOutboxItem({
+            entity: "elo_history",
+            operation: "upsert",
+            recordKey: remoteId,
+            payload: toRemoteEloHistoryRow(userId, {
+                ...item,
+                remote_id: remoteId,
+                user_id: userId,
+                updated_at: updatedAt,
+                sync_status: "pending",
+            }),
+        });
+    }
+
+    await db.sync_meta.put({
+        key: backfillMetaKey,
         value: true,
         updated_at: Date.now(),
     });
@@ -763,14 +1037,14 @@ export async function flushOutbox() {
 async function syncRemoteMirror(userId: string, options: RemoteSyncOptions = {}) {
     requireOnline();
 
-    await ensureRemoteProfile(userId);
+    const remoteProfile = await ensureRemoteProfile(userId);
 
     const migrationMeta = await db.sync_meta.get(`migration:${userId}`);
     if (!migrationMeta?.value && await hasLegacyLocalData()) {
         await migrateLegacyData(userId);
     }
-
-    await flushOutbox();
+    await enqueueLegacyDictationEloForSync(userId);
+    await pushLocalNewerRecords(userId, remoteProfile);
 
     const shouldAttemptPull = Boolean(options.forcePull || options.pullSnapshot);
     if (shouldAttemptPull && await shouldPullRemoteSnapshot(userId, Boolean(options.forcePull))) {
@@ -781,6 +1055,8 @@ async function syncRemoteMirror(userId: string, options: RemoteSyncOptions = {})
             updated_at: Date.now(),
         });
     }
+
+    await flushOutbox();
 
     await db.sync_meta.put({
         key: "last_bootstrap_at",
@@ -857,7 +1133,7 @@ export async function bootstrapUserSession(userId: string): Promise<BootstrapRes
     syncStore.setReady(canUseLocalCache);
 
     if (canUseLocalCache) {
-        void scheduleBackgroundSync({ pullSnapshot: true });
+        void scheduleBackgroundSync({ pullSnapshot: true, forcePull: true });
         return { usedLocalCache: true };
     }
 
@@ -1108,7 +1384,7 @@ export async function applyServerProfilePatchToLocal(
 }
 
 export async function settleBattle(payload: {
-    mode: "translation" | "listening" | "rebuild";
+    mode: "translation" | "listening" | "rebuild" | "dictation";
     eloAfter: number;
     change: number;
     streak: number;
@@ -1129,16 +1405,18 @@ export async function settleBattle(payload: {
         : normalizeInventory(profile.inventory, profile.hints);
     const nextOwnedThemes = payload.ownedThemes ?? profile.owned_themes ?? [DEFAULT_FREE_THEME];
     const nextActiveTheme = payload.activeTheme ?? profile.active_theme ?? DEFAULT_FREE_THEME;
+    const isTranslation = payload.mode === "translation";
     const isListening = payload.mode === "listening";
     const isRebuild = payload.mode === "rebuild";
+    const isDictation = payload.mode === "dictation";
 
     const localProfile: LocalUserProfile = {
         ...profile,
         user_id: userId,
         remote_id: userId,
-        elo_rating: isListening || isRebuild ? profile.elo_rating : payload.eloAfter,
-        streak_count: isListening || isRebuild ? profile.streak_count : payload.streak,
-        max_elo: isListening || isRebuild ? profile.max_elo : payload.maxElo,
+        elo_rating: isTranslation ? payload.eloAfter : profile.elo_rating,
+        streak_count: isTranslation ? payload.streak : profile.streak_count,
+        max_elo: isTranslation ? payload.maxElo : profile.max_elo,
         listening_scoring_version: LISTENING_SCORING_VERSION,
         listening_elo: isListening ? payload.eloAfter : (profile.listening_elo ?? DEFAULT_BASE_ELO),
         listening_streak: isListening ? payload.streak : (profile.listening_streak ?? 0),
@@ -1148,6 +1426,11 @@ export async function settleBattle(payload: {
         rebuild_max_elo: isRebuild
             ? payload.maxElo
             : (profile.rebuild_max_elo ?? profile.rebuild_elo ?? profile.rebuild_hidden_elo ?? DEFAULT_BASE_ELO),
+        dictation_elo: isDictation ? payload.eloAfter : (profile.dictation_elo ?? profile.listening_elo ?? DEFAULT_BASE_ELO),
+        dictation_streak: isDictation ? payload.streak : (profile.dictation_streak ?? 0),
+        dictation_max_elo: isDictation
+            ? payload.maxElo
+            : (profile.dictation_max_elo ?? profile.dictation_elo ?? profile.listening_max_elo ?? DEFAULT_BASE_ELO),
         coins: payload.coins ?? profile.coins ?? DEFAULT_STARTING_COINS,
         inventory: nextInventory,
         hints: nextInventory.capsule,
@@ -1188,9 +1471,12 @@ export async function settleBattle(payload: {
             streak_count: localProfile.streak_count,
             listening_streak: localProfile.listening_streak ?? 0,
             rebuild_streak: localProfile.rebuild_streak ?? 0,
+            dictation_elo: localProfile.dictation_elo ?? localProfile.listening_elo ?? DEFAULT_BASE_ELO,
+            dictation_streak: localProfile.dictation_streak ?? 0,
             max_translation_elo: localProfile.max_elo,
             max_listening_elo: localProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
             rebuild_max_elo: localProfile.rebuild_max_elo ?? localProfile.rebuild_elo ?? localProfile.rebuild_hidden_elo ?? DEFAULT_BASE_ELO,
+            dictation_max_elo: localProfile.dictation_max_elo ?? localProfile.dictation_elo ?? localProfile.listening_max_elo ?? DEFAULT_BASE_ELO,
             coins: localProfile.coins ?? DEFAULT_STARTING_COINS,
             inventory: nextInventory,
             owned_themes: nextOwnedThemes,

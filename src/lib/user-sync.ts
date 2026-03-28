@@ -114,7 +114,7 @@ export interface RemoteReadArticleRow {
 export interface RemoteEloHistoryRow {
     id: string;
     user_id: string;
-    mode: "translation" | "listening" | "rebuild";
+    mode: "translation" | "listening" | "rebuild" | "dictation";
     elo: number;
     change: number;
     timestamp_ms: number;
@@ -417,10 +417,6 @@ export function toLocalReadArticle(remote: RemoteReadArticleRow): ReadArticleIte
 }
 
 export function toRemoteEloHistoryRow(userId: string, item: EloHistoryItem): RemoteEloHistoryRow {
-    if (item.mode === "dictation") {
-        throw new Error("Dictation Elo history is local-only and should not be synced.");
-    }
-
     return {
         id: item.remote_id || crypto.randomUUID(),
         user_id: userId,

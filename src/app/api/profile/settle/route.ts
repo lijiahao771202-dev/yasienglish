@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 
 interface SettleRequest {
-    mode: "translation" | "listening" | "rebuild";
+    mode: "translation" | "listening" | "rebuild" | "dictation";
     eloAfter: number;
     change: number;
     streak: number;

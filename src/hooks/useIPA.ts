@@ -11,11 +11,13 @@ interface PhoneticDiff {
 let globalDict: Map<string, string> | null = null;
 let globalPromise: Promise<Map<string, string>> | null = null;
 
-export function useIPA() {
+export function useIPA(enabled = true) {
     const [isReady, setIsReady] = useState(!!globalDict);
     const [dict, setDict] = useState<Map<string, string>>(globalDict || new Map());
 
     useEffect(() => {
+        if (!enabled) return;
+
         if (globalDict) {
             setIsReady(true);
             setDict(globalDict);
@@ -57,7 +59,7 @@ export function useIPA() {
             setIsReady(true);
         });
 
-    }, []);
+    }, [enabled]);
 
     const getIPA = useCallback((text: string) => {
         if (!isReady || !dict) return "";

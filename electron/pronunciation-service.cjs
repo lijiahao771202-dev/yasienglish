@@ -60,44 +60,44 @@ function createPronunciationServiceController({ app }) {
         }
 
         startPromise = (async () => {
-            process.env.YASI_PRONUNCIATION_SERVICE_URL = serviceUrl;
-
-            const serviceRoot = resolveServiceRoot(app);
-            const scriptPath = path.join(serviceRoot, "service.py");
-            if (!fs.existsSync(scriptPath)) {
-                lastError = `Missing pronunciation service script: ${scriptPath}`;
-                return;
-            }
-
-            const backend = process.env.YASI_PRONUNCIATION_BACKEND || (app.isPackaged ? "charsiu" : "mock");
-            const env = {
-                ...process.env,
-                PYTHONUNBUFFERED: "1",
-                YASI_PRONUNCIATION_BACKEND: backend,
-                YASI_PRONUNCIATION_SERVICE_PORT: String(DEFAULT_PORT),
-                HF_HUB_DISABLE_XET: process.env.HF_HUB_DISABLE_XET || "1",
-            };
-
-            childProcess = spawn(resolvePythonBinary(), [scriptPath], {
-                env,
-                cwd: serviceRoot,
-                stdio: ["ignore", "pipe", "pipe"],
-            });
-
-            childProcess.stdout?.on("data", (chunk) => {
-                process.stdout.write(String(chunk));
-            });
-            childProcess.stderr?.on("data", (chunk) => {
-                process.stderr.write(String(chunk));
-            });
-            childProcess.once("exit", (code, signal) => {
-                if (code !== 0 && signal !== "SIGTERM") {
-                    lastError = `Pronunciation service exited unexpectedly (${signal || code || "unknown"}).`;
-                }
-                childProcess = null;
-            });
-
             try {
+                process.env.YASI_PRONUNCIATION_SERVICE_URL = serviceUrl;
+
+                const serviceRoot = resolveServiceRoot(app);
+                const scriptPath = path.join(serviceRoot, "service.py");
+                if (!fs.existsSync(scriptPath)) {
+                    lastError = `Missing pronunciation service script: ${scriptPath}`;
+                    return;
+                }
+
+                const backend = process.env.YASI_PRONUNCIATION_BACKEND || (app.isPackaged ? "charsiu" : "mock");
+                const env = {
+                    ...process.env,
+                    PYTHONUNBUFFERED: "1",
+                    YASI_PRONUNCIATION_BACKEND: backend,
+                    YASI_PRONUNCIATION_SERVICE_PORT: String(DEFAULT_PORT),
+                    HF_HUB_DISABLE_XET: process.env.HF_HUB_DISABLE_XET || "1",
+                };
+
+                childProcess = spawn(resolvePythonBinary(), [scriptPath], {
+                    env,
+                    cwd: serviceRoot,
+                    stdio: ["ignore", "pipe", "pipe"],
+                });
+
+                childProcess.stdout?.on("data", (chunk) => {
+                    process.stdout.write(String(chunk));
+                });
+                childProcess.stderr?.on("data", (chunk) => {
+                    process.stderr.write(String(chunk));
+                });
+                childProcess.once("exit", (code, signal) => {
+                    if (code !== 0 && signal !== "SIGTERM") {
+                        lastError = `Pronunciation service exited unexpectedly (${signal || code || "unknown"}).`;
+                    }
+                    childProcess = null;
+                });
+
                 const health = await waitForHealthyService(serviceUrl);
                 lastError = health.ok
                     ? null

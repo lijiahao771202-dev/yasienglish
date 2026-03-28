@@ -2,6 +2,7 @@ import { WebSocket } from "ws";
 import { v4 as uuidv4 } from "uuid";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
+import { DEFAULT_TTS_VOICE } from "./profile-settings";
 
 interface EdgeTTSOptions {
     voice?: string;
@@ -38,7 +39,7 @@ export class EdgeTTS {
     private timeoutMs: number;
 
     constructor(options: EdgeTTSOptions = {}) {
-        this.voice = options.voice || "en-US-JennyNeural";
+        this.voice = options.voice || DEFAULT_TTS_VOICE;
         this.lang = options.lang || "en-US";
         this.outputFormat = options.outputFormat || "audio-24khz-48kbitrate-mono-mp3";
         this.timeoutMs = options.timeoutMs || 10000;
