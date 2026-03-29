@@ -16,7 +16,6 @@ interface TtsMark {
 
 interface CachedTtsPayload {
     audio: string;
-    audioDataUrl: string;
     marks: TtsMark[];
 }
 
@@ -26,25 +25,17 @@ interface CachedTtsMeta {
 
 const inflightSynthesis = new Map<string, Promise<CachedTtsPayload>>();
 
-async function collectSynthesis(
+async function runSynthesis(
     tts: EdgeTTS,
     text: string,
     voice: string,
     rate?: string,
 ) {
     let timeoutId: NodeJS.Timeout | null = null;
-    const generationPromise = (async () => {
-        const audioChunks: Uint8Array[] = [];
-
-        for await (const chunk of tts.synthesizeStream(text, voice, {
+    const generationPromise = tts.synthesize(text, voice, {
             outputFormat: "audio-24khz-48kbitrate-mono-mp3",
             ...(rate ? { rate } : {}),
-        })) {
-            audioChunks.push(chunk);
-        }
-
-        return Buffer.concat(audioChunks.map((chunk) => Buffer.from(chunk)));
-    })();
+        }).then(() => Buffer.from(tts.toBuffer()));
 
     try {
         return await Promise.race([
@@ -88,10 +79,6 @@ function buildAudioUrl(cacheKey: string) {
     return `/api/tts?key=${cacheKey}`;
 }
 
-function buildAudioDataUrl(audioBuffer: Buffer) {
-    return `data:audio/mpeg;base64,${audioBuffer.toString("base64")}`;
-}
-
 function isValidCacheKey(cacheKey: string) {
     return /^[a-f0-9]{64}$/i.test(cacheKey);
 }
@@ -122,32 +109,67 @@ async function writeCachedPayload(cacheKey: string, audioBuffer: Buffer, payload
     await fs.promises.rename(tmpMetaPath, metaPath);
 }
 
+function normalizeTtsText(input: string) {
+    const normalized = input
+        .replace(/[\u200B-\u200D\uFEFF]/g, "")
+        .replace(/[\r\n\t]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    if (!normalized) {
+        return "";
+    }
+
+    if (/[.!?。！？…]["')\]）】》」』”’]*$/.test(normalized)) {
+        return normalized;
+    }
+
+    if (/[\p{L}\p{N}"')\]）】》」』”’]$/u.test(normalized)) {
+        return `${normalized}.`;
+    }
+
+    return normalized;
+}
+
 async function synthesizePayload(text: string, voice: string, rate: string) {
-    const tts = new EdgeTTS();
+    const normalizedText = normalizeTtsText(text);
+
+    if (!normalizedText) {
+        throw new Error("Normalized TTS text is empty");
+    }
 
     let audioBuffer: Buffer;
+    let marks: TtsMark[] = [];
 
     try {
-        audioBuffer = await collectSynthesis(tts, text, voice, rate);
+        const primaryTts = new EdgeTTS();
+        audioBuffer = await runSynthesis(primaryTts, normalizedText, voice, rate);
+        if (typeof primaryTts.getWordBoundaries === "function") {
+            marks = primaryTts.getWordBoundaries().map((item) => ({
+                time: item.offset / 10000,
+                type: "word",
+                start: item.offset / 10000,
+                end: (item.offset + item.duration) / 10000,
+                value: item.text,
+            }));
+        }
     } catch (initialError) {
         console.warn("[TTS] Rate-adjusted synthesis failed, retrying without rate.", initialError);
-        audioBuffer = await collectSynthesis(tts, text, voice);
+        const fallbackTts = new EdgeTTS();
+        audioBuffer = await runSynthesis(fallbackTts, normalizedText, voice);
+        if (typeof fallbackTts.getWordBoundaries === "function") {
+            marks = fallbackTts.getWordBoundaries().map((item) => ({
+                time: item.offset / 10000,
+                type: "word",
+                start: item.offset / 10000,
+                end: (item.offset + item.duration) / 10000,
+                value: item.text,
+            }));
+        }
     }
 
     if (audioBuffer.length === 0) {
         throw new Error("Generated audio buffer is empty");
-    }
-
-    const marks: TtsMark[] = [];
-
-    if (typeof tts.getWordBoundaries === "function") {
-        marks.push(...tts.getWordBoundaries().map((item) => ({
-            time: item.offset / 10000,
-            type: "word",
-            start: item.offset / 10000,
-            end: (item.offset + item.duration) / 10000,
-            value: item.text,
-        })));
     }
 
     return {
@@ -157,14 +179,19 @@ async function synthesizePayload(text: string, voice: string, rate: string) {
 }
 
 async function getOrCreatePayload(text: string, voice: string, rate: string) {
-    const cacheKey = buildCacheKey(text, voice, rate);
+    const normalizedText = normalizeTtsText(text);
+
+    if (!normalizedText) {
+        throw new Error("Normalized TTS text is empty");
+    }
+
+    const cacheKey = buildCacheKey(normalizedText, voice, rate);
     const cachedMeta = await readCachedMeta(cacheKey);
     if (cachedMeta) {
         const { audioPath } = getCachePaths(cacheKey);
-        const cachedAudioBuffer = await fs.promises.readFile(audioPath);
+        await fs.promises.access(audioPath, fs.constants.R_OK);
         return {
             audio: buildAudioUrl(cacheKey),
-            audioDataUrl: buildAudioDataUrl(cachedAudioBuffer),
             marks: cachedMeta.marks,
         };
     }
@@ -175,11 +202,10 @@ async function getOrCreatePayload(text: string, voice: string, rate: string) {
     }
 
     const synthesisPromise = (async () => {
-        const payload = await synthesizePayload(text, voice, rate);
+        const payload = await synthesizePayload(normalizedText, voice, rate);
         await writeCachedPayload(cacheKey, payload.audioBuffer, { marks: payload.marks });
         return {
             audio: buildAudioUrl(cacheKey),
-            audioDataUrl: buildAudioDataUrl(payload.audioBuffer),
             marks: payload.marks,
         };
     })();

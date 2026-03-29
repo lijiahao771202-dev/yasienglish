@@ -72,4 +72,28 @@ describe("AiTeacherConversation", () => {
         expect(html).toContain("这个搭配自然吗？");
         expect(html).toContain("先别急着逐词翻");
     });
+
+    it("renders underline and highlight markup inside tutor markdown", () => {
+        const html = renderToStaticMarkup(
+            <AiTeacherConversation
+                turns={[
+                    {
+                        question: "为什么这里这样排？",
+                        question_type: "follow_up",
+                        coach_markdown: "### 句子骨架\n\n<u>`not only`</u> 这里先立结构，<mark>后面再接真正的新信息</mark>。",
+                        response_intent: "pattern",
+                        answer_revealed: false,
+                        teaching_point: "词序与句子骨架",
+                        error_tags: [],
+                        quality_flags: [],
+                    },
+                ]}
+                onPlayCardAudio={vi.fn()}
+            />,
+        );
+
+        expect(html).toContain("<u class=");
+        expect(html).toContain("<mark class=");
+        expect(html).toContain("句子骨架");
+    });
 });

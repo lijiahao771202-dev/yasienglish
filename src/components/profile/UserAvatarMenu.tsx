@@ -192,7 +192,7 @@ export function UserAvatarMenu({
             previewAudioRef.current = null;
 
             const payload = await requestTtsPayload("This is a preview of your speaking voice.", voice);
-            const audio = new Audio(payload.audioDataUrl || payload.audio);
+            const audio = new Audio(payload.audio);
             previewAudioRef.current = audio;
             audio.onended = () => {
                 if (previewAudioRef.current === audio) {

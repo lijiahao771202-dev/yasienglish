@@ -13,7 +13,6 @@ export default defineConfig({
         exclude: [
             "**/node_modules/**",
             "**/.next/**",
-            "**/dist-electron/**",
             "**/dist-desktop/**",
             "**/coverage/**",
         ],

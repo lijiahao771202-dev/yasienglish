@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { X, Loader2, Book, Volume2, Sparkles, Check, BookPlus } from "lucide-react";
-import { db, VocabItem } from "@/lib/db";
+import { db, type VocabItem, type VocabSourceKind } from "@/lib/db";
 import { createEmptyCard } from "@/lib/fsrs";
 import { applyServerProfilePatchToLocal, saveVocabulary } from "@/lib/user-repository";
+import { defaultVocabSourceLabel, normalizeWordKey } from "@/lib/user-sync";
 import { cn } from "@/lib/utils";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { buildWordLookupDedupeKey, INSUFFICIENT_READING_COINS, type ReadingEconomyAction } from "@/lib/reading-economy";
 import { dispatchReadingCoinFx } from "@/lib/reading-coin-fx";
+import { type MeaningGroup } from "@/lib/vocab-meanings";
 
 export interface PopupState {
     word: string;
@@ -16,6 +18,10 @@ export interface PopupState {
     x: number;
     y: number;
     articleUrl?: string;
+    sourceKind?: VocabSourceKind;
+    sourceLabel?: string;
+    sourceSentence?: string;
+    sourceNote?: string;
 }
 
 export interface DefinitionData {
@@ -29,6 +35,8 @@ export interface DefinitionData {
     };
     example?: string;
     phonetic?: string;
+    meaning_groups?: MeaningGroup[];
+    highlighted_meanings?: string[];
 }
 
 const POPUP_EDGE_PADDING = 16;
@@ -47,6 +55,56 @@ const pronunciationAudioCache = new Map<string, HTMLAudioElement>();
 let lastPronounce: { word: string; at: number } = { word: "", at: 0 };
 const dictionaryMemoryCache = new Map<string, DefinitionData>();
 const dictionaryInFlight = new Map<string, Promise<DefinitionData | null>>();
+type AiDefinitionResult = Pick<DefinitionData, "context_meaning" | "example" | "phonetic" | "meaning_groups" | "highlighted_meanings">;
+const aiDefinitionMemoryCache = new Map<string, AiDefinitionResult>();
+type AiDefinitionLoad = {
+    result: AiDefinitionResult;
+    payload: {
+        context_meaning?: DefinitionData["context_meaning"];
+        example?: string;
+        phonetic?: string;
+        meaning_groups?: MeaningGroup[];
+        highlighted_meanings?: string[];
+        errorCode?: string;
+        readingCoins?: unknown;
+    };
+};
+const aiDefinitionInFlight = new Map<string, Promise<AiDefinitionLoad>>();
+
+function extractAnalysisContext(context: string, selection: string, maxLength = 180) {
+    const normalizedContext = context.replace(/\s+/g, " ").trim();
+    const normalizedSelection = selection.replace(/\s+/g, " ").trim();
+    if (!normalizedContext) return "";
+    if (!normalizedSelection) return normalizedContext.slice(0, maxLength);
+
+    const lowerContext = normalizedContext.toLowerCase();
+    const lowerSelection = normalizedSelection.toLowerCase();
+    const matchIndex = lowerContext.indexOf(lowerSelection);
+
+    if (matchIndex === -1 || normalizedContext.length <= maxLength) {
+        return normalizedContext.slice(0, maxLength);
+    }
+
+    const desiredRadius = Math.max(48, Math.floor((maxLength - normalizedSelection.length) / 2));
+    let start = Math.max(0, matchIndex - desiredRadius);
+    let end = Math.min(normalizedContext.length, matchIndex + normalizedSelection.length + desiredRadius);
+
+    while ((end - start) > maxLength) {
+        if (matchIndex - start > end - (matchIndex + normalizedSelection.length)) {
+            start += 1;
+        } else {
+            end -= 1;
+        }
+    }
+
+    const prefix = start > 0 ? "..." : "";
+    const suffix = end < normalizedContext.length ? "..." : "";
+    return `${prefix}${normalizedContext.slice(start, end).trim()}${suffix}`;
+}
+
+function buildAiDefinitionCacheKey(word: string, context: string, mode: "reading" | "battle") {
+    return `${mode}:${normalizeWordKey(word)}:${context.toLowerCase()}`;
+}
 
 function playPronunciation(word: string, force = false) {
     const normalized = word.trim().toLowerCase();
@@ -82,12 +140,16 @@ export function WordPopup({
     battleInsufficientHint = "关键词券不足，请先购买。",
 }: WordPopupProps) {
     const sessionUser = useAuthSessionUser();
+    const normalizedPopupWord = normalizeWordKey(popup.word);
     const [definition, setDefinition] = useState<DefinitionData | null>(null);
     const [isLoadingDict, setIsLoadingDict] = useState(false);
     const [isLoadingAI, setIsLoadingAI] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isSaved, setIsSaved] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
+    const [saveNotice, setSaveNotice] = useState<string | null>(null);
+    const [saveFeedbackTick, setSaveFeedbackTick] = useState(0);
+    const [showSaveFeedback, setShowSaveFeedback] = useState(false);
     const [readingError, setReadingError] = useState<string | null>(null);
     const popupRef = useRef<HTMLDivElement>(null);
     const dragStateRef = useRef<{ startX: number; startY: number; originLeft: number; originTop: number } | null>(null);
@@ -144,6 +206,14 @@ export function WordPopup({
     }, [position]);
 
     useEffect(() => {
+        if (!showSaveFeedback) return;
+        const timeout = window.setTimeout(() => {
+            setShowSaveFeedback(false);
+        }, 1200);
+        return () => window.clearTimeout(timeout);
+    }, [showSaveFeedback]);
+
+    useEffect(() => {
         if (typeof window === "undefined") return;
         const next = clampPopupPosition(popup.x - 160, popup.y + 8);
         setPosition(next);
@@ -195,10 +265,14 @@ export function WordPopup({
         setIsSaving(false);
         setIsSaved(false);
         setSaveError(null);
+        setSaveNotice(null);
         setReadingError(null);
 
-        db.vocabulary.get(popup.word).then(item => {
-            if (isMounted && item) setIsSaved(true);
+        db.vocabulary.where("word_key").equals(normalizedPopupWord).first().then(item => {
+            if (isMounted && item) {
+                setIsSaved(true);
+                setSaveNotice("这个词/短语已经在生词本里了，不重复入库。");
+            }
         });
 
         // Auto-play pronunciation with cache + cooldown to prevent repeated network/audio startup.
@@ -259,6 +333,7 @@ export function WordPopup({
                             translation: data.translation
                         },
                         phonetic: data.phonetic,
+                        meaning_groups: Array.isArray(data.pos_groups) ? data.pos_groups : [],
                     };
                     dictionaryMemoryCache.set(normalized, result);
                     if (dictionaryMemoryCache.size > 2000) {
@@ -289,7 +364,7 @@ export function WordPopup({
             });
 
         return () => { isMounted = false; };
-    }, [battleConsumeLookupTicket, battleInsufficientHint, isReadingMode, popup.word, popup.articleUrl, sessionUser?.id, syncReadingBalance]); // Re-run if word changes
+    }, [battleConsumeLookupTicket, battleInsufficientHint, isReadingMode, normalizedPopupWord, popup.word, popup.articleUrl, sessionUser?.id, syncReadingBalance]); // Re-run if word changes
 
     // Close on click outside
     useEffect(() => {
@@ -310,67 +385,29 @@ export function WordPopup({
                 setReadingError(battleInsufficientHint);
                 return;
             }
-            const dedupeKey = `word_deep:${sessionUser?.id || "anon"}:${(popup.articleUrl || "unknown").toLowerCase()}:${popup.word.trim().toLowerCase()}`;
-            const response = await fetch("/api/ai/define", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    word: popup.word,
-                    context: popup.context,
-                    economyContext: isReadingMode
-                        ? {
-                            scene: "read",
-                            action: "word_deep_analyze",
-                            articleUrl: popup.articleUrl,
-                            dedupeKey,
-                        }
-                        : undefined,
-                }),
-            });
-            const data = await response.json();
-            if (!response.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
-                setReadingError("阅读币不足，暂时无法 Deep Analyze。");
+            const analysisContext = isReadingMode
+                ? popup.context
+                : extractAnalysisContext(popup.context, popup.word);
+            const cacheKey = buildAiDefinitionCacheKey(popup.word, analysisContext, mode);
+            const cached = aiDefinitionMemoryCache.get(cacheKey);
+            if (cached) {
+                setDefinition((prev) => ({
+                    ...prev,
+                    ...cached,
+                }));
                 return;
             }
-            await syncReadingBalance(data, "word_deep_analyze");
-            setDefinition(prev => ({
-                ...prev,
-                context_meaning: data.context_meaning,
-                example: data.example,
-                phonetic: data.phonetic
-            }));
-        } catch (error) {
-            console.error("AI error:", error);
-        } finally {
-            setIsLoadingAI(false);
-        }
-    };
 
-    const handleAddToVocab = async () => {
-        if (isSaved || isSaving) return;
-
-        // Optimistic UI: mark as saved immediately, persist in background.
-        setIsSaved(true);
-        setIsSaving(true);
-        setSaveError(null);
-
-        let aiDefinition = definition?.context_meaning;
-        let aiExample = definition?.example || "";
-        let aiPhonetic = definition?.phonetic;
-
-        try {
-            if (!aiDefinition) {
-                if (!isReadingMode && battleConsumeDeepAnalyzeTicket && !battleConsumeDeepAnalyzeTicket()) {
-                    setReadingError(battleInsufficientHint);
-                    return;
-                }
-                const dedupeKey = `word_deep:${sessionUser?.id || "anon"}:${(popup.articleUrl || "unknown").toLowerCase()}:${popup.word.trim().toLowerCase()}`;
+            const dedupeKey = `word_deep:${sessionUser?.id || "anon"}:${(popup.articleUrl || "unknown").toLowerCase()}:${popup.word.trim().toLowerCase()}`;
+            const existing = aiDefinitionInFlight.get(cacheKey);
+            const loadAnalysis = existing ?? (async (): Promise<AiDefinitionLoad> => {
                 const response = await fetch("/api/ai/define", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         word: popup.word,
-                        context: popup.context || `Please explain the word "${popup.word}" for an IELTS learner.`,
+                        context: analysisContext,
+                        uiSurface: isReadingMode ? "reading_word_popup" : "battle_word_popup",
                         economyContext: isReadingMode
                             ? {
                                 scene: "read",
@@ -382,32 +419,98 @@ export function WordPopup({
                     }),
                 });
                 const data = await response.json();
-                if (!response.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
-                    setReadingError("阅读币不足，暂时无法补充深度释义。");
-                    return;
+                if (!response.ok) {
+                    const error = new Error(data?.error || "Failed to analyze word");
+                    (error as Error & { responseData?: unknown }).responseData = data;
+                    throw error;
                 }
-                await syncReadingBalance(data, "word_deep_analyze");
-                aiDefinition = data?.context_meaning;
-                aiExample = data?.example || aiExample;
-                aiPhonetic = data?.phonetic || aiPhonetic;
 
-                if (aiDefinition || aiExample || aiPhonetic) {
-                    setDefinition(prev => ({
-                        ...prev,
-                        context_meaning: aiDefinition || prev?.context_meaning,
-                        example: aiExample || prev?.example,
-                        phonetic: aiPhonetic || prev?.phonetic,
-                    }));
-                }
+                return {
+                    result: {
+                        context_meaning: data.context_meaning,
+                        example: data.example,
+                        phonetic: data.phonetic,
+                        meaning_groups: Array.isArray(data.meaning_groups) ? data.meaning_groups : [],
+                        highlighted_meanings: Array.isArray(data.highlighted_meanings) ? data.highlighted_meanings : [],
+                    } satisfies AiDefinitionResult,
+                    payload: data,
+                };
+            })();
+
+            if (!existing) {
+                aiDefinitionInFlight.set(cacheKey, loadAnalysis.finally(() => {
+                    aiDefinitionInFlight.delete(cacheKey);
+                }));
             }
 
-            const base = createEmptyCard(popup.word);
+            const { result, payload } = await loadAnalysis;
+            aiDefinitionMemoryCache.set(cacheKey, result);
+            if (aiDefinitionMemoryCache.size > 500) {
+                const firstKey = aiDefinitionMemoryCache.keys().next().value;
+                if (firstKey) aiDefinitionMemoryCache.delete(firstKey);
+            }
+
+            const data = payload;
+            await syncReadingBalance(data, "word_deep_analyze");
+            setDefinition(prev => ({
+                ...prev,
+                ...result,
+            }));
+        } catch (error) {
+            const responseData = (error as Error & { responseData?: { errorCode?: string } }).responseData;
+            if (responseData?.errorCode === INSUFFICIENT_READING_COINS) {
+                setReadingError("阅读币不足，暂时无法 Deep Analyze。");
+            } else {
+                console.error("AI error:", error);
+            }
+        } finally {
+            setIsLoadingAI(false);
+        }
+    };
+
+    const handleAddToVocab = async () => {
+        if (isSaved || isSaving) return;
+
+        setIsSaving(true);
+        setSaveError(null);
+        setSaveNotice(null);
+        setReadingError(null);
+
+        let aiDefinition = definition?.context_meaning;
+        let aiExample = definition?.example || "";
+        let aiPhonetic = definition?.phonetic;
+        let aiMeaningGroups = Array.isArray(definition?.meaning_groups) ? definition.meaning_groups : [];
+        let aiHighlightedMeanings = Array.isArray(definition?.highlighted_meanings) ? definition.highlighted_meanings : [];
+        const normalizedDisplayWord = popup.word.trim().replace(/\s+/g, " ");
+        const sourceKind = popup.sourceKind || (isReadingMode ? "read" : "legacy_local");
+        const sourceLabel = popup.sourceLabel || defaultVocabSourceLabel(sourceKind);
+        const sourceSentence = popup.sourceSentence?.trim() || popup.context?.trim() || "";
+        const sourceNote = popup.sourceNote?.trim() || "";
+
+        try {
+            const existing = await db.vocabulary.where("word_key").equals(normalizedPopupWord).first();
+            if (existing) {
+                setIsSaved(true);
+                setSaveNotice("这个词/短语已经在生词本里了，不重复入库。");
+                setSaveFeedbackTick((current) => current + 1);
+                setShowSaveFeedback(true);
+                return;
+            }
+
+            const base = createEmptyCard(normalizedDisplayWord);
             const card: VocabItem = {
-                word: popup.word,
+                word: normalizedDisplayWord,
                 definition: aiDefinition?.definition || definition?.dictionary_meaning?.definition || "",
                 translation: aiDefinition?.translation || definition?.dictionary_meaning?.translation || "",
                 context: popup.context || "",
                 example: aiExample || "",
+                phonetic: aiPhonetic || "",
+                meaning_groups: aiMeaningGroups,
+                highlighted_meanings: aiHighlightedMeanings,
+                source_kind: sourceKind,
+                source_label: sourceLabel,
+                source_sentence: sourceSentence,
+                source_note: sourceNote,
                 timestamp: base.timestamp ?? Date.now(),
                 stability: base.stability ?? 0,
                 difficulty: base.difficulty ?? 0,
@@ -419,15 +522,101 @@ export function WordPopup({
                 due: base.due ?? Date.now(),
             };
 
-            await saveVocabulary(card);
             setIsSaved(true);
+            setSaveNotice("已加入生词本。");
+            setSaveFeedbackTick((current) => current + 1);
+            setShowSaveFeedback(true);
+
+            await saveVocabulary(card);
+            setIsSaving(false);
+
+            if (!aiDefinition) {
+                const canRequestDeepAnalyze = isReadingMode || !battleConsumeDeepAnalyzeTicket || battleConsumeDeepAnalyzeTicket();
+                if (!canRequestDeepAnalyze) {
+                    setReadingError(`${battleInsufficientHint} 已加入生词本，暂未补充 AI 深度释义。`);
+                    return;
+                }
+
+                void (async () => {
+                    try {
+                        const dedupeKey = `word_deep:${sessionUser?.id || "anon"}:${(popup.articleUrl || "unknown").toLowerCase()}:${normalizedPopupWord}`;
+                        const response = await fetch("/api/ai/define", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                word: normalizedDisplayWord,
+                                context: popup.context || `Please explain the phrase "${normalizedDisplayWord}" for an IELTS learner.`,
+                                uiSurface: isReadingMode ? "reading_word_popup" : "battle_word_popup",
+                                economyContext: isReadingMode
+                                    ? {
+                                        scene: "read",
+                                        action: "word_deep_analyze",
+                                        articleUrl: popup.articleUrl,
+                                        dedupeKey,
+                                    }
+                                    : undefined,
+                            }),
+                        });
+                        const data = await response.json();
+                        if (!response.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
+                            setReadingError("已加入生词本，但阅读币不足，暂未补充 AI 深度释义。");
+                            return;
+                        }
+                        if (!response.ok) {
+                            return;
+                        }
+
+                        await syncReadingBalance(data, "word_deep_analyze");
+                        const enrichedDefinition = data?.context_meaning;
+                        const enrichedExample = data?.example || "";
+                        const enrichedPhonetic = data?.phonetic || "";
+                        const enrichedMeaningGroups = Array.isArray(data?.meaning_groups) ? data.meaning_groups : [];
+                        const enrichedHighlightedMeanings = Array.isArray(data?.highlighted_meanings) ? data.highlighted_meanings : [];
+
+                        if (enrichedDefinition || enrichedExample || enrichedPhonetic || enrichedMeaningGroups.length > 0 || enrichedHighlightedMeanings.length > 0) {
+                            setDefinition(prev => ({
+                                ...prev,
+                                context_meaning: enrichedDefinition || prev?.context_meaning,
+                                example: enrichedExample || prev?.example,
+                                phonetic: enrichedPhonetic || prev?.phonetic,
+                                meaning_groups: enrichedMeaningGroups.length > 0 ? enrichedMeaningGroups : prev?.meaning_groups,
+                                highlighted_meanings: enrichedHighlightedMeanings.length > 0 ? enrichedHighlightedMeanings : prev?.highlighted_meanings,
+                            }));
+
+                            const currentSaved = await db.vocabulary.where("word_key").equals(normalizedPopupWord).first();
+                            if (currentSaved) {
+                                await saveVocabulary({
+                                    ...currentSaved,
+                                    definition: enrichedDefinition?.definition || currentSaved.definition,
+                                    translation: enrichedDefinition?.translation || currentSaved.translation,
+                                    example: enrichedExample || currentSaved.example,
+                                    phonetic: enrichedPhonetic || currentSaved.phonetic || "",
+                                    meaning_groups: enrichedMeaningGroups.length > 0 ? enrichedMeaningGroups : currentSaved.meaning_groups,
+                                    highlighted_meanings: enrichedHighlightedMeanings.length > 0 ? enrichedHighlightedMeanings : currentSaved.highlighted_meanings,
+                                });
+                                setSaveNotice("已加入生词本，并补全 AI 释义。");
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Failed to enrich saved vocab:", error);
+                    }
+                })();
+            }
         } catch (error) {
             console.error("Failed to save vocab:", error);
-            setIsSaved(false);
-            setSaveError("保存失败，请重试");
-        } finally {
-            setIsSaving(false);
+            const existingAfterError = await db.vocabulary.where("word_key").equals(normalizedPopupWord).first();
+            if (existingAfterError) {
+                setIsSaved(true);
+                setSaveNotice("这个词/短语已经在生词本里了，不重复入库。");
+                setSaveFeedbackTick((current) => current + 1);
+                setShowSaveFeedback(true);
+            } else {
+                setIsSaved(false);
+                setSaveNotice(null);
+                setSaveError("保存失败，请重试");
+            }
         }
+        setIsSaving(false);
     };
 
     const handleDragStart = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -495,23 +684,51 @@ export function WordPopup({
                         >
                             <Volume2 className="w-4 h-4" />
                         </button>
-                        <button
-                            onClick={handleAddToVocab}
-                            disabled={isSaved || isSaving}
-                            className={cn(
-                                "p-2 rounded-full transition-colors shadow-sm disabled:cursor-not-allowed",
-                                isSaved
-                                    ? "bg-emerald-100 text-emerald-600"
-                                    : "bg-white/80 hover:bg-amber-100 text-stone-500 hover:text-amber-600"
-                            )}
-                            title={isSaved ? "已加入生词本" : "加入生词本"}
-                        >
-                            {isSaved ? (
-                                <Check className="w-4 h-4" />
-                            ) : (
-                                <BookPlus className="w-4 h-4" />
-                            )}
-                        </button>
+                        <div className="relative">
+                            <motion.button
+                                onClick={handleAddToVocab}
+                                disabled={isSaving && !isSaved}
+                                className={cn(
+                                    "relative p-2 rounded-full transition-colors shadow-sm disabled:cursor-default",
+                                    isSaved
+                                        ? "cursor-default bg-emerald-100 text-emerald-600"
+                                        : "bg-white/80 hover:bg-amber-100 text-stone-500 hover:text-amber-600"
+                                )}
+                                title={isSaved ? "已加入生词本" : isSaving ? "正在加入生词本" : "加入生词本"}
+                                animate={showSaveFeedback ? { scale: [1, 1.18, 1], boxShadow: ["0 1px 2px rgba(0,0,0,0.08)", "0 0 0 8px rgba(16,185,129,0.14)", "0 1px 2px rgba(0,0,0,0.08)"] } : undefined}
+                                transition={{ duration: 0.42, ease: "easeOut" }}
+                            >
+                                {isSaved ? (
+                                    <motion.span
+                                        key={`saved-icon-${saveFeedbackTick}`}
+                                        initial={{ scale: 0.7, rotate: -12, opacity: 0.6 }}
+                                        animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                                        transition={{ duration: 0.28, ease: "easeOut" }}
+                                        className="block"
+                                    >
+                                        <Check className="w-4 h-4" />
+                                    </motion.span>
+                                ) : isSaving ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <BookPlus className="w-4 h-4" />
+                                )}
+                            </motion.button>
+                            <AnimatePresence>
+                                {showSaveFeedback ? (
+                                    <motion.div
+                                        key={`saved-badge-${saveFeedbackTick}`}
+                                        initial={{ opacity: 0, y: 4, scale: 0.9 }}
+                                        animate={{ opacity: 1, y: -8, scale: 1 }}
+                                        exit={{ opacity: 0, y: -14, scale: 0.92 }}
+                                        transition={{ duration: 0.45, ease: "easeOut" }}
+                                        className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-full border border-emerald-200 bg-white/96 px-2 py-1 text-[10px] font-bold text-emerald-600 shadow-[0_8px_20px_rgba(16,185,129,0.14)]"
+                                    >
+                                        已保存
+                                    </motion.div>
+                                ) : null}
+                            </AnimatePresence>
+                        </div>
                         <button
                             onClick={onClose}
                             className="p-2 text-stone-400 hover:text-stone-600 hover:bg-stone-100/50 rounded-full transition-colors"
@@ -557,6 +774,11 @@ export function WordPopup({
                     {saveError && (
                         <div className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
                             {saveError}
+                        </div>
+                    )}
+                    {saveNotice && !saveError && (
+                        <div className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                            {saveNotice}
                         </div>
                     )}
                     {readingError && (

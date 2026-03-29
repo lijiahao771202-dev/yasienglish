@@ -64,6 +64,12 @@ function buildRequest(
         teachingPoint: string;
         stream: boolean;
         revealAnswer: boolean;
+        articleTitle: string;
+        drillContext: {
+            chinese: string;
+            reference_english: string;
+            key_vocab?: string[];
+        };
     }> = {},
 ) {
     return {
@@ -201,6 +207,146 @@ describe("ask_tutor route", () => {
         expect(data.cards).toBeUndefined();
     });
 
+    it("repairs collapsed short phrasal verbs and sentence runs from the reference sentence", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletion(
+                JSON.stringify({
+                    response_intent: "word_meaning",
+                    coach_markdown: `**"Sorry,Iforgottoturnoffthelights."** 里，turnoff 对应的其实是 turn off。`,
+                    answer_revealed: true,
+                    full_answer: "Sorry,Iforgottoturnoffthelights.",
+                    answer_reason_cn: "turnoff 是这句里的固定短语。",
+                    teaching_point: "动词短语",
+                    error_tags: ["collocation"],
+                    quality_flags: [],
+                }),
+            ),
+        );
+
+        const response = await POST(buildRequest({
+            uiSurface: "rebuild_floating_teacher",
+            intent: "rebuild",
+            query: "turnoff是什么意思？",
+            focusSpan: "turnoff",
+            revealAnswer: true,
+            questionType: "unlock_answer",
+            improvedVersion: "Sorry, I forgot to turn off the lights.",
+            drillContext: {
+                chinese: "对不起，我忘记关灯了。",
+                reference_english: "Sorry, I forgot to turn off the lights.",
+                key_vocab: ["turn off", "lights"],
+            },
+        }));
+        const data = await response.json();
+
+        expect(data.coach_markdown).toContain("turn off");
+        expect(data.coach_markdown).toContain("I forgot to turn off the lights");
+        expect(data.full_answer).toBe("Sorry, I forgot to turn off the lights.");
+        expect(data.answer_reason_cn).toContain("turn off");
+    });
+
+    it("repairs long collapsed english runs and mixed chinese-english spacing", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletion(
+                JSON.stringify({
+                    response_intent: "word_meaning",
+                    coach_markdown: "在句子they noted what went well里，它比说thethingsthatwentwell更自然。",
+                    answer_revealed: false,
+                    teaching_point: "名词性从句",
+                    error_tags: ["grammar"],
+                    quality_flags: [],
+                }),
+            ),
+        );
+
+        const response = await POST(buildRequest({
+            uiSurface: "rebuild_floating_teacher",
+            intent: "rebuild",
+            query: "what went well什么意思？",
+            focusSpan: "what went well",
+            improvedVersion: "They noted what went well.",
+            drillContext: {
+                chinese: "他们注意到了顺利之处。",
+                reference_english: "They noted what went well.",
+            },
+        }));
+        const data = await response.json();
+
+        expect(data.coach_markdown).toContain("句子 they noted what went well 里");
+        expect(data.coach_markdown).toContain("the things that went well");
+    });
+
+    it("repairs collapsed follow-up collocations", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletion(
+                JSON.stringify({
+                    response_intent: "collocation",
+                    coach_markdown: "你可以把它和 followuponsomething 对比记忆：而 followupwithsomeone 是‘与某人进行跟进’。",
+                    answer_revealed: false,
+                    teaching_point: "固定搭配",
+                    error_tags: ["collocation"],
+                    quality_flags: [],
+                }),
+            ),
+        );
+
+        const response = await POST(buildRequest({
+            uiSurface: "rebuild_floating_teacher",
+            intent: "rebuild",
+            query: "follow up with什么意思？",
+            focusSpan: "follow up with",
+            improvedVersion: "I will follow up with them tomorrow.",
+            drillContext: {
+                chinese: "我明天会和他们继续跟进。",
+                reference_english: "I will follow up with them tomorrow.",
+            },
+        }));
+        const data = await response.json();
+
+        expect(data.coach_markdown).toContain("follow up on something");
+        expect(data.coach_markdown).toContain("follow up with someone");
+    });
+
+    it("returns structured example sentences with joined english tokens", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletion(
+                JSON.stringify({
+                    response_intent: "pattern",
+                    coach_markdown: "这个骨架可以直接迁移，例句见下方。",
+                    answer_revealed: false,
+                    teaching_point: "句型迁移",
+                    error_tags: ["grammar"],
+                    quality_flags: [],
+                    example_sentences: [
+                        {
+                            label_cn: "同结构例句",
+                            sentence_en_tokens: ["I", "live", "in", "London", "and", "am", "familiar", "with", "its", "transit", "system", "."],
+                            note_cn: "这里只是把城市和系统名换掉。",
+                        },
+                    ],
+                }),
+            ),
+        );
+
+        const response = await POST(buildRequest({
+            uiSurface: "rebuild_floating_teacher",
+            intent: "rebuild",
+            query: "来个相同结构的句子",
+            questionType: "example",
+            focusSpan: "and am familiar with",
+        }));
+        const data = await response.json();
+
+        expect(data.coach_markdown).toContain("例句见下方");
+        expect(data.example_sentences).toEqual([
+            expect.objectContaining({
+                label_cn: "同结构例句",
+                sentence_en: "I live in London and am familiar with its transit system.",
+                sentence_en_tokens: ["I", "live", "in", "London", "and", "am", "familiar", "with", "its", "transit", "system", "."],
+            }),
+        ]);
+    });
+
     it("uses the battle prompt without gradual hint wording or cards schema", async () => {
         createCompletionMock.mockResolvedValueOnce(
             createCompletion(
@@ -239,5 +385,32 @@ describe("ask_tutor route", () => {
         expect(response.status).toBe(200);
         expect(body).toContain("event: final");
         expect(body).not.toContain("event: error");
+    });
+
+    it("keeps rebuild floating teacher as its own surface instead of collapsing to score", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletion(
+                JSON.stringify({
+                    coach_markdown: "### 先看骨架\n\n| 点 | 解释 |\n| --- | --- |\n| **ignite** | 这里强调动作被点燃。 |",
+                    answer_revealed: false,
+                    teaching_point: "标准表达与短语搭配",
+                    error_tags: ["collocation"],
+                }),
+            ),
+        );
+
+        await POST(buildRequest({
+            uiSurface: "rebuild_floating_teacher",
+            intent: "rebuild",
+            focusSpan: "ignite between us",
+            query: "这里为什么用 ignite between us？",
+        }));
+
+        const prompt = createCompletionMock.mock.calls[0]?.[0]?.messages?.[1]?.content ?? "";
+        expect(prompt).toContain('Surface: "rebuild_floating_teacher"');
+        expect(prompt).toContain("coach_markdown 至少包含一种 Markdown 标记");
+        expect(prompt).toContain("example_sentences");
+        expect(prompt).toContain("sentence_en_tokens");
+        expect(prompt).not.toContain('Surface: "score"');
     });
 });

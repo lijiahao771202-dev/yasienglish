@@ -421,7 +421,7 @@ html[data-bg-theme="sunset-jelly"] {
   --lg-inner-bottom: rgba(141, 125, 238, 0.3);
 }
 
-html[data-bg-theme="forest-glass"] {
+html[data-bg-theme="forest-glass"], .theme-forest-glass {
   --lg-glass-top: rgba(236, 249, 242, 0.64);
   --lg-glass-mid: rgba(174, 217, 198, 0.4);
   --lg-glass-bottom: rgba(86, 149, 123, 0.36);

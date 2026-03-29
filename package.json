@@ -2,22 +2,17 @@
   "name": "yasienglish",
   "version": "0.1.0",
   "private": true,
-  "description": "Yasi English learning desktop app",
+  "description": "Yasi English learning web app",
   "author": "Yasi",
-  "main": "electron/main.cjs",
   "scripts": {
     "dev": "next dev",
-    "desktop:dev": "node scripts/desktop-dev.cjs",
     "build": "next build",
     "start": "next start",
+    "start:prod": "scripts/start-prod-server.sh",
+    "start:prod:rebuild": "REBUILD=1 scripts/start-prod-server.sh",
     "lint": "eslint",
     "speech:model:download": "node scripts/download-sherpa-model.mjs",
-    "test:unit": "vitest run",
-    "desktop:prepare": "node scripts/prepare-electron-bundle.mjs",
-    "desktop:bundle": "next build --webpack && npm run desktop:prepare",
-    "desktop:build": "npm run desktop:bundle && electron-builder --publish never --mac dmg zip",
-    "desktop:build:mac": "npm run desktop:bundle && electron-builder --publish never --mac dmg zip",
-    "desktop:build:win": "npm run desktop:bundle && electron-builder --publish never --win nsis zip"
+    "test:unit": "vitest run"
   },
   "dependencies": {
     "@andresaya/edge-tts": "^1.8.0",
@@ -47,10 +42,12 @@
     "react-dom": "19.2.3",
     "react-markdown": "^10.1.0",
     "recharts": "^3.7.0",
+    "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "rss-parser": "^3.13.0",
     "sherpa-onnx": "^1.12.29",
     "sherpa-onnx-node": "^1.12.29",
+    "socks-proxy-agent": "^9.0.0",
     "string-similarity": "^4.0.4",
     "tailwind-merge": "^3.4.0",
     "text-to-ipa": "^1.0.0",
@@ -71,59 +68,10 @@
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.18.1",
-    "electron": "^41.0.2",
-    "electron-builder": "^26.8.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.0.18"
-  },
-  "build": {
-    "appId": "com.yasi.desktop",
-    "productName": "Yasi",
-    "asar": true,
-    "files": [
-      "electron/**/*",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "dist-electron/server",
-        "to": "server"
-      },
-      {
-        "from": "services/pronunciation",
-        "to": "pronunciation-service"
-      }
-    ],
-    "directories": {
-      "output": "dist-desktop"
-    },
-    "afterPack": "electron/after-pack.cjs",
-    "electronDist": "node_modules/electron/dist",
-    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
-    "mac": {
-      "category": "public.app-category.education",
-      "icon": "electron/assets/icon.icns",
-      "entitlements": "electron/entitlements.mac.plist",
-      "entitlementsInherit": "electron/entitlements.mac.inherit.plist",
-      "target": [
-        "dmg",
-        "zip"
-      ]
-    },
-    "win": {
-      "icon": "electron/assets/icon.ico",
-      "target": [
-        "nsis",
-        "zip"
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "perMachine": false
-    }
   }
 }

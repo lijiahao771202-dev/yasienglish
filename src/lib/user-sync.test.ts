@@ -4,12 +4,15 @@ import {
     buildProfilePatch,
     createDefaultLocalProfile,
     createLocalVocabularyItem,
+    defaultVocabSourceLabel,
     DEFAULT_AVATAR_PRESET,
     DEFAULT_LEARNING_PREFERENCES,
     DEFAULT_PROFILE_USERNAME,
     normalizeWordKey,
     toLocalProfile,
     toRemoteEloHistoryRow,
+    toLocalVocabularyItem,
+    toRemoteVocabularyRow,
 } from "./user-sync";
 
 describe("user sync helpers", () => {
@@ -175,6 +178,55 @@ describe("user sync helpers", () => {
         expect(item.user_id).toBe("user-1");
         expect(item.word_key).toBe("resilient");
         expect(item.sync_status).toBe("pending");
+    });
+
+    it("preserves vocab source metadata across local and remote mappings", () => {
+        const local = createLocalVocabularyItem("user-1", {
+            word: "turn off",
+            definition: "to stop a device from operating",
+            translation: "关闭",
+            context: "Sorry, I forgot to turn off the lights.",
+            example: "Please turn off your phone.",
+            phonetic: "/tɜːrn ɔf/",
+            meaning_groups: [
+                { pos: "v.", meanings: ["关闭", "关掉设备"] },
+                { pos: "phr.", meanings: ["使失去兴趣"] },
+            ],
+            highlighted_meanings: ["关闭"],
+            source_kind: "rebuild",
+            source_label: "",
+            source_sentence: "Sorry, I forgot to turn off the lights.",
+            source_note: "",
+            timestamp: 100,
+            stability: 1,
+            difficulty: 2,
+            elapsed_days: 3,
+            scheduled_days: 4,
+            reps: 5,
+            state: 1,
+            last_review: 6,
+            due: 7,
+        });
+
+        expect(local.source_kind).toBe("rebuild");
+        expect(local.source_label).toBe(defaultVocabSourceLabel("rebuild"));
+        expect(local.source_sentence).toBe("Sorry, I forgot to turn off the lights.");
+        expect(local.phonetic).toBe("/tɜːrn ɔf/");
+        expect(local.meaning_groups).toHaveLength(2);
+        expect(local.highlighted_meanings).toEqual(["关闭"]);
+
+        const remote = toRemoteVocabularyRow("user-1", local);
+        const roundTrip = toLocalVocabularyItem({
+            ...remote,
+            updated_at: "2026-03-29T00:00:00.000Z",
+        });
+
+        expect(roundTrip.source_kind).toBe("rebuild");
+        expect(roundTrip.source_label).toBe("来自 Rebuild");
+        expect(roundTrip.source_sentence).toBe("Sorry, I forgot to turn off the lights.");
+        expect(roundTrip.phonetic).toBe("/tɜːrn ɔf/");
+        expect(roundTrip.meaning_groups).toEqual(local.meaning_groups);
+        expect(roundTrip.highlighted_meanings).toEqual(["关闭"]);
     });
 
     it("maps dictation elo history rows to remote payloads", () => {
