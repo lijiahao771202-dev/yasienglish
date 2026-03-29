@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { memo, useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Sparkles, RefreshCw, Send, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock, Shuffle, SkipForward, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,7 @@ import {
     type TutorHistoryTurn,
     type TutorStructuredResponse,
 } from "./AiTeacherConversation";
+import { RebuildTutorLauncher, RebuildTutorPopup, type RebuildTutorPopupState } from "./RebuildTutorPopup";
 import { GhostTextarea } from "../vocab/GhostTextarea";
 import { InlineGrammarHighlights } from "../shared/InlineGrammarHighlights";
 import { LottieJsonPlayer } from "../shared/LottieJsonPlayer";
@@ -216,6 +217,158 @@ interface DrillData {
         };
     };
 }
+
+
+const PLAYBACK_MEDIA_SOURCE_KEY = "__yasiPlaybackMediaSourceGraph__";
+
+type PlaybackMediaSourceGraph = {
+    context: AudioContext;
+    source: MediaElementAudioSourceNode;
+};
+
+type HTMLAudioElementWithPlaybackGraph = HTMLAudioElement & {
+    [PLAYBACK_MEDIA_SOURCE_KEY]?: PlaybackMediaSourceGraph;
+};
+
+function getPlaybackMediaSource(
+    audioElement: HTMLAudioElement,
+    AudioContextClass: typeof AudioContext,
+) {
+    const elementWithGraph = audioElement as HTMLAudioElementWithPlaybackGraph;
+    const cached = elementWithGraph[PLAYBACK_MEDIA_SOURCE_KEY];
+    if (cached) {
+        return cached;
+    }
+
+    const context = new AudioContextClass();
+    const source = context.createMediaElementSource(audioElement);
+    const graph = { context, source };
+    elementWithGraph[PLAYBACK_MEDIA_SOURCE_KEY] = graph;
+    return graph;
+}
+
+const PlaybackWaveBars = memo(function PlaybackWaveBars({
+    audioElement,
+    isDictationMode,
+    isPlaying,
+}: {
+    audioElement: HTMLAudioElement | null;
+    isDictationMode: boolean;
+    isPlaying: boolean;
+}) {
+    const prefersReducedMotion = useReducedMotion();
+    const [levels, setLevels] = useState<number[]>([0.1, 0.1, 0.1]);
+    const levelBufferRef = useRef<number[]>([0.1, 0.1, 0.1]);
+
+    useEffect(() => {
+        if (!audioElement || !isPlaying || typeof window === "undefined") {
+            const idle = [0.1, 0.1, 0.1];
+            levelBufferRef.current = idle;
+            setLevels(idle);
+            return;
+        }
+
+        const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextClass) return;
+
+        const { context, source } = getPlaybackMediaSource(audioElement, AudioContextClass);
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 64;
+        analyser.smoothingTimeConstant = 0.6; // Slightly more damped for smooth "squash"
+
+        source.connect(analyser);
+        analyser.connect(context.destination);
+
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        let frameId = 0;
+        let cancelled = false;
+
+        const updateLevels = () => {
+            if (cancelled) return;
+            analyser.getByteFrequencyData(data);
+            const now = window.performance.now() / 1000;
+
+            const getBand = (s: number, e: number) => {
+                let sum = 0;
+                for (let i = s; i < e; i++) sum += data[i] || 0;
+                return sum / (e - s);
+            };
+
+            const bassRaw = getBand(0, 3);
+            const midRaw = getBand(3, 10);
+            const trebRaw = getBand(10, 32);
+
+            const calculate = (raw: number, idx: number, prev: number) => {
+                const normalized = Math.pow(raw / 255, 1.3);
+                const pulse = (Math.sin(now * (3.0 + idx * 0.5) + idx * 1.2) + 1) / 2;
+                const idle = prefersReducedMotion ? 0 : pulse * 0.1;
+                const target = Math.max(normalized, idle);
+
+                // Very snappy attack for punchiness, slower release for fluid movement
+                const attack = idx === 0 ? 0.35 : idx === 1 ? 0.45 : 0.55;
+                const release = idx === 0 ? 0.92 : idx === 1 ? 0.88 : 0.82;
+
+                const isRising = target > prev;
+                return isRising
+                    ? prev * (1 - attack) + target * attack
+                    : prev * release + target * (1 - release);
+            };
+
+            const next = [
+                calculate(bassRaw, 0, levelBufferRef.current[0] || 0.1),
+                calculate(midRaw, 1, levelBufferRef.current[1] || 0.1),
+                calculate(trebRaw, 2, levelBufferRef.current[2] || 0.1),
+            ];
+
+            levelBufferRef.current = next;
+            setLevels(next);
+            frameId = window.requestAnimationFrame(updateLevels);
+        };
+
+        void context.resume().finally(() => {
+            if (!cancelled) frameId = window.requestAnimationFrame(updateLevels);
+        });
+
+        return () => {
+            cancelled = true;
+            if (frameId) window.cancelAnimationFrame(frameId);
+            try { source.disconnect(analyser); } catch {}
+            analyser.disconnect();
+        };
+    }, [audioElement, isPlaying, prefersReducedMotion]);
+
+    const [bass, mid, treb] = levels;
+
+    // Map frequency data to height with elastic bounce feel
+    const heights = [
+        6 + bass * 28,  // Bass: moves more
+        10 + mid * 24,  // Mid: stable voice
+        8 + treb * 18   // Treble: quick flicks
+    ];
+
+    return (
+        <div className="relative flex items-center justify-center h-10 w-12 gap-1.5">
+            {heights.map((h, i) => (
+                <div
+                    key={i}
+                    className={cn(
+                        "w-1.5 rounded-full will-change-[height,transform,opacity]",
+                        isDictationMode
+                            ? "bg-gradient-to-t from-fuchsia-600 to-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.4)]"
+                            : "bg-gradient-to-t from-indigo-600 to-blue-400 shadow-[0_0_8px_rgba(79,70,229,0.4)]"
+                    )}
+                    style={{
+                        height: `${h}px`,
+                        opacity: 0.8 + (h / 60),
+                        // Squash & Stretch effect based on height delta
+                        transform: `scaleX(${1 - (h - 10) / 100})`,
+                        transition: isPlaying ? "none" : "height 300ms cubic-bezier(0.2, 1, 0.3, 1), transform 300ms ease-out, opacity 300ms ease-out"
+                    }}
+                />
+            ))}
+        </div>
+    );
+});
 
 type PrefetchedDrillData = DrillData & { mode?: string; sourceMode?: "ai" | "bank" };
 type PassageSession = NonNullable<NonNullable<DrillData["_rebuildMeta"]>["passageSession"]>;
@@ -431,6 +584,8 @@ interface DrillFeedback {
 type TutorQuestionType = "pattern" | "word_choice" | "example" | "unlock_answer" | "follow_up";
 type TutorIntent = "translate" | "grammar" | "lexical" | "rebuild";
 type TutorAction = "ask";
+type TutorUiSurface = "battle" | "score" | "rebuild_floating_teacher";
+type TutorThinkingMode = "chat" | "deep";
 
 interface DictionaryData {
     word: string;
@@ -439,6 +594,8 @@ interface DictionaryData {
     translation?: string;
     definition?: string;
 }
+
+type RebuildTutorSessionState = RebuildTutorPopupState;
 
 interface RebuildTokenInstance {
     id: string;
@@ -608,6 +765,10 @@ function buildGeneratedRebuildBankContentKey(topic: string, referenceEnglish: st
         .replace(/\s+/g, " ")
         .trim();
     return `${normalizedTopic}::${normalizedEnglish}`;
+}
+
+function getSentenceAudioCacheKey(text: string) {
+    return `SENTENCE_${text}`;
 }
 
 const ITEM_CATALOG: Record<ShopItemId, { id: ShopItemId; name: string; price: number; icon: string; consumeAction: string; description: string; }> = {
@@ -1201,6 +1362,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [isPlaying, setIsPlaying] = useState(false);
     const [isAudioLoading, setIsAudioLoading] = useState(false);
     const [isPrefetching, setIsPrefetching] = useState(false); // Track background audio prefetch
+    const [loadingAudioKeys, setLoadingAudioKeys] = useState<Set<string>>(() => new Set());
     const [prefetchedDrillData, setPrefetchedDrillData] = useState<PrefetchedDrillData | null>(null);
     const abortPrefetchRef = useRef<AbortController | null>(null);
     const rebuildChoicePrefetchAbortRef = useRef<AbortController | null>(null);
@@ -1212,9 +1374,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const audioCache = useRef<Map<string, { url?: string; blob?: Blob; marks?: any[] }>>(new Map());
     const audioInflight = useRef<Map<string, Promise<{ blob: Blob; marks: any[] }>>>(new Map());
     const [currentAudioTime, setCurrentAudioTime] = useState(0);
+    const [activePlaybackAudio, setActivePlaybackAudio] = useState<HTMLAudioElement | null>(null);
 
     // Active Word Card
     const [wordPopup, setWordPopup] = useState<PopupState | null>(null);
+    const lastWordPopupTriggerRef = useRef<{ text: string; at: number }>({ text: "", at: 0 });
 
     // Speech Input Integration
     const {
@@ -1245,7 +1409,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [tutorPendingQuestion, setTutorPendingQuestion] = useState<string | null>(null);
     const [isAskingTutor, setIsAskingTutor] = useState(false);
     const [tutorRecentMastery, setTutorRecentMastery] = useState<string[]>([]);
+    const [tutorThinkingMode, setTutorThinkingMode] = useState<TutorThinkingMode>("chat");
     const tutorConversationRef = useRef<HTMLDivElement | null>(null);
+    const [rebuildTutorSession, setRebuildTutorSession] = useState<RebuildTutorSessionState | null>(null);
 
     // Teaching Mode State
     const [teachingMode, setTeachingMode] = useState(false);
@@ -2843,7 +3009,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     const fetchTtsAudio = useCallback(async (text: string) => {
         const data = await requestTtsPayload(text);
-        const blob = await resolveTtsAudioBlob(data.audioDataUrl || data.audio);
+        const blob = await resolveTtsAudioBlob(data.audio);
 
         if (blob.size < 100) {
             throw new Error("Generated audio blob too small");
@@ -2853,7 +3019,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     }, []);
 
     const ensureAudioCached = useCallback(async (text: string) => {
-        const textKey = "SENTENCE_" + text;
+        const textKey = getSentenceAudioCacheKey(text);
         const cached = audioCache.current.get(textKey);
         if (cached?.blob) {
             return cached;
@@ -2864,6 +3030,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             return pending;
         }
 
+        setLoadingAudioKeys((prev) => {
+            if (prev.has(textKey)) return prev;
+            const next = new Set(prev);
+            next.add(textKey);
+            return next;
+        });
+
         const nextRequest = fetchTtsAudio(text)
             .then((nextAudio) => {
                 audioCache.current.set(textKey, nextAudio);
@@ -2871,6 +3044,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             })
             .finally(() => {
                 audioInflight.current.delete(textKey);
+                setLoadingAudioKeys((prev) => {
+                    if (!prev.has(textKey)) return prev;
+                    const next = new Set(prev);
+                    next.delete(textKey);
+                    return next;
+                });
             });
 
         audioInflight.current.set(textKey, nextRequest);
@@ -2896,7 +3075,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             return;
         }
 
-        const textKey = "SENTENCE_" + drillData.reference_english;
+        const textKey = getSentenceAudioCacheKey(drillData.reference_english);
         if (audioCache.current.has(textKey) || audioInflight.current.has(textKey)) {
             return;
         }
@@ -2937,7 +3116,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 .filter((text): text is string => Boolean(text))
         ));
         const pendingTexts = uniqueTexts.filter((text) => {
-            const textKey = "SENTENCE_" + text;
+            const textKey = getSentenceAudioCacheKey(text);
             return !audioCache.current.has(textKey) && !audioInflight.current.has(textKey);
         });
         if (pendingTexts.length === 0) return;
@@ -3003,6 +3182,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setCurrentAudioTime(0);
         setAudioDuration(0);
         setAudioSourceText(null);
+        setActivePlaybackAudio(null);
     }, []);
 
     const playAudio = useCallback(async (explicitText?: string) => {
@@ -3022,7 +3202,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             return false;
         }
 
-        const textKey = "SENTENCE_" + resolvedText;
+        const textKey = getSentenceAudioCacheKey(resolvedText);
         // setIsPlaying(true); 
         setWordPopup(null);
 
@@ -3052,6 +3232,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
             const audio = new Audio(audioUrl);
             audioRef.current = audio;
+            setActivePlaybackAudio(audio);
 
             // Add error handler
             audio.onerror = (e) => {
@@ -3534,7 +3715,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setTutorResponse(null);
         setTutorPendingQuestion(null);
         setTutorQuery("");
+        setTutorThinkingMode("chat");
         setIsTutorOpen(false);
+        setRebuildTutorSession(null);
         setWordPopup(null);
         setIsPlaying(false);
         setHasRatedDrill(false);
@@ -3687,7 +3870,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setTutorResponse(null);
         setTutorPendingQuestion(null);
         setTutorQuery("");
+        setTutorThinkingMode("chat");
         setIsTutorOpen(false);
+        setRebuildTutorSession(null);
         setWordPopup(null);
         setIsPlaying(false);
         setHasRatedDrill(false);
@@ -4856,7 +5041,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         return "translate";
     };
 
-    const isRebuildTutorSurface = isRebuildMode && Boolean(drillData?._rebuildMeta && rebuildFeedback);
+    const isRebuildTutorSurface = isRebuildMode && Boolean(drillData?._rebuildMeta);
+    const isRebuildFloatingTutorSurface = isRebuildMode && Boolean(rebuildTutorSession);
 
     const inferRebuildTeachingPoint = () => {
         if (!rebuildFeedback) return "词序与标准表达";
@@ -4870,6 +5056,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         if (isRebuildTutorSurface) return inferRebuildTeachingPoint();
         return inferTeachingPoint();
     };
+    const activeTutorTeachingPoint = tutorResponse?.teaching_point || inferActiveTeachingPoint();
 
     const inferFocusSpan = (question: string) => {
         const quoted = question.match(/[“"](.*?)[”"]/)?.[1]?.trim();
@@ -4893,6 +5080,21 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             .map((item) => readString(item))
             .filter(Boolean)
             .slice(0, 6);
+        const rawExamples = Array.isArray(asObject.example_sentences) ? asObject.example_sentences : [];
+        const example_sentences: NonNullable<TutorStructuredResponse["example_sentences"]> = [];
+        for (const item of rawExamples) {
+            const example = item && typeof item === "object" ? item as Record<string, unknown> : {};
+            const sentence_en = readString(example.sentence_en);
+            if (!sentence_en) continue;
+            const rawTokens = Array.isArray(example.sentence_en_tokens) ? example.sentence_en_tokens : [];
+            example_sentences.push({
+                label_cn: readString(example.label_cn) || undefined,
+                sentence_en,
+                sentence_en_tokens: rawTokens.map((token) => readString(token)).filter(Boolean),
+                note_cn: readString(example.note_cn) || undefined,
+            });
+            if (example_sentences.length >= 3) break;
+        }
 
         return {
             coach_markdown:
@@ -4903,6 +5105,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             answer_revealed: Boolean(asObject.answer_revealed),
             full_answer: readString(asObject.full_answer) || undefined,
             answer_reason_cn: readString(asObject.answer_reason_cn) || undefined,
+            example_sentences: example_sentences.length > 0 ? example_sentences : undefined,
             teaching_point: readString(asObject.teaching_point) || fallbackTeachingPoint,
             error_tags: errorTags,
             quality_flags: qualityFlags,
@@ -4914,7 +5117,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     }, []);
 
     useEffect(() => {
-        if (!isTutorOpen) return;
+        if (!isTutorOpen && !rebuildTutorSession?.isOpen) return;
 
         const frame = window.requestAnimationFrame(() => {
             const container = tutorConversationRef.current;
@@ -4926,7 +5129,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         });
 
         return () => window.cancelAnimationFrame(frame);
-    }, [isTutorOpen, tutorPendingQuestion, tutorThread.length]);
+    }, [isTutorOpen, rebuildTutorSession?.isOpen, tutorPendingQuestion, tutorThread.length]);
 
     const handleAskTutor = async (options?: {
         question?: string;
@@ -4935,8 +5138,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     }) => {
         const question = (options?.question ?? tutorQuery).trim();
         if (!question || !drillData) return;
-        const assistantLabel = isRebuildTutorSurface ? "英语问答" : "AI Teacher";
-        if (coinsRef.current < 10) {
+        const assistantLabel = isRebuildFloatingTutorSurface ? "英语老师" : isRebuildTutorSurface ? "英语问答" : "AI Teacher";
+        const shouldChargeTutorCoins = !isRebuildFloatingTutorSurface;
+        if (shouldChargeTutorCoins && coinsRef.current < 10) {
             setTutorAnswer(`${assistantLabel} 每次提问会消耗 10 星光币。你当前星光币不够了。`);
             setTutorPendingQuestion(null);
             setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: `${assistantLabel} 提问需要 10 星光币` });
@@ -4947,27 +5151,44 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setTutorQuery("");
         setTutorAnswer("");
 
-        const teachingPoint = tutorResponse?.teaching_point || inferActiveTeachingPoint();
+        const teachingPoint = activeTutorTeachingPoint;
         const requestedType = options?.questionType ?? "follow_up";
         const unlockRequested = requestedType === "unlock_answer" || options?.forceReveal === true;
         const shouldReveal = unlockRequested;
         const outgoingQuestionType: TutorQuestionType = shouldReveal ? "unlock_answer" : requestedType;
         const outgoingIntent = inferTutorIntent(outgoingQuestionType, teachingPoint);
-        const outgoingFocusSpan = inferFocusSpan(question);
-                    const outgoingSurface: "battle" | "score" = isRebuildTutorSurface ? "score" : "battle";
+        const outgoingFocusSpan = (
+            rebuildTutorSession?.focusSpan
+            || getCurrentSelectionFocusSpan()
+            || inferFocusSpan(question)
+        ).slice(0, 80);
+        const outgoingSurface: TutorUiSurface = isRebuildFloatingTutorSurface
+            ? "rebuild_floating_teacher"
+            : isRebuildTutorSurface
+                ? "score"
+                : "battle";
         const userAttemptText = isRebuildTutorSurface
-            ? (rebuildFeedback?.evaluation.userSentence || "")
+            ? (rebuildFeedback?.evaluation.userSentence || rebuildAnswerTokens.map((token) => token.text).join(" "))
             : userTranslation;
         const improvedVersionText = isRebuildTutorSurface
             ? drillData.reference_english
             : drillFeedback?.improved_version;
         const scoreValue = isRebuildTutorSurface
-            ? Math.round((rebuildFeedback?.evaluation.accuracyRatio ?? 0) * 100)
+            ? (rebuildFeedback ? Math.round((rebuildFeedback.evaluation.accuracyRatio ?? 0) * 100) : undefined)
             : drillFeedback?.score;
+        const shouldCompactRebuildContext = isRebuildFloatingTutorSurface && Boolean(rebuildTutorSession?.hasBootstrappedContext);
+        const drillContextPayload = shouldCompactRebuildContext
+            ? {
+                chinese: drillData.chinese,
+                reference_english: drillData.reference_english,
+            }
+            : drillData;
 
         try {
-            applyEconomyPatch({ coinsDelta: -10 });
-            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: `${assistantLabel} 提问 -10 星光币` });
+            if (shouldChargeTutorCoins) {
+                applyEconomyPatch({ coinsDelta: -10 });
+                setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: `${assistantLabel} 提问 -10 星光币` });
+            }
             const response = await fetch("/api/ai/ask_tutor", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -4978,18 +5199,20 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     uiSurface: outgoingSurface,
                     intent: outgoingIntent,
                     focusSpan: outgoingFocusSpan,
-                    userAttempt: userAttemptText,
-                    improvedVersion: improvedVersionText,
-                    score: scoreValue,
-                    recentTurns: tutorThread.slice(-6).map((item) => ({
+                    userAttempt: shouldCompactRebuildContext ? "" : userAttemptText,
+                    improvedVersion: shouldCompactRebuildContext ? "" : improvedVersionText,
+                    score: shouldCompactRebuildContext ? undefined : scoreValue,
+                    recentTurns: tutorThread.slice(shouldCompactRebuildContext ? -4 : -6).map((item) => ({
                         question: item.question,
                         answer: item.coach_markdown,
                     })),
                     recentMastery: tutorRecentMastery,
                     teachingPoint,
                     revealAnswer: shouldReveal,
-                    drillContext: drillData,
+                    drillContext: drillContextPayload,
                     articleTitle: drillData._topicMeta?.topic || context.articleTitle || context.topic,
+                    sessionBootstrapped: shouldCompactRebuildContext,
+                    thinkingMode: tutorThinkingMode,
                     stream: true,
                 }),
             });
@@ -5015,6 +5238,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         answer_revealed: prev?.answer_revealed ?? false,
                         full_answer: prev?.full_answer,
                         answer_reason_cn: prev?.answer_reason_cn,
+                        example_sentences: prev?.example_sentences,
                         teaching_point: prev?.teaching_point ?? teachingPoint,
                         error_tags: prev?.error_tags ?? [],
                         quality_flags: prev?.quality_flags ?? [],
@@ -5102,6 +5326,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             setTutorResponse(normalized);
             setTutorAnswer(normalized.coach_markdown);
             rememberTutorMastery(normalized, outgoingFocusSpan);
+            if (isRebuildFloatingTutorSurface) {
+                setRebuildTutorSession((current) => current ? ({
+                    ...current,
+                    focusSpan: outgoingFocusSpan || current.focusSpan,
+                    teachingPoint: normalized.teaching_point || current.teachingPoint,
+                    hasBootstrappedContext: true,
+                    isOpen: true,
+                }) : current);
+            }
             setTutorThread((prev) => [
                 ...prev,
                 {
@@ -5115,8 +5348,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             console.error(error);
             setTutorAnswer(`${assistantLabel} 暂时不可用，请稍后重试。`);
             setTutorPendingQuestion(null);
-            applyEconomyPatch({ coinsDelta: 10 });
-            setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: `${assistantLabel} 提问失败，已退还 10 星光币` });
+            if (shouldChargeTutorCoins) {
+                applyEconomyPatch({ coinsDelta: 10 });
+                setLootDrop({ type: 'exp', amount: 0, rarity: 'common', message: `${assistantLabel} 提问失败，已退还 10 星光币` });
+            }
         } finally {
             setIsAskingTutor(false);
         }
@@ -5507,7 +5742,39 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             }
 
             if (e.key === "Enter") {
-                if (rebuildAnswerTokens.length > 0 && rebuildAvailableTokens.length === 0) {
+                e.preventDefault();
+
+                const buffered = rebuildTypingBufferRef.current;
+                if (buffered.length > 0) {
+                    const bufferedClean = normalizeRebuildTokenForMatch(buffered);
+                    const exactMatches = rebuildAvailableTokens.filter((token) => (
+                        normalizeRebuildTokenForMatch(token.text) === bufferedClean
+                    ));
+
+                    if (exactMatches.length > 0) {
+                        const matchedToken = pickPreferredRebuildTokenCandidate({
+                            candidates: exactMatches,
+                            typedRaw: buffered,
+                            expectedRaw: expectedNextAnswerToken,
+                        }) ?? exactMatches[0];
+                        handleRebuildSelectToken(matchedToken.id);
+                        rebuildTypingBufferRef.current = "";
+                        setRebuildTypingBuffer("");
+                        return;
+                    }
+
+                    if (rebuildAutocorrect) {
+                        const fuzzyResult = fuzzyMatch(buffered, rebuildAvailableTokens);
+                        if (fuzzyResult) {
+                            handleRebuildSelectToken(fuzzyResult.id);
+                            rebuildTypingBufferRef.current = "";
+                            setRebuildTypingBuffer("");
+                            return;
+                        }
+                    }
+                }
+
+                if (rebuildAnswerTokens.length > 0) {
                     void handleSubmitRebuild();
                 }
                 return;
@@ -6085,26 +6352,177 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     // --- Interactive Renderers (Ported) ---
 
-    const openWordPopupAtElement = useCallback((element: HTMLElement, word: string, contextText?: string) => {
-        const cleanWord = word.replace(/[^a-zA-Z]/g, "").trim();
-        if (!cleanWord) return;
+    const normalizeWordPopupText = useCallback((text: string) => (
+        text
+            .replace(/[‘’]/g, "'")
+            .replace(/[^a-zA-Z\s'-]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+    ), []);
 
-        const rect = element.getBoundingClientRect();
+    const extractSelectionPopupText = useCallback((selection: Selection | null) => {
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0) return "";
+
+        const range = selection.getRangeAt(0);
+        const directText = normalizeWordPopupText(selection.toString());
+        if (directText.includes(" ")) {
+            return directText.slice(0, 80);
+        }
+
+        const anchorElement = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+            ? range.commonAncestorContainer as Element
+            : range.commonAncestorContainer.parentElement;
+        const root = anchorElement?.closest("[data-word-popup-root='true']");
+        if (!root) {
+            return directText.slice(0, 80);
+        }
+
+        const selectedSegments = Array.from(root.querySelectorAll<HTMLElement>("[data-word-popup-segment]"))
+            .filter((node) => {
+                try {
+                    return range.intersectsNode(node);
+                } catch {
+                    return false;
+                }
+            })
+            .map((node) => node.dataset.wordPopupSegment?.trim() ?? "")
+            .filter(Boolean);
+
+        if (selectedSegments.length < 2) {
+            return directText.slice(0, 80);
+        }
+
+        return normalizeWordPopupText(selectedSegments.join(" ")).slice(0, 80);
+    }, [normalizeWordPopupText]);
+
+    const getCurrentSelectionFocusSpan = useCallback(() => {
+        if (typeof window === "undefined") return "";
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed) return "";
+
+        return extractSelectionPopupText(selection);
+    }, [extractSelectionPopupText]);
+
+    const closeRebuildTutorPopup = useCallback(() => {
+        setRebuildTutorSession((current) => current ? { ...current, isOpen: false } : current);
+    }, []);
+
+    const openRebuildTutorPopup = useCallback((event?: React.MouseEvent<HTMLElement> | { x: number; y: number }, explicitFocusSpan?: string) => {
+        if (!isRebuildMode || !drillData?._rebuildMeta) return;
+
+        const focusSpan = explicitFocusSpan || getCurrentSelectionFocusSpan() || rebuildTutorSession?.focusSpan || "";
+        const anchorX = event && "clientX" in event
+            ? event.clientX
+            : event?.x ?? rebuildTutorSession?.anchorPoint.x ?? (typeof window !== "undefined" ? window.innerWidth / 2 : 320);
+        const anchorY = event && "clientY" in event
+            ? event.clientY
+            : event?.y ?? rebuildTutorSession?.anchorPoint.y ?? (typeof window !== "undefined" ? window.innerHeight / 2 : 240);
+
+        setWordPopup(null);
+        setIsTutorOpen(false);
+        setRebuildTutorSession((current) => ({
+            sessionId: current?.sessionId ?? `${Date.now()}`,
+            anchorPoint: { x: anchorX, y: anchorY },
+            focusSpan,
+            teachingPoint: current?.teachingPoint || activeTutorTeachingPoint,
+            hasBootstrappedContext: current?.hasBootstrappedContext ?? false,
+            isOpen: true,
+        }));
+    }, [
+        activeTutorTeachingPoint,
+        drillData?._rebuildMeta,
+        getCurrentSelectionFocusSpan,
+        isRebuildMode,
+        rebuildTutorSession?.anchorPoint.x,
+        rebuildTutorSession?.anchorPoint.y,
+        rebuildTutorSession?.focusSpan,
+        rebuildTutorSession?.hasBootstrappedContext,
+        rebuildTutorSession?.sessionId,
+        rebuildTutorSession?.teachingPoint,
+    ]);
+
+    const openWordPopupAtPosition = useCallback((text: string, x: number, y: number, contextText?: string) => {
+        const normalizedText = normalizeWordPopupText(text);
+        const alphaLength = normalizedText.replace(/[\s'-]/g, "").length;
+        if (!normalizedText || alphaLength < 2) return false;
+
+        const lookupKey = normalizedText.toLowerCase();
+        const now = Date.now();
+        const lastTrigger = lastWordPopupTriggerRef.current;
+        if (lastTrigger.text === lookupKey && now - lastTrigger.at < 450) {
+            return true;
+        }
+        lastWordPopupTriggerRef.current = { text: lookupKey, at: now };
+
+        const sourceKind: PopupState["sourceKind"] = isRebuildMode
+            ? "rebuild"
+            : isListeningMode
+                ? "listening"
+                : isDictationMode
+                    ? "dictation"
+                    : "translation";
+        const sourceLabel = isRebuildMode
+            ? "来自 Rebuild"
+            : isListeningMode
+                ? "来自 Listening"
+                : isDictationMode
+                    ? "来自 Dictation"
+                    : "来自 Translation";
+
         setWordPopup({
-            word: cleanWord,
+            word: normalizedText,
             context: contextText || drillData?.reference_english || "",
-            x: rect.left + rect.width / 2,
-            y: rect.bottom + 10,
+            x,
+            y,
+            sourceKind,
+            sourceLabel,
+            sourceSentence: drillData?.reference_english || contextText || "",
+            sourceNote: "",
         });
-    }, [drillData?.reference_english]);
+        return true;
+    }, [drillData?.reference_english, isDictationMode, isListeningMode, isRebuildMode, normalizeWordPopupText]);
+
+    const openWordPopupAtElement = useCallback((element: HTMLElement, word: string, contextText?: string) => {
+        const rect = element.getBoundingClientRect();
+        return openWordPopupAtPosition(
+            word,
+            rect.left + rect.width / 2,
+            rect.bottom + 10,
+            contextText,
+        );
+    }, [openWordPopupAtPosition]);
+
+    const openWordPopupFromSelection = useCallback((selection: Selection | null, contextText?: string) => {
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false;
+
+        const range = selection.getRangeAt(0);
+        const rect = range.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return false;
+
+        return openWordPopupAtPosition(
+            extractSelectionPopupText(selection),
+            rect.left + rect.width / 2,
+            rect.bottom + 10,
+            contextText || selection.anchorNode?.textContent || drillData?.reference_english || "",
+        );
+    }, [drillData?.reference_english, extractSelectionPopupText, openWordPopupAtPosition]);
+
+    const handleInteractiveTextMouseUp = useCallback((contextText?: string) => {
+        if (typeof window === "undefined") return;
+        openWordPopupFromSelection(window.getSelection(), contextText);
+    }, [openWordPopupFromSelection]);
 
     const handleWordClick = (e: React.MouseEvent, word: string, contextText?: string) => {
         e.stopPropagation();
-        const cleanWord = word.replace(/[^a-zA-Z]/g, "").trim();
+        if (typeof window !== "undefined" && openWordPopupFromSelection(window.getSelection(), contextText)) {
+            return;
+        }
+
+        const cleanWord = normalizeWordPopupText(word).replace(/\s+/g, " ").trim();
         if (!cleanWord) return;
 
         if (isListeningFamilyMode && drillData?.reference_english) {
-            const textKey = "SENTENCE_" + drillData.reference_english;
+            const textKey = getSentenceAudioCacheKey(drillData.reference_english);
             const cached = audioCache.current.get(textKey);
 
             if (cached && cached.marks && audioRef.current) {
@@ -6126,66 +6544,78 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         if (!text) return null;
 
         // Find existing marks for this text
-        const textKey = "SENTENCE_" + (drillData?.reference_english || "");
+        const textKey = getSentenceAudioCacheKey(drillData?.reference_english || "");
         const cached = audioCache.current.get(textKey);
         const marks = cached?.marks || [];
 
-        return text.split(" ").map((word, i) => {
-            const clean = word.replace(/[^a-zA-Z]/g, "").trim();
-            const isActive = wordPopup?.word === clean;
+        return (
+            <span data-word-popup-root="true">
+                {text.split(" ").map((word, i) => {
+                    const clean = word.replace(/[^a-zA-Z]/g, "").trim();
+                    const isActive = wordPopup?.word === clean;
 
-            // Karaoke Highlight Check (Index-based to prevent duplicates)
-            const mark = marks[i];
-            const isKaraokeActive = isPlaying && !isActive && mark && (() => {
-                const mClean = mark.value.replace(/[^a-zA-Z]/g, "").toLowerCase();
-                const wordMatch = mClean === clean.toLowerCase();
-                const timeMatch = currentAudioTime >= mark.start && currentAudioTime <= (mark.end + 200);
-                return wordMatch && timeMatch;
-            })();
+                    // Karaoke Highlight Check (Index-based to prevent duplicates)
+                    const mark = marks[i];
+                    const isKaraokeActive = isPlaying && !isActive && mark && (() => {
+                        const mClean = mark.value.replace(/[^a-zA-Z]/g, "").toLowerCase();
+                        const wordMatch = mClean === clean.toLowerCase();
+                        const timeMatch = currentAudioTime >= mark.start && currentAudioTime <= (mark.end + 200);
+                        return wordMatch && timeMatch;
+                    })();
 
-            return (
-                <span key={i} className="relative inline-block">
-                    <span
-                        onClick={(e) => handleWordClick(e, word, text)}
-                        className={cn(
-                            "cursor-pointer px-1.5 py-0.5 transition-all duration-300 rounded-lg mx-[1px] relative",
-                            "hover:text-rose-600 hover:bg-rose-50/60 hover:scale-105",
-                            getBattleInteractiveWordClassName({
-                                isActive,
-                                isKaraokeActive,
-                            })
-                        )}
-                    >
-                        {word}
-                    </span>
-                    {" "}
-                </span>
-            );
-        });
+                    return (
+                        <span key={i} className="relative inline-block">
+                            <span
+                                data-word-popup-segment={word}
+                                onClick={(e) => handleWordClick(e, word, text)}
+                                onMouseUp={() => handleInteractiveTextMouseUp(text)}
+                                className={cn(
+                                    "cursor-pointer px-1.5 py-0.5 transition-all duration-300 rounded-lg mx-[1px] relative",
+                                    "hover:text-rose-600 hover:bg-rose-50/60 hover:scale-105",
+                                    getBattleInteractiveWordClassName({
+                                        isActive,
+                                        isKaraokeActive,
+                                    })
+                                )}
+                            >
+                                {word}
+                            </span>
+                            {" "}
+                        </span>
+                    );
+                })}
+            </span>
+        );
     };
 
     const renderInteractiveCoachText = (text: string) => {
         if (!text) return null;
 
-        return text.split(" ").map((word, i) => {
-            const clean = word.replace(/[^a-zA-Z]/g, "").trim();
-            const isActive = clean && wordPopup?.word?.toLowerCase() === clean.toLowerCase();
+        return (
+            <span data-word-popup-root="true">
+                {text.split(" ").map((word, i) => {
+                    const clean = word.replace(/[^a-zA-Z]/g, "").trim();
+                    const isActive = clean && wordPopup?.word?.toLowerCase() === clean.toLowerCase();
 
-            return (
-                <span key={`${word}-${i}`} className="inline-block">
-                    <span
-                        onClick={(e) => handleWordClick(e, word, text)}
-                        className={cn(
-                            "cursor-pointer rounded-lg px-1 py-0.5 transition-all duration-200",
-                            "hover:bg-stone-100/80 hover:text-stone-900",
-                            isActive ? "bg-stone-100 text-stone-900 ring-1 ring-stone-200" : "text-stone-800"
-                        )}
-                    >
-                        {word}
-                    </span>{" "}
-                </span>
-            );
-        });
+                    return (
+                        <span key={`${word}-${i}`} className="inline-block">
+                            <span
+                                data-word-popup-segment={word}
+                                onClick={(e) => handleWordClick(e, word, text)}
+                                onMouseUp={() => handleInteractiveTextMouseUp(text)}
+                                className={cn(
+                                    "cursor-pointer rounded-lg px-1 py-0.5 transition-all duration-200",
+                                    "hover:bg-stone-100/80 hover:text-stone-900",
+                                    isActive ? "bg-stone-100 text-stone-900 ring-1 ring-stone-200" : "text-stone-800"
+                                )}
+                            >
+                                {word}
+                            </span>{" "}
+                        </span>
+                    );
+                })}
+            </span>
+        );
     };
 
     const renderDiff = () => {
@@ -6586,11 +7016,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     const renderTranslationTutorModal = () => {
         const isTranslationTutorSurface = mode === "translation";
-        const isEnglishQaSurface = isRebuildTutorSurface;
-        if ((!isTranslationTutorSurface && !isEnglishQaSurface) || !drillData || !isTutorOpen) return null;
+        const isEnglishQaSurface = false;
+        if (!isTranslationTutorSurface || !drillData || !isTutorOpen) return null;
 
         const title = isEnglishQaSurface ? "英语问答" : "AI Teacher";
-        const teachingPoint = tutorResponse?.teaching_point || inferActiveTeachingPoint();
+        const teachingPoint = activeTutorTeachingPoint;
         const description = isEnglishQaSurface
             ? "围着这句英文直接问词义、短语、搭配或语法，不讲评分，只回答你卡住的那个点。"
             : "翻译过程中卡住时，把它当老师来问：先从你已经会的点出发，再帮你补当前词、搭配或句型。";
@@ -6716,6 +7146,33 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     )}
                 </motion.div>
             </motion.div>
+        );
+    };
+
+    const renderRebuildTutorPopup = () => {
+        if (!drillData || !rebuildTutorSession?.isOpen) return null;
+
+        return (
+            <RebuildTutorPopup
+                popup={rebuildTutorSession}
+                query={tutorQuery}
+                turns={tutorThread}
+                pendingQuestion={tutorPendingQuestion}
+                pendingAnswer={tutorPendingQuestion ? tutorAnswer : null}
+                fallbackAnswer={!tutorThread.length ? tutorAnswer : null}
+                isAsking={isAskingTutor}
+                thinkingMode={tutorThinkingMode}
+                mutedTextClass={activeCosmeticTheme.mutedClass}
+                panelClass={activeCosmeticUi.tutorPanelClass}
+                inputClass={activeCosmeticUi.tutorInputClass}
+                sendButtonClass={activeCosmeticUi.analysisButtonClass}
+                conversationRef={tutorConversationRef}
+                onClose={closeRebuildTutorPopup}
+                onPlayCardAudio={handlePlayTutorCardAudio}
+                onQueryChange={setTutorQuery}
+                onThinkingModeChange={setTutorThinkingMode}
+                onSubmit={() => { void handleAskTutor({ questionType: "follow_up" }); }}
+            />
         );
     };
 
@@ -7233,7 +7690,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 >
                                     下一段
                                 </button>
-                            ) : null}
+                            ) : (
+                                !rebuildPassageSummary ? (
+                                    <span className={cn("text-xs font-semibold", activeCosmeticTheme.mutedClass)}>
+                                        先看完这段反馈，再往下做整篇总自评
+                                    </span>
+                                ) : null
+                            )}
                         </div>
                     </div>
                 ) : (
@@ -7296,6 +7759,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             : 0;
         const totalSegments = localPassageSession.segmentCount;
         const activeSegment = localPassageSession.segments[activePassageSegmentIndex] ?? localPassageSession.segments[0];
+        const activeSegmentAudioKey = getSentenceAudioCacheKey(activeSegment?.referenceEnglish ?? "");
+        const isActivePassageAudioLoading = loadingAudioKeys.has(activeSegmentAudioKey);
         const activeSegmentResult = resultMap.get(activePassageSegmentIndex) ?? null;
         const activeSegmentSentenceIpa = (activeSegmentResult && isIpaReady)
             ? buildConnectedSentenceIpa(activeSegment.referenceEnglish, getIPA)
@@ -7359,7 +7824,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                 transition={prefersReducedMotion ? { duration: 0.15 } : { duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
             >
-                {!rebuildPassageSummary && submittedCount < totalSegments ? (
+                {!rebuildPassageSummary ? (
                     <section className={cn("rounded-[2rem] border p-5 md:px-7 md:py-7", rebuildLedgerClass)}>
                         <div className="flex flex-col gap-4 border-b border-stone-100/80 px-1 pb-4 md:flex-row md:items-center md:justify-between">
                             <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -7389,13 +7854,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     onClick={() => { void playAudio(activeSegment.referenceEnglish); }}
                                     className={cn(
                                         "inline-flex min-h-11 min-w-11 items-center justify-center rounded-full border px-3 transition-all",
-                                        audioSourceText === activeSegment.referenceEnglish && (isPlaying || isAudioLoading)
+                                        audioSourceText === activeSegment.referenceEnglish && (isPlaying || isActivePassageAudioLoading || isAudioLoading)
                                             ? (isVerdantRebuild ? "border-emerald-300/80 bg-emerald-100/85 text-emerald-800" : activeCosmeticUi.audioUnlockedClass)
                                             : rebuildControlButtonClass
                                     )}
                                     title="播放当前段"
                                 >
-                                    {isAudioLoading && audioSourceText === activeSegment.referenceEnglish ? (
+                                    {isActivePassageAudioLoading ? (
                                         <RefreshCw className="h-4 w-4 animate-spin" />
                                     ) : (
                                         <Volume2 className={cn("h-4 w-4", audioSourceText === activeSegment.referenceEnglish && isPlaying && "animate-pulse")} />
@@ -7804,12 +8269,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">标准表达</p>
                             <button
                                 type="button"
-                                onClick={openTutorModal}
+                                onClick={(e) => openRebuildTutorPopup(e)}
                                 className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300"
                                 title="打开英语问答"
                             >
                                 <HelpCircle className="h-4 w-4" />
-                                问这句英文
+                                英语老师
                             </button>
                         </div>
                         <div className="mt-4 rounded-[1.45rem] border border-stone-200/80 bg-stone-50/70 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
@@ -7829,7 +8294,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     )}
                                     title="重播英文原句"
                                 >
-                                    <Volume2 className={cn("h-4 w-4", isAudioLoading && "animate-pulse")} />
+                                    {loadingAudioKeys.has(getSentenceAudioCacheKey(drillData.reference_english)) ? (
+                                        <RefreshCw className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Volume2 className="h-4 w-4" />
+                                    )}
                                 </button>
                             </div>
                         </div>
@@ -9177,16 +9646,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                             isDictationMode ? "border-purple-200 border-t-purple-600" : "border-indigo-200 border-t-indigo-600"
                                                                         )} />
                                                                     ) : isPlaying ? (
-                                                                        <div className="flex items-center gap-1.5 h-10">
-                                                                            {[0.4, 1, 0.6, 0.8, 0.5].map((h, i) => (
-                                                                                <motion.div
-                                                                                    key={i}
-                                                                                    animate={{ height: [10 * h, 30 * h, 10 * h] }}
-                                                                                    transition={{ duration: 0.6 + (i * 0.1), repeat: Infinity, ease: "easeInOut", repeatType: "mirror" }}
-                                                                                    className={cn("w-1.5 rounded-full", isDictationMode ? "bg-purple-500" : "bg-indigo-500")}
-                                                                                />
-                                                                            ))}
-                                                                        </div>
+                                                                        <PlaybackWaveBars
+                                                                            audioElement={activePlaybackAudio}
+                                                                            isDictationMode={isDictationMode}
+                                                                            isPlaying={isPlaying}
+                                                                        />
                                                                     ) : <Play className={cn("w-10 h-10 ml-1.5", isDictationMode ? "fill-purple-600 text-purple-600" : "fill-indigo-600 text-indigo-600")} />}
                                                                 </div>
                                                             </button>
@@ -9830,6 +10294,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                     setTutorResponse(null);
                                                     setTutorPendingQuestion(null);
                                                     setIsTutorOpen(false);
+                                                    setRebuildTutorSession(null);
                                                     setIsSubmittingDrill(false);
                                                     setWordPopup(null);
                                                     setAnalysisRequested(false);
@@ -10497,6 +10962,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             battleInsufficientHint="关键词券不足，请先去商场购买。"
                         />
                     )}
+                    {isRebuildMode && drillData && !isGeneratingDrill && !bossState.active && !gambleState.active && !rebuildTutorSession?.isOpen ? (
+                        <RebuildTutorLauncher onOpen={(anchorPoint) => openRebuildTutorPopup(anchorPoint)} />
+                    ) : null}
+                    {renderRebuildTutorPopup()}
                 </motion.div>
 
                 {/* Negotiator Overlay (Crimson Roulette) - Localized */}

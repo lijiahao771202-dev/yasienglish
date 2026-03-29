@@ -1246,6 +1246,55 @@ export async function saveVocabulary(item: VocabItem) {
     void scheduleBackgroundSync();
 }
 
+export async function updateVocabularyEntry(previousWord: string, item: VocabItem) {
+    const userId = await getActiveUserId();
+    if (!userId) throw new Error("Missing active user.");
+
+    const previousWordKey = normalizeWordKey(previousWord);
+    const nextWordKey = normalizeWordKey(item.word);
+    const wordChanged = previousWord !== item.word;
+    const wordKeyChanged = previousWordKey !== nextWordKey;
+    const duplicate = wordKeyChanged
+        ? await db.vocabulary.where("word_key").equals(nextWordKey).first()
+        : null;
+
+    if (duplicate && duplicate.word !== previousWord) {
+        throw new Error("DUPLICATE_VOCAB_WORD");
+    }
+
+    const nextItem = createLocalVocabularyItem(userId, {
+        ...item,
+        remote_id: item.remote_id || crypto.randomUUID(),
+    });
+
+    await db.transaction("rw", db.vocabulary, db.sync_outbox, async () => {
+        if (wordChanged) {
+            await db.vocabulary.delete(previousWord);
+        }
+
+        if (wordKeyChanged) {
+            await queueOutboxItem({
+                entity: "vocabulary",
+                operation: "delete",
+                recordKey: previousWordKey,
+                payload: { user_id: userId, word_key: previousWordKey },
+            });
+        }
+
+        await db.vocabulary.put(nextItem);
+        await queueOutboxItem({
+            entity: "vocabulary",
+            operation: "upsert",
+            recordKey: nextItem.word_key || nextWordKey,
+            payload: toRemoteVocabularyRow(userId, nextItem),
+        });
+    });
+
+    useSyncStatusStore.getState().setPhase("syncing");
+    void scheduleBackgroundSync();
+    return nextItem;
+}
+
 export async function deleteVocabulary(word: string) {
     const userId = await getActiveUserId();
     if (!userId) throw new Error("Missing active user.");

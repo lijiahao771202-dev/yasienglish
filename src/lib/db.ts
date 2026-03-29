@@ -1,5 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import type { LearningPreferences } from "@/lib/profile-settings";
+import type { MeaningGroup } from "@/lib/vocab-meanings";
 
 export type SyncStatus = 'synced' | 'pending' | 'error';
 
@@ -51,6 +52,15 @@ export interface ReadArticleItem {
     user_id?: string;
 }
 
+export type VocabSourceKind =
+    | 'manual'
+    | 'read'
+    | 'rebuild'
+    | 'translation'
+    | 'listening'
+    | 'dictation'
+    | 'legacy_local';
+
 export interface VocabItem extends SyncTracked {
     word: string;
     word_key?: string;
@@ -58,6 +68,13 @@ export interface VocabItem extends SyncTracked {
     translation: string;
     context: string;
     example: string;
+    phonetic?: string;
+    meaning_groups?: MeaningGroup[];
+    highlighted_meanings?: string[];
+    source_kind?: VocabSourceKind;
+    source_label?: string;
+    source_sentence?: string;
+    source_note?: string;
     timestamp: number;
     // FSRS Fields
     stability: number;
@@ -828,7 +845,7 @@ export class YasiDB extends Dexie {
             user_profile: '++id, user_id, updated_at, sync_status',
             sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
             sync_meta: '&key, updated_at',
-        }).upgrade(async tx => {
+            }).upgrade(async tx => {
             await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
                 const rebuildBase = typeof profile.rebuild_hidden_elo === 'number'
                     ? profile.rebuild_hidden_elo
@@ -837,6 +854,61 @@ export class YasiDB extends Dexie {
                 if (typeof profile.rebuild_elo !== 'number') profile.rebuild_elo = rebuildBase;
                 if (typeof profile.rebuild_streak !== 'number') profile.rebuild_streak = 0;
                 if (typeof profile.rebuild_max_elo !== 'number') profile.rebuild_max_elo = profile.rebuild_elo ?? rebuildBase;
+            });
+        });
+
+        // Version 32: add vocab source metadata for provenance and editing.
+        this.version(32).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            await tx.table('vocabulary').toCollection().modify((item: VocabItem) => {
+                item.source_kind = item.source_kind || 'legacy_local';
+                item.source_label = item.source_label || '本地旧卡片';
+                if ((!item.source_sentence || !item.source_sentence.trim()) && item.context?.trim()) {
+                    item.source_sentence = item.context.trim();
+                }
+                if (typeof item.source_note !== 'string') {
+                    item.source_note = '';
+                }
+            });
+        });
+
+        // Version 33: add vocab phonetic and structured meaning metadata.
+        this.version(33).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            await tx.table('vocabulary').toCollection().modify((item: VocabItem) => {
+                if (typeof item.phonetic !== 'string') {
+                    item.phonetic = '';
+                }
+                if (!Array.isArray(item.meaning_groups)) {
+                    item.meaning_groups = [];
+                }
+                if (!Array.isArray(item.highlighted_meanings)) {
+                    item.highlighted_meanings = [];
+                }
             });
         });
     }

@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { db, VocabItem } from '@/lib/db';
 import { deleteVocabulary, saveVocabulary } from '@/lib/user-repository';
+import { defaultVocabSourceLabel } from '@/lib/user-sync';
 import { useLiveQuery } from 'dexie-react-hooks';
 import Link from 'next/link';
-import { ArrowRight, BookOpen, Brain, CalendarClock, Clock, Loader2, Plus, Search, Sparkles, Trash2 } from 'lucide-react';
+import { ArrowRight, BookOpen, Brain, CalendarClock, Clock, Loader2, PencilLine, Plus, Search, Sparkles, Trash2, GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { motion, useMotionTemplate, useMotionValue, useSpring, useTransform } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { createEmptyCard } from '@/lib/fsrs';
-import { GlassCard } from '@/components/ui/GlassCard';
+import { VocabEditDialog } from '@/components/vocab/VocabEditDialog';
+import Image from 'next/image';
 
 type AddWordFeedback = { type: "success" | "error"; text: string } | null;
 
@@ -17,98 +19,113 @@ function getStateMeta(state: number) {
     if (state === 0) {
         return {
             label: "New",
-            className: "border-sky-200/70 bg-sky-100/75 text-sky-700",
+            className: "text-emerald-700 bg-emerald-100/60 ring-1 ring-emerald-300/60 shadow-[inset_0_1px_rgba(255,255,255,0.8)]",
+            dot: "bg-emerald-500"
         };
     }
     if (state === 1) {
         return {
             label: "Learning",
-            className: "border-amber-200/70 bg-amber-100/75 text-amber-700",
+            className: "text-amber-700 bg-amber-100/60 ring-1 ring-amber-300/60 shadow-[inset_0_1px_rgba(255,255,255,0.8)]",
+            dot: "bg-amber-500"
         };
     }
     return {
         label: "Review",
-        className: "border-emerald-200/70 bg-emerald-100/75 text-emerald-700",
+        className: "text-sky-700 bg-sky-100/60 ring-1 ring-sky-300/60 shadow-[inset_0_1px_rgba(255,255,255,0.8)]",
+        dot: "bg-sky-500"
     };
 }
 
 function VocabWordCard({
     item,
+    onEdit,
     onDelete,
 }: {
     item: VocabItem;
+    onEdit: (item: VocabItem) => void;
     onDelete: (word: string) => void;
 }) {
-    const x = useMotionValue(0);
-    const y = useMotionValue(0);
-    const mouseX = useSpring(x, { stiffness: 380, damping: 42 });
-    const mouseY = useSpring(y, { stiffness: 380, damping: 42 });
-    const rotateX = useTransform(mouseY, [-180, 180], [7, -7]);
-    const rotateY = useTransform(mouseX, [-180, 180], [-7, 7]);
-    const glare = useMotionTemplate`radial-gradient(320px circle at ${mouseX}px ${mouseY}px, rgba(255,255,255,0.22), transparent 45%)`;
     const stateMeta = getStateMeta(item.state);
-
-    const onMouseMove = ({ currentTarget, clientX, clientY }: React.MouseEvent) => {
-        const rect = currentTarget.getBoundingClientRect();
-        x.set(clientX - rect.left - rect.width / 2);
-        y.set(clientY - rect.top - rect.height / 2);
-    };
-
-    const onMouseLeave = () => {
-        x.set(0);
-        y.set(0);
-    };
-
-    const dueLabel = item.due <= Date.now()
+    const isDue = item.due <= Date.now();
+    const dueLabel = isDue
         ? "Due now"
-        : new Date(item.due).toLocaleDateString();
+        : new Date(item.due).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
     return (
         <motion.article
-            style={{ rotateX, rotateY, transformStyle: "preserve-3d" }}
-            onMouseMove={onMouseMove}
-            onMouseLeave={onMouseLeave}
-            className="group relative min-h-[220px] cursor-default rounded-[2rem]"
+            whileHover={{ y: -6, scale: 1.015 }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            className="group relative flex flex-col justify-between overflow-hidden rounded-[1.8rem] border border-white/40 bg-[linear-gradient(150deg,rgba(255,255,255,0.68),rgba(255,255,255,0.45))] px-5 py-5 shadow-[0_8px_32px_rgba(0,0,0,0.04)] ring-1 ring-black/5 backdrop-blur-[28px] backdrop-saturate-150 transition-all duration-300 hover:shadow-[0_20px_48px_-12px_rgba(16,185,129,0.18)] hover:border-white/60 hover:bg-[linear-gradient(150deg,rgba(255,255,255,0.85),rgba(255,255,255,0.6))]"
         >
-            <div className="absolute inset-0 rounded-[2rem] border border-white/35 bg-gradient-to-br from-white/40 via-white/18 to-rose-100/25 shadow-[0_24px_52px_-34px_rgba(15,23,42,0.5)] backdrop-blur-2xl" />
-            <div className="absolute inset-[1px] rounded-[1.95rem] shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]" />
+            {/* Inner Glare / Specular highlight */}
+            <div className="pointer-events-none absolute inset-[1px] rounded-[1.75rem] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] z-0" />
 
-            <div style={{ transform: "translateZ(22px)" }} className="relative z-20 flex h-full flex-col justify-between rounded-[2rem] p-5">
-                <div className="flex items-start justify-between gap-4">
-                    <span className={cn("inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em]", stateMeta.className)}>
-                        {stateMeta.label}
-                    </span>
+            <div className="relative z-10 flex items-start justify-between gap-4">
+                <div className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest backdrop-blur-md", stateMeta.className)}>
+                    <span className={cn("h-1.5 w-1.5 rounded-full shadow-sm", stateMeta.dot)} />
+                    {stateMeta.label}
+                </div>
+                
+                {/* Actions: Hidden unless hovered */}
+                <div className="flex items-center gap-1.5 opacity-0 transition-all duration-300 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0">
+                    <button
+                        onClick={() => onEdit(item)}
+                        className="rounded-full border border-white/50 bg-white/50 p-1.5 text-stone-500 shadow-sm backdrop-blur-md hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 transition-all"
+                        title="Edit"
+                    >
+                        <PencilLine className="h-3.5 w-3.5" />
+                    </button>
                     <button
                         onClick={() => onDelete(item.word)}
-                        className="rounded-full border border-white/30 bg-white/30 p-2 text-stone-400 transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-500"
+                        className="rounded-full border border-white/50 bg-white/50 p-1.5 text-stone-500 shadow-sm backdrop-blur-md hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 transition-all"
                         title="Delete"
                     >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3.5 w-3.5" />
                     </button>
-                </div>
-
-                <div className="space-y-3">
-                    <h3 className="font-newsreader text-[2.2rem] leading-none tracking-tight text-stone-900">{item.word}</h3>
-                    {item.definition && (
-                        <p className="line-clamp-2 text-[15px] leading-relaxed text-stone-700">{item.definition}</p>
-                    )}
-                    {item.translation && <p className="line-clamp-1 text-sm text-stone-500">{item.translation}</p>}
-                    <div className="flex items-center justify-between gap-3 pt-1">
-                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-stone-500">
-                            <Clock className="h-3.5 w-3.5" />
-                            {dueLabel}
-                        </span>
-                        <span className="rounded-full border border-white/40 bg-white/35 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-stone-500">
-                            reps {item.reps}
-                        </span>
-                    </div>
                 </div>
             </div>
 
-            <motion.div
-                style={{ background: glare }}
-                className="pointer-events-none absolute inset-0 z-30 rounded-[2rem] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-            />
+            <div className="relative z-10 mt-4 flex-1 space-y-2">
+                <h3 className="font-newsreader text-[2.2rem] leading-none tracking-tight text-stone-900 drop-shadow-sm group-hover:text-emerald-950 transition-colors">
+                    {item.word}
+                </h3>
+                
+                {item.definition && (
+                    <p className="line-clamp-2 text-[14px] font-medium leading-relaxed text-stone-700">
+                        {item.definition}
+                    </p>
+                )}
+                {item.translation && (
+                    <p className="line-clamp-1 text-[13px] text-stone-600/90 font-medium">
+                        {item.translation}
+                    </p>
+                )}
+                
+                {item.source_sentence && (
+                    <div className="mt-3 overflow-hidden rounded-[1.1rem] border border-white/40 bg-white/30 p-3 shadow-[inset_0_2px_8px_rgba(0,0,0,0.02)] backdrop-blur-sm">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-[#5d8a72]">
+                            {item.source_label || defaultVocabSourceLabel(item.source_kind)}
+                        </p>
+                        <p className="mt-1.5 text-[13px] italic leading-relaxed text-stone-700 line-clamp-2">
+                            "{item.source_sentence}"
+                        </p>
+                    </div>
+                )}
+            </div>
+
+            <div className="relative z-10 mt-5 flex items-center justify-between border-t border-black/[0.04] pt-3">
+                <span className={cn(
+                    "inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors",
+                    isDue ? "text-amber-600" : "text-stone-500/80"
+                )}>
+                    {isDue ? <CalendarClock className="h-3.5 w-3.5" /> : <Clock className="h-3.5 w-3.5" />}
+                    {dueLabel}
+                </span>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-stone-400">
+                    REPS {item.reps}
+                </span>
+            </div>
         </motion.article>
     );
 }
@@ -118,6 +135,15 @@ export default function VocabDashboard() {
     const [manualWord, setManualWord] = useState("");
     const [isAddingWord, setIsAddingWord] = useState(false);
     const [addWordFeedback, setAddWordFeedback] = useState<AddWordFeedback>(null);
+    const [editingItem, setEditingItem] = useState<VocabItem | null>(null);
+
+    useEffect(() => {
+        document.documentElement.setAttribute('data-bg-theme', 'forest-glass');
+        return () => {
+            const saved = localStorage.getItem('yasi_bg_theme') || 'rose-milk';
+            document.documentElement.setAttribute('data-bg-theme', saved);
+        };
+    }, []);
 
     const vocabQuery = useLiveQuery(() => db.vocabulary.toArray());
     const vocab = useMemo(() => vocabQuery ?? [], [vocabQuery]);
@@ -125,14 +151,18 @@ export default function VocabDashboard() {
     // Stats
     const totalWords = vocab.length;
     const dueWords = vocab.filter((w) => w.due <= Date.now()).length;
-    const filteredVocab = useMemo(
-        () =>
-            vocab
-                .filter(w => w.word.toLowerCase().includes(search.toLowerCase()))
-                .sort((a, b) => a.due - b.due),
-        [vocab, search],
-    );
-    const dueRatio = totalWords === 0 ? 0 : Math.min(100, Math.round((dueWords / totalWords) * 100));
+    
+    // Determine which words to show: if searching, show matches; else show only the 12 most recently added.
+    const filteredVocab = useMemo(() => {
+        if (!search) {
+            return [...vocab]
+                .sort((a, b) => b.timestamp - a.timestamp) // newest first
+                .slice(0, 12);
+        }
+        return vocab
+            .filter(w => w.word.toLowerCase().includes(search.toLowerCase()))
+            .sort((a, b) => a.due - b.due);
+    }, [vocab, search]);
 
     // Delete handler
     const handleDelete = async (word: string) => {
@@ -149,7 +179,7 @@ export default function VocabDashboard() {
 
         const exists = vocab.some(item => item.word.toLowerCase() === word.toLowerCase());
         if (exists) {
-            setAddWordFeedback({ type: "error", text: "这个词已经在生词本里了" });
+            setAddWordFeedback({ type: "error", text: "已在生词本中" });
             return;
         }
 
@@ -180,6 +210,10 @@ export default function VocabDashboard() {
                 translation: aiData?.context_meaning?.translation || dictData?.translation || "",
                 context: "",
                 example: aiData?.example || "",
+                source_kind: "manual",
+                source_label: "手动添加",
+                source_sentence: "",
+                source_note: "",
                 timestamp: base.timestamp ?? Date.now(),
                 stability: base.stability ?? 0,
                 difficulty: base.difficulty ?? 0,
@@ -193,7 +227,10 @@ export default function VocabDashboard() {
 
             await saveVocabulary(card);
             setManualWord("");
-            setAddWordFeedback({ type: "success", text: `已加入：${word}` });
+            setAddWordFeedback({ type: "success", text: `已添加 ${word}` });
+            
+            // Auto clear feedback after 3s
+            setTimeout(() => setAddWordFeedback(null), 3000);
         } catch (error) {
             console.error("Manual add word failed:", error);
             setAddWordFeedback({ type: "error", text: "添加失败，请重试" });
@@ -203,163 +240,166 @@ export default function VocabDashboard() {
     };
 
     return (
-        <main className="relative min-h-screen overflow-hidden bg-[#f8f7f5] pb-20">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(251,191,36,0.2),transparent_36%),radial-gradient(circle_at_84%_18%,rgba(56,189,248,0.16),transparent_40%),radial-gradient(circle_at_84%_82%,rgba(244,114,182,0.14),transparent_40%)]" />
-            <div className="pointer-events-none absolute inset-0 opacity-25 bg-[linear-gradient(rgba(148,163,184,0.12)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.12)_1px,transparent_1px)] bg-[size:52px_52px]" />
+        <main className="theme-forest-glass relative min-h-screen overflow-hidden bg-[#eef3ef] pb-24 text-stone-800">
+            {/* Rich Ethereal Forest Background */}
+            <div className="fixed inset-0 z-0">
+                <img
+                    src="https://images.unsplash.com/photo-1542273917363-3b1817f69a56?q=80&w=2670&auto=format&fit=crop"
+                    alt="Lush green forest canopy"
+                    className="h-full w-full object-cover object-[center_30%] scale-105"
+                    loading="lazy"
+                />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.1),transparent_50%),linear-gradient(180deg,rgba(240,245,241,0.7),rgba(235,245,238,0.9)_60%,#eef3ef_90%)]" />
+                <div className="absolute inset-0 backdrop-blur-[48px] backdrop-saturate-[1.1] mask-image-[linear-gradient(to_bottom,black_0%,black_100%)]" />
+            </div>
 
-            <div className="relative mx-auto max-w-7xl px-5 py-8 md:px-6 md:py-10">
-                <GlassCard
-                    breathe
-                    className="liquid-glass-hero liquid-glass-apple-radius p-6 md:p-8"
-                >
-                    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-                        <div className="space-y-4">
-                            <Link href="/read" className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.15em] text-[#6f294f]/80 transition-colors hover:text-[#4b1732]">
-                                <ArrowRight className="h-3.5 w-3.5 rotate-180" />
-                                Back to Reading
-                            </Link>
-                            <h1 className="font-newsreader text-[3rem] leading-[0.92] tracking-[-0.03em] text-[#2c1321] md:text-[4rem]">
-                                Word Cards
-                            </h1>
-                            <p className="max-w-2xl text-sm leading-6 text-[#744a5f] md:text-[15px]">
-                                Battle 和 Read 遇到的词，全部沉淀成可复习卡片。先聚合，再开刷。
-                            </p>
-                        </div>
-
-                        <div className="grid w-full gap-3 sm:grid-cols-3 lg:w-auto">
-                            <div className="rounded-[1.4rem] border border-white/45 bg-white/32 px-4 py-3 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.5)]">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7f586a]">Total Cards</p>
-                                <p className="mt-1 text-3xl font-bold text-[#2c1321]">{totalWords}</p>
-                            </div>
-                            <div className="rounded-[1.4rem] border border-amber-200/60 bg-amber-100/40 px-4 py-3 backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">Due Now</p>
-                                <p className="mt-1 text-3xl font-bold text-amber-700">{dueWords}</p>
-                            </div>
-                            <Link
-                                href="/vocab/review"
-                                className={cn(
-                                    "liquid-glass-hover liquid-glass-tap inline-flex min-h-[96px] items-center justify-center gap-2 rounded-[1.4rem] border px-4 py-3 text-sm font-semibold transition-all",
-                                    dueWords > 0
-                                        ? "border-[#2c1321]/70 bg-[#2c1321] text-white shadow-[0_18px_38px_-26px_rgba(44,19,33,0.9)] hover:brightness-110"
-                                        : "cursor-not-allowed border-stone-300/70 bg-stone-200/70 text-stone-500"
-                                )}
-                                onClick={(e) => dueWords === 0 && e.preventDefault()}
-                            >
-                                <Brain className="h-4 w-4" />
-                                Start Review
-                            </Link>
-                        </div>
-                    </div>
-
-                    <div className="mt-6 flex items-center gap-3">
-                        <Sparkles className="h-4 w-4 text-[#7f3a61]" />
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/40">
-                            <div
-                                className="h-full rounded-full bg-gradient-to-r from-amber-400 via-rose-400 to-fuchsia-500 transition-all duration-700"
-                                style={{ width: `${dueRatio}%` }}
-                            />
-                        </div>
-                        <span className="text-xs font-semibold text-[#7f3a61]">{dueRatio}% due</span>
-                    </div>
-                </GlassCard>
-
-                <section className="mt-6 grid gap-5 xl:grid-cols-[1.1fr_1.9fr]">
-                    <GlassCard className="liquid-glass-apple-radius p-5 md:p-6">
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
-                                <Plus className="h-4 w-4 text-emerald-600" />
-                                手动添加生词
-                            </div>
-                            <p className="text-xs leading-5 text-stone-500">
-                                输入英文单词，系统优先拉字典并补充 AI 释义。
-                            </p>
-
-                            <form onSubmit={handleManualAddWord} className="space-y-3">
-                                <input
-                                    type="text"
-                                    value={manualWord}
-                                    onChange={(e) => setManualWord(e.target.value)}
-                                    placeholder="resilient / inevitable / constrain"
-                                    className="h-12 w-full rounded-xl border border-white/55 bg-white/55 px-4 text-stone-700 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-200"
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={isAddingWord || !manualWord.trim()}
-                                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#2c1321] to-[#4b1732] px-4 text-sm font-semibold text-white transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {isAddingWord ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                                    {isAddingWord ? "添加中..." : "加入生词本"}
-                                </button>
-                            </form>
-
-                            {addWordFeedback && (
-                                <p className={cn("text-xs", addWordFeedback.type === "success" ? "text-emerald-600" : "text-rose-500")}>
-                                    {addWordFeedback.text}
-                                </p>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-2 pt-2 text-xs">
-                                <div className="rounded-xl border border-white/45 bg-white/35 px-3 py-2 text-stone-600">
-                                    <p className="font-semibold text-stone-700">Queue</p>
-                                    <p className="mt-1 inline-flex items-center gap-1"><CalendarClock className="h-3.5 w-3.5" />{dueWords} due now</p>
-                                </div>
-                                <div className="rounded-xl border border-white/45 bg-white/35 px-3 py-2 text-stone-600">
-                                    <p className="font-semibold text-stone-700">Coverage</p>
-                                    <p className="mt-1 inline-flex items-center gap-1"><BookOpen className="h-3.5 w-3.5" />{totalWords} cards</p>
-                                </div>
-                            </div>
-
-                            <Link
-                                href="/vocab/review"
-                                className={cn(
-                                    "liquid-glass-hover liquid-glass-tap inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border text-xs font-semibold uppercase tracking-[0.13em] transition-all",
-                                    dueWords > 0
-                                        ? "border-emerald-300/70 bg-emerald-100/65 text-emerald-700 hover:bg-emerald-100/85"
-                                        : "cursor-not-allowed border-stone-300/70 bg-stone-200/60 text-stone-500"
-                                )}
-                                onClick={(e) => dueWords === 0 && e.preventDefault()}
-                            >
-                                <Brain className="h-3.5 w-3.5" />
-                                Go Review Queue
-                            </Link>
-                        </div>
-                    </GlassCard>
-
-                    <GlassCard className="liquid-glass-apple-radius p-5 md:p-6">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="relative flex-1">
-                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
-                                <input
-                                    type="text"
-                                    placeholder="Search words..."
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                    className="h-11 w-full rounded-xl border border-white/55 bg-white/60 pl-10 pr-4 text-stone-700 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-200"
-                                />
-                            </div>
-                            <span className="rounded-full border border-white/50 bg-white/45 px-3 py-1 text-xs font-semibold text-stone-600">
-                                {filteredVocab.length} showing
+            {/* Header Section */}
+            <div className="relative z-10 mx-auto mt-8 max-w-6xl px-5 sm:px-6">
+                <div className="flex flex-col items-start justify-between gap-6 sm:flex-row sm:items-end">
+                    <div className="flex flex-col gap-2">
+                        <Link href="/read" className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-[#4b775c] transition-all hover:text-emerald-700 hover:tracking-[0.15em]">
+                            <ArrowRight className="h-3.5 w-3.5 rotate-180" />
+                            Reading
+                        </Link>
+                        <h1 className="font-newsreader text-[3.8rem] font-medium leading-[0.9] tracking-tight text-[#163020] drop-shadow-sm">
+                            Word Vault
+                        </h1>
+                        <div className="mt-1 flex items-center gap-3">
+                            <span className="rounded-full border border-emerald-900/10 bg-emerald-800/5 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[#345b46] shadow-[inset_0_1px_rgba(255,255,255,0.6)] backdrop-blur-md">
+                                {totalWords} Collected
+                            </span>
+                            <span className={cn(
+                                "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider shadow-[inset_0_1px_rgba(255,255,255,0.6)] backdrop-blur-md transition-all",
+                                dueWords > 0 
+                                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700" 
+                                    : "border-emerald-900/10 bg-emerald-800/5 text-[#345b46]"
+                            )}>
+                                <Sparkles className="h-3 w-3" /> {dueWords} Due
                             </span>
                         </div>
+                    </div>
 
-                        <div className="mt-5">
-                            {filteredVocab.length > 0 ? (
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    {filteredVocab.map((item) => (
-                                        <VocabWordCard key={item.word} item={item} onDelete={handleDelete} />
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/60 bg-white/25 text-center text-stone-500">
-                                    <BookOpen className="mb-3 h-11 w-11 opacity-40" />
-                                    <p className="text-base font-medium">No cards found</p>
-                                    {search && <p className="mt-1 text-sm">Try a different search term.</p>}
-                                </div>
-                            )}
-                        </div>
-                    </GlassCard>
-                </section>
+                    <Link
+                        href="/vocab/review"
+                        className={cn(
+                            "group relative inline-flex items-center justify-center gap-2.5 overflow-hidden rounded-[1.4rem] px-8 py-4 text-[15px] font-bold tracking-wide transition-all duration-400 active:scale-95",
+                            dueWords > 0
+                                ? "bg-[linear-gradient(135deg,#10b981,#059669)] text-white shadow-[0_16px_32px_-8px_rgba(16,185,129,0.5),inset_0_1px_rgba(255,255,255,0.4)] hover:shadow-[0_20px_40px_-8px_rgba(16,185,129,0.6),inset_0_1px_rgba(255,255,255,0.5)] hover:bg-[linear-gradient(135deg,#34d399,#10b981)]"
+                                : "cursor-not-allowed border border-white/50 bg-white/40 text-emerald-900/40 shadow-[inset_0_1px_rgba(255,255,255,0.8)] backdrop-blur-xl"
+                        )}
+                        onClick={(e) => dueWords === 0 && e.preventDefault()}
+                    >
+                        {dueWords > 0 && <div className="absolute inset-0 bg-[linear-gradient(to_right,transparent,rgba(255,255,255,0.3)_50%,transparent)] -translate-x-full group-hover:animate-[shimmer_1.2s_infinite]" />}
+                        <Brain className="h-5 w-5" />
+                        Start Review
+                    </Link>
+                </div>
             </div>
+
+            {/* Toolbar */}
+            <div className="sticky top-0 z-40 mx-auto mt-8 max-w-6xl px-5 sm:px-6 pb-4 pt-1">
+                <div className="flex flex-col gap-3 rounded-[1.6rem] border border-white/60 bg-white/30 p-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.06),inset_0_1px_rgba(255,255,255,0.8)] ring-1 ring-black/[0.03] backdrop-blur-[32px] backdrop-saturate-200 sm:flex-row sm:items-center">
+                    
+                    {/* Search Bar */}
+                    <div className="relative flex-1">
+                        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#345b46]/70" />
+                        <input
+                            type="text"
+                            placeholder="搜索你的森林词库..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            className="h-12 w-full rounded-xl border border-white/40 bg-white/40 pl-11 pr-4 text-[14px] font-medium text-[#163020] placeholder:text-[#345b46]/50 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all focus:border-emerald-300 focus:bg-white/70 focus:outline-none focus:ring-4 focus:ring-emerald-500/10"
+                        />
+                    </div>
+
+                    {/* Divider for desktop */}
+                    <div className="hidden h-8 w-px bg-emerald-900/10 sm:block" />
+
+                    {/* Quick Add Bar */}
+                    <form onSubmit={handleManualAddWord} className="flex h-12 flex-1 sm:max-w-[280px] lg:max-w-[340px] items-center gap-2 rounded-xl border border-white/40 bg-white/40 pl-4 pr-1.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all focus-within:border-emerald-300 focus-within:bg-white/70 focus-within:ring-4 focus-within:ring-emerald-500/10">
+                        <GraduationCap className="h-4 w-4 shrink-0 text-[#345b46]/70" />
+                        <input
+                            type="text"
+                            value={manualWord}
+                            onChange={(e) => setManualWord(e.target.value)}
+                            placeholder="手动添加生词..."
+                            className="h-full flex-1 bg-transparent px-2 text-[14px] font-medium text-[#163020] placeholder:text-[#345b46]/50 focus:outline-none"
+                        />
+                        <button
+                            type="submit"
+                            disabled={isAddingWord || !manualWord.trim()}
+                            className="inline-flex h-9 w-14 shrink-0 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#059669,#047857)] text-white shadow-[0_4px_12px_rgba(5,150,105,0.3),inset_0_1px_rgba(255,255,255,0.3)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:shadow-none disabled:text-stone-50"
+                        >
+                            {isAddingWord ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                        </button>
+                    </form>
+                </div>
+                
+                {/* Add Feedback Notification */}
+                {addWordFeedback && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: -10 }} 
+                        animate={{ opacity: 1, y: 0 }} 
+                        className={cn(
+                            "absolute left-1/2 top-full mt-3 -translate-x-1/2 rounded-full px-5 py-2 text-[12px] font-bold uppercase tracking-wider shadow-xl backdrop-blur-xl",
+                            addWordFeedback.type === "success" 
+                                ? "bg-emerald-500/90 border border-emerald-400 text-white" 
+                                : "bg-rose-500/90 border border-rose-400 text-white"
+                        )}
+                    >
+                        {addWordFeedback.text}
+                    </motion.div>
+                )}
+            </div>
+
+            {/* Grid Area */}
+            <div className="relative z-10 mx-auto mt-6 max-w-6xl px-5 sm:px-6">
+                {!search && filteredVocab.length > 0 && (
+                    <div className="mb-5 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#345b46]">
+                        <Clock className="h-3.5 w-3.5" />
+                        Recently Added ({filteredVocab.length})
+                    </div>
+                )}
+                {search && (
+                    <div className="mb-5 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#345b46]">
+                        <Search className="h-3.5 w-3.5" />
+                        Search Results ({filteredVocab.length})
+                    </div>
+                )}
+
+                {filteredVocab.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        {filteredVocab.map((item) => (
+                            <VocabWordCard
+                                key={item.word}
+                                item={item}
+                                onEdit={setEditingItem}
+                                onDelete={handleDelete}
+                            />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="mt-12 flex flex-col items-center justify-center text-stone-400">
+                        <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full border border-white/50 bg-white/30 shadow-[0_8px_32px_rgba(0,0,0,0.05),inset_0_1px_rgba(255,255,255,0.7)] backdrop-blur-2xl">
+                            <Search className="h-10 w-10 text-emerald-900/30" />
+                        </div>
+                        <p className="text-[16px] font-bold text-[#345b46]">未找到对应卡片</p>
+                        {search ? (
+                            <p className="mt-1 text-sm font-medium text-emerald-900/60">换个关键词试试吧</p>
+                        ) : (
+                            <p className="mt-1 text-sm font-medium text-emerald-900/60">你的生词本是空的，开始阅读吧</p>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            <VocabEditDialog
+                open={Boolean(editingItem)}
+                item={editingItem}
+                onClose={() => setEditingItem(null)}
+                onSaved={(nextItem) => setEditingItem(nextItem)}
+            />
         </main>
     );
 }
+

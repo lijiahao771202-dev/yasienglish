@@ -5,11 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
     edgeTtsConstructorMock,
-    synthesizeStreamMock,
+    synthesizeMock,
+    toBufferMock,
     getWordBoundariesMock,
 } = vi.hoisted(() => ({
     edgeTtsConstructorMock: vi.fn(),
-    synthesizeStreamMock: vi.fn(),
+    synthesizeMock: vi.fn(),
+    toBufferMock: vi.fn(),
     getWordBoundariesMock: vi.fn(),
 }));
 
@@ -19,8 +21,12 @@ vi.mock("@andresaya/edge-tts", () => ({
             edgeTtsConstructorMock();
         }
 
-        synthesizeStream(...args: unknown[]) {
-            return synthesizeStreamMock(...args);
+        synthesize(...args: unknown[]) {
+            return synthesizeMock(...args);
+        }
+
+        toBuffer() {
+            return toBufferMock();
         }
 
         getWordBoundaries() {
@@ -47,7 +53,8 @@ describe("tts route", () => {
     beforeEach(() => {
         vi.resetModules();
         edgeTtsConstructorMock.mockReset();
-        synthesizeStreamMock.mockReset();
+        synthesizeMock.mockReset();
+        toBufferMock.mockReset();
         getWordBoundariesMock.mockReset();
 
         cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), "yasi-tts-cache-"));
@@ -60,9 +67,8 @@ describe("tts route", () => {
     });
 
     it("reuses cached synthesis for identical requests", async () => {
-        synthesizeStreamMock.mockImplementation(async function* () {
-            yield Uint8Array.from([1, 2, 3, 4]);
-        });
+        synthesizeMock.mockResolvedValue(undefined);
+        toBufferMock.mockReturnValue(Buffer.from([1, 2, 3, 4]));
         getWordBoundariesMock.mockReturnValue([
             { offset: 0, duration: 1000, text: "hello" },
         ]);
@@ -86,20 +92,20 @@ describe("tts route", () => {
         expect(firstResponse.status).toBe(200);
         expect(secondResponse.status).toBe(200);
         expect(edgeTtsConstructorMock).toHaveBeenCalledTimes(1);
-        expect(synthesizeStreamMock).toHaveBeenCalledTimes(1);
+        expect(synthesizeMock).toHaveBeenCalledTimes(1);
         expect(firstJson.audio).toBe(secondJson.audio);
         expect(firstJson.audio).toMatch(/^\/api\/tts\?key=/);
-        expect(firstJson.audioDataUrl).toMatch(/^data:audio\/mpeg;base64,/);
-        expect(secondJson.audioDataUrl).toMatch(/^data:audio\/mpeg;base64,/);
+        expect(firstJson.audioDataUrl).toBeUndefined();
+        expect(secondJson.audioDataUrl).toBeUndefined();
         expect(secondJson.marks).toEqual(firstJson.marks);
         expect(fs.readdirSync(cacheDir).length).toBeGreaterThan(0);
     });
 
     it("deduplicates concurrent synthesis for identical requests", async () => {
-        synthesizeStreamMock.mockImplementation(async function* () {
+        synthesizeMock.mockImplementation(async () => {
             await new Promise((resolve) => setTimeout(resolve, 50));
-            yield Uint8Array.from([9, 8, 7, 6]);
         });
+        toBufferMock.mockReturnValue(Buffer.from([9, 8, 7, 6]));
         getWordBoundariesMock.mockReturnValue([
             { offset: 0, duration: 1000, text: "dedupe" },
         ]);
@@ -117,15 +123,14 @@ describe("tts route", () => {
         expect(firstResponse.status).toBe(200);
         expect(secondResponse.status).toBe(200);
         expect(edgeTtsConstructorMock).toHaveBeenCalledTimes(1);
-        expect(synthesizeStreamMock).toHaveBeenCalledTimes(1);
+        expect(synthesizeMock).toHaveBeenCalledTimes(1);
         expect(firstJson.audio).toBe(secondJson.audio);
-        expect(firstJson.audioDataUrl).toMatch(/^data:audio\/mpeg;base64,/);
+        expect(firstJson.audioDataUrl).toBeUndefined();
     });
 
     it("serves cached mp3 bytes via GET after synthesis", async () => {
-        synthesizeStreamMock.mockImplementation(async function* () {
-            yield Uint8Array.from([5, 6, 7, 8]);
-        });
+        synthesizeMock.mockResolvedValue(undefined);
+        toBufferMock.mockReturnValue(Buffer.from([5, 6, 7, 8]));
         getWordBoundariesMock.mockReturnValue([]);
 
         const { GET, POST } = await importRoute();
@@ -143,5 +148,28 @@ describe("tts route", () => {
         expect(getResponse.status).toBe(200);
         expect(getResponse.headers.get("content-type")).toBe("audio/mpeg");
         expect(audioBuffer.equals(Buffer.from([5, 6, 7, 8]))).toBe(true);
+    });
+
+    it("normalizes whitespace and appends terminal punctuation before synthesis", async () => {
+        synthesizeMock.mockResolvedValue(undefined);
+        toBufferMock.mockReturnValue(Buffer.from([7, 7, 7, 7]));
+        getWordBoundariesMock.mockReturnValue([]);
+
+        const { POST } = await importRoute();
+        const response = await POST(await buildRequest({
+            text: "  The final words are here \n\n now  ",
+            voice: "en-US-JennyNeural",
+            rate: "+0%",
+        }));
+
+        expect(response.status).toBe(200);
+        expect(synthesizeMock).toHaveBeenCalledWith(
+            "The final words are here now.",
+            "en-US-JennyNeural",
+            expect.objectContaining({
+                outputFormat: "audio-24khz-48kbitrate-mono-mp3",
+                rate: "+0%",
+            }),
+        );
     });
 });

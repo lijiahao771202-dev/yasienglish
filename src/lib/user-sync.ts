@@ -5,9 +5,11 @@ import {
     type LocalUserProfile,
     type ReadArticleItem,
     type SyncStatus,
+    type VocabSourceKind,
     type VocabItem,
     type WritingEntry,
 } from "./db";
+import { normalizeHighlightedMeanings, type MeaningGroup } from "./vocab-meanings";
 import {
     DEFAULT_AVATAR_PRESET,
     DEFAULT_LEARNING_PREFERENCES,
@@ -78,6 +80,13 @@ export interface RemoteVocabularyRow {
     translation: string;
     context: string;
     example: string;
+    phonetic?: string;
+    meaning_groups?: MeaningGroup[];
+    highlighted_meanings?: string[];
+    source_kind?: VocabSourceKind;
+    source_label?: string;
+    source_sentence?: string;
+    source_note?: string;
     timestamp_ms: number;
     stability: number;
     difficulty: number;
@@ -143,6 +152,41 @@ export const DEFAULT_INVENTORY: Required<InventoryState> = {
 
 export function normalizeWordKey(word: string) {
     return word.trim().toLowerCase();
+}
+
+export function normalizeVocabSourceKind(value?: string | null): VocabSourceKind {
+    switch (value) {
+        case "manual":
+        case "read":
+        case "rebuild":
+        case "translation":
+        case "listening":
+        case "dictation":
+        case "legacy_local":
+            return value;
+        default:
+            return "legacy_local";
+    }
+}
+
+export function defaultVocabSourceLabel(kind?: VocabSourceKind) {
+    switch (kind) {
+        case "manual":
+            return "手动添加";
+        case "read":
+            return "来自 Read";
+        case "rebuild":
+            return "来自 Rebuild";
+        case "translation":
+            return "来自 Translation";
+        case "listening":
+            return "来自 Listening";
+        case "dictation":
+            return "来自 Dictation";
+        case "legacy_local":
+        default:
+            return "本地旧卡片";
+    }
 }
 
 export function normalizeInventory(inventory?: InventoryState, legacyCapsule?: number) {
@@ -312,10 +356,19 @@ export function buildProfilePatch(
 }
 
 export function createLocalVocabularyItem(userId: string, item: VocabItem): VocabItem {
+    const sourceKind = normalizeVocabSourceKind(item.source_kind);
+    const sourceSentence = item.source_sentence?.trim() || item.context?.trim() || "";
     return {
         ...item,
         user_id: userId,
         word_key: normalizeWordKey(item.word),
+        phonetic: item.phonetic?.trim() || "",
+        meaning_groups: Array.isArray(item.meaning_groups) ? item.meaning_groups : [],
+        highlighted_meanings: normalizeHighlightedMeanings(item.highlighted_meanings),
+        source_kind: sourceKind,
+        source_label: item.source_label?.trim() || defaultVocabSourceLabel(sourceKind),
+        source_sentence: sourceSentence,
+        source_note: item.source_note?.trim() || "",
         updated_at: new Date().toISOString(),
         sync_status: "pending",
     };
@@ -331,6 +384,13 @@ export function toRemoteVocabularyRow(userId: string, item: VocabItem): RemoteVo
         translation: item.translation,
         context: item.context,
         example: item.example,
+        phonetic: item.phonetic,
+        meaning_groups: item.meaning_groups,
+        highlighted_meanings: normalizeHighlightedMeanings(item.highlighted_meanings),
+        source_kind: item.source_kind,
+        source_label: item.source_label,
+        source_sentence: item.source_sentence,
+        source_note: item.source_note,
         timestamp_ms: item.timestamp,
         stability: item.stability,
         difficulty: item.difficulty,
@@ -345,6 +405,7 @@ export function toRemoteVocabularyRow(userId: string, item: VocabItem): RemoteVo
 }
 
 export function toLocalVocabularyItem(remote: RemoteVocabularyRow): VocabItem {
+    const sourceKind = normalizeVocabSourceKind(remote.source_kind);
     return {
         remote_id: remote.id,
         user_id: remote.user_id,
@@ -354,6 +415,13 @@ export function toLocalVocabularyItem(remote: RemoteVocabularyRow): VocabItem {
         translation: remote.translation,
         context: remote.context,
         example: remote.example,
+        phonetic: remote.phonetic || "",
+        meaning_groups: Array.isArray(remote.meaning_groups) ? remote.meaning_groups : [],
+        highlighted_meanings: normalizeHighlightedMeanings(remote.highlighted_meanings),
+        source_kind: sourceKind,
+        source_label: remote.source_label || defaultVocabSourceLabel(sourceKind),
+        source_sentence: remote.source_sentence || remote.context || "",
+        source_note: remote.source_note || "",
         timestamp: remote.timestamp_ms,
         stability: remote.stability,
         difficulty: remote.difficulty,

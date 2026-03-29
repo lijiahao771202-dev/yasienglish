@@ -5,7 +5,7 @@ import DOMPurify from "dompurify";
 import { motion, AnimatePresence } from "framer-motion";
 import { ExternalLink } from "lucide-react";
 import { ParagraphCard } from "./ParagraphCard";
-import { WordPopup } from "./WordPopup";
+import { WordPopup, type PopupState } from "./WordPopup";
 import TEDVideoPlayer, { TEDVideoPlayerRef } from "./TEDVideoPlayer";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
 import { cn } from "@/lib/utils";
@@ -37,14 +37,6 @@ interface ArticleDisplayProps {
         paragraphNumber: number;
         evidence?: string;
     } | null;
-}
-
-interface PopupState {
-    word: string;
-    context: string;
-    x: number;
-    y: number;
-    articleUrl?: string;
 }
 
 export function ArticleDisplay({ title, content, byline, blocks, siteName, videoUrl, articleUrl, isEditMode, locateRequest }: ArticleDisplayProps) {
@@ -219,11 +211,20 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
     };
 
     const handleArticleClick = async (e: React.MouseEvent) => {
-        // 1. Try to get the word under the cursor
         let word = "";
         let context = "";
+        const selection = window.getSelection();
+        const normalizedSelection = selection && !selection.isCollapsed
+            ? selection.toString().replace(/\s+/g, " ").trim()
+            : "";
 
-        if (document.caretRangeFromPoint) {
+        // Multi-word selection takes precedence over caret lookup.
+        if (normalizedSelection.length >= 2 && normalizedSelection.includes(" ")) {
+            word = normalizedSelection;
+            context = selection?.anchorNode?.textContent || normalizedSelection;
+        }
+
+        if (!word && document.caretRangeFromPoint) {
             const range = document.caretRangeFromPoint(e.clientX, e.clientY);
             if (range && range.startContainer.nodeType === Node.TEXT_NODE) {
                 const textNode = range.startContainer;
@@ -273,9 +274,8 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
         }
 
         // 2. If no word found via click, check selection
-        const selection = window.getSelection();
         if (!word && selection && !selection.isCollapsed) {
-            word = selection.toString().trim();
+            word = normalizedSelection;
             context = selection.anchorNode?.textContent || word;
         }
 
@@ -304,7 +304,17 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
             y = rect.bottom + 10;
         }
 
-        setPopup({ word, context, x, y, articleUrl });
+        setPopup({
+            word,
+            context,
+            x,
+            y,
+            articleUrl,
+            sourceKind: "read",
+            sourceLabel: "来自 Read",
+            sourceSentence: context,
+            sourceNote: title || "",
+        });
     };
 
     return (

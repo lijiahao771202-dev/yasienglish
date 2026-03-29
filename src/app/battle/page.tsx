@@ -337,7 +337,7 @@ export default function BattlePage() {
     const [rebuildBattleElo, setRebuildBattleElo] = useState(400);
     const [rebuildBattleStreak, setRebuildBattleStreak] = useState(0);
     const [streak, setStreak] = useState(0);
-    const [battleMode, setBattleMode] = useState<BattleMode>('listening');
+    const [battleMode, setBattleMode] = useState<BattleMode>('rebuild');
     const [listeningSourceMode, setListeningSourceMode] = useState<ListeningSourceMode>(resolveInitialListeningSourceMode);
     const [rebuildVariant, setRebuildVariant] = useState<"sentence" | "passage">("sentence");
     const [rebuildSegmentCount, setRebuildSegmentCount] = useState<2 | 3 | 5>(3);
@@ -426,10 +426,10 @@ export default function BattlePage() {
     };
     const activeGuideMeta = GUIDE_SECTIONS.find((item) => item.id === activeGuideSection) ?? GUIDE_SECTIONS[0];
     const battleModeTabs: Array<{ key: BattleMode; label: string; dotClass: string; }> = [
-        { key: "listening", label: "Listening", dotClass: "bg-emerald-500" },
         { key: "rebuild", label: "Rebuild", dotClass: "bg-teal-500" },
         { key: "dictation", label: "Dictation", dotClass: "bg-purple-500" },
         { key: "translation", label: "Translation", dotClass: "bg-indigo-500" },
+        { key: "listening", label: "Listening", dotClass: "bg-emerald-500" },
     ];
     const activeBattleModeIndex = battleModeTabs.findIndex((item) => item.key === battleMode);
     const backgroundTheme = getSavedBackgroundTheme(sessionUser?.id);
