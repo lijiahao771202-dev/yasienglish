@@ -71,6 +71,8 @@ export interface VocabItem extends SyncTracked {
     phonetic?: string;
     meaning_groups?: MeaningGroup[];
     highlighted_meanings?: string[];
+    word_breakdown?: string[];
+    morphology_notes?: string[];
     source_kind?: VocabSourceKind;
     source_label?: string;
     source_sentence?: string;
@@ -908,6 +910,31 @@ export class YasiDB extends Dexie {
                 }
                 if (!Array.isArray(item.highlighted_meanings)) {
                     item.highlighted_meanings = [];
+                }
+            });
+        });
+
+        // Version 34: add AI-generated word breakdown and morphology notes.
+        this.version(34).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+        }).upgrade(async tx => {
+            await tx.table('vocabulary').toCollection().modify((item: VocabItem) => {
+                if (!Array.isArray(item.word_breakdown)) {
+                    item.word_breakdown = [];
+                }
+                if (!Array.isArray(item.morphology_notes)) {
+                    item.morphology_notes = [];
                 }
             });
         });

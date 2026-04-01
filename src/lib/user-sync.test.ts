@@ -188,6 +188,8 @@ describe("user sync helpers", () => {
             context: "Sorry, I forgot to turn off the lights.",
             example: "Please turn off your phone.",
             phonetic: "/tɜːrn ɔf/",
+            word_breakdown: ["turn", "off"],
+            morphology_notes: ["turn: 转动/切换", "off: 离开、关闭状态"],
             meaning_groups: [
                 { pos: "v.", meanings: ["关闭", "关掉设备"] },
                 { pos: "phr.", meanings: ["使失去兴趣"] },
@@ -212,6 +214,8 @@ describe("user sync helpers", () => {
         expect(local.source_label).toBe(defaultVocabSourceLabel("rebuild"));
         expect(local.source_sentence).toBe("Sorry, I forgot to turn off the lights.");
         expect(local.phonetic).toBe("/tɜːrn ɔf/");
+        expect(local.word_breakdown).toEqual(["turn", "off"]);
+        expect(local.morphology_notes).toEqual(["turn: 转动/切换", "off: 离开、关闭状态"]);
         expect(local.meaning_groups).toHaveLength(2);
         expect(local.highlighted_meanings).toEqual(["关闭"]);
 
@@ -225,6 +229,8 @@ describe("user sync helpers", () => {
         expect(roundTrip.source_label).toBe("来自 Rebuild");
         expect(roundTrip.source_sentence).toBe("Sorry, I forgot to turn off the lights.");
         expect(roundTrip.phonetic).toBe("/tɜːrn ɔf/");
+        expect(roundTrip.word_breakdown).toEqual(["turn", "off"]);
+        expect(roundTrip.morphology_notes).toEqual(["turn: 转动/切换", "off: 离开、关闭状态"]);
         expect(roundTrip.meaning_groups).toEqual(local.meaning_groups);
         expect(roundTrip.highlighted_meanings).toEqual(["关闭"]);
     });

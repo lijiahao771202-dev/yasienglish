@@ -6,7 +6,12 @@ import {
     isReadEconomyContext,
     type ReadingEconomyContext,
 } from "@/lib/reading-economy-server";
-import { normalizeHighlightedMeanings, type MeaningGroup } from "@/lib/vocab-meanings";
+import {
+    normalizeHighlightedMeanings,
+    normalizeMorphologyNotes,
+    normalizeWordBreakdown,
+    type MeaningGroup,
+} from "@/lib/vocab-meanings";
 
 export async function POST(req: Request) {
     try {
@@ -68,17 +73,17 @@ export async function POST(req: Request) {
                 ? [
                     `Word or phrase: "${word}"`,
                     `Local context: "${normalizedContext}"`,
-                    'Return JSON: {"phonetic":"IPA or empty string","context_meaning":{"definition":"用中文解释这句话里它的意思，限1句","translation":"对应中文"},"example":"简短英文例句，没有就空字符串","meaning_groups":[{"pos":"v.","meanings":["释义1","释义2"]}],"highlighted_meanings":["最常用释义"]}',
+                    'Return JSON: {"phonetic":"IPA or empty string","context_meaning":{"definition":"用中文解释这句话里它的意思，限1句","translation":"对应中文"},"meaning_groups":[{"pos":"v.","meanings":["释义1","释义2"]}],"highlighted_meanings":["从 meaning_groups 里原样拷贝的一条重点释义，可带 emoji，但核心中文文字必须和 meaning_groups 某一项对应，不要输出英文"],"word_breakdown":["词块1","词块2"],"morphology_notes":["词根/词缀解释1","词根/词缀解释2"]}',
                     "Keep the answer short.",
                 ].join("\n")
                 : [
                     `Define the word "${word}" based on its usage in the following context:`,
                     `"${normalizedContext}"`,
-                    'Return JSON: {"phonetic":"IPA phonetic transcription","context_meaning":{"definition":"Concise definition in Chinese fitting the context","translation":"The word itself translated to Chinese based on context"},"example":"A new example sentence in English using the word in a similar context","meaning_groups":[{"pos":"v.","meanings":["释义1","释义2"]}],"highlighted_meanings":["最常用释义"]}',
+                    'Return JSON: {"phonetic":"IPA phonetic transcription","context_meaning":{"definition":"Concise definition in Chinese fitting the context","translation":"The word itself translated to Chinese based on context"},"meaning_groups":[{"pos":"v.","meanings":["释义1","释义2"]}],"highlighted_meanings":["从 meaning_groups 里原样拷贝的一条重点释义，可带 emoji，但核心中文文字必须和 meaning_groups 某一项对应，不要输出英文"],"word_breakdown":["word part 1","word part 2"],"morphology_notes":["root/prefix/suffix note 1","root/prefix/suffix note 2"]}',
                 ].join("\n")
             : [
                 `The user is adding a vocabulary word: "${word}".`,
-                'Return JSON: {"phonetic":"IPA phonetic transcription","context_meaning":{"definition":"Concise Chinese explanation for IELTS learners","translation":"The core Chinese translation of the word"},"example":"A short practical English example sentence","meaning_groups":[{"pos":"n.","meanings":["释义1","释义2"]}],"highlighted_meanings":["最常用释义"]}',
+                'Return JSON: {"phonetic":"IPA phonetic transcription","context_meaning":{"definition":"Concise Chinese explanation for IELTS learners","translation":"The core Chinese translation of the word"},"meaning_groups":[{"pos":"n.","meanings":["释义1","释义2"]}],"highlighted_meanings":["从 meaning_groups 里原样拷贝的一条重点释义，可带 emoji，但核心中文文字必须和 meaning_groups 某一项对应，不要输出英文"],"word_breakdown":["word part 1","word part 2"],"morphology_notes":["root/prefix/suffix note 1","root/prefix/suffix note 2"]}',
             ].join("\n");
 
         const completion = await deepseek.chat.completions.create({
@@ -108,12 +113,16 @@ export async function POST(req: Request) {
                 .filter((group) => group.meanings.length > 0)
             : [];
         const highlightedMeanings = normalizeHighlightedMeanings(result?.highlighted_meanings);
+        const wordBreakdown = normalizeWordBreakdown(result?.word_breakdown);
+        const morphologyNotes = normalizeMorphologyNotes(result?.morphology_notes);
 
         return NextResponse.json({
-            ...result,
+            context_meaning: result?.context_meaning,
             phonetic: typeof result?.phonetic === "string" ? result.phonetic : "",
             meaning_groups: meaningGroups,
             highlighted_meanings: highlightedMeanings,
+            word_breakdown: wordBreakdown,
+            morphology_notes: morphologyNotes,
             readingCoins: readingCoinMutation,
         });
 

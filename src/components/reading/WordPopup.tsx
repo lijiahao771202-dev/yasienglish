@@ -37,6 +37,8 @@ export interface DefinitionData {
     phonetic?: string;
     meaning_groups?: MeaningGroup[];
     highlighted_meanings?: string[];
+    word_breakdown?: string[];
+    morphology_notes?: string[];
 }
 
 const POPUP_EDGE_PADDING = 16;
@@ -55,7 +57,7 @@ const pronunciationAudioCache = new Map<string, HTMLAudioElement>();
 let lastPronounce: { word: string; at: number } = { word: "", at: 0 };
 const dictionaryMemoryCache = new Map<string, DefinitionData>();
 const dictionaryInFlight = new Map<string, Promise<DefinitionData | null>>();
-type AiDefinitionResult = Pick<DefinitionData, "context_meaning" | "example" | "phonetic" | "meaning_groups" | "highlighted_meanings">;
+type AiDefinitionResult = Pick<DefinitionData, "context_meaning" | "example" | "phonetic" | "meaning_groups" | "highlighted_meanings" | "word_breakdown" | "morphology_notes">;
 const aiDefinitionMemoryCache = new Map<string, AiDefinitionResult>();
 type AiDefinitionLoad = {
     result: AiDefinitionResult;
@@ -65,6 +67,8 @@ type AiDefinitionLoad = {
         phonetic?: string;
         meaning_groups?: MeaningGroup[];
         highlighted_meanings?: string[];
+        word_breakdown?: string[];
+        morphology_notes?: string[];
         errorCode?: string;
         readingCoins?: unknown;
     };
@@ -377,6 +381,72 @@ export function WordPopup({
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [onClose]);
 
+    const requestAiDefinition = useCallback(async (analysisContext: string): Promise<AiDefinitionLoad> => {
+        const cacheKey = buildAiDefinitionCacheKey(popup.word, analysisContext, mode);
+        const cached = aiDefinitionMemoryCache.get(cacheKey);
+        if (cached) {
+            return {
+                result: cached,
+                payload: cached,
+            };
+        }
+
+        const dedupeKey = `word_deep:${sessionUser?.id || "anon"}:${(popup.articleUrl || "unknown").toLowerCase()}:${popup.word.trim().toLowerCase()}`;
+        const existing = aiDefinitionInFlight.get(cacheKey);
+        const loadAnalysis = existing ?? (async (): Promise<AiDefinitionLoad> => {
+            const response = await fetch("/api/ai/define", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    word: popup.word,
+                    context: analysisContext,
+                    uiSurface: isReadingMode ? "reading_word_popup" : "battle_word_popup",
+                    economyContext: isReadingMode
+                        ? {
+                            scene: "read",
+                            action: "word_deep_analyze",
+                            articleUrl: popup.articleUrl,
+                            dedupeKey,
+                        }
+                        : undefined,
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                const error = new Error(data?.error || "Failed to analyze word");
+                (error as Error & { responseData?: unknown }).responseData = data;
+                throw error;
+            }
+
+            return {
+                result: {
+                    context_meaning: data.context_meaning,
+                    example: "",
+                    phonetic: data.phonetic,
+                    meaning_groups: Array.isArray(data.meaning_groups) ? data.meaning_groups : [],
+                    highlighted_meanings: Array.isArray(data.highlighted_meanings) ? data.highlighted_meanings : [],
+                    word_breakdown: Array.isArray(data.word_breakdown) ? data.word_breakdown : [],
+                    morphology_notes: Array.isArray(data.morphology_notes) ? data.morphology_notes : [],
+                } satisfies AiDefinitionResult,
+                payload: data,
+            };
+        })();
+
+        if (!existing) {
+            aiDefinitionInFlight.set(cacheKey, loadAnalysis.finally(() => {
+                aiDefinitionInFlight.delete(cacheKey);
+            }));
+        }
+
+        const loaded = await loadAnalysis;
+        aiDefinitionMemoryCache.set(cacheKey, loaded.result);
+        if (aiDefinitionMemoryCache.size > 500) {
+            const firstKey = aiDefinitionMemoryCache.keys().next().value;
+            if (firstKey) aiDefinitionMemoryCache.delete(firstKey);
+        }
+        return loaded;
+    }, [isReadingMode, mode, popup.articleUrl, popup.word, sessionUser?.id]);
+
     const handleAnalyzeContext = async () => {
         setIsLoadingAI(true);
         setReadingError(null);
@@ -388,70 +458,8 @@ export function WordPopup({
             const analysisContext = isReadingMode
                 ? popup.context
                 : extractAnalysisContext(popup.context, popup.word);
-            const cacheKey = buildAiDefinitionCacheKey(popup.word, analysisContext, mode);
-            const cached = aiDefinitionMemoryCache.get(cacheKey);
-            if (cached) {
-                setDefinition((prev) => ({
-                    ...prev,
-                    ...cached,
-                }));
-                return;
-            }
-
-            const dedupeKey = `word_deep:${sessionUser?.id || "anon"}:${(popup.articleUrl || "unknown").toLowerCase()}:${popup.word.trim().toLowerCase()}`;
-            const existing = aiDefinitionInFlight.get(cacheKey);
-            const loadAnalysis = existing ?? (async (): Promise<AiDefinitionLoad> => {
-                const response = await fetch("/api/ai/define", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        word: popup.word,
-                        context: analysisContext,
-                        uiSurface: isReadingMode ? "reading_word_popup" : "battle_word_popup",
-                        economyContext: isReadingMode
-                            ? {
-                                scene: "read",
-                                action: "word_deep_analyze",
-                                articleUrl: popup.articleUrl,
-                                dedupeKey,
-                            }
-                            : undefined,
-                    }),
-                });
-                const data = await response.json();
-                if (!response.ok) {
-                    const error = new Error(data?.error || "Failed to analyze word");
-                    (error as Error & { responseData?: unknown }).responseData = data;
-                    throw error;
-                }
-
-                return {
-                    result: {
-                        context_meaning: data.context_meaning,
-                        example: data.example,
-                        phonetic: data.phonetic,
-                        meaning_groups: Array.isArray(data.meaning_groups) ? data.meaning_groups : [],
-                        highlighted_meanings: Array.isArray(data.highlighted_meanings) ? data.highlighted_meanings : [],
-                    } satisfies AiDefinitionResult,
-                    payload: data,
-                };
-            })();
-
-            if (!existing) {
-                aiDefinitionInFlight.set(cacheKey, loadAnalysis.finally(() => {
-                    aiDefinitionInFlight.delete(cacheKey);
-                }));
-            }
-
-            const { result, payload } = await loadAnalysis;
-            aiDefinitionMemoryCache.set(cacheKey, result);
-            if (aiDefinitionMemoryCache.size > 500) {
-                const firstKey = aiDefinitionMemoryCache.keys().next().value;
-                if (firstKey) aiDefinitionMemoryCache.delete(firstKey);
-            }
-
-            const data = payload;
-            await syncReadingBalance(data, "word_deep_analyze");
+            const { result, payload } = await requestAiDefinition(analysisContext);
+            await syncReadingBalance(payload, "word_deep_analyze");
             setDefinition(prev => ({
                 ...prev,
                 ...result,
@@ -481,6 +489,8 @@ export function WordPopup({
         let aiPhonetic = definition?.phonetic;
         let aiMeaningGroups = Array.isArray(definition?.meaning_groups) ? definition.meaning_groups : [];
         let aiHighlightedMeanings = Array.isArray(definition?.highlighted_meanings) ? definition.highlighted_meanings : [];
+        let aiWordBreakdown = Array.isArray(definition?.word_breakdown) ? definition.word_breakdown : [];
+        let aiMorphologyNotes = Array.isArray(definition?.morphology_notes) ? definition.morphology_notes : [];
         const normalizedDisplayWord = popup.word.trim().replace(/\s+/g, " ");
         const sourceKind = popup.sourceKind || (isReadingMode ? "read" : "legacy_local");
         const sourceLabel = popup.sourceLabel || defaultVocabSourceLabel(sourceKind);
@@ -497,16 +507,48 @@ export function WordPopup({
                 return;
             }
 
+            if (!aiDefinition) {
+                if (!isReadingMode && battleConsumeDeepAnalyzeTicket && !battleConsumeDeepAnalyzeTicket()) {
+                    setReadingError(battleInsufficientHint);
+                    return;
+                }
+
+                const analysisContext = isReadingMode
+                    ? popup.context
+                    : extractAnalysisContext(popup.context, popup.word);
+                const { result, payload } = await requestAiDefinition(analysisContext);
+                await syncReadingBalance(payload, "word_deep_analyze");
+                setDefinition(prev => ({
+                    ...prev,
+                    ...result,
+                }));
+
+                aiDefinition = result.context_meaning;
+                aiExample = result.example || "";
+                aiPhonetic = result.phonetic;
+                aiMeaningGroups = Array.isArray(result.meaning_groups) ? result.meaning_groups : [];
+                aiHighlightedMeanings = Array.isArray(result.highlighted_meanings) ? result.highlighted_meanings : [];
+                aiWordBreakdown = Array.isArray(result.word_breakdown) ? result.word_breakdown : [];
+                aiMorphologyNotes = Array.isArray(result.morphology_notes) ? result.morphology_notes : [];
+            }
+
+            if (!aiDefinition) {
+                setSaveError("AI 词义生成失败，请重试。");
+                return;
+            }
+
             const base = createEmptyCard(normalizedDisplayWord);
             const card: VocabItem = {
                 word: normalizedDisplayWord,
-                definition: aiDefinition?.definition || definition?.dictionary_meaning?.definition || "",
-                translation: aiDefinition?.translation || definition?.dictionary_meaning?.translation || "",
+                definition: aiDefinition.definition || "",
+                translation: aiDefinition.translation || "",
                 context: popup.context || "",
-                example: aiExample || "",
+                example: sourceSentence ? "" : aiExample || "",
                 phonetic: aiPhonetic || "",
                 meaning_groups: aiMeaningGroups,
                 highlighted_meanings: aiHighlightedMeanings,
+                word_breakdown: aiWordBreakdown,
+                morphology_notes: aiMorphologyNotes,
                 source_kind: sourceKind,
                 source_label: sourceLabel,
                 source_sentence: sourceSentence,
@@ -528,80 +570,6 @@ export function WordPopup({
             setShowSaveFeedback(true);
 
             await saveVocabulary(card);
-            setIsSaving(false);
-
-            if (!aiDefinition) {
-                const canRequestDeepAnalyze = isReadingMode || !battleConsumeDeepAnalyzeTicket || battleConsumeDeepAnalyzeTicket();
-                if (!canRequestDeepAnalyze) {
-                    setReadingError(`${battleInsufficientHint} 已加入生词本，暂未补充 AI 深度释义。`);
-                    return;
-                }
-
-                void (async () => {
-                    try {
-                        const dedupeKey = `word_deep:${sessionUser?.id || "anon"}:${(popup.articleUrl || "unknown").toLowerCase()}:${normalizedPopupWord}`;
-                        const response = await fetch("/api/ai/define", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                word: normalizedDisplayWord,
-                                context: popup.context || `Please explain the phrase "${normalizedDisplayWord}" for an IELTS learner.`,
-                                uiSurface: isReadingMode ? "reading_word_popup" : "battle_word_popup",
-                                economyContext: isReadingMode
-                                    ? {
-                                        scene: "read",
-                                        action: "word_deep_analyze",
-                                        articleUrl: popup.articleUrl,
-                                        dedupeKey,
-                                    }
-                                    : undefined,
-                            }),
-                        });
-                        const data = await response.json();
-                        if (!response.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
-                            setReadingError("已加入生词本，但阅读币不足，暂未补充 AI 深度释义。");
-                            return;
-                        }
-                        if (!response.ok) {
-                            return;
-                        }
-
-                        await syncReadingBalance(data, "word_deep_analyze");
-                        const enrichedDefinition = data?.context_meaning;
-                        const enrichedExample = data?.example || "";
-                        const enrichedPhonetic = data?.phonetic || "";
-                        const enrichedMeaningGroups = Array.isArray(data?.meaning_groups) ? data.meaning_groups : [];
-                        const enrichedHighlightedMeanings = Array.isArray(data?.highlighted_meanings) ? data.highlighted_meanings : [];
-
-                        if (enrichedDefinition || enrichedExample || enrichedPhonetic || enrichedMeaningGroups.length > 0 || enrichedHighlightedMeanings.length > 0) {
-                            setDefinition(prev => ({
-                                ...prev,
-                                context_meaning: enrichedDefinition || prev?.context_meaning,
-                                example: enrichedExample || prev?.example,
-                                phonetic: enrichedPhonetic || prev?.phonetic,
-                                meaning_groups: enrichedMeaningGroups.length > 0 ? enrichedMeaningGroups : prev?.meaning_groups,
-                                highlighted_meanings: enrichedHighlightedMeanings.length > 0 ? enrichedHighlightedMeanings : prev?.highlighted_meanings,
-                            }));
-
-                            const currentSaved = await db.vocabulary.where("word_key").equals(normalizedPopupWord).first();
-                            if (currentSaved) {
-                                await saveVocabulary({
-                                    ...currentSaved,
-                                    definition: enrichedDefinition?.definition || currentSaved.definition,
-                                    translation: enrichedDefinition?.translation || currentSaved.translation,
-                                    example: enrichedExample || currentSaved.example,
-                                    phonetic: enrichedPhonetic || currentSaved.phonetic || "",
-                                    meaning_groups: enrichedMeaningGroups.length > 0 ? enrichedMeaningGroups : currentSaved.meaning_groups,
-                                    highlighted_meanings: enrichedHighlightedMeanings.length > 0 ? enrichedHighlightedMeanings : currentSaved.highlighted_meanings,
-                                });
-                                setSaveNotice("已加入生词本，并补全 AI 释义。");
-                            }
-                        }
-                    } catch (error) {
-                        console.error("Failed to enrich saved vocab:", error);
-                    }
-                })();
-            }
         } catch (error) {
             console.error("Failed to save vocab:", error);
             const existingAfterError = await db.vocabulary.where("word_key").equals(normalizedPopupWord).first();
@@ -615,8 +583,9 @@ export function WordPopup({
                 setSaveNotice(null);
                 setSaveError("保存失败，请重试");
             }
+        } finally {
+            setIsSaving(false);
         }
-        setIsSaving(false);
     };
 
     const handleDragStart = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -820,12 +789,51 @@ export function WordPopup({
                                 </p>
                             </div>
 
-                            {definition.example && (
-                                <div className="flex gap-2 items-start text-xs text-stone-500 italic pl-2 border-l-2 border-amber-200">
-                                    <span className="shrink-0 mt-0.5">Eg.</span>
-                                    <span>&ldquo;{definition.example}&rdquo;</span>
+                            {Array.isArray(definition.highlighted_meanings) && definition.highlighted_meanings.length > 0 ? (
+                                <div className="space-y-2">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-amber-700/70">Focus Meaning</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {definition.highlighted_meanings.map((meaning) => (
+                                            <span key={meaning} className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                                                {meaning}
+                                            </span>
+                                        ))}
+                                    </div>
                                 </div>
-                            )}
+                            ) : null}
+
+                            {Array.isArray(definition.word_breakdown) && definition.word_breakdown.length > 0 ? (
+                                <div className="space-y-2">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">Word Breakdown</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {definition.word_breakdown.map((part) => (
+                                            <span key={part} className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold text-stone-700">
+                                                {part}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            {Array.isArray(definition.morphology_notes) && definition.morphology_notes.length > 0 ? (
+                                <div className="rounded-xl border border-stone-200/70 bg-white/70 p-3">
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">Roots & Affixes</p>
+                                    <div className="mt-2 space-y-1.5">
+                                        {definition.morphology_notes.map((note) => (
+                                            <p key={note} className="text-xs leading-relaxed text-stone-600">
+                                                {note}
+                                            </p>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            {(popup.sourceSentence?.trim() || popup.context?.trim()) ? (
+                                <div className="flex gap-2 items-start text-xs text-stone-500 italic pl-2 border-l-2 border-amber-200">
+                                    <span className="shrink-0 mt-0.5">Src.</span>
+                                    <span>&ldquo;{popup.sourceSentence?.trim() || popup.context.trim()}&rdquo;</span>
+                                </div>
+                            ) : null}
                         </div>
                     ) : (
                         <div className="text-xs text-stone-400 text-center py-1">
