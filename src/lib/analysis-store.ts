@@ -4,13 +4,14 @@ import { db } from './db';
 interface AnalysisState {
     // We keep a small in-memory cache for immediate access, but primary source is DB
     translations: Record<string, string>;
-    grammarAnalyses: Record<string, any>;
+    grammarAnalyses: Record<string, unknown>;
 
     setTranslation: (text: string, translation: string) => Promise<void>;
-    setGrammarAnalysis: (text: string, analysis: any) => Promise<void>;
+    setGrammarAnalysis: (cacheKey: string, analysis: unknown) => Promise<void>;
 
     // These now return Promises or we use a hook in the component
-    loadFromDB: (text: string) => Promise<void>;
+    loadFromDB: (text: string, grammarCacheKey?: string, grammarLegacyFallbackKey?: string) => Promise<void>;
+    loadGrammarFromDB: (grammarCacheKey: string, legacyFallbackKey?: string) => Promise<void>;
 }
 
 export const useAnalysisStore = create<AnalysisState>((set, get) => ({
@@ -37,17 +38,17 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
         }
     },
 
-    setGrammarAnalysis: async (text, analysis) => {
+    setGrammarAnalysis: async (cacheKey, analysis) => {
         // 1. Update memory
         set((state) => ({
-            grammarAnalyses: { ...state.grammarAnalyses, [text]: analysis }
+            grammarAnalyses: { ...state.grammarAnalyses, [cacheKey]: analysis }
         }));
         // 2. Update DB
         try {
-            const existing = await db.ai_cache.where("[key+type]").equals([text, "grammar"]).first();
+            const existing = await db.ai_cache.where("[key+type]").equals([cacheKey, "grammar"]).first();
             await db.ai_cache.put({
                 id: existing?.id,
-                key: text,
+                key: cacheKey,
                 type: 'grammar',
                 data: analysis,
                 timestamp: Date.now()
@@ -57,20 +58,40 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
         }
     },
 
-    loadFromDB: async (text) => {
+    loadFromDB: async (text, grammarCacheKey = text, grammarLegacyFallbackKey) => {
         // Check if already in memory
-        if (get().translations[text] && get().grammarAnalyses[text]) return;
+        if (get().translations[text] && get().grammarAnalyses[grammarCacheKey]) return;
 
         try {
             const translationItem = await db.ai_cache.where("[key+type]").equals([text, "translation"]).first();
-            const grammarItem = await db.ai_cache.where("[key+type]").equals([text, "grammar"]).first();
+            let grammarItem = await db.ai_cache.where("[key+type]").equals([grammarCacheKey, "grammar"]).first();
+            if (!grammarItem && grammarLegacyFallbackKey && grammarLegacyFallbackKey !== grammarCacheKey) {
+                grammarItem = await db.ai_cache.where("[key+type]").equals([grammarLegacyFallbackKey, "grammar"]).first();
+            }
 
             set((state) => ({
                 translations: translationItem ? { ...state.translations, [text]: translationItem.data } : state.translations,
-                grammarAnalyses: grammarItem ? { ...state.grammarAnalyses, [text]: grammarItem.data } : state.grammarAnalyses
+                grammarAnalyses: grammarItem ? { ...state.grammarAnalyses, [grammarCacheKey]: grammarItem.data } : state.grammarAnalyses
             }));
         } catch (e) {
             console.error("Failed to load from DB", e);
         }
-    }
+    },
+
+    loadGrammarFromDB: async (grammarCacheKey, legacyFallbackKey) => {
+        if (get().grammarAnalyses[grammarCacheKey]) return;
+        try {
+            let grammarItem = await db.ai_cache.where("[key+type]").equals([grammarCacheKey, "grammar"]).first();
+            if (!grammarItem && legacyFallbackKey && legacyFallbackKey !== grammarCacheKey) {
+                grammarItem = await db.ai_cache.where("[key+type]").equals([legacyFallbackKey, "grammar"]).first();
+            }
+
+            if (!grammarItem) return;
+            set((state) => ({
+                grammarAnalyses: { ...state.grammarAnalyses, [grammarCacheKey]: grammarItem.data }
+            }));
+        } catch (e) {
+            console.error("Failed to load grammar from DB", e);
+        }
+    },
 }));

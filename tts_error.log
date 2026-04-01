@@ -438,3 +438,8 @@
     at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
     at listOnTimeout (node:internal/timers:594:17)
     at process.processTimers (node:internal/timers:529:7)
+[2026-04-01T10:09:09.363Z] Step: Generating | Error: Client network socket disconnected before secure TLS connection was established | Stack: Error: Client network socket disconnected before secure TLS connection was established
+    at TLSSocket.onConnectEnd (node:_tls_wrap:1732:19)
+    at TLSSocket.emit (node:events:536:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)

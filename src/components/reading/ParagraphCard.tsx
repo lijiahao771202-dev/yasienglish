@@ -12,7 +12,16 @@ import { SyntaxTreeView } from "./SyntaxTreeView";
 import { bionicText } from "@/lib/bionic";
 import { InlineGrammarHighlights } from "@/components/shared/InlineGrammarHighlights";
 import { PretextTextarea } from "@/components/ui/PretextTextarea";
-import { getGrammarHighlightColor, type GrammarDisplayMode } from "@/lib/grammarHighlights";
+import { getGrammarHighlightColor, type GrammarDisplayMode, type GrammarSentenceAnalysis } from "@/lib/grammarHighlights";
+import {
+    buildGrammarCacheKey,
+    GRAMMAR_BASIC_MODEL,
+    GRAMMAR_BASIC_PROMPT_VERSION,
+    GRAMMAR_DEEP_MODEL,
+    GRAMMAR_DEEP_PROMPT_VERSION,
+    sentenceIdentity,
+    type GrammarDeepSentenceResult,
+} from "@/lib/grammar-analysis";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
@@ -43,33 +52,65 @@ interface ParagraphCardProps {
     highlightSnippet?: string;
 }
 
+interface GrammarBasicCachePayload {
+    mode?: "basic";
+    tags?: string[];
+    overview?: string;
+    difficult_sentences?: GrammarSentenceAnalysis[];
+}
+
 export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordClick, onSplit, onMerge, onUpdate, isEditMode, startTime, endTime, currentVideoTime, onSeekToTime, isFocusMode, isFocusLocked, hasActiveFocusLock, onToggleFocusLock, highlightSnippet }: ParagraphCardProps) {
     const sessionUser = useAuthSessionUser();
     const { fontSizeClass, fontClass, isBionicMode } = useReadingSettings();
+    const grammarBasicCacheKey = buildGrammarCacheKey({
+        text,
+        mode: "basic",
+        promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
+        model: GRAMMAR_BASIC_MODEL,
+    });
+    const grammarDeepCacheKey = buildGrammarCacheKey({
+        text,
+        mode: "deep",
+        promptVersion: GRAMMAR_DEEP_PROMPT_VERSION,
+        model: GRAMMAR_DEEP_MODEL,
+    });
     const {
         translations, setTranslation: setStoreTranslation,
         grammarAnalyses, setGrammarAnalysis: setStoreGrammarAnalysis,
-        loadFromDB
+        loadFromDB,
+        loadGrammarFromDB,
     } = useAnalysisStore();
 
     // Local visibility state
     const [showTranslation, setShowTranslation] = useState(false);
     const [showGrammar, setShowGrammar] = useState(false);
     const [grammarDisplayMode, setGrammarDisplayMode] = useState<GrammarDisplayMode>("core");
+    const [showDeepAnalysis, setShowDeepAnalysis] = useState(false);
+    const [activeSentenceIndex, setActiveSentenceIndex] = useState(0);
 
     const [isTranslating, setIsTranslating] = useState(false);
     const [isAnalyzingGrammar, setIsAnalyzingGrammar] = useState(false);
-    const [activeSentenceIndex, setActiveSentenceIndex] = useState(0);
-    const [showDeepAnalysis, setShowDeepAnalysis] = useState(false);
+    const [isAnalyzingDeepGrammar, setIsAnalyzingDeepGrammar] = useState(false);
 
     // Load from DB on mount
     useEffect(() => {
-        loadFromDB(text);
-    }, [text, loadFromDB]);
+        loadFromDB(text, grammarBasicCacheKey, text);
+    }, [text, grammarBasicCacheKey, loadFromDB]);
+    useEffect(() => {
+        loadGrammarFromDB(grammarDeepCacheKey);
+    }, [grammarDeepCacheKey, loadGrammarFromDB]);
 
     // Derived data from store
     const translation = translations[text];
-    const grammarAnalysis = grammarAnalyses[text];
+    const grammarAnalysis = (grammarAnalyses[grammarBasicCacheKey] ?? grammarAnalyses[text]) as GrammarBasicCachePayload | undefined;
+    const grammarHighlightSentences = Array.isArray(grammarAnalysis?.difficult_sentences)
+        ? grammarAnalysis.difficult_sentences
+        : [];
+    const grammarDeepCachePayload = grammarAnalyses[grammarDeepCacheKey] as {
+        mode?: "deep";
+        bySentence?: Record<string, GrammarDeepSentenceResult>;
+    } | undefined;
+    const deepBySentence = grammarDeepCachePayload?.bySentence ?? {};
 
     // Ask AI State - Multi-turn chat with streaming
     const [isAskOpen, setIsAskOpen] = useState(false);
@@ -410,41 +451,99 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
         }
     };
 
-    const handleGrammarAnalysis = async (forceRegenerate = false, mode: "basic" | "deep" = "basic") => {
-        if (!forceRegenerate && grammarAnalysis) {
-            // If switching to deep mode and we don't have deep data (sentence_tree), force regenerate
-            const hasDeepData = grammarAnalysis.difficult_sentences?.some((s: any) => s.sentence_tree);
-            if (mode === "deep" && !hasDeepData) {
-                // proceed to fetch
-            } else {
-                const nextShowGrammar = !showGrammar;
-                setShowGrammar(nextShowGrammar);
-                if (nextShowGrammar) {
-                    setGrammarDisplayMode("core");
-                }
+    useEffect(() => {
+        setActiveSentenceIndex(0);
+        setShowDeepAnalysis(false);
+    }, [grammarBasicCacheKey]);
+
+    const getCurrentSentence = () => {
+        const current = grammarAnalysis?.difficult_sentences?.[activeSentenceIndex]?.sentence;
+        return typeof current === "string" ? current.trim() : "";
+    };
+
+    const ensureDeepAnalysisForSentence = async (sentence: string, forceRegenerate = false) => {
+        const normalizedSentence = sentence.trim();
+        if (!normalizedSentence) return;
+        const sentenceKey = sentenceIdentity(normalizedSentence);
+        if (!forceRegenerate && deepBySentence[sentenceKey]) return;
+
+        setIsAnalyzingDeepGrammar(true);
+        setReadingCoinHint(null);
+        try {
+            const res = await fetch("/api/ai/grammar/deep", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    text,
+                    sentence: normalizedSentence,
+                    forceRegenerate,
+                    economyContext: readEconomyContext("grammar_deep", `${grammarDeepCacheKey}:${sentenceKey}`),
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
+                setReadingCoinHint("阅读币不足，当前无法进行深度语法分析。");
                 return;
             }
+            if (!res.ok) {
+                throw new Error(data?.error || "深度语法分析失败");
+            }
+
+            await syncReadingBalance(data, "grammar_deep");
+
+            const nextBySentence = { ...deepBySentence };
+            const deepSentences = Array.isArray(data?.difficult_sentences) ? data.difficult_sentences : [];
+            deepSentences.forEach((item: unknown) => {
+                if (!item || typeof item !== "object") return;
+                const sentenceText = typeof (item as { sentence?: unknown }).sentence === "string"
+                    ? (item as { sentence: string }).sentence
+                    : normalizedSentence;
+                const key = sentenceIdentity(sentenceText);
+                nextBySentence[key] = item as GrammarDeepSentenceResult;
+            });
+
+            setStoreGrammarAnalysis(grammarDeepCacheKey, {
+                mode: "deep",
+                bySentence: nextBySentence,
+            });
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsAnalyzingDeepGrammar(false);
+        }
+    };
+
+    const handleGrammarAnalysis = async (forceRegenerate = false) => {
+        if (!forceRegenerate && grammarAnalysis) {
+            const nextShowGrammar = !showGrammar;
+            setShowGrammar(nextShowGrammar);
+            if (nextShowGrammar) {
+                setGrammarDisplayMode("core");
+            } else {
+                setShowDeepAnalysis(false);
+            }
+            return;
         }
 
-        if (!forceRegenerate && showGrammar && mode === "basic") {
+        if (!forceRegenerate && showGrammar) {
             setShowGrammar(false);
+            setShowDeepAnalysis(false);
             return;
         }
 
         setShowGrammar(true);
         setGrammarDisplayMode("core");
-        if (mode === "deep") setShowDeepAnalysis(true);
 
         setIsAnalyzingGrammar(true);
         setReadingCoinHint(null);
         try {
-            const res = await fetch("/api/ai/grammar", {
+            const res = await fetch("/api/ai/grammar/basic", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     text,
-                    mode,
-                    economyContext: readEconomyContext(mode === "deep" ? "grammar_deep" : "grammar_basic"),
+                    forceRegenerate,
+                    economyContext: readEconomyContext("grammar_basic", grammarBasicCacheKey),
                 }),
             });
             const data = await res.json();
@@ -453,18 +552,41 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                 setShowGrammar(false);
                 return;
             }
-            await syncReadingBalance(data, mode === "deep" ? "grammar_deep" : "grammar_basic");
+            await syncReadingBalance(data, "grammar_basic");
 
-            // If deep mode, merge with existing data if possible, or just set it
-            // For simplicity, we just set it. 
-            // In a real app, we might want to preserve some basic info, but here the deep analysis includes everything needed.
-            setStoreGrammarAnalysis(text, data);
+            setStoreGrammarAnalysis(grammarBasicCacheKey, data);
+            setActiveSentenceIndex(0);
+            setShowDeepAnalysis(false);
         } catch (err) {
             console.error(err);
         } finally {
             setIsAnalyzingGrammar(false);
         }
     };
+
+    const handleToggleDeepAnalysis = async () => {
+        const nextShowDeep = !showDeepAnalysis;
+        setShowDeepAnalysis(nextShowDeep);
+        if (!nextShowDeep) return;
+
+        const sentence = getCurrentSentence();
+        if (!sentence) return;
+        await ensureDeepAnalysisForSentence(sentence, false);
+    };
+
+    const handleDeepSentenceChange = async (nextIndex: number) => {
+        setActiveSentenceIndex(nextIndex);
+        if (!showDeepAnalysis) return;
+        const sentence = grammarAnalysis?.difficult_sentences?.[nextIndex]?.sentence;
+        if (typeof sentence !== "string") return;
+        await ensureDeepAnalysisForSentence(sentence, false);
+    };
+
+    const grammarSentences = grammarHighlightSentences;
+    const activeGrammarSentence = grammarSentences[activeSentenceIndex]?.sentence?.trim() ?? "";
+    const activeDeepSentence = activeGrammarSentence
+        ? deepBySentence[sentenceIdentity(activeGrammarSentence)]
+        : null;
 
     const handleAskAI = async (overrideQuestion?: string) => {
         const userMessage = (overrideQuestion ?? question).trim();
@@ -815,7 +937,7 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                     {isEditMode ? null : (showGrammar && grammarAnalysis ? (
                         <InlineGrammarHighlights
                             text={text}
-                            sentences={grammarAnalysis.difficult_sentences || []}
+                            sentences={grammarHighlightSentences}
                             displayMode={grammarDisplayMode}
                             showSentenceMarkers
                             showSegmentTranslation
@@ -972,178 +1094,190 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                             animate={{ opacity: 1, height: "auto" }}
                             className="relative space-y-4 rounded-[28px] border border-[#eadcc0] bg-[linear-gradient(180deg,rgba(255,251,242,0.96),rgba(248,242,228,0.92))] p-5 shadow-[0_18px_45px_rgba(120,94,42,0.08)] ring-1 ring-white/70 group/grammar"
                         >
-                            {/* Old hidden button removed */}
+                            <div className="space-y-3">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="font-newsreader text-xl font-semibold text-[#8a5d1f]">Grammar Analysis</h4>
+                                        <button
+                                            onClick={() => handleGrammarAnalysis(true)}
+                                            className="rounded-full border border-[#e4d5b5] bg-white/80 p-1.5 text-[#b18747] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-[#8a5d1f]"
+                                            title="Regenerate Grammar Analysis"
+                                        >
+                                            <RotateCcw className="w-3 h-3" />
+                                        </button>
+                                    </div>
 
-                            {grammarAnalysis.difficult_sentences?.length > 0 && (
-                                <div className="space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2">
-                                            <h4 className="font-newsreader text-xl font-semibold text-[#8a5d1f]">Grammar Analysis</h4>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <div className="flex items-center rounded-full border border-[#dfcfab] bg-white/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                                             <button
-                                                onClick={() => handleGrammarAnalysis(true, "basic")}
-                                                className="rounded-full border border-[#e4d5b5] bg-white/80 p-1.5 text-[#b18747] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-[#8a5d1f]"
-                                                title="Regenerate Basic Analysis"
+                                                onClick={() => setGrammarDisplayMode("core")}
+                                                className={cn(
+                                                    "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
+                                                    grammarDisplayMode === "core"
+                                                        ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
+                                                        : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
+                                                )}
+                                            >
+                                                主干结构
+                                            </button>
+                                            <button
+                                                onClick={() => setGrammarDisplayMode("full")}
+                                                className={cn(
+                                                    "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
+                                                    grammarDisplayMode === "full"
+                                                        ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
+                                                        : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
+                                                )}
+                                            >
+                                                完整分析
+                                            </button>
+                                        </div>
+
+                                        {showDeepAnalysis && activeGrammarSentence ? (
+                                            <button
+                                                onClick={() => void ensureDeepAnalysisForSentence(activeGrammarSentence, true)}
+                                                className="rounded-full border border-[#e4d5b5] bg-white/75 p-1.5 text-[#b18747] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-[#8a5d1f]"
+                                                title="Regenerate Deep Analysis"
                                             >
                                                 <RotateCcw className="w-3 h-3" />
                                             </button>
-                                        </div>
+                                        ) : null}
 
-                                        <div className="flex items-center gap-2">
-                                            <div className="flex items-center rounded-full border border-[#dfcfab] bg-white/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-                                                <button
-                                                    onClick={() => setGrammarDisplayMode("core")}
-                                                    className={cn(
-                                                        "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
-                                                        grammarDisplayMode === "core"
-                                                            ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
-                                                            : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
-                                                    )}
-                                                >
-                                                    主干结构
-                                                </button>
-                                                <button
-                                                    onClick={() => setGrammarDisplayMode("full")}
-                                                    className={cn(
-                                                        "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
-                                                        grammarDisplayMode === "full"
-                                                            ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
-                                                            : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
-                                                    )}
-                                                >
-                                                    完整分析
-                                                </button>
-                                            </div>
-                                            {/* Deep Analysis Controls */}
-                                            {showDeepAnalysis && grammarAnalysis.difficult_sentences[0].sentence_tree && (
-                                                <button
-                                                    onClick={() => handleGrammarAnalysis(true, "deep")}
-                                                    className="rounded-full border border-[#e4d5b5] bg-white/75 p-1.5 text-[#b18747] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-[#8a5d1f]"
-                                                    title="Regenerate Deep Analysis"
-                                                >
-                                                    <RotateCcw className="w-3 h-3" />
-                                                </button>
+                                        <button
+                                            onClick={() => void handleToggleDeepAnalysis()}
+                                            disabled={isAnalyzingDeepGrammar || grammarSentences.length === 0}
+                                            className={cn(
+                                                "flex items-center gap-1 rounded-full border px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-colors",
+                                                showDeepAnalysis
+                                                    ? "border-[#d8c193] bg-[#f7ebd0] text-[#7b5117]"
+                                                    : "border-[#e4d5b5] bg-white/75 text-[#8a5d1f] hover:bg-white",
+                                                "disabled:cursor-not-allowed disabled:opacity-65",
                                             )}
-
-                                            <button
-                                                onClick={() => {
-                                                    if (!showDeepAnalysis && !grammarAnalysis.difficult_sentences[0].sentence_tree) {
-                                                        // Trigger Deep Analysis
-                                                        handleGrammarAnalysis(true, "deep");
-                                                    } else {
-                                                        setShowDeepAnalysis(!showDeepAnalysis);
-                                                    }
-                                                }}
-                                                disabled={isAnalyzingGrammar}
-                                                className="flex items-center gap-1 rounded-full border border-transparent px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] text-[#8a5d1f] transition-colors hover:border-[#e4d5b5] hover:bg-white/70 disabled:cursor-not-allowed disabled:opacity-70"
-                                            >
-                                                {isAnalyzingGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                                                {showDeepAnalysis ? "Hide Deep Analysis" : (grammarAnalysis.difficult_sentences[0].sentence_tree ? "Expand Deep Analysis" : "Analyze Deep Structure")}
-                                            </button>
-                                        </div>
+                                        >
+                                            {isAnalyzingDeepGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                                            {showDeepAnalysis ? "Hide Deep" : `Deep · -${getReadingCoinCost("grammar_deep")}`}
+                                        </button>
                                     </div>
+                                </div>
 
-                                    {showDeepAnalysis && (grammarAnalysis.difficult_sentences[0].sentence_tree ? (
-                                        <>
-                                            {/* Tab Navigation */}
-                                            <div className="flex gap-1 bg-orange-100/50 p-1 rounded-lg overflow-x-auto scrollbar-hide">
-                                                {grammarAnalysis.difficult_sentences.map((_: any, idx: number) => (
+                                {typeof grammarAnalysis.overview === "string" && grammarAnalysis.overview.trim() ? (
+                                    <p className="text-sm leading-6 text-[#7b5a2d]">{grammarAnalysis.overview}</p>
+                                ) : (
+                                    <p className="text-sm leading-6 text-[#7b5a2d]">
+                                        语法高亮已同步到段落正文，可在「主干结构 / 完整分析」之间切换查看。
+                                    </p>
+                                )}
+
+                                {Array.isArray(grammarAnalysis.tags) && grammarAnalysis.tags.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {grammarAnalysis.tags.map((tag: string, idx: number) => {
+                                            const styleClass = getGrammarHighlightColor(tag);
+                                            return (
+                                                <span
+                                                    key={`${tag}-${idx}`}
+                                                    className={cn(
+                                                        "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                                                        styleClass,
+                                                    )}
+                                                >
+                                                    {tag}
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                ) : null}
+
+                                <p className="text-xs text-stone-500">
+                                    本次分析覆盖 {grammarSentences.length} 句，重点片段可直接在正文里点击查看解释与译文。
+                                </p>
+
+                                {showDeepAnalysis ? (
+                                    <div className="space-y-3 rounded-2xl border border-[#e7d8ba] bg-white/75 p-3">
+                                        {grammarSentences.length > 1 ? (
+                                            <div className="flex gap-1 overflow-x-auto rounded-lg bg-orange-100/50 p-1 scrollbar-hide">
+                                                {grammarSentences.map((item, idx) => (
                                                     <button
-                                                        key={idx}
-                                                        onClick={() => setActiveSentenceIndex(idx)}
+                                                        key={`${item.sentence || "sentence"}-${idx}`}
+                                                        onClick={() => void handleDeepSentenceChange(idx)}
                                                         className={cn(
-                                                            "px-3 py-1 text-xs font-medium rounded-md transition-all whitespace-nowrap",
+                                                            "whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium transition-all",
                                                             activeSentenceIndex === idx
                                                                 ? "bg-white text-orange-600 shadow-sm"
-                                                                : "text-orange-400 hover:text-orange-600 hover:bg-white/50"
+                                                                : "text-orange-500 hover:bg-white/65 hover:text-orange-700",
                                                         )}
                                                     >
                                                         Sentence {idx + 1}
                                                     </button>
                                                 ))}
                                             </div>
+                                        ) : null}
 
-                                            {/* Active Sentence Analysis Card */}
-                                            {(() => {
-                                                const item = grammarAnalysis.difficult_sentences[activeSentenceIndex];
-                                                if (!item) return null;
-
-                                                return (
-                                                    <div
-                                                        key={activeSentenceIndex}
-                                                        className="bg-white/50 p-3 rounded border border-orange-100 space-y-2 transition-all duration-300 animate-in fade-in slide-in-from-bottom-2"
-                                                    >
-                                                        <div className="pl-2">
-                                                            {/* Analysis Table */}
-                                                            {item.analysis_results && item.analysis_results.length > 0 ? (
-                                                                <div className="overflow-hidden rounded-lg border border-stone-200">
-                                                                    <table className="min-w-full divide-y divide-stone-200">
-                                                                        <thead className="bg-stone-50">
-                                                                            <tr>
-                                                                                <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-stone-500 uppercase tracking-wider w-1/3">语法点</th>
-                                                                                <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-stone-500 uppercase tracking-wider">详细解析</th>
-                                                                            </tr>
-                                                                        </thead>
-                                                                        <tbody className="bg-white divide-y divide-stone-200">
-                                                                            {item.analysis_results.map((result: any, k: number) => {
-                                                                                const styleClass = getGrammarHighlightColor(result.point);
-                                                                                // Extract border color for the underline and text color
-                                                                                const borderColor = styleClass.match(/border-\w+-\d+/)?.[0] || "border-stone-400";
-                                                                                const textColor = styleClass.match(/text-\w+-\d+/)?.[0] || "text-stone-700";
-
-                                                                                return (
-                                                                                    <tr key={k} className="hover:bg-stone-50/50 transition-colors">
-                                                                                        <td className="px-3 py-3 text-xs font-semibold align-top w-1/3">
-                                                                                            <span className={cn("border-b-2 pb-0.5 inline-block", borderColor, textColor)}>
-                                                                                                {result.point}
-                                                                                            </span>
-                                                                                        </td>
-                                                                                        <td className="px-3 py-3 text-xs text-stone-600 leading-relaxed">
-                                                                                            {result.explanation.split(/(\*\*.*?\*\*)/).map((part: string, i: number) => {
-                                                                                                if (part.startsWith("**") && part.endsWith("**")) {
-                                                                                                    return <span key={i} className="font-bold text-stone-800 bg-yellow-100/50 px-0.5 rounded">{part.slice(2, -2)}</span>;
-                                                                                                }
-                                                                                                return part;
-                                                                                            })}
-                                                                                        </td>
-                                                                                    </tr>
-                                                                                );
-                                                                            })}
-                                                                        </tbody>
-                                                                    </table>
-                                                                </div>
-                                                            ) : item.analysis_points ? (
-                                                                // Fallback for old data format
-                                                                <ul className="list-disc list-inside text-xs text-stone-600 space-y-1">
-                                                                    {item.analysis_points.map((point: string, j: number) => (
-                                                                        <li key={j}>{point}</li>
+                                        <div className="rounded-xl border border-orange-100 bg-white/70 p-3">
+                                            {activeDeepSentence ? (
+                                                <div className="space-y-3">
+                                                    {activeDeepSentence.analysis_results.length > 0 ? (
+                                                        <div className="overflow-hidden rounded-lg border border-stone-200">
+                                                            <table className="min-w-full divide-y divide-stone-200">
+                                                                <thead className="bg-stone-50">
+                                                                    <tr>
+                                                                        <th scope="col" className="w-1/3 px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-stone-500">
+                                                                            语法点
+                                                                        </th>
+                                                                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-stone-500">
+                                                                            详细解析
+                                                                        </th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className="divide-y divide-stone-200 bg-white">
+                                                                    {activeDeepSentence.analysis_results.map((result, idx) => (
+                                                                        <tr key={`${result.point}-${idx}`} className="transition-colors hover:bg-stone-50/50">
+                                                                            <td className="px-3 py-3 text-xs font-semibold align-top text-stone-800">
+                                                                                {result.point}
+                                                                            </td>
+                                                                            <td className="px-3 py-3 text-xs leading-relaxed text-stone-600">
+                                                                                {result.explanation}
+                                                                            </td>
+                                                                        </tr>
                                                                     ))}
-                                                                </ul>
-                                                            ) : (
-                                                                <p className="text-xs text-stone-600 mb-1">{item.analysis}</p>
-                                                            )}
+                                                                </tbody>
+                                                            </table>
                                                         </div>
+                                                    ) : (
+                                                        <p className="text-xs text-stone-600">
+                                                            当前句暂未提取到可展示的深度语法点，你可以点击刷新重新生成。
+                                                        </p>
+                                                    )}
 
-                                                        {/* Visual Syntax Tree */}
-                                                        {item.sentence_tree && (
-                                                            <div className="mt-4 pt-4 border-t border-stone-100">
-                                                                <div className="flex items-center gap-2 mb-3">
-                                                                    <Gauge className="w-4 h-4 text-amber-600" />
-                                                                    <h5 className="text-xs font-bold text-stone-500 uppercase tracking-wider">Syntax Structure</h5>
-                                                                </div>
-                                                                <SyntaxTreeView data={item.sentence_tree} />
+                                                    {activeDeepSentence.sentence_tree ? (
+                                                        <div className="border-t border-stone-100 pt-3">
+                                                            <div className="mb-3 flex items-center gap-2">
+                                                                <Gauge className="h-4 w-4 text-amber-600" />
+                                                                <h5 className="text-xs font-bold uppercase tracking-wider text-stone-500">
+                                                                    Syntax Structure
+                                                                </h5>
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })()}
-                                        </>
-                                    ) : (
-                                        <div className="text-center p-4 text-stone-500 text-sm italic">
-                                            Click &quot;Analyze Deep Structure&quot; to generate detailed sentence trees.
+                                                            <SyntaxTreeView data={activeDeepSentence.sentence_tree} />
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <p className="text-sm text-stone-500">
+                                                        当前句还没有深度结构，点击右侧按钮开始分析。
+                                                    </p>
+                                                    <button
+                                                        onClick={() => activeGrammarSentence && void ensureDeepAnalysisForSentence(activeGrammarSentence, true)}
+                                                        disabled={isAnalyzingDeepGrammar || !activeGrammarSentence}
+                                                        className="rounded-full border border-[#e4d5b5] bg-white px-3 py-1.5 text-xs font-semibold text-[#8a5d1f] transition-colors hover:bg-[#fff7e6] disabled:cursor-not-allowed disabled:opacity-60"
+                                                    >
+                                                        {isAnalyzingDeepGrammar ? "分析中..." : "Analyze Current Sentence"}
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
-                                    ))}
-                                </div>
-                            )}
+                                    </div>
+                                ) : null}
+                            </div>
                         </motion.div>
                     )
                 }
