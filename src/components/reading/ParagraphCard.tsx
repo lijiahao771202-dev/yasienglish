@@ -5,11 +5,13 @@ import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, 
 import { cn } from "@/lib/utils";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
 import { useTTS } from "@/hooks/useTTS";
+import { usePretextMeasuredLayout } from "@/hooks/usePretextMeasuredLayout";
 import { SpeakingPanel } from "./SpeakingPanel";
 import { useAnalysisStore } from "@/lib/analysis-store";
 import { SyntaxTreeView } from "./SyntaxTreeView";
 import { bionicText } from "@/lib/bionic";
 import { InlineGrammarHighlights } from "@/components/shared/InlineGrammarHighlights";
+import { PretextTextarea } from "@/components/ui/PretextTextarea";
 import { getGrammarHighlightColor, type GrammarDisplayMode } from "@/lib/grammarHighlights";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -130,6 +132,13 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
     const [readingCoinHint, setReadingCoinHint] = useState<string | null>(null);
 
     const pRef = useRef<HTMLDivElement>(null);
+
+    usePretextMeasuredLayout(pRef, {
+        text,
+        mode: "paragraph",
+        enabled: !isEditMode,
+        whiteSpaceMode: "pre-wrap",
+    });
 
     const {
         play: togglePlay,
@@ -1240,11 +1249,13 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                             className="space-y-3"
                         >
                             <div className="relative">
-                                <textarea
+                                <PretextTextarea
                                     value={userTranslation}
                                     onChange={(e) => setUserTranslation(e.target.value)}
                                     placeholder="Type your translation here..."
                                     className="w-full bg-white/50 border border-stone-200 rounded-lg p-3 text-stone-800 focus:outline-none focus:border-amber-400 min-h-[80px] text-sm resize-y"
+                                    minRows={3}
+                                    maxRows={14}
                                 />
                                 <button
                                     onClick={handleCritique}

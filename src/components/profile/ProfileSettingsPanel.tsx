@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { Mail, ShieldCheck, Sparkles } from "lucide-react";
 
 import { PresetAvatar } from "@/components/profile/PresetAvatar";
+import { PretextTextarea } from "@/components/ui/PretextTextarea";
 import { AVATAR_PRESETS } from "@/lib/avatar-presets";
 import type { LearningPreferences } from "@/lib/profile-settings";
 
@@ -130,11 +131,13 @@ export function ProfileSettingsPanel({
                         <label htmlFor="bio" className="text-sm font-medium text-slate-700">
                             个人简介
                         </label>
-                        <textarea
+                        <PretextTextarea
                             id="bio"
                             value={bio}
                             onChange={(event) => setBio(event.target.value)}
                             rows={4}
+                            minRows={4}
+                            maxRows={10}
                             className="w-full rounded-[1.2rem] border border-indigo-100 bg-white px-4 py-3 text-sm text-slate-900 shadow-[0_20px_25px_-22px_rgba(99,102,241,0.95)] outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
                         />
                     </div>

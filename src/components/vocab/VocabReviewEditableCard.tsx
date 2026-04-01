@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Volume2 } from "lucide-react";
 
+import { PretextTextarea } from "@/components/ui/PretextTextarea";
 import type { VocabItem } from "@/lib/db";
 import { isCardGraduated } from "@/lib/fsrs";
 import { updateVocabularyEntry } from "@/lib/user-repository";
@@ -396,11 +397,13 @@ export function VocabReviewEditableCard({
                                                     )}
                                                 >
                                                     <div className={cn("flex items-start gap-3", isHighlighted && "pl-1")}>
-                                                        <textarea
+                                                        <PretextTextarea
                                                             aria-label={`编辑释义 ${group.pos} ${meaningIndex + 1}`}
                                                             value={meaning}
                                                             onChange={(event) => handleMeaningChange(groupIndex, meaningIndex, event.target.value)}
                                                             rows={getTextareaRows(meaning, 1, 4)}
+                                                            minRows={1}
+                                                            maxRows={4}
                                                             className={cn(
                                                                 "w-full resize-none border-none bg-transparent p-0 text-[15px] font-medium leading-relaxed text-[#1a3826]/80 outline-none transition placeholder:text-[#1a3826]/35 focus:text-[#1a3826]",
                                                                 isHighlighted && "font-semibold text-[#7c5200]",
@@ -427,11 +430,13 @@ export function VocabReviewEditableCard({
                         })}
                     </div>
                 ) : (
-                    <textarea
+                    <PretextTextarea
                         aria-label="编辑释义"
                         value=""
                         readOnly
                         rows={2}
+                        minRows={2}
+                        maxRows={2}
                         className="w-full resize-none rounded-[1.2rem] border border-transparent bg-transparent p-2 text-[15px] font-medium leading-relaxed text-[#1a3826]/55 outline-none"
                     />
                 )}
@@ -448,11 +453,13 @@ export function VocabReviewEditableCard({
                                 </span>
                             ) : null}
                         </div>
-                        <textarea
+                        <PretextTextarea
                             aria-label="编辑例句"
                             value={visibleExample}
                             onChange={(event) => handleChange(visibleExampleField, event.target.value)}
                             rows={getTextareaRows(visibleExample || "暂无例句。", 3, 8)}
+                            minRows={3}
+                            maxRows={8}
                             placeholder="暂无例句。"
                             className="mt-2 w-full resize-none rounded-[1.2rem] border border-transparent bg-transparent px-2 py-2 font-newsreader text-[1.2rem] italic leading-relaxed text-[#1a3826] outline-none transition placeholder:text-[#1a3826]/35 focus:border-emerald-200/70 focus:bg-white/16 focus:ring-2 focus:ring-emerald-200/35"
                         />

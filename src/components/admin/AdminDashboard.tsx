@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
+import { PretextTextarea } from "@/components/ui/PretextTextarea";
 
 interface AdminUserRow {
     user_id: string;
@@ -658,13 +659,15 @@ export function AdminDashboard({ adminEmail }: AdminDashboardProps) {
                                                             placeholder="消息标题"
                                                             className="w-full rounded-xl border border-white/12 bg-[#0f1117] px-3 py-2 text-sm outline-none"
                                                         />
-                                                        <textarea
+                                                        <PretextTextarea
                                                             value={messageContents[user.user_id] ?? ""}
                                                             onChange={(event) => setMessageContents((prev) => ({
                                                                 ...prev,
                                                                 [user.user_id]: event.target.value,
                                                             }))}
                                                             rows={2}
+                                                            minRows={2}
+                                                            maxRows={8}
                                                             placeholder="消息内容"
                                                             className="w-full rounded-xl border border-white/12 bg-[#0f1117] px-3 py-2 text-sm outline-none"
                                                         />

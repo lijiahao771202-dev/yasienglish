@@ -12,6 +12,8 @@ import { requestTtsPayload } from '@/lib/tts-client';
 import * as Diff from 'diff';
 import { WordPopup, PopupState } from '@/components/reading/WordPopup';
 import { SpeechModelStatusPanel } from '@/components/speech/SpeechModelStatusPanel';
+import { PretextTextarea } from '@/components/ui/PretextTextarea';
+import { PretextBubble } from '@/components/ui/PretextBubble';
 
 // [TYPES]
 type PracticeMode = 'INPUT' | 'REVIEW' | 'RETRY' | 'ORAL';
@@ -80,14 +82,20 @@ function ChatInterface({ context, onClose }: { context: string, onClose: () => v
                     </div>
                 )}
                 {messages.map((m, i) => (
-                    <div key={i} className={cn(
-                        "p-3 rounded-2xl max-w-[85%] text-sm",
-                        m.role === 'user'
-                            ? "bg-indigo-600 text-white ml-auto rounded-tr-none"
-                            : "bg-stone-100 dark:bg-white/10 text-stone-800 dark:text-stone-200 mr-auto rounded-tl-none"
-                    )}>
+                    <PretextBubble
+                        key={i}
+                        text={m.content}
+                        maxWidthRatio={0.85}
+                        minWidthPx={96}
+                        className={cn(
+                            "p-3 rounded-2xl text-sm whitespace-pre-wrap break-words",
+                            m.role === 'user'
+                                ? "bg-indigo-600 text-white ml-auto rounded-tr-none"
+                                : "bg-stone-100 dark:bg-white/10 text-stone-800 dark:text-stone-200 mr-auto rounded-tl-none"
+                        )}
+                    >
                         {m.content}
-                    </div>
+                    </PretextBubble>
                 ))}
                 {loading && (
                     <div className="flex gap-1 ml-4">
@@ -634,11 +642,13 @@ export default function TranslationPractice() {
                             {/* Mode: INPUT */}
                             {mode === 'INPUT' && (
                                 <div className="animate-in fade-in">
-                                    <textarea
+                                    <PretextTextarea
                                         value={translation}
                                         onChange={(e) => setTranslation(e.target.value)}
                                         placeholder="在这里输入你的英文翻译..."
-                                        className="w-full h-40 p-5 text-lg font-serif bg-transparent border-2 border-transparent focus:border-indigo-400/50 rounded-2xl resize-none placeholder:text-slate-300 dark:placeholder:text-white/20 outline-none transition-all shadow-inner"
+                                        minRows={6}
+                                        maxRows={12}
+                                        className="w-full p-5 text-lg font-serif bg-transparent border-2 border-transparent focus:border-indigo-400/50 rounded-2xl resize-none placeholder:text-slate-300 dark:placeholder:text-white/20 outline-none transition-all shadow-inner"
                                         disabled={loading}
                                     />
                                     <div className="mt-4 flex justify-end">
@@ -707,11 +717,13 @@ export default function TranslationPractice() {
                                         {result.revised_text}
                                     </div>
 
-                                    <textarea
+                                    <PretextTextarea
                                         value={translation}
                                         onChange={(e) => setTranslation(e.target.value)}
                                         placeholder="Type the corrected sentence here..."
-                                        className="w-full h-32 p-4 text-lg font-serif bg-white/50 border-2 border-transparent focus:border-rose-400/50 rounded-2xl resize-none outline-none shadow-inner"
+                                        minRows={4}
+                                        maxRows={10}
+                                        className="w-full p-4 text-lg font-serif bg-white/50 border-2 border-transparent focus:border-rose-400/50 rounded-2xl resize-none outline-none shadow-inner"
                                     />
 
                                     <button onClick={handleRetrySubmit} disabled={!translation.trim()} className="w-full py-3 bg-rose-600 text-white rounded-xl font-bold shadow-lg hover:bg-rose-700 transition-all flex items-center justify-center gap-2">

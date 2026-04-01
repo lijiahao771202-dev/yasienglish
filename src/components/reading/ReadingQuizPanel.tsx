@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LiquidGlassPanel } from "@/components/ui/LiquidGlassPanel";
+import { PretextTextarea } from "@/components/ui/PretextTextarea";
 import {
     getQuestionCorrectTokens,
     isObjectiveQuestionAnswered,
@@ -956,13 +957,15 @@ function QuestionCard({
             ) : (
                 /* Text input for short_answer / fill_blank */
                 <div className={cn(compact ? "pl-7" : "pl-8")}>
-                    <textarea
+                    <PretextTextarea
                         value={typeof userAnswer === "string" ? userAnswer : ""}
                         onChange={(e) => onTextInput(question.id, e.target.value)}
                         disabled={isSubmitted}
                         placeholder="Type your answer here..."
                         className="w-full rounded-xl border border-white/60 bg-white/40 px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors focus:border-cyan-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                         rows={compact ? 1 : 2}
+                        minRows={compact ? 1 : 2}
+                        maxRows={8}
                     />
                 </div>
             )}
