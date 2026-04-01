@@ -1,0 +1,233 @@
+- generic [ref=e1]:
+  - generic [ref=e84] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e85]:
+      - img [ref=e86]
+    - generic [ref=e683]:
+      - button "Open issues overlay" [ref=e684]:
+        - generic [ref=e909]:
+          - generic [ref=e910]: "1"
+          - generic [ref=e911]: "2"
+        - generic [ref=e688]:
+          - text: Issue
+          - generic [ref=e912]: s
+      - button "Collapse issues badge" [ref=e689]:
+        - img [ref=e690]
+  - alert [ref=e89]
+  - main [ref=e536]:
+    - generic [ref=e537]:
+      - navigation:
+        - generic:
+          - button "Back to Welcome":
+            - img
+          - button "Back to Article Picker":
+            - img
+          - generic:
+            - generic:
+              - img
+            - generic: DeepSeek IELTS
+          - generic:
+            - button "Deep Focus Mode":
+              - img
+            - button "Bionic Reading":
+              - img
+            - generic:
+              - button "Appearance":
+                - img
+            - button "Edit Text":
+              - img
+            - button "Drill":
+              - img
+              - generic: Drill
+          - generic:
+            - generic: 阅读币
+            - generic: "40"
+      - generic [ref=e692]:
+        - article [ref=e914]:
+          - generic [ref=e915]:
+            - generic [ref=e916]:
+              - 'heading "The Platform Paradox: Convenience''s Faustian Bargain with Labor Rights" [level=1] [ref=e917]'
+              - paragraph [ref=e919]: By AI Generator · IELTS Academic
+            - generic [ref=e920]:
+              - generic [ref=e922]:
+                - generic [ref=e924]:
+                  - generic "Drag to merge" [ref=e925]:
+                    - img [ref=e926]
+                  - button "Listen" [ref=e933]:
+                    - img [ref=e934]
+                - generic [ref=e936]:
+                  - generic [ref=e937] [cursor=pointer]: "The dawn of the 21st century heralded an unprecedented digital metamorphosis, one that would fundamentally recalibrate the very architecture of labor and consumption. This transformation, crystallizing in the phenomenon of platform economics, presents a profound societal conundrum: the seductive allure of hyper-convenience, delivered with algorithmic precision, stands in stark, often uncomfortable, juxtaposition with the precarious realities of the labor force that powers it. This article traces the micro-historical trajectory of this tension, examining its evolution from nascent promise to present-day paradox, and projecting its trajectory into a near future where the resolution of this dichotomy will define the ethical contours of our digital age."
+                  - generic [ref=e938]:
+                    - button "Speaking" [ref=e939]:
+                      - img [ref=e940]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e943]:
+                      - img [ref=e944]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e948]:
+                      - img [ref=e949]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e951]:
+                      - img [ref=e952]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e955]:
+                      - img [ref=e956]
+                      - text: Practice
+              - generic [ref=e962]:
+                - generic [ref=e964]:
+                  - generic "Drag to merge" [ref=e965]:
+                    - img [ref=e966]
+                  - button "Listen" [ref=e973]:
+                    - img [ref=e974]
+                - generic [ref=e976]:
+                  - generic [ref=e977] [cursor=pointer]: "In the nascent stages, platform work emerged as a beacon of liberation within the globalized, urbanized landscape. The early narrative was one of empowerment and fluidity. Digital marketplaces promised to dismantle traditional barriers, offering individuals—from freelance graphic designers in burgeoning metropolises to drivers in suburban sprawls—unprecedented autonomy over their time and economic participation. This epoch was characterized by a lexicon of opportunity: 'gig', 'sharing', and 'flexibility'. The convenience for consumers was palpable, offering services on-demand, often at lower costs, while for workers, it presented an escape from rigid, hierarchical structures. The trade-off, though subtle at first, was the gradual erosion of the employer-employee social contract, replaced by a transactional, platform-mediated relationship."
+                  - generic [ref=e978]:
+                    - button "Speaking" [ref=e979]:
+                      - img [ref=e980]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e983]:
+                      - img [ref=e984]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e988]:
+                      - img [ref=e989]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e991]:
+                      - img [ref=e992]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e995]:
+                      - img [ref=e996]
+                      - text: Practice
+              - generic [ref=e1002]:
+                - generic [ref=e1004]:
+                  - generic "Drag to merge" [ref=e1005]:
+                    - img [ref=e1006]
+                  - button "Listen" [ref=e1013]:
+                    - img [ref=e1014]
+                - generic [ref=e1016]:
+                  - generic [ref=e1017] [cursor=pointer]: "Transitioning to the present, the initial sheen has given way to a more sobering reality, exposing the fissures in the platform model. The very algorithms that optimize for consumer convenience—minimizing wait times and maximizing choice—often do so by externalizing costs onto the labor force. This manifests in what scholars term 'algorithmic management', a system of opaque, data-driven control that dictates work patterns, performance metrics, and earnings without the corresponding protections of traditional employment. Workers find themselves navigating a labyrinth of precariousness: inconsistent income, a lack of benefits like health insurance or paid leave, and limited recourse for disputes. The convenience enjoyed by the urban consumer—a meal delivered in minutes, a ride summoned instantly—is thus underpinned by a labor paradigm marked by instability and a dilution of collective bargaining power, raising urgent questions about scientific ethics in algorithmic design and the preservation of social welfare as a cultural heritage."
+                  - generic [ref=e1018]:
+                    - button "Speaking" [ref=e1019]:
+                      - img [ref=e1020]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e1023]:
+                      - img [ref=e1024]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e1028]:
+                      - img [ref=e1029]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e1031]:
+                      - img [ref=e1032]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e1035]:
+                      - img [ref=e1036]
+                      - text: Practice
+              - generic [ref=e1042]:
+                - generic [ref=e1044]:
+                  - generic "Drag to merge" [ref=e1045]:
+                    - img [ref=e1046]
+                  - button "Listen" [ref=e1053]:
+                    - img [ref=e1054]
+                - generic [ref=e1056]:
+                  - generic [ref=e1057] [cursor=pointer]: Looking toward the near future, the trajectory of this tension is at a critical inflection point. Regulatory frameworks, slow to adapt, are now grappling with redefining labor classification in the digital realm. We are likely to witness the emergence of hybrid models—'third-category' worker statuses, portable benefit systems funded by platform levies, and increased transparency in algorithmic decision-making. Furthermore, the integration of more sophisticated artificial intelligence will intensify this dialectic. While AI could further streamline services, enhancing convenience to near-telepathic levels, it also risks deepening worker surveillance and displacement. The future will be shaped by whether we choose to let convenience dictate labor norms or whether we harness technological innovation to forge a new social contract—one that does not force a binary choice between efficiency and equity, but ingeniously engineers systems that honor both.
+                  - generic [ref=e1058]:
+                    - button "Speaking" [ref=e1059]:
+                      - img [ref=e1060]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e1063]:
+                      - img [ref=e1064]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e1068]:
+                      - img [ref=e1069]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e1071]:
+                      - img [ref=e1072]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e1075]:
+                      - img [ref=e1076]
+                      - text: Practice
+              - generic [ref=e1082]:
+                - generic [ref=e1084]:
+                  - generic "Drag to merge" [ref=e1085]:
+                    - img [ref=e1086]
+                  - button "Listen" [ref=e1093]:
+                    - img [ref=e1094]
+                - generic [ref=e1096]:
+                  - generic [ref=e1097] [cursor=pointer]: "In conclusion, the micro-history of platform work reveals a dynamic and unresolved negotiation between two powerful forces: the human desire for effortless service and the fundamental right to dignified, secure work. This is not merely an economic debate but a profound societal choice about the values we wish to encode into our digital infrastructure. As we stand at this crossroads, the challenge is to move beyond seeing convenience and labor rights as a zero-sum game. The path forward demands innovative governance, ethical technological design, and a collective commitment to ensuring that the digital economy uplifts all its participants, lest the convenience of today becomes the social inequity of tomorrow."
+                  - generic [ref=e1098]:
+                    - button "Speaking" [ref=e1099]:
+                      - img [ref=e1100]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e1103]:
+                      - img [ref=e1104]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e1108]:
+                      - img [ref=e1109]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e1111]:
+                      - img [ref=e1112]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e1115]:
+                      - img [ref=e1116]
+                      - text: Practice
+        - generic [ref=e1122]:
+          - generic [ref=e1123]:
+            - button "隐藏题目 雅思" [pressed] [ref=e1124]:
+              - img [ref=e1125]
+              - generic [ref=e1129]: 隐藏题目
+              - generic [ref=e1130]: 雅思
+            - button "拖动答题框" [ref=e1131]:
+              - img [ref=e1132]
+          - generic [ref=e1141]:
+            - generic [ref=e1143]:
+              - generic [ref=e1144]:
+                - img [ref=e1145]
+                - heading "阅读理解" [level=3] [ref=e1148]
+              - generic [ref=e1150]: 雅思
+            - generic [ref=e1160]:
+              - generic [ref=e1161]:
+                - generic [ref=e1162]: "1"
+                - generic [ref=e1163]:
+                  - generic [ref=e1164]:
+                    - generic [ref=e1165]: 选择
+                    - img [ref=e1191]
+                  - paragraph [ref=e1166]: According to the article, what was the initial narrative surrounding platform work in its early stages?
+              - generic [ref=e1167]:
+                - button "A. It was seen as a threat to traditional employment structures" [disabled] [ref=e1168]:
+                  - generic [ref=e1170]: A. It was seen as a threat to traditional employment structures
+                - button "B. It was characterized by empowerment and fluidity for workers" [disabled] [ref=e1171]:
+                  - generic [ref=e1173]: B. It was characterized by empowerment and fluidity for workers
+                - button "C. It immediately raised concerns about labor rights erosion" [disabled] [ref=e1174]:
+                  - generic [ref=e1176]: C. It immediately raised concerns about labor rights erosion
+                - button "D. It was primarily focused on maximizing corporate profits" [disabled] [ref=e1177]:
+                  - generic [ref=e1179]: D. It was primarily focused on maximizing corporate profits
+              - generic [ref=e1195]:
+                - paragraph [ref=e1196]: ✓ 正确
+                - paragraph [ref=e1197]: 平台工作在早期阶段被描述为赋予工人权力和灵活性。
+                - generic [ref=e1198]:
+                  - generic [ref=e1199]:
+                    - img [ref=e1200]
+                    - generic [ref=e1203]: 定位依据
+                    - generic [ref=e1204]: 段落 2
+                  - paragraph [ref=e1205]: The early narrative was one of empowerment and fluidity. Digital marketplaces promised to dismantle traditional barriers, offering individuals... unprecedented autonomy over their time and economic participation.
+                  - button "定位到原文（第1题）" [ref=e1206]
+                - generic [ref=e1207]:
+                  - button "收起详解" [ref=e1208]:
+                    - img [ref=e1209]
+                    - text: 收起详解
+                  - generic [ref=e1212]:
+                    - generic [ref=e1213]:
+                      - paragraph [ref=e1214]:
+                        - img [ref=e1215]
+                        - text: 解题思路
+                      - paragraph [ref=e1217]: 第二段明确指出早期叙事是关于“empowerment and fluidity”（赋权和流动性），并提到平台提供了前所未有的自主权。
+                    - generic [ref=e1218]:
+                      - paragraph [ref=e1219]: 易错点
+                      - paragraph [ref=e1220]: 不要被后来段落中描述的当前问题所干扰，本题明确询问早期阶段。
+            - generic [ref=e1181]:
+              - paragraph [ref=e1182]: 第 1 / 7 题 · 已批改 1 题
+              - generic [ref=e1183]:
+                - button "上一题" [disabled] [ref=e1184]:
+                  - img [ref=e1185]
+                  - text: 上一题
+                - button "下一题" [active] [ref=e1221]:
+                  - img [ref=e1222]
+                  - text: 下一题

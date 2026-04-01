@@ -8,6 +8,7 @@ import {
     Loader2,
     Trophy,
     ChevronRight,
+    ChevronLeft,
     RotateCcw,
     Sparkles,
     Send,
@@ -147,6 +148,19 @@ function normalizeQuestion(raw: unknown, index: number): QuizQuestion | null {
     };
 }
 
+function isSameQuestionSet(prev: QuizQuestion[], next: QuizQuestion[]) {
+    if (prev.length !== next.length) return false;
+    return prev.every((question, index) => {
+        const candidate = next[index];
+        return (
+            question.id === candidate.id
+            && question.itemId === candidate.itemId
+            && question.type === candidate.type
+            && question.question === candidate.question
+        );
+    });
+}
+
 export interface QuizSubmitPayload {
     correct: number;
     total: number;
@@ -196,6 +210,8 @@ interface ReadingQuizPanelProps {
     cachedQuestions?: QuizQuestion[];
     onQuestionsReady?: (questions: QuizQuestion[]) => void;
     onSubmitScore?: (score: QuizSubmitPayload) => void;
+    titleNode?: React.ReactNode;
+    dragHandleNode?: React.ReactNode;
 }
 
 const DIFFICULTY_META: Record<string, { label: string; color: string; bgClass: string }> = {
@@ -224,6 +240,8 @@ export function ReadingQuizPanel({
     cachedQuestions,
     onQuestionsReady,
     onSubmitScore,
+    titleNode,
+    dragHandleNode,
 }: ReadingQuizPanelProps) {
     const [questions, setQuestions] = useState<QuizQuestion[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -235,7 +253,9 @@ export function ReadingQuizPanel({
     const [isSubmitted, setIsSubmitted] = useState(false);
     const [score, setScore] = useState<{ correct: number; total: number } | null>(null);
     const [expandedExplanations, setExpandedExplanations] = useState<Record<number, boolean>>({});
+    const [standardGradedMap, setStandardGradedMap] = useState<Record<number, boolean>>({});
     const [catStepIndex, setCatStepIndex] = useState(0);
+    const [standardStepIndex, setStandardStepIndex] = useState(0);
     const [catResponseMap, setCatResponseMap] = useState<Record<number, CatQuestionResponse>>({});
     const [isCatCompactMode, setIsCatCompactMode] = useState(true);
     const autoCompactTimerRef = useRef<number | null>(null);
@@ -277,7 +297,22 @@ export function ReadingQuizPanel({
     // Fetch quiz questions on mount
     useEffect(() => {
         if (cachedQuestions && cachedQuestions.length > 0) {
-            setQuestions(cachedQuestions);
+            const sameSet = isSameQuestionSet(questions, cachedQuestions);
+            if (!sameSet) {
+                setQuestions(cachedQuestions);
+                setAnswers({});
+                setQuestionFirstAnswerAt({});
+                setExpandedExplanations({});
+                setStandardGradedMap({});
+                setCatStepIndex(0);
+                setStandardStepIndex(0);
+                setCatResponseMap({});
+                setIsSubmitted(false);
+                setScore(null);
+                if (quizMode === "cat" && floatingCompact) {
+                    setIsCatCompactMode(true);
+                }
+            }
             setIsLoading(false);
             setError(null);
             return;
@@ -314,7 +349,9 @@ export function ReadingQuizPanel({
                         setAnswers({});
                         setQuestionFirstAnswerAt({});
                         setExpandedExplanations({});
+                        setStandardGradedMap({});
                         setCatStepIndex(0);
+                        setStandardStepIndex(0);
                         setCatResponseMap({});
                         setIsSubmitted(false);
                         setScore(null);
@@ -334,7 +371,7 @@ export function ReadingQuizPanel({
         };
         fetchQuiz();
         return () => { cancelled = true; };
-    }, [articleContent, difficulty, articleTitle, cachedQuestions, onQuestionsReady, quizMode, catBand, catScore, catQuizBlueprint, floatingCompact]);
+    }, [articleContent, difficulty, articleTitle, cachedQuestions, onQuestionsReady, quizMode, catBand, catScore, catQuizBlueprint, floatingCompact, questions]);
 
     const handleSelectAnswer = (question: QuizQuestion, option: string) => {
         if (isSubmitted) return;
@@ -395,21 +432,6 @@ export function ReadingQuizPanel({
         };
     };
 
-    const handleSubmit = () => {
-        const submittedAt = Date.now();
-        const answeredQuestions = questions.filter((question) => isObjectiveQuestionAnswered(question, answers[question.id]));
-        const scoringPool = quizMode === "cat" ? answeredQuestions : questions;
-        const finalScore = scoreObjectiveQuiz(scoringPool, answers);
-        const normalizedResponses = scoringPool.map((question, index) => buildCatResponse(question, index + 1, submittedAt));
-        setScore(finalScore);
-        setIsSubmitted(true);
-        onSubmitScore?.({
-            ...finalScore,
-            responses: quizMode === "cat" ? normalizedResponses : undefined,
-            qualityTier: quizMode === "cat" && typeof catSe === "number" && catSe > 1.25 ? "low_confidence" : "ok",
-        });
-    };
-
     const handleReset = () => {
         clearAutoCompactTimer();
         clearAutoFinalizeTimer();
@@ -418,14 +440,23 @@ export function ReadingQuizPanel({
         setIsSubmitted(false);
         setScore(null);
         setExpandedExplanations({});
+        setStandardGradedMap({});
         setCatStepIndex(0);
+        setStandardStepIndex(0);
         setCatResponseMap({});
         setIsCatCompactMode(true);
     };
 
     const isCorrect = (q: QuizQuestion): boolean => isObjectiveQuestionCorrect(q, answers[q.id]);
 
-    const answeredCount = questions.filter((q) => isObjectiveQuestionAnswered(q, answers[q.id])).length;
+    useEffect(() => {
+        if (questions.length === 0) {
+            setStandardStepIndex(0);
+            return;
+        }
+        setStandardStepIndex((prev) => Math.min(prev, questions.length - 1));
+    }, [questions.length]);
+
     const catSubmittedCount = Object.keys(catResponseMap).length;
     const catCurrentQuestion = questions[catStepIndex];
     const catCurrentCommitted = Boolean(catCurrentQuestion && catResponseMap[catCurrentQuestion.id]);
@@ -436,6 +467,50 @@ export function ReadingQuizPanel({
     const hasReachedCatMax = catSubmittedCount >= catMaxAllowed;
     const nextUnsubmittedIndex = questions.findIndex((question, index) => index > catStepIndex && !catResponseMap[question.id]);
     const hasNextQuestion = nextUnsubmittedIndex >= 0;
+    const standardQuestionCount = questions.length;
+    const standardSafeIndex = standardQuestionCount > 0
+        ? Math.min(standardStepIndex, standardQuestionCount - 1)
+        : 0;
+    const standardCurrentQuestion = questions[standardSafeIndex];
+    const standardAtFirst = standardSafeIndex === 0;
+    const standardAtLast = standardQuestionCount > 0 && standardSafeIndex === standardQuestionCount - 1;
+    const standardCurrentAnswered = Boolean(
+        standardCurrentQuestion
+        && isObjectiveQuestionAnswered(standardCurrentQuestion, answers[standardCurrentQuestion.id])
+    );
+    const standardCurrentGraded = Boolean(
+        standardCurrentQuestion
+        && standardGradedMap[standardCurrentQuestion.id]
+    );
+    const standardGradedCount = Object.keys(standardGradedMap).length;
+    const standardProgressHint = standardQuestionCount > 0
+        ? `第 ${standardSafeIndex + 1} / ${standardQuestionCount} 题 · 已批改 ${standardGradedCount} 题`
+        : "暂无题目";
+
+    const handlePrevStandardQuestion = () => {
+        setStandardStepIndex((prev) => Math.max(0, prev - 1));
+    };
+
+    const handleNextStandardQuestion = () => {
+        if (!standardCurrentGraded || standardAtLast) return;
+        setStandardStepIndex((prev) => Math.min(standardQuestionCount - 1, prev + 1));
+    };
+
+    const handleGradeStandardQuestion = () => {
+        if (!standardCurrentQuestion || standardCurrentGraded || !standardCurrentAnswered) return;
+        setStandardGradedMap((prev) => ({ ...prev, [standardCurrentQuestion.id]: true }));
+        setExpandedExplanations((prev) => ({ ...prev, [standardCurrentQuestion.id]: true }));
+    };
+
+    const handleFinalizeStandardSession = () => {
+        if (quizMode !== "standard" || isSubmitted || questions.length === 0) return;
+        const allGraded = questions.every((question) => Boolean(standardGradedMap[question.id]));
+        if (!allGraded) return;
+        const finalScore = scoreObjectiveQuiz(questions, answers);
+        setScore(finalScore);
+        setIsSubmitted(true);
+        onSubmitScore?.(finalScore);
+    };
 
     const handleSubmitCurrentCatQuestion = () => {
         if (!catCurrentQuestion || catCurrentCommitted || !catCurrentCanSubmit) return;
@@ -487,11 +562,9 @@ export function ReadingQuizPanel({
         setScore,
     ]);
 
-    const allAnswered = questions.length > 0 && answeredCount === questions.length;
     const canSubmitCat = quizMode === "cat"
         ? hasReachedCatMin
         : false;
-    const canSubmit = quizMode === "cat" ? canSubmitCat : allAnswered;
     const catAnsweredHint = quizMode === "cat"
         ? `已提交 ${catSubmittedCount} 题 · 至少 ${catMinRequired} 题，精度达标自动收卷（上限 ${catMaxAllowed} 题，目标SE ≤ ${catTargetSe.toFixed(2)}）`
         : null;
@@ -569,23 +642,37 @@ export function ReadingQuizPanel({
     }
 
     return (
-        <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <div
+            data-quiz-panel-root="true"
+            className="flex h-full min-h-[240px] flex-col overflow-hidden"
+        >
             {/* Header */}
-            <div className="flex-shrink-0 border-b border-white/40 px-4 py-2.5">
+            <div className="flex-shrink-0 border-b border-white/40 px-4 py-2.5 relative">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        {!isFloatingCat && <Sparkles className="h-5 w-5 text-pink-500" />}
-                        <h3 className={cn("font-newsreader font-bold text-slate-900", isFloatingCat ? "text-base" : "text-lg")}>
-                            {isFloatingCat ? "阅读测验" : "阅读理解"}
-                        </h3>
-                        {isFloatingCat && (
-                            <span className="rounded-full border border-white/70 bg-white/70 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                                {Math.min(catSubmittedCount + (catCurrentCommitted ? 0 : 1), catMaxAllowed)}/{catMaxAllowed}
-                            </span>
+                        {titleNode ? titleNode : (
+                            <>
+                                {!isFloatingCat && <Sparkles className="h-5 w-5 text-pink-500" />}
+                                <h3 className={cn("font-newsreader font-bold text-slate-900", isFloatingCat ? "text-base" : "text-lg")}>
+                                    {isFloatingCat ? "阅读测验" : "阅读理解"}
+                                </h3>
+                                {isFloatingCat && (
+                                    <span className="rounded-full border border-white/70 bg-white/70 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                        {Math.min(catSubmittedCount + (catCurrentCommitted ? 0 : 1), catMaxAllowed)}/{catMaxAllowed}
+                                    </span>
+                                )}
+                            </>
                         )}
                     </div>
+
+                    {dragHandleNode && (
+                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+                            {dragHandleNode}
+                        </div>
+                    )}
+
                     <div className="flex items-center gap-2">
-                        {!isFloatingCat && (
+                        {!titleNode && !isFloatingCat && (
                             <span
                                 className={cn(
                                     "rounded-full border px-2.5 py-0.5 text-xs font-bold",
@@ -691,29 +778,34 @@ export function ReadingQuizPanel({
                         )}
                     </AnimatePresence>
                 ) : (
-                    <AnimatePresence mode="popLayout">
-                        {questions.map((q, idx) => (
+                    <AnimatePresence mode="wait">
+                        {standardCurrentQuestion ? (
                             <motion.div
-                                key={q.id}
-                                initial={{ opacity: 0, y: 12 }}
+                                key={standardCurrentQuestion.id}
+                                initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: idx * 0.06 }}
+                                exit={{ opacity: 0, y: -8 }}
+                                transition={{ duration: 0.24 }}
                             >
                                 <QuestionCard
-                                    question={q}
-                                    index={idx}
-                                    userAnswer={answers[q.id]}
+                                    question={standardCurrentQuestion}
+                                    index={standardSafeIndex}
+                                    userAnswer={answers[standardCurrentQuestion.id]}
                                     onSelect={handleSelectAnswer}
                                     onTextInput={handleTextAnswer}
-                                    isSubmitted={isSubmitted}
-                                    isCorrect={isSubmitted ? isCorrect(q) : undefined}
-                                    isExpanded={Boolean(expandedExplanations[q.id])}
+                                    isSubmitted={isSubmitted || standardCurrentGraded}
+                                    isCorrect={isSubmitted || standardCurrentGraded ? isCorrect(standardCurrentQuestion) : undefined}
+                                    isExpanded={Boolean(expandedExplanations[standardCurrentQuestion.id])}
                                     onToggleExpand={toggleExplanation}
                                     onLocate={onLocate}
                                     compact={false}
                                 />
                             </motion.div>
-                        ))}
+                        ) : (
+                            <div className="rounded-xl border border-white/60 bg-white/45 px-4 py-3 text-sm text-slate-600">
+                                暂无可用题目，请稍后重试。
+                            </div>
+                        )}
                     </AnimatePresence>
                 )}
             </div>
@@ -769,19 +861,75 @@ export function ReadingQuizPanel({
                             </button>
                         </div>
                     ) : !isSubmitted ? (
-                        <button
-                            onClick={handleSubmit}
-                            disabled={!canSubmit}
-                            className={cn(
-                                "flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold transition-all duration-300",
-                                canSubmit
-                                    ? "border border-white/60 bg-white/70 text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] hover:bg-white/90"
-                                    : "border border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
-                            )}
-                        >
-                            <Send className="h-4 w-4" />
-                            提交答案
-                        </button>
+                        <div className="space-y-2">
+                            <p className="text-xs font-medium text-slate-500">
+                                {standardProgressHint}
+                            </p>
+                            <div className="flex gap-2.5">
+                                <button
+                                    onClick={handlePrevStandardQuestion}
+                                    disabled={standardAtFirst}
+                                    className={cn(
+                                        "flex min-w-[120px] items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold transition-all duration-300",
+                                        standardAtFirst
+                                            ? "border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
+                                            : "border-white/60 bg-white/50 text-slate-700 hover:bg-white/70"
+                                    )}
+                                >
+                                    <ChevronLeft className="h-4 w-4" />
+                                    上一题
+                                </button>
+                                {!standardAtLast ? (
+                                    standardCurrentGraded ? (
+                                        <button
+                                            onClick={handleNextStandardQuestion}
+                                            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/60 bg-white/70 py-3 text-sm font-bold text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] transition-all duration-300 hover:bg-white/90"
+                                        >
+                                            <ChevronRight className="h-4 w-4" />
+                                            下一题
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={handleGradeStandardQuestion}
+                                            disabled={!standardCurrentAnswered}
+                                            className={cn(
+                                                "flex flex-1 items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold transition-all duration-300",
+                                                standardCurrentAnswered
+                                                    ? "border-white/60 bg-white/70 text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] hover:bg-white/90"
+                                                    : "border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
+                                            )}
+                                        >
+                                            <Send className="h-4 w-4" />
+                                            批改本题
+                                        </button>
+                                    )
+                                ) : (
+                                    standardCurrentGraded ? (
+                                        <button
+                                            onClick={handleFinalizeStandardSession}
+                                            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/60 bg-white/70 py-3 text-sm font-bold text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] transition-all duration-300 hover:bg-white/90"
+                                        >
+                                            <Send className="h-4 w-4" />
+                                            完成批改
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={handleGradeStandardQuestion}
+                                            disabled={!standardCurrentAnswered}
+                                            className={cn(
+                                                "flex flex-1 items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold transition-all duration-300",
+                                                standardCurrentAnswered
+                                                    ? "border-white/60 bg-white/70 text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] hover:bg-white/90"
+                                                    : "border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
+                                            )}
+                                        >
+                                            <Send className="h-4 w-4" />
+                                            批改本题
+                                        </button>
+                                    )
+                                )}
+                            </div>
+                        </div>
                     ) : (
                         <div className="flex gap-3">
                             {quizMode !== "cat" ? (

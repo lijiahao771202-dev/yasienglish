@@ -1,0 +1,50 @@
+[     267ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[     301ms] [LOG] [HMR] connected @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[     639ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[    1329ms] [LOG] [Fast Refresh] done in 848ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[    1461ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[    1655ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/reading/economy/apply:0
+[    1656ms] [LOG] [Fast Refresh] done in 296ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   20573ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   20836ms] [LOG] [Fast Refresh] done in 365ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   20958ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   20969ms] [LOG] [Fast Refresh] done in 111ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   43368ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   43590ms] [LOG] [Fast Refresh] done in 323ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   51524ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   51602ms] [LOG] [Fast Refresh] done in 179ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   61610ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/reading/economy/apply:0
+[   76333ms] [ERROR] TTS Queue Error: AbortError: signal is aborted without reason
+    at http://localhost:3000/_next/static/chunks/src_lib_d22f78a9._.js:89:49 @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[   76335ms] [ERROR] Failed to load TTS: AbortError: signal is aborted without reason
+    at http://localhost:3000/_next/static/chunks/src_lib_d22f78a9._.js:89:49 @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[   76335ms] [ERROR] Failed to load TTS: AbortError: signal is aborted without reason
+    at http://localhost:3000/_next/static/chunks/src_lib_d22f78a9._.js:89:49 @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[   76335ms] [ERROR] Failed to load TTS: AbortError: signal is aborted without reason
+    at http://localhost:3000/_next/static/chunks/src_lib_d22f78a9._.js:89:49 @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[   76335ms] [ERROR] Failed to load TTS: AbortError: signal is aborted without reason
+    at http://localhost:3000/_next/static/chunks/src_lib_d22f78a9._.js:89:49 @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[   76339ms] [ERROR] TTS Queue Error: AbortError: signal is aborted without reason
+    at http://localhost:3000/_next/static/chunks/src_lib_d22f78a9._.js:89:49 @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[   76339ms] [ERROR] Failed to load TTS: AbortError: signal is aborted without reason
+    at http://localhost:3000/_next/static/chunks/src_lib_d22f78a9._.js:89:49 @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[   76339ms] [ERROR] Failed to load TTS: AbortError: signal is aborted without reason
+    at http://localhost:3000/_next/static/chunks/src_lib_d22f78a9._.js:89:49 @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[   76339ms] [ERROR] Failed to load TTS: AbortError: signal is aborted without reason
+    at http://localhost:3000/_next/static/chunks/src_lib_d22f78a9._.js:89:49 @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[   76339ms] [ERROR] Failed to load TTS: AbortError: signal is aborted without reason
+    at http://localhost:3000/_next/static/chunks/src_lib_d22f78a9._.js:89:49 @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  112169ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  112292ms] [LOG] [Fast Refresh] done in 223ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  115547ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  115898ms] [LOG] [Fast Refresh] done in 452ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  147361ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  147463ms] [LOG] [Fast Refresh] done in 204ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  149045ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  149226ms] [LOG] [Fast Refresh] done in 281ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  152689ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  153053ms] [LOG] [Fast Refresh] done in 465ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  169617ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  169767ms] [LOG] [Fast Refresh] done in 251ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  186392ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  186631ms] [LOG] [Fast Refresh] done in 340ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297

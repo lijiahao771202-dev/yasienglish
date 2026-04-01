@@ -12,7 +12,7 @@ import { SyntaxTreeView } from "./SyntaxTreeView";
 import { bionicText } from "@/lib/bionic";
 import { InlineGrammarHighlights } from "@/components/shared/InlineGrammarHighlights";
 import { PretextTextarea } from "@/components/ui/PretextTextarea";
-import { getGrammarHighlightColor, type GrammarDisplayMode, type GrammarSentenceAnalysis } from "@/lib/grammarHighlights";
+import { type GrammarDisplayMode, type GrammarSentenceAnalysis } from "@/lib/grammarHighlights";
 import {
     buildGrammarCacheKey,
     GRAMMAR_BASIC_MODEL,
@@ -456,11 +456,6 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
         setShowDeepAnalysis(false);
     }, [grammarBasicCacheKey]);
 
-    const getCurrentSentence = () => {
-        const current = grammarAnalysis?.difficult_sentences?.[activeSentenceIndex]?.sentence;
-        return typeof current === "string" ? current.trim() : "";
-    };
-
     const ensureDeepAnalysisForSentence = async (sentence: string, forceRegenerate = false) => {
         const normalizedSentence = sentence.trim();
         if (!normalizedSentence) return;
@@ -564,22 +559,12 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
         }
     };
 
-    const handleToggleDeepAnalysis = async () => {
-        const nextShowDeep = !showDeepAnalysis;
-        setShowDeepAnalysis(nextShowDeep);
-        if (!nextShowDeep) return;
-
-        const sentence = getCurrentSentence();
-        if (!sentence) return;
-        await ensureDeepAnalysisForSentence(sentence, false);
+    const handleToggleDeepAnalysis = () => {
+        setShowDeepAnalysis((prev) => !prev);
     };
 
-    const handleDeepSentenceChange = async (nextIndex: number) => {
+    const handleDeepSentenceChange = (nextIndex: number) => {
         setActiveSentenceIndex(nextIndex);
-        if (!showDeepAnalysis) return;
-        const sentence = grammarAnalysis?.difficult_sentences?.[nextIndex]?.sentence;
-        if (typeof sentence !== "string") return;
-        await ensureDeepAnalysisForSentence(sentence, false);
     };
 
     const grammarSentences = grammarHighlightSentences;
@@ -768,10 +753,9 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
     const getFocusClasses = () => {
         if (!isFocusMode) {
             // Default behavior (Focus Mode OFF)
-            // Use the new glass-card-hover for that liquid feel
             return isVideoActive
                 ? "bg-red-50/40 rounded-lg -mx-4 px-4 py-3 shadow-sm ring-1 ring-red-100"
-                : "rounded-lg glass-card-hover -mx-4 px-4 py-1";
+                : "rounded-lg -mx-4 px-4 py-1 transition-colors hover:bg-white/45";
         }
 
         // Focus Mode ON
@@ -1095,101 +1079,47 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                             className="relative space-y-4 rounded-[28px] border border-[#eadcc0] bg-[linear-gradient(180deg,rgba(255,251,242,0.96),rgba(248,242,228,0.92))] p-5 shadow-[0_18px_45px_rgba(120,94,42,0.08)] ring-1 ring-white/70 group/grammar"
                         >
                             <div className="space-y-3">
-                                <div className="flex flex-wrap items-center justify-between gap-3">
-                                    <div className="flex items-center gap-2">
-                                        <h4 className="font-newsreader text-xl font-semibold text-[#8a5d1f]">Grammar Analysis</h4>
+                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                    <div className="flex items-center rounded-full border border-[#dfcfab] bg-white/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
                                         <button
-                                            onClick={() => handleGrammarAnalysis(true)}
-                                            className="rounded-full border border-[#e4d5b5] bg-white/80 p-1.5 text-[#b18747] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-[#8a5d1f]"
-                                            title="Regenerate Grammar Analysis"
-                                        >
-                                            <RotateCcw className="w-3 h-3" />
-                                        </button>
-                                    </div>
-
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <div className="flex items-center rounded-full border border-[#dfcfab] bg-white/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-                                            <button
-                                                onClick={() => setGrammarDisplayMode("core")}
-                                                className={cn(
-                                                    "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
-                                                    grammarDisplayMode === "core"
-                                                        ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
-                                                        : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
-                                                )}
-                                            >
-                                                主干结构
-                                            </button>
-                                            <button
-                                                onClick={() => setGrammarDisplayMode("full")}
-                                                className={cn(
-                                                    "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
-                                                    grammarDisplayMode === "full"
-                                                        ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
-                                                        : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
-                                                )}
-                                            >
-                                                完整分析
-                                            </button>
-                                        </div>
-
-                                        {showDeepAnalysis && activeGrammarSentence ? (
-                                            <button
-                                                onClick={() => void ensureDeepAnalysisForSentence(activeGrammarSentence, true)}
-                                                className="rounded-full border border-[#e4d5b5] bg-white/75 p-1.5 text-[#b18747] shadow-sm transition-all hover:-translate-y-0.5 hover:bg-white hover:text-[#8a5d1f]"
-                                                title="Regenerate Deep Analysis"
-                                            >
-                                                <RotateCcw className="w-3 h-3" />
-                                            </button>
-                                        ) : null}
-
-                                        <button
-                                            onClick={() => void handleToggleDeepAnalysis()}
-                                            disabled={isAnalyzingDeepGrammar || grammarSentences.length === 0}
+                                            onClick={() => setGrammarDisplayMode("core")}
                                             className={cn(
-                                                "flex items-center gap-1 rounded-full border px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-colors",
-                                                showDeepAnalysis
-                                                    ? "border-[#d8c193] bg-[#f7ebd0] text-[#7b5117]"
-                                                    : "border-[#e4d5b5] bg-white/75 text-[#8a5d1f] hover:bg-white",
-                                                "disabled:cursor-not-allowed disabled:opacity-65",
+                                                "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
+                                                grammarDisplayMode === "core"
+                                                    ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
+                                                    : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
                                             )}
                                         >
-                                            {isAnalyzingDeepGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                                            {showDeepAnalysis ? "Hide Deep" : `Deep · -${getReadingCoinCost("grammar_deep")}`}
+                                            主干结构
+                                        </button>
+                                        <button
+                                            onClick={() => setGrammarDisplayMode("full")}
+                                            className={cn(
+                                                "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
+                                                grammarDisplayMode === "full"
+                                                    ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
+                                                    : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
+                                            )}
+                                        >
+                                            完整分析
                                         </button>
                                     </div>
+
+                                    <button
+                                        onClick={() => void handleToggleDeepAnalysis()}
+                                        disabled={isAnalyzingDeepGrammar || grammarSentences.length === 0}
+                                        className={cn(
+                                            "flex items-center gap-1 rounded-full border px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-colors",
+                                            showDeepAnalysis
+                                                ? "border-[#d8c193] bg-[#f7ebd0] text-[#7b5117]"
+                                                : "border-[#e4d5b5] bg-white/75 text-[#8a5d1f] hover:bg-white",
+                                            "disabled:cursor-not-allowed disabled:opacity-65",
+                                        )}
+                                    >
+                                        {isAnalyzingDeepGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                                        {showDeepAnalysis ? "Hide Deep" : `Deep · -${getReadingCoinCost("grammar_deep")}`}
+                                    </button>
                                 </div>
-
-                                {typeof grammarAnalysis.overview === "string" && grammarAnalysis.overview.trim() ? (
-                                    <p className="text-sm leading-6 text-[#7b5a2d]">{grammarAnalysis.overview}</p>
-                                ) : (
-                                    <p className="text-sm leading-6 text-[#7b5a2d]">
-                                        语法高亮已同步到段落正文，可在「主干结构 / 完整分析」之间切换查看。
-                                    </p>
-                                )}
-
-                                {Array.isArray(grammarAnalysis.tags) && grammarAnalysis.tags.length > 0 ? (
-                                    <div className="flex flex-wrap gap-1.5">
-                                        {grammarAnalysis.tags.map((tag: string, idx: number) => {
-                                            const styleClass = getGrammarHighlightColor(tag);
-                                            return (
-                                                <span
-                                                    key={`${tag}-${idx}`}
-                                                    className={cn(
-                                                        "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
-                                                        styleClass,
-                                                    )}
-                                                >
-                                                    {tag}
-                                                </span>
-                                            );
-                                        })}
-                                    </div>
-                                ) : null}
-
-                                <p className="text-xs text-stone-500">
-                                    本次分析覆盖 {grammarSentences.length} 句，重点片段可直接在正文里点击查看解释与译文。
-                                </p>
 
                                 {showDeepAnalysis ? (
                                     <div className="space-y-3 rounded-2xl border border-[#e7d8ba] bg-white/75 p-3">
@@ -1266,7 +1196,7 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                                                         当前句还没有深度结构，点击右侧按钮开始分析。
                                                     </p>
                                                     <button
-                                                        onClick={() => activeGrammarSentence && void ensureDeepAnalysisForSentence(activeGrammarSentence, true)}
+                                                        onClick={() => activeGrammarSentence && void ensureDeepAnalysisForSentence(activeGrammarSentence, false)}
                                                         disabled={isAnalyzingDeepGrammar || !activeGrammarSentence}
                                                         className="rounded-full border border-[#e4d5b5] bg-white px-3 py-1.5 text-xs font-semibold text-[#8a5d1f] transition-colors hover:bg-[#fff7e6] disabled:cursor-not-allowed disabled:opacity-60"
                                                     >

@@ -1,0 +1,203 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - navigation:
+        - generic:
+          - button "Back to Welcome":
+            - img
+          - button "Back to Article Picker":
+            - img
+          - generic:
+            - generic:
+              - img
+            - generic: DeepSeek IELTS
+          - generic:
+            - button "Deep Focus Mode":
+              - img
+            - button "Bionic Reading":
+              - img
+            - generic:
+              - button "Appearance":
+                - img
+            - button "Edit Text":
+              - img
+            - button "Drill":
+              - img
+              - generic: Drill
+          - generic:
+            - generic: 阅读币
+            - generic: "40"
+      - generic [ref=e164]:
+        - article [ref=e391]:
+          - generic [ref=e392]:
+            - generic [ref=e393]:
+              - 'heading "The Truth Behind Student Eating Habits: Busting Common Nutrition Myths" [level=1] [ref=e394]'
+              - paragraph [ref=e396]: By AI Generator · CET-4 (大学英语四级)
+            - generic [ref=e397]:
+              - generic [ref=e399]:
+                - generic [ref=e401]:
+                  - generic "Drag to merge" [ref=e402]:
+                    - img [ref=e403]
+                  - button "Listen" [ref=e410]:
+                    - img [ref=e411]
+                - generic [ref=e413]:
+                  - generic [ref=e414] [cursor=pointer]: On a typical university campus, you might see a student skipping breakfast to save time, another choosing only salad for lunch to lose weight, and a third drinking energy drinks late at night to study. These habits are common, but are they healthy? Many students believe in nutrition myths that can harm their health and academic performance. Let's explore some of these myths through a real case study.
+                  - generic [ref=e415]:
+                    - button "Speaking" [ref=e416]:
+                      - img [ref=e417]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e420]:
+                      - img [ref=e421]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e425]:
+                      - img [ref=e426]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e428]:
+                      - img [ref=e429]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e432]:
+                      - img [ref=e433]
+                      - text: Practice
+              - generic [ref=e439]:
+                - generic [ref=e441]:
+                  - generic "Drag to merge" [ref=e442]:
+                    - img [ref=e443]
+                  - button "Listen" [ref=e450]:
+                    - img [ref=e451]
+                - generic [ref=e453]:
+                  - generic [ref=e454] [cursor=pointer]: Consider a first-year student who follows popular diet advice. He believes skipping meals helps with weight control, so he often misses breakfast. For lunch, he eats only a small salad, thinking vegetables are always the best choice. When tired in the evening, he drinks sugary energy drinks to stay awake for exams. After months of this routine, he feels constantly fatigued, struggles to concentrate in class, and finds his mood fluctuating.
+                  - generic [ref=e455]:
+                    - button "Speaking" [ref=e456]:
+                      - img [ref=e457]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e460]:
+                      - img [ref=e461]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e465]:
+                      - img [ref=e466]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e468]:
+                      - img [ref=e469]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e472]:
+                      - img [ref=e473]
+                      - text: Practice
+              - generic [ref=e479]:
+                - generic [ref=e481]:
+                  - generic "Drag to merge" [ref=e482]:
+                    - img [ref=e483]
+                  - button "Listen" [ref=e490]:
+                    - img [ref=e491]
+                - generic [ref=e493]:
+                  - generic [ref=e494] [cursor=pointer]: This case reveals several widespread myths. First, skipping meals does not lead to sustainable weight loss; it often causes overeating later and slows metabolism. Second, while vegetables are nutritious, a salad alone lacks sufficient protein and healthy fats needed for energy. Third, energy drinks provide a quick sugar rush but lead to crashes and disrupt sleep patterns, harming long-term focus.
+                  - generic [ref=e495]:
+                    - button "Speaking" [ref=e496]:
+                      - img [ref=e497]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e500]:
+                      - img [ref=e501]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e505]:
+                      - img [ref=e506]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e508]:
+                      - img [ref=e509]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e512]:
+                      - img [ref=e513]
+                      - text: Practice
+              - generic [ref=e519]:
+                - generic [ref=e521]:
+                  - generic "Drag to merge" [ref=e522]:
+                    - img [ref=e523]
+                  - button "Listen" [ref=e530]:
+                    - img [ref=e531]
+                - generic [ref=e533]:
+                  - generic [ref=e534] [cursor=pointer]: "Students often fall for these myths due to busy schedules, peer influence, and misleading online information. The truth is simpler: regular, balanced meals with proteins, whole grains, fruits, and vegetables support both physical health and mental sharpness. Drinking water instead of sugary beverages and getting adequate sleep are more effective than caffeine for study endurance."
+                  - generic [ref=e535]:
+                    - button "Speaking" [ref=e536]:
+                      - img [ref=e537]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e540]:
+                      - img [ref=e541]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e545]:
+                      - img [ref=e546]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e548]:
+                      - img [ref=e549]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e552]:
+                      - img [ref=e553]
+                      - text: Practice
+              - generic [ref=e559]:
+                - generic [ref=e561]:
+                  - generic "Drag to merge" [ref=e562]:
+                    - img [ref=e563]
+                  - button "Listen" [ref=e570]:
+                    - img [ref=e571]
+                - generic [ref=e573]:
+                  - generic [ref=e574] [cursor=pointer]: In conclusion, nutrition myths can undermine student well-being and academic success. By questioning common beliefs and opting for balanced, evidence-based eating habits, students can boost their energy, improve concentration, and enjoy a healthier campus life. Remember, good nutrition isn't about strict rules—it's about making informed choices that fuel your body and mind.
+                  - generic [ref=e575]:
+                    - button "Speaking" [ref=e576]:
+                      - img [ref=e577]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e580]:
+                      - img [ref=e581]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e585]:
+                      - img [ref=e586]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e588]:
+                      - img [ref=e589]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e592]:
+                      - img [ref=e593]
+                      - text: Practice
+        - generic [ref=e598]:
+          - button "隐藏题目 四级" [pressed] [ref=e600]:
+            - img [ref=e601]
+            - generic [ref=e605]: 隐藏题目
+            - generic [ref=e606]: 四级
+          - generic [ref=e609]:
+            - generic [ref=e611]:
+              - generic [ref=e612]:
+                - img [ref=e613]
+                - heading "阅读理解" [level=3] [ref=e616]
+              - generic [ref=e618]: 四级
+            - generic [ref=e622]:
+              - generic [ref=e623]:
+                - generic [ref=e624]: "1"
+                - generic [ref=e625]:
+                  - generic [ref=e627]: 选择
+                  - paragraph [ref=e628]: According to the article, what is the main reason students fall for nutrition myths?
+              - generic [ref=e629]:
+                - button "A. Lack of scientific education" [ref=e630]:
+                  - generic [ref=e632]: A. Lack of scientific education
+                - button "B. Busy schedules, peer influence, and misleading online information" [ref=e633]:
+                  - generic [ref=e635]: B. Busy schedules, peer influence, and misleading online information
+                - button "C. Genetic predisposition to poor eating habits" [ref=e636]:
+                  - generic [ref=e638]: C. Genetic predisposition to poor eating habits
+                - button "D. University cafeteria limitations" [ref=e639]:
+                  - generic [ref=e641]: D. University cafeteria limitations
+            - generic [ref=e643]:
+              - paragraph [ref=e644]: 第 1 / 5 题 · 已批改 0 题
+              - generic [ref=e645]:
+                - button "上一题" [disabled] [ref=e646]:
+                  - img [ref=e647]
+                  - text: 上一题
+                - button "批改本题" [disabled] [ref=e649]:
+                  - img [ref=e650]
+                  - text: 批改本题
+  - generic [ref=e84] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e85]:
+      - img [ref=e86]
+    - generic [ref=e381]:
+      - button "Open issues overlay" [ref=e382]:
+        - generic [ref=e383]:
+          - generic [ref=e384]: "0"
+          - generic [ref=e385]: "1"
+        - generic [ref=e386]: Issue
+      - button "Collapse issues badge" [ref=e387]:
+        - img [ref=e388]
+  - alert [ref=e89]

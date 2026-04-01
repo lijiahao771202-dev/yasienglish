@@ -1,0 +1,45 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e20] [cursor=pointer]:
+    - img [ref=e21]
+  - alert [ref=e15]
+  - main [ref=e103]:
+    - generic [ref=e108]:
+      - generic [ref=e110]:
+        - generic [ref=e111]:
+          - generic [ref=e118]:
+            - paragraph [ref=e119]: yasi.
+            - paragraph [ref=e120]: sign up
+          - generic [ref=e121]:
+            - paragraph [ref=e122]: Already in?
+            - link "Sign in" [ref=e123] [cursor=pointer]:
+              - /url: /login
+        - heading "Create account" [level=1] [ref=e124]
+        - paragraph [ref=e125]: 用户名、邮箱和密码就够了。注册完成后直接进入首页，把同一套情绪化体验和同步能力绑定到你的账号里。
+        - generic [ref=e127]:
+          - generic [ref=e128]:
+            - text: 用户名
+            - textbox "用户名" [ref=e129]:
+              - /placeholder: 你想被怎么称呼？
+          - generic [ref=e130]:
+            - text: 邮箱
+            - textbox "邮箱" [ref=e131]:
+              - /placeholder: you@yasi.app
+          - generic [ref=e132]:
+            - text: 密码
+            - textbox "密码" [ref=e133]:
+              - /placeholder: 至少 6 位
+          - generic [ref=e134]:
+            - generic [ref=e135]:
+              - generic [ref=e136]: 确认密码
+              - link "已有账号？" [ref=e137] [cursor=pointer]:
+                - /url: /login
+            - textbox "确认密码" [ref=e138]:
+              - /placeholder: 再输入一次
+          - button "Create account" [disabled] [ref=e139]
+      - generic [ref=e140]:
+        - generic [ref=e141]: account + cloud sync
+        - link "Need recovery? Password help" [ref=e143] [cursor=pointer]:
+          - /url: /forgot-password
+          - text: Need recovery?
+          - generic [ref=e144]: Password help
+          - img [ref=e145]

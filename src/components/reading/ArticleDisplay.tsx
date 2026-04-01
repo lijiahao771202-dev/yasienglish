@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import { motion, AnimatePresence } from "framer-motion";
 import { ExternalLink } from "lucide-react";
@@ -103,7 +103,7 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
         }
     }, [blocks]);
 
-    const getParagraphTextByOrder = (order: number): string | null => {
+    const getParagraphTextByOrder = useCallback((order: number): string | null => {
         let paragraphCount = 0;
         for (const block of activeBlocks) {
             if (block.type === "paragraph" && block.content) {
@@ -112,7 +112,7 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
             }
         }
         return null;
-    };
+    }, [activeBlocks]);
 
     const pickBestSnippet = (paragraphText: string, evidence?: string): string | null => {
         if (!evidence) return null;
@@ -141,9 +141,20 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
     };
 
     useEffect(() => {
-        if (!locateRequest) return;
+        setHighlightedParagraphNumber(null);
+        setHighlightedQuestionNumber(null);
+        setHighlightedSnippet(null);
+    }, [title, content, blocks]);
+
+    useEffect(() => {
+        if (!locateRequest) {
+            setHighlightedParagraphNumber(null);
+            setHighlightedQuestionNumber(null);
+            setHighlightedSnippet(null);
+            return;
+        }
         const targetParagraph = locateRequest.paragraphNumber;
-        const el = document.querySelector<HTMLElement>(`[data-article-paragraph="${targetParagraph}"]`);
+        const el = contentRef.current?.querySelector<HTMLElement>(`[data-article-paragraph="${targetParagraph}"]`);
         if (!el) return;
 
         const paragraphText = getParagraphTextByOrder(targetParagraph);
@@ -152,8 +163,27 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
         setHighlightedParagraphNumber(targetParagraph);
         setHighlightedQuestionNumber(locateRequest.questionNumber);
         setHighlightedSnippet(snippet);
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, [locateRequest, activeBlocks]);
+        const scrollContainer = el.closest<HTMLElement>('[data-reading-scroll-container="true"]');
+        if (scrollContainer) {
+            const computed = window.getComputedStyle(scrollContainer);
+            const isScrollable =
+                (computed.overflowY === "auto" || computed.overflowY === "scroll")
+                && scrollContainer.scrollHeight > scrollContainer.clientHeight + 1;
+            if (!isScrollable) {
+                el.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+                return;
+            }
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const elementRect = el.getBoundingClientRect();
+            const nextTop = scrollContainer.scrollTop + (elementRect.top - containerRect.top) - 24;
+            scrollContainer.scrollTo({
+                top: Math.max(0, nextTop),
+                behavior: "smooth",
+            });
+            return;
+        }
+        el.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
+    }, [getParagraphTextByOrder, locateRequest]);
 
     const canOpenOriginalArticle = typeof articleUrl === "string"
         && /^https?:\/\//i.test(articleUrl);
@@ -324,8 +354,8 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
             className="max-w-3xl mx-auto pb-32 relative"
         >
             <div className="glass-panel rounded-2xl p-8 md:p-16 mb-24 transition-all duration-500">
-                <header className="space-y-6 text-center mb-16 border-b border-stone-100 pb-12">
-                    <h1 className="text-4xl md:text-6xl font-medium font-newsreader italic text-stone-900 leading-tight">
+                <header className="space-y-6 pt-2 text-center mb-16 border-b border-stone-100 pb-12">
+                    <h1 className="text-4xl md:text-6xl font-medium font-newsreader italic text-stone-900 leading-[1.12]">
                         {title}
                     </h1>
                     <div className="flex flex-wrap items-center justify-center gap-3">
@@ -358,7 +388,7 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
                     </div>
                 )}
 
-                <div className={cn("space-y-4 text-stone-800 leading-loose group/article", fontClass)}>
+                <div ref={contentRef} className={cn("group/article space-y-4 text-stone-800 leading-loose", fontClass)}>
                     {activeBlocks && activeBlocks.length > 0 ? (
                         (() => {
                             let paragraphOrder = 0;
@@ -373,7 +403,7 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
                                         key={block.id || index}
                                         data-article-paragraph={currentParagraphOrder}
                                         className={cn(
-                                            "relative rounded-xl transition-all duration-500",
+                                            "relative scroll-mt-8 rounded-xl transition-all duration-500 md:scroll-mt-12",
                                             useParagraphFallbackHighlight && "bg-amber-100/45 ring-2 ring-amber-300/70"
                                         )}
                                     >
@@ -431,7 +461,6 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
                         })()
                     ) : (
                         <div
-                            ref={contentRef}
                             onClick={handleArticleClick}
                             className={cn(
                                 "prose prose-lg prose-stone max-w-none cursor-text",
