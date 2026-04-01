@@ -115,6 +115,25 @@ export interface CachedArticle {
     quizScorePercent?: number;
 }
 
+export type ReadingMarkType = 'highlight' | 'underline' | 'note';
+
+export interface ReadingNoteItem {
+    id?: number;
+    article_key: string;
+    article_url?: string;
+    article_title?: string;
+    paragraph_order: number;
+    paragraph_block_index: number;
+    selected_text: string;
+    note_text?: string;
+    mark_type: ReadingMarkType;
+    mark_color?: string;
+    start_offset: number;
+    end_offset: number;
+    created_at: number;
+    updated_at: number;
+}
+
 export interface EloHistoryItem {
     id?: number;
     remote_id?: string;
@@ -234,6 +253,7 @@ export class YasiDB extends Dexie {
     vocabulary!: Table<VocabItem>;
     writing_history!: Table<WritingEntry>;
     articles!: Table<CachedArticle>;
+    reading_notes!: Table<ReadingNoteItem, number>;
     elo_history!: Table<EloHistoryItem, number>;
     cat_sessions!: Table<LocalCatSessionRecord, string>;
     user_profile!: Table<LocalUserProfile>;
@@ -937,6 +957,23 @@ export class YasiDB extends Dexie {
                     item.morphology_notes = [];
                 }
             });
+        });
+
+        // Version 35: persist reading highlights/underlines/notes per article paragraph.
+        this.version(35).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
         });
     }
 }

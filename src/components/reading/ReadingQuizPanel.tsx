@@ -207,6 +207,8 @@ interface ReadingQuizPanelProps {
     onFloatingCompactChange?: (compact: boolean) => void;
     onClose: () => void;
     onLocate?: (payload: { questionNumber: number; sourceParagraph: string; evidence?: string }) => void;
+    onClearLocate?: () => void;
+    activeLocateQuestionNumber?: number | null;
     cachedQuestions?: QuizQuestion[];
     onQuestionsReady?: (questions: QuizQuestion[]) => void;
     onSubmitScore?: (score: QuizSubmitPayload) => void;
@@ -237,6 +239,8 @@ export function ReadingQuizPanel({
     onFloatingCompactChange,
     onClose,
     onLocate,
+    onClearLocate,
+    activeLocateQuestionNumber,
     cachedQuestions,
     onQuestionsReady,
     onSubmitScore,
@@ -768,6 +772,8 @@ export function ReadingQuizPanel({
                                     isExpanded={Boolean(expandedExplanations[catCurrentQuestion.id])}
                                     onToggleExpand={toggleExplanation}
                                     onLocate={onLocate}
+                                    onClearLocate={onClearLocate}
+                                    activeLocateQuestionNumber={activeLocateQuestionNumber}
                                     compact={isFloatingCat}
                                 />
                             </motion.div>
@@ -798,6 +804,8 @@ export function ReadingQuizPanel({
                                     isExpanded={Boolean(expandedExplanations[standardCurrentQuestion.id])}
                                     onToggleExpand={toggleExplanation}
                                     onLocate={onLocate}
+                                    onClearLocate={onClearLocate}
+                                    activeLocateQuestionNumber={activeLocateQuestionNumber}
                                     compact={false}
                                 />
                             </motion.div>
@@ -969,6 +977,8 @@ function QuestionCard({
     isExpanded,
     onToggleExpand,
     onLocate,
+    onClearLocate,
+    activeLocateQuestionNumber,
     compact = false,
 }: {
     question: QuizQuestion;
@@ -981,6 +991,8 @@ function QuestionCard({
     isExpanded: boolean;
     onToggleExpand: (id: number) => void;
     onLocate?: (payload: { questionNumber: number; sourceParagraph: string; evidence?: string }) => void;
+    onClearLocate?: () => void;
+    activeLocateQuestionNumber?: number | null;
     compact?: boolean;
 }) {
     const typeLabels: Record<string, string> = {
@@ -1003,6 +1015,7 @@ function QuestionCard({
     const correctAnswerText = correctTokens.length > 0
         ? correctTokens.join("、")
         : (typeof question.answer === "string" ? question.answer : "-");
+    const isLocateActive = Boolean(activeLocateQuestionNumber === index + 1);
 
     const explanationData = (() => {
         if (typeof question.explanation === "string") {
@@ -1152,14 +1165,25 @@ function QuestionCard({
                                 )}
                                 {question.sourceParagraph && onLocate && (
                                     <button
-                                        onClick={() => onLocate({
-                                            questionNumber: index + 1,
-                                            sourceParagraph: question.sourceParagraph as string,
-                                            evidence: explanationData.evidence,
-                                        })}
-                                        className="mt-2 inline-flex items-center rounded-md border border-amber-200 bg-white/80 px-2 py-1 text-[11px] font-semibold text-amber-700 transition-colors hover:bg-white"
+                                        onClick={() => {
+                                            if (isLocateActive) {
+                                                onClearLocate?.();
+                                                return;
+                                            }
+                                            onLocate({
+                                                questionNumber: index + 1,
+                                                sourceParagraph: question.sourceParagraph as string,
+                                                evidence: explanationData.evidence,
+                                            });
+                                        }}
+                                        className={cn(
+                                            "mt-2 inline-flex items-center rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors",
+                                            isLocateActive
+                                                ? "border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200/80"
+                                                : "border-amber-200 bg-white/80 text-amber-700 hover:bg-white",
+                                        )}
                                     >
-                                        定位到原文（第{index + 1}题）
+                                        {isLocateActive ? `取消定位（第${index + 1}题）` : `定位到原文（第${index + 1}题）`}
                                     </button>
                                 )}
                             </div>

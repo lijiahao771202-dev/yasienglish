@@ -18,7 +18,7 @@ import { LiquidGlassPanel } from "@/components/ui/LiquidGlassPanel";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { applyBackgroundThemeToDocument, BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db } from "@/lib/db";
+import { db, type ReadingMarkType } from "@/lib/db";
 import {
     buildDailyLoginDedupeKey,
     buildQuizCompleteDedupeKey,
@@ -135,6 +135,63 @@ interface CatSettlementPayload {
     maxItems?: number | null;
 }
 
+const buildReadingArticleKey = (article: Pick<ArticleData, "title" | "url">) => {
+    const normalizedUrl = typeof article.url === "string" ? article.url.trim() : "";
+    if (normalizedUrl) return normalizedUrl;
+    return `title:${(article.title || "untitled").trim().toLowerCase()}`;
+};
+
+const LEGACY_HIGHLIGHT_HUES: Record<string, number> = {
+    mint: 158,
+    gold: 43,
+    lavender: 270,
+    peach: 24,
+    sky: 202,
+    rose: 346,
+};
+
+const MACARON_HUES = [
+    10, 24, 38, 52, 66, 80, 94, 108, 122, 136, 150, 164,
+    178, 192, 206, 220, 234, 248, 262, 276, 290, 304, 318, 332, 346,
+];
+
+const parseHueFromColor = (color: string | undefined): number | null => {
+    if (!color) return null;
+    if (LEGACY_HIGHLIGHT_HUES[color] !== undefined) {
+        return LEGACY_HIGHLIGHT_HUES[color];
+    }
+    const matched = color.match(/hsl\(\s*(\d+)/i);
+    if (!matched) return null;
+    const parsed = Number(matched[1]);
+    if (!Number.isFinite(parsed)) return null;
+    return ((Math.round(parsed) % 360) + 360) % 360;
+};
+
+const buildUniqueHighlightColor = (existingColors: string[]) => {
+    const usedHues = new Set<number>();
+    for (const color of existingColors) {
+        const hue = parseHueFromColor(color);
+        if (hue !== null) usedHues.add(hue);
+    }
+
+    for (const hue of MACARON_HUES) {
+        if (!usedHues.has(hue)) {
+            return `hsl(${hue} 82% 86%)`;
+        }
+    }
+
+    const baseStep = 137.508; // keep generating unique pastel tones after palette is consumed
+    for (let index = 0; index < 360; index += 1) {
+        const hue = Math.round((index * baseStep) % 360);
+        if (!usedHues.has(hue)) {
+            return `hsl(${hue} 80% 86%)`;
+        }
+    }
+
+    const fallbackHue = Math.round(Math.random() * 359);
+    return `hsl(${fallbackHue} 80% 86%)`;
+};
+
 import { ReadingSettingsProvider, useReadingSettings, READING_THEMES } from "@/contexts/ReadingSettingsContext";
 import { AppearanceMenu } from "@/components/reading/AppearanceMenu";
 
@@ -154,7 +211,6 @@ function ReadingPageContent() {
     const [isEditMode, setIsEditMode] = useState(false);
     const [isQuizMode, setIsQuizMode] = useState(false);
     const [routeExitTarget, setRouteExitTarget] = useState<"home" | "battle" | null>(null);
-    const [articleTransitionMode, setArticleTransitionMode] = useState<"toArticle" | "toPicker">("toArticle");
     const [quizLocateRequest, setQuizLocateRequest] = useState<QuizLocateRequest | null>(null);
     const [articleStartedAt, setArticleStartedAt] = useState<number | null>(null);
     const [quizCache, setQuizCache] = useState<Record<string, QuizQuestion[]>>({});
@@ -165,6 +221,12 @@ function ReadingPageContent() {
     const [quizPanelHeight, setQuizPanelHeight] = useState<number | null>(null);
     const [, forceBackgroundRefresh] = useState(0);
     const { loadUserData, markArticleAsRead } = useUserStore();
+    const activeArticleKey = article ? buildReadingArticleKey(article) : null;
+    const readingNotes = useLiveQuery(async () => {
+        if (!activeArticleKey) return [];
+        const rows = await db.reading_notes.where("article_key").equals(activeArticleKey).sortBy("updated_at");
+        return rows;
+    }, [activeArticleKey]) ?? [];
 
     // Context Settings
     const { theme, fontClass, isFocusMode, toggleFocusMode, isBionicMode, toggleBionicMode } = useReadingSettings();
@@ -242,14 +304,6 @@ function ReadingPageContent() {
     const navEntryInitial = hasRouteEntry
         ? { opacity: 0, y: 16, scale: 0.992, filter: "blur(8px)" }
         : { opacity: 0, y: 10 };
-    const contentEntryInitial = hasRouteEntry
-        ? { opacity: 0, y: 20, scale: 0.994, filter: "blur(10px)" }
-        : { opacity: 0, y: 12 };
-    const softReveal = {
-        initial: { opacity: 0, y: 4, scale: 0.998 },
-        animate: { opacity: 1, y: 0, scale: 1 },
-        exit: { opacity: 0, y: -5, scale: 0.998 },
-    };
 
     const clearDockHideTimer = useCallback(() => {
         if (dockHideTimerRef.current) {
@@ -341,6 +395,99 @@ function ReadingPageContent() {
         return payload?.result ?? null;
     }, []);
 
+    const handleCreateReadingNote = useCallback(async (payload: {
+        paragraphOrder: number;
+        paragraphBlockIndex: number;
+        selectedText: string;
+        noteText?: string;
+        markType: ReadingMarkType;
+        startOffset: number;
+        endOffset: number;
+    }) => {
+        if (!article) return;
+        const articleKey = buildReadingArticleKey(article);
+        const now = Date.now();
+        const selectedText = payload.selectedText.trim();
+        if (!selectedText) return;
+
+        const existing = await db.reading_notes
+            .where("[article_key+paragraph_order]")
+            .equals([articleKey, payload.paragraphOrder])
+            .filter((row) =>
+                row.mark_type === payload.markType
+                && row.start_offset === payload.startOffset
+                && row.end_offset === payload.endOffset
+            )
+            .first();
+
+        let nextHighlightColor: string | undefined;
+        if (payload.markType === "highlight") {
+            const allNotes = await db.reading_notes.where("article_key").equals(articleKey).toArray();
+            const existingColors = allNotes
+                .filter((row) => row.mark_type === "highlight" && typeof row.mark_color === "string")
+                .map((row) => row.mark_color as string);
+            nextHighlightColor = buildUniqueHighlightColor(existingColors);
+        }
+
+        if (existing?.id) {
+            await db.reading_notes.update(existing.id, {
+                selected_text: selectedText,
+                note_text: payload.noteText?.trim() || existing.note_text || "",
+                mark_color: payload.markType === "highlight"
+                    ? (existing.mark_color || nextHighlightColor)
+                    : existing.mark_color,
+                updated_at: now,
+            });
+        } else {
+            await db.reading_notes.add({
+                article_key: articleKey,
+                article_url: article.url || "",
+                article_title: article.title || "",
+                paragraph_order: payload.paragraphOrder,
+                paragraph_block_index: payload.paragraphBlockIndex,
+                selected_text: selectedText,
+                note_text: payload.noteText?.trim() || "",
+                mark_type: payload.markType,
+                mark_color: payload.markType === "highlight" ? nextHighlightColor : undefined,
+                start_offset: payload.startOffset,
+                end_offset: payload.endOffset,
+                created_at: now,
+                updated_at: now,
+            });
+        }
+
+    }, [article]);
+
+    const handleDeleteReadingMarks = useCallback(async (payload: {
+        paragraphOrder: number;
+        paragraphBlockIndex: number;
+        markType: ReadingMarkType;
+        startOffset: number;
+        endOffset: number;
+    }) => {
+        if (!article) return;
+        const articleKey = buildReadingArticleKey(article);
+        const startOffset = Math.max(0, payload.startOffset);
+        const endOffset = Math.max(startOffset, payload.endOffset);
+        if (endOffset <= startOffset) return;
+
+        const rows = await db.reading_notes
+            .where("[article_key+paragraph_order]")
+            .equals([articleKey, payload.paragraphOrder])
+            .filter((row) =>
+                row.mark_type === payload.markType
+                && row.start_offset < endOffset
+                && row.end_offset > startOffset
+            )
+            .toArray();
+
+        const ids = rows
+            .map((row) => row.id)
+            .filter((id): id is number => typeof id === "number");
+        if (ids.length === 0) return;
+        await db.reading_notes.bulkDelete(ids);
+    }, [article]);
+
     useEffect(() => {
         if (!article) {
             clearDockHideTimer();
@@ -357,6 +504,31 @@ function ReadingPageContent() {
             clearDockHideTimer();
         };
     }, [article, clearDockHideTimer, isDockHovered, scheduleDockHide]);
+
+    useEffect(() => {
+        const handleTabToggleEditMode = (event: KeyboardEvent) => {
+            if (event.key !== "Tab") return;
+            if (!article) return;
+            if (isWritingMode || isQuizMode) return;
+
+            const target = event.target as HTMLElement | null;
+            const tagName = target?.tagName?.toLowerCase();
+            const isTypingContext = Boolean(
+                target?.isContentEditable
+                || tagName === "input"
+                || tagName === "textarea"
+                || tagName === "select"
+                || tagName === "button"
+            );
+            if (isTypingContext) return;
+
+            event.preventDefault();
+            setIsEditMode((prev) => !prev);
+        };
+
+        window.addEventListener("keydown", handleTabToggleEditMode);
+        return () => window.removeEventListener("keydown", handleTabToggleEditMode);
+    }, [article, isWritingMode, isQuizMode]);
 
     useEffect(() => {
         return () => {
@@ -475,7 +647,7 @@ function ReadingPageContent() {
 
     const canShowQuizPanel = Boolean(isQuizMode && article?.isAIGenerated && article?.difficulty);
     const showStandardSplitQuiz = canShowQuizPanel;
-    const readingViewportKey = `${article?.url || article?.title || "reading"}:${showStandardSplitQuiz ? "split" : "full"}`;
+    const readingViewportKey = `${article?.url || article?.title || "reading"}`;
     const quizCacheKey = article ? `${article.url || article.title}::${article.difficulty || "unknown"}` : "";
     const quizDbKey = quizCacheKey ? `reading-quiz::${quizCacheKey}` : "";
     const parseParagraphNumber = (value: string): number | null => {
@@ -702,7 +874,6 @@ function ReadingPageContent() {
     ]);
 
     const handleUrlSubmit = async (url: string) => {
-        setArticleTransitionMode("toArticle");
         setIsLoading(true);
         setError(null);
         try {
@@ -949,13 +1120,24 @@ function ReadingPageContent() {
                 onLocate={({ questionNumber, sourceParagraph, evidence }) => {
                     const paragraphNumber = parseParagraphNumber(sourceParagraph);
                     if (!paragraphNumber) return;
-                    setQuizLocateRequest({
-                        requestId: Date.now(),
-                        questionNumber,
-                        paragraphNumber,
-                        evidence,
+                    setQuizLocateRequest((prev) => {
+                        const sameTarget = Boolean(
+                            prev
+                            && prev.questionNumber === questionNumber
+                            && prev.paragraphNumber === paragraphNumber
+                            && (prev.evidence || "") === (evidence || ""),
+                        );
+                        if (sameTarget) return null;
+                        return {
+                            requestId: Date.now(),
+                            questionNumber,
+                            paragraphNumber,
+                            evidence,
+                        };
                     });
                 }}
+                onClearLocate={() => setQuizLocateRequest(null)}
+                activeLocateQuestionNumber={quizLocateRequest?.questionNumber ?? null}
                 titleNode={renderQuizToggleButton(true)}
                 dragHandleNode={
                     shouldEnableQuizPanelDrag ? (
@@ -1217,7 +1399,6 @@ function ReadingPageContent() {
                     {article && (
                         <button
                             onClick={() => {
-                                setArticleTransitionMode("toPicker");
                                 setArticle(null);
                                 setArticleStartedAt(null);
                                 setIsWritingMode(false);
@@ -1359,15 +1540,11 @@ function ReadingPageContent() {
 
             <ReadingCoinIsland event={activeReadingCoinFx} />
 
-                <motion.div
+                <div
                 className={cn(
-                    "transition-all duration-700",
                     showStandardSplitQuiz ? "flex min-h-0 flex-col" : "mt-20",
                     isWritingMode && "h-[calc(100vh-120px)]"
                 )}
-                initial={contentEntryInitial}
-                animate={routeExitTarget ? { opacity: 0, y: 10, scale: 0.993, filter: "blur(8px)" } : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                transition={{ delay: 0, duration: hasRouteEntry ? 0.68 : 0.56, ease: pageIntroEase }}
             >
                 {catNotice ? (
                     <div className="mx-auto mb-4 flex w-full max-w-4xl flex-col gap-2">
@@ -1376,15 +1553,10 @@ function ReadingPageContent() {
                         </div>
                     </div>
                 ) : null}
-                <AnimatePresence mode="wait" initial={false}>
-                    {!article ? (
-                        <motion.div
+                {!article ? (
+                        <div
                             key="picker"
                             className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 overflow-hidden pb-10"
-                            initial={softReveal.initial}
-                            animate={softReveal.animate}
-                            exit={softReveal.exit}
-                            transition={{ delay: 0.02, duration: hasRouteEntry ? 0.52 : 0.46, ease: pageIntroEase }}
                         >
                         {error && (
                             <LiquidGlassPanel className="rounded-xl px-4 py-2 text-center text-sm text-red-700">
@@ -1398,11 +1570,7 @@ function ReadingPageContent() {
                             </LiquidGlassPanel>
                         )}
 
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.998 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ delay: 0.04, duration: hasRouteEntry ? 0.5 : 0.44, ease: pageIntroEase }}
-                        >
+                        <div>
                             <RecommendedArticles
                                 onSelect={handleUrlSubmit}
                                 onArticleLoaded={(data) => {
@@ -1421,19 +1589,29 @@ function ReadingPageContent() {
                                     }
                                 }}
                             />
-                        </motion.div>
-                        </motion.div>
+                        </div>
+                        </div>
                     ) : (
                         <motion.div
                             key={article.url || article.title}
-                            initial={softReveal.initial}
-                            animate={softReveal.animate}
-                            exit={articleTransitionMode === "toPicker"
-                                ? { opacity: 0, y: 8, scale: 0.994 }
-                                : softReveal.exit}
-                            transition={{ delay: 0.02, duration: hasRouteEntry ? 0.54 : 0.48, ease: pageIntroEase }}
+                            initial={{
+                                opacity: 0,
+                                y: 20,
+                                scale: 0.992,
+                                filter: "blur(10px)",
+                            }}
+                            animate={{
+                                opacity: 1,
+                                y: 0,
+                                scale: 1,
+                                filter: "blur(0px)",
+                            }}
+                            transition={{
+                                duration: 0.62,
+                                ease: [0.16, 1, 0.3, 1],
+                            }}
                             className={cn(
-                                "relative mx-auto grid w-full transition-all duration-500",
+                                "relative mx-auto grid w-full",
                                 showStandardSplitQuiz && "min-h-0",
                                 "grid gap-6 2xl:gap-8",
                                 showStandardSplitQuiz
@@ -1442,15 +1620,12 @@ function ReadingPageContent() {
                             )}
                         >
                         {/* Reading Column */}
-                        <motion.div
+                        <div
                             key={readingViewportKey}
                             ref={readingColumnRef}
                             data-reading-scroll-container="true"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ delay: 0.04, duration: hasRouteEntry ? 0.5 : 0.44, ease: pageIntroEase }}
                             className={cn(
-                            "space-y-8 transition-all duration-700 xl:space-y-10",
+                            "space-y-8 xl:space-y-10",
                             showStandardSplitQuiz
                                 ? "min-h-0 overflow-visible xl:pr-2 xl:pb-2"
                                 : "overflow-visible",
@@ -1473,20 +1648,18 @@ function ReadingPageContent() {
                                 articleUrl={article.url}
                                 isEditMode={isEditMode}
                                 locateRequest={quizLocateRequest}
+                                readingNotes={readingNotes}
+                                onCreateReadingNote={handleCreateReadingNote}
+                                onDeleteReadingMarks={handleDeleteReadingMarks}
                             />
 
                             <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">
                                 <AudioPlayer text={article.textContent || ""} />
                             </div>
-                        </motion.div>
+                        </div>
 
                         {showStandardSplitQuiz && (
-                            <motion.div
-                                className="min-h-0"
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.06, duration: hasRouteEntry ? 0.52 : 0.46, ease: pageIntroEase }}
-                            >
+                            <div className="min-h-0">
                                 <div
                                     ref={quizPanelWrapperRef}
                                     style={quizPanelStyle}
@@ -1503,7 +1676,7 @@ function ReadingPageContent() {
                                         {renderQuizPanel()}
                                     </LiquidGlassPanel>
                                 </div>
-                            </motion.div>
+                            </div>
                         )}
 
                         {/* Writing Overlay */}
@@ -1516,8 +1689,7 @@ function ReadingPageContent() {
                         )}
                         </motion.div>
                     )}
-                </AnimatePresence>
-            </motion.div>
+            </div>
             </div>
         </main >
     );

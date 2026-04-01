@@ -23,4 +23,10 @@ describe("Dexie schema regressions", () => {
     it("keeps the timestamp index on writing_history for ordered loads", () => {
         expect(getIndexNames("writing_history")).toContain("timestamp");
     });
+
+    it("keeps reading_notes indexes for per-article annotation lookups", () => {
+        expect(db.tables.some((table) => table.name === "reading_notes")).toBe(true);
+        expect(getIndexNames("reading_notes")).toContain("article_key");
+        expect(getIndexNames("reading_notes")).toContain("[article_key+paragraph_order]");
+    });
 });

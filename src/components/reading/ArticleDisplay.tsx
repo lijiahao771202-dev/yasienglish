@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import { motion, AnimatePresence } from "framer-motion";
 import { ExternalLink } from "lucide-react";
@@ -9,6 +9,7 @@ import { WordPopup, type PopupState } from "./WordPopup";
 import TEDVideoPlayer, { TEDVideoPlayerRef } from "./TEDVideoPlayer";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
 import { cn } from "@/lib/utils";
+import type { ReadingMarkType, ReadingNoteItem } from "@/lib/db";
 
 interface Block {
     type: 'paragraph' | 'header' | 'list' | 'image' | 'blockquote';
@@ -33,13 +34,43 @@ interface ArticleDisplayProps {
     isEditMode?: boolean; // New prop for edit mode
     locateRequest?: {
         requestId: number;
-        questionNumber: number;
+        questionNumber?: number;
         paragraphNumber: number;
         evidence?: string;
     } | null;
+    readingNotes?: ReadingNoteItem[];
+    onCreateReadingNote?: (payload: {
+        paragraphOrder: number;
+        paragraphBlockIndex: number;
+        selectedText: string;
+        noteText?: string;
+        markType: ReadingMarkType;
+        startOffset: number;
+        endOffset: number;
+    }) => Promise<void> | void;
+    onDeleteReadingMarks?: (payload: {
+        paragraphOrder: number;
+        paragraphBlockIndex: number;
+        markType: ReadingMarkType;
+        startOffset: number;
+        endOffset: number;
+    }) => Promise<void> | void;
 }
 
-export function ArticleDisplay({ title, content, byline, blocks, siteName, videoUrl, articleUrl, isEditMode, locateRequest }: ArticleDisplayProps) {
+export function ArticleDisplay({
+    title,
+    content,
+    byline,
+    blocks,
+    siteName,
+    videoUrl,
+    articleUrl,
+    isEditMode,
+    locateRequest,
+    readingNotes = [],
+    onCreateReadingNote,
+    onDeleteReadingMarks,
+}: ArticleDisplayProps) {
     const contentRef = useRef<HTMLDivElement>(null);
     const videoPlayerRef = useRef<TEDVideoPlayerRef>(null);
     // Generate IDs if missing (migration)
@@ -103,18 +134,32 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
         }
     }, [blocks]);
 
-    const getParagraphTextByOrder = useCallback((order: number): string | null => {
+    const notesByParagraph = useMemo(() => {
+        const map = new Map<number, ReadingNoteItem[]>();
+        for (const note of readingNotes) {
+            const existing = map.get(note.paragraph_order);
+            if (existing) {
+                existing.push(note);
+            } else {
+                map.set(note.paragraph_order, [note]);
+            }
+        }
+        return map;
+    }, [readingNotes]);
+
+    const paragraphEntries = useMemo(() => {
+        const entries: Array<{ order: number; text: string }> = [];
         let paragraphCount = 0;
         for (const block of activeBlocks) {
             if (block.type === "paragraph" && block.content) {
                 paragraphCount += 1;
-                if (paragraphCount === order) return block.content;
+                entries.push({ order: paragraphCount, text: block.content });
             }
         }
-        return null;
+        return entries;
     }, [activeBlocks]);
 
-    const pickBestSnippet = (paragraphText: string, evidence?: string): string | null => {
+    const pickBestSnippet = useCallback((paragraphText: string, evidence?: string): string | null => {
         if (!evidence) return null;
         const normalizedEvidence = evidence
             .replace(/[“”"']/g, "")
@@ -138,7 +183,42 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
             }
         }
         return null;
-    };
+    }, []);
+
+    const resolveLocateTarget = useCallback((request: NonNullable<ArticleDisplayProps["locateRequest"]>) => {
+        if (paragraphEntries.length === 0) return null;
+
+        const requestedOrder = Math.max(1, Number(request.paragraphNumber || 1));
+        const requested = paragraphEntries.find((entry) => entry.order === requestedOrder);
+
+        if (requested) {
+            const snippet = pickBestSnippet(requested.text, request.evidence);
+            if (snippet || !request.evidence) {
+                return { paragraphOrder: requested.order, snippet };
+            }
+        }
+
+        if (request.evidence) {
+            let best: { paragraphOrder: number; snippet: string } | null = null;
+            for (const entry of paragraphEntries) {
+                const snippet = pickBestSnippet(entry.text, request.evidence);
+                if (!snippet) continue;
+                if (!best || snippet.length > best.snippet.length) {
+                    best = {
+                        paragraphOrder: entry.order,
+                        snippet,
+                    };
+                }
+            }
+            if (best) return best;
+        }
+
+        const fallback = paragraphEntries[Math.min(requestedOrder - 1, paragraphEntries.length - 1)];
+        return {
+            paragraphOrder: fallback.order,
+            snippet: pickBestSnippet(fallback.text, request.evidence),
+        };
+    }, [paragraphEntries, pickBestSnippet]);
 
     useEffect(() => {
         setHighlightedParagraphNumber(null);
@@ -153,16 +233,16 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
             setHighlightedSnippet(null);
             return;
         }
-        const targetParagraph = locateRequest.paragraphNumber;
+        const resolved = resolveLocateTarget(locateRequest);
+        if (!resolved) return;
+
+        const targetParagraph = resolved.paragraphOrder;
         const el = contentRef.current?.querySelector<HTMLElement>(`[data-article-paragraph="${targetParagraph}"]`);
         if (!el) return;
 
-        const paragraphText = getParagraphTextByOrder(targetParagraph);
-        const snippet = paragraphText ? pickBestSnippet(paragraphText, locateRequest.evidence) : null;
-
         setHighlightedParagraphNumber(targetParagraph);
-        setHighlightedQuestionNumber(locateRequest.questionNumber);
-        setHighlightedSnippet(snippet);
+        setHighlightedQuestionNumber(locateRequest.questionNumber ?? null);
+        setHighlightedSnippet(resolved.snippet ?? null);
         const scrollContainer = el.closest<HTMLElement>('[data-reading-scroll-container="true"]');
         if (scrollContainer) {
             const computed = window.getComputedStyle(scrollContainer);
@@ -183,7 +263,7 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
             return;
         }
         el.scrollIntoView({ behavior: "smooth", block: "start", inline: "nearest" });
-    }, [getParagraphTextByOrder, locateRequest]);
+    }, [locateRequest, resolveLocateTarget]);
 
     const canOpenOriginalArticle = typeof articleUrl === "string"
         && /^https?:\/\//i.test(articleUrl);
@@ -404,10 +484,10 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
                                         data-article-paragraph={currentParagraphOrder}
                                         className={cn(
                                             "relative scroll-mt-8 rounded-xl transition-all duration-500 md:scroll-mt-12",
-                                            useParagraphFallbackHighlight && "bg-amber-100/45 ring-2 ring-amber-300/70"
+                                            useParagraphFallbackHighlight && "bg-amber-100/35 ring-1 ring-amber-200/60"
                                         )}
                                     >
-                                        {isLocatedParagraph && highlightedQuestionNumber && (
+                                        {isLocatedParagraph && highlightedQuestionNumber && highlightedQuestionNumber > 0 && (
                                             <div className="pointer-events-none absolute -right-2 -top-2 z-20 rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 shadow-sm">
                                                 第{highlightedQuestionNumber}题
                                             </div>
@@ -415,8 +495,12 @@ export function ArticleDisplay({ title, content, byline, blocks, siteName, video
                                         <ParagraphCard
                                             text={block.content}
                                             index={index}
+                                            paragraphOrder={currentParagraphOrder}
                                             articleTitle={title}
                                             articleUrl={articleUrl}
+                                            readingNotes={notesByParagraph.get(currentParagraphOrder) ?? []}
+                                            onCreateReadingNote={onCreateReadingNote}
+                                            onDeleteReadingMarks={onDeleteReadingMarks}
                                             onWordClick={handleArticleClick}
                                             onSplit={handleSplit}
                                             onMerge={handleMerge}
