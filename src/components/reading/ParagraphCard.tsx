@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useLayoutEffect, useMemo, useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Volume2, Gauge, X, Sparkles, XCircle, Globe } from "lucide-react";
+import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
 import { useTTS } from "@/hooks/useTTS";
@@ -28,12 +28,31 @@ import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { getReadingCoinCost, INSUFFICIENT_READING_COINS, type ReadingEconomyAction } from "@/lib/reading-economy";
 import { dispatchReadingCoinFx } from "@/lib/reading-coin-fx";
+import type { ReadingMarkType, ReadingNoteItem } from "@/lib/db";
 
 interface ParagraphCardProps {
     text: string;
     index: number;
+    paragraphOrder?: number;
     articleTitle?: string;
     articleUrl?: string;
+    readingNotes?: ReadingNoteItem[];
+    onCreateReadingNote?: (payload: {
+        paragraphOrder: number;
+        paragraphBlockIndex: number;
+        selectedText: string;
+        noteText?: string;
+        markType: ReadingMarkType;
+        startOffset: number;
+        endOffset: number;
+    }) => Promise<void> | void;
+    onDeleteReadingMarks?: (payload: {
+        paragraphOrder: number;
+        paragraphBlockIndex: number;
+        markType: ReadingMarkType;
+        startOffset: number;
+        endOffset: number;
+    }) => Promise<void> | void;
     onWordClick: (e: React.MouseEvent) => void;
     onSplit?: (index: number, textBefore: string, textAfter: string) => void;
     onMerge?: (sourceIndex: number, targetIndex: number) => void;
@@ -59,9 +78,71 @@ interface GrammarBasicCachePayload {
     difficult_sentences?: GrammarSentenceAnalysis[];
 }
 
-export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordClick, onSplit, onMerge, onUpdate, isEditMode, startTime, endTime, currentVideoTime, onSeekToTime, isFocusMode, isFocusLocked, hasActiveFocusLock, onToggleFocusLock, highlightSnippet }: ParagraphCardProps) {
+interface TranslationCritique {
+    score?: number;
+    feedback?: string;
+    better_translation?: string;
+    corrections?: Array<{
+        segment?: string;
+        correction?: string;
+        reason?: string;
+    }>;
+}
+
+interface PhraseAnalysisResult {
+    translation?: string;
+    grammar_point?: string;
+    nuance?: string;
+    vocabulary?: Array<{
+        word?: string;
+        definition?: string;
+    }>;
+}
+
+const LEGACY_HIGHLIGHT_COLOR_MAP: Record<string, string> = {
+    mint: "hsl(158 74% 86%)",
+    gold: "hsl(43 80% 86%)",
+    lavender: "hsl(270 72% 88%)",
+    peach: "hsl(24 82% 87%)",
+    sky: "hsl(202 80% 87%)",
+    rose: "hsl(346 76% 87%)",
+};
+
+const normalizeHighlightColor = (rawColor: string | undefined) => {
+    if (!rawColor) return LEGACY_HIGHLIGHT_COLOR_MAP.mint;
+    return LEGACY_HIGHLIGHT_COLOR_MAP[rawColor] ?? rawColor;
+};
+
+const isRangeOverlapping = (startA: number, endA: number, startB: number, endB: number) => (
+    startA < endB && startB < endA
+);
+
+export function ParagraphCard({
+    text,
+    index,
+    paragraphOrder = 0,
+    articleTitle,
+    articleUrl,
+    readingNotes = [],
+    onCreateReadingNote,
+    onDeleteReadingMarks,
+    onWordClick,
+    onSplit,
+    onMerge,
+    onUpdate,
+    isEditMode,
+    startTime,
+    endTime,
+    currentVideoTime,
+    onSeekToTime,
+    isFocusMode,
+    isFocusLocked,
+    hasActiveFocusLock,
+    onToggleFocusLock,
+    highlightSnippet,
+}: ParagraphCardProps) {
     const sessionUser = useAuthSessionUser();
-    const { fontSizeClass, fontClass, isBionicMode } = useReadingSettings();
+    const { fontSizeClass, isBionicMode } = useReadingSettings();
     const grammarBasicCacheKey = buildGrammarCacheKey({
         text,
         mode: "basic",
@@ -157,7 +238,7 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
     // Practice State
     const [isPracticing, setIsPracticing] = useState(false);
     const [userTranslation, setUserTranslation] = useState("");
-    const [critique, setCritique] = useState<any>(null);
+    const [critique, setCritique] = useState<TranslationCritique | null>(null);
     const [isCritiquing, setIsCritiquing] = useState(false);
 
     // Speaking State
@@ -167,9 +248,19 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
     // Phrase Analysis State
     const [selectedText, setSelectedText] = useState<string | null>(null);
     const [selectionRect, setSelectionRect] = useState<DOMRect | null>(null);
-    const [phraseAnalysis, setPhraseAnalysis] = useState<any | null>(null);
+    const [selectionOffsets, setSelectionOffsets] = useState<{ startOffset: number; endOffset: number } | null>(null);
+    const [phraseAnalysis, setPhraseAnalysis] = useState<PhraseAnalysisResult | null>(null);
     const [isAnalyzingPhrase, setIsAnalyzingPhrase] = useState(false);
-    const [activeHighlightSpan, setActiveHighlightSpan] = useState<HTMLElement | null>(null);
+    const [isSavingReadingNote, setIsSavingReadingNote] = useState(false);
+    const [isNoteComposerOpen, setIsNoteComposerOpen] = useState(false);
+    const [noteDraft, setNoteDraft] = useState("");
+    const [hoveredReadingNote, setHoveredReadingNote] = useState<{
+        text: string;
+        x: number;
+        anchorTop: number;
+        anchorBottom: number;
+    } | null>(null);
+    const [hoveredNoteId, setHoveredNoteId] = useState<number | null>(null);
     const [readingCoinHint, setReadingCoinHint] = useState<string | null>(null);
 
     const pRef = useRef<HTMLDivElement>(null);
@@ -197,6 +288,13 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
     useEffect(() => {
         preload();
     }, [preload]);
+
+    useEffect(() => {
+        if (!showGrammar) return;
+        setIsNoteComposerOpen(false);
+        setNoteDraft("");
+        setHoveredReadingNote(null);
+    }, [showGrammar]);
 
     const handlePlay = () => {
         togglePlay();
@@ -242,27 +340,126 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
         </div>
     );
 
-    const renderTextWithUnderline = (paragraphText: string, snippet?: string) => {
-        if (!snippet) return paragraphText;
-        const normalizedSnippet = snippet.trim();
-        if (!normalizedSnippet) return paragraphText;
+    const renderTextWithReadingMarks = (paragraphText: string, snippet?: string) => {
+        const markers: Array<{
+            start: number;
+            end: number;
+            type: "highlight" | "underline" | "note" | "locate";
+            noteText?: string;
+            id?: number;
+            markColor?: string;
+        }> = [];
 
-        const lowerText = paragraphText.toLowerCase();
-        const lowerSnippet = normalizedSnippet.toLowerCase();
-        const idx = lowerText.indexOf(lowerSnippet);
-        if (idx < 0) return paragraphText;
+        for (const note of normalizedReadingNotes) {
+            markers.push({
+                start: Math.max(0, note.start_offset),
+                end: Math.min(paragraphText.length, note.end_offset),
+                type: note.mark_type,
+                noteText: note.note_text,
+                id: note.id,
+                markColor: note.mark_color,
+            });
+        }
 
-        const before = paragraphText.slice(0, idx);
-        const hit = paragraphText.slice(idx, idx + normalizedSnippet.length);
-        const after = paragraphText.slice(idx + normalizedSnippet.length);
+        if (snippet?.trim()) {
+            const lowerText = paragraphText.toLowerCase();
+            const lowerSnippet = snippet.trim().toLowerCase();
+            const idx = lowerText.indexOf(lowerSnippet);
+            if (idx >= 0) {
+                markers.push({
+                    start: idx,
+                    end: idx + lowerSnippet.length,
+                    type: "locate",
+                });
+            }
+        }
+
+        if (markers.length === 0) return paragraphText;
+
+        const boundaries = new Set<number>([0, paragraphText.length]);
+        for (const marker of markers) {
+            boundaries.add(marker.start);
+            boundaries.add(marker.end);
+        }
+        const sorted = Array.from(boundaries).sort((a, b) => a - b);
 
         return (
             <>
-                {before}
-                <span className="rounded-[2px] border-b-2 border-amber-500/95 bg-amber-100/45 px-0.5">
-                    {hit}
-                </span>
-                {after}
+                {sorted.slice(0, -1).map((start, idx) => {
+                    const end = sorted[idx + 1];
+                    if (end <= start) return null;
+                    const piece = paragraphText.slice(start, end);
+                    if (!piece) return null;
+
+                    const active = markers.filter((marker) => marker.start <= start && marker.end >= end);
+                    if (active.length === 0) return <React.Fragment key={`${start}-${end}`}>{piece}</React.Fragment>;
+
+                    const hasHighlight = active.some((marker) => marker.type === "highlight");
+                    const highlightMarker = active.find((marker) => marker.type === "highlight");
+                    const highlightColor = normalizeHighlightColor(highlightMarker?.markColor);
+                    const hasUnderline = active.some((marker) => marker.type === "underline");
+                    const noteMarker = active.find((marker) => marker.type === "note");
+                    const hasLocate = active.some((marker) => marker.type === "locate");
+                    const showLocateVisual = hasLocate;
+                    const showNoteVisual = Boolean(noteMarker && !showLocateVisual);
+                    const hasUnderlineVisible = hasUnderline && !showNoteVisual && !showLocateVisual;
+                    const showHighlightVisual = hasHighlight && !showLocateVisual && !showNoteVisual;
+                    const isNoteHovered = Boolean(showNoteVisual && noteMarker?.id && hoveredNoteId === noteMarker.id);
+                    const markStyle: React.CSSProperties | undefined = showHighlightVisual
+                        ? { backgroundColor: highlightColor }
+                        : undefined;
+
+                    return (
+                        <span
+                            key={`${start}-${end}`}
+                            className={cn(
+                                "rounded-[3px] px-[1px] transition-colors",
+                                showHighlightVisual && "ring-1 ring-black/5",
+                                hasUnderlineVisible && "underline decoration-fuchsia-500 decoration-2 underline-offset-[3px]",
+                                showNoteVisual && "inline-block cursor-pointer rounded-[9px] border border-sky-500/45 bg-[linear-gradient(160deg,rgba(236,247,255,0.98),rgba(189,223,255,0.95))] px-[4px] text-slate-900 ring-1 ring-white/72 shadow-[0_2px_0_rgba(59,130,246,0.28),0_10px_22px_-12px_rgba(37,99,235,0.6),inset_0_1px_0_rgba(255,255,255,0.98)] transition-all duration-220 transform-gpu will-change-transform",
+                                showNoteVisual && isNoteHovered && "z-[2] -translate-y-[4px] scale-[1.03] border-sky-500/70 bg-[linear-gradient(160deg,rgba(244,251,255,1),rgba(205,232,255,0.98))] ring-sky-100 shadow-[0_5px_0_rgba(59,130,246,0.36),0_22px_38px_-14px_rgba(37,99,235,0.76),inset_0_1px_0_rgba(255,255,255,1)]",
+                                showLocateVisual && "rounded-[4px] bg-amber-100/58 text-stone-900 border-b border-amber-500/75"
+                            )}
+                            style={markStyle}
+                            data-reading-note-id={noteMarker?.id}
+                            title={showNoteVisual ? "点击可编辑标注" : undefined}
+                            onMouseEnter={showNoteVisual && noteMarker?.noteText
+                                ? (event) => {
+                                    if (noteMarker.id) setHoveredNoteId(noteMarker.id);
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    setHoveredReadingNote({
+                                        text: noteMarker.noteText || "",
+                                        x: rect.left + rect.width / 2,
+                                        anchorTop: rect.top,
+                                        anchorBottom: rect.bottom,
+                                    });
+                                }
+                                : undefined}
+                            onMouseMove={showNoteVisual && noteMarker?.noteText
+                                ? (event) => {
+                                    setHoveredReadingNote((prev) => prev ? {
+                                        ...prev,
+                                        x: event.clientX,
+                                    } : prev);
+                                }
+                                : undefined}
+                            onMouseLeave={showNoteVisual && noteMarker?.noteText
+                                ? () => {
+                                    setHoveredReadingNote(null);
+                                    setHoveredNoteId(null);
+                                }
+                                : undefined}
+                            onClick={showNoteVisual && noteMarker?.id
+                                ? (event) => {
+                                    event.stopPropagation();
+                                    handleOpenExistingNoteEditor(noteMarker.id, event.currentTarget.getBoundingClientRect());
+                                }
+                                : undefined}
+                        >
+                            {piece}
+                        </span>
+                    );
+                })}
             </>
         );
     };
@@ -302,6 +499,114 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
             : {}),
     });
 
+    const normalizedReadingNotes = useMemo(() => (
+        readingNotes
+            .filter((note) => Number.isFinite(note.start_offset) && Number.isFinite(note.end_offset) && note.end_offset > note.start_offset)
+            .slice()
+            .sort((a, b) => a.start_offset - b.start_offset)
+    ), [readingNotes]);
+
+    const selectionOverlapState = useMemo(() => {
+        if (!selectionOffsets) {
+            return {
+                hasHighlight: false,
+                hasUnderline: false,
+                note: null as ReadingNoteItem | null,
+            };
+        }
+
+        const hasHighlight = normalizedReadingNotes.some((note) =>
+            note.mark_type === "highlight"
+            && isRangeOverlapping(selectionOffsets.startOffset, selectionOffsets.endOffset, note.start_offset, note.end_offset),
+        );
+        const hasUnderline = normalizedReadingNotes.some((note) =>
+            note.mark_type === "underline"
+            && isRangeOverlapping(selectionOffsets.startOffset, selectionOffsets.endOffset, note.start_offset, note.end_offset),
+        );
+        const note = normalizedReadingNotes.find((note) =>
+            note.mark_type === "note"
+            && isRangeOverlapping(selectionOffsets.startOffset, selectionOffsets.endOffset, note.start_offset, note.end_offset),
+        ) || null;
+
+        return { hasHighlight, hasUnderline, note };
+    }, [normalizedReadingNotes, selectionOffsets]);
+
+    const handleOpenExistingNoteEditor = (noteId: number, anchorRect?: DOMRect) => {
+        const targetNote = normalizedReadingNotes.find((note) => note.id === noteId && note.mark_type === "note");
+        if (!targetNote) return;
+
+        setSelectionRect(anchorRect ?? null);
+        setSelectedText(targetNote.selected_text || text.slice(targetNote.start_offset, targetNote.end_offset));
+        setSelectionOffsets({
+            startOffset: targetNote.start_offset,
+            endOffset: targetNote.end_offset,
+        });
+        setPhraseAnalysis(null);
+        setIsNoteComposerOpen(true);
+        setNoteDraft(targetNote.note_text || "");
+        setHoveredReadingNote(null);
+    };
+
+    const getSelectionOffsets = (range: Range) => {
+        if (!pRef.current) return null;
+        if (!pRef.current.contains(range.commonAncestorContainer)) return null;
+
+        const prefixRange = range.cloneRange();
+        prefixRange.selectNodeContents(pRef.current);
+        prefixRange.setEnd(range.startContainer, range.startOffset);
+        const startOffset = prefixRange.toString().length;
+        const selected = range.toString();
+        const endOffset = startOffset + selected.length;
+        if (!selected.trim() || endOffset <= startOffset) return null;
+
+        return { startOffset, endOffset };
+    };
+
+    const handleCreateReadingMark = async (markType: ReadingMarkType, noteText?: string) => {
+        if (showGrammar) return;
+        if (!onCreateReadingNote || !selectedText || !selectionOffsets) return;
+        if (markType === "note" && !noteText?.trim()) return;
+
+        setIsSavingReadingNote(true);
+        try {
+            await onCreateReadingNote({
+                paragraphOrder,
+                paragraphBlockIndex: index,
+                selectedText,
+                noteText: noteText?.trim(),
+                markType,
+                startOffset: selectionOffsets.startOffset,
+                endOffset: selectionOffsets.endOffset,
+            });
+            closePhraseAnalysis();
+        } catch (error) {
+            console.error("Failed to create reading mark:", error);
+        } finally {
+            setIsSavingReadingNote(false);
+        }
+    };
+
+    const handleDeleteReadingMark = async (markType: "highlight" | "underline" | "note") => {
+        if (showGrammar) return;
+        if (!onDeleteReadingMarks || !selectionOffsets) return;
+
+        setIsSavingReadingNote(true);
+        try {
+            await onDeleteReadingMarks({
+                paragraphOrder,
+                paragraphBlockIndex: index,
+                markType,
+                startOffset: selectionOffsets.startOffset,
+                endOffset: selectionOffsets.endOffset,
+            });
+            closePhraseAnalysis();
+        } catch (error) {
+            console.error("Failed to delete reading marks:", error);
+        } finally {
+            setIsSavingReadingNote(false);
+        }
+    };
+
     const handleSelection = () => {
         const selection = window.getSelection();
 
@@ -320,35 +625,24 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
         // Check if selection is within this paragraph
         if (!pRef.current?.contains(selection.anchorNode)) return;
 
-        // Clean up previous highlight if exists
-        if (activeHighlightSpan) {
-            unwrapSpan(activeHighlightSpan);
-        }
-
         const range = selection.getRangeAt(0);
+        const offsets = getSelectionOffsets(range);
+        if (!offsets) return;
         const rect = range.getBoundingClientRect();
 
         setSelectionRect(rect);
         setSelectedText(selectedStr);
+        setSelectionOffsets(offsets);
         setPhraseAnalysis(null);
+        const overlapNote = normalizedReadingNotes.find((note) =>
+            note.mark_type === "note"
+            && isRangeOverlapping(offsets.startOffset, offsets.endOffset, note.start_offset, note.end_offset),
+        );
+        setIsNoteComposerOpen(Boolean(overlapNote));
+        setNoteDraft(overlapNote?.note_text || "");
 
         // DO NOT modify DOM for multi-select to avoid breaking native selection behavior
         // Just rely on native blue selection
-    };
-
-    const unwrapSpan = (span: HTMLElement) => {
-        try {
-            const parent = span.parentNode;
-            if (parent) {
-                while (span.firstChild) {
-                    parent.insertBefore(span.firstChild, span);
-                }
-                parent.removeChild(span);
-                parent.normalize();
-            }
-        } catch (e) {
-            console.warn("Failed to unwrap span:", e);
-        }
     };
 
     const handleAnalyzePhrase = async () => {
@@ -385,11 +679,10 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
     const closePhraseAnalysis = () => {
         setSelectionRect(null);
         setSelectedText(null);
+        setSelectionOffsets(null);
         setPhraseAnalysis(null);
-        if (activeHighlightSpan) {
-            unwrapSpan(activeHighlightSpan);
-            setActiveHighlightSpan(null);
-        }
+        setIsNoteComposerOpen(false);
+        setNoteDraft("");
         window.getSelection()?.removeAllRanges();
     };
 
@@ -572,6 +865,7 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
     const activeDeepSentence = activeGrammarSentence
         ? deepBySentence[sentenceIdentity(activeGrammarSentence)]
         : null;
+    const shouldRenderGrammarLayer = showGrammar && !highlightSnippet;
 
     const handleAskAI = async (overrideQuestion?: string) => {
         const userMessage = (overrideQuestion ?? question).trim();
@@ -918,14 +1212,18 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                     onMouseUp={isEditMode ? undefined : handleSelection}
                     dangerouslySetInnerHTML={isEditMode ? { __html: safeHtml } : undefined}
                 >
-                    {isEditMode ? null : (showGrammar && grammarAnalysis ? (
-                        <InlineGrammarHighlights
-                            text={text}
-                            sentences={grammarHighlightSentences}
-                            displayMode={grammarDisplayMode}
-                            showSentenceMarkers
-                            showSegmentTranslation
-                        />
+                    {isEditMode ? null : (shouldRenderGrammarLayer ? (
+                        grammarAnalysis ? (
+                            <InlineGrammarHighlights
+                                text={text}
+                                sentences={grammarHighlightSentences}
+                                displayMode={grammarDisplayMode}
+                                showSentenceMarkers
+                                showSegmentTranslation
+                            />
+                        ) : (
+                            <span className="text-stone-700">{text}</span>
+                        )
                     ) : (
                         // Karaoke Effect Logic (Character-based for smoothness)
                         isPlaying || currentTime > 0 ? (
@@ -970,7 +1268,7 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                                     })}
                                 </span>
                             ) : (
-                                renderTextWithUnderline(text, highlightSnippet)
+                                renderTextWithReadingMarks(text, highlightSnippet)
                             )
                         )
                     ))}
@@ -1331,6 +1629,9 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                             </div>
 
                             {critique && (
+                                (() => {
+                                    const corrections = critique.corrections ?? [];
+                                    return (
                                 <div className="bg-amber-50 p-4 rounded-lg border border-amber-100 space-y-3">
                                     <div className="flex justify-between items-center">
                                         <span className="font-bold text-amber-600">Score: {critique.score}</span>
@@ -1343,10 +1644,10 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                                         <p className="text-sm text-rose-600">{critique.better_translation}</p>
                                     </div>
 
-                                    {critique.corrections?.length > 0 && (
+                                    {corrections.length > 0 && (
                                         <div className="space-y-2">
                                             <p className="text-xs font-semibold text-stone-500">Corrections:</p>
-                                            {critique.corrections.map((c: any, i: number) => (
+                                            {corrections.map((c, i: number) => (
                                                 <div key={i} className="text-xs bg-white/50 p-2 rounded">
                                                     <div className="flex gap-2 items-center mb-1">
                                                         <span className="text-red-500 line-through decoration-red-400/50">{c.segment}</span>
@@ -1359,6 +1660,8 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
                                         </div>
                                     )}
                                 </div>
+                                    );
+                                })()
                             )}
                         </motion.div>
                     )
@@ -1367,22 +1670,138 @@ export function ParagraphCard({ text, index, articleTitle, articleUrl, onWordCli
 
             {/* Phrase Analysis Popup - Fixed Positioning - Liquid Glass Style */}
             {selectionRect && typeof document !== 'undefined' && createPortal(
-                <PhraseAnalysisPopup
+                <SelectionActionPopup
+                    key={`selection-popup:${selectionRect.left}:${selectionRect.top}:${selectionRect.width}:${selectionRect.height}:${selectedText ?? ""}`}
                     selectionRect={selectionRect}
+                    selectedText={selectedText}
                     phraseAnalysis={phraseAnalysis}
                     isAnalyzingPhrase={isAnalyzingPhrase}
+                    isSavingReadingNote={isSavingReadingNote}
+                    canCreateReadingNote={Boolean(onCreateReadingNote)}
+                    noteLayerHidden={showGrammar}
+                    isNoteComposerOpen={isNoteComposerOpen}
+                    isEditingNote={Boolean(selectionOverlapState.note)}
+                    noteDraft={noteDraft}
+                    onNoteDraftChange={setNoteDraft}
+                    onOpenNoteComposer={() => setIsNoteComposerOpen(true)}
+                    onCancelNoteComposer={() => {
+                        setIsNoteComposerOpen(false);
+                        setNoteDraft("");
+                    }}
+                    onCreateHighlight={() => void handleCreateReadingMark("highlight")}
+                    onCreateUnderline={() => void handleCreateReadingMark("underline")}
+                    canDeleteHighlight={selectionOverlapState.hasHighlight}
+                    canDeleteUnderline={selectionOverlapState.hasUnderline}
+                    canDeleteNote={Boolean(selectionOverlapState.note)}
+                    onEditNote={() => setIsNoteComposerOpen(true)}
+                    onDeleteHighlight={() => void handleDeleteReadingMark("highlight")}
+                    onDeleteUnderline={() => void handleDeleteReadingMark("underline")}
+                    onDeleteNote={() => void handleDeleteReadingMark("note")}
+                    onSaveNote={() => void handleCreateReadingMark("note", noteDraft)}
                     onAnalyze={handleAnalyzePhrase}
                     onClose={closePhraseAnalysis}
                 />,
+                document.body
+            )}
+
+            {hoveredReadingNote && !showGrammar && typeof document !== "undefined" && createPortal(
+                <div
+                    className="pointer-events-none fixed z-[10000] w-max max-w-[min(360px,calc(100vw-24px))] rounded-lg border border-cyan-200/90 bg-white/95 px-2.5 py-1.5 text-xs font-medium leading-relaxed text-slate-700 shadow-[0_14px_28px_-14px_rgba(14,116,144,0.45)] backdrop-blur whitespace-pre-wrap break-words [overflow-wrap:anywhere] max-h-[36vh] overflow-y-auto"
+                    style={{
+                        left: (() => {
+                            const viewportPadding = 12;
+                            const horizontalGap = 18;
+                            const tooltipMaxWidth = Math.min(360, window.innerWidth - viewportPadding * 2);
+                            const canPlaceRight = hoveredReadingNote.x + horizontalGap + tooltipMaxWidth <= window.innerWidth - viewportPadding;
+                            if (canPlaceRight) return `${hoveredReadingNote.x + horizontalGap}px`;
+                            return `${Math.max(viewportPadding, hoveredReadingNote.x - horizontalGap - tooltipMaxWidth)}px`;
+                        })(),
+                        top: hoveredReadingNote.anchorTop > 88
+                            ? `${hoveredReadingNote.anchorTop - 10}px`
+                            : `${hoveredReadingNote.anchorBottom + 10}px`,
+                        transform: hoveredReadingNote.anchorTop > 88
+                            ? "translateY(-100%)"
+                            : "translateY(0)",
+                    }}
+                >
+                    {hoveredReadingNote.text}
+                </div>,
                 document.body
             )}
         </div>
     );
 }
 
-// Extracted Component for Click Outside Handling
-function PhraseAnalysisPopup({ selectionRect, phraseAnalysis, isAnalyzingPhrase, onAnalyze, onClose }: any) {
+interface SelectionActionPopupProps {
+    selectionRect: DOMRect;
+    selectedText: string | null;
+    phraseAnalysis: {
+        translation?: string;
+        grammar_point?: string;
+        nuance?: string;
+        vocabulary?: Array<{ word?: string; definition?: string }>;
+    } | null;
+    isAnalyzingPhrase: boolean;
+    isSavingReadingNote: boolean;
+    canCreateReadingNote: boolean;
+    noteLayerHidden: boolean;
+    isNoteComposerOpen: boolean;
+    isEditingNote: boolean;
+    noteDraft: string;
+    onNoteDraftChange: (value: string) => void;
+    onOpenNoteComposer: () => void;
+    onCancelNoteComposer: () => void;
+    onCreateHighlight: () => void;
+    onCreateUnderline: () => void;
+    canDeleteHighlight: boolean;
+    canDeleteUnderline: boolean;
+    canDeleteNote: boolean;
+    onEditNote: () => void;
+    onDeleteHighlight: () => void;
+    onDeleteUnderline: () => void;
+    onDeleteNote: () => void;
+    onSaveNote: () => void;
+    onAnalyze: () => void;
+    onClose: () => void;
+}
+
+function SelectionActionPopup({
+    selectionRect,
+    selectedText,
+    phraseAnalysis,
+    isAnalyzingPhrase,
+    isSavingReadingNote,
+    canCreateReadingNote,
+    noteLayerHidden,
+    isNoteComposerOpen,
+    isEditingNote,
+    noteDraft,
+    onNoteDraftChange,
+    onOpenNoteComposer,
+    onCancelNoteComposer,
+    onCreateHighlight,
+    onCreateUnderline,
+    canDeleteHighlight,
+    canDeleteUnderline,
+    canDeleteNote,
+    onEditNote,
+    onDeleteHighlight,
+    onDeleteUnderline,
+    onDeleteNote,
+    onSaveNote,
+    onAnalyze,
+    onClose,
+}: SelectionActionPopupProps) {
     const ref = useRef<HTMLDivElement>(null);
+    const dragStateRef = useRef<{
+        pointerId: number;
+        startClientX: number;
+        startClientY: number;
+        originX: number;
+        originY: number;
+    } | null>(null);
+    const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+    const [measuredHeight, setMeasuredHeight] = useState(240);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -1394,106 +1813,261 @@ function PhraseAnalysisPopup({ selectionRect, phraseAnalysis, isAnalyzingPhrase,
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [onClose]);
 
+    useLayoutEffect(() => {
+        if (!ref.current) return;
+        const nextHeight = ref.current.offsetHeight;
+        if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
+        setMeasuredHeight(nextHeight);
+    }, [
+        selectedText,
+        phraseAnalysis,
+        isNoteComposerOpen,
+        noteDraft,
+        noteLayerHidden,
+        isAnalyzingPhrase,
+        isSavingReadingNote,
+    ]);
+
+    const viewportPadding = 16;
+    const popupWidth = 380;
+    const popupHeight = Math.min(measuredHeight || 240, window.innerHeight - viewportPadding * 2);
+    const preferredTop = selectionRect.bottom + 10 + dragOffset.y;
+    const flippedTop = selectionRect.top - popupHeight - 10 + dragOffset.y;
+    const canFlip = flippedTop >= viewportPadding;
+    const shouldFlip = preferredTop + popupHeight > window.innerHeight - viewportPadding && canFlip;
+    const baseTop = shouldFlip ? flippedTop : preferredTop;
+    const clampedTop = Math.min(
+        Math.max(viewportPadding, baseTop),
+        Math.max(viewportPadding, window.innerHeight - popupHeight - viewportPadding),
+    );
+    const baseLeft = selectionRect.left + (selectionRect.width / 2) - (popupWidth / 2) + dragOffset.x;
+    const clampedLeft = Math.min(
+        Math.max(viewportPadding, baseLeft),
+        Math.max(viewportPadding, window.innerWidth - popupWidth - viewportPadding),
+    );
+
+    const handleDragStart = (event: React.PointerEvent<HTMLDivElement>) => {
+        const target = event.target as HTMLElement;
+        if (target.closest("button, textarea, input, a")) return;
+        dragStateRef.current = {
+            pointerId: event.pointerId,
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            originX: dragOffset.x,
+            originY: dragOffset.y,
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+    };
+
+    const handleDragMove = (event: React.PointerEvent<HTMLDivElement>) => {
+        const dragState = dragStateRef.current;
+        if (!dragState || dragState.pointerId !== event.pointerId) return;
+        const deltaX = event.clientX - dragState.startClientX;
+        const deltaY = event.clientY - dragState.startClientY;
+        setDragOffset({
+            x: dragState.originX + deltaX,
+            y: dragState.originY + deltaY,
+        });
+    };
+
+    const handleDragEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+        const dragState = dragStateRef.current;
+        if (!dragState || dragState.pointerId !== event.pointerId) return;
+        dragStateRef.current = null;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+    };
+
     return (
         <div
             ref={ref}
             className="fixed z-[9999] animate-in fade-in zoom-in-95 duration-200"
             style={{
-                top: `${selectionRect.bottom + 12}px`,
-                left: `${Math.min(Math.max(16, selectionRect.left), window.innerWidth - 320)}px`,
+                top: `${clampedTop}px`,
+                left: `${clampedLeft}px`,
                 width: 'auto',
-                maxWidth: '360px',
-                minWidth: '200px'
+                maxWidth: `${popupWidth}px`,
+                minWidth: '280px'
             }}
             onMouseDown={(e) => e.stopPropagation()}
         >
-            <div className={cn(
-                "rounded-2xl backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/40 overflow-hidden transition-all duration-300",
-                phraseAnalysis
-                    ? "bg-white/80 p-0"
-                    : "bg-white/60 hover:bg-white/70 p-1"
-            )}>
-                {!phraseAnalysis ? (
-                    // Initial State: Action Button
+            <div className="max-h-[min(560px,calc(100vh-2rem))] overflow-y-auto rounded-2xl border border-white/45 bg-white/82 p-3 shadow-[0_12px_36px_rgba(0,0,0,0.16)] backdrop-blur-xl">
+                <div
+                    className="mb-2 flex items-start justify-between gap-2 cursor-grab active:cursor-grabbing"
+                    onPointerDown={handleDragStart}
+                    onPointerMove={handleDragMove}
+                    onPointerUp={handleDragEnd}
+                    onPointerCancel={handleDragEnd}
+                >
+                    <p className="line-clamp-2 text-xs font-semibold text-stone-600">
+                        {selectedText || "选中文本"}
+                    </p>
                     <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-full p-1 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+                    >
+                        <X className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                    <button
+                        type="button"
+                        onClick={onCreateHighlight}
+                        disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <Highlighter className="h-3.5 w-3.5" />
+                        高亮
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onCreateUnderline}
+                        disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-fuchsia-200 bg-fuchsia-50 px-2 py-1.5 text-xs font-semibold text-fuchsia-700 transition-colors hover:bg-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <Underline className="h-3.5 w-3.5" />
+                        下划线
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onOpenNoteComposer}
+                        disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-xs font-semibold text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <PenTool className="h-3.5 w-3.5" />
+                        {isEditingNote ? "编辑标注" : "标注"}
+                    </button>
+                    <button
+                        type="button"
                         onClick={onAnalyze}
                         disabled={isAnalyzingPhrase}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-stone-700 hover:text-amber-600 transition-colors"
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1.5 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                        {isAnalyzingPhrase ? (
-                            <>
-                                <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                                <span className="text-stone-500">Translating...</span>
-                            </>
-                        ) : (
-                            <>
-                                <Sparkles className="w-4 h-4 text-amber-500" />
-                                <span>Context Translate · -{getReadingCoinCost("analyze_phrase")}</span>
-                            </>
-                        )}
+                        {isAnalyzingPhrase ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                        解读 · -{getReadingCoinCost("analyze_phrase")}
                     </button>
-                ) : (
-                    // Result State: Content
-                    <div className="relative group">
-                        <div className="p-5 pr-8 space-y-4">
-                            {/* Primary Translation */}
+                </div>
+
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button
+                        type="button"
+                        onClick={onDeleteHighlight}
+                        disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden || !canDeleteHighlight}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        删除高亮
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onDeleteUnderline}
+                        disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden || !canDeleteUnderline}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-2 py-1.5 text-xs font-semibold text-orange-700 transition-colors hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        删除下划线
+                    </button>
+                </div>
+
+                {canDeleteNote ? (
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                            type="button"
+                            onClick={onEditNote}
+                            disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-xs font-semibold text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            编辑标注
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onDeleteNote}
+                            disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            删除标注
+                        </button>
+                    </div>
+                ) : null}
+
+                {noteLayerHidden ? (
+                    <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-[11px] font-medium text-blue-700">
+                        语法分析已开启，笔记高亮层暂时隐藏。关闭语法分析后会恢复显示。
+                    </div>
+                ) : null}
+
+                {!noteLayerHidden && isEditingNote ? (
+                    <div className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-2 text-[11px] font-semibold text-cyan-700">
+                        已选中已有标注，直接修改内容后保存即可更新。
+                    </div>
+                ) : null}
+
+                {isNoteComposerOpen && (
+                    <div className="mt-3 space-y-2 rounded-xl border border-sky-200 bg-white/75 p-2.5">
+                        <textarea
+                            value={noteDraft}
+                            onChange={(event) => onNoteDraftChange(event.target.value)}
+                            placeholder="写下你的标注..."
+                            className="h-20 w-full resize-none rounded-md border border-sky-100 bg-white px-2 py-1.5 text-xs text-stone-700 outline-none ring-sky-200 placeholder:text-stone-400 focus:ring-2"
+                        />
+                        <div className="flex justify-end gap-2">
+                            <button
+                                type="button"
+                                onClick={onCancelNoteComposer}
+                                className="rounded-md border border-stone-200 px-2.5 py-1 text-xs font-semibold text-stone-500 transition-colors hover:bg-stone-50"
+                            >
+                                取消
+                            </button>
+                            <button
+                                type="button"
+                                onClick={onSaveNote}
+                                disabled={!noteDraft.trim() || isSavingReadingNote}
+                                className="rounded-md bg-sky-600 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {isSavingReadingNote ? "保存中..." : (isEditingNote ? "更新标注" : "保存标注")}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {phraseAnalysis && (
+                    <div className="mt-3 space-y-3 rounded-xl border border-stone-200 bg-white/70 p-3">
+                        {phraseAnalysis.translation ? (
                             <div className="space-y-1">
-                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-600/70 uppercase tracking-widest">
-                                    <Globe className="w-3 h-3" />
+                                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-600/80">
+                                    <Globe className="h-3 w-3" />
                                     <span>中文翻译</span>
                                 </div>
-                                <div className="text-stone-800 text-base font-semibold leading-relaxed">
-                                    {phraseAnalysis.translation}
+                                <p className="text-sm font-semibold text-stone-800">{phraseAnalysis.translation}</p>
+                            </div>
+                        ) : null}
+
+                        {phraseAnalysis.grammar_point ? (
+                            <div className="space-y-1 border-t border-stone-100 pt-2">
+                                <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500/80">语法解析</div>
+                                <p className="text-xs leading-relaxed text-stone-600">{phraseAnalysis.grammar_point}</p>
+                            </div>
+                        ) : null}
+
+                        {phraseAnalysis.nuance ? (
+                            <div className="rounded-lg border border-amber-100 bg-amber-50/70 px-2.5 py-2 text-xs italic text-amber-800">
+                                {phraseAnalysis.nuance}
+                            </div>
+                        ) : null}
+
+                        {Array.isArray(phraseAnalysis.vocabulary) && phraseAnalysis.vocabulary.length > 0 ? (
+                            <div className="space-y-1 border-t border-stone-100 pt-2">
+                                <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400">核心词汇</div>
+                                <div className="space-y-1">
+                                    {phraseAnalysis.vocabulary.map((item, idx) => (
+                                        <div key={`${item.word || "word"}-${idx}`} className="text-xs text-stone-600">
+                                            <span className="font-semibold text-stone-800">{item.word || "词汇"}:</span> {item.definition || ""}
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
-
-                            {/* Grammar Point */}
-                            {phraseAnalysis.grammar_point && (
-                                <div className="space-y-1 pt-3 border-t border-stone-100">
-                                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-blue-500/70 uppercase tracking-widest">
-                                        <BookOpen className="w-3 h-3" />
-                                        <span>语法解析</span>
-                                    </div>
-                                    <div className="text-stone-600 text-sm leading-relaxed">
-                                        {phraseAnalysis.grammar_point}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Nuance/Context */}
-                            {phraseAnalysis.nuance && (
-                                <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100/50">
-                                    <div className="text-amber-800 text-xs leading-relaxed italic">
-                                        {phraseAnalysis.nuance}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Key Vocabulary */}
-                            {phraseAnalysis.vocabulary && phraseAnalysis.vocabulary.length > 0 && (
-                                <div className="space-y-2 pt-3 border-t border-stone-100">
-                                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-stone-400 uppercase tracking-widest">
-                                        <Sparkles className="w-3 h-3" />
-                                        <span>核心词汇</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        {phraseAnalysis.vocabulary.map((item: any, i: number) => (
-                                            <div key={i} className="flex flex-col">
-                                                <span className="text-xs font-bold text-stone-700">{item.word}</span>
-                                                <span className="text-xs text-stone-500">{item.definition}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        {/* Close Button (Absolute) */}
-                        <button
-                            onClick={onClose}
-                            className="absolute top-3 right-3 p-1.5 text-stone-400 hover:text-stone-600 rounded-full hover:bg-stone-200/50 transition-colors opacity-0 group-hover:opacity-100"
-                        >
-                            <X className="w-3.5 h-3.5" />
-                        </button>
+                        ) : null}
                     </div>
                 )}
             </div>
