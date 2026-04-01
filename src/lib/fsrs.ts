@@ -20,6 +20,9 @@ export enum State {
     Relearning = 3
 }
 
+export const GRADUATED_SCHEDULED_DAYS = 365000;
+const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
 // Default parameters (free-spaced-repetition-scheduler standard defaults)
 const w = [
     0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29, 2.61
@@ -53,8 +56,27 @@ export function createEmptyCard(word: string): Partial<VocabItem> {
 }
 
 export function dateDiffInDays(a: number, b: number) {
-    const _MS_PER_DAY = 1000 * 60 * 60 * 24;
-    return Math.max(0, Math.floor((b - a) / _MS_PER_DAY));
+    return Math.max(0, Math.floor((b - a) / MS_PER_DAY));
+}
+
+export function isCardGraduated(card: Pick<VocabItem, "scheduled_days" | "due" | "last_review">) {
+    if (card.scheduled_days >= GRADUATED_SCHEDULED_DAYS) return true;
+    const anchor = card.last_review || Date.now();
+    return card.due - anchor >= GRADUATED_SCHEDULED_DAYS * MS_PER_DAY;
+}
+
+export function graduateCard(card: VocabItem, now: number = Date.now()): VocabItem {
+    const nextCard = { ...card };
+    const elapsedDays = card.last_review === 0 ? 0 : dateDiffInDays(card.last_review, now);
+
+    nextCard.state = State.Review;
+    nextCard.elapsed_days = elapsedDays;
+    nextCard.scheduled_days = GRADUATED_SCHEDULED_DAYS;
+    nextCard.due = now + GRADUATED_SCHEDULED_DAYS * MS_PER_DAY;
+    nextCard.last_review = now;
+    nextCard.reps += 1;
+
+    return nextCard;
 }
 
 /**

@@ -9,7 +9,12 @@ import {
     type VocabItem,
     type WritingEntry,
 } from "./db";
-import { normalizeHighlightedMeanings, type MeaningGroup } from "./vocab-meanings";
+import {
+    normalizeHighlightedMeanings,
+    normalizeMorphologyNotes,
+    normalizeWordBreakdown,
+    type MeaningGroup,
+} from "./vocab-meanings";
 import {
     DEFAULT_AVATAR_PRESET,
     DEFAULT_LEARNING_PREFERENCES,
@@ -83,6 +88,8 @@ export interface RemoteVocabularyRow {
     phonetic?: string;
     meaning_groups?: MeaningGroup[];
     highlighted_meanings?: string[];
+    word_breakdown?: string[];
+    morphology_notes?: string[];
     source_kind?: VocabSourceKind;
     source_label?: string;
     source_sentence?: string;
@@ -365,6 +372,8 @@ export function createLocalVocabularyItem(userId: string, item: VocabItem): Voca
         phonetic: item.phonetic?.trim() || "",
         meaning_groups: Array.isArray(item.meaning_groups) ? item.meaning_groups : [],
         highlighted_meanings: normalizeHighlightedMeanings(item.highlighted_meanings),
+        word_breakdown: normalizeWordBreakdown(item.word_breakdown),
+        morphology_notes: normalizeMorphologyNotes(item.morphology_notes),
         source_kind: sourceKind,
         source_label: item.source_label?.trim() || defaultVocabSourceLabel(sourceKind),
         source_sentence: sourceSentence,
@@ -387,6 +396,8 @@ export function toRemoteVocabularyRow(userId: string, item: VocabItem): RemoteVo
         phonetic: item.phonetic,
         meaning_groups: item.meaning_groups,
         highlighted_meanings: normalizeHighlightedMeanings(item.highlighted_meanings),
+        word_breakdown: normalizeWordBreakdown(item.word_breakdown),
+        morphology_notes: normalizeMorphologyNotes(item.morphology_notes),
         source_kind: item.source_kind,
         source_label: item.source_label,
         source_sentence: item.source_sentence,
@@ -418,6 +429,8 @@ export function toLocalVocabularyItem(remote: RemoteVocabularyRow): VocabItem {
         phonetic: remote.phonetic || "",
         meaning_groups: Array.isArray(remote.meaning_groups) ? remote.meaning_groups : [],
         highlighted_meanings: normalizeHighlightedMeanings(remote.highlighted_meanings),
+        word_breakdown: normalizeWordBreakdown(remote.word_breakdown),
+        morphology_notes: normalizeMorphologyNotes(remote.morphology_notes),
         source_kind: sourceKind,
         source_label: remote.source_label || defaultVocabSourceLabel(sourceKind),
         source_sentence: remote.source_sentence || remote.context || "",

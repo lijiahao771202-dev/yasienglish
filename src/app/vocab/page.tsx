@@ -187,29 +187,29 @@ export default function VocabDashboard() {
         setAddWordFeedback(null);
 
         try {
-            const [dictResult, aiResult] = await Promise.allSettled([
-                fetch("/api/dictionary", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ word }),
-                }).then(async (res) => (res.ok ? res.json() : null)),
-                fetch("/api/ai/define", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ word }),
-                }).then(async (res) => (res.ok ? res.json() : null)),
-            ]);
+            const aiResponse = await fetch("/api/ai/define", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ word }),
+            });
+            const aiData = aiResponse.ok ? await aiResponse.json() : null;
 
-            const dictData = dictResult.status === "fulfilled" ? dictResult.value : null;
-            const aiData = aiResult.status === "fulfilled" ? aiResult.value : null;
+            if (!aiData?.context_meaning) {
+                throw new Error("AI_DEFINE_REQUIRED");
+            }
 
             const base = createEmptyCard(word);
             const card: VocabItem = {
                 word,
-                definition: aiData?.context_meaning?.definition || dictData?.definition || "",
-                translation: aiData?.context_meaning?.translation || dictData?.translation || "",
+                definition: aiData.context_meaning.definition || "",
+                translation: aiData.context_meaning.translation || "",
                 context: "",
-                example: aiData?.example || "",
+                example: "",
+                phonetic: aiData?.phonetic || "",
+                meaning_groups: Array.isArray(aiData?.meaning_groups) ? aiData.meaning_groups : [],
+                highlighted_meanings: Array.isArray(aiData?.highlighted_meanings) ? aiData.highlighted_meanings : [],
+                word_breakdown: Array.isArray(aiData?.word_breakdown) ? aiData.word_breakdown : [],
+                morphology_notes: Array.isArray(aiData?.morphology_notes) ? aiData.morphology_notes : [],
                 source_kind: "manual",
                 source_label: "手动添加",
                 source_sentence: "",
@@ -233,7 +233,7 @@ export default function VocabDashboard() {
             setTimeout(() => setAddWordFeedback(null), 3000);
         } catch (error) {
             console.error("Manual add word failed:", error);
-            setAddWordFeedback({ type: "error", text: "添加失败，请重试" });
+            setAddWordFeedback({ type: "error", text: "AI 词卡生成失败，请重试" });
         } finally {
             setIsAddingWord(false);
         }
@@ -402,4 +402,3 @@ export default function VocabDashboard() {
         </main>
     );
 }
-

@@ -2,14 +2,16 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { db, VocabItem } from '@/lib/db';
-import { Rating, scheduleCard } from '@/lib/fsrs';
+import { Rating, graduateCard, scheduleCard } from '@/lib/fsrs';
 import { motion, AnimatePresence, useMotionTemplate, useMotionValue, useSpring, useTransform } from 'framer-motion';
-import { ArrowLeft, BookOpen, Check, Loader2, Volume2 } from 'lucide-react';
+import { ArrowLeft, Check, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
-import { saveVocabulary } from '@/lib/user-repository';
+import { saveVocabulary, updateVocabularyEntry } from '@/lib/user-repository';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { VocabReviewEditableCard } from '@/components/vocab/VocabReviewEditableCard';
+import { pickPreferredMeaningGroups } from '@/lib/vocab-meanings';
 
 type PosGroup = {
     pos: string;
@@ -55,9 +57,11 @@ function inferFallbackPos(word: string) {
 }
 
 function parsePosGroups(definition?: string, translation?: string, word = ""): PosGroup[] {
-    const sources = [definition ?? "", translation ?? ""]
-        .map((part) => normalizeText(part))
-        .filter(Boolean);
+    const normalizedTranslation = normalizeText(translation ?? "");
+    const normalizedDefinition = normalizeText(definition ?? "");
+    const sources = /[\u3400-\u9fff]/.test(normalizedTranslation)
+        ? [normalizedTranslation]
+        : [normalizedTranslation, normalizedDefinition].filter(Boolean);
 
     const grouped = new Map<string, string[]>();
     const fallback: string[] = [];
@@ -103,6 +107,12 @@ function parsePosGroups(definition?: string, translation?: string, word = ""): P
     }
 
     return [];
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null) {
+    if (!(target instanceof HTMLElement)) return false;
+    const tag = target.tagName;
+    return target.isContentEditable || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
 function RatingButton({
@@ -175,10 +185,14 @@ export default function ReviewPage() {
 
     const currentCard = queue[currentIndex];
     const localPosGroups = currentCard
-        ? parsePosGroups(currentCard.definition, currentCard.translation, currentCard.word)
+        ? (
+            Array.isArray(currentCard.meaning_groups) && currentCard.meaning_groups.length > 0
+                ? currentCard.meaning_groups
+                : parsePosGroups(currentCard.definition, currentCard.translation, currentCard.word)
+        )
         : [];
     const dictPosGroups = currentCard ? (dictionaryPosMap[currentCard.word.toLowerCase()] ?? []) : [];
-    const displayPosGroups = dictPosGroups.length > 0 ? dictPosGroups : localPosGroups;
+    const displayPosGroups = pickPreferredMeaningGroups(localPosGroups, dictPosGroups);
 
     const ghostTargetNormalized = currentCard ? normalizeGhostWord(currentCard.word) : "";
     const ghostInputNormalized = normalizeGhostWord(ghostInput);
@@ -251,6 +265,17 @@ export default function ReviewPage() {
         moveToNextCard();
     }, [currentCard, moveToNextCard]);
 
+    const handleGraduate = useCallback(async (nextItem: VocabItem, previousWord: string) => {
+        const graduatedCard = graduateCard(nextItem);
+        const saved = await updateVocabularyEntry(previousWord, graduatedCard);
+
+        setQueue((prev) => prev.map((card, index) => (
+            index === currentIndex ? saved : card
+        )));
+        setIsRevealed(false);
+        moveToNextCard();
+    }, [currentIndex, moveToNextCard]);
+
     const playAudio = useCallback((word: string) => {
         const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${word}&type=2`);
         audio.play().catch(console.error);
@@ -291,6 +316,10 @@ export default function ReviewPage() {
         if (!currentCard) return;
 
         const onKeyDown = (event: KeyboardEvent) => {
+            if (isEditableKeyboardTarget(event.target)) {
+                return;
+            }
+
             if (event.code === "Space") {
                 event.preventDefault();
                 setIsRevealed((prev) => !prev);
@@ -338,44 +367,6 @@ export default function ReviewPage() {
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [currentCard, isRevealed, handleRating, ghostTargetNormalized]);
-
-    const renderGhostWord = useCallback((word: string) => {
-        const typedChars = Array.from(ghostInput);
-        let typedIndex = 0;
-        return Array.from(word).map((char, index) => {
-            if (char === " ") {
-                return (
-                    <span
-                        key={`ghost-char-space-${index}`}
-                        aria-hidden="true"
-                        className="inline-block w-[0.5ch]"
-                    />
-                );
-            }
-
-            const typed = typedChars[typedIndex];
-            const status = typed === undefined
-                ? "idle"
-                : typed.toLowerCase() === char.toLowerCase()
-                    ? "correct"
-                    : "wrong";
-            typedIndex += 1;
-
-            return (
-                <span
-                    key={`ghost-char-${index}-${char}`}
-                    className={cn(
-                        "inline-block border-b-2 border-dashed px-[0.01em] pb-[0.04em] transition-colors",
-                        status === "correct" && "border-emerald-400/80 text-emerald-600",
-                        status === "wrong" && "border-rose-300/90 text-rose-500",
-                        status === "idle" && "border-stone-300/80 text-stone-400/80",
-                    )}
-                >
-                    {char}
-                </span>
-            );
-        });
-    }, [ghostInput]);
 
     const handleCardMouseMove = ({ currentTarget, clientX, clientY }: React.MouseEvent) => {
         const rect = currentTarget.getBoundingClientRect();
@@ -519,94 +510,20 @@ export default function ReviewPage() {
                             >
                                 <GlassCard className="liquid-glass-apple-radius relative min-h-[470px] overflow-hidden px-6 py-8 text-left md:px-10 md:py-12">
                                     <motion.div style={{ background: glare }} className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 hover:opacity-100" />
-                                    
-                                    <div style={{ transform: "translateZ(15px)" }} className="relative z-20 w-full space-y-4">
-                                        <div className="flex items-end justify-between gap-4 p-2">
-                                            <div className="min-w-0 flex-1">
-                                                <input
-                                                    value={currentCard.word}
-                                                    readOnly
-                                                    className="w-full bg-transparent font-newsreader text-[3.2rem] leading-[0.88] tracking-[-0.03em] text-[#1a3826] outline-none transition-colors md:text-[4.3rem] rounded-xl px-2 -ml-2 drop-shadow-sm"
-                                                />
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => playAudio(currentCard.word)}
-                                                className="liquid-glass-tap inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-200/50 bg-white/40 px-5 py-2 text-sm font-bold text-emerald-800 shadow-[inset_0_1px_rgba(255,255,255,0.8)] hover:bg-white/60"
-                                            >
-                                                <Volume2 className="h-4 w-4" />
-                                                Pronounce
-                                            </button>
-                                        </div>
 
-                                        <div className="columns-1 md:columns-2 gap-3 space-y-3">
-                                            {displayPosGroups.length > 0 ? (
-                                                displayPosGroups.map((group) => {
-                                                    const groupKey = `${currentCard.word}-${group.pos}`;
-                                                    const isExpanded = expandedPosGroups[groupKey] ?? false;
-                                                    const visibleMeanings = isExpanded ? group.meanings : group.meanings.slice(0, 4);
-                                                    const hasMore = group.meanings.length > 4;
-
-                                                    return (
-                                                        <div key={groupKey} className="break-inside-avoid rounded-[1.4rem] border border-white/30 bg-white/20 p-4 shadow-sm backdrop-blur-md">
-                                                            <div className="mb-3 flex items-center justify-between gap-3">
-                                                                <span className="rounded-full border border-emerald-200/60 bg-white/60 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-800 drop-shadow-sm">
-                                                                    {group.pos}
-                                                                </span>
-                                                            </div>
-                                                            <div className="space-y-2">
-                                                                {visibleMeanings.map((meaning, idx) => (
-                                                                    <div key={idx} className="relative group">
-                                                                        <div className="p-2 flex items-start gap-2 rounded-xl transition-all duration-300 hover:bg-white/20">
-                                                                            <p className="min-h-[2rem] flex-1 resize-none bg-transparent text-[15px] leading-relaxed outline-none font-medium text-[#1a3826]/80">
-                                                                                {meaning}
-                                                                            </p>
-                                                                        </div>
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                            {hasMore ? (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={(event) => {
-                                                                        event.stopPropagation();
-                                                                        setExpandedPosGroups((prev) => ({ ...prev, [groupKey]: !isExpanded }));
-                                                                    }}
-                                                                    className="mt-3 w-full text-center text-xs font-bold uppercase tracking-[0.12em] text-[#345b46]/60 transition-colors hover:text-emerald-700"
-                                                                >
-                                                                    {isExpanded ? "收起" : `查看余下 ${group.meanings.length - 4} 个`}
-                                                                </button>
-                                                            ) : null}
-                                                        </div>
-                                                    );
-                                                })
-                                            ) : (
-                                                <div className="rounded-[1.4rem] border border-white/30 bg-white/20 p-4 shadow-sm backdrop-blur-md md:col-span-2 xl:col-span-3">
-                                                    <p className="w-full resize-none bg-transparent text-[15px] font-medium leading-relaxed text-[#1a3826]/80 outline-none">
-                                                        {currentCard.translation || currentCard.definition || "暂无释义和解释..."}
-                                                    </p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="rounded-[1.4rem] border border-white/30 bg-white/20 p-4 shadow-sm backdrop-blur-md">
-                                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center gap-3">
-                                                        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#345b46]/60">AI EXAMPLE</p>
-                                                        {currentCard.source_sentence?.trim() ? (
-                                                            <span className="inline-flex rounded-full border border-emerald-200/50 bg-emerald-50/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">
-                                                                {currentCard.source_label || "来源"}
-                                                            </span>
-                                                        ) : null}
-                                                    </div>
-                                                    <p className="mt-2 w-full resize-none rounded-xl px-2 -ml-2 bg-transparent font-newsreader text-[1.2rem] italic leading-relaxed text-[#1a3826] outline-none">
-                                                        {currentCard.source_sentence || currentCard.example || "暂无例句。"}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <VocabReviewEditableCard
+                                        item={currentCard}
+                                        posGroups={displayPosGroups}
+                                        expandedPosGroups={expandedPosGroups}
+                                        onExpandedPosGroupsChange={setExpandedPosGroups}
+                                        onPlayAudio={playAudio}
+                                        onGraduate={handleGraduate}
+                                        onSaved={(savedCard) => {
+                                            setQueue((prev) => prev.map((card, index) => (
+                                                index === currentIndex ? savedCard : card
+                                            )));
+                                        }}
+                                    />
                                 </GlassCard>
                             </motion.div>
                         )}

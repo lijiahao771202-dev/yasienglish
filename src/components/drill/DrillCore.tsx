@@ -2,7 +2,7 @@
 
 import { memo, useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Sparkles, RefreshCw, Send, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock, Shuffle, SkipForward, CheckCircle2 } from "lucide-react";
+import { Sparkles, RefreshCw, Send, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock, Shuffle, SkipForward, CheckCircle2, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as Diff from 'diff';
@@ -54,11 +54,25 @@ import {
     calculateRebuildPassageObjectiveScore,
     getRebuildPassageSelfScore,
 } from "@/lib/rebuild-passage";
+import {
+    calculatePassageRebuildRewards,
+    calculateSentenceRebuildRewards,
+    rollRebuildDropReward,
+    shouldTriggerPassageRebuildGacha,
+    shouldTriggerSentenceRebuildGacha,
+} from "@/lib/rebuild-rewards";
 import { playRebuildSfx } from "@/lib/rebuild-sfx";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 import { buildTranslationHighlights, normalizeTranslationForComparison } from "@/lib/translation-diff";
 import { requestTtsPayload, resolveTtsAudioBlob } from "@/lib/tts-client";
 import { getDrillSurfacePhase, shouldExpandShopInventoryDock } from "@/lib/battleUiState";
+import {
+    createDailyDrillProgress,
+    incrementStoredDailyDrillProgress,
+    setStoredDailyDrillGoal,
+    syncDailyDrillProgress as syncStoredDailyDrillProgress,
+    type DailyDrillProgress,
+} from "@/lib/daily-drill-progress";
 import { buildGuidedHintCacheKey, fetchGuidedHintWithRetry } from "@/lib/guidedHintClient";
 import { type GrammarDisplayMode, type GrammarSentenceAnalysis } from "@/lib/grammarHighlights";
 import {
@@ -95,6 +109,8 @@ import type { PronunciationWordResult } from "@/lib/pronunciation-scoring";
 
 export type DrillMode = "translation" | "listening" | "dictation" | "rebuild";
 type GuidedInnerMode = "teacher_guided" | "gestalt_cloze";
+
+const DAILY_DRILL_GOAL_OPTIONS = [10, 20, 30, 50] as const;
 
 export interface DrillCoreProps {
     // Context for generation
@@ -1464,6 +1480,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [rebuildHiddenElo, setRebuildHiddenElo] = useState(DEFAULT_BASE_ELO);
     const [rebuildBattleElo, setRebuildBattleElo] = useState(DEFAULT_BASE_ELO);
     const [rebuildBattleStreak, setRebuildBattleStreak] = useState(0);
+    const [dailyDrillProgress, setDailyDrillProgress] = useState<DailyDrillProgress>(() => createDailyDrillProgress());
+    const [isDailyDrillProgressOpen, setIsDailyDrillProgressOpen] = useState(false);
+    const [dailyDrillGoalDraft, setDailyDrillGoalDraft] = useState("");
     const [audioSourceText, setAudioSourceText] = useState<string | null>(null);
     const [rebuildTypingBuffer, setRebuildTypingBuffer] = useState("");
     const [rebuildAutocorrect, setRebuildAutocorrect] = useState(true);
@@ -1501,6 +1520,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         refresh_ticket: null,
     });
     const economyFxIdRef = useRef(0);
+    const hasRecordedDailyDrillRef = useRef(false);
+    const dailyDrillProgressRef = useRef<HTMLDivElement | null>(null);
 
     // Cosmetic Theme State
     const [cosmeticTheme, setCosmeticTheme] = useState<CosmeticThemeId>('morning_coffee');
@@ -2587,6 +2608,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const activeCoinAbsorbCount = activeCoinTier === 'large' ? 5 : activeCoinTier === 'medium' ? 4 : 3;
     const isShopEconomyFx = activeEconomyFx?.kind === 'item_purchase' && activeEconomyFx.source === 'shop' && showShopModal;
     const isGachaEconomyFx = activeEconomyFx?.source === 'gacha';
+    const dailyDrillGoalReached = dailyDrillProgress.goal !== null && dailyDrillProgress.completed >= dailyDrillProgress.goal;
+    const dailyDrillProgressLabel = dailyDrillProgress.goal === null
+        ? `今日 ${dailyDrillProgress.completed} 题`
+        : `今日 ${dailyDrillProgress.completed} / ${dailyDrillProgress.goal} 题`;
     const activeEconomyChipLabel = activeEconomyFx?.kind === 'coin_gain'
         ? `+${activeEconomyFx.amount ?? 0}`
         : activeEconomyFx?.itemId
@@ -2993,6 +3018,70 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     useEffect(() => {
         localStorage.setItem('yasi_drill_difficulty', difficulty);
     }, [difficulty]);
+
+    const refreshDailyDrillProgress = useCallback(() => {
+        const next = syncStoredDailyDrillProgress();
+        setDailyDrillProgress(next);
+        return next;
+    }, []);
+
+    const applyDailyDrillGoal = useCallback((goal: number | null) => {
+        const next = setStoredDailyDrillGoal(goal);
+        setDailyDrillProgress(next);
+        setDailyDrillGoalDraft(next.goal ? String(next.goal) : "");
+        return next;
+    }, []);
+
+    const recordCompletedDrill = useCallback(() => {
+        if (hasRecordedDailyDrillRef.current) return;
+        hasRecordedDailyDrillRef.current = true;
+        const next = incrementStoredDailyDrillProgress();
+        setDailyDrillProgress(next);
+    }, []);
+
+    useEffect(() => {
+        refreshDailyDrillProgress();
+
+        const handleFocus = () => {
+            refreshDailyDrillProgress();
+        };
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+                refreshDailyDrillProgress();
+            }
+        };
+
+        window.addEventListener("focus", handleFocus);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+        return () => {
+            window.removeEventListener("focus", handleFocus);
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
+    }, [refreshDailyDrillProgress]);
+
+    useEffect(() => {
+        if (!isDailyDrillProgressOpen) return;
+
+        const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+            if (!dailyDrillProgressRef.current?.contains(event.target as Node)) {
+                setIsDailyDrillProgressOpen(false);
+            }
+        };
+        const handleEscape = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                setIsDailyDrillProgressOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handlePointerDown);
+        document.addEventListener("touchstart", handlePointerDown);
+        window.addEventListener("keydown", handleEscape);
+        return () => {
+            document.removeEventListener("mousedown", handlePointerDown);
+            document.removeEventListener("touchstart", handlePointerDown);
+            window.removeEventListener("keydown", handleEscape);
+        };
+    }, [isDailyDrillProgressOpen]);
 
     // --- Audio Logic ---
 
@@ -3685,6 +3774,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     };
 
     const consumeNextDrill = useCallback((nextDrill: PrefetchedDrillData) => {
+        hasRecordedDailyDrillRef.current = false;
         const hydratedDrill = nextDrill._rebuildMeta?.variant === "passage"
             ? {
                 ...hydratePassageSegmentDrill(nextDrill, nextDrill._rebuildMeta.passageSession?.currentIndex ?? 0),
@@ -3827,6 +3917,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     const handleGenerateDrill = async (targetDifficulty = difficulty, overrideBossType?: string, skipPrefetched = false, forcedElo?: number) => {
         if (showGacha) return;
+        hasRecordedDailyDrillRef.current = false;
         // Abort any pending generation or prefetch requests
         if (abortControllerRef.current) abortControllerRef.current.abort();
         if (abortPrefetchRef.current) abortPrefetchRef.current.abort();
@@ -4492,6 +4583,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     return;
                 }
                 setHasRatedDrill(true);
+                recordCompletedDrill();
 
                 // --- Elo Calculation with Mode Separation ---
                 const isListening = mode === 'listening';
@@ -5873,11 +5965,56 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         rebuildFeedback,
     ]);
 
-    const handleRebuildSelfEvaluate = useCallback((evaluation: RebuildSelfEvaluation, targetSegmentIndex?: number) => {
+    const handleRebuildSelfEvaluate = useCallback((evaluation: RebuildSelfEvaluation) => {
         if (!isRebuildPassage) {
             if (!rebuildFeedback) return;
             const delta = clampRebuildDifficultyDelta(rebuildFeedback.systemDelta + getRebuildSelfEvaluationDelta(evaluation));
             const nextElo = Math.max(0, Math.min(3200, rebuildHiddenElo + delta));
+            const rewardResult = calculateSentenceRebuildRewards({
+                evaluation: rebuildFeedback.evaluation,
+                replayCount: rebuildFeedback.replayCount,
+                tokenEditCount: rebuildFeedback.editCount,
+                exceededSoftLimit: rebuildFeedback.exceededSoftLimit,
+                skipped: rebuildFeedback.skipped,
+            });
+            const dropResult = rollRebuildDropReward({
+                eligible: rewardResult.dropEligible,
+                variant: "sentence",
+                dropRoll: Math.random(),
+                capsuleRoll: Math.random(),
+                coinRoll: Math.random(),
+            });
+
+            pushEconomyFx({ kind: "coin_gain", amount: rewardResult.earnedCoins, message: `+${rewardResult.earnedCoins} 星光币`, source: "reward" });
+            if (dropResult?.fx) {
+                pushEconomyFx(dropResult.fx);
+            }
+            if (dropResult?.loot) {
+                setLootDrop(dropResult.loot);
+            }
+
+            if (shouldTriggerSentenceRebuildGacha({
+                learningSession: learningSessionActive,
+                roll: Math.random(),
+                evaluation: rebuildFeedback.evaluation,
+                replayCount: rebuildFeedback.replayCount,
+                tokenEditCount: rebuildFeedback.editCount,
+                exceededSoftLimit: rebuildFeedback.exceededSoftLimit,
+                skipped: rebuildFeedback.skipped,
+            })) {
+                setTimeout(() => {
+                    setGachaCards(buildGachaPack());
+                    setSelectedGachaCardId(null);
+                    setGachaClaimTarget(null);
+                    setShowGacha(true);
+                    new Audio("https://assets.mixkit.co/sfx/preview/mixkit-ethereal-fairy-win-sound-2019.mp3").play().catch(() => { });
+                }, dropResult?.loot ? 1800 : 900);
+            }
+            applyEconomyPatch({
+                coinsDelta: rewardResult.earnedCoins + (dropResult?.coinsDelta ?? 0),
+                itemDelta: dropResult?.itemDelta ?? {},
+            });
+            recordCompletedDrill();
             setRebuildHiddenElo(nextElo);
             void persistRebuildHiddenElo(nextElo);
             setRebuildFeedback((currentFeedback) => currentFeedback ? { ...currentFeedback, selfEvaluation: evaluation } : currentFeedback);
@@ -5934,15 +6071,46 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         const change = eloResult.total;
         const nextElo = Math.max(0, Math.min(3200, (rebuildBattleElo || DEFAULT_BASE_ELO) + change));
         const nextStreak = change > 0 ? rebuildBattleStreak + 1 : 0;
-        const earnedCoins = aggregate.sessionBattleScore10 < 6
-            ? 2
-            : aggregate.sessionBattleScore10 <= 8
-                ? 5
-                : 10;
-        const finalCoins = applyEconomyPatch({ coinsDelta: earnedCoins }).coins;
-        if (earnedCoins > 0) {
-            pushEconomyFx({ kind: "coin_gain", amount: earnedCoins, message: `+${earnedCoins} 星光币`, source: "reward" });
+        const rewardResult = calculatePassageRebuildRewards({
+            sessionObjectiveScore100: aggregate.sessionObjectiveScore100,
+            skippedSegments,
+            totalSegments: segmentCount,
+            streak: nextStreak,
+        });
+        const dropResult = rollRebuildDropReward({
+            eligible: rewardResult.dropEligible,
+            variant: "passage",
+            dropRoll: Math.random(),
+            capsuleRoll: Math.random(),
+            coinRoll: Math.random(),
+        });
+
+        pushEconomyFx({ kind: "coin_gain", amount: rewardResult.earnedCoins, message: `+${rewardResult.earnedCoins} 星光币`, source: "reward" });
+        if (dropResult?.fx) {
+            pushEconomyFx(dropResult.fx);
         }
+        if (dropResult?.loot) {
+            setLootDrop(dropResult.loot);
+        }
+        if (shouldTriggerPassageRebuildGacha({
+            learningSession: learningSessionActive,
+            roll: Math.random(),
+            sessionObjectiveScore100: aggregate.sessionObjectiveScore100,
+            skippedSegments,
+        })) {
+            setTimeout(() => {
+                setGachaCards(buildGachaPack());
+                setSelectedGachaCardId(null);
+                setGachaClaimTarget(null);
+                setShowGacha(true);
+                new Audio("https://assets.mixkit.co/sfx/preview/mixkit-ethereal-fairy-win-sound-2019.mp3").play().catch(() => { });
+            }, dropResult?.loot ? 1800 : 900);
+        }
+        const finalCoins = applyEconomyPatch({
+            coinsDelta: rewardResult.earnedCoins + (dropResult?.coinsDelta ?? 0),
+            itemDelta: dropResult?.itemDelta ?? {},
+        }).coins;
+        recordCompletedDrill();
 
         setRebuildBattleElo(nextElo);
         setRebuildBattleStreak(nextStreak);
@@ -5975,7 +6143,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 change,
                 streak: nextStreak,
                 maxElo: nextMaxElo,
-                coinsEarned: earnedCoins,
+                coinsEarned: rewardResult.earnedCoins + (dropResult?.coinsDelta ?? 0),
                 settledAt: Date.now(),
             });
         }).catch((error) => {
@@ -5986,10 +6154,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         cosmeticTheme,
         drillData,
         isRebuildPassage,
+        learningSessionActive,
         ownedThemes,
         passageSession?.segments.length,
         persistRebuildHiddenElo,
         pushEconomyFx,
+        recordCompletedDrill,
         rebuildPassageResults,
         rebuildBattleElo,
         rebuildBattleStreak,
@@ -9368,6 +9538,145 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
                         {/* Right Side Actions & Ledger */}
                         <div className="flex items-center gap-2">
+                            <div ref={dailyDrillProgressRef} className="relative shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (isDailyDrillProgressOpen) {
+                                            setIsDailyDrillProgressOpen(false);
+                                            return;
+                                        }
+                                        const next = refreshDailyDrillProgress();
+                                        setDailyDrillGoalDraft(next.goal ? String(next.goal) : "");
+                                        setIsDailyDrillProgressOpen(true);
+                                    }}
+                                    className={cn(
+                                        "flex h-[38px] items-center gap-2 rounded-full border px-3.5 text-[11px] font-bold backdrop-blur-xl transition-all duration-200 sm:text-[12px]",
+                                        dailyDrillGoalReached
+                                            ? "border-emerald-300/80 bg-[linear-gradient(180deg,rgba(236,253,245,0.95),rgba(209,250,229,0.88))] text-emerald-800 shadow-[0_10px_24px_rgba(16,185,129,0.14)]"
+                                            : "border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(247,250,252,0.82))] text-stone-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)] hover:bg-white/90",
+                                        isDailyDrillProgressOpen && "border-sky-300/80 text-sky-800 shadow-[0_14px_28px_rgba(14,165,233,0.14)]"
+                                    )}
+                                    aria-expanded={isDailyDrillProgressOpen}
+                                    aria-haspopup="dialog"
+                                >
+                                    <Target className="h-3.5 w-3.5 shrink-0" />
+                                    <span className="font-mono tabular-nums whitespace-nowrap">{dailyDrillProgressLabel}</span>
+                                </button>
+
+                                <AnimatePresence>
+                                    {isDailyDrillProgressOpen && (
+                                        <motion.div
+                                            initial={prefersReducedMotion ? false : { opacity: 0, y: -8, scale: 0.98 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.98 }}
+                                            transition={{ duration: prefersReducedMotion ? 0.12 : 0.2, ease: "easeOut" }}
+                                            className="absolute right-0 top-[calc(100%+0.7rem)] z-[90] w-[min(21rem,calc(100vw-1.75rem))] rounded-[1.5rem] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(244,248,251,0.94))] p-4 shadow-[0_22px_50px_rgba(15,23,42,0.16)] backdrop-blur-[24px]"
+                                            role="dialog"
+                                            aria-label="今日做题目标"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-400">Daily Drill</p>
+                                                    <h4 className="mt-2 text-lg font-bold tracking-tight text-stone-900">今日做题记录</h4>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsDailyDrillProgressOpen(false)}
+                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-stone-200/80 bg-white/80 text-stone-500 transition hover:text-stone-700"
+                                                    aria-label="关闭今日做题记录"
+                                                >
+                                                    <X className="h-4 w-4" />
+                                                </button>
+                                            </div>
+
+                                            <div className="mt-4 rounded-[1.2rem] border border-stone-200/80 bg-white/70 px-4 py-3">
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <span className="text-sm font-medium text-stone-500">今天已完成</span>
+                                                    <span className="font-mono text-lg font-bold tabular-nums text-stone-900">
+                                                        {dailyDrillProgress.completed}
+                                                        {dailyDrillProgress.goal !== null ? ` / ${dailyDrillProgress.goal}` : ""}
+                                                    </span>
+                                                </div>
+                                                <p className={cn(
+                                                    "mt-2 text-xs leading-6",
+                                                    dailyDrillGoalReached ? "text-emerald-700" : "text-stone-500"
+                                                )}>
+                                                    {dailyDrillGoalReached
+                                                        ? "今天的目标已经达成了，继续做会继续累计。"
+                                                        : dailyDrillProgress.goal !== null
+                                                            ? `距离目标还差 ${Math.max(dailyDrillProgress.goal - dailyDrillProgress.completed, 0)} 题。`
+                                                            : "还没设置今日目标，也会继续累计今日做题数。"}
+                                                </p>
+                                            </div>
+
+                                            <div className="mt-4">
+                                                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-400">Quick Set</p>
+                                                <div className="mt-2 grid grid-cols-4 gap-2">
+                                                    {DAILY_DRILL_GOAL_OPTIONS.map((goalOption) => (
+                                                        <button
+                                                            key={goalOption}
+                                                            type="button"
+                                                            onClick={() => applyDailyDrillGoal(goalOption)}
+                                                            className={cn(
+                                                                "rounded-full border px-3 py-2 text-sm font-bold transition hover:-translate-y-0.5",
+                                                                dailyDrillProgress.goal === goalOption
+                                                                    ? "border-sky-300 bg-sky-50 text-sky-700 shadow-[0_10px_24px_rgba(14,165,233,0.12)]"
+                                                                    : "border-stone-200/80 bg-white/80 text-stone-600 hover:border-stone-300"
+                                                            )}
+                                                        >
+                                                            {goalOption}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="mt-4 flex items-center gap-2">
+                                                <input
+                                                    type="number"
+                                                    inputMode="numeric"
+                                                    min={1}
+                                                    max={999}
+                                                    value={dailyDrillGoalDraft}
+                                                    onChange={(event) => setDailyDrillGoalDraft(event.target.value)}
+                                                    onKeyDown={(event) => {
+                                                        if (event.key === "Enter") {
+                                                            const nextGoal = Number(dailyDrillGoalDraft);
+                                                            if (!Number.isFinite(nextGoal) || nextGoal < 1) return;
+                                                            applyDailyDrillGoal(nextGoal);
+                                                        }
+                                                    }}
+                                                    className="h-11 flex-1 rounded-full border border-stone-200/80 bg-white/85 px-4 text-sm font-medium text-stone-700 outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
+                                                    placeholder="自定义今天做几题"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const nextGoal = Number(dailyDrillGoalDraft);
+                                                        if (!Number.isFinite(nextGoal) || nextGoal < 1) return;
+                                                        applyDailyDrillGoal(nextGoal);
+                                                    }}
+                                                    className="inline-flex h-11 items-center justify-center rounded-full border border-sky-300/80 bg-sky-50 px-4 text-sm font-bold text-sky-700 transition hover:-translate-y-0.5"
+                                                >
+                                                    保存
+                                                </button>
+                                            </div>
+
+                                            <div className="mt-3 flex items-center justify-between gap-3">
+                                                <p className="text-xs leading-6 text-stone-500">目标按今天生效，过了零点会自动重置。</p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => applyDailyDrillGoal(null)}
+                                                    className="text-xs font-bold text-stone-500 transition hover:text-stone-700"
+                                                >
+                                                    清除目标
+                                                </button>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+
                             {/* Mobile/Desktop Status Bar - Unified (Collapsible) */}
                             {canUseModeShop && (
                                 <div className={cn(
