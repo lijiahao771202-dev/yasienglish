@@ -75,3 +75,10 @@
 [ 1878409ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
 [ 1878705ms] [LOG] [Fast Refresh] done in 364ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
 [ 1880669ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/api/reading/economy/apply:0
+[ 2143934ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2143937ms] [LOG] [Fast Refresh] done in 104ms @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2161325ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=tQrZ6Pbzuc26gL9XsyV8m' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[ 2162330ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=tQrZ6Pbzuc26gL9XsyV8m' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[ 2163332ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=tQrZ6Pbzuc26gL9XsyV8m' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[ 2164334ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=tQrZ6Pbzuc26gL9XsyV8m' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[ 2165339ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=tQrZ6Pbzuc26gL9XsyV8m' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
