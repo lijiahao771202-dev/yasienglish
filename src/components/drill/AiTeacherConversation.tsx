@@ -7,6 +7,7 @@ import rehypeRaw from "rehype-raw";
 import { BookOpenText, Sparkles, Volume2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { PretextBubble } from "@/components/ui/PretextBubble";
 
 export type TutorResponseIntent =
     | "word_meaning"
@@ -211,10 +212,10 @@ export function AiTeacherConversation({
                     {isCompact ? (
                         <>
                             <div className="flex justify-end">
-                                <div className={compactQuestionBubbleClass}>
+                                <PretextBubble text={turn.question} maxWidthRatio={0.82} minWidthPx={118} className={compactQuestionBubbleClass}>
                                     <span className="mr-2 text-[11px] font-semibold text-fuchsia-600">你</span>
                                     {turn.question}
-                                </div>
+                                </PretextBubble>
                             </div>
 
                             <div className={compactAnswerBubbleClass}>
@@ -285,10 +286,10 @@ export function AiTeacherConversation({
                 isCompact ? (
                         <div className="space-y-3">
                             <div className="flex justify-end">
-                                <div className={compactQuestionBubbleClass}>
+                                <PretextBubble text={pendingQuestion} maxWidthRatio={0.82} minWidthPx={118} className={compactQuestionBubbleClass}>
                                     <span className="mr-2 text-[11px] font-semibold text-fuchsia-600">你</span>
                                     {pendingQuestion}
-                                </div>
+                                </PretextBubble>
                             </div>
                             <div className={compactAnswerBubbleClass}>
                                 <div className="mb-2.5 flex items-center gap-2 text-[11px] font-semibold text-fuchsia-700">

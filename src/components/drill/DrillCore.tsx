@@ -30,6 +30,7 @@ import { GhostTextarea } from "../vocab/GhostTextarea";
 import { InlineGrammarHighlights } from "../shared/InlineGrammarHighlights";
 import { LottieJsonPlayer } from "../shared/LottieJsonPlayer";
 import { SpeechModelStatusPanel } from "../speech/SpeechModelStatusPanel";
+import { PretextTextarea } from "../ui/PretextTextarea";
 import { resolveBattleScenarioTopic } from "@/lib/battle-quickmatch-topics";
 import { getBattleInteractiveWordClassName } from "@/lib/drill-interactive-word";
 import { calculateListeningElo } from "@/lib/listening-elo";
@@ -10435,11 +10436,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                     <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-purple-700">Dictation</p>
                                                                     <p className="mt-1 text-[13px] leading-5 text-purple-900/80">听音频后直接写中文，按语义准确度评分。</p>
                                                                 </div>
-                                                                <textarea
+                                                                <PretextTextarea
                                                                     value={userTranslation}
                                                                     onChange={(event) => setUserTranslation(event.target.value)}
                                                                     placeholder="听完后写中文（可意译，但要保留核心信息）..."
                                                                     disabled={isSubmittingDrill}
+                                                                    minRows={3}
+                                                                    maxRows={12}
                                                                     className="min-h-[88px] w-full resize-none rounded-xl border border-purple-100/80 bg-white px-3 py-2.5 text-[14px] leading-6 text-stone-800 outline-none transition focus:border-purple-300 focus:ring-2 focus:ring-purple-200/60 disabled:cursor-not-allowed disabled:opacity-70"
                                                                 />
                                                                 <div className="mt-2 flex items-center justify-between">

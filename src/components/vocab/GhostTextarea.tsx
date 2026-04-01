@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Sparkles } from 'lucide-react';
 import { getAdaptivePredictionWordCount, getExactPrefixPrediction } from '@/lib/predictHint';
+import { PretextTextarea } from '@/components/ui/PretextTextarea';
 
 interface GhostTextareaProps {
     value: string;
@@ -248,6 +249,9 @@ export function GhostTextarea({
             : (value.trim() ? `\n${fullReferenceGhost}` : fullReferenceGhost))
         : "";
     const isHintGhostActive = Boolean(fullReferenceGhost);
+    const measurementValue = fullReferenceGhost
+        ? `${value}${fullReferenceDisplay}`
+        : `${value}${ghostText}`;
 
     return (
         <div className="relative w-full flex flex-col group/ghost">
@@ -278,7 +282,7 @@ export function GhostTextarea({
                     )}
                 </div>
 
-                <textarea
+                <PretextTextarea
                     ref={textareaRef}
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
@@ -287,6 +291,9 @@ export function GhostTextarea({
                     onBlur={() => setIsFocused(false)}
                     placeholder={fullReferenceGhost ? "" : placeholder}
                     disabled={disabled}
+                    measurementValue={measurementValue}
+                    minRows={4}
+                    maxRows={22}
                     className={cn(
                         "relative z-10 w-full resize-none bg-transparent text-left outline-none opacity-100 mix-blend-normal transition-colors duration-200 antialiased caret-stone-900 selection:bg-indigo-100 selection:text-stone-900",
                         "text-stone-900 dark:text-stone-100 [-webkit-text-fill-color:theme(colors.stone.900)] dark:[-webkit-text-fill-color:theme(colors.stone.100)]",

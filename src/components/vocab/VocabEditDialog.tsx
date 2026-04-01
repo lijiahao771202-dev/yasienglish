@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, PencilLine, X } from "lucide-react";
+import { PretextTextarea } from "@/components/ui/PretextTextarea";
 import { type VocabItem } from "@/lib/db";
 import { updateVocabularyEntry } from "@/lib/user-repository";
 import { cn } from "@/lib/utils";
@@ -204,21 +205,25 @@ export function VocabEditDialog({ open, item, onClose, onSaved, initialFocus = "
 
                     <label className="space-y-2 md:col-span-2">
                         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#915f76]">英文释义 / 定义</span>
-                        <textarea
+                        <PretextTextarea
                             ref={meaningsTextareaRef}
                             value={draft.definition}
                             onChange={(event) => handleChange("definition", event.target.value)}
                             rows={3}
+                            minRows={3}
+                            maxRows={12}
                             className="w-full rounded-2xl border border-[#f2d8e6] bg-white/75 px-4 py-3 text-[15px] leading-7 text-[#3a1830] outline-none transition focus:border-[#ef7eb6] focus:ring-2 focus:ring-[#f8b8d8]/60"
                         />
                     </label>
 
                     <label className="space-y-2 md:col-span-2">
                         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#915f76]">重点释义</span>
-                        <textarea
+                        <PretextTextarea
                             value={draft.highlighted_meanings}
                             onChange={(event) => handleChange("highlighted_meanings", event.target.value)}
                             rows={3}
+                            minRows={3}
+                            maxRows={12}
                             className="w-full rounded-2xl border border-[#f2d8e6] bg-white/75 px-4 py-3 text-[15px] leading-7 text-[#3a1830] outline-none transition focus:border-[#ef7eb6] focus:ring-2 focus:ring-[#f8b8d8]/60"
                             placeholder={"每行一个重点释义\n例如：接力赛"}
                         />
@@ -226,21 +231,25 @@ export function VocabEditDialog({ open, item, onClose, onSaved, initialFocus = "
 
                     <label className="space-y-2 md:col-span-2">
                         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#915f76]">来源例句</span>
-                        <textarea
+                        <PretextTextarea
                             value={draft.source_sentence}
                             onChange={(event) => handleChange("source_sentence", event.target.value)}
                             rows={3}
+                            minRows={3}
+                            maxRows={12}
                             className="w-full rounded-2xl border border-[#f2d8e6] bg-white/75 px-4 py-3 text-[15px] leading-7 text-[#3a1830] outline-none transition focus:border-[#ef7eb6] focus:ring-2 focus:ring-[#f8b8d8]/60"
                         />
                     </label>
 
                     <label className="space-y-2 md:col-span-2">
                         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#915f76]">AI / 字典例句</span>
-                        <textarea
+                        <PretextTextarea
                             ref={exampleTextareaRef}
                             value={draft.example}
                             onChange={(event) => handleChange("example", event.target.value)}
                             rows={3}
+                            minRows={3}
+                            maxRows={12}
                             className="w-full rounded-2xl border border-[#f2d8e6] bg-white/75 px-4 py-3 text-[15px] leading-7 text-[#3a1830] outline-none transition focus:border-[#ef7eb6] focus:ring-2 focus:ring-[#f8b8d8]/60"
                         />
                     </label>
