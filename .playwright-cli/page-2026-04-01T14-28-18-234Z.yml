@@ -1,0 +1,92 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e4]:
+        - generic [ref=e5]:
+          - button "Back to Welcome" [ref=e6]:
+            - img [ref=e7]
+          - generic [ref=e10]: DeepSeek IELTS
+          - button "Appearance" [ref=e13]:
+            - img [ref=e14]
+          - generic [ref=e20]:
+            - generic [ref=e21]: 阅读币
+            - generic [ref=e22]: "0"
+      - generic [ref=e26]:
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - generic [ref=e31]:
+              - heading "阅读流" [level=3] [ref=e32]
+              - paragraph [ref=e33]: 按新鲜度优先，保持阅读上下文连续。
+            - generic [ref=e34]:
+              - button "设置抓取数量" [ref=e35]:
+                - img [ref=e36]
+              - button "抓取 3 篇" [ref=e39]:
+                - img [ref=e40]
+                - text: 抓取 3 篇
+          - generic [ref=e45]:
+            - button "心理学" [ref=e46]: 心理学
+            - button "AI 资讯" [ref=e48]
+            - button "AI 生成" [ref=e49]
+            - button "CAT 成长" [ref=e50]
+          - generic [ref=e51]:
+            - button "全部 3" [ref=e52]:
+              - img [ref=e54]
+              - generic [ref=e59]: 全部
+              - generic [ref=e60]: "3"
+            - button "新到达 2" [ref=e61]:
+              - img [ref=e62]
+              - generic [ref=e65]: 新到达
+              - generic [ref=e66]: "2"
+            - button "待阅读 1" [ref=e67]:
+              - img [ref=e68]
+              - generic [ref=e70]: 待阅读
+              - generic [ref=e71]: "1"
+            - button "已读历史 0" [ref=e72]:
+              - img [ref=e73]
+              - generic [ref=e75]: 已读历史
+              - generic [ref=e76]: "0"
+        - generic [ref=e79]:
+          - generic [ref=e83] [cursor=pointer]:
+            - generic [ref=e84]:
+              - img "How Slow Waves During Sleep Take Over to Clear Metabolic Trash" [ref=e85]
+              - generic [ref=e86]: 新到达
+              - button "Remove article" [ref=e87]:
+                - img [ref=e88]
+            - generic [ref=e92]:
+              - generic [ref=e93]:
+                - generic [ref=e94]: Neuroscience News
+                - generic [ref=e95]: 4月1日
+              - heading "How Slow Waves During Sleep Take Over to Clear Metabolic Trash" [level=4] [ref=e96]
+              - generic [ref=e98]:
+                - text: 进入文章
+                - img [ref=e99]
+          - generic [ref=e106] [cursor=pointer]:
+            - generic [ref=e107]:
+              - img "A diet based on ultra-processed foods impairs metabolic and reproductive health, study finds" [ref=e108]
+              - generic [ref=e109]: 新到达
+              - button "Remove article" [ref=e110]:
+                - img [ref=e111]
+            - generic [ref=e115]:
+              - generic [ref=e116]:
+                - generic [ref=e117]: PsyPost
+                - generic [ref=e118]: 4月1日
+              - heading "A diet based on ultra-processed foods impairs metabolic and reproductive health, study finds" [level=4] [ref=e119]
+              - generic [ref=e121]:
+                - text: 进入文章
+                - img [ref=e122]
+          - generic [ref=e129] [cursor=pointer]:
+            - generic [ref=e130]:
+              - generic [ref=e131]: 未读
+              - button "Remove article" [ref=e132]:
+                - img [ref=e133]
+            - generic [ref=e137]:
+              - generic [ref=e138]:
+                - generic [ref=e139]: ScienceDaily
+                - generic [ref=e140]: 3月29日
+              - heading "Stroke triggers a hidden brain change that looks like rejuvenation" [level=4] [ref=e141]
+              - generic [ref=e143]:
+                - text: 进入文章
+                - img [ref=e144]
+  - button "Open Next.js Dev Tools" [ref=e153] [cursor=pointer]:
+    - img [ref=e154]
+  - alert [ref=e157]

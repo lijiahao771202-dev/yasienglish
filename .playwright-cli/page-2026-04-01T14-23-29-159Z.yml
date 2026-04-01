@@ -1,0 +1,85 @@
+- generic [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e4]:
+        - generic [ref=e5]:
+          - button "Back to Welcome" [ref=e6]:
+            - img [ref=e7]
+          - generic [ref=e10]: DeepSeek IELTS
+          - button "Appearance" [ref=e13]:
+            - img [ref=e14]
+          - generic [ref=e20]:
+            - generic [ref=e21]: 阅读币
+            - generic [ref=e22]: "40"
+      - generic [ref=e26]:
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - generic [ref=e31]:
+              - heading "阅读流" [level=3] [ref=e32]
+              - paragraph [ref=e33]: 按新鲜度优先，保持阅读上下文连续。
+            - button "刷新历史" [ref=e99]:
+              - img [ref=e40]
+              - text: 刷新历史
+          - generic [ref=e45]:
+            - button "心理学" [ref=e46]
+            - button "AI 资讯" [ref=e48]
+            - button "AI 生成" [ref=e49]: AI 生成
+            - button "CAT 成长" [ref=e50]
+        - generic [ref=e77]:
+          - generic [ref=e103]:
+            - generic [ref=e104]:
+              - generic [ref=e105]:
+                - paragraph [ref=e106]: AI Studio
+                - heading "智能写作台" [level=4] [ref=e107]
+                - paragraph [ref=e108]: 难度、主题、生成合并为一个连续工作流。
+              - img [ref=e110]
+            - generic [ref=e113]:
+              - button "CET-4 四级 4000 词汇 · 300-400 词 简单句为主，日常话题" [active] [ref=e114]:
+                - generic [ref=e115]:
+                  - img [ref=e117]
+                  - paragraph [ref=e119]: CET-4 四级
+                  - paragraph [ref=e120]: 4000 词汇 · 300-400 词
+                  - paragraph [ref=e121]: 简单句为主，日常话题
+              - button "CET-6 六级 6000 词汇 · 400-500 词 复合句+被动语态" [ref=e122]:
+                - generic [ref=e123]:
+                  - img [ref=e125]
+                  - paragraph [ref=e128]: CET-6 六级
+                  - paragraph [ref=e129]: 6000 词汇 · 400-500 词
+                  - paragraph [ref=e130]: 复合句+被动语态
+              - button "IELTS 雅思 8000+ 词汇 · 500-700 词 学术词汇+复杂句式" [ref=e131]:
+                - generic [ref=e132]:
+                  - img [ref=e134]
+                  - paragraph [ref=e142]: IELTS 雅思
+                  - paragraph [ref=e143]: 8000+ 词汇 · 500-700 词
+                  - paragraph [ref=e144]: 学术词汇+复杂句式
+            - generic [ref=e145]:
+              - heading "主题选择" [level=5] [ref=e147]
+              - generic [ref=e148]:
+                - button "Daily Life" [ref=e167]
+                - button "Campus Life" [ref=e168]
+                - button "Travel" [ref=e169]
+                - button "Technology Basics" [ref=e170]
+                - button "Health & Fitness" [ref=e171]
+              - generic [ref=e154]:
+                - textbox "输入主题（留空则随机），例如：Quantum Computing" [ref=e155]
+                - button "生成文章" [ref=e156]:
+                  - generic [ref=e157]:
+                    - img [ref=e158]
+                    - text: 生成文章
+          - generic [ref=e161]:
+            - generic [ref=e162]:
+              - heading "历史文章" [level=4] [ref=e163]
+              - generic [ref=e164]: 0 篇
+            - generic [ref=e166]: 暂无历史文章，先生成一篇试试
+  - generic [ref=e84] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e85]:
+      - img [ref=e86]
+    - generic [ref=e90]:
+      - button "Open issues overlay" [ref=e91]:
+        - generic [ref=e92]:
+          - generic [ref=e93]: "0"
+          - generic [ref=e94]: "1"
+        - generic [ref=e95]: Issue
+      - button "Collapse issues badge" [ref=e96]:
+        - img [ref=e97]
+  - alert [ref=e89]

@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArticleDisplay } from "@/components/reading/ArticleDisplay";
@@ -8,7 +9,7 @@ import { AudioPlayer } from "@/components/shadowing/AudioPlayer";
 import { WritingEditor } from "@/components/writing/WritingEditor";
 import { RecommendedArticles } from "@/components/reading/RecommendedArticles";
 import { ReadingQuizPanel, QuizQuestion, type QuizSubmitPayload } from "@/components/reading/ReadingQuizPanel";
-import { PenTool, ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck } from "lucide-react";
+import { PenTool, ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import axios from "axios";
 import { useUserStore } from "@/lib/store";
@@ -97,6 +98,17 @@ interface QuizLocateRequest {
     evidence?: string;
 }
 
+interface QuizPanelDragState {
+    startPointerX: number;
+    startPointerY: number;
+    originOffsetX: number;
+    originOffsetY: number;
+    startRectLeft: number;
+    startRectTop: number;
+    startRectWidth: number;
+    startRectHeight: number;
+}
+
 interface CatSettlementPayload {
     scoreBefore: number;
     scoreAfter: number;
@@ -147,6 +159,10 @@ function ReadingPageContent() {
     const [articleStartedAt, setArticleStartedAt] = useState<number | null>(null);
     const [quizCache, setQuizCache] = useState<Record<string, QuizQuestion[]>>({});
     const [quizCacheHydrated, setQuizCacheHydrated] = useState<Record<string, boolean>>({});
+    const [isWideViewport, setIsWideViewport] = useState(false);
+    const [isQuizPanelDragging, setIsQuizPanelDragging] = useState(false);
+    const [quizPanelOffset, setQuizPanelOffset] = useState({ x: 0, y: 0 });
+    const [quizPanelHeight, setQuizPanelHeight] = useState<number | null>(null);
     const [, forceBackgroundRefresh] = useState(0);
     const { loadUserData, markArticleAsRead } = useUserStore();
 
@@ -155,6 +171,12 @@ function ReadingPageContent() {
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
     const [isDockVisible, setIsDockVisible] = useState(true);
     const [isDockHovered, setIsDockHovered] = useState(false);
+    const readingColumnRef = useRef<HTMLDivElement | null>(null);
+    const quizPanelWrapperRef = useRef<HTMLDivElement | null>(null);
+    const quizPanelGlassRef = useRef<HTMLDivElement | null>(null);
+    const quizPanelDragStateRef = useRef<QuizPanelDragState | null>(null);
+    const wasSplitLayoutRef = useRef(false);
+    const scrollBeforeSplitRef = useRef(0);
     const dockHideTimerRef = useRef<number | null>(null);
     const catSettlementTimerRef = useRef<number | null>(null);
     const quizPrefetchRef = useRef<Record<string, boolean>>({});
@@ -206,7 +228,8 @@ function ReadingPageContent() {
         delta?: number;
         action?: ReadingEconomyAction | null;
         applied?: boolean;
-    }) => {
+    } | null | undefined) => {
+        if (!payload) return;
         if (!payload.action) return;
         if (payload.applied === false) return;
         const event = createReadingCoinFxEvent({
@@ -452,6 +475,7 @@ function ReadingPageContent() {
 
     const canShowQuizPanel = Boolean(isQuizMode && article?.isAIGenerated && article?.difficulty);
     const showStandardSplitQuiz = canShowQuizPanel;
+    const readingViewportKey = `${article?.url || article?.title || "reading"}:${showStandardSplitQuiz ? "split" : "full"}`;
     const quizCacheKey = article ? `${article.url || article.title}::${article.difficulty || "unknown"}` : "";
     const quizDbKey = quizCacheKey ? `reading-quiz::${quizCacheKey}` : "";
     const parseParagraphNumber = (value: string): number | null => {
@@ -461,11 +485,129 @@ function ReadingPageContent() {
         return Number.isFinite(num) && num > 0 ? num : null;
     };
 
+    const shouldEnableQuizPanelDrag = showStandardSplitQuiz && isWideViewport;
+
+    const handleQuizPanelDragStart = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+        if (!shouldEnableQuizPanelDrag) return;
+        const panelWrapper = quizPanelWrapperRef.current;
+        if (!panelWrapper) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.setPointerCapture(event.pointerId);
+
+        const rect = panelWrapper.getBoundingClientRect();
+        quizPanelDragStateRef.current = {
+            startPointerX: event.clientX,
+            startPointerY: event.clientY,
+            originOffsetX: quizPanelOffset.x,
+            originOffsetY: quizPanelOffset.y,
+            startRectLeft: rect.left,
+            startRectTop: rect.top,
+            startRectWidth: rect.width,
+            startRectHeight: rect.height,
+        };
+        setIsQuizPanelDragging(true);
+    }, [quizPanelOffset.x, quizPanelOffset.y, shouldEnableQuizPanelDrag]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const updateViewportFlag = () => {
+            setIsWideViewport(window.innerWidth >= 1280);
+        };
+        updateViewportFlag();
+        window.addEventListener("resize", updateViewportFlag);
+        return () => window.removeEventListener("resize", updateViewportFlag);
+    }, []);
+
+    useEffect(() => {
+        if (!isQuizPanelDragging) return;
+        const handlePointerMove = (event: PointerEvent) => {
+            const dragState = quizPanelDragStateRef.current;
+            if (!dragState) return;
+
+            const rawDeltaX = event.clientX - dragState.startPointerX;
+            const rawDeltaY = event.clientY - dragState.startPointerY;
+
+            const minLeft = 10;
+            const maxLeft = window.innerWidth - dragState.startRectWidth - 10;
+            const minTop = 88;
+            const maxTop = window.innerHeight - Math.min(180, dragState.startRectHeight * 0.45);
+
+            const candidateLeft = dragState.startRectLeft + rawDeltaX;
+            const candidateTop = dragState.startRectTop + rawDeltaY;
+            const clampedLeft = Math.min(maxLeft, Math.max(minLeft, candidateLeft));
+            const clampedTop = Math.min(maxTop, Math.max(minTop, candidateTop));
+
+            setQuizPanelOffset({
+                x: dragState.originOffsetX + (clampedLeft - dragState.startRectLeft),
+                y: dragState.originOffsetY + (clampedTop - dragState.startRectTop),
+            });
+        };
+
+        const handlePointerUp = () => {
+            quizPanelDragStateRef.current = null;
+            setIsQuizPanelDragging(false);
+        };
+
+        window.addEventListener("pointermove", handlePointerMove);
+        window.addEventListener("pointerup", handlePointerUp);
+        window.addEventListener("pointercancel", handlePointerUp);
+        return () => {
+            window.removeEventListener("pointermove", handlePointerMove);
+            window.removeEventListener("pointerup", handlePointerUp);
+            window.removeEventListener("pointercancel", handlePointerUp);
+        };
+    }, [isQuizPanelDragging]);
+
+
+
+    useEffect(() => {
+        if (!showStandardSplitQuiz) {
+            setQuizPanelOffset({ x: 0, y: 0 });
+            setIsQuizPanelDragging(false);
+            quizPanelDragStateRef.current = null;
+        }
+    }, [showStandardSplitQuiz]);
+
     useEffect(() => {
         if (isQuizMode && (!article?.isAIGenerated || !article?.difficulty)) {
             setIsQuizMode(false);
         }
     }, [isQuizMode, article?.isAIGenerated, article?.difficulty]);
+
+    useLayoutEffect(() => {
+        if (!article) {
+            wasSplitLayoutRef.current = false;
+            return;
+        }
+        const wasSplit = wasSplitLayoutRef.current;
+
+        if (showStandardSplitQuiz && !wasSplit) {
+            const currentWindowScroll = window.scrollY || document.documentElement.scrollTop || 0;
+            scrollBeforeSplitRef.current = currentWindowScroll;
+            window.scrollTo({ top: 0, behavior: "auto" });
+            document.documentElement.scrollTop = 0;
+            document.body.scrollTop = 0;
+            const node = readingColumnRef.current;
+            if (node) {
+                node.scrollTo({ top: 0, left: 0, behavior: "auto" });
+            }
+        } else if (!showStandardSplitQuiz && wasSplit) {
+            const restoreTop = Math.max(0, scrollBeforeSplitRef.current);
+            window.requestAnimationFrame(() => {
+                window.scrollTo({ top: restoreTop, behavior: "auto" });
+            });
+        }
+
+        wasSplitLayoutRef.current = showStandardSplitQuiz;
+    }, [article, showStandardSplitQuiz]);
+
+    useEffect(() => {
+        if (!article) {
+            setQuizLocateRequest(null);
+        }
+    }, [article]);
 
     useEffect(() => {
         if (!quizDbKey || quizCacheHydrated[quizDbKey]) return;
@@ -814,14 +956,83 @@ function ReadingPageContent() {
                         evidence,
                     });
                 }}
+                titleNode={renderQuizToggleButton(true)}
+                dragHandleNode={
+                    shouldEnableQuizPanelDrag ? (
+                        <button
+                            type="button"
+                            onPointerDown={handleQuizPanelDragStart}
+                            className={cn(
+                                "flex h-7 w-12 items-center justify-center rounded-full bg-slate-400/10 text-slate-400 backdrop-blur-sm transition-colors",
+                                isQuizPanelDragging ? "cursor-grabbing bg-slate-400/20 text-slate-600" : "cursor-grab hover:bg-slate-400/20 hover:text-slate-600",
+                            )}
+                            title="拖动答题框"
+                            aria-label="拖动答题框"
+                        >
+                            <GripVertical className="h-4 w-4" />
+                        </button>
+                    ) : undefined
+                }
             />
         );
     };
 
+    const renderQuizToggleButton = (isEmbedded = false) => {
+        if (!article?.isAIGenerated || !article?.difficulty) return null;
+        return (
+            <button
+                onClick={(event) => {
+                    event.currentTarget.blur();
+                    if (!isQuizMode) {
+                        const currentWindowScroll = window.scrollY || document.documentElement.scrollTop || 0;
+                        scrollBeforeSplitRef.current = currentWindowScroll;
+                        window.scrollTo({ top: 0, behavior: "auto" });
+                        document.documentElement.scrollTop = 0;
+                        document.body.scrollTop = 0;
+                        const node = readingColumnRef.current;
+                        if (node) {
+                            node.scrollTo({ top: 0, left: 0, behavior: "auto" });
+                        }
+                    }
+                    setQuizLocateRequest(null);
+                    setIsQuizMode((prev) => !prev);
+                }}
+                aria-pressed={isQuizMode}
+                className={cn(
+                    "group flex items-center gap-2.5 rounded-full border text-sm font-bold backdrop-blur-xl transition-all duration-300",
+                    isEmbedded
+                        ? "border-emerald-200/50 bg-white/45 px-4 py-1.5 text-emerald-800 shadow-sm hover:-translate-y-0.5 hover:bg-white/60"
+                        : "border-white/70 bg-white/78 px-5 py-2.5 text-slate-800 shadow-[0_20px_40px_-22px_rgba(15,23,42,0.65)] hover:-translate-y-0.5 hover:bg-white/92 hover:shadow-[0_28px_52px_-20px_rgba(15,23,42,0.75)]"
+                )}
+            >
+                <ClipboardCheck className={cn("h-4 w-4 transition-transform group-hover:scale-110", isEmbedded ? "text-emerald-600" : "text-pink-500")} />
+                <span>{isQuizMode ? "隐藏题目" : "开始答题"}</span>
+                <span className={cn(
+                    "rounded-full border px-2 py-0.5 text-[10px] font-bold",
+                    article.difficulty === 'cet4' && "border-emerald-200 bg-emerald-50 text-emerald-700",
+                    article.difficulty === 'cet6' && "border-blue-200 bg-blue-50 text-blue-700",
+                    article.difficulty === 'ielts' && "border-violet-200 bg-violet-50 text-violet-700",
+                    isEmbedded && article.difficulty === 'cet4' && "bg-transparent",
+                    isEmbedded && article.difficulty === 'cet6' && "bg-transparent",
+                    isEmbedded && article.difficulty === 'ielts' && "bg-transparent"
+                )}>
+                    {article.difficulty === 'cet4' ? '四级' : article.difficulty === 'cet6' ? '六级' : '雅思'}
+                </span>
+            </button>
+        );
+    };
+
+    const quizPanelStyle = shouldEnableQuizPanelDrag
+        ? { transform: `translate3d(${quizPanelOffset.x}px, ${quizPanelOffset.y}px, 0)` }
+        : undefined;
+
     return (
         <main
             className={cn(
-            "relative min-h-screen overflow-x-clip p-6 text-stone-800 transition-all duration-500 ease-in-out md:p-12",
+            "relative overflow-x-clip text-stone-800 transition-all duration-500 ease-in-out",
+            showStandardSplitQuiz
+                ? "min-h-screen px-6 pb-6 pt-24 md:px-12 md:pb-8 md:pt-28"
+                : "min-h-screen p-6 md:p-12",
             article ? READING_THEMES.find(t => t.id === theme)?.class : undefined,
             fontClass // Apply Font Global
         )}
@@ -1148,8 +1359,12 @@ function ReadingPageContent() {
 
             <ReadingCoinIsland event={activeReadingCoinFx} />
 
-            <motion.div
-                className={cn("mt-20 transition-all duration-700", isWritingMode ? "h-[calc(100vh-120px)]" : "")}
+                <motion.div
+                className={cn(
+                    "transition-all duration-700",
+                    showStandardSplitQuiz ? "flex min-h-0 flex-col" : "mt-20",
+                    isWritingMode && "h-[calc(100vh-120px)]"
+                )}
                 initial={contentEntryInitial}
                 animate={routeExitTarget ? { opacity: 0, y: 10, scale: 0.993, filter: "blur(8px)" } : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
                 transition={{ delay: 0, duration: hasRouteEntry ? 0.68 : 0.56, ease: pageIntroEase }}
@@ -1218,41 +1433,33 @@ function ReadingPageContent() {
                                 : softReveal.exit}
                             transition={{ delay: 0.02, duration: hasRouteEntry ? 0.54 : 0.48, ease: pageIntroEase }}
                             className={cn(
-                                "relative overflow-hidden",
-                                "grid gap-8 h-full transition-all duration-500",
+                                "relative mx-auto grid w-full transition-all duration-500",
+                                showStandardSplitQuiz && "min-h-0",
+                                "grid gap-6 2xl:gap-8",
                                 showStandardSplitQuiz
-                                    ? "grid-cols-1 xl:grid-cols-[minmax(0,1fr)_500px] 2xl:grid-cols-[minmax(0,1fr)_560px] xl:h-[calc(100vh-120px)] xl:overflow-hidden"
+                                    ? "grid-cols-1 min-h-0 xl:grid-cols-[minmax(0,1fr)_clamp(360px,36vw,620px)]"
                                     : "grid-cols-1",
                             )}
                         >
                         {/* Reading Column */}
                         <motion.div
+                            key={readingViewportKey}
+                            ref={readingColumnRef}
+                            data-reading-scroll-container="true"
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             transition={{ delay: 0.04, duration: hasRouteEntry ? 0.5 : 0.44, ease: pageIntroEase }}
                             className={cn(
-                            "space-y-12 transition-all duration-700",
-                            showStandardSplitQuiz && "xl:h-full xl:min-h-0 xl:overflow-y-auto xl:pr-1",
+                            "space-y-8 transition-all duration-700 xl:space-y-10",
+                            showStandardSplitQuiz
+                                ? "min-h-0 overflow-visible xl:pr-2 xl:pb-2"
+                                : "overflow-visible",
                             showStandardSplitQuiz ? "max-w-none" : "mx-auto max-w-3xl"
                         )}>
                             {/* Quiz Entry Button - only for AI generated articles */}
-                            {article.isAIGenerated && article.difficulty && !isQuizMode && (
+                            {!showStandardSplitQuiz && article.isAIGenerated && article.difficulty && (
                                 <div className="sticky top-[94px] z-40 flex justify-end">
-                                    <button
-                                        onClick={() => setIsQuizMode(true)}
-                                        className="group flex items-center gap-2.5 rounded-full border border-white/70 bg-white/78 px-5 py-2.5 text-sm font-bold text-slate-800 shadow-[0_20px_40px_-22px_rgba(15,23,42,0.65)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/92 hover:shadow-[0_28px_52px_-20px_rgba(15,23,42,0.75)]"
-                                    >
-                                        <ClipboardCheck className="h-4 w-4 text-pink-500 transition-transform group-hover:scale-110" />
-                                        <span>开始答题</span>
-                                        <span className={cn(
-                                            "rounded-full border px-2 py-0.5 text-[10px] font-bold",
-                                            article.difficulty === 'cet4' && "border-emerald-200 bg-emerald-50 text-emerald-700",
-                                            article.difficulty === 'cet6' && "border-blue-200 bg-blue-50 text-blue-700",
-                                            article.difficulty === 'ielts' && "border-violet-200 bg-violet-50 text-violet-700"
-                                        )}>
-                                            {article.difficulty === 'cet4' ? '四级' : article.difficulty === 'cet6' ? '六级' : '雅思'}
-                                        </span>
-                                    </button>
+                                    {renderQuizToggleButton()}
                                 </div>
                             )}
 
@@ -1275,14 +1482,27 @@ function ReadingPageContent() {
 
                         {showStandardSplitQuiz && (
                             <motion.div
-                                className="xl:h-full xl:min-h-0"
+                                className="min-h-0"
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 transition={{ delay: 0.06, duration: hasRouteEntry ? 0.52 : 0.46, ease: pageIntroEase }}
                             >
-                                <LiquidGlassPanel className="h-full min-h-0 overflow-hidden rounded-[24px] [&>.liquid-glass-content]:h-full [&>.liquid-glass-content]:min-h-0">
-                                    {renderQuizPanel()}
-                                </LiquidGlassPanel>
+                                <div
+                                    ref={quizPanelWrapperRef}
+                                    style={quizPanelStyle}
+                                    className={cn(
+                                        "min-h-0 xl:sticky xl:top-28 xl:flex xl:w-full xl:max-w-[620px] xl:flex-col xl:justify-self-end xl:self-start",
+                                        shouldEnableQuizPanelDrag && "transition-transform duration-75",
+                                    )}
+                                >
+
+                                    <LiquidGlassPanel
+                                        ref={quizPanelGlassRef}
+                                        className="quiz-green-glass flex flex-col h-full max-h-[85vh] overflow-hidden rounded-[24px] shadow-[0_32px_72px_-56px_rgba(6,95,70,0.7)] [&>.liquid-glass-content]:flex [&>.liquid-glass-content]:h-full [&>.liquid-glass-content]:min-h-0 [&>.liquid-glass-content]:flex-col"
+                                    >
+                                        {renderQuizPanel()}
+                                    </LiquidGlassPanel>
+                                </div>
                             </motion.div>
                         )}
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { forwardRef } from "react";
 import type { HTMLAttributes, MouseEvent } from "react";
 import { cn } from "@/lib/utils";
 
@@ -7,7 +8,10 @@ interface LiquidGlassPanelProps extends HTMLAttributes<HTMLDivElement> {
     breathe?: boolean;
 }
 
-export function LiquidGlassPanel({ breathe = false, className, children, onMouseMove, ...props }: LiquidGlassPanelProps) {
+export const LiquidGlassPanel = forwardRef<HTMLDivElement, LiquidGlassPanelProps>(function LiquidGlassPanel(
+    { breathe = false, className, children, onMouseMove, ...props },
+    ref,
+) {
     const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const x = `${event.clientX - rect.left}px`;
@@ -20,6 +24,7 @@ export function LiquidGlassPanel({ breathe = false, className, children, onMouse
     return (
         <div
             {...props}
+            ref={ref}
             onMouseMove={handleMouseMove}
             className={cn(
                 "liquid-glass-panel",
@@ -35,4 +40,4 @@ export function LiquidGlassPanel({ breathe = false, className, children, onMouse
             <div className="liquid-glass-content">{children}</div>
         </div>
     );
-}
+});

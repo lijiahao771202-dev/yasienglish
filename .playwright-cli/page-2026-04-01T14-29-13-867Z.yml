@@ -1,0 +1,174 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - navigation:
+        - generic:
+          - button "Back to Welcome":
+            - img
+          - button "Back to Article Picker":
+            - img
+          - generic:
+            - generic:
+              - img
+            - generic: DeepSeek IELTS
+          - generic:
+            - button "Deep Focus Mode":
+              - img
+            - button "Bionic Reading":
+              - img
+            - generic:
+              - button "Appearance":
+                - img
+            - button "Edit Text":
+              - img
+            - button "Drill":
+              - img
+              - generic: Drill
+          - generic:
+            - generic: 阅读币
+            - generic: "40"
+      - generic [ref=e256]:
+        - button "开始答题 四级" [ref=e258]:
+          - img [ref=e259]
+          - generic [ref=e263]: 开始答题
+          - generic [ref=e264]: 四级
+        - article [ref=e265]:
+          - generic [ref=e266]:
+            - generic [ref=e267]:
+              - 'heading "Public Spaces: Bringing People Together or Pushing Them Apart?" [level=1] [ref=e268]'
+              - paragraph [ref=e270]: By AI Generator · CET-4 (大学英语四级)
+            - generic [ref=e271]:
+              - generic [ref=e273]:
+                - generic [ref=e275]:
+                  - generic "Drag to merge" [ref=e276]:
+                    - img [ref=e277]
+                  - button "Listen" [ref=e284]:
+                    - img [ref=e285]
+                - generic [ref=e287]:
+                  - generic [ref=e288] [cursor=pointer]: Imagine walking through a busy city park. You see children playing, friends chatting on benches, and strangers sharing smiles. This is a public space – places like parks, libraries, and squares that belong to everyone. These areas play a surprising role in how connected we feel to our communities. Some experts argue they build strong social bonds, while others believe they sometimes create division instead.
+                  - generic [ref=e289]:
+                    - button "Speaking" [ref=e290]:
+                      - img [ref=e291]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e294]:
+                      - img [ref=e295]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e299]:
+                      - img [ref=e300]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e302]:
+                      - img [ref=e303]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e306]:
+                      - img [ref=e307]
+                      - text: Practice
+              - generic [ref=e313]:
+                - generic [ref=e315]:
+                  - generic "Drag to merge" [ref=e316]:
+                    - img [ref=e317]
+                  - button "Listen" [ref=e324]:
+                    - img [ref=e325]
+                - generic [ref=e327]:
+                  - generic [ref=e328] [cursor=pointer]: One viewpoint suggests public spaces are essential for social cohesion. When people gather in parks or community centers, they naturally interact. These casual meetings can turn strangers into acquaintances. Shared experiences in these spaces – like enjoying a concert in the square or reading in the library – create common ground. Research shows neighborhoods with good public spaces often have stronger community networks. People feel more connected when they have places to meet and mingle freely.
+                  - generic [ref=e329]:
+                    - button "Speaking" [ref=e330]:
+                      - img [ref=e331]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e334]:
+                      - img [ref=e335]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e339]:
+                      - img [ref=e340]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e342]:
+                      - img [ref=e343]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e346]:
+                      - img [ref=e347]
+                      - text: Practice
+              - generic [ref=e353]:
+                - generic [ref=e355]:
+                  - generic "Drag to merge" [ref=e356]:
+                    - img [ref=e357]
+                  - button "Listen" [ref=e364]:
+                    - img [ref=e365]
+                - generic [ref=e367]:
+                  - generic [ref=e368] [cursor=pointer]: However, another perspective highlights potential problems. Not all public spaces serve everyone equally. Some areas might attract certain groups while excluding others. For example, a skate park might appeal mainly to teenagers, leaving older residents feeling unwelcome. Additionally, poorly designed or maintained spaces can become places people avoid rather than enjoy. When public spaces feel unsafe or uncomfortable, they fail to bring people together. In some cases, they might even reinforce existing social divisions.
+                  - generic [ref=e369]:
+                    - button "Speaking" [ref=e370]:
+                      - img [ref=e371]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e374]:
+                      - img [ref=e375]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e379]:
+                      - img [ref=e380]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e382]:
+                      - img [ref=e383]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e386]:
+                      - img [ref=e387]
+                      - text: Practice
+              - generic [ref=e393]:
+                - generic [ref=e395]:
+                  - generic "Drag to merge" [ref=e396]:
+                    - img [ref=e397]
+                  - button "Listen" [ref=e404]:
+                    - img [ref=e405]
+                - generic [ref=e407]:
+                  - generic [ref=e408] [cursor=pointer]: Evaluating both sides reveals important tradeoffs. Well-designed, inclusive public spaces clearly offer benefits for community connection. But creating such spaces requires careful planning and ongoing maintenance. Cities must consider diverse needs – from playgrounds for children to quiet areas for seniors. The challenge lies in designing spaces that welcome everyone while serving specific functions.
+                  - generic [ref=e409]:
+                    - button "Speaking" [ref=e410]:
+                      - img [ref=e411]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e414]:
+                      - img [ref=e415]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e419]:
+                      - img [ref=e420]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e422]:
+                      - img [ref=e423]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e426]:
+                      - img [ref=e427]
+                      - text: Practice
+              - generic [ref=e433]:
+                - generic [ref=e435]:
+                  - generic "Drag to merge" [ref=e436]:
+                    - img [ref=e437]
+                  - button "Listen" [ref=e444]:
+                    - img [ref=e445]
+                - generic [ref=e447]:
+                  - generic [ref=e448] [cursor=pointer]: Ultimately, public spaces hold great potential for strengthening social bonds. Their success depends not just on their existence, but on thoughtful design and community involvement. When created with care, these shared areas become more than just physical locations – they transform into the heartbeats of our communities, where connections form and grow.
+                  - generic [ref=e449]:
+                    - button "Speaking" [ref=e450]:
+                      - img [ref=e451]
+                      - text: Speaking
+                    - button "Translate · -1" [ref=e454]:
+                      - img [ref=e455]
+                      - text: Translate · -1
+                    - button "Grammar · -2" [ref=e459]:
+                      - img [ref=e460]
+                      - text: Grammar · -2
+                    - button "Ask AI · -2" [ref=e462]:
+                      - img [ref=e463]
+                      - text: Ask AI · -2
+                    - button "Practice" [ref=e466]:
+                      - img [ref=e467]
+                      - text: Practice
+  - generic [ref=e152] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e153]:
+      - img [ref=e154]
+    - generic [ref=e158]:
+      - button "Open issues overlay" [ref=e159]:
+        - generic [ref=e472]:
+          - generic [ref=e473]: "1"
+          - generic [ref=e474]: "2"
+        - generic [ref=e163]:
+          - text: Issue
+          - generic [ref=e475]: s
+      - button "Collapse issues badge" [ref=e164]:
+        - img [ref=e165]
+  - alert [ref=e157]

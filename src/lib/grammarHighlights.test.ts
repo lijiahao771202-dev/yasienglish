@@ -122,8 +122,9 @@ describe("grammarHighlights", () => {
         expect(model.full.some((segment) => segment.highlight?.normalizedType === "状语")).toBe(true);
     });
 
-    it("returns unknown grammar labels as-is without recursive fallback", () => {
-        expect(translateGrammarType("独立主格结构")).toBe("独立主格结构");
+    it("standardizes selected aliases while keeping truly unknown labels as-is", () => {
+        expect(translateGrammarType("独立主格结构")).toBe("非谓语");
+        expect(translateGrammarType("未知句法标签")).toBe("未知句法标签");
     });
 
     it("treats verb and modal phrases as core structure in core mode", () => {
@@ -165,6 +166,64 @@ describe("grammarHighlights", () => {
             start: text.indexOf("in the"),
             end: text.indexOf("Gulf region") + "Gulf region".length,
             normalizedType: "介词短语",
+        });
+    });
+
+    it("standardizes clause aliases into canonical labels", () => {
+        const text = "I know that he left early.";
+        const model = buildGrammarViewModel(text, [
+            {
+                sentence: text,
+                highlights: [
+                    { substring: "I", type: "主语", explanation: "发出动作的人" },
+                    { substring: "know", type: "谓语", explanation: "核心动作" },
+                    { substring: "that he left early", type: "宾语从句", explanation: "作宾语的从句" },
+                ],
+            },
+        ]);
+
+        expect(model.full.some((segment) => segment.highlight?.normalizedType === "名词性从句")).toBe(true);
+    });
+
+    it("exposes overlap metadata when one fragment has multiple grammar tags", () => {
+        const text = "I know that he left early.";
+        const model = buildGrammarViewModel(text, [
+            {
+                sentence: text,
+                highlights: [
+                    { substring: "that he left early", type: "宾语从句", explanation: "作宾语的从句" },
+                    { substring: "he left", type: "主谓结构", explanation: "从句内部主谓骨架" },
+                ],
+            },
+        ]);
+
+        const overlapped = model.full.find((segment) => (segment.highlight?.overlapCount ?? 0) > 0);
+        expect(overlapped?.highlight?.alternatives?.length).toBeGreaterThan(0);
+        expect(overlapped?.highlight?.overlapCount).toBeGreaterThan(0);
+    });
+
+    it("forces sentence boundaries into segments for stable marker linkage", () => {
+        const text = "It rained all day. Then we stayed home.";
+        const model = buildGrammarViewModel(text, [
+            {
+                sentence: "It rained all day.",
+                highlights: [
+                    { substring: "rained", type: "谓语", explanation: "描述动作" },
+                ],
+            },
+            {
+                sentence: "Then we stayed home.",
+                highlights: [
+                    { substring: "stayed", type: "谓语", explanation: "描述动作" },
+                ],
+            },
+        ]);
+
+        const markerStarts = model.sentenceMarkers.map((item) => item.start);
+        expect(markerStarts).toEqual([0, text.indexOf("Then")]);
+        markerStarts.forEach((start) => {
+            expect(model.full.some((segment) => segment.start === start)).toBe(true);
+            expect(model.core.some((segment) => segment.start === start)).toBe(true);
         });
     });
 });

@@ -11,7 +11,7 @@ export interface GrammarHighlightInput {
 export interface GrammarSentenceAnalysis {
     sentence: string;
     translation?: string;
-    highlights?: GrammarHighlightInput[];
+    highlights?: readonly GrammarHighlightInput[];
 }
 
 export interface GrammarSentenceMarker {
@@ -19,9 +19,21 @@ export interface GrammarSentenceMarker {
     translation?: string;
 }
 
+export interface GrammarHighlightAlternative {
+    rawType: string;
+    normalizedType: string;
+    translatedLabel: string;
+    layer: GrammarLayer;
+    explanation: string;
+    segmentTranslation?: string;
+    displayPriority: number;
+}
+
 export interface GrammarHighlightRange {
     start: number;
     end: number;
+    sentenceStart: number;
+    sentenceIndex: number;
     type: string;
     rawType: string;
     normalizedType: string;
@@ -30,15 +42,8 @@ export interface GrammarHighlightRange {
     segmentTranslation?: string;
     layer: GrammarLayer;
     displayPriority: number;
-    alternatives?: Array<{
-        rawType: string;
-        normalizedType: string;
-        translatedLabel: string;
-        layer: GrammarLayer;
-        explanation: string;
-        segmentTranslation?: string;
-        displayPriority: number;
-    }>;
+    overlapCount?: number;
+    alternatives?: GrammarHighlightAlternative[];
 }
 
 export interface GrammarTextSegment {
@@ -59,6 +64,14 @@ interface GrammarTypeMeta {
     translatedLabel: string;
     layer: GrammarLayer;
     displayPriority: number;
+}
+
+export interface GrammarHighlightPalette {
+    textClassName: string;
+    toneClassName: string;
+    markerBase: string;
+    markerShade: string;
+    border: string;
 }
 
 function matchesAnyPattern(value: string, patterns: RegExp[]): boolean {
@@ -108,9 +121,54 @@ function findNextUnusedOccurrence(
     return -1;
 }
 
+function normalizeGrammarTypeInput(value: string) {
+    const raw = value.trim();
+    if (!raw) return raw;
+    const compact = raw.replace(/\s+/g, "").toLowerCase();
+
+    if (
+        compact.includes("宾语从句") ||
+        compact.includes("主语从句") ||
+        compact.includes("表语从句") ||
+        compact.includes("同位语从句") ||
+        compact.includes("nounclause")
+    ) {
+        return "名词性从句";
+    }
+    if (
+        compact.includes("关系从句") ||
+        compact.includes("关系子句") ||
+        compact.includes("非限定性定语从句") ||
+        compact.includes("relativeclause")
+    ) {
+        return "定语从句";
+    }
+    if (
+        compact.includes("时间状语从句") ||
+        compact.includes("条件状语从句") ||
+        compact.includes("让步状语从句") ||
+        compact.includes("原因状语从句")
+    ) {
+        return "状语从句";
+    }
+    if (compact.includes("absoluteconstruction") || compact.includes("独立主格")) {
+        return "非谓语";
+    }
+    if (compact.includes("补足语") || compact.includes("宾补") || compact.includes("主补")) {
+        return "补语";
+    }
+    if (compact.includes("pp") || compact.includes("prepphrase")) {
+        return "介词短语";
+    }
+    if (compact.includes("插入语") || compact.includes("parenthetical")) {
+        return "同位语";
+    }
+    return raw;
+}
+
 function classifyGrammarType(type: string): GrammarTypeMeta {
-    const raw = type.trim();
-    const t = type.trim().toLowerCase();
+    const raw = normalizeGrammarTypeInput(type);
+    const t = raw.toLowerCase();
     const englishToken = ` ${t.replace(/[_-]+/g, " ")} `;
 
     if (t.includes("main clause") || t.includes("主句")) {
@@ -235,7 +293,35 @@ function mergeAdjacentRanges(text: string, ranges: GrammarHighlightRange[]): Gra
     return merged;
 }
 
-function createSegments(text: string, ranges: GrammarHighlightRange[]): GrammarTextSegment[] {
+function toAlternative(range: GrammarHighlightRange | GrammarHighlightAlternative): GrammarHighlightAlternative {
+    return {
+        rawType: range.rawType,
+        normalizedType: range.normalizedType,
+        translatedLabel: range.translatedLabel,
+        layer: range.layer,
+        explanation: range.explanation,
+        segmentTranslation: range.segmentTranslation,
+        displayPriority: range.displayPriority,
+    };
+}
+
+function dedupeAlternatives(alternatives: GrammarHighlightAlternative[]) {
+    const seen = new Set<string>();
+    const output: GrammarHighlightAlternative[] = [];
+    alternatives.forEach((item) => {
+        const key = `${item.normalizedType}|${item.explanation}|${item.segmentTranslation ?? ""}|${item.layer}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        output.push(item);
+    });
+    return output;
+}
+
+function createSegments(
+    text: string,
+    ranges: GrammarHighlightRange[],
+    splitPoints: readonly number[] = [],
+): GrammarTextSegment[] {
     if (ranges.length === 0) {
         return [{
             start: 0,
@@ -246,6 +332,11 @@ function createSegments(text: string, ranges: GrammarHighlightRange[]): GrammarT
     }
 
     const points = new Set<number>([0, text.length]);
+    splitPoints.forEach((point) => {
+        if (point > 0 && point < text.length) {
+            points.add(point);
+        }
+    });
     ranges.forEach((range) => {
         points.add(range.start);
         points.add(range.end);
@@ -262,14 +353,29 @@ function createSegments(text: string, ranges: GrammarHighlightRange[]): GrammarT
         const segmentText = text.slice(start, end);
         if (!segmentText) continue;
 
-        const highlight = ranges
+        const coveringRanges = ranges
             .filter((range) => range.start <= start && range.end >= end)
             .sort((left, right) => {
                 if (left.displayPriority !== right.displayPriority) {
                     return right.displayPriority - left.displayPriority;
                 }
                 return (left.end - left.start) - (right.end - right.start);
-            })[0] ?? null;
+            });
+
+        const primary = coveringRanges[0] ?? null;
+        const highlight = primary
+            ? (() => {
+                const overlaps = dedupeAlternatives([
+                    ...(primary.alternatives ?? []),
+                    ...coveringRanges.slice(1).map((item) => toAlternative(item)),
+                ]);
+                return {
+                    ...primary,
+                    alternatives: overlaps.length > 0 ? overlaps : undefined,
+                    overlapCount: overlaps.length,
+                } satisfies GrammarHighlightRange;
+            })()
+            : null;
 
         segments.push({
             start,
@@ -284,7 +390,7 @@ function createSegments(text: string, ranges: GrammarHighlightRange[]): GrammarT
 
 export function locateGrammarSentenceMarkers(
     text: string,
-    sentences: GrammarSentenceAnalysis[],
+    sentences: readonly GrammarSentenceAnalysis[],
 ): GrammarSentenceMarker[] {
     const markers: GrammarSentenceMarker[] = [];
     let cursor = 0;
@@ -311,7 +417,7 @@ export function locateGrammarSentenceMarkers(
 
 export function buildGrammarHighlightRanges(
     text: string,
-    sentences: GrammarSentenceAnalysis[],
+    sentences: readonly GrammarSentenceAnalysis[],
 ): GrammarHighlightRange[] {
     const rawRanges: GrammarHighlightRange[] = [];
     const markers = locateGrammarSentenceMarkers(text, sentences);
@@ -356,6 +462,8 @@ export function buildGrammarHighlightRanges(
             rawRanges.push({
                 start: sentenceStart + relativeStart,
                 end: sentenceStart + relativeEnd,
+                sentenceStart,
+                sentenceIndex,
                 type: typeMeta.translatedLabel,
                 rawType: highlight.type,
                 normalizedType: typeMeta.normalizedType,
@@ -423,63 +531,130 @@ export function buildGrammarHighlightRanges(
 
 export function buildGrammarViewModel(
     text: string,
-    sentences: GrammarSentenceAnalysis[],
+    sentences: readonly GrammarSentenceAnalysis[],
 ): GrammarViewModel {
     const fullRanges = buildGrammarHighlightRanges(text, sentences);
     const coreRanges = fullRanges.filter((range) => range.layer === "core" || range.layer === "structure");
+    const sentenceMarkers = locateGrammarSentenceMarkers(text, sentences);
+    const sentenceStarts = sentenceMarkers.map((item) => item.start);
 
     return {
-        core: createSegments(text, coreRanges),
-        full: createSegments(text, fullRanges),
-        sentenceMarkers: locateGrammarSentenceMarkers(text, sentences),
+        core: createSegments(text, coreRanges, sentenceStarts),
+        full: createSegments(text, fullRanges, sentenceStarts),
+        sentenceMarkers,
     };
 }
 
 export function buildGrammarHighlightSegments(
     text: string,
-    sentences: GrammarSentenceAnalysis[],
+    sentences: readonly GrammarSentenceAnalysis[],
     displayMode: GrammarDisplayMode = "full",
 ): GrammarTextSegment[] {
     const model = buildGrammarViewModel(text, sentences);
     return displayMode === "core" ? model.core : model.full;
 }
 
+function getPaletteByMeta(meta: GrammarTypeMeta): GrammarHighlightPalette {
+    if (meta.normalizedType === "主语") {
+        return {
+            textClassName: "text-teal-950",
+            toneClassName: "text-teal-700",
+            markerBase: "rgba(148, 210, 189, 0.52)",
+            markerShade: "rgba(103, 191, 164, 0.28)",
+            border: "rgba(54, 116, 94, 0.18)",
+        };
+    }
+    if (meta.normalizedType === "谓语") {
+        return {
+            textClassName: "text-emerald-950",
+            toneClassName: "text-emerald-700",
+            markerBase: "rgba(151, 219, 190, 0.56)",
+            markerShade: "rgba(86, 179, 140, 0.28)",
+            border: "rgba(39, 94, 66, 0.2)",
+        };
+    }
+    if (meta.normalizedType === "宾语" || meta.normalizedType === "表语") {
+        return {
+            textClassName: "text-sky-950",
+            toneClassName: "text-sky-700",
+            markerBase: "rgba(171, 213, 244, 0.54)",
+            markerShade: "rgba(113, 182, 233, 0.28)",
+            border: "rgba(54, 104, 148, 0.18)",
+        };
+    }
+    if (meta.layer === "structure") {
+        return {
+            textClassName: "text-slate-900",
+            toneClassName: "text-slate-700",
+            markerBase: "rgba(196, 206, 218, 0.5)",
+            markerShade: "rgba(153, 169, 187, 0.24)",
+            border: "rgba(84, 102, 124, 0.18)",
+        };
+    }
+    if (meta.normalizedType === "状语") {
+        return {
+            textClassName: "text-amber-950",
+            toneClassName: "text-amber-700",
+            markerBase: "rgba(244, 217, 156, 0.5)",
+            markerShade: "rgba(224, 175, 73, 0.24)",
+            border: "rgba(143, 104, 30, 0.16)",
+        };
+    }
+    if (meta.normalizedType === "介词短语" || meta.normalizedType === "定语") {
+        return {
+            textClassName: "text-cyan-950",
+            toneClassName: "text-cyan-700",
+            markerBase: "rgba(185, 225, 223, 0.44)",
+            markerShade: "rgba(119, 189, 185, 0.2)",
+            border: "rgba(54, 118, 114, 0.14)",
+        };
+    }
+    if (meta.normalizedType === "补语" || meta.normalizedType === "同位语") {
+        return {
+            textClassName: "text-rose-950",
+            toneClassName: "text-rose-700",
+            markerBase: "rgba(246, 204, 196, 0.4)",
+            markerShade: "rgba(227, 149, 129, 0.18)",
+            border: "rgba(145, 85, 74, 0.12)",
+        };
+    }
+
+    return {
+        textClassName: "text-stone-900",
+        toneClassName: "text-stone-700",
+        markerBase: meta.layer === "modifier" ? "rgba(229, 220, 206, 0.34)" : "rgba(206, 216, 227, 0.42)",
+        markerShade: meta.layer === "modifier" ? "rgba(208, 187, 154, 0.18)" : "rgba(149, 168, 191, 0.22)",
+        border: "rgba(87, 83, 78, 0.14)",
+    };
+}
+
+export function getGrammarHighlightPalette(type: string): GrammarHighlightPalette {
+    return getPaletteByMeta(classifyGrammarType(type));
+}
+
+export function getGrammarHighlightPaletteByMeta(params: { normalizedType: string; layer: GrammarLayer }): GrammarHighlightPalette {
+    const inferred = classifyGrammarType(params.normalizedType);
+    return getPaletteByMeta({
+        ...inferred,
+        normalizedType: params.normalizedType,
+        translatedLabel: inferred.translatedLabel || params.normalizedType,
+        layer: params.layer,
+    });
+}
+
+export function getGrammarLegendPresets() {
+    return [
+        { label: "主语", palette: getGrammarHighlightPalette("主语") },
+        { label: "谓语", palette: getGrammarHighlightPalette("谓语") },
+        { label: "宾语", palette: getGrammarHighlightPalette("宾语") },
+        { label: "状语", palette: getGrammarHighlightPalette("状语") },
+        { label: "定语", palette: getGrammarHighlightPalette("定语") },
+        { label: "从句/结构", palette: getGrammarHighlightPalette("名词性从句") },
+    ];
+}
+
 export function getGrammarHighlightColor(type: string): string {
-    const meta = classifyGrammarType(type);
-    const t = meta.normalizedType.toLowerCase();
-
-    if (t.includes("主句")) {
-        return "text-slate-700";
-    }
-    if (t.includes("主语")) {
-        return "text-teal-950";
-    }
-    if (t.includes("谓语")) {
-        return "text-emerald-950";
-    }
-    if (t.includes("宾语") || t.includes("表语")) {
-        return "text-sky-950";
-    }
-    if (t.includes("定语")) {
-        return "text-sky-900";
-    }
-    if (t.includes("状语")) {
-        return "text-amber-950";
-    }
-    if (t.includes("补语")) {
-        return "text-rose-950";
-    }
-    if (t.includes("同位语")) {
-        return "text-orange-950";
-    }
-    if (t.includes("介词")) {
-        return "text-stone-700";
-    }
-    if (t.includes("从句") || t.includes("非谓语") || t.includes("倒装") || t.includes("虚拟")) {
-        return "text-slate-800";
-    }
-
-    return "text-stone-600";
+    return getGrammarHighlightPalette(type).textClassName;
 }
 
 export function translateGrammarType(type: string): string {

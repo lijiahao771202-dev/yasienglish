@@ -1,0 +1,42 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e7] [cursor=pointer]:
+    - generic [ref=e10]:
+      - text: Compiling
+      - generic [ref=e11]:
+        - generic [ref=e12]: .
+        - generic [ref=e13]: .
+        - generic [ref=e14]: .
+  - alert [ref=e15]
+  - main [ref=e16]:
+    - generic [ref=e21]:
+      - generic [ref=e23]:
+        - generic [ref=e24]:
+          - generic [ref=e31]:
+            - paragraph [ref=e32]: yasi.
+            - paragraph [ref=e33]: sign in
+          - generic [ref=e34]:
+            - paragraph [ref=e35]: No account?
+            - link "Sign up" [ref=e36] [cursor=pointer]:
+              - /url: /register
+        - heading "Sign in" [level=1] [ref=e37]
+        - paragraph [ref=e38]: 邮箱密码登录后，Yasi 会先从云端恢复你的词汇、Elo、写作和阅读进度，再把这一台设备的本地体验重新点亮。
+        - generic [ref=e40]:
+          - generic [ref=e41]:
+            - text: 邮箱
+            - textbox "邮箱" [ref=e42]:
+              - /placeholder: you@example.com
+          - generic [ref=e43]:
+            - generic [ref=e44]:
+              - generic [ref=e45]: 密码
+              - link "忘记密码？" [ref=e46] [cursor=pointer]:
+                - /url: /forgot-password
+            - textbox "密码" [ref=e47]:
+              - /placeholder: ••••••••
+          - button "Sign in" [disabled] [ref=e48]
+      - generic [ref=e49]:
+        - generic [ref=e50]: account + cloud sync
+        - link "Need help? Forgot password" [ref=e52] [cursor=pointer]:
+          - /url: /forgot-password
+          - text: Need help?
+          - generic [ref=e53]: Forgot password
+          - img [ref=e54]

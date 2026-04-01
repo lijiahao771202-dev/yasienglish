@@ -1,0 +1,7 @@
+- generic [active] [ref=e1]:
+  - button "Open Next.js Dev Tools" [ref=e20] [cursor=pointer]:
+    - img [ref=e21]
+  - alert [ref=e15]
+  - generic [ref=e104]:
+    - heading "正在同步数据" [level=2] [ref=e105]
+    - paragraph [ref=e106]: 正在恢复你的云端数据，请稍候。

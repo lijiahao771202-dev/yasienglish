@@ -614,6 +614,19 @@ html[data-bg-theme="noir-rose"] {
   z-index: 10;
 }
 
+.quiz-green-glass {
+  --lg-glass-top: rgba(236, 253, 245, 0.78);
+  --lg-glass-mid: rgba(167, 243, 208, 0.46);
+  --lg-glass-bottom: rgba(74, 222, 128, 0.34);
+  --lg-border-strong: rgba(22, 163, 74, 0.38);
+  --lg-hover-glow: rgba(74, 222, 128, 0.3);
+  --lg-shadow-main: rgba(22, 101, 52, 0.34);
+  --lg-shadow-hover: rgba(22, 101, 52, 0.42);
+  --lg-caustic-right: rgba(110, 231, 183, 0.28);
+  --lg-inner-bottom: rgba(22, 163, 74, 0.24);
+  --lg-rim-light: rgba(236, 253, 245, 0.68);
+}
+
 .liquid-glass-no-frame {
   background: transparent !important;
   border-color: transparent !important;
@@ -799,4 +812,15 @@ html[data-hydrated="0"] .liquid-glass-panel .liquid-glass-sheen {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(120, 113, 108, 0.4);
+}
+
+/* Hide scrollbar utility (keep scroll functionality) */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
 }

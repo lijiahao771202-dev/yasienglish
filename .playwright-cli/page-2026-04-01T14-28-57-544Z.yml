@@ -1,0 +1,97 @@
+- generic [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e4]:
+        - generic [ref=e5]:
+          - button "Back to Welcome" [ref=e6]:
+            - img [ref=e7]
+          - generic [ref=e10]: DeepSeek IELTS
+          - button "Appearance" [ref=e13]:
+            - img [ref=e14]
+          - generic [ref=e20]:
+            - generic [ref=e21]: 阅读币
+            - generic [ref=e22]: "40"
+      - generic [ref=e26]:
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - generic [ref=e31]:
+              - heading "阅读流" [level=3] [ref=e32]
+              - paragraph [ref=e33]: 按新鲜度优先，保持阅读上下文连续。
+            - button "刷新历史" [ref=e167]:
+              - img [ref=e40]
+              - text: 刷新历史
+          - generic [ref=e45]:
+            - button "心理学" [ref=e46]
+            - button "AI 资讯" [ref=e48]
+            - button "AI 生成" [active] [ref=e49]: AI 生成
+            - button "CAT 成长" [ref=e50]
+        - generic [ref=e77]:
+          - generic [ref=e171]:
+            - generic [ref=e172]:
+              - generic [ref=e173]:
+                - paragraph [ref=e174]: AI Studio
+                - heading "智能写作台" [level=4] [ref=e175]
+                - paragraph [ref=e176]: 难度、主题、生成合并为一个连续工作流。
+              - img [ref=e178]
+            - generic [ref=e181]:
+              - button "CET-4 四级 4000 词汇 · 300-400 词 简单句为主，日常话题" [ref=e182]:
+                - generic [ref=e183]:
+                  - img [ref=e185]
+                  - paragraph [ref=e187]: CET-4 四级
+                  - paragraph [ref=e188]: 4000 词汇 · 300-400 词
+                  - paragraph [ref=e189]: 简单句为主，日常话题
+              - button "CET-6 六级 6000 词汇 · 400-500 词 复合句+被动语态" [ref=e190]:
+                - generic [ref=e191]:
+                  - img [ref=e193]
+                  - paragraph [ref=e196]: CET-6 六级
+                  - paragraph [ref=e197]: 6000 词汇 · 400-500 词
+                  - paragraph [ref=e198]: 复合句+被动语态
+              - button "IELTS 雅思 8000+ 词汇 · 500-700 词 学术词汇+复杂句式" [ref=e199]:
+                - generic [ref=e200]:
+                  - img [ref=e202]
+                  - paragraph [ref=e210]: IELTS 雅思
+                  - paragraph [ref=e211]: 8000+ 词汇 · 500-700 词
+                  - paragraph [ref=e212]: 学术词汇+复杂句式
+            - generic [ref=e213]:
+              - heading "主题选择" [level=5] [ref=e215]
+              - generic [ref=e216]:
+                - button "Urbanization" [ref=e217]
+                - button "Globalization" [ref=e218]
+                - button "Scientific Ethics" [ref=e219]
+                - button "Cultural Heritage" [ref=e220]
+                - button "AI & Society" [ref=e221]
+              - generic [ref=e222]:
+                - textbox "输入主题（留空则随机），例如：Quantum Computing" [ref=e223]
+                - button "生成文章" [ref=e224]:
+                  - generic [ref=e225]:
+                    - img [ref=e226]
+                    - text: 生成文章
+          - generic [ref=e78]:
+            - generic [ref=e229]:
+              - heading "历史文章" [level=4] [ref=e230]
+              - generic [ref=e231]: 1 篇
+            - generic [ref=e236] [cursor=pointer]:
+              - generic [ref=e237]:
+                - generic [ref=e238]: 未读
+                - button "Remove article" [ref=e239]:
+                  - img [ref=e240]
+              - generic [ref=e244]:
+                - generic [ref=e245]:
+                  - generic [ref=e246]: AI Studio
+                  - generic [ref=e247]: 4月1日
+                - 'heading "Public Spaces: Bringing People Together or Pushing Them Apart?" [level=4] [ref=e248]'
+                - generic [ref=e250]:
+                  - text: 进入文章
+                  - img [ref=e251]
+  - generic [ref=e152] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e153]:
+      - img [ref=e154]
+    - generic [ref=e158]:
+      - button "Open issues overlay" [ref=e159]:
+        - generic [ref=e160]:
+          - generic [ref=e161]: "0"
+          - generic [ref=e162]: "1"
+        - generic [ref=e163]: Issue
+      - button "Collapse issues badge" [ref=e164]:
+        - img [ref=e165]
+  - alert [ref=e157]
