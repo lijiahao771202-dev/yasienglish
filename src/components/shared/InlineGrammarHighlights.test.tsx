@@ -27,8 +27,8 @@ describe("InlineGrammarHighlights", () => {
         );
 
         expect(html).toContain("谓语");
-        expect(html).toContain("语法功能");
-        expect(html).toContain("这里是核心动作。");
+        expect(html).toContain("说明");
+        expect(html).toContain("这里是核心动作");
         expect(html).toContain("片段义");
         expect(html).toContain("将离开");
         expect(html).toContain("tabindex=\"0\"");
