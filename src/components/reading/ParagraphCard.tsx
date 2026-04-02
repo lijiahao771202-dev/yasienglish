@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useMemo, useState, useRef, useEffect } from "re
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
 import { useTTS } from "@/hooks/useTTS";
@@ -78,15 +79,45 @@ interface GrammarBasicCachePayload {
     difficult_sentences?: GrammarSentenceAnalysis[];
 }
 
-interface TranslationCritique {
-    score?: number;
-    feedback?: string;
-    better_translation?: string;
+interface RewritePracticePrompt {
+    source_sentence_en: string;
+    imitation_prompt_cn: string;
+    rewrite_tips_cn: string[];
+    pattern_focus_cn: string;
+}
+
+interface RewritePracticeScore {
+    total_score: number;
+    dimension_scores: {
+        grammar: number;
+        vocabulary: number;
+        semantics: number;
+        imitation: number;
+    };
+    feedback_cn: string;
+    better_version_en: string;
+    copy_similarity: number;
+    copy_penalty_applied: boolean;
+    improvement_points_cn: string[];
     corrections?: Array<{
-        segment?: string;
-        correction?: string;
-        reason?: string;
+        segment: string;
+        correction: string;
+        reason: string;
+        category?: string;
     }>;
+}
+
+interface RewriteScoreNavigationPayload {
+    scoredAt: string;
+    articleTitle?: string;
+    articleUrl?: string;
+    paragraphOrder: number;
+    source_sentence_en: string;
+    imitation_prompt_cn: string;
+    pattern_focus_cn: string;
+    rewrite_tips_cn: string[];
+    user_rewrite_en: string;
+    score: RewritePracticeScore;
 }
 
 interface PhraseAnalysisResult {
@@ -98,6 +129,13 @@ interface PhraseAnalysisResult {
         definition?: string;
     }>;
 }
+
+type AskQaPair = {
+    id: number;
+    question: string;
+    answer: string;
+    isStreaming: boolean;
+};
 
 const LEGACY_HIGHLIGHT_COLOR_MAP: Record<string, string> = {
     mint: "hsl(158 74% 86%)",
@@ -141,6 +179,7 @@ export function ParagraphCard({
     onToggleFocusLock,
     highlightSnippet,
 }: ParagraphCardProps) {
+    const router = useRouter();
     const sessionUser = useAuthSessionUser();
     const { fontSizeClass, isBionicMode } = useReadingSettings();
     const grammarBasicCacheKey = buildGrammarCacheKey({
@@ -200,7 +239,7 @@ export function ParagraphCard({
     const [isAskLoading, setIsAskLoading] = useState(false);
     const [streamingContent, setStreamingContent] = useState("");
     const qaPairs = (() => {
-        const pairs: Array<{ id: number; question: string; answer: string; isStreaming: boolean }> = [];
+        const pairs: AskQaPair[] = [];
         let pendingQuestion: string | null = null;
         let idx = 0;
 
@@ -235,11 +274,15 @@ export function ParagraphCard({
         return pairs;
     })();
 
-    // Practice State
-    const [isPracticing, setIsPracticing] = useState(false);
-    const [userTranslation, setUserTranslation] = useState("");
-    const [critique, setCritique] = useState<TranslationCritique | null>(null);
-    const [isCritiquing, setIsCritiquing] = useState(false);
+    // Rewrite Practice State
+    const [isRewriteModeOpen, setIsRewriteModeOpen] = useState(false);
+    const [rewritePrompt, setRewritePrompt] = useState<RewritePracticePrompt | null>(null);
+    const [rewriteAttempt, setRewriteAttempt] = useState("");
+    const [rewriteScore, setRewriteScore] = useState<RewritePracticeScore | null>(null);
+    const [isGeneratingRewritePrompt, setIsGeneratingRewritePrompt] = useState(false);
+    const [isScoringRewrite, setIsScoringRewrite] = useState(false);
+    const [seenRewriteSentences, setSeenRewriteSentences] = useState<string[]>([]);
+    const [rewriteCycleHint, setRewriteCycleHint] = useState<string | null>(null);
 
     // Speaking State
     const [isSpeakingOpen, setIsSpeakingOpen] = useState(false);
@@ -687,24 +730,164 @@ export function ParagraphCard({
         window.getSelection()?.removeAllRanges();
     };
 
-    const handleCritique = async () => {
-        if (!userTranslation.trim()) return;
+    const requestRewritePrompt = async (excludedSentences: string[]) => {
+        setIsGeneratingRewritePrompt(true);
+        setRewriteCycleHint(null);
+        setRewriteScore(null);
 
-        setIsCritiquing(true);
         try {
-            const res = await fetch("/api/ai/critique-translation", {
+            const res = await fetch("/api/ai/rewrite-practice", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ originalText: text, userTranslation }),
+                body: JSON.stringify({
+                    action: "generate",
+                    paragraphText: text,
+                    excludedSentences,
+                }),
             });
             const data = await res.json();
-            setCritique(data);
+            if (!res.ok) {
+                throw new Error(typeof data?.error === "string" ? data.error : "Failed to generate rewrite prompt");
+            }
+
+            const prompt = data as RewritePracticePrompt;
+            const selectedSentence = prompt.source_sentence_en?.trim();
+            if (!selectedSentence) {
+                throw new Error("No sentence selected for rewrite practice");
+            }
+
+            setRewritePrompt(prompt);
+            setRewriteAttempt("");
+
+            const seenSet = new Set(excludedSentences);
+            const hasLooped = seenSet.size > 0 && seenSet.has(selectedSentence);
+            if (hasLooped) {
+                setSeenRewriteSentences([selectedSentence]);
+                setRewriteCycleHint("本段句子已轮询完，已重新开始。");
+            } else {
+                setSeenRewriteSentences((prev) => {
+                    if (prev.includes(selectedSentence)) return prev;
+                    return [...prev, selectedSentence];
+                });
+            }
         } catch (err) {
             console.error(err);
+            setRewritePrompt(null);
+            setRewriteCycleHint("暂时无法生成仿写句，请稍后重试。");
         } finally {
-            setIsCritiquing(false);
+            setIsGeneratingRewritePrompt(false);
         }
     };
+
+    const openRewritePractice = () => {
+        setIsRewriteModeOpen(true);
+        setRewriteAttempt("");
+        setRewriteScore(null);
+        void requestRewritePrompt([]);
+    };
+
+    const closeRewritePractice = () => {
+        setIsRewriteModeOpen(false);
+        setRewritePrompt(null);
+        setRewriteAttempt("");
+        setRewriteScore(null);
+        setSeenRewriteSentences([]);
+        setRewriteCycleHint(null);
+    };
+
+    const handleShuffleRewriteSentence = async () => {
+        if (isGeneratingRewritePrompt) return;
+        await requestRewritePrompt(seenRewriteSentences);
+    };
+
+    const navigateToRewriteScorePage = (payload: RewriteScoreNavigationPayload) => {
+        if (typeof window === "undefined") return;
+        const reviewId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        try {
+            window.sessionStorage.setItem(`rewrite-score:${reviewId}`, JSON.stringify(payload));
+            router.push(`/read/rewrite-score?id=${reviewId}`);
+        } catch (error) {
+            console.error("Failed to persist rewrite score payload:", error);
+            router.push("/read/rewrite-score");
+        }
+    };
+
+    const handleScoreRewrite = async () => {
+        if (!rewritePrompt || !rewriteAttempt.trim()) return;
+
+        setIsScoringRewrite(true);
+        try {
+            const res = await fetch("/api/ai/rewrite-practice", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "score",
+                    source_sentence_en: rewritePrompt.source_sentence_en,
+                    imitation_prompt_cn: rewritePrompt.imitation_prompt_cn,
+                    user_rewrite_en: rewriteAttempt,
+                    strict_semantic_match: false,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(typeof data?.error === "string" ? data.error : "Failed to score rewrite practice");
+            }
+            const nextScore = data as RewritePracticeScore;
+            setRewriteScore(nextScore);
+            navigateToRewriteScorePage({
+                scoredAt: new Date().toISOString(),
+                articleTitle,
+                articleUrl,
+                paragraphOrder,
+                source_sentence_en: rewritePrompt.source_sentence_en,
+                imitation_prompt_cn: rewritePrompt.imitation_prompt_cn,
+                pattern_focus_cn: rewritePrompt.pattern_focus_cn,
+                rewrite_tips_cn: rewritePrompt.rewrite_tips_cn,
+                user_rewrite_en: rewriteAttempt,
+                score: nextScore,
+            });
+        } catch (err) {
+            console.error(err);
+            setRewriteScore({
+                total_score: 0,
+                dimension_scores: {
+                    grammar: 0,
+                    vocabulary: 0,
+                    semantics: 0,
+                    imitation: 0,
+                },
+                feedback_cn: "评分服务暂时不可用，请稍后再试。",
+                better_version_en: "",
+                copy_similarity: 0,
+                copy_penalty_applied: false,
+                improvement_points_cn: [],
+            });
+        } finally {
+            setIsScoringRewrite(false);
+        }
+    };
+
+    useEffect(() => {
+        setIsRewriteModeOpen(false);
+        setRewritePrompt(null);
+        setRewriteAttempt("");
+        setRewriteScore(null);
+        setSeenRewriteSentences([]);
+        setRewriteCycleHint(null);
+    }, [text]);
+
+    useEffect(() => {
+        if (!isRewriteModeOpen) return;
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                closeRewritePractice();
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isRewriteModeOpen]);
 
     const handleTranslate = async (forceRegenerate = false) => {
         if (!forceRegenerate && translation) {
@@ -862,6 +1045,14 @@ export function ParagraphCard({
     };
 
     const grammarSentences = grammarHighlightSentences;
+    const grammarSentenceCount = grammarSentences.length;
+    const grammarHighlightCount = grammarSentences.reduce((sum, sentence) => (
+        sum + (Array.isArray(sentence.highlights) ? sentence.highlights.length : 0)
+    ), 0);
+    const grammarModeLabel = grammarDisplayMode === "core" ? "主干视图" : "完整视图";
+    const activeSentenceLabel = grammarSentenceCount > 0
+        ? `句子 ${Math.min(activeSentenceIndex + 1, grammarSentenceCount)}/${grammarSentenceCount}`
+        : "未定位句子";
     const activeGrammarSentence = grammarSentences[activeSentenceIndex]?.sentence?.trim() ?? "";
     const activeDeepSentence = activeGrammarSentence
         ? deepBySentence[sentenceIdentity(activeGrammarSentence)]
@@ -1324,10 +1515,10 @@ export function ParagraphCard({
                     </button>
 
                     <button
-                        onClick={() => setIsPracticing(!isPracticing)}
-                        className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", isPracticing ? "bg-amber-100 text-amber-600" : "text-stone-400 hover:bg-stone-100 hover:text-amber-500")}
+                        onClick={() => (isRewriteModeOpen ? closeRewritePractice() : openRewritePractice())}
+                        className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", isRewriteModeOpen ? "bg-amber-100 text-amber-600" : "text-stone-400 hover:bg-stone-100 hover:text-amber-500")}
                     >
-                        <PenTool className="w-3 h-3" /> Practice
+                        <PenTool className="w-3 h-3" /> 仿写模式
                     </button>
                 </div>
 
@@ -1378,46 +1569,60 @@ export function ParagraphCard({
                             className="relative space-y-4 rounded-[28px] border border-[#eadcc0] bg-[linear-gradient(180deg,rgba(255,251,242,0.96),rgba(248,242,228,0.92))] p-5 shadow-[0_18px_45px_rgba(120,94,42,0.08)] ring-1 ring-white/70 group/grammar"
                         >
                             <div className="space-y-3">
-                                <div className="flex flex-wrap items-center justify-end gap-2">
-                                    <div className="flex items-center rounded-full border border-[#dfcfab] bg-white/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-                                        <button
-                                            onClick={() => setGrammarDisplayMode("core")}
-                                            className={cn(
-                                                "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
-                                                grammarDisplayMode === "core"
-                                                    ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
-                                                    : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
-                                            )}
-                                        >
-                                            主干结构
-                                        </button>
-                                        <button
-                                            onClick={() => setGrammarDisplayMode("full")}
-                                            className={cn(
-                                                "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
-                                                grammarDisplayMode === "full"
-                                                    ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
-                                                    : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
-                                            )}
-                                        >
-                                            完整分析
-                                        </button>
+                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e8d9ba] bg-white/45 px-3 py-2.5">
+                                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                        <span className="rounded-full border border-[#dccaa5] bg-[#f7ecd2] px-2.5 py-1 font-sans text-[10px] font-semibold tracking-[0.08em] text-[#7b541b]">
+                                            {grammarModeLabel}
+                                        </span>
+                                        <span className="rounded-full border border-[#e4d8bf] bg-white/80 px-2.5 py-1 font-sans text-[10px] font-medium text-stone-600">
+                                            {activeSentenceLabel}
+                                        </span>
+                                        <span className="rounded-full border border-[#e4d8bf] bg-white/80 px-2.5 py-1 font-sans text-[10px] font-medium text-stone-600">
+                                            高亮 {grammarHighlightCount}
+                                        </span>
                                     </div>
 
-                                    <button
-                                        onClick={() => void handleToggleDeepAnalysis()}
-                                        disabled={isAnalyzingDeepGrammar || grammarSentences.length === 0}
-                                        className={cn(
-                                            "flex items-center gap-1 rounded-full border px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-colors",
-                                            showDeepAnalysis
-                                                ? "border-[#d8c193] bg-[#f7ebd0] text-[#7b5117]"
-                                                : "border-[#e4d5b5] bg-white/75 text-[#8a5d1f] hover:bg-white",
-                                            "disabled:cursor-not-allowed disabled:opacity-65",
-                                        )}
-                                    >
-                                        {isAnalyzingDeepGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                                        {showDeepAnalysis ? "Hide Deep" : `Deep · -${getReadingCoinCost("grammar_deep")}`}
-                                    </button>
+                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                        <div className="flex items-center rounded-full border border-[#dfcfab] bg-white/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                                            <button
+                                                onClick={() => setGrammarDisplayMode("core")}
+                                                className={cn(
+                                                    "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
+                                                    grammarDisplayMode === "core"
+                                                        ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
+                                                        : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
+                                                )}
+                                            >
+                                                主干结构
+                                            </button>
+                                            <button
+                                                onClick={() => setGrammarDisplayMode("full")}
+                                                className={cn(
+                                                    "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
+                                                    grammarDisplayMode === "full"
+                                                        ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
+                                                        : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
+                                                )}
+                                            >
+                                                完整分析
+                                            </button>
+                                        </div>
+
+                                        <button
+                                            onClick={() => void handleToggleDeepAnalysis()}
+                                            disabled={isAnalyzingDeepGrammar || grammarSentences.length === 0}
+                                            className={cn(
+                                                "flex items-center gap-1 rounded-full border px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-colors",
+                                                showDeepAnalysis
+                                                    ? "border-[#d8c193] bg-[#f7ebd0] text-[#7b5117]"
+                                                    : "border-[#e4d5b5] bg-white/75 text-[#8a5d1f] hover:bg-white",
+                                                "disabled:cursor-not-allowed disabled:opacity-65",
+                                            )}
+                                        >
+                                            {isAnalyzingDeepGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                                            {showDeepAnalysis ? "Hide Deep" : `Deep · -${getReadingCoinCost("grammar_deep")}`}
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {showDeepAnalysis ? (
@@ -1604,70 +1809,174 @@ export function ParagraphCard({
                     )
                 }
 
-                {
-                    isPracticing && (
-                        <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            className="space-y-3"
+            </div>
+
+            {isRewriteModeOpen && typeof document !== "undefined" && createPortal(
+                <div
+                    className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/30 px-4 py-8 backdrop-blur-[1px]"
+                    onClick={closeRewritePractice}
+                >
+                    <motion.div
+                        initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                        className="relative w-full max-w-2xl rounded-[22px] border border-white/70 bg-gradient-to-br from-white via-amber-50/60 to-rose-50/60 shadow-[0_36px_80px_-45px_rgba(15,23,42,0.7)]"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <button
+                            onClick={closeRewritePractice}
+                            className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-stone-200/80 bg-white/85 text-stone-500 transition hover:border-stone-300 hover:text-stone-800"
+                            aria-label="关闭仿写模式"
                         >
-                            <div className="relative">
-                                <PretextTextarea
-                                    value={userTranslation}
-                                    onChange={(e) => setUserTranslation(e.target.value)}
-                                    placeholder="Type your translation here..."
-                                    className="w-full bg-white/50 border border-stone-200 rounded-lg p-3 text-stone-800 focus:outline-none focus:border-amber-400 min-h-[80px] text-sm resize-y"
-                                    minRows={3}
-                                    maxRows={14}
-                                />
+                            <X className="h-4 w-4" />
+                        </button>
+
+                        <div className="space-y-4 p-5 sm:p-6">
+                            <div className="flex items-start justify-between gap-3 pr-9">
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-600">Rewrite Studio</p>
+                                    <h3 className="mt-1 text-xl font-semibold text-stone-900">仿写模式</h3>
+                                    <p className="mt-1 text-xs text-stone-500">从当前段落抽一句练习，先仿写再拿评分反馈。</p>
+                                </div>
                                 <button
-                                    onClick={handleCritique}
-                                    disabled={isCritiquing || !userTranslation.trim()}
-                                    className="absolute bottom-2 right-2 p-1.5 bg-amber-100 hover:bg-amber-200 text-amber-600 rounded-md disabled:opacity-50 transition-colors"
+                                    onClick={() => void handleShuffleRewriteSentence()}
+                                    disabled={isGeneratingRewritePrompt}
+                                    className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-100/70 px-3 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                    {isCritiquing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                    {isGeneratingRewritePrompt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                                    换一句
                                 </button>
                             </div>
 
-                            {critique && (
-                                (() => {
-                                    const corrections = critique.corrections ?? [];
-                                    return (
-                                <div className="bg-amber-50 p-4 rounded-lg border border-amber-100 space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <span className="font-bold text-amber-600">Score: {critique.score}</span>
-                                        <span className="text-xs text-stone-500">AI Feedback</span>
-                                    </div>
-                                    <p className="text-sm text-stone-700">{critique.feedback}</p>
-
-                                    <div className="bg-white/50 p-3 rounded border border-amber-100">
-                                        <p className="text-xs text-stone-500 mb-1">Better Translation:</p>
-                                        <p className="text-sm text-rose-600">{critique.better_translation}</p>
-                                    </div>
-
-                                    {corrections.length > 0 && (
-                                        <div className="space-y-2">
-                                            <p className="text-xs font-semibold text-stone-500">Corrections:</p>
-                                            {corrections.map((c, i: number) => (
-                                                <div key={i} className="text-xs bg-white/50 p-2 rounded">
-                                                    <div className="flex gap-2 items-center mb-1">
-                                                        <span className="text-red-500 line-through decoration-red-400/50">{c.segment}</span>
-                                                        <span className="text-stone-400">→</span>
-                                                        <span className="text-green-600">{c.correction}</span>
-                                                    </div>
-                                                    <p className="text-stone-500 italic">{c.reason}</p>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
+                            {rewriteCycleHint ? (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50/85 px-3 py-2 text-xs font-medium text-amber-700">
+                                    {rewriteCycleHint}
                                 </div>
-                                    );
-                                })()
+                            ) : null}
+
+                            <div className="rounded-2xl border border-stone-200/90 bg-white/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                                {isGeneratingRewritePrompt ? (
+                                    <div className="flex items-center gap-2 text-sm text-stone-500">
+                                        <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                                        正在抽取适合仿写的句子…
+                                    </div>
+                                ) : rewritePrompt ? (
+                                    <p className="text-[19px] leading-8 text-stone-900">
+                                        {rewritePrompt.source_sentence_en}
+                                    </p>
+                                ) : (
+                                    <p className="text-sm text-stone-500">
+                                        暂时无法生成仿写句，请点击“换一句”重试。
+                                    </p>
+                                )}
+                            </div>
+
+                            {rewritePrompt && (
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/80 px-4 py-3">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">灵感提示（可选）</p>
+                                        <p className="mt-1.5 text-sm leading-6 text-emerald-900">{rewritePrompt.imitation_prompt_cn}</p>
+                                        <p className="mt-1 text-[11px] leading-5 text-emerald-700/85">这是仿写灵感线索，不要求和原句语义一一对应，可自由替换场景与主语。</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-violet-200/80 bg-violet-50/80 px-4 py-3">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-700">结构焦点</p>
+                                        <p className="mt-1.5 text-sm leading-6 text-violet-900">{rewritePrompt.pattern_focus_cn}</p>
+                                    </div>
+                                </div>
                             )}
-                        </motion.div>
-                    )
-                }
-            </div>
+
+                            {rewritePrompt?.rewrite_tips_cn?.length ? (
+                                <div className="rounded-2xl border border-stone-200 bg-white/75 px-4 py-3">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">仿写建议</p>
+                                    <div className="mt-2 space-y-1.5">
+                                        {rewritePrompt.rewrite_tips_cn.map((tip, idx) => (
+                                            <p key={`${tip}-${idx}`} className="text-sm text-stone-700">
+                                                {idx + 1}. {tip}
+                                            </p>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            <div className="space-y-3">
+                                <PretextTextarea
+                                    value={rewriteAttempt}
+                                    onChange={(event) => setRewriteAttempt(event.target.value)}
+                                    placeholder="输入你的英文仿写句子…"
+                                    className="w-full rounded-xl border border-stone-200 bg-white/90 px-3 py-2.5 text-sm text-stone-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)] focus:outline-none focus:border-amber-400 min-h-[92px] resize-y"
+                                    minRows={3}
+                                    maxRows={12}
+                                />
+                                <div className="flex justify-end">
+                                    <button
+                                        onClick={() => void handleScoreRewrite()}
+                                        disabled={isScoringRewrite || isGeneratingRewritePrompt || !rewritePrompt || !rewriteAttempt.trim()}
+                                        className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_-10px_rgba(234,88,12,0.75)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55"
+                                    >
+                                        {isScoringRewrite ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                        提交评分
+                                    </button>
+                                </div>
+                            </div>
+
+                            {rewriteScore && (
+                                <div className="space-y-3 rounded-2xl border border-amber-200/90 bg-amber-50/70 px-4 py-4">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-sm font-semibold text-amber-800">总分 {rewriteScore.total_score}</p>
+                                        {rewriteScore.copy_penalty_applied ? (
+                                            <span className="rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                                仿写度降分（{Math.round(rewriteScore.copy_similarity * 100)}%）
+                                            </span>
+                                        ) : (
+                                            <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                                仿写通过
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                        {[
+                                            { label: "语法", value: rewriteScore.dimension_scores.grammar },
+                                            { label: "词汇", value: rewriteScore.dimension_scores.vocabulary },
+                                            { label: "内容表达", value: rewriteScore.dimension_scores.semantics },
+                                            { label: "仿写度", value: rewriteScore.dimension_scores.imitation },
+                                        ].map((item) => (
+                                            <div key={item.label} className="rounded-xl border border-white/70 bg-white/80 px-2.5 py-2 text-center">
+                                                <p className="text-[11px] font-medium text-stone-500">{item.label}</p>
+                                                <p className="mt-1 text-base font-semibold text-stone-900">{item.value}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    <div className="rounded-xl border border-amber-200/70 bg-white/80 px-3 py-2.5">
+                                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">反馈</p>
+                                        <p className="mt-1.5 text-sm leading-6 text-stone-700">{rewriteScore.feedback_cn}</p>
+                                    </div>
+
+                                    {rewriteScore.better_version_en ? (
+                                        <div className="rounded-xl border border-blue-200/80 bg-blue-50/70 px-3 py-2.5">
+                                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">推荐改写</p>
+                                            <p className="mt-1.5 text-sm leading-6 text-blue-900">{rewriteScore.better_version_en}</p>
+                                        </div>
+                                    ) : null}
+
+                                    {rewriteScore.improvement_points_cn?.length ? (
+                                        <div className="rounded-xl border border-stone-200 bg-white/80 px-3 py-2.5">
+                                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">提升建议</p>
+                                            <div className="mt-1.5 space-y-1">
+                                                {rewriteScore.improvement_points_cn.map((point, idx) => (
+                                                    <p key={`${point}-${idx}`} className="text-sm text-stone-700">{idx + 1}. {point}</p>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : null}
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                </div>,
+                document.body
+            )}
 
             {/* Phrase Analysis Popup - Fixed Positioning - Liquid Glass Style */}
             {selectionRect && typeof document !== 'undefined' && createPortal(
@@ -1700,6 +2009,12 @@ export function ParagraphCard({
                     onDeleteNote={() => void handleDeleteReadingMark("note")}
                     onSaveNote={() => void handleCreateReadingMark("note", noteDraft)}
                     onAnalyze={handleAnalyzePhrase}
+                    qaPairs={qaPairs}
+                    question={question}
+                    onQuestionChange={setQuestion}
+                    isAskLoading={isAskLoading}
+                    onAsk={() => void handleAskAI()}
+                    renderAskMarkdown={renderAskMarkdown}
                     onClose={closePhraseAnalysis}
                 />,
                 document.body
@@ -1763,10 +2078,16 @@ interface SelectionActionPopupProps {
     onDeleteNote: () => void;
     onSaveNote: () => void;
     onAnalyze: () => void;
+    qaPairs: AskQaPair[];
+    question: string;
+    onQuestionChange: (value: string) => void;
+    isAskLoading: boolean;
+    onAsk: () => void;
+    renderAskMarkdown: (content: string) => React.ReactNode;
     onClose: () => void;
 }
 
-function SelectionActionPopup({
+export function SelectionActionPopup({
     selectionRect,
     selectedText,
     phraseAnalysis,
@@ -1791,6 +2112,12 @@ function SelectionActionPopup({
     onDeleteNote,
     onSaveNote,
     onAnalyze,
+    qaPairs,
+    question,
+    onQuestionChange,
+    isAskLoading,
+    onAsk,
+    renderAskMarkdown,
     onClose,
 }: SelectionActionPopupProps) {
     const ref = useRef<HTMLDivElement>(null);
@@ -1803,6 +2130,8 @@ function SelectionActionPopup({
     } | null>(null);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
     const [measuredHeight, setMeasuredHeight] = useState(240);
+    const [isAskComposerOpen, setIsAskComposerOpen] = useState(false);
+    const [expandedQaIds, setExpandedQaIds] = useState<number[]>([]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -1827,7 +2156,13 @@ function SelectionActionPopup({
         noteLayerHidden,
         isAnalyzingPhrase,
         isSavingReadingNote,
+        isAskComposerOpen,
+        expandedQaIds,
+        qaPairs,
+        question,
+        isAskLoading,
     ]);
+    const deleteActionCount = Number(canDeleteHighlight) + Number(canDeleteUnderline);
 
     const viewportPadding = 16;
     const popupWidth = 380;
@@ -1952,24 +2287,130 @@ function SelectionActionPopup({
                     </button>
                 </div>
 
-                <div className="mt-2 grid grid-cols-2 gap-2">
+                {deleteActionCount > 0 ? (
+                    <div className={cn("mt-2 grid gap-2", deleteActionCount === 1 ? "grid-cols-1" : "grid-cols-2")}>
+                        {canDeleteHighlight ? (
+                            <button
+                                type="button"
+                                onClick={onDeleteHighlight}
+                                disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                删除高亮
+                            </button>
+                        ) : null}
+                        {canDeleteUnderline ? (
+                            <button
+                                type="button"
+                                onClick={onDeleteUnderline}
+                                disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-2 py-1.5 text-xs font-semibold text-orange-700 transition-colors hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                删除下划线
+                            </button>
+                        ) : null}
+                    </div>
+                ) : null}
+
+                <div className="mt-2">
                     <button
                         type="button"
-                        onClick={onDeleteHighlight}
-                        disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden || !canDeleteHighlight}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => {
+                            setExpandedQaIds([]);
+                            setIsAskComposerOpen((prev) => !prev);
+                        }}
+                        className={cn(
+                            "inline-flex w-full items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors",
+                            isAskComposerOpen
+                                ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                : "border-blue-100 bg-white text-blue-600 hover:bg-blue-50",
+                        )}
                     >
-                        删除高亮
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onDeleteUnderline}
-                        disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden || !canDeleteUnderline}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-2 py-1.5 text-xs font-semibold text-orange-700 transition-colors hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        删除下划线
+                        <MessageCircleQuestion className="h-3.5 w-3.5" />
+                        向AI提问 · -{getReadingCoinCost("ask_ai")}
                     </button>
                 </div>
+
+                {isAskComposerOpen ? (
+                    <div className="mt-2 overflow-hidden rounded-xl border border-blue-100 bg-white/75">
+                        <div className="max-h-52 space-y-2 overflow-y-auto px-2.5 py-2">
+                            {qaPairs.length === 0 ? (
+                                <div className="rounded-lg border border-white/60 bg-white/70 px-2.5 py-2 text-xs text-stone-500">
+                                    输入问题，AI 会基于当前段落和选中文本来回答。
+                                </div>
+                            ) : (
+                                <>
+                                    {qaPairs.map((pair, index) => {
+                                        const isExpanded = expandedQaIds.includes(pair.id);
+                                        const questionTitle = pair.question?.trim() || `问题 ${index + 1}`;
+                                        return (
+                                            <div
+                                                key={pair.id}
+                                                className="overflow-hidden rounded-lg border border-white/70 bg-white/85"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    aria-expanded={isExpanded}
+                                                    onClick={() => {
+                                                        setExpandedQaIds((prev) => (
+                                                            prev.includes(pair.id)
+                                                                ? prev.filter((id) => id !== pair.id)
+                                                                : [...prev, pair.id]
+                                                        ));
+                                                    }}
+                                                    className="flex w-full items-center justify-between gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 px-2.5 py-1.5 text-left text-xs font-medium text-white"
+                                                >
+                                                    <span className="min-w-0 truncate">
+                                                        {`问题 ${index + 1} · ${questionTitle}`}
+                                                    </span>
+                                                    <span className="shrink-0 text-[11px] font-semibold text-indigo-100">
+                                                        {isExpanded ? "收起" : "展开"}
+                                                    </span>
+                                                </button>
+                                                {isExpanded ? (
+                                                    <div className="px-2.5 py-2 text-xs text-stone-700">
+                                                        {pair.answer
+                                                            ? renderAskMarkdown(pair.answer)
+                                                            : <div className="text-stone-400">等待回答…</div>}
+                                                        {pair.isStreaming ? (
+                                                            <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-indigo-500/50 align-middle" />
+                                                        ) : null}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        );
+                                    })}
+                                </>
+                            )}
+                        </div>
+
+                        <div className="border-t border-white/70 px-2.5 py-2">
+                            <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-2 py-1.5">
+                                <input
+                                    type="text"
+                                    value={question}
+                                    onChange={(event) => onQuestionChange(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === "Enter") {
+                                            event.preventDefault();
+                                            onAsk();
+                                        }
+                                    }}
+                                    placeholder={selectedText ? "针对选中文本提问..." : "输入你的问题..."}
+                                    className="w-full bg-transparent border-none text-xs text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-0"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={onAsk}
+                                    disabled={isAskLoading || !question.trim()}
+                                    className="inline-flex h-7 w-7 items-center justify-center rounded-full text-stone-500 transition-all hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    {isAskLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
 
                 {canDeleteNote ? (
                     <div className="mt-2 grid grid-cols-2 gap-2">

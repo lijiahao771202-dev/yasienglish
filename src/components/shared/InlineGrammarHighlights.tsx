@@ -27,9 +27,13 @@ interface ExplanationBlock {
     content: string;
 }
 
-interface ExplanationTone {
-    badgeClassName: string;
-    textClassName: string;
+interface PopupTheme {
+    cardBorder: string;
+    cardTopTint: string;
+    cardBottomTint: string;
+    sectionBorder: string;
+    sectionTint: string;
+    subtleTint: string;
 }
 
 function normalizeExplanationText(raw: string) {
@@ -64,39 +68,31 @@ function buildExplanationBlocks(explanation: string): ExplanationBlock[] {
     if (pitfalls) parsedBlocks.push({ label: "易错", content: pitfalls });
     if (parsedBlocks.length > 0) return parsedBlocks;
 
-    const fallbackLines = text
-        .split(/[。；]/)
+    const fallback = text
+        .split(/[；。]/)
         .map((line) => line.trim())
         .filter(Boolean)
         .slice(0, 3);
 
-    if (fallbackLines.length === 0) return [];
-    if (fallbackLines.length === 1) return [{ label: "说明", content: fallbackLines[0] }];
-    return fallbackLines.map((line, index) => ({ label: `说明${index + 1}`, content: line }));
+    if (fallback.length <= 1) return [{ label: "说明", content: text }];
+    return fallback.map((content, index) => ({ label: `说明${index + 1}`, content }));
 }
 
-function getExplanationTone(label: string): ExplanationTone {
-    if (label.startsWith("结构")) {
-        return {
-            badgeClassName: "bg-sky-100 text-sky-700",
-            textClassName: "text-stone-700",
-        };
-    }
-    if (label.startsWith("作用")) {
-        return {
-            badgeClassName: "bg-emerald-100 text-emerald-700",
-            textClassName: "text-stone-700",
-        };
-    }
-    if (label.startsWith("易错")) {
-        return {
-            badgeClassName: "bg-rose-100 text-rose-700",
-            textClassName: "text-stone-700",
-        };
-    }
+function toRgbaWithAlpha(color: string, alpha: number, fallback: string) {
+    const match = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (!match) return fallback;
+    const [, r, g, b] = match;
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getPopupThemeFromPalette(palette: GrammarHighlightPalette): PopupTheme {
     return {
-        badgeClassName: "bg-stone-100 text-stone-600",
-        textClassName: "text-stone-700",
+        cardBorder: toRgbaWithAlpha(palette.border, 0.85, "rgba(214, 211, 209, 0.78)"),
+        cardTopTint: toRgbaWithAlpha(palette.markerShade, 0.16, "rgba(245, 243, 240, 0.16)"),
+        cardBottomTint: toRgbaWithAlpha(palette.markerBase, 0.14, "rgba(250, 247, 240, 0.18)"),
+        sectionBorder: toRgbaWithAlpha(palette.border, 0.65, "rgba(214, 211, 209, 0.62)"),
+        sectionTint: toRgbaWithAlpha(palette.markerBase, 0.14, "rgba(250, 250, 249, 0.86)"),
+        subtleTint: toRgbaWithAlpha(palette.markerShade, 0.12, "rgba(245, 245, 244, 0.84)"),
     };
 }
 
@@ -172,6 +168,7 @@ export function InlineGrammarHighlights({
                             normalizedType: segment.highlight.normalizedType,
                             layer: segment.highlight.layer,
                         });
+                        const popupTheme = getPopupThemeFromPalette(palette);
                         const overlapCount = segment.highlight.overlapCount ?? 0;
                         const explanationBlocks = buildExplanationBlocks(segment.highlight.explanation);
                         const rangeKey = `${segment.start}-${segment.end}`;
@@ -213,59 +210,98 @@ export function InlineGrammarHighlights({
                                     </span>
                                 ) : null}
                                 {segment.text}
-                                <span className="pointer-events-none absolute bottom-full left-1/2 z-[100] mb-2.5 w-[min(18.5rem,calc(100vw-1rem))] max-h-[min(44vh,18rem)] -translate-x-1/2 overflow-hidden rounded-[22px] border border-rose-100 bg-[linear-gradient(145deg,#fffdfb_0%,#fff7fc_48%,#f4fbff_100%)] p-0 opacity-0 shadow-[0_16px_36px_rgba(244,114,182,0.14)] ring-1 ring-white/85 transition-opacity duration-150 ease-out group-hover/highlight:opacity-100 group-focus/highlight:opacity-100">
-                                    <span className="relative z-10 flex items-center gap-2 border-b border-rose-100/90 bg-[linear-gradient(90deg,rgba(255,255,255,0.98),rgba(255,241,248,0.85))] px-3.5 py-2.5">
+                                <span
+                                    className="pointer-events-none absolute bottom-full left-1/2 z-[100] mb-3 w-[min(20rem,calc(100vw-2rem))] -translate-x-1/2 rounded-[22px] border p-3 opacity-0 shadow-[0_18px_44px_rgba(28,25,23,0.16)] ring-1 ring-white/70 transition-opacity duration-150 ease-out group-hover/highlight:opacity-100 group-focus/highlight:opacity-100"
+                                    style={{
+                                        borderColor: popupTheme.cardBorder,
+                                        backgroundColor: "rgba(255,253,248,0.985)",
+                                        backgroundImage: `linear-gradient(180deg, ${popupTheme.cardTopTint} 0%, ${popupTheme.cardBottomTint} 100%)`,
+                                    }}
+                                >
+                                    <span className="mb-2 flex items-center gap-2 border-b pb-2" style={{ borderColor: popupTheme.sectionBorder }}>
                                         <span
-                                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white shadow-[0_6px_12px_rgba(244,114,182,0.15)] ring-1 ring-rose-100"
-                                            style={{ color: palette.toneClassName.includes("text-stone-") ? "#0f172a" : undefined }}
+                                            className="flex h-7 w-7 items-center justify-center rounded-full border border-white/70 shadow-sm"
+                                            style={{ backgroundColor: palette.markerBase, color: palette.toneClassName === "text-stone-700" ? "#57534e" : undefined }}
                                         >
                                             <BookOpen className={cn("h-3.5 w-3.5", palette.toneClassName)} />
                                         </span>
-                                        <span className="min-w-0 leading-none">
-                                            <span className="block text-[9px] font-semibold uppercase tracking-[0.18em] text-rose-300">
-                                                Syntax Note
+                                        <span className="min-w-0">
+                                            <span className="block text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">
+                                                Grammar Note
                                             </span>
-                                            <span className="mt-0.5 block font-sans text-[13px] font-semibold leading-tight text-stone-800">
+                                            <span className="block font-sans text-sm font-semibold text-stone-900">
                                                 {segment.highlight.translatedLabel}
                                             </span>
                                         </span>
                                     </span>
-                                    <span className="relative z-10 block max-h-[calc(min(44vh,18rem)-42px)] overflow-y-auto px-3.5 py-2.5 font-sans">
-                                        {(explanationBlocks.length > 0 ? explanationBlocks : [{ label: "说明", content: segment.highlight.explanation }]).map((block, idx) => {
-                                            const tone = getExplanationTone(block.label);
-                                            return (
-                                                <span
-                                                    key={`${block.label}-${idx}`}
-                                                    className={cn(
-                                                        "block break-words py-2 text-[12px] leading-[1.72] tracking-[0.01em]",
-                                                        idx === 0 ? "pt-0" : "border-t border-rose-100/85",
-                                                        tone.textClassName,
-                                                    )}
-                                                >
-                                                    <span className={cn("mr-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]", tone.badgeClassName)}>
-                                                        {block.label}
+                                    <span className="space-y-2.5 font-sans">
+                                        <span
+                                            className="block rounded-2xl border px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
+                                            style={{
+                                                borderColor: popupTheme.sectionBorder,
+                                                backgroundColor: "rgba(255,255,255,0.92)",
+                                                backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.92) 0%, ${popupTheme.sectionTint} 100%)`,
+                                            }}
+                                        >
+                                            <span className={cn("mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em]", palette.toneClassName)}>
+                                                语法功能
+                                            </span>
+                                            <span className="block space-y-1.5">
+                                                {explanationBlocks.map((item, index) => (
+                                                    <span key={`${item.label}-${index}`} className="flex items-start gap-1.5 text-xs leading-5 text-stone-700">
+                                                        <span
+                                                            className={cn(
+                                                                "mt-0.5 inline-flex min-w-10 items-center justify-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold leading-none",
+                                                                palette.toneClassName,
+                                                            )}
+                                                            style={{ borderColor: popupTheme.sectionBorder, backgroundColor: "rgba(255,255,255,0.82)" }}
+                                                        >
+                                                            {item.label}
+                                                        </span>
+                                                        <span className="min-w-0 flex-1">{item.content}</span>
                                                     </span>
-                                                    <span className="text-stone-700">{block.content}</span>
-                                                </span>
-                                            );
-                                        })}
+                                                ))}
+                                            </span>
+                                        </span>
                                         {showSegmentTranslation && segment.highlight.segmentTranslation ? (
-                                            <span className="block break-words border-t border-rose-100/85 py-2 text-[12px] leading-[1.72] tracking-[0.01em] text-stone-700">
-                                                <span className="mr-1.5 inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-emerald-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
+                                            <span
+                                                className="block rounded-2xl border px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]"
+                                                style={{
+                                                    borderColor: popupTheme.sectionBorder,
+                                                    backgroundColor: "rgba(255,255,255,0.9)",
+                                                    backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.9) 0%, ${popupTheme.subtleTint} 100%)`,
+                                                }}
+                                            >
+                                                <span className={cn("mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em]", palette.toneClassName)}>
                                                     片段义
                                                 </span>
-                                                <span>{segment.highlight.segmentTranslation}</span>
+                                                <span className="block text-xs leading-5 text-stone-700">
+                                                    {segment.highlight.segmentTranslation}
+                                                </span>
                                             </span>
                                         ) : null}
                                         {Array.isArray(segment.highlight.alternatives) && segment.highlight.alternatives.length > 0 ? (
-                                            <span className="block break-words border-t border-rose-100/85 pt-2 text-[12px] leading-[1.72] tracking-[0.01em] text-stone-700">
-                                                <span className="mr-1.5 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
+                                            <span
+                                                className="block rounded-2xl border px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]"
+                                                style={{
+                                                    borderColor: popupTheme.sectionBorder,
+                                                    backgroundColor: "rgba(255,255,255,0.9)",
+                                                    backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.9) 0%, ${popupTheme.subtleTint} 100%)`,
+                                                }}
+                                            >
+                                                <span className={cn("mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em]", palette.toneClassName)}>
                                                     重叠标签
                                                 </span>
-                                                <span>{segment.highlight.alternatives.slice(0, 3).map((item) => `${item.translatedLabel}：${item.explanation}`).join("；")}</span>
+                                                <span className="block text-xs leading-5 text-stone-700">
+                                                    {segment.highlight.alternatives.slice(0, 3).map((item) => `${item.translatedLabel}：${item.explanation}`).join("；")}
+                                                </span>
                                             </span>
                                         ) : null}
                                     </span>
+                                    <span
+                                        className="absolute left-1/2 top-full -mt-[1px] h-3.5 w-3.5 -translate-x-1/2 rotate-45 rounded-[3px] border-b border-r"
+                                        style={{ borderColor: popupTheme.cardBorder, backgroundColor: "rgba(255,251,244,0.96)" }}
+                                    />
                                 </span>
                             </span>
                         );
@@ -302,16 +338,16 @@ export function InlineGrammarHighlights({
                                 {markerIndex + 1}
                             </span>
                             {marker.translation ? (
-                                <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-2.5 w-[min(16rem,calc(100vw-1rem))] max-h-[min(34vh,12rem)] overflow-hidden rounded-2xl border border-rose-100/90 bg-[linear-gradient(145deg,#fffdfb_0%,#fff7fc_48%,#f4fbff_100%)] p-0 text-left opacity-0 shadow-[0_12px_24px_rgba(244,114,182,0.15)] transition-opacity duration-150 ease-out group-hover/trans-icon:opacity-100 group-focus-within/trans-icon:opacity-100">
-                                    <span className="flex items-center justify-between border-b border-rose-100/90 px-3 py-2">
-                                        <span className="font-sans text-[9px] font-bold uppercase tracking-[0.16em] text-rose-400">
+                                <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-3 w-80 rounded-[22px] border border-stone-200/90 bg-[linear-gradient(180deg,rgba(255,253,248,0.98),rgba(250,247,240,0.96))] p-4 text-left opacity-0 shadow-[0_18px_44px_rgba(28,25,23,0.16)] transition-opacity duration-150 ease-out group-hover/trans-icon:opacity-100 group-focus-within/trans-icon:opacity-100">
+                                    <span className="mb-2 flex items-center justify-between border-b border-stone-200/80 pb-2">
+                                        <span className="font-sans text-[10px] font-bold uppercase tracking-[0.24em] text-amber-700">
                                             第 {markerIndex + 1} 句
                                         </span>
-                                        <span className="rounded-full border border-rose-100 bg-white/90 px-1.5 py-0.5 font-sans text-[9px] font-medium text-rose-400">
+                                        <span className="rounded-full border border-stone-200/80 bg-white/80 px-2 py-0.5 font-sans text-[10px] font-medium text-stone-500">
                                             译文
                                         </span>
                                     </span>
-                                    <span className="block max-h-[calc(min(34vh,12rem)-36px)] overflow-y-auto px-3 py-2.5 font-sans text-[12px] leading-5 text-stone-700">
+                                    <span className="block font-sans text-sm leading-6 text-stone-700">
                                         {marker.translation}
                                     </span>
                                 </span>
