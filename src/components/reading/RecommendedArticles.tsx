@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useFeedStore } from "@/lib/feed-store";
 import { useUserStore } from "@/lib/store";
-import { LiquidGlassPanel } from "@/components/ui/LiquidGlassPanel";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
@@ -544,40 +543,67 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         }
     };
 
+    const shellCardClass = "rounded-[30px] border-4 border-[#d8d3cb] bg-white shadow-[0_12px_0_0_#d8d3cb]";
+    const insetCardClass = "rounded-[24px] border-4 border-[#ebe6de] bg-[#fffdf8]";
+    const utilityButtonClass = "inline-flex h-11 items-center justify-center gap-2 rounded-full border-2 border-[#d8d3cb] bg-white px-4 text-sm font-black text-slate-700 shadow-[0_4px_0_0_#d8d3cb] transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0";
+    const tabItems: Array<{ id: FeedCategory; label: string }> = [
+        { id: "cat_mode", label: "CAT 成长" },
+        { id: "ai_gen", label: "AI 生成" },
+        { id: "psychology", label: "心理学" },
+        { id: "ai_news", label: "AI 资讯" },
+    ];
+
     return (
         <motion.div
-            className="mx-auto w-full max-w-6xl"
+            className="mx-auto w-full max-w-[1180px]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
         >
-            <LiquidGlassPanel className="mb-6 rounded-[26px] p-4 md:p-5">
-                <div className="flex flex-col gap-4">
-                    <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                        <div className="min-w-0">
-                            <h3 className="font-welcome-ui text-[1.45rem] font-semibold leading-none tracking-tight text-slate-900 md:text-[1.68rem]">
-                            阅读流
+            <div className="relative mb-6 overflow-hidden rounded-[34px] border-4 border-[#d8d3cb] bg-[#f4ddff] px-5 py-5 shadow-[0_12px_0_0_#d8d3cb] md:px-6 md:py-6">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(255,255,255,0.48),rgba(255,255,255,0))]" />
+                <div className="pointer-events-none absolute -left-10 top-8 h-24 w-24 rounded-full bg-[#bfdbfe]/50 blur-3xl" />
+                <div className="pointer-events-none absolute right-10 top-3 hidden h-28 w-40 rounded-[28px] border-4 border-[#1f2937] bg-[#1f2937] shadow-[0_10px_0_0_#374151] md:block">
+                    <div className="absolute inset-0 rounded-[24px] bg-[radial-gradient(circle_at_50%_40%,rgba(255,255,255,0.24),rgba(255,255,255,0)_52%)]" />
+                    <div className="absolute left-5 top-4 rounded-full bg-[#fef3c7] px-2 py-1 text-[10px] font-black text-[#92400e]">2x</div>
+                    <div className="absolute inset-x-0 bottom-4 flex justify-center">
+                        <div className="rounded-full border-2 border-[#4f46e5] bg-white px-3 py-1 text-[10px] font-black text-[#4f46e5]">
+                            CAT Focus
+                        </div>
+                    </div>
+                </div>
+
+                <div className="relative flex flex-col gap-5">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                        <div className="max-w-2xl">
+                            <p className="inline-flex items-center gap-2 rounded-full border-2 border-[#d8d3cb] bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-[#4338ca]">
+                                <Sparkles className="h-3.5 w-3.5" />
+                                Reading Flow
+                            </p>
+                            <h3 className="mt-3 font-welcome-display text-[2.3rem] font-black leading-[0.92] tracking-[-0.05em] text-[#111827] md:text-[3rem]">
+                                阅读流
                             </h3>
-                            <p className="mt-1.5 text-sm text-slate-600">
-                                按新鲜度优先，保持阅读上下文连续。
+                            <p className="mt-2 max-w-xl text-sm font-medium leading-6 text-slate-600">
+                                按新鲜度优先，保持阅读上下文连续。把训练、生成和资讯入口收进一个更可爱的阅读工作台里。
                             </p>
                         </div>
 
                         {category === "cat_mode" ? null : (
-                            <div className="relative flex items-center gap-2 self-start rounded-2xl border border-white/65 bg-white/36 p-1.5 backdrop-blur-xl">
+                            <div className="relative flex flex-wrap items-center gap-2">
                                 {category !== "ai_gen" ? (
                                     <button
                                         onClick={() => setShowSettings(!showSettings)}
-                                        className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-slate-600 transition-all hover:bg-white/55 hover:text-slate-800"
+                                        className={utilityButtonClass}
                                         title="设置抓取数量"
                                     >
                                         <Settings2 className="h-4 w-4" />
+                                        数量 {fetchCount}
                                     </button>
                                 ) : null}
                                 <button
                                     onClick={handleRefresh}
                                     disabled={isFetching}
-                                    className="inline-flex h-9 items-center gap-2 rounded-xl px-3.5 text-sm font-semibold text-slate-700 transition-all hover:bg-white/55 disabled:opacity-50"
+                                    className={cn(utilityButtonClass, "border-[#bfdbfe] text-[#1d4ed8] shadow-[0_4px_0_0_#bfdbfe]")}
                                     title={category === "ai_gen" ? "刷新 AI 历史" : `刷新 ${category} 文章`}
                                 >
                                     <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
@@ -590,11 +616,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             initial={{ opacity: 0, y: -8, scale: 0.95 }}
                                             animate={{ opacity: 1, y: 0, scale: 1 }}
                                             exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                            className="absolute right-0 top-full z-50 mt-2 min-w-[170px] rounded-2xl border border-white/65 bg-white/56 p-3 shadow-[0_22px_42px_-22px_rgba(15,23,42,0.6)] ring-1 ring-white/60 backdrop-blur-2xl"
+                                            className="absolute right-0 top-full z-50 mt-3 rounded-[22px] border-4 border-[#d8d3cb] bg-white p-3 shadow-[0_10px_0_0_#d8d3cb]"
                                         >
-                                            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">抓取数量</div>
-                                            <div className="flex gap-1.5">
-                                                {[1, 2, 3, 4, 5].map(count => (
+                                            <div className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">抓取数量</div>
+                                            <div className="flex gap-2">
+                                                {[1, 2, 3, 4, 5].map((count) => (
                                                     <button
                                                         key={count}
                                                         onClick={() => {
@@ -602,10 +628,10 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                                             setShowSettings(false);
                                                         }}
                                                         className={cn(
-                                                            "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all",
+                                                            "rounded-full border-2 px-3 py-1.5 text-xs font-black transition-all",
                                                             fetchCount === count
-                                                                ? "border-cyan-200 bg-cyan-100/70 text-cyan-700"
-                                                                : "border-white/65 bg-white/55 text-slate-500 hover:bg-white/75"
+                                                                ? "border-[#2563eb] bg-[#2563eb] text-white shadow-[0_4px_0_0_#1d4ed8]"
+                                                                : "border-[#d8d3cb] bg-[#fffdf8] text-slate-600"
                                                         )}
                                                     >
                                                         {count}
@@ -619,19 +645,14 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                         )}
                     </div>
 
-                    <div className="grid min-w-0 grid-cols-2 gap-1.5 rounded-2xl border border-white/65 bg-white/28 p-1.5 md:grid-cols-4">
-                        {([
-                            { id: 'cat_mode', label: 'CAT 成长' },
-                            { id: 'ai_gen', label: 'AI 生成' },
-                            { id: 'psychology', label: '心理学' },
-                            { id: 'ai_news', label: 'AI 资讯' },
-                        ] as Array<{ id: FeedCategory; label: string }>).map((tab) => (
+                    <div className="grid gap-3 rounded-[28px] border-4 border-[#d8d3cb] bg-white p-2 md:grid-cols-4">
+                        {tabItems.map((tab) => (
                             <button
                                 key={tab.id}
                                 onClick={() => {
                                     setShowSettings(false);
                                     setCatStartError(null);
-                                    if (tab.id === 'ai_gen' || tab.id === 'cat_mode') {
+                                    if (tab.id === "ai_gen" || tab.id === "cat_mode") {
                                         setCategory(tab.id);
                                         return;
                                     }
@@ -644,32 +665,19 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     }
                                 }}
                                 className={cn(
-                                    "relative w-full rounded-xl px-4 py-2 text-center text-sm font-semibold tracking-wide transition-all",
+                                    "rounded-full px-4 py-3 text-center text-sm font-black tracking-wide transition-all",
                                     category === tab.id
-                                        ? "text-slate-900"
-                                        : "text-slate-500 hover:text-slate-700"
+                                        ? "bg-[#2563eb] text-white shadow-[0_6px_0_0_#1d4ed8]"
+                                        : "bg-[#fffdf8] text-slate-500 hover:text-slate-700"
                                 )}
                             >
-                                {category === tab.id && (
-                                    <motion.div
-                                        layoutId="activeTab"
-                                        className="absolute inset-0 -z-10 rounded-xl border border-white/75 bg-white/70 shadow-[0_14px_24px_-18px_rgba(15,23,42,0.8)] backdrop-blur-xl"
-                                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                                    />
-                                )}
                                 {tab.label}
                             </button>
                         ))}
                     </div>
 
-                    {category === "cat_mode" && catStartError ? (
-                        <div className="rounded-2xl border border-rose-200/80 bg-rose-50/75 px-3 py-2 text-sm font-medium text-rose-700">
-                            {catStartError}
-                        </div>
-                    ) : null}
-
-                    {category !== 'ai_gen' && category !== "cat_mode" && (
-                        <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-white/65 bg-white/24 p-1.5 md:grid-cols-4">
+                    {category !== "ai_gen" && category !== "cat_mode" && (
+                        <div className="grid gap-3 rounded-[28px] border-4 border-[#d8d3cb] bg-white p-2 md:grid-cols-4">
                             {feedViewModel.filterItems.map((filterItem) => {
                                 const Icon = filterItem.icon;
                                 const isActive = activeView === filterItem.id;
@@ -678,24 +686,17 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                         key={filterItem.id}
                                         onClick={() => setActiveView(filterItem.id)}
                                         className={cn(
-                                            "relative flex min-h-[40px] w-full items-center justify-center gap-2 rounded-[12px] px-3 py-2 text-sm font-semibold transition-all duration-300",
+                                            "flex min-h-[48px] items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-black transition-all",
                                             isActive
-                                                ? "text-slate-900"
-                                                : "text-slate-600 hover:text-slate-800"
+                                                ? "bg-[#111827] text-white shadow-[0_6px_0_0_#374151]"
+                                                : "bg-[#fffdf8] text-slate-600 hover:text-slate-800"
                                         )}
                                     >
-                                        {isActive && (
-                                            <motion.div
-                                                layoutId="activeFeedFilter"
-                                                className="absolute inset-0 -z-10 rounded-[12px] border border-white/75 bg-white/72 shadow-[0_14px_24px_-18px_rgba(15,23,42,0.7)] backdrop-blur-xl"
-                                                transition={{ type: "spring", bounce: 0.2, duration: 0.55 }}
-                                            />
-                                        )}
                                         <Icon className="h-4 w-4" />
                                         <span>{filterItem.label}</span>
                                         <span className={cn(
-                                            "rounded-md px-1.5 py-0.5 text-[10px] font-bold",
-                                            isActive ? "bg-slate-900 text-white" : "bg-white/75 text-slate-500"
+                                            "rounded-full px-2 py-0.5 text-[10px] font-black",
+                                            isActive ? "bg-white/20 text-white" : "bg-[#eef2ff] text-[#4338ca]"
                                         )}>
                                             {filterItem.count}
                                         </span>
@@ -705,33 +706,31 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                         </div>
                     )}
                 </div>
-            </LiquidGlassPanel>
+            </div>
+
+            {category === "cat_mode" && catStartError ? (
+                <div className="mb-5 rounded-[24px] border-4 border-[#fecaca] bg-[#fff1f2] px-5 py-3 text-sm font-semibold text-rose-700 shadow-[0_8px_0_0_#fecaca]">
+                    {catStartError}
+                </div>
+            ) : null}
 
             {category === 'ai_gen' ? (
                 <div className="space-y-6">
-                    <LiquidGlassPanel className="relative overflow-hidden rounded-[30px] p-5 md:p-6">
-                        <div className="pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full bg-fuchsia-300/20 blur-3xl" />
-                        <div className="pointer-events-none absolute -left-16 bottom-0 h-48 w-48 rounded-full bg-amber-300/18 blur-3xl" />
-
-                        <div className="relative space-y-5">
-                            <div className="flex items-start justify-between gap-4">
-                                <div>
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">AI Studio</p>
-                                    <h4 className="mt-1 font-newsreader text-[1.5rem] font-semibold leading-tight text-slate-900 md:text-[1.7rem]">
-                                        智能写作台
-                                    </h4>
-                                    <p className="mt-1 text-sm text-slate-600">难度、主题、生成合并为一个连续工作流。</p>
-                                </div>
-                                <motion.div
-                                    animate={{ opacity: [0.72, 1, 0.72] }}
-                                    transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
-                                    className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/70 bg-white/45 text-violet-600 backdrop-blur-xl"
-                                >
-                                    <Sparkles className="h-5 w-5" />
-                                </motion.div>
+                    <section className={cn(shellCardClass, "p-5 md:p-6")}>
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                            <div>
+                                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#64748b]">AI Studio</p>
+                                <h4 className="mt-2 font-welcome-display text-[2rem] font-black leading-[0.95] tracking-[-0.04em] text-[#111827]">
+                                    智能写作台
+                                </h4>
+                                <p className="mt-2 text-sm font-medium text-slate-600">把难度、主题和生成合并为一个连续工作流。</p>
                             </div>
+                            <div className="inline-flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#c4b5fd] bg-[#ede9fe] text-[#6d28d9] shadow-[0_4px_0_0_#c4b5fd]">
+                                <Sparkles className="h-5 w-5" />
+                            </div>
+                        </div>
 
-                            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
+                        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
                                 {([
                                     {
                                         id: 'cet4' as const,
@@ -771,17 +770,16 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             whileHover={{ y: -2 }}
                                             whileTap={{ scale: 0.99 }}
                                             className={cn(
-                                                "group relative overflow-hidden rounded-2xl border p-4 text-left transition-all duration-350",
+                                                "group relative overflow-hidden rounded-[24px] border-4 p-4 text-left transition-all duration-350 shadow-[0_8px_0_0_#d8d3cb]",
                                                 isActive
-                                                    ? diff.activeClass
-                                                    : "border-white/65 bg-white/42 text-slate-700 hover:border-white/80 hover:bg-white/58 hover:shadow-[0_16px_30px_-20px_rgba(15,23,42,0.42)]"
+                                                    ? cn(diff.activeClass, "border-[#d8d3cb]")
+                                                    : "border-[#d8d3cb] bg-[#fffdf8] text-slate-700"
                                             )}
                                         >
-                                            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_12%,rgba(255,255,255,0.58)_0%,rgba(255,255,255,0)_56%)] opacity-70 transition-opacity duration-300 group-hover:opacity-100" />
                                             <div className="relative">
                                                 <div className={cn(
-                                                    "mb-3 inline-flex rounded-xl p-2.5 transition-transform duration-300 group-hover:scale-105",
-                                                    isActive ? diff.iconClass : "bg-white/65 text-slate-500"
+                                                    "mb-3 inline-flex rounded-[18px] border-2 border-[#d8d3cb] p-2.5 transition-transform duration-300 group-hover:scale-105",
+                                                    isActive ? diff.iconClass : "bg-white text-slate-500"
                                                 )}>
                                                     <Icon className="h-4 w-4" />
                                                 </div>
@@ -792,14 +790,14 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                         </motion.button>
                                     );
                                 })}
-                            </div>
+                        </div>
 
-                            <div className="rounded-2xl border border-white/70 bg-white/30 p-3.5 backdrop-blur-xl md:p-4">
-                                <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-                                    <h5 className="text-sm font-semibold text-slate-800">主题选择</h5>
+                        <div className={cn(insetCardClass, "mt-5 p-4 md:p-5")}>
+                                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                    <h5 className="text-sm font-black text-slate-800">主题选择</h5>
                                     {genTopic.trim() && (
                                         <span className={cn(
-                                            "rounded-full border px-2.5 py-1 text-[11px] font-semibold",
+                                            "rounded-full border-2 px-2.5 py-1 text-[11px] font-black",
                                             genDifficulty === 'cet4' && "border-emerald-200/80 bg-emerald-100/75 text-emerald-700",
                                             genDifficulty === 'cet6' && "border-sky-200/80 bg-sky-100/75 text-sky-700",
                                             genDifficulty === 'ielts' && "border-violet-200/80 bg-violet-100/75 text-violet-700"
@@ -818,10 +816,10 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             whileHover={{ y: -1, scale: 1.02 }}
                                             whileTap={{ scale: 0.98 }}
                                             className={cn(
-                                                "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-all duration-250",
+                                                "rounded-full border-2 px-3.5 py-1.5 text-xs font-black transition-all duration-250",
                                                 genTopic === topic
-                                                    ? "border-slate-300/90 bg-white/82 text-slate-900 shadow-[0_9px_18px_-14px_rgba(15,23,42,0.7)]"
-                                                    : "border-white/65 bg-white/50 text-slate-600 hover:border-white/85 hover:bg-white/72 hover:text-slate-800"
+                                                    ? "border-[#111827] bg-[#111827] text-white shadow-[0_4px_0_0_#374151]"
+                                                    : "border-[#d8d3cb] bg-white text-slate-600 hover:text-slate-800"
                                             )}
                                         >
                                             {topic}
@@ -836,7 +834,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                         onChange={(e) => setGenTopic(e.target.value)}
                                         onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
                                         placeholder="输入主题（留空则随机），例如：Quantum Computing"
-                                        className="w-full rounded-xl border border-white/75 bg-white/58 px-4 py-3 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all placeholder:text-slate-400 focus:border-cyan-300/80 focus:bg-white/72 focus:outline-none"
+                                        className="w-full rounded-full border-4 border-[#d8d3cb] bg-white px-5 py-3 text-sm font-medium text-slate-800 transition-all placeholder:text-slate-400 focus:border-[#93c5fd] focus:outline-none"
                                     />
                                     <motion.button
                                         type="button"
@@ -845,13 +843,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                         whileHover={isGenerating ? undefined : { y: -1, scale: 1.01 }}
                                         whileTap={isGenerating ? undefined : { scale: 0.99 }}
                                         className={cn(
-                                            "group relative overflow-hidden rounded-xl px-5 py-3 text-sm font-bold transition-all duration-300",
+                                            "group relative overflow-hidden rounded-full px-5 py-3 text-sm font-black transition-all duration-300",
                                             isGenerating
-                                                ? "cursor-not-allowed border border-white/45 bg-white/34 text-slate-400"
-                                                : "border border-white/80 bg-white/72 text-slate-800 shadow-[0_15px_28px_-18px_rgba(15,23,42,0.74)] hover:bg-white/90 hover:shadow-[0_20px_38px_-18px_rgba(15,23,42,0.85)]"
+                                                ? "cursor-not-allowed border-4 border-[#d8d3cb] bg-[#f8fafc] text-slate-400"
+                                                : "border-4 border-[#1d4ed8] bg-[#2563eb] text-white shadow-[0_6px_0_0_#1d4ed8]"
                                         )}
                                     >
-                                        <span className="pointer-events-none absolute inset-0 bg-[linear-gradient(115deg,rgba(255,255,255,0)_18%,rgba(255,255,255,0.5)_50%,rgba(255,255,255,0)_78%)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                                         <span className="relative flex items-center gap-2">
                                             {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                                             {isGenerating ? "正在生成..." : "生成文章"}
@@ -859,22 +856,21 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     </motion.button>
                                 </div>
                             </div>
-                        </div>
-                    </LiquidGlassPanel>
+                    </section>
 
                     <div className="space-y-3">
                         <div className="flex items-center justify-between px-1">
-                            <h4 className="text-sm font-bold text-slate-800">历史文章</h4>
+                            <h4 className="text-sm font-black text-slate-800">历史文章</h4>
                             <span className="text-xs text-slate-500">{articles.length} 篇</span>
                         </div>
 
                         {articles.length === 0 ? (
-                            <LiquidGlassPanel className="rounded-2xl p-8 text-center text-sm text-slate-500">
+                            <div className={cn(shellCardClass, "p-8 text-center text-sm text-slate-500")}>
                                 暂无历史文章，先生成一篇试试
-                            </LiquidGlassPanel>
+                            </div>
                         ) : (
                             <motion.div
-                                className="flex flex-wrap items-stretch gap-6"
+                                className="grid gap-5 md:grid-cols-2 xl:grid-cols-3"
                                 variants={listContainerVariants}
                                 initial="hidden"
                                 animate="show"
@@ -882,7 +878,6 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                 {sortByNewest(articles).map((item) => (
                                     <motion.div
                                         key={item.link}
-                                        className="w-full sm:w-[320px]"
                                         variants={listItemVariants}
                                     >
                                         <ArticleCard
@@ -902,46 +897,44 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 </div>
             ) : category === "cat_mode" ? (
                 <div className="space-y-6">
-                    <LiquidGlassPanel className="relative overflow-hidden rounded-[34px] p-5 md:p-6">
-                        <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-violet-300/22 blur-3xl" />
-                        <div className="pointer-events-none absolute -left-16 bottom-0 h-56 w-56 rounded-full bg-cyan-300/18 blur-3xl" />
-
-                        <div className="relative space-y-5">
+                    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.95fr)]">
+                        <section className={cn(shellCardClass, "p-5 md:p-6")}>
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
-                                    <h4 className="font-welcome-ui text-[1.5rem] font-semibold tracking-tight text-slate-900 md:text-[1.72rem]">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#64748b]">Training Console</p>
+                                    <h4 className="mt-2 font-welcome-display text-[2rem] font-black tracking-[-0.04em] text-slate-900 md:text-[2.2rem]">
                                         CAT 自适应训练
                                     </h4>
-                                    <p className="mt-1 text-sm text-slate-600">一局一篇，按表现自动调节难度。</p>
+                                    <p className="mt-2 text-sm font-medium text-slate-600">一局一篇，按表现自动调节难度，把入口做成更像首页的可爱训练工作台。</p>
                                 </div>
-                                <div className="inline-flex items-center gap-2 rounded-2xl border border-white/70 bg-white/54 px-3 py-2 text-sm font-semibold text-slate-800 shadow-[0_16px_30px_-22px_rgba(15,23,42,0.6)] backdrop-blur-2xl">
+                                <div className="inline-flex items-center gap-2 rounded-full border-2 border-[#fdba74] bg-[#ffedd5] px-4 py-2 text-sm font-black text-[#9a3412] shadow-[0_4px_0_0_#fdba74]">
                                     <span className="text-base leading-none">{getCatRankIconByTierId(catRank.id)}</span>
                                     <span>{catRank.name}</span>
-                                    <span className="rounded-lg border border-white/70 bg-white/72 px-2 py-0.5 text-xs font-bold text-slate-700">{catScore}</span>
+                                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-black text-slate-700">{catScore}</span>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.2fr_1fr]">
+                            <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1.05fr_1fr]">
                                 <button
                                     type="button"
                                     onClick={() => setIsCatRankOverviewOpen((prev) => !prev)}
-                                    className="w-full rounded-2xl border border-white/70 bg-white/44 px-3.5 py-3 text-left transition-all hover:bg-white/62"
+                                    className={cn(insetCardClass, "w-full px-4 py-4 text-left transition-all hover:-translate-y-0.5")}
                                 >
                                     <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3">
-                                        <span className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/80 bg-white/72 text-xl shadow-[0_12px_20px_-16px_rgba(15,23,42,0.45)]">
+                                        <span className="inline-flex h-12 w-12 items-center justify-center rounded-[18px] border-2 border-[#d8d3cb] bg-white text-xl shadow-[0_4px_0_0_#d8d3cb]">
                                             {getCatRankIconByTierId(catRank.id)}
                                         </span>
                                         <div className="min-w-0">
-                                            <p className="truncate text-sm font-semibold text-slate-900">{catRank.primaryLabel}</p>
-                                            <p className="truncate text-xs text-slate-500">{catRank.secondaryLabel}</p>
+                                            <p className="truncate text-sm font-black text-slate-900">{catRank.primaryLabel}</p>
+                                            <p className="truncate text-xs font-medium text-slate-500">{catRank.secondaryLabel}</p>
                                         </div>
-                                        <div className="rounded-xl border border-white/70 bg-white/72 px-3 py-2 text-right">
-                                            <p className="text-[10px] text-slate-500">下一段</p>
-                                            <p className="text-sm font-semibold text-slate-900">
+                                        <div className="rounded-[18px] border-2 border-[#d8d3cb] bg-white px-3 py-2 text-right">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">下一段</p>
+                                            <p className="text-sm font-black text-slate-900">
                                                 {catScoreToNextRank > 0 ? `还差 ${catScoreToNextRank} 分` : "已到顶段"}
                                             </p>
                                         </div>
-                                        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/75 bg-white/75 text-slate-600">
+                                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#d8d3cb] bg-white text-slate-600">
                                             <ChevronDown
                                                 className={cn(
                                                     "h-4 w-4 transition-transform duration-300",
@@ -952,8 +945,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     </div>
                                 </button>
 
-                                <div className="rounded-2xl border border-white/70 bg-white/44 p-2.5">
-                                    <p className="px-1 text-xs font-semibold text-slate-600">训练主题（可选）</p>
+                                <div className={cn(insetCardClass, "p-4")}>
+                                    <p className="px-1 text-xs font-black uppercase tracking-[0.12em] text-slate-600">训练主题（可选）</p>
                                     <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
                                         <input
                                             type="text"
@@ -961,13 +954,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             onChange={(event) => setCatTopic(event.target.value)}
                                             onKeyDown={(event) => event.key === "Enter" && handleStartCatSession()}
                                             placeholder="例如：睡眠与记忆、AI 与教育"
-                                            className="w-full rounded-xl border border-white/75 bg-white/64 px-4 py-2.5 text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] transition-all placeholder:text-slate-400 focus:border-violet-300/80 focus:bg-white/78 focus:outline-none"
+                                            className="w-full rounded-full border-4 border-[#d8d3cb] bg-white px-4 py-3 text-sm text-slate-800 transition-all placeholder:text-slate-400 focus:border-[#c4b5fd] focus:outline-none"
                                         />
                                         <button
                                             type="button"
                                             onClick={handleStartCatSession}
                                             disabled={isStartingCat}
-                                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/80 bg-white/76 px-4 py-2.5 text-sm font-bold text-slate-800 shadow-[0_15px_28px_-18px_rgba(15,23,42,0.74)] transition-all hover:bg-white/92 disabled:opacity-50"
+                                            className="inline-flex items-center justify-center gap-2 rounded-full border-4 border-[#1d4ed8] bg-[#2563eb] px-5 py-3 text-sm font-black text-white shadow-[0_6px_0_0_#1d4ed8] transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0"
                                         >
                                             {isStartingCat ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
                                             {isStartingCat ? "生成中..." : "开始训练"}
@@ -986,7 +979,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                         transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                                         className="overflow-hidden"
                                     >
-                                        <div className="rounded-2xl border border-white/70 bg-white/40 p-3">
+                                        <div className={cn(insetCardClass, "mt-4 p-3")}>
                                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                                                 {CAT_RANK_TIERS.map((tier) => {
                                                     const isActive = tier.id === catRank.id;
@@ -994,20 +987,20 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                                         <div
                                                             key={tier.id}
                                                             className={cn(
-                                                                "rounded-xl border px-3 py-2.5 transition-all",
+                                                                "rounded-[18px] border-2 px-3 py-2.5 transition-all",
                                                                 isActive
-                                                                    ? "border-violet-300/85 bg-violet-100/72 shadow-[0_12px_20px_-14px_rgba(124,58,237,0.45)]"
-                                                                    : "border-white/65 bg-white/60",
+                                                                    ? "border-violet-300/85 bg-violet-100/72 shadow-[0_4px_0_0_rgba(196,181,253,1)]"
+                                                                    : "border-[#e7e1d7] bg-white",
                                                             )}
                                                         >
                                                             <div className="flex items-center gap-2">
                                                                 <span className="text-base leading-none">{getCatRankIconByTierId(tier.id)}</span>
-                                                                <span className="text-xs font-semibold text-slate-800">{tier.name}</span>
+                                                                <span className="text-xs font-black text-slate-800">{tier.name}</span>
                                                             </div>
                                                             <p className="mt-1 text-[10px] text-slate-500">
                                                                 {tier.maxScore === null ? `${tier.minScore}+` : `${tier.minScore}-${tier.maxScore}`}
                                                             </p>
-                                                            <p className="mt-1 text-[11px] font-semibold text-slate-700">{tier.primaryLabel}</p>
+                                                            <p className="mt-1 text-[11px] font-black text-slate-700">{tier.primaryLabel}</p>
                                                             <p className="text-[11px] text-slate-500">{tier.secondaryLabel}</p>
                                                         </div>
                                                     );
@@ -1017,24 +1010,24 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     </motion.div>
                                 )}
                             </AnimatePresence>
+                        </section>
 
-                            <CatGrowthChart currentScore={catScore} />
-                        </div>
-                    </LiquidGlassPanel>
+                        <CatGrowthChart currentScore={catScore} />
+                    </div>
 
                     <div className="space-y-3">
                         <div className="flex items-center justify-between px-1">
-                            <h4 className="text-sm font-bold text-slate-800">训练历史</h4>
+                            <h4 className="text-sm font-black text-slate-800">训练历史</h4>
                             <span className="text-xs text-slate-500">{articles.length} 篇</span>
                         </div>
 
                         {articles.length === 0 ? (
-                            <LiquidGlassPanel className="rounded-2xl p-8 text-center text-sm text-slate-500">
+                            <div className={cn(shellCardClass, "p-8 text-center text-sm text-slate-500")}>
                                 暂无 CAT 历史文章，先开始一局训练
-                            </LiquidGlassPanel>
+                            </div>
                         ) : (
                             <motion.div
-                                className="flex flex-wrap items-stretch gap-6"
+                                className="grid gap-5 md:grid-cols-2 xl:grid-cols-3"
                                 variants={listContainerVariants}
                                 initial="hidden"
                                 animate="show"
@@ -1042,7 +1035,6 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                 {sortByNewest(articles).map((item) => (
                                     <motion.div
                                         key={item.link}
-                                        className="w-full sm:w-[320px]"
                                         variants={listItemVariants}
                                     >
                                         <ArticleCard
@@ -1063,20 +1055,20 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
             ) : (
                 <div className="space-y-8">
                     {articles.length === 0 && (
-                        <LiquidGlassPanel className="rounded-[24px] py-16 text-center text-sm italic text-slate-500">
+                        <div className={cn(shellCardClass, "py-16 text-center text-sm italic text-slate-500")}>
                             点击刷新按钮抓取文章 / Click refresh to fetch articles
-                        </LiquidGlassPanel>
+                        </div>
                     )}
 
                     {articles.length > 0 && (
                         <div className="space-y-6">
                             {feedViewModel.filteredArticles.length === 0 ? (
-                                <LiquidGlassPanel className="rounded-2xl p-10 text-center text-sm text-slate-500">
+                                <div className={cn(shellCardClass, "p-10 text-center text-sm text-slate-500")}>
                                     这个分组暂时没有文章
-                                </LiquidGlassPanel>
+                                </div>
                             ) : (
                                 <motion.div
-                                    className="flex flex-wrap items-stretch gap-6"
+                                    className="grid gap-5 md:grid-cols-2 xl:grid-cols-3"
                                     variants={listContainerVariants}
                                     initial="hidden"
                                     animate="show"
@@ -1084,7 +1076,6 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     {feedViewModel.filteredArticles.map((item) => (
                                         <motion.div
                                             key={item.link}
-                                            className="w-full sm:w-[320px]"
                                             variants={listItemVariants}
                                         >
                                             <ArticleCard
@@ -1113,12 +1104,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 20, scale: 0.9 }}
                         transition={{ type: "spring", bounce: 0.3, duration: 0.5 }}
-                        className="fixed bottom-8 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/70 bg-white/46 px-5 py-2.5 text-sm font-bold tracking-wide text-slate-800 shadow-[0_22px_42px_-22px_rgba(15,23,42,0.75)] ring-1 ring-white/65 backdrop-blur-2xl"
+                        className="fixed bottom-8 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border-4 border-[#d8d3cb] bg-white px-5 py-2.5 text-sm font-black tracking-wide text-slate-800 shadow-[0_8px_0_0_#d8d3cb]"
                     >
                         {notification.type === 'success' ? (
-                            <div className="w-2 h-2 rounded-full bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.6)] animate-pulse" />
+                            <div className="h-2 w-2 animate-pulse rounded-full bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.6)]" />
                         ) : (
-                            <div className="w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.6)]" />
+                            <div className="h-2 w-2 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.6)]" />
                         )}
                         {notification.message}
                     </motion.div>
@@ -1172,119 +1163,104 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
     const resolvedImageUrl = imageUrl && failedImageUrl !== imageUrl ? imageUrl : null;
 
     return (
-        <LiquidGlassPanel
+        <button
+            type="button"
             onClick={() => {
                 if (isAnyLoading) return;
                 onSelect(item.link);
             }}
             className={cn(
-                "group relative flex h-[306px] cursor-pointer flex-col overflow-hidden rounded-[24px] transition-all duration-500 md:h-[328px] [&>.liquid-glass-content]:h-full [&>.liquid-glass-content]:w-full",
-                isAnyLoading && !isLoading && "opacity-75",
-                isRead
-                    ? "shadow-[0_14px_32px_-26px_rgba(15,23,42,0.68)]"
-                    : "hover:shadow-[0_28px_48px_-26px_rgba(15,23,42,0.95)]"
+                "group relative flex h-full min-h-[320px] cursor-pointer flex-col overflow-hidden rounded-[28px] border-4 border-[#d8d3cb] bg-white text-left shadow-[0_10px_0_0_#d8d3cb] transition-all duration-300",
+                !isAnyLoading && "hover:-translate-y-1",
+                isAnyLoading && !isLoading && "opacity-75"
             )}
         >
-            <div className="relative h-full w-full">
-                <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(120deg,rgba(255,255,255,0)_18%,rgba(255,255,255,0.14)_46%,rgba(255,255,255,0)_72%)] opacity-35" />
-                <div className="absolute inset-0 overflow-hidden bg-slate-100">
-                    <div className={cn("absolute inset-0", fallbackGradient)}>
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(255,255,255,0.38)_0%,rgba(255,255,255,0)_42%),radial-gradient(circle_at_82%_72%,rgba(255,255,255,0.26)_0%,rgba(255,255,255,0)_45%)]" />
-                        <div className="absolute inset-x-0 bottom-0 h-[52%] bg-gradient-to-t from-slate-900/22 via-slate-800/8 to-transparent" />
-                        <div className="absolute left-4 top-4 rounded-full border border-white/60 bg-white/35 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-700 backdrop-blur">
-                            {sourceLabel}
-                        </div>
-                    </div>
-                    {resolvedImageUrl && (
-                        <img
-                            src={resolvedImageUrl}
-                            alt={item.title}
-                            className="h-full w-full object-cover object-center transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-[1.02]"
-                            onError={() => {
-                                setFailedImageUrl(resolvedImageUrl);
-                            }}
-                        />
-                    )}
-
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/50 via-black/14 to-transparent" />
-                <div className="pointer-events-none absolute inset-x-10 bottom-[126px] h-10 rounded-full bg-[linear-gradient(90deg,rgba(125,211,252,0.3),rgba(255,255,255,0.2),rgba(191,219,254,0.3))] blur-xl opacity-90 transition-all duration-700 group-hover:opacity-100" />
-
+            <div className="relative h-40 overflow-hidden border-b-4 border-[#ece7df]">
+                <div className={cn("absolute inset-0", fallbackGradient)} />
+                {resolvedImageUrl && (
+                    <img
+                        src={resolvedImageUrl}
+                        alt={item.title}
+                        className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-[1.03]"
+                        onError={() => {
+                            setFailedImageUrl(resolvedImageUrl);
+                        }}
+                    />
+                )}
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.35),transparent_38%)]" />
                 <div className={cn(
-                    "absolute left-3 top-3 z-10 rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-wide backdrop-blur-sm",
+                    "absolute left-3 top-3 rounded-full border-2 px-2.5 py-1 text-[10px] font-black tracking-wide",
                     statusMeta.className
                 )}>
                     {statusMeta.label}
                 </div>
-
-                {category === "ai_gen" && item.quizCompleted && typeof item.quizScorePercent === "number" && (
-                    <div className="absolute left-3 top-11 z-10 rounded-full border border-cyan-200/80 bg-cyan-100/90 px-2.5 py-1 text-[10px] font-bold tracking-wide text-cyan-800 backdrop-blur-sm">
-                        得分 {item.quizScorePercent}%{typeof item.quizCorrect === "number" && typeof item.quizTotal === "number" ? ` · ${item.quizCorrect}/${item.quizTotal}` : ""}
-                    </div>
-                )}
-
+                <div className="absolute right-3 top-3 rounded-full border-2 border-white/80 bg-white/90 px-2.5 py-1 text-[10px] font-black text-slate-700">
+                    {sourceLabel}
+                </div>
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
                         onDelete(item.link);
                     }}
-                    className="absolute right-3 top-3 z-20 translate-y-2 rounded-full border border-white/35 bg-black/30 p-2 text-white/75 opacity-0 backdrop-blur-md transition-all duration-300 hover:bg-rose-500/90 hover:text-white group-hover:translate-y-0 group-hover:opacity-100"
+                    className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#fbcfe8] bg-white text-rose-500 shadow-[0_4px_0_0_#fbcfe8] transition-all hover:-translate-y-0.5"
                     title="Remove article"
                 >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="h-3.5 w-3.5" />
                 </button>
-                </div>
-
-                <div className="absolute inset-x-0 bottom-0 z-30 h-[46%] min-h-[132px] max-h-[164px] overflow-hidden border-t border-white/30 bg-white/12 px-4 pt-3 backdrop-blur-[30px] backdrop-saturate-[2.2] md:px-5 md:pt-4">
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(216,232,252,0.38)_0%,rgba(173,207,245,0.2)_44%,rgba(146,185,234,0.28)_100%)]" />
-                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.28)_0%,rgba(255,255,255,0.02)_30%,rgba(15,23,42,0.05)_100%)]" />
-                    <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_-22px_34px_-24px_rgba(30,58,138,0.52),inset_0_0_0_1px_rgba(255,255,255,0.18)]" />
-                    <div className="pointer-events-none absolute left-0 top-0 h-full w-[34%] bg-[linear-gradient(96deg,rgba(186,230,253,0.34),rgba(255,255,255,0.02))] blur-xl opacity-90" />
-                    <div className="pointer-events-none absolute right-0 top-0 h-full w-[32%] bg-[linear-gradient(264deg,rgba(191,219,254,0.3),rgba(255,255,255,0.03))] blur-xl opacity-90" />
-                    <div className="pointer-events-none absolute inset-x-10 top-7 h-7 rounded-full bg-[linear-gradient(90deg,rgba(224,242,254,0.52),rgba(255,255,255,0.26),rgba(219,234,254,0.48))] blur-lg opacity-95" />
-                    <div className="pointer-events-none absolute inset-0 opacity-[0.07] mix-blend-overlay bg-[radial-gradient(circle_at_18%_24%,rgba(255,255,255,0.35)_0%,transparent_48%),radial-gradient(circle_at_84%_72%,rgba(191,219,254,0.3)_0%,transparent_52%)]" />
-                    <div className="relative z-10 flex h-full flex-col gap-3.5 pb-3 md:pb-4">
-                        <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600/95">
-                                {sourceLabel}
-                            </span>
-                            <span className="text-[11px] font-medium text-slate-600">
-                                {formatArticleDate(item)}
-                            </span>
-                        </div>
-
-                        <h4 className={cn(
-                            "line-clamp-3 font-newsreader text-[1.34rem] font-semibold leading-[1.06] tracking-[-0.018em] transition-colors md:text-[1.48rem]",
-                            isRead ? "text-slate-700" : "text-slate-900 group-hover:text-slate-800"
-                        )}>
-                            {item.title}
-                        </h4>
-
-                        <div className="mt-auto flex items-center justify-end">
-                            <span className={cn(
-                                "inline-flex items-center gap-1 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-300",
-                                isLoading
-                                    ? "border-slate-200/80 bg-white/82 text-slate-700"
-                                    : isRead
-                                    ? "border-slate-200/70 bg-white/65 text-slate-500 group-hover:border-slate-300 group-hover:text-slate-700"
-                                    : "border-cyan-200/80 bg-cyan-50/82 text-cyan-700 group-hover:-translate-y-0.5 group-hover:border-cyan-300 group-hover:bg-cyan-100/85 group-hover:text-cyan-800"
-                            )}>
-                                {isLoading ? (
-                                    <>
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                        正在加载中
-                                    </>
-                                ) : (
-                                    <>
-                                        {isRead ? "继续阅读" : "进入文章"} <ExternalLink className="h-3 w-3" />
-                                    </>
-                                )}
-                            </span>
-                        </div>
-                    </div>
-                </div>
             </div>
 
+            <div className="flex flex-1 flex-col gap-3 px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                    <span className="rounded-full bg-[#eef2ff] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#4338ca]">
+                        {formatArticleDate(item)}
+                    </span>
+                    {typeof item.quizScorePercent === "number" ? (
+                        <span className="rounded-full border-2 border-[#bfdbfe] bg-[#eff6ff] px-2.5 py-1 text-[10px] font-black text-[#1d4ed8]">
+                            Score {item.quizScorePercent}%
+                        </span>
+                    ) : null}
+                </div>
 
-        </LiquidGlassPanel>
+                <h4 className={cn(
+                    "line-clamp-2 font-welcome-ui text-[1.05rem] font-black leading-[1.2] tracking-[-0.02em] transition-colors md:text-[1.14rem]",
+                    isRead ? "text-slate-700" : "text-slate-900"
+                )}>
+                    {item.title}
+                </h4>
+
+                <p className="line-clamp-3 text-sm leading-6 text-slate-500">
+                    {item.snippet || "打开文章继续训练你的阅读理解与词汇判断。"}
+                </p>
+
+                <div className="mt-auto flex items-end justify-between gap-3 pt-2">
+                    <div className="text-[11px] font-semibold text-slate-400">
+                        {category === "cat_mode"
+                            ? "Adaptive session"
+                            : category === "ai_gen"
+                                ? "Generated lesson"
+                                : `${item.source} · 阅读`}
+                    </div>
+                    <span className={cn(
+                        "inline-flex items-center gap-1 rounded-full border-2 px-3 py-1.5 text-xs font-black transition-all duration-300",
+                        isLoading
+                            ? "border-[#d8d3cb] bg-[#fffdf8] text-slate-700"
+                            : isRead
+                                ? "border-[#d8d3cb] bg-[#fffdf8] text-slate-600"
+                                : "border-[#2563eb] bg-[#2563eb] text-white shadow-[0_4px_0_0_#1d4ed8]"
+                    )}>
+                        {isLoading ? (
+                            <>
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                正在加载
+                            </>
+                        ) : (
+                            <>
+                                {isRead ? "继续阅读" : "进入文章"} <ExternalLink className="h-3 w-3" />
+                            </>
+                        )}
+                    </span>
+                </div>
+            </div>
+        </button>
     );
 }
