@@ -11,12 +11,17 @@
     "start:prod": "scripts/start-prod-server.sh",
     "start:prod:rebuild": "REBUILD=1 scripts/start-prod-server.sh",
     "lint": "eslint",
+    "stitch:list-tools": "node scripts/stitch-list-tools.mjs",
+    "stitch:projects": "node scripts/stitch-projects.mjs",
+    "stitch:generate": "node scripts/stitch-generate.mjs",
+    "stitch:mcp": "node scripts/stitch-mcp.mjs",
     "speech:model:download": "node scripts/download-sherpa-model.mjs",
     "test:unit": "vitest run"
   },
   "dependencies": {
     "@andresaya/edge-tts": "^1.8.0",
     "@chenglou/pretext": "^0.0.3",
+    "@google/stitch-sdk": "^0.0.3",
     "@mozilla/readability": "^0.6.0",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.99.1",
