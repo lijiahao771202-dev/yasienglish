@@ -17,7 +17,6 @@ import {
     Lightbulb,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LiquidGlassPanel } from "@/components/ui/LiquidGlassPanel";
 import { PretextTextarea } from "@/components/ui/PretextTextarea";
 import {
     getQuestionCorrectTokens,
@@ -639,12 +638,12 @@ export function ReadingQuizPanel({
     const shouldUseCompactShell = quizMode === "cat" && floatingCompact && isCatCompactMode && !isSubmitted;
     if (shouldUseCompactShell) {
         return (
-            <div className="flex h-full items-center justify-between gap-3 px-4">
+            <div className="flex h-full items-center justify-between gap-3 bg-[#fffaf0] px-4">
                 <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900">
+                    <p className="truncate text-sm font-black text-[#17120d]">
                         阅读测验 · 第 {Math.min(catSubmittedCount + 1, Math.max(1, questions.length || 1))} 题
                     </p>
-                    <p className="mt-0.5 truncate text-xs text-violet-700/90">
+                    <p className="mt-0.5 truncate text-xs font-semibold text-[#7b45e7]">
                         {catSubmittedCount}/{catMaxAllowed} · 至少 {catMinRequired} 题后按精度自动收卷
                     </p>
                 </div>
@@ -652,7 +651,7 @@ export function ReadingQuizPanel({
                     {hasReachedCatMin ? (
                         <button
                             onClick={handleFinalizeCatSession}
-                            className="rounded-lg border border-violet-200/80 bg-violet-100/80 px-3 py-1.5 text-xs font-bold text-violet-800 transition-colors hover:bg-violet-100"
+                            className="rounded-full border-[3px] border-[#17120d] bg-[#eadcff] px-3 py-1.5 text-xs font-black text-[#6d28d9] shadow-[0_3px_0_rgba(23,18,13,0.1)] transition hover:-translate-y-0.5"
                         >
                             结算
                         </button>
@@ -662,7 +661,7 @@ export function ReadingQuizPanel({
                             clearAutoCompactTimer();
                             setIsCatCompactMode(false);
                         }}
-                        className="rounded-lg border border-white/75 bg-white/80 px-3 py-1.5 text-xs font-bold text-slate-800 shadow-[0_10px_20px_-14px_rgba(15,23,42,0.8)] transition-colors hover:bg-white"
+                        className="rounded-full border-[3px] border-[#17120d] bg-white px-3 py-1.5 text-xs font-black text-[#17120d] shadow-[0_3px_0_rgba(23,18,13,0.1)] transition hover:-translate-y-0.5"
                     >
                         展开作答
                     </button>
@@ -674,20 +673,20 @@ export function ReadingQuizPanel({
     return (
         <div
             data-quiz-panel-root="true"
-            className="flex h-full min-h-[240px] flex-col overflow-hidden"
+            className="flex h-full min-h-[240px] flex-col overflow-hidden bg-[#fffaf0]"
         >
             {/* Header */}
-            <div className="flex-shrink-0 border-b border-white/40 px-4 py-2.5 relative">
+            <div className="relative flex-shrink-0 border-b-[3px] border-[#17120d] bg-[#fff7ea] px-4 py-3">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         {titleNode ? titleNode : (
                             <>
-                                {!isFloatingCat && <Sparkles className="h-5 w-5 text-pink-500" />}
-                                <h3 className={cn("font-newsreader font-bold text-slate-900", isFloatingCat ? "text-base" : "text-lg")}>
+                                {!isFloatingCat && <Sparkles className="h-5 w-5 text-[#d9468f]" />}
+                                <h3 className={cn("font-newsreader font-bold text-[#17120d]", isFloatingCat ? "text-base" : "text-lg")}>
                                     {isFloatingCat ? "阅读测验" : "阅读理解"}
                                 </h3>
                                 {isFloatingCat && (
-                                    <span className="rounded-full border border-white/70 bg-white/70 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                                    <span className="rounded-full border-[3px] border-[#17120d] bg-white px-2 py-0.5 text-[11px] font-black text-[#5f5448]">
                                         {Math.min(catSubmittedCount + (catCurrentCommitted ? 0 : 1), catMaxAllowed)}/{catMaxAllowed}
                                     </span>
                                 )}
@@ -705,9 +704,10 @@ export function ReadingQuizPanel({
                         {!titleNode && !isFloatingCat && (
                             <span
                                 className={cn(
-                                    "rounded-full border px-2.5 py-0.5 text-xs font-bold",
-                                    diffMeta.bgClass,
-                                    diffMeta.color
+                                    "rounded-full border-[3px] border-[#17120d] px-2.5 py-1 text-xs font-black shadow-[0_3px_0_rgba(23,18,13,0.08)]",
+                                    difficulty === "cet4" && "bg-[#b7f0d4] text-[#0f8a69]",
+                                    difficulty === "cet6" && "bg-[#dbeafe] text-[#1d4ed8]",
+                                    difficulty === "ielts" && "bg-[#eadcff] text-[#7b45e7]",
                                 )}
                             >
                                 {diffMeta.label}
@@ -719,7 +719,7 @@ export function ReadingQuizPanel({
                                     clearAutoCompactTimer();
                                     setIsCatCompactMode(true);
                                 }}
-                                className="rounded-full border border-white/70 bg-white/75 p-1.5 text-slate-600 transition-colors hover:bg-white"
+                                className="rounded-full border-[3px] border-[#17120d] bg-white p-1.5 text-[#5f5448] transition hover:-translate-y-0.5 hover:text-[#17120d]"
                                 aria-label="收起答题面板"
                             >
                                 <ChevronDown className="h-3.5 w-3.5" />
@@ -731,17 +731,17 @@ export function ReadingQuizPanel({
                     <motion.div
                         initial={{ opacity: 0, y: -8 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="mt-3 flex items-center gap-3 rounded-2xl border border-white/60 bg-white/50 px-4 py-3"
+                        className="mt-3 flex items-center gap-3 rounded-[1.25rem] border-[3px] border-[#17120d] bg-white px-4 py-3 shadow-[0_4px_0_rgba(23,18,13,0.1)]"
                     >
-                        <Trophy className="h-6 w-6 text-amber-500" />
+                        <Trophy className="h-6 w-6 text-[#f59e0b]" />
                         <div>
-                            <div className="text-2xl font-black text-slate-900">
+                            <div className="text-2xl font-black text-[#17120d]">
                                 {score.correct}
-                                <span className="text-base font-medium text-slate-400">
+                                <span className="text-base font-medium text-[#8b7a66]">
                                     /{score.total}
                                 </span>
                             </div>
-                            <div className="text-xs text-slate-500">
+                            <div className="text-xs font-semibold text-[#7d6e61]">
                                 正确率 {Math.round((score.correct / score.total) * 100)}%
                             </div>
                         </div>
@@ -750,31 +750,31 @@ export function ReadingQuizPanel({
             </div>
 
             {/* Questions Body */}
-            <div className="flex-1 min-h-0 space-y-3 overflow-y-auto overscroll-y-contain px-4 py-2.5 scrollbar-hide">
+            <div className="flex-1 min-h-0 space-y-3 overflow-y-auto overscroll-y-contain bg-[#fffdf8] px-4 py-3 scrollbar-hide">
                 {isLoading && (
-                    <div className="flex flex-col items-center justify-center py-16 text-slate-500">
-                        <Loader2 className="mb-4 h-8 w-8 animate-spin text-pink-400" />
-                        <p className="text-sm font-medium">正在生成题目...</p>
-                        <p className="mt-1 text-xs text-slate-400">
+                    <div className="flex flex-col items-center justify-center rounded-[1.5rem] border-[3px] border-[#17120d] bg-white py-16 text-[#5f5448] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+                        <Loader2 className="mb-4 h-8 w-8 animate-spin text-[#d9468f]" />
+                        <p className="text-sm font-black text-[#17120d]">正在生成题目...</p>
+                        <p className="mt-1 text-xs text-[#8b7a66]">
                             AI 正在分析文章并出题
                         </p>
                     </div>
                 )}
                 {!isLoading && quizMode === "cat" && !isFloatingCat && (
-                    <div className="rounded-xl border border-violet-200/70 bg-violet-50/65 px-3 py-2 text-xs font-medium text-violet-700">
+                    <div className="rounded-[1.25rem] border-[3px] border-[#17120d] bg-[#f3e8ff] px-3 py-2 text-xs font-black text-[#7b45e7] shadow-[0_3px_0_rgba(23,18,13,0.08)]">
                         {catAnsweredHint}
                     </div>
                 )}
                 {!isLoading && quizMode === "cat" && isFloatingCat && (
-                    <div className="rounded-xl border border-violet-200/60 bg-violet-50/55 px-3 py-1.5 text-[11px] font-semibold text-violet-700">
+                    <div className="rounded-[1.1rem] border-[3px] border-[#17120d] bg-[#f3e8ff] px-3 py-1.5 text-[11px] font-black text-[#7b45e7] shadow-[0_3px_0_rgba(23,18,13,0.08)]">
                         已提交 {catSubmittedCount} 题，至少 {catMinRequired} 题后按精度自动收卷
                     </div>
                 )}
 
                 {error && (
-                    <LiquidGlassPanel className="rounded-xl px-4 py-3 text-center text-sm text-red-600">
+                    <div className="rounded-[1.25rem] border-[3px] border-[#17120d] bg-[#ffe4ea] px-4 py-3 text-center text-sm font-black text-[#be123c] shadow-[0_3px_0_rgba(23,18,13,0.08)]">
                         {error}
-                    </LiquidGlassPanel>
+                    </div>
                 )}
 
                 {quizMode === "cat" ? (
@@ -804,7 +804,7 @@ export function ReadingQuizPanel({
                                 />
                             </motion.div>
                         ) : (
-                            <div className="rounded-xl border border-white/60 bg-white/45 px-4 py-3 text-sm text-slate-600">
+                            <div className="rounded-[1.25rem] border-[3px] border-[#17120d] bg-white px-4 py-3 text-sm font-semibold text-[#5f5448] shadow-[0_3px_0_rgba(23,18,13,0.08)]">
                                 本局题目已完成，可直接结算。
                             </div>
                         )}
@@ -836,7 +836,7 @@ export function ReadingQuizPanel({
                                 />
                             </motion.div>
                         ) : (
-                            <div className="rounded-xl border border-white/60 bg-white/45 px-4 py-3 text-sm text-slate-600">
+                            <div className="rounded-[1.25rem] border-[3px] border-[#17120d] bg-white px-4 py-3 text-sm font-semibold text-[#5f5448] shadow-[0_3px_0_rgba(23,18,13,0.08)]">
                                 暂无可用题目，请稍后重试。
                             </div>
                         )}
@@ -846,7 +846,7 @@ export function ReadingQuizPanel({
 
             {/* Footer Actions */}
             {questions.length > 0 && (
-                <div className="flex-shrink-0 border-t border-white/40 px-4 py-2.5">
+                <div className="flex-shrink-0 border-t-[3px] border-[#17120d] bg-[#fff7ea] px-4 py-2.5">
                     {!isSubmitted && quizMode === "cat" ? (
                         <div className={cn("flex flex-wrap gap-2.5", isFloatingCat && "gap-2")}>
                             {!catCurrentCommitted ? (
@@ -854,11 +854,11 @@ export function ReadingQuizPanel({
                                     onClick={handleSubmitCurrentCatQuestion}
                                     disabled={!catCurrentCanSubmit}
                                     className={cn(
-                                        "flex items-center justify-center gap-2 rounded-xl text-sm font-bold transition-all duration-300",
+                                        "flex items-center justify-center gap-2 rounded-[1.2rem] border-[3px] text-sm font-black transition-all duration-300",
                                         isFloatingCat ? "min-w-[128px] flex-1 py-2.5" : "min-w-[180px] flex-1 py-3",
                                         catCurrentCanSubmit
-                                            ? "border border-white/60 bg-white/70 text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] hover:bg-white/90"
-                                            : "border border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
+                                            ? "border-[#17120d] bg-[#2f66f3] text-white shadow-[0_4px_0_rgba(23,18,13,0.12)] hover:-translate-y-0.5"
+                                            : "border-[#17120d] bg-[#d7d4cc] text-[#8b7a66] cursor-not-allowed"
                                     )}
                                 >
                                     <Send className="h-4 w-4" />
@@ -869,11 +869,11 @@ export function ReadingQuizPanel({
                                     onClick={handleNextCatQuestion}
                                     disabled={!hasNextQuestion || hasReachedCatMax}
                                     className={cn(
-                                        "flex items-center justify-center gap-2 rounded-xl text-sm font-bold transition-all duration-300",
+                                        "flex items-center justify-center gap-2 rounded-[1.2rem] border-[3px] text-sm font-black transition-all duration-300",
                                         isFloatingCat ? "min-w-[128px] flex-1 py-2.5" : "min-w-[180px] flex-1 py-3",
                                         hasNextQuestion && !hasReachedCatMax
-                                            ? "border border-white/60 bg-white/70 text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] hover:bg-white/90"
-                                            : "border border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
+                                            ? "border-[#17120d] bg-white text-[#17120d] shadow-[0_4px_0_rgba(23,18,13,0.12)] hover:-translate-y-0.5"
+                                            : "border-[#17120d] bg-[#d7d4cc] text-[#8b7a66] cursor-not-allowed"
                                     )}
                                 >
                                     <ChevronRight className="h-4 w-4" />
@@ -884,11 +884,11 @@ export function ReadingQuizPanel({
                                 onClick={handleFinalizeCatSession}
                                 disabled={!canSubmitCat}
                                 className={cn(
-                                    "flex items-center justify-center gap-2 rounded-xl text-sm font-bold transition-all duration-300",
+                                    "flex items-center justify-center gap-2 rounded-[1.2rem] border-[3px] text-sm font-black transition-all duration-300",
                                     isFloatingCat ? "min-w-[128px] py-2.5 px-4" : "min-w-[180px] flex-1 py-3",
                                     canSubmitCat
-                                        ? "border border-violet-200/70 bg-violet-100/70 text-violet-800 shadow-[0_14px_30px_-20px_rgba(109,40,217,0.55)] hover:bg-violet-100"
-                                        : "border border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
+                                        ? "border-[#17120d] bg-[#eadcff] text-[#6d28d9] shadow-[0_4px_0_rgba(23,18,13,0.12)] hover:-translate-y-0.5"
+                                        : "border-[#17120d] bg-[#d7d4cc] text-[#8b7a66] cursor-not-allowed"
                                 )}
                             >
                                 {isFloatingCat ? "结算" : "完成本局结算"}
@@ -904,10 +904,10 @@ export function ReadingQuizPanel({
                                     onClick={handlePrevStandardQuestion}
                                     disabled={standardAtFirst}
                                     className={cn(
-                                        "flex min-w-[120px] items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold transition-all duration-300",
+                                        "flex min-w-[120px] items-center justify-center gap-2 rounded-[1.2rem] border-[3px] py-3 text-sm font-black transition-all duration-300",
                                         standardAtFirst
-                                            ? "border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
-                                            : "border-white/60 bg-white/50 text-slate-700 hover:bg-white/70"
+                                            ? "border-[#17120d] bg-[#d7d4cc] text-[#8b7a66] cursor-not-allowed"
+                                            : "border-[#17120d] bg-white text-[#17120d] shadow-[0_4px_0_rgba(23,18,13,0.1)] hover:-translate-y-0.5"
                                     )}
                                 >
                                     <ChevronLeft className="h-4 w-4" />
@@ -917,7 +917,7 @@ export function ReadingQuizPanel({
                                     standardCurrentGraded ? (
                                         <button
                                             onClick={handleNextStandardQuestion}
-                                            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/60 bg-white/70 py-3 text-sm font-bold text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] transition-all duration-300 hover:bg-white/90"
+                                            className="flex flex-1 items-center justify-center gap-2 rounded-[1.2rem] border-[3px] border-[#17120d] bg-white py-3 text-sm font-black text-[#17120d] shadow-[0_4px_0_rgba(23,18,13,0.1)] transition-all duration-300 hover:-translate-y-0.5"
                                         >
                                             <ChevronRight className="h-4 w-4" />
                                             下一题
@@ -927,10 +927,10 @@ export function ReadingQuizPanel({
                                             onClick={handleGradeStandardQuestion}
                                             disabled={!standardCurrentAnswered}
                                             className={cn(
-                                                "flex flex-1 items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold transition-all duration-300",
+                                                "flex flex-1 items-center justify-center gap-2 rounded-[1.2rem] border-[3px] py-3 text-sm font-black transition-all duration-300",
                                                 standardCurrentAnswered
-                                                    ? "border-white/60 bg-white/70 text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] hover:bg-white/90"
-                                                    : "border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
+                                                    ? "border-[#17120d] bg-[#2f66f3] text-white shadow-[0_4px_0_rgba(23,18,13,0.12)] hover:-translate-y-0.5"
+                                                    : "border-[#17120d] bg-[#d7d4cc] text-[#8b7a66] cursor-not-allowed"
                                             )}
                                         >
                                             <Send className="h-4 w-4" />
@@ -941,7 +941,7 @@ export function ReadingQuizPanel({
                                     standardCurrentGraded ? (
                                         <button
                                             onClick={handleFinalizeStandardSession}
-                                            className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/60 bg-white/70 py-3 text-sm font-bold text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] transition-all duration-300 hover:bg-white/90"
+                                            className="flex flex-1 items-center justify-center gap-2 rounded-[1.2rem] border-[3px] border-[#17120d] bg-[#2f66f3] py-3 text-sm font-black text-white shadow-[0_4px_0_rgba(23,18,13,0.12)] transition-all duration-300 hover:-translate-y-0.5"
                                         >
                                             <Send className="h-4 w-4" />
                                             完成批改
@@ -951,10 +951,10 @@ export function ReadingQuizPanel({
                                             onClick={handleGradeStandardQuestion}
                                             disabled={!standardCurrentAnswered}
                                             className={cn(
-                                                "flex flex-1 items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold transition-all duration-300",
+                                                "flex flex-1 items-center justify-center gap-2 rounded-[1.2rem] border-[3px] py-3 text-sm font-black transition-all duration-300",
                                                 standardCurrentAnswered
-                                                    ? "border-white/60 bg-white/70 text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] hover:bg-white/90"
-                                                    : "border-white/40 bg-white/30 text-slate-400 cursor-not-allowed"
+                                                    ? "border-[#17120d] bg-[#2f66f3] text-white shadow-[0_4px_0_rgba(23,18,13,0.12)] hover:-translate-y-0.5"
+                                                    : "border-[#17120d] bg-[#d7d4cc] text-[#8b7a66] cursor-not-allowed"
                                             )}
                                         >
                                             <Send className="h-4 w-4" />
@@ -969,7 +969,7 @@ export function ReadingQuizPanel({
                             {quizMode !== "cat" ? (
                                 <button
                                     onClick={handleReset}
-                                    className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/60 bg-white/50 py-3 text-sm font-bold text-slate-600 transition-all hover:bg-white/70"
+                                    className="flex flex-1 items-center justify-center gap-2 rounded-[1.2rem] border-[3px] border-[#17120d] bg-white py-3 text-sm font-black text-[#17120d] transition-all hover:-translate-y-0.5"
                                 >
                                     <RotateCcw className="h-4 w-4" />
                                     重做
@@ -977,7 +977,7 @@ export function ReadingQuizPanel({
                             ) : null}
                             <button
                                 onClick={onClose}
-                                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-white/60 bg-white/70 py-3 text-sm font-bold text-slate-800 shadow-[0_14px_30px_-20px_rgba(15,23,42,0.7)] transition-all hover:bg-white/90"
+                                className="flex flex-1 items-center justify-center gap-2 rounded-[1.2rem] border-[3px] border-[#17120d] bg-[#2f66f3] py-3 text-sm font-black text-white shadow-[0_4px_0_rgba(23,18,13,0.12)] transition-all hover:-translate-y-0.5"
                             >
                                 <ChevronRight className="h-4 w-4" />
                                 完成
@@ -1061,17 +1061,18 @@ function QuestionCard({
     })();
 
     return (
-        <LiquidGlassPanel
+        <div
             className={cn(
-                compact ? "rounded-[18px] p-3.5 transition-all duration-300" : "rounded-2xl p-4 transition-all duration-300",
-                isSubmitted && isCorrect && "ring-1 ring-emerald-300/60",
-                isSubmitted && !isCorrect && "ring-1 ring-rose-300/60"
+                compact ? "rounded-[1.35rem] p-3.5 transition-all duration-300" : "rounded-[1.6rem] p-4 transition-all duration-300",
+                "border-[3px] border-[#17120d] bg-white shadow-[0_5px_0_rgba(23,18,13,0.08)]",
+                isSubmitted && isCorrect && "bg-[#f0fff4]",
+                isSubmitted && !isCorrect && "bg-[#fff5f7]",
             )}
         >
             {/* Question Header */}
             <div className={cn("flex items-start gap-2", compact ? "mb-2.5" : "mb-3")}>
                 <span className={cn(
-                    "flex flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-bold text-white",
+                    "flex flex-shrink-0 items-center justify-center rounded-full border-[3px] border-[#17120d] bg-[#17120d] text-[10px] font-black text-white",
                     compact ? "h-5 w-5" : "h-6 w-6"
                 )}>
                     {index + 1}
@@ -1079,12 +1080,12 @@ function QuestionCard({
                 <div className="min-w-0 flex-1">
                     <div className="mb-1 flex items-center gap-2">
                         {!compact && (
-                            <span className="rounded-md bg-white/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                            <span className="rounded-full border-2 border-[#17120d] bg-[#fff7d8] px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-[#9a6700]">
                                 {typeLabels[question.type] || question.type}
                             </span>
                         )}
                         {!compact && isMultipleSelect && (
-                            <span className="rounded-md border border-cyan-200/80 bg-cyan-100/80 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700">
+                            <span className="rounded-full border-2 border-[#17120d] bg-[#dbeafe] px-2 py-0.5 text-[10px] font-black text-[#1d4ed8]">
                                 可多选
                             </span>
                         )}
@@ -1096,7 +1097,7 @@ function QuestionCard({
                             )
                         )}
                     </div>
-                    <p className={cn("font-medium leading-relaxed text-slate-800", compact ? "text-[15px]" : "text-sm")}>
+                    <p className={cn("font-medium leading-relaxed text-[#17120d]", compact ? "text-[15px]" : "text-sm")}>
                         {question.question}
                     </p>
                 </div>
@@ -1115,22 +1116,22 @@ function QuestionCard({
                                 onClick={() => onSelect(question, option)}
                                 disabled={isSubmitted}
                                 className={cn(
-                                    "w-full rounded-xl border text-left transition-all duration-200",
+                                    "w-full rounded-[1.1rem] border-[3px] text-left transition-all duration-200",
                                     compact ? "px-3 py-2 text-[15px]" : "px-3 py-2.5 text-sm",
-                                    !isSubmitted && isSelected && "border-cyan-300 bg-cyan-50/80 text-slate-900 shadow-sm",
-                                    !isSubmitted && !isSelected && "border-white/60 bg-white/40 text-slate-600 hover:bg-white/60",
-                                    isSubmitted && isCorrectOption && "border-emerald-300 bg-emerald-50/80 text-emerald-800",
-                                    isSubmitted && isSelected && !isCorrectOption && "border-rose-300 bg-rose-50/80 text-rose-700",
-                                    isSubmitted && !isSelected && !isCorrectOption && "border-white/40 bg-white/25 text-slate-400"
+                                    !isSubmitted && isSelected && "border-[#17120d] bg-[#2f66f3] text-white shadow-[0_4px_0_rgba(23,18,13,0.1)]",
+                                    !isSubmitted && !isSelected && "border-[#17120d] bg-[#fffdf8] text-[#4f4336] hover:-translate-y-0.5 hover:bg-[#fff7ea]",
+                                    isSubmitted && isCorrectOption && "border-[#17120d] bg-[#d1fae5] text-[#065f46]",
+                                    isSubmitted && isSelected && !isCorrectOption && "border-[#17120d] bg-[#ffe4ea] text-[#be123c]",
+                                    isSubmitted && !isSelected && !isCorrectOption && "border-[#17120d] bg-[#f4efe4] text-[#8b7a66]"
                                 )}
                             >
                                 <span className="flex items-center gap-2">
                                     {isMultipleSelect ? (
                                         <span className={cn(
-                                            "inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border text-[10px] font-bold",
+                                            "inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border-2 text-[10px] font-black",
                                             isSelected
-                                                ? "border-cyan-400 bg-cyan-100 text-cyan-700"
-                                                : "border-slate-300/80 bg-white/65 text-slate-400"
+                                                ? "border-white bg-white/15 text-white"
+                                                : "border-[#17120d] bg-white text-[#8b7a66]"
                                         )}>
                                             {isSelected ? "✓" : ""}
                                         </span>
@@ -1149,7 +1150,7 @@ function QuestionCard({
                         onChange={(e) => onTextInput(question.id, e.target.value)}
                         disabled={isSubmitted}
                         placeholder="Type your answer here..."
-                        className="w-full rounded-xl border border-white/60 bg-white/40 px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors focus:border-cyan-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                        className="w-full rounded-[1.1rem] border-[3px] border-[#17120d] bg-[#fffdf8] px-3 py-2.5 text-sm text-[#17120d] placeholder:text-[#9d8e7c] transition-colors focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                         rows={compact ? 1 : 2}
                         minRows={compact ? 1 : 2}
                         maxRows={8}
@@ -1165,27 +1166,27 @@ function QuestionCard({
                     transition={{ duration: 0.3 }}
                     className={cn("overflow-hidden", compact ? "mt-2.5 ml-7" : "mt-3 ml-8")}
                 >
-                    <div className="rounded-xl border border-amber-200/60 bg-amber-50/60 px-3 py-2.5">
-                        <p className="mb-1 text-xs font-semibold text-amber-700">
+                    <div className="rounded-[1.1rem] border-[3px] border-[#17120d] bg-[#fff4d7] px-3 py-2.5 shadow-[0_3px_0_rgba(23,18,13,0.08)]">
+                        <p className="mb-1 text-xs font-black text-[#9a6700]">
                             {isCorrect ? "✓ 正确" : `✗ 正确答案：${correctAnswerText}`}
                         </p>
-                        <p className="text-xs leading-relaxed text-amber-800/90">
+                        <p className="text-xs leading-relaxed text-[#6a4a12]">
                             {explanationData.summary || "该题可根据原文关键信息定位作答。"}
                         </p>
 
                         {!compact && (question.sourceParagraph || explanationData.evidence) && (
-                            <div className="mt-2 rounded-lg border border-amber-200/70 bg-white/55 px-2.5 py-2">
-                                <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-amber-700">
+                            <div className="mt-2 rounded-[1rem] border-[3px] border-[#17120d] bg-white px-2.5 py-2">
+                                <div className="mb-1 flex items-center gap-1.5 text-[11px] font-black text-[#9a6700]">
                                     <BookMarked className="h-3.5 w-3.5" />
                                     <span>定位依据</span>
                                     {question.sourceParagraph && (
-                                        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px]">
+                                        <span className="rounded-full border-2 border-[#17120d] bg-[#fff7d8] px-1.5 py-0.5 text-[10px] text-[#17120d]">
                                             段落 {question.sourceParagraph}
                                         </span>
                                     )}
                                 </div>
                                 {explanationData.evidence && (
-                                    <p className="text-[11px] leading-relaxed text-amber-900/85">
+                                    <p className="text-[11px] leading-relaxed text-[#4f4336]">
                                         {explanationData.evidence}
                                     </p>
                                 )}
@@ -1203,10 +1204,10 @@ function QuestionCard({
                                             });
                                         }}
                                         className={cn(
-                                            "mt-2 inline-flex items-center rounded-md border px-2 py-1 text-[11px] font-semibold transition-colors",
+                                            "mt-2 inline-flex items-center rounded-full border-[3px] px-2.5 py-1 text-[11px] font-black transition-colors",
                                             isLocateActive
-                                                ? "border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200/80"
-                                                : "border-amber-200 bg-white/80 text-amber-700 hover:bg-white",
+                                                ? "border-[#17120d] bg-[#ffe08a] text-[#17120d]"
+                                                : "border-[#17120d] bg-[#fff7d8] text-[#9a6700] hover:-translate-y-0.5",
                                         )}
                                     >
                                         {isLocateActive ? `取消定位（第${index + 1}题）` : `定位到原文（第${index + 1}题）`}
@@ -1219,7 +1220,7 @@ function QuestionCard({
                             <div className="mt-2">
                                 <button
                                     onClick={() => onToggleExpand(question.id)}
-                                    className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-700 transition-colors hover:text-amber-800"
+                                    className="flex items-center gap-1.5 text-[11px] font-black text-[#9a6700] transition-colors hover:text-[#7c5300]"
                                 >
                                     <ChevronDown
                                         className={cn(
@@ -1239,24 +1240,24 @@ function QuestionCard({
                                             transition={{ duration: 0.22 }}
                                             className="overflow-hidden"
                                         >
-                                            <div className="mt-2 space-y-2 rounded-lg border border-amber-200/70 bg-white/55 px-2.5 py-2">
+                                            <div className="mt-2 space-y-2 rounded-[1rem] border-[3px] border-[#17120d] bg-white px-2.5 py-2">
                                                 {explanationData.reasoning && (
                                                     <div>
-                                                        <p className="mb-0.5 flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                                                        <p className="mb-0.5 flex items-center gap-1 text-[11px] font-black text-[#9a6700]">
                                                             <Lightbulb className="h-3.5 w-3.5" />
                                                             解题思路
                                                         </p>
-                                                        <p className="text-[11px] leading-relaxed text-amber-900/85">
+                                                        <p className="text-[11px] leading-relaxed text-[#4f4336]">
                                                             {explanationData.reasoning}
                                                         </p>
                                                     </div>
                                                 )}
                                                 {explanationData.trap && (
                                                     <div>
-                                                        <p className="mb-0.5 text-[11px] font-semibold text-amber-700">
+                                                        <p className="mb-0.5 text-[11px] font-black text-[#9a6700]">
                                                             易错点
                                                         </p>
-                                                        <p className="text-[11px] leading-relaxed text-amber-900/85">
+                                                        <p className="text-[11px] leading-relaxed text-[#4f4336]">
                                                             {explanationData.trap}
                                                         </p>
                                                     </div>
@@ -1270,6 +1271,6 @@ function QuestionCard({
                     </div>
                 </motion.div>
             )}
-        </LiquidGlassPanel>
+        </div>
     );
 }

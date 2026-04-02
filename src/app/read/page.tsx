@@ -9,12 +9,11 @@ import { AudioPlayer } from "@/components/shadowing/AudioPlayer";
 import { WritingEditor } from "@/components/writing/WritingEditor";
 import { RecommendedArticles } from "@/components/reading/RecommendedArticles";
 import { ReadingQuizPanel, QuizQuestion, type QuizSubmitPayload } from "@/components/reading/ReadingQuizPanel";
-import { PenTool, ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck, GripVertical } from "lucide-react";
+import { ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import axios from "axios";
 import { useUserStore } from "@/lib/store";
 import { resolveDailyArticleCandidate } from "@/lib/dailyArticle";
-import { LiquidGlassPanel } from "@/components/ui/LiquidGlassPanel";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { applyBackgroundThemeToDocument, BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
 import { useLiveQuery } from "dexie-react-hooks";
@@ -296,7 +295,6 @@ function ReadingPageContent() {
     const [isWideViewport, setIsWideViewport] = useState(false);
     const [isQuizPanelDragging, setIsQuizPanelDragging] = useState(false);
     const [quizPanelOffset, setQuizPanelOffset] = useState({ x: 0, y: 0 });
-    const [quizPanelHeight, setQuizPanelHeight] = useState<number | null>(null);
     const [, forceBackgroundRefresh] = useState(0);
     const { loadUserData, markArticleAsRead: markReadArticleInStore } = useUserStore();
     const activeArticleKey = article ? buildReadingArticleKey(article) : null;
@@ -1338,8 +1336,8 @@ function ReadingPageContent() {
                             type="button"
                             onPointerDown={handleQuizPanelDragStart}
                             className={cn(
-                                "flex h-7 w-12 items-center justify-center rounded-full bg-slate-400/10 text-slate-400 backdrop-blur-sm transition-colors",
-                                isQuizPanelDragging ? "cursor-grabbing bg-slate-400/20 text-slate-600" : "cursor-grab hover:bg-slate-400/20 hover:text-slate-600",
+                                "flex h-8 w-12 items-center justify-center rounded-full border-[3px] border-[#17120d] bg-white text-[#5f5448] shadow-[0_3px_0_rgba(23,18,13,0.08)] transition-colors",
+                                isQuizPanelDragging ? "cursor-grabbing bg-[#fff7d8] text-[#17120d]" : "cursor-grab hover:-translate-y-0.5 hover:text-[#17120d]",
                             )}
                             title="拖动答题框"
                             aria-label="拖动答题框"
@@ -1374,22 +1372,19 @@ function ReadingPageContent() {
                 }}
                 aria-pressed={isQuizMode}
                 className={cn(
-                    "group flex items-center gap-2.5 rounded-full border text-sm font-bold backdrop-blur-xl transition-all duration-300",
+                    "group flex items-center gap-2.5 rounded-full border-[3px] border-[#17120d] text-sm font-black transition-all duration-300",
                     isEmbedded
-                        ? "border-emerald-200/50 bg-white/45 px-4 py-1.5 text-emerald-800 shadow-sm hover:-translate-y-0.5 hover:bg-white/60"
-                        : "border-white/70 bg-white/78 px-5 py-2.5 text-slate-800 shadow-[0_20px_40px_-22px_rgba(15,23,42,0.65)] hover:-translate-y-0.5 hover:bg-white/92 hover:shadow-[0_28px_52px_-20px_rgba(15,23,42,0.75)]"
+                        ? "bg-[#fff7d8] px-4 py-1.5 text-[#17120d] shadow-[0_4px_0_rgba(23,18,13,0.08)] hover:-translate-y-0.5"
+                        : "bg-[#2f66f3] px-5 py-2.5 text-white shadow-[0_6px_0_rgba(23,18,13,0.12)] hover:-translate-y-0.5"
                 )}
             >
-                <ClipboardCheck className={cn("h-4 w-4 transition-transform group-hover:scale-110", isEmbedded ? "text-emerald-600" : "text-pink-500")} />
+                <ClipboardCheck className={cn("h-4 w-4 transition-transform group-hover:scale-110", isEmbedded ? "text-[#9a6700]" : "text-white")} />
                 <span>{isQuizMode ? "隐藏题目" : "开始答题"}</span>
                 <span className={cn(
-                    "rounded-full border px-2 py-0.5 text-[10px] font-bold",
-                    article.difficulty === 'cet4' && "border-emerald-200 bg-emerald-50 text-emerald-700",
-                    article.difficulty === 'cet6' && "border-blue-200 bg-blue-50 text-blue-700",
-                    article.difficulty === 'ielts' && "border-violet-200 bg-violet-50 text-violet-700",
-                    isEmbedded && article.difficulty === 'cet4' && "bg-transparent",
-                    isEmbedded && article.difficulty === 'cet6' && "bg-transparent",
-                    isEmbedded && article.difficulty === 'ielts' && "bg-transparent"
+                    "rounded-full border-2 border-[#17120d] px-2 py-0.5 text-[10px] font-black",
+                    article.difficulty === 'cet4' && "bg-[#b7f0d4] text-[#0f8a69]",
+                    article.difficulty === 'cet6' && "bg-[#dbeafe] text-[#1d4ed8]",
+                    article.difficulty === 'ielts' && "bg-[#eadcff] text-[#7b45e7]"
                 )}>
                     {article.difficulty === 'cet4' ? '四级' : article.difficulty === 'cet6' ? '六级' : '雅思'}
                 </span>
@@ -1404,14 +1399,16 @@ function ReadingPageContent() {
     return (
         <main
             className={cn(
-            "relative overflow-x-clip text-stone-800 transition-all duration-500 ease-in-out",
-            showStandardSplitQuiz
-                ? "min-h-screen px-6 pb-6 pt-24 md:px-12 md:pb-8 md:pt-28"
-                : "min-h-screen p-6 md:p-12",
-            !article && "bg-[#fefce8]",
-            article ? READING_THEMES.find(t => t.id === theme)?.class : undefined,
-            fontClass // Apply Font Global
-        )}
+                "relative overflow-x-clip text-stone-800 transition-all duration-500 ease-in-out",
+                article
+                    ? "min-h-screen bg-[#f7efdc] px-4 pb-8 pt-24 md:px-8 md:pb-10 md:pt-28 xl:px-10"
+                    : showStandardSplitQuiz
+                        ? "min-h-screen px-6 pb-6 pt-24 md:px-12 md:pb-8 md:pt-28"
+                        : "min-h-screen p-6 md:p-12",
+                !article && "bg-[#fefce8]",
+                !article ? READING_THEMES.find(t => t.id === theme)?.class : undefined,
+                fontClass
+            )}
         >
             {!article && (
                 <>
@@ -1423,7 +1420,14 @@ function ReadingPageContent() {
                     <div className="pointer-events-none fixed bottom-[10%] left-[10%] z-0 h-44 w-44 rounded-full bg-[#ddd6fe]/45 blur-3xl" />
                 </>
             )}
-            {shouldUseGlobalBackgroundLayers && (
+            {article && (
+                <>
+                    <div className="pointer-events-none fixed inset-0 z-0 bg-[#f7efdc]" />
+                    <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(253,230,138,0.34),transparent_26%),radial-gradient(circle_at_top_right,rgba(187,247,208,0.28),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(191,219,254,0.24),transparent_24%)]" />
+                    <div className="pointer-events-none fixed inset-x-0 top-0 z-0 h-[240px] bg-[linear-gradient(180deg,rgba(255,255,255,0.52),rgba(255,255,255,0))]" />
+                </>
+            )}
+            {!article && shouldUseGlobalBackgroundLayers && (
                 <>
                     <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.baseLayer}`} />
                     <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.glassLayer}`} />
@@ -1432,7 +1436,7 @@ function ReadingPageContent() {
                     <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.vignetteLayer}`} />
                 </>
             )}
-            {article && theme !== "welcome" && activeReadingFilm && (
+            {!article && theme !== "welcome" && activeReadingFilm && (
                 <motion.div
                     key={`reading-theme-${theme}`}
                     className={cn("pointer-events-none fixed inset-0 z-0", activeReadingFilm)}
@@ -1602,17 +1606,7 @@ function ReadingPageContent() {
                 }}
             >
                 {article ? (
-                    <div className="relative flex items-center gap-1 rounded-full border border-white/55 bg-white/42 px-2 py-1.5 shadow-[0_30px_56px_-38px_rgba(14,30,66,0.8)] ring-1 ring-white/65 backdrop-blur-2xl">
-                        <div className="pointer-events-none absolute inset-0 rounded-full bg-[linear-gradient(115deg,rgba(255,255,255,0.56),rgba(255,255,255,0.18),rgba(255,255,255,0.4))]" />
-                        <button
-                            type="button"
-                            onClick={() => handleRouteExit("home")}
-                            className="group relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-all hover:bg-white/65 hover:text-slate-900"
-                            title="Back to Welcome"
-                        >
-                            <House className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />
-                        </button>
-
+                    <div className="relative flex w-full max-w-[1400px] flex-nowrap items-center gap-2 overflow-x-auto rounded-[1.5rem] border-[3px] border-[#17120d] bg-[#fffaf0] px-3 py-3 shadow-[0_8px_0_rgba(23,18,13,0.14)]">
                         <button
                             onClick={() => {
                                 setArticle(null);
@@ -1621,51 +1615,23 @@ function ReadingPageContent() {
                                 setIsEditMode(false);
                                 setIsQuizMode(false);
                             }}
-                            className="group relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-all hover:bg-white/65 hover:text-slate-900"
-                            title="Back to Article Picker"
+                            className="group inline-flex h-10 items-center justify-center gap-2 rounded-full border-[3px] border-[#17120d] bg-[#fff7d8] px-4 text-sm font-black text-[#17120d] transition hover:-translate-y-0.5"
+                            title="返回文章列表"
                         >
-                            <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
+                            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
+                            <span>返回</span>
                         </button>
 
-                        <div className="relative z-10 flex items-center gap-3 px-2">
-                            <div className="relative flex h-5 w-5 items-center justify-center">
-                                <svg className="h-full w-full -rotate-90" viewBox="0 0 36 36">
-                                    <path
-                                        className="text-stone-200"
-                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="4"
-                                    />
-                                    <path
-                                        className="text-amber-500 transition-all duration-100 ease-out"
-                                        strokeDasharray={`${scrollProgress * 100}, 100`}
-                                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="4"
-                                        strokeLinecap="round"
-                                    />
-                                </svg>
-                            </div>
-
-                            <div className="hidden font-newsreader text-lg font-bold italic text-stone-800 md:block">
-                                DeepSeek IELTS
-                            </div>
-                        </div>
-
-                        <div className="mx-1 h-4 w-px bg-stone-300/50" />
-
-                        <div className="flex items-center gap-1">
+                        <div className="ml-auto flex flex-nowrap items-center gap-2">
                             <button
                                 onClick={toggleFocusMode}
                                 className={cn(
-                                    "flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300",
+                                    "flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all duration-300",
                                     isFocusMode
-                                        ? "bg-slate-900 text-yellow-300 shadow-[0_0_20px_rgba(250,204,21,0.45)] ring-1 ring-yellow-300/45"
-                                        : "text-slate-500 hover:bg-white/65 hover:text-slate-800"
+                                        ? "bg-[#17120d] text-[#fde68a]"
+                                        : "bg-white text-[#5f5448] hover:-translate-y-0.5 hover:text-[#17120d]"
                                 )}
-                                title="Deep Focus Mode"
+                                title="专注模式"
                             >
                                 <Flashlight className={cn("h-4 w-4", isFocusMode && "fill-current")} />
                             </button>
@@ -1673,12 +1639,12 @@ function ReadingPageContent() {
                             <button
                                 onClick={toggleBionicMode}
                                 className={cn(
-                                    "flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300",
+                                    "flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all duration-300",
                                     isBionicMode
-                                        ? "bg-slate-900 text-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.45)] ring-1 ring-cyan-300/45"
-                                        : "text-slate-500 hover:bg-white/65 hover:text-slate-800"
+                                        ? "bg-[#17120d] text-[#93c5fd]"
+                                        : "bg-white text-[#5f5448] hover:-translate-y-0.5 hover:text-[#17120d]"
                                 )}
-                                title="Bionic Reading"
+                                title="仿生阅读"
                             >
                                 <Eye className={cn("h-4 w-4", isBionicMode && "fill-current")} />
                             </button>
@@ -1687,10 +1653,10 @@ function ReadingPageContent() {
                                 <button
                                     onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
                                     className={cn(
-                                        "flex h-10 w-10 items-center justify-center rounded-full transition-all",
-                                        isThemeMenuOpen ? "bg-white/75 text-slate-900" : "text-slate-500 hover:bg-white/65 hover:text-slate-900"
+                                        "flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all",
+                                        isThemeMenuOpen ? "bg-[#ede9fe] text-[#4338ca]" : "bg-white text-[#5f5448] hover:-translate-y-0.5 hover:text-[#17120d]"
                                     )}
-                                    title="Appearance"
+                                    title="外观"
                                 >
                                     <Palette className="h-5 w-5" />
                                 </button>
@@ -1703,26 +1669,22 @@ function ReadingPageContent() {
                             <button
                                 onClick={() => setIsEditMode(!isEditMode)}
                                 className={cn(
-                                    "flex h-10 w-10 items-center justify-center rounded-full transition-all",
-                                    isEditMode ? "bg-amber-100/90 text-amber-700" : "text-slate-500 hover:bg-white/65 hover:text-slate-900"
+                                    "flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all",
+                                    isEditMode ? "bg-[#ffe7aa] text-[#9a6700]" : "bg-white text-[#5f5448] hover:-translate-y-0.5 hover:text-[#17120d]"
                                 )}
-                                title="Edit Text"
+                                title="编辑文本"
                             >
                                 <Edit3 className="h-4 w-4" />
                             </button>
-
-                            <button
-                                onClick={() => setIsWritingMode(true)}
-                                className="ml-1 flex h-10 items-center gap-2 rounded-full border border-white/60 bg-white/70 px-4 text-sm font-bold text-slate-700 shadow-[0_8px_22px_-16px_rgba(15,23,42,0.65)] transition-all hover:bg-white hover:text-slate-900"
-                            >
-                                <PenTool className="h-4 w-4" />
-                                <span>Drill</span>
-                            </button>
                         </div>
 
-                        <div className="relative z-10 ml-1 hidden items-center gap-1 rounded-full border border-white/70 bg-white/62 px-3 py-1 text-xs font-semibold text-slate-700 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.55)] md:flex">
+                        <div className="hidden items-center gap-2 rounded-full border-[3px] border-[#17120d] bg-[#fff7d8] px-3 py-2 text-sm font-black text-[#9a6700] shadow-[0_4px_0_rgba(23,18,13,0.1)] md:flex">
+                            已读 {Math.round(scrollProgress * 100)}%
+                        </div>
+
+                        <div className="hidden items-center gap-2 rounded-full border-[3px] border-[#17120d] bg-[#ffedd5] px-3 py-2 text-sm font-black text-[#9a3412] shadow-[0_4px_0_rgba(23,18,13,0.1)] md:flex">
                             <span>阅读币</span>
-                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">{profile?.reading_coins ?? 0}</span>
+                            <span className="rounded-full border-2 border-[#17120d] bg-white px-2 py-0.5 text-[#b45309]">{profile?.reading_coins ?? 0}</span>
                         </div>
                     </div>
                 ) : (
@@ -1773,7 +1735,7 @@ function ReadingPageContent() {
             >
                 {catNotice ? (
                     <div className="mx-auto mb-4 flex w-full max-w-4xl flex-col gap-2">
-                        <div className="rounded-full border border-violet-200/80 bg-white/72 px-4 py-2 text-center text-sm font-semibold text-violet-700 shadow-[0_18px_36px_-26px_rgba(109,40,217,0.55)] backdrop-blur-xl">
+                        <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
                             {catNotice}
                         </div>
                     </div>
@@ -1843,11 +1805,11 @@ function ReadingPageContent() {
                                 ease: [0.16, 1, 0.3, 1],
                             }}
                             className={cn(
-                                "relative mx-auto grid w-full",
+                                "relative mx-auto grid w-full max-w-[1440px]",
                                 showStandardSplitQuiz && "min-h-0",
-                                "grid gap-6 2xl:gap-8",
+                                "grid gap-6 xl:gap-8 2xl:gap-10",
                                 showStandardSplitQuiz
-                                    ? "grid-cols-1 min-h-0 xl:grid-cols-[minmax(0,1fr)_clamp(360px,36vw,620px)]"
+                                    ? "grid-cols-1 min-h-0 xl:grid-cols-[minmax(0,1fr)_420px]"
                                     : "grid-cols-1",
                             )}
                         >
@@ -1861,7 +1823,7 @@ function ReadingPageContent() {
                             showStandardSplitQuiz
                                 ? "min-h-0 overflow-visible xl:pr-2 xl:pb-2"
                                 : "overflow-visible",
-                            showStandardSplitQuiz ? "max-w-none" : "mx-auto max-w-3xl"
+                            showStandardSplitQuiz ? "max-w-none" : "mx-auto max-w-4xl"
                         )}>
                             {/* Quiz Entry Button - only for AI generated articles */}
                             {!showStandardSplitQuiz && article.isAIGenerated && article.difficulty && (
@@ -1878,6 +1840,7 @@ function ReadingPageContent() {
                                 siteName={article.siteName}
                                 videoUrl={article.videoUrl}
                                 articleUrl={article.url}
+                                difficulty={article.difficulty}
                                 isEditMode={isEditMode}
                                 locateRequest={quizLocateRequest}
                                 readingNotes={readingNotes}
@@ -1897,17 +1860,16 @@ function ReadingPageContent() {
                                     ref={quizPanelWrapperRef}
                                     style={quizPanelStyle}
                                     className={cn(
-                                        "min-h-0 xl:sticky xl:top-28 xl:flex xl:w-full xl:max-w-[620px] xl:flex-col xl:justify-self-end xl:self-start",
+                                        "min-h-0 xl:sticky xl:top-28 xl:flex xl:w-full xl:max-w-[420px] xl:flex-col xl:justify-self-end xl:self-start",
                                         shouldEnableQuizPanelDrag && "transition-transform duration-75",
                                     )}
                                 >
-
-                                    <LiquidGlassPanel
+                                    <div
                                         ref={quizPanelGlassRef}
-                                        className="quiz-green-glass flex flex-col h-full max-h-[85vh] overflow-hidden rounded-[24px] shadow-[0_32px_72px_-56px_rgba(6,95,70,0.7)] [&>.liquid-glass-content]:flex [&>.liquid-glass-content]:h-full [&>.liquid-glass-content]:min-h-0 [&>.liquid-glass-content]:flex-col"
+                                        className="flex h-full max-h-[85vh] flex-col overflow-hidden rounded-[2rem] border-[3px] border-[#17120d] bg-[#fffaf0] shadow-[0_10px_0_rgba(23,18,13,0.14)]"
                                     >
                                         {renderQuizPanel()}
-                                    </LiquidGlassPanel>
+                                    </div>
                                 </div>
                             </div>
                         )}
