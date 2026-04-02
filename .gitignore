@@ -27,6 +27,7 @@
 .DS_Store
 *.pem
 /output/github-artifacts/
+/output/stitch/
 
 # debug
 npm-debug.log*
