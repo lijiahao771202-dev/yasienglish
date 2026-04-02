@@ -6,14 +6,51 @@ import { deleteVocabulary, saveVocabulary } from '@/lib/user-repository';
 import { defaultVocabSourceLabel } from '@/lib/user-sync';
 import { useLiveQuery } from 'dexie-react-hooks';
 import Link from 'next/link';
-import { ArrowRight, BookOpen, Brain, CalendarClock, Clock, Loader2, PencilLine, Plus, Search, Sparkles, Trash2, GraduationCap } from 'lucide-react';
+import { ArrowRight, Brain, CalendarClock, Clock, Loader2, PencilLine, Plus, Search, Sparkles, Trash2, GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
-import { createEmptyCard } from '@/lib/fsrs';
+import { createEmptyCard, isCardGraduated, State } from '@/lib/fsrs';
 import { VocabEditDialog } from '@/components/vocab/VocabEditDialog';
-import Image from 'next/image';
 
 type AddWordFeedback = { type: "success" | "error"; text: string } | null;
+type VocabFilterKey = "all" | "due" | "learning" | "recent" | "graduated";
+
+const VOCAB_FILTERS: Array<{ key: VocabFilterKey; label: string; heading: string; emptyTitle: string; emptyHint: string }> = [
+    { key: "all", label: "全部", heading: "All Words", emptyTitle: "你的词库还空着", emptyHint: "开始阅读或手动添加几个单词吧" },
+    { key: "due", label: "待复习", heading: "Due To Review", emptyTitle: "当前没有待复习卡片", emptyHint: "先去读一点，再回来复习也不错" },
+    { key: "learning", label: "学习中", heading: "In Progress", emptyTitle: "当前没有学习中的卡片", emptyHint: "新卡开始滚动后，这里就会热闹起来" },
+    { key: "recent", label: "最近添加", heading: "Recently Added", emptyTitle: "最近还没有新加入的词卡", emptyHint: "去阅读里捞几个新词进来吧" },
+    { key: "graduated", label: "已熟记", heading: "Graduated", emptyTitle: "还没有熟记毕业的卡片", emptyHint: "等你把一些词真正吃透，这里就会慢慢堆起来" },
+];
+
+function compareByDueThenTimestamp(a: VocabItem, b: VocabItem) {
+    if (a.due !== b.due) return a.due - b.due;
+    return b.timestamp - a.timestamp;
+}
+
+function filterVocabularyByCategory(vocab: VocabItem[], filter: VocabFilterKey, now: number) {
+    switch (filter) {
+        case "all":
+            return [...vocab].sort(compareByDueThenTimestamp);
+        case "due":
+            return vocab.filter((item) => item.due <= now).sort(compareByDueThenTimestamp);
+        case "learning":
+            return vocab
+                .filter((item) => (
+                    (item.state === State.New || item.state === State.Learning || item.state === State.Relearning)
+                    && item.due > now
+                ))
+                .sort(compareByDueThenTimestamp);
+        case "recent":
+            return [...vocab]
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .slice(0, 12);
+        case "graduated":
+            return vocab.filter((item) => isCardGraduated(item)).sort(compareByDueThenTimestamp);
+        default:
+            return [...vocab].sort(compareByDueThenTimestamp);
+    }
+}
 
 function getStateMeta(state: number) {
     if (state === 0) {
@@ -39,15 +76,17 @@ function getStateMeta(state: number) {
 
 function VocabWordCard({
     item,
+    now,
     onEdit,
     onDelete,
 }: {
     item: VocabItem;
+    now: number;
     onEdit: (item: VocabItem) => void;
     onDelete: (word: string) => void;
 }) {
     const stateMeta = getStateMeta(item.state);
-    const isDue = item.due <= Date.now();
+    const isDue = item.due <= now;
     const dueLabel = isDue
         ? "Due now"
         : new Date(item.due).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -108,7 +147,7 @@ function VocabWordCard({
                             {item.source_label || defaultVocabSourceLabel(item.source_kind)}
                         </p>
                         <p className="mt-1.5 text-[13px] italic leading-relaxed text-stone-700 line-clamp-2">
-                            "{item.source_sentence}"
+                            &ldquo;{item.source_sentence}&rdquo;
                         </p>
                     </div>
                 )}
@@ -136,6 +175,7 @@ export default function VocabDashboard() {
     const [isAddingWord, setIsAddingWord] = useState(false);
     const [addWordFeedback, setAddWordFeedback] = useState<AddWordFeedback>(null);
     const [editingItem, setEditingItem] = useState<VocabItem | null>(null);
+    const [activeFilter, setActiveFilter] = useState<VocabFilterKey>("recent");
 
     useEffect(() => {
         document.documentElement.setAttribute('data-bg-theme', 'forest-glass');
@@ -147,22 +187,22 @@ export default function VocabDashboard() {
 
     const vocabQuery = useLiveQuery(() => db.vocabulary.toArray());
     const vocab = useMemo(() => vocabQuery ?? [], [vocabQuery]);
+    const searchQuery = search.trim().toLowerCase();
+    const now = Date.now();
+    const activeFilterMeta = VOCAB_FILTERS.find((filter) => filter.key === activeFilter) ?? VOCAB_FILTERS[3];
 
     // Stats
     const totalWords = vocab.length;
-    const dueWords = vocab.filter((w) => w.due <= Date.now()).length;
-    
-    // Determine which words to show: if searching, show matches; else show only the 12 most recently added.
+    const dueWords = vocab.filter((w) => w.due <= now).length;
+
     const filteredVocab = useMemo(() => {
-        if (!search) {
-            return [...vocab]
-                .sort((a, b) => b.timestamp - a.timestamp) // newest first
-                .slice(0, 12);
+        if (searchQuery) {
+            return vocab
+                .filter((item) => item.word.toLowerCase().includes(searchQuery))
+                .sort(compareByDueThenTimestamp);
         }
-        return vocab
-            .filter(w => w.word.toLowerCase().includes(search.toLowerCase()))
-            .sort((a, b) => a.due - b.due);
-    }, [vocab, search]);
+        return filterVocabularyByCategory(vocab, activeFilter, now);
+    }, [activeFilter, now, searchQuery, vocab]);
 
     // Delete handler
     const handleDelete = async (word: string) => {
@@ -298,41 +338,62 @@ export default function VocabDashboard() {
 
             {/* Toolbar */}
             <div className="sticky top-0 z-40 mx-auto mt-8 max-w-6xl px-5 sm:px-6 pb-4 pt-1">
-                <div className="flex flex-col gap-3 rounded-[1.6rem] border border-white/60 bg-white/30 p-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.06),inset_0_1px_rgba(255,255,255,0.8)] ring-1 ring-black/[0.03] backdrop-blur-[32px] backdrop-saturate-200 sm:flex-row sm:items-center">
-                    
-                    {/* Search Bar */}
-                    <div className="relative flex-1">
-                        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#345b46]/70" />
-                        <input
-                            type="text"
-                            placeholder="搜索你的森林词库..."
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            className="h-12 w-full rounded-xl border border-white/40 bg-white/40 pl-11 pr-4 text-[14px] font-medium text-[#163020] placeholder:text-[#345b46]/50 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all focus:border-emerald-300 focus:bg-white/70 focus:outline-none focus:ring-4 focus:ring-emerald-500/10"
-                        />
+                <div className="flex flex-col gap-3 rounded-[1.6rem] border border-white/60 bg-white/30 p-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.06),inset_0_1px_rgba(255,255,255,0.8)] ring-1 ring-black/[0.03] backdrop-blur-[32px] backdrop-saturate-200">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        {/* Search Bar */}
+                        <div className="relative flex-1">
+                            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#345b46]/70" />
+                            <input
+                                type="text"
+                                placeholder="搜索你的森林词库..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="h-12 w-full rounded-xl border border-white/40 bg-white/40 pl-11 pr-4 text-[14px] font-medium text-[#163020] placeholder:text-[#345b46]/50 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all focus:border-emerald-300 focus:bg-white/70 focus:outline-none focus:ring-4 focus:ring-emerald-500/10"
+                            />
+                        </div>
+
+                        {/* Divider for desktop */}
+                        <div className="hidden h-8 w-px bg-emerald-900/10 sm:block" />
+
+                        {/* Quick Add Bar */}
+                        <form onSubmit={handleManualAddWord} className="flex h-12 flex-1 sm:max-w-[280px] lg:max-w-[340px] items-center gap-2 rounded-xl border border-white/40 bg-white/40 pl-4 pr-1.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all focus-within:border-emerald-300 focus-within:bg-white/70 focus-within:ring-4 focus-within:ring-emerald-500/10">
+                            <GraduationCap className="h-4 w-4 shrink-0 text-[#345b46]/70" />
+                            <input
+                                type="text"
+                                value={manualWord}
+                                onChange={(e) => setManualWord(e.target.value)}
+                                placeholder="手动添加生词..."
+                                className="h-full flex-1 bg-transparent px-2 text-[14px] font-medium text-[#163020] placeholder:text-[#345b46]/50 focus:outline-none"
+                            />
+                            <button
+                                type="submit"
+                                disabled={isAddingWord || !manualWord.trim()}
+                                className="inline-flex h-9 w-14 shrink-0 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#059669,#047857)] text-white shadow-[0_4px_12px_rgba(5,150,105,0.3),inset_0_1px_rgba(255,255,255,0.3)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:shadow-none disabled:text-stone-50"
+                            >
+                                {isAddingWord ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                            </button>
+                        </form>
                     </div>
 
-                    {/* Divider for desktop */}
-                    <div className="hidden h-8 w-px bg-emerald-900/10 sm:block" />
-
-                    {/* Quick Add Bar */}
-                    <form onSubmit={handleManualAddWord} className="flex h-12 flex-1 sm:max-w-[280px] lg:max-w-[340px] items-center gap-2 rounded-xl border border-white/40 bg-white/40 pl-4 pr-1.5 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all focus-within:border-emerald-300 focus-within:bg-white/70 focus-within:ring-4 focus-within:ring-emerald-500/10">
-                        <GraduationCap className="h-4 w-4 shrink-0 text-[#345b46]/70" />
-                        <input
-                            type="text"
-                            value={manualWord}
-                            onChange={(e) => setManualWord(e.target.value)}
-                            placeholder="手动添加生词..."
-                            className="h-full flex-1 bg-transparent px-2 text-[14px] font-medium text-[#163020] placeholder:text-[#345b46]/50 focus:outline-none"
-                        />
-                        <button
-                            type="submit"
-                            disabled={isAddingWord || !manualWord.trim()}
-                            className="inline-flex h-9 w-14 shrink-0 items-center justify-center rounded-lg bg-[linear-gradient(135deg,#059669,#047857)] text-white shadow-[0_4px_12px_rgba(5,150,105,0.3),inset_0_1px_rgba(255,255,255,0.3)] transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:shadow-none disabled:text-stone-50"
-                        >
-                            {isAddingWord ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                        </button>
-                    </form>
+                    <div className="overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        <div className="flex min-w-max items-center gap-2">
+                            {VOCAB_FILTERS.map((filter) => (
+                                <button
+                                    key={filter.key}
+                                    type="button"
+                                    onClick={() => setActiveFilter(filter.key)}
+                                    className={cn(
+                                        "inline-flex h-10 items-center rounded-full border px-4 text-sm font-bold tracking-wide transition-all",
+                                        activeFilter === filter.key
+                                            ? "border-emerald-400/55 bg-[linear-gradient(135deg,rgba(16,185,129,0.95),rgba(5,150,105,0.88))] text-white shadow-[0_10px_24px_-10px_rgba(16,185,129,0.65)]"
+                                            : "border-white/45 bg-white/36 text-[#345b46]/82 shadow-[inset_0_1px_rgba(255,255,255,0.75)] hover:border-emerald-200/60 hover:bg-white/55"
+                                    )}
+                                >
+                                    {filter.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
                 
                 {/* Add Feedback Notification */}
@@ -354,13 +415,13 @@ export default function VocabDashboard() {
 
             {/* Grid Area */}
             <div className="relative z-10 mx-auto mt-6 max-w-6xl px-5 sm:px-6">
-                {!search && filteredVocab.length > 0 && (
+                {!searchQuery && filteredVocab.length > 0 && (
                     <div className="mb-5 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#345b46]">
                         <Clock className="h-3.5 w-3.5" />
-                        Recently Added ({filteredVocab.length})
+                        {activeFilterMeta.heading} ({filteredVocab.length})
                     </div>
                 )}
-                {search && (
+                {searchQuery && (
                     <div className="mb-5 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-[#345b46]">
                         <Search className="h-3.5 w-3.5" />
                         Search Results ({filteredVocab.length})
@@ -373,6 +434,7 @@ export default function VocabDashboard() {
                             <VocabWordCard
                                 key={item.word}
                                 item={item}
+                                now={now}
                                 onEdit={setEditingItem}
                                 onDelete={handleDelete}
                             />
@@ -383,11 +445,13 @@ export default function VocabDashboard() {
                         <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full border border-white/50 bg-white/30 shadow-[0_8px_32px_rgba(0,0,0,0.05),inset_0_1px_rgba(255,255,255,0.7)] backdrop-blur-2xl">
                             <Search className="h-10 w-10 text-emerald-900/30" />
                         </div>
-                        <p className="text-[16px] font-bold text-[#345b46]">未找到对应卡片</p>
-                        {search ? (
+                        <p className="text-[16px] font-bold text-[#345b46]">
+                            {searchQuery ? "未找到对应卡片" : activeFilterMeta.emptyTitle}
+                        </p>
+                        {searchQuery ? (
                             <p className="mt-1 text-sm font-medium text-emerald-900/60">换个关键词试试吧</p>
                         ) : (
-                            <p className="mt-1 text-sm font-medium text-emerald-900/60">你的生词本是空的，开始阅读吧</p>
+                            <p className="mt-1 text-sm font-medium text-emerald-900/60">{activeFilterMeta.emptyHint}</p>
                         )}
                     </div>
                 )}

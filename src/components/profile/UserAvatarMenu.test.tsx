@@ -180,10 +180,10 @@ describe("UserAvatarMenu", () => {
         expect(container.textContent).toContain("选择一个声音");
         expect(container.textContent).toContain("中文发言人");
         expect(container.textContent).toContain("英文发言人");
-        expect(container.textContent).toContain("发言人");
-        expect(container.textContent).toContain("说明");
-        expect(container.textContent).toContain("试听");
-        expect(container.textContent).toContain("选择");
+        expect(container.textContent).toContain("当前：");
+        expect(container.textContent).toContain("全部");
+        expect(container.textContent).toContain("英文");
+        expect(container.textContent).toContain("中文");
 
         const xiaoxiaoPreview = container.querySelector<HTMLButtonElement>('button[aria-label="试听 晓晓"]');
         if (!xiaoxiaoPreview) {

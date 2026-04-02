@@ -557,11 +557,11 @@ export function buildGrammarHighlightSegments(
 function getPaletteByMeta(meta: GrammarTypeMeta): GrammarHighlightPalette {
     if (meta.normalizedType === "主语") {
         return {
-            textClassName: "text-teal-950",
-            toneClassName: "text-teal-700",
-            markerBase: "rgba(148, 210, 189, 0.52)",
-            markerShade: "rgba(103, 191, 164, 0.28)",
-            border: "rgba(54, 116, 94, 0.18)",
+            textClassName: "text-indigo-950",
+            toneClassName: "text-indigo-700",
+            markerBase: "rgba(180, 193, 255, 0.56)",
+            markerShade: "rgba(129, 145, 238, 0.3)",
+            border: "rgba(74, 87, 168, 0.2)",
         };
     }
     if (meta.normalizedType === "谓语") {

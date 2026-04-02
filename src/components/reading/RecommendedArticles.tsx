@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, Settings2, LayoutGrid, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,7 @@ interface AIGenHistoryRecord {
     textContent?: string;
     timestamp: number;
     isAIGenerated?: boolean;
+    isCatMode?: boolean;
     quizCompleted?: boolean;
     quizCorrect?: number;
     quizTotal?: number;
@@ -137,7 +138,7 @@ function isArticleItem(value: unknown): value is ArticleItem {
 
 export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }: RecommendedArticlesProps) {
     const [articles, setArticles] = useState<ArticleItem[]>([]);
-    const [category, setCategory] = useState<FeedCategory>('psychology');
+    const [category, setCategory] = useState<FeedCategory>('cat_mode');
     const [activeView, setActiveView] = useState<ArticleView>('all');
     const [genTopic, setGenTopic] = useState("");
     const [genDifficulty, setGenDifficulty] = useState<'cet4' | 'cet6' | 'ielts'>('ielts');
@@ -249,7 +250,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         };
     }, [activeView, articles, readArticleUrls]);
 
-    const loadAIGenHistory = async () => {
+    const loadAIGenHistory = useCallback(async () => {
         try {
             const { db } = await import("@/lib/db");
             const rows = (await db.articles
@@ -278,13 +279,43 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
             setArticles([]);
             if (onListUpdate) onListUpdate([]);
         }
-    };
+    }, [onListUpdate]);
+
+    const loadCatHistory = useCallback(async () => {
+        try {
+            const { db } = await import("@/lib/db");
+            const rows = (await db.articles
+                .toArray() as unknown as AIGenHistoryRecord[])
+                .filter((row) => Boolean(row.isCatMode) || row.url.startsWith("cat://"))
+                .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+            const historyItems: ArticleItem[] = rows.map((row) => ({
+                title: row.title || "CAT 训练文章",
+                link: row.url,
+                pubDate: new Date(row.timestamp || Date.now()).toISOString(),
+                source: "CAT",
+                snippet: (row.textContent || row.content || "").slice(0, 180),
+                fetchedAt: row.timestamp || Date.now(),
+                quizCompleted: row.quizCompleted,
+                quizCorrect: row.quizCorrect,
+                quizTotal: row.quizTotal,
+                quizScorePercent: row.quizScorePercent,
+            }));
+
+            const ordered = sortByNewest(historyItems);
+            setArticles(ordered);
+            if (onListUpdate) onListUpdate(ordered);
+        } catch (error) {
+            console.error("Failed to load CAT history:", error);
+            setArticles([]);
+            if (onListUpdate) onListUpdate([]);
+        }
+    }, [onListUpdate]);
 
     // Load from DB only (no auto-fetch from API)
     useEffect(() => {
         if (category === 'cat_mode') {
-            setArticles([]);
-            onListUpdate?.([]);
+            loadCatHistory();
             return;
         }
 
@@ -303,7 +334,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 }
             }
         });
-    }, [category, getFeed, loadFeedFromDB, onListUpdate]);
+    }, [category, getFeed, loadAIGenHistory, loadCatHistory, loadFeedFromDB, onListUpdate]);
 
     useEffect(() => {
         setActiveView('all');
@@ -480,7 +511,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     };
 
     const handleDelete = async (link: string) => {
-        if (category === 'ai_gen') {
+        if (category === 'ai_gen' || category === "cat_mode") {
             if (confirm('Are you sure you want to remove this article?')) {
                 try {
                     const { db } = await import("@/lib/db");
@@ -590,10 +621,10 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
 
                     <div className="grid min-w-0 grid-cols-2 gap-1.5 rounded-2xl border border-white/65 bg-white/28 p-1.5 md:grid-cols-4">
                         {([
+                            { id: 'cat_mode', label: 'CAT 成长' },
+                            { id: 'ai_gen', label: 'AI 生成' },
                             { id: 'psychology', label: '心理学' },
                             { id: 'ai_news', label: 'AI 资讯' },
-                            { id: 'ai_gen', label: 'AI 生成' },
-                            { id: 'cat_mode', label: 'CAT 成长' },
                         ] as Array<{ id: FeedCategory; label: string }>).map((tab) => (
                             <button
                                 key={tab.id}
@@ -843,7 +874,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                             </LiquidGlassPanel>
                         ) : (
                             <motion.div
-                                className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6"
+                                className="flex flex-wrap items-stretch gap-6"
                                 variants={listContainerVariants}
                                 initial="hidden"
                                 animate="show"
@@ -851,6 +882,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                 {sortByNewest(articles).map((item) => (
                                     <motion.div
                                         key={item.link}
+                                        className="w-full sm:w-[320px]"
                                         variants={listItemVariants}
                                     >
                                         <ArticleCard
@@ -989,6 +1021,44 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                             <CatGrowthChart currentScore={catScore} />
                         </div>
                     </LiquidGlassPanel>
+
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between px-1">
+                            <h4 className="text-sm font-bold text-slate-800">训练历史</h4>
+                            <span className="text-xs text-slate-500">{articles.length} 篇</span>
+                        </div>
+
+                        {articles.length === 0 ? (
+                            <LiquidGlassPanel className="rounded-2xl p-8 text-center text-sm text-slate-500">
+                                暂无 CAT 历史文章，先开始一局训练
+                            </LiquidGlassPanel>
+                        ) : (
+                            <motion.div
+                                className="flex flex-wrap items-stretch gap-6"
+                                variants={listContainerVariants}
+                                initial="hidden"
+                                animate="show"
+                            >
+                                {sortByNewest(articles).map((item) => (
+                                    <motion.div
+                                        key={item.link}
+                                        className="w-full sm:w-[320px]"
+                                        variants={listItemVariants}
+                                    >
+                                        <ArticleCard
+                                            item={item}
+                                            status={item.quizCompleted ? 'read' : 'unread'}
+                                            category="cat_mode"
+                                            onSelect={handleSelectArticle}
+                                            onDelete={handleDelete}
+                                            isLoading={loadingArticleLink === item.link}
+                                            isAnyLoading={Boolean(loadingArticleLink)}
+                                        />
+                                    </motion.div>
+                                ))}
+                            </motion.div>
+                        )}
+                    </div>
                 </div>
             ) : (
                 <div className="space-y-8">
@@ -1006,7 +1076,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                 </LiquidGlassPanel>
                             ) : (
                                 <motion.div
-                                    className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-6"
+                                    className="flex flex-wrap items-stretch gap-6"
                                     variants={listContainerVariants}
                                     initial="hidden"
                                     animate="show"
@@ -1014,6 +1084,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     {feedViewModel.filteredArticles.map((item) => (
                                         <motion.div
                                             key={item.link}
+                                            className="w-full sm:w-[320px]"
                                             variants={listItemVariants}
                                         >
                                             <ArticleCard
@@ -1074,6 +1145,8 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
             ? { label: '已读', className: 'border-emerald-200/80 bg-emerald-100/80 text-emerald-700' }
             : { label: '未读', className: 'border-slate-200/80 bg-white/75 text-slate-600' };
     const sourceLabel = category === "ai_gen" ? "AI Studio" : item.source;
+    const imageUrl = typeof item.image === "string" && item.image.trim().length > 0 ? item.image.trim() : null;
+    const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
 
     // Deterministic gradient generator
     const getGradient = (id: string) => {
@@ -1095,6 +1168,8 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
         }
         return gradients[Math.abs(hash) % gradients.length];
     };
+    const fallbackGradient = getGradient(item.title || item.link);
+    const resolvedImageUrl = imageUrl && failedImageUrl !== imageUrl ? imageUrl : null;
 
     return (
         <LiquidGlassPanel
@@ -1103,7 +1178,7 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
                 onSelect(item.link);
             }}
             className={cn(
-                "group relative flex h-[348px] cursor-pointer flex-col overflow-hidden rounded-[24px] transition-all duration-500 md:h-[376px] [&>.liquid-glass-content]:h-full [&>.liquid-glass-content]:w-full",
+                "group relative flex h-[306px] cursor-pointer flex-col overflow-hidden rounded-[24px] transition-all duration-500 md:h-[328px] [&>.liquid-glass-content]:h-full [&>.liquid-glass-content]:w-full",
                 isAnyLoading && !isLoading && "opacity-75",
                 isRead
                     ? "shadow-[0_14px_32px_-26px_rgba(15,23,42,0.68)]"
@@ -1113,52 +1188,26 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
             <div className="relative h-full w-full">
                 <div className="pointer-events-none absolute inset-0 z-10 bg-[linear-gradient(120deg,rgba(255,255,255,0)_18%,rgba(255,255,255,0.14)_46%,rgba(255,255,255,0)_72%)] opacity-35" />
                 <div className="absolute inset-0 overflow-hidden bg-slate-100">
-                {item.image ? (
-                    <img
-                        src={item.image}
-                        alt={item.title}
-                        className="h-full w-full object-cover object-center transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-[1.02]"
-                        onError={(e) => {
-                            // On error, show gradient fallback
-                            e.currentTarget.style.display = 'none';
-                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                        }}
-                    />
-                ) : (
-                    <>
+                    <div className={cn("absolute inset-0", fallbackGradient)}>
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_22%,rgba(255,255,255,0.38)_0%,rgba(255,255,255,0)_42%),radial-gradient(circle_at_82%_72%,rgba(255,255,255,0.26)_0%,rgba(255,255,255,0)_45%)]" />
+                        <div className="absolute inset-x-0 bottom-0 h-[52%] bg-gradient-to-t from-slate-900/22 via-slate-800/8 to-transparent" />
+                        <div className="absolute left-4 top-4 rounded-full border border-white/60 bg-white/35 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-700 backdrop-blur">
+                            {sourceLabel}
+                        </div>
+                    </div>
+                    {resolvedImageUrl && (
                         <img
-                            src={`https://picsum.photos/seed/${encodeURIComponent(item.title.slice(0, 20))}/800/600`}
-                            alt=""
+                            src={resolvedImageUrl}
+                            alt={item.title}
                             className="h-full w-full object-cover object-center transition-transform duration-700 ease-in-out will-change-transform group-hover:scale-[1.02]"
-                            onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                                // Show gradient fallback
-                                const parent = e.currentTarget.parentElement;
-                                if (parent) {
-                                    const fallback = parent.querySelector('[data-fallback]') as HTMLElement;
-                                    if (fallback) fallback.classList.remove('hidden');
-                                }
+                            onError={() => {
+                                setFailedImageUrl(resolvedImageUrl);
                             }}
                         />
-
-                        <div
-                            data-fallback
-                            className={cn(
-                                "w-full h-full absolute inset-0 hidden",
-                                getGradient(item.title)
-                            )}
-                        />
-
-                    </>
-                )}
+                    )}
 
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/50 via-black/14 to-transparent" />
-                <div className="pointer-events-none absolute inset-x-10 bottom-[142px] h-10 rounded-full bg-[linear-gradient(90deg,rgba(125,211,252,0.3),rgba(255,255,255,0.2),rgba(191,219,254,0.3))] blur-xl opacity-90 transition-all duration-700 group-hover:opacity-100" />
-
-                <div className={cn(
-                    "w-full h-full absolute top-0 left-0 hidden",
-                    getGradient(item.title)
-                )} />
+                <div className="pointer-events-none absolute inset-x-10 bottom-[126px] h-10 rounded-full bg-[linear-gradient(90deg,rgba(125,211,252,0.3),rgba(255,255,255,0.2),rgba(191,219,254,0.3))] blur-xl opacity-90 transition-all duration-700 group-hover:opacity-100" />
 
                 <div className={cn(
                     "absolute left-3 top-3 z-10 rounded-full border px-2.5 py-1 text-[10px] font-bold tracking-wide backdrop-blur-sm",
@@ -1185,7 +1234,7 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
                 </button>
                 </div>
 
-                <div className="absolute inset-x-0 bottom-0 z-30 h-[44%] min-h-[150px] max-h-[176px] overflow-hidden border-t border-white/30 bg-white/12 px-4 pt-3 backdrop-blur-[30px] backdrop-saturate-[2.2] md:px-5 md:pt-4">
+                <div className="absolute inset-x-0 bottom-0 z-30 h-[46%] min-h-[132px] max-h-[164px] overflow-hidden border-t border-white/30 bg-white/12 px-4 pt-3 backdrop-blur-[30px] backdrop-saturate-[2.2] md:px-5 md:pt-4">
                     <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(145deg,rgba(216,232,252,0.38)_0%,rgba(173,207,245,0.2)_44%,rgba(146,185,234,0.28)_100%)]" />
                     <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.28)_0%,rgba(255,255,255,0.02)_30%,rgba(15,23,42,0.05)_100%)]" />
                     <div className="pointer-events-none absolute inset-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),inset_0_-22px_34px_-24px_rgba(30,58,138,0.52),inset_0_0_0_1px_rgba(255,255,255,0.18)]" />

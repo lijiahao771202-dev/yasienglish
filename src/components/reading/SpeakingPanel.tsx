@@ -290,7 +290,7 @@ export function SpeakingPanel({
                             "p-1.5 rounded-md transition-colors",
                             isSegmentListOpen ? "text-amber-600 bg-amber-50" : "text-stone-400 hover:text-stone-600 hover:bg-stone-100",
                         )}
-                        title={isSegmentListOpen ? "合并整段" : "分段显示"}
+                        title={isSegmentListOpen ? "还原整段" : "排版"}
                     >
                         <List className="w-4 h-4" />
                     </button>

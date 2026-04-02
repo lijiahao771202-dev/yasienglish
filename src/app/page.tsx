@@ -1,10 +1,10 @@
 import { Suspense } from "react";
-import { HomeConsole } from "@/components/home/HomeConsole";
+import { HomeConsole_v2 } from "@/components/home/HomeConsole_v2";
 
 export default function Home() {
     return (
         <Suspense fallback={<div className="min-h-screen bg-[#0b1220]" />}>
-            <HomeConsole />
+            <HomeConsole_v2 />
         </Suspense>
     );
 }

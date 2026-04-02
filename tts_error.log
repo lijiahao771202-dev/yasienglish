@@ -539,3 +539,81 @@
     at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
     at listOnTimeout (node:internal/timers:594:17)
     at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T09:54:02.944Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T09:54:27.252Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T09:54:51.355Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T09:59:55.372Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T09:59:55.383Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:00:19.650Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:00:19.659Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:00:46.656Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:01:11.054Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:05:26.861Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:05:28.787Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:05:30.583Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:05:46.067Z] Step: Generating | Error: Client network socket disconnected before secure TLS connection was established | Stack: Error: Client network socket disconnected before secure TLS connection was established
+    at TLSSocket.onConnectEnd (node:_tls_wrap:1732:19)
+    at TLSSocket.emit (node:events:536:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2026-04-02T10:05:51.139Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:05:54.853Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:15:31.988Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:15:56.267Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:16:20.312Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-02T10:16:37.607Z] Step: Generating | Error: Client network socket disconnected before secure TLS connection was established | Stack: Error: Client network socket disconnected before secure TLS connection was established
+    at TLSSocket.onConnectEnd (node:_tls_wrap:1732:19)
+    at TLSSocket.emit (node:events:536:35)
+    at endReadableNT (node:internal/streams/readable:1698:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)

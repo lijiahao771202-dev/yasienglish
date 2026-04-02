@@ -180,7 +180,7 @@ function normalizeCorrections(value: unknown, userRewrite: string) {
             segment: string;
             correction: string;
             reason: string;
-            category?: string;
+            category: string;
         } => Boolean(row))
         .slice(0, 5);
 }
