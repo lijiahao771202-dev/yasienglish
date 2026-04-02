@@ -31,6 +31,7 @@ interface ArticleDisplayProps {
     siteName?: string;   // To detect TED articles
     videoUrl?: string;   // TED video URL
     articleUrl?: string; // Original article URL for download
+    difficulty?: "cet4" | "cet6" | "ielts";
     isEditMode?: boolean; // New prop for edit mode
     locateRequest?: {
         requestId: number;
@@ -66,6 +67,7 @@ export function ArticleDisplay({
     siteName,
     videoUrl,
     articleUrl,
+    difficulty,
     isEditMode,
     locateRequest,
     readingNotes = [],
@@ -269,6 +271,17 @@ export function ArticleDisplay({
 
     const canOpenOriginalArticle = typeof articleUrl === "string"
         && /^https?:\/\//i.test(articleUrl);
+    const articleSourceLabel = siteName || "Reading Flow";
+    const difficultyLabel = difficulty === "cet4" ? "四级" : difficulty === "cet6" ? "六级" : difficulty === "ielts" ? "雅思" : null;
+    const difficultyClassName = difficulty === "cet4"
+        ? "bg-[#b7f0d4] text-[#0f8a69]"
+        : difficulty === "cet6"
+            ? "bg-[#dbeafe] text-[#1d4ed8]"
+            : "bg-[#eadcff] text-[#7b45e7]";
+    const estimatedReadMinutes = Math.max(
+        3,
+        Math.round(((content || "").split(/\s+/).filter(Boolean).length || 600) / 220),
+    );
 
     const handleSplit = (index: number, textBefore: string, textAfter: string) => {
         const newBlocks = [...activeBlocks];
@@ -433,36 +446,63 @@ export function ArticleDisplay({
         <motion.article
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="max-w-3xl mx-auto pb-32 relative"
+            className="relative mx-auto w-full pb-28"
         >
-            <div className="glass-panel rounded-2xl p-8 md:p-16 mb-24 transition-all duration-500">
-                <header className="space-y-6 pt-2 text-center mb-16 border-b border-stone-100 pb-12">
-                    <h1 className="text-4xl md:text-6xl font-medium font-newsreader italic text-stone-900 leading-[1.12]">
-                        {title}
-                    </h1>
-                    <div className="flex flex-wrap items-center justify-center gap-3">
-                        {byline && (
-                            <p className="text-xs font-bold tracking-[0.2em] uppercase text-stone-400">
-                                By {byline}
-                            </p>
-                        )}
+            <div className="relative mb-24 overflow-hidden rounded-[2rem] border-[3px] border-[#17120d] bg-[#fffdf8] p-6 shadow-[0_10px_0_rgba(23,18,13,0.14)] transition-all duration-500 md:p-10 xl:p-12">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[linear-gradient(180deg,rgba(255,249,235,0.95),rgba(255,249,235,0))]" />
+                <header className="relative mb-12 border-b-2 border-[#e9decb] pb-8 pt-1 text-left">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex rounded-full border-[3px] border-[#17120d] bg-white px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#5f5448] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+                            {articleSourceLabel}
+                        </span>
+                        <span className="inline-flex rounded-full border-[3px] border-[#17120d] bg-[#dbeafe] px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#1d4ed8] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+                            {estimatedReadMinutes} min read
+                        </span>
+                        <span className="inline-flex rounded-full border-[3px] border-[#17120d] bg-[#ffe8a3] px-3 py-2 text-[11px] font-black text-[#9a6700] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+                            选词可加入生词本
+                        </span>
                         {canOpenOriginalArticle && (
                             <a
                                 href={articleUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 rounded-full border border-stone-200 bg-white/80 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-stone-500 transition-colors hover:border-amber-300 hover:text-amber-700"
+                                className="inline-flex items-center gap-1.5 rounded-full border-[3px] border-[#17120d] bg-[#fff7d8] px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#5f5448] shadow-[0_4px_0_rgba(23,18,13,0.08)] transition hover:-translate-y-0.5"
                             >
-                                Open original
+                                原文
                                 <ExternalLink className="h-3.5 w-3.5" />
                             </a>
                         )}
+                    </div>
+
+                    <div className="mt-7 flex flex-wrap items-start gap-3">
+                        <h1 className="max-w-[15ch] flex-1 font-newsreader text-[2.8rem] font-medium leading-[0.95] tracking-tight text-[#17120d] md:text-[3.6rem] xl:text-[4.1rem]">
+                            {title}
+                        </h1>
+                        {difficultyLabel ? (
+                            <span className={cn(
+                                "mt-2 inline-flex rounded-full border-[3px] border-[#17120d] px-3 py-2 text-sm font-black shadow-[0_4px_0_rgba(23,18,13,0.08)]",
+                                difficultyClassName,
+                            )}>
+                                {difficultyLabel}
+                            </span>
+                        ) : null}
+                    </div>
+
+                    <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-[#7d6e61]">
+                        {byline ? (
+                            <p className="font-newsreader text-xl italic text-[#4b3f34]">
+                                By {byline}
+                            </p>
+                        ) : null}
+                        <span className="inline-flex items-center gap-2 rounded-full border border-[#ddd1bd] bg-[#fcf6ea] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-[#8a7c6b]">
+                            Editorial Reading Sheet
+                        </span>
                     </div>
                 </header>
 
                 {/* TED Video Player */}
                 {isTED && videoUrl && (
-                    <div className="mb-12 rounded-xl overflow-hidden shadow-lg">
+                    <div className="mb-12 overflow-hidden rounded-[1.5rem] border-[3px] border-[#17120d] shadow-[0_8px_0_rgba(23,18,13,0.12)]">
                         <TEDVideoPlayer
                             ref={videoPlayerRef}
                             videoUrl={videoUrl}
@@ -470,7 +510,7 @@ export function ArticleDisplay({
                     </div>
                 )}
 
-                <div ref={contentRef} className={cn("group/article space-y-4 text-stone-800 leading-loose", fontClass)}>
+                <div ref={contentRef} className={cn("group/article space-y-5 text-[#2f251d] leading-loose", fontClass)}>
                     {activeBlocks && activeBlocks.length > 0 ? (
                         (() => {
                             let paragraphOrder = 0;
@@ -485,12 +525,12 @@ export function ArticleDisplay({
                                         key={block.id || index}
                                         data-article-paragraph={currentParagraphOrder}
                                         className={cn(
-                                            "relative scroll-mt-8 rounded-xl transition-all duration-500 md:scroll-mt-12",
-                                            useParagraphFallbackHighlight && "bg-amber-100/35 ring-1 ring-amber-200/60"
+                                            "relative scroll-mt-8 rounded-[1.2rem] px-1 py-1 transition-all duration-500 md:scroll-mt-12",
+                                            useParagraphFallbackHighlight && "bg-[#fff0b8]/70 ring-2 ring-[#f59e0b]/35"
                                         )}
                                     >
                                         {isLocatedParagraph && highlightedQuestionNumber && highlightedQuestionNumber > 0 && (
-                                            <div className="pointer-events-none absolute -right-2 -top-2 z-20 rounded-full border border-amber-200 bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 shadow-sm">
+                                            <div className="pointer-events-none absolute -right-2 -top-2 z-20 rounded-full border-[3px] border-[#17120d] bg-[#ffe08a] px-2.5 py-1 text-[10px] font-black text-[#17120d] shadow-[0_4px_0_rgba(23,18,13,0.12)]">
                                                 第{highlightedQuestionNumber}题
                                             </div>
                                         )}
@@ -522,23 +562,23 @@ export function ArticleDisplay({
                                 );
                             } else if (block.type === 'header') {
                                 const HeaderTag = (block.tag || 'h2') as React.ElementType;
-                                return <HeaderTag key={index} className="text-amber-700 font-bold mt-8 mb-4 text-2xl">{block.content}</HeaderTag>;
+                                return <HeaderTag key={index} className="mt-10 mb-4 font-newsreader text-3xl font-medium text-[#17120d]">{block.content}</HeaderTag>;
                             } else if (block.type === 'list' && block.items) {
                                 const ListTag = (block.tag || 'ul') as React.ElementType;
                                 return (
-                                    <ListTag key={index} className="list-disc list-inside space-y-2 text-stone-700 pl-4">
+                                    <ListTag key={index} className="list-disc list-inside space-y-2 pl-4 text-[#4f4336]">
                                         {block.items.map((item, i) => <li key={i}>{item}</li>)}
                                     </ListTag>
                                 );
                             } else if (block.type === 'image' && block.src) {
                                 return (
-                                    <div key={index} className="my-6 rounded-xl overflow-hidden shadow-xl border border-stone-200/50">
+                                    <div key={index} className="my-8 overflow-hidden rounded-[1.6rem] border-[3px] border-[#17120d] shadow-[0_8px_0_rgba(23,18,13,0.12)]">
                                         <img src={block.src} alt={block.alt || ''} className="w-full h-auto" />
                                     </div>
                                 );
                             } else if (block.type === 'blockquote' && block.content) {
                                 return (
-                                    <blockquote key={index} className="border-l-4 border-amber-400 pl-4 py-2 my-6 bg-amber-50/50 rounded-r-lg text-stone-600 italic">
+                                    <blockquote key={index} className="my-8 rounded-[1.4rem] border-[3px] border-[#17120d] bg-[#fff4d7] px-5 py-4 text-[#5b4c3e] italic shadow-[0_6px_0_rgba(23,18,13,0.08)]">
                                         {block.content}
                                     </blockquote>
                                 );
