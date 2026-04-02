@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useState, useRef, useEffect } from "react";
+import React, { useLayoutEffect, useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline } from "lucide-react";
@@ -30,6 +30,14 @@ import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { getReadingCoinCost, INSUFFICIENT_READING_COINS, type ReadingEconomyAction } from "@/lib/reading-economy";
 import { dispatchReadingCoinFx } from "@/lib/reading-coin-fx";
 import type { ReadingMarkType, ReadingNoteItem } from "@/lib/db";
+import { requestTtsPayload, resolveTtsAudioBlob } from "@/lib/tts-client";
+import {
+    alignTokensToMarks,
+    buildAutoSentenceBoundaries,
+    buildSentenceUnits,
+    extractWordTokens,
+    type TtsWordMark,
+} from "@/lib/read-speaking";
 
 interface ParagraphCardProps {
     text: string;
@@ -130,6 +138,12 @@ interface PhraseAnalysisResult {
     }>;
 }
 
+interface SentenceAudioCacheEntry {
+    blob: Blob;
+    marks: TtsWordMark[];
+    objectUrl?: string;
+}
+
 type AskQaPair = {
     id: number;
     question: string;
@@ -206,7 +220,7 @@ export function ParagraphCard({
     const [showGrammar, setShowGrammar] = useState(false);
     const [grammarDisplayMode, setGrammarDisplayMode] = useState<GrammarDisplayMode>("core");
     const [showDeepAnalysis, setShowDeepAnalysis] = useState(false);
-    const [activeSentenceIndex, setActiveSentenceIndex] = useState(0);
+    const [activeListenSentenceIndex, setActiveListenSentenceIndex] = useState(0);
 
     const [isTranslating, setIsTranslating] = useState(false);
     const [isAnalyzingGrammar, setIsAnalyzingGrammar] = useState(false);
@@ -287,6 +301,15 @@ export function ParagraphCard({
     // Speaking State
     const [isSpeakingOpen, setIsSpeakingOpen] = useState(false);
     const [isBlind, setIsBlind] = useState(false);
+    const [playMode, setPlayMode] = useState<"full" | "sentence">("full");
+    const [activeGrammarSentenceIndex, setActiveGrammarSentenceIndex] = useState(0);
+    const [sentenceBoundaries, setSentenceBoundaries] = useState<number[]>(() => buildAutoSentenceBoundaries(text));
+    const [isSentenceAudioLoading, setIsSentenceAudioLoading] = useState(false);
+    const [isSentencePlaying, setIsSentencePlaying] = useState(false);
+    const [sentenceCurrentTimeMs, setSentenceCurrentTimeMs] = useState(0);
+    const [sentenceDurationMs, setSentenceDurationMs] = useState(0);
+    const [sentenceCacheVersion, setSentenceCacheVersion] = useState(0);
+    const [isSegmentListOpen, setIsSegmentListOpen] = useState(false);
 
     // Phrase Analysis State
     const [selectedText, setSelectedText] = useState<string | null>(null);
@@ -307,6 +330,11 @@ export function ParagraphCard({
     const [readingCoinHint, setReadingCoinHint] = useState<string | null>(null);
 
     const pRef = useRef<HTMLDivElement>(null);
+    const sentenceAudioRef = useRef<HTMLAudioElement | null>(null);
+    const sentenceAudioIndexRef = useRef<number | null>(null);
+    const sentenceAudioCacheRef = useRef<Map<number, SentenceAudioCacheEntry>>(new Map());
+    const sentenceAudioInflightRef = useRef<Map<number, Promise<SentenceAudioCacheEntry>>>(new Map());
+    const sentenceProgressRafRef = useRef<number | null>(null);
 
     usePretextMeasuredLayout(pRef, {
         text,
@@ -322,15 +350,316 @@ export function ParagraphCard({
         preload,
         currentTime,
         duration,
-        seek,
+        seekToMs,
+        marks: fullMarks,
         playbackRate,
         setPlaybackRate,
         stop
     } = useTTS(text);
 
+    const sentenceUnits = useMemo(() => (
+        buildSentenceUnits(text, sentenceBoundaries)
+    ), [sentenceBoundaries, text]);
+    const sentenceUnitsRef = useRef(sentenceUnits);
+    useEffect(() => {
+        sentenceUnitsRef.current = sentenceUnits;
+    }, [sentenceUnits]);
+
+    const activeSentenceUnit = sentenceUnits[activeListenSentenceIndex] ?? null;
+
+    const fullWordTokens = useMemo(() => extractWordTokens(text), [text]);
+    const fullTokenToMark = useMemo(
+        () => alignTokensToMarks(fullWordTokens, fullMarks),
+        [fullWordTokens, fullMarks],
+    );
+
+    const activeSentenceMarks = useMemo(() => {
+        // sentenceCacheVersion is a render trigger for ref-backed cache updates.
+        void sentenceCacheVersion;
+        return sentenceAudioCacheRef.current.get(activeListenSentenceIndex)?.marks ?? [];
+    }, [activeListenSentenceIndex, sentenceCacheVersion]);
+    const activeSentenceWordTokens = useMemo(
+        () => extractWordTokens(activeSentenceUnit?.text ?? ""),
+        [activeSentenceUnit?.text],
+    );
+    const activeSentenceTokenToMark = useMemo(
+        () => alignTokensToMarks(activeSentenceWordTokens, activeSentenceMarks),
+        [activeSentenceWordTokens, activeSentenceMarks],
+    );
+
+    const stopSentenceProgressLoop = useCallback(() => {
+        if (sentenceProgressRafRef.current !== null) {
+            cancelAnimationFrame(sentenceProgressRafRef.current);
+            sentenceProgressRafRef.current = null;
+        }
+    }, []);
+
+    const startSentenceProgressLoop = useCallback(() => {
+        stopSentenceProgressLoop();
+
+        const tick = () => {
+            const audio = sentenceAudioRef.current;
+            if (!audio || audio.paused) {
+                sentenceProgressRafRef.current = null;
+                return;
+            }
+
+            setSentenceCurrentTimeMs(audio.currentTime * 1000);
+            sentenceProgressRafRef.current = requestAnimationFrame(tick);
+        };
+
+        sentenceProgressRafRef.current = requestAnimationFrame(tick);
+    }, [stopSentenceProgressLoop]);
+
+    const clearSentencePlayback = useCallback(() => {
+        stopSentenceProgressLoop();
+        if (sentenceAudioRef.current) {
+            sentenceAudioRef.current.pause();
+            sentenceAudioRef.current.src = "";
+            sentenceAudioRef.current.onplay = null;
+            sentenceAudioRef.current.onpause = null;
+            sentenceAudioRef.current.onended = null;
+            sentenceAudioRef.current.onloadedmetadata = null;
+            sentenceAudioRef.current = null;
+        }
+
+        sentenceAudioIndexRef.current = null;
+        setIsSentencePlaying(false);
+        setSentenceCurrentTimeMs(0);
+        setSentenceDurationMs(0);
+    }, [stopSentenceProgressLoop]);
+
+    const clearSentenceAudioCache = useCallback(() => {
+        sentenceAudioInflightRef.current.clear();
+        for (const entry of sentenceAudioCacheRef.current.values()) {
+            if (entry.objectUrl) {
+                URL.revokeObjectURL(entry.objectUrl);
+            }
+        }
+        sentenceAudioCacheRef.current.clear();
+        setSentenceCacheVersion((prev) => prev + 1);
+    }, []);
+
+    const getSentenceAudioObjectUrl = useCallback((sentenceIndex: number, entry: SentenceAudioCacheEntry) => {
+        if (entry.objectUrl) return entry.objectUrl;
+        const nextUrl = URL.createObjectURL(entry.blob);
+        entry.objectUrl = nextUrl;
+        sentenceAudioCacheRef.current.set(sentenceIndex, entry);
+        return nextUrl;
+    }, []);
+
+    const ensureSentenceAudio = useCallback(async (sentenceIndex: number) => {
+        const cached = sentenceAudioCacheRef.current.get(sentenceIndex);
+        if (cached) return cached;
+
+        const inflight = sentenceAudioInflightRef.current.get(sentenceIndex);
+        if (inflight) return inflight;
+
+        const targetUnit = sentenceUnits[sentenceIndex];
+        if (!targetUnit || !targetUnit.speakText) {
+            throw new Error("No sentence available for speaking");
+        }
+
+        const request = (async () => {
+            const payload = await requestTtsPayload(targetUnit.speakText);
+            const blob = await resolveTtsAudioBlob(payload.audio);
+            const marks = Array.isArray(payload.marks) ? payload.marks : [];
+            const entry: SentenceAudioCacheEntry = { blob, marks };
+            const latestUnit = sentenceUnitsRef.current[sentenceIndex];
+            if (latestUnit?.speakText === targetUnit.speakText) {
+                sentenceAudioCacheRef.current.set(sentenceIndex, entry);
+                setSentenceCacheVersion((prev) => prev + 1);
+            }
+            return entry;
+        })();
+
+        sentenceAudioInflightRef.current.set(sentenceIndex, request);
+
+        try {
+            return await request;
+        } finally {
+            sentenceAudioInflightRef.current.delete(sentenceIndex);
+        }
+    }, [sentenceUnits]);
+
+    const prefetchNextSentenceAudio = useCallback((sentenceIndex: number) => {
+        const nextIndex = sentenceIndex + 1;
+        if (nextIndex >= sentenceUnits.length) return;
+        if (sentenceAudioCacheRef.current.has(nextIndex) || sentenceAudioInflightRef.current.has(nextIndex)) return;
+
+        void ensureSentenceAudio(nextIndex).catch((error: unknown) => {
+            console.warn("[Read Speaking] Prefetch next sentence audio failed:", error);
+        });
+    }, [ensureSentenceAudio, sentenceUnits.length]);
+
+    const warmupAllSentenceAudio = useCallback(async () => {
+        if (sentenceUnits.length === 0) return;
+
+        const pendingIndexes: number[] = [];
+        for (let index = 0; index < sentenceUnits.length; index += 1) {
+            if (sentenceAudioCacheRef.current.has(index) || sentenceAudioInflightRef.current.has(index)) continue;
+            pendingIndexes.push(index);
+        }
+        if (pendingIndexes.length === 0) return;
+
+        let cursor = 0;
+        const workerCount = Math.min(2, pendingIndexes.length);
+        const workers = Array.from({ length: workerCount }, async () => {
+            while (cursor < pendingIndexes.length) {
+                const sentenceIndex = pendingIndexes[cursor];
+                cursor += 1;
+                if (sentenceIndex === undefined) break;
+
+                try {
+                    await ensureSentenceAudio(sentenceIndex);
+                } catch (error) {
+                    console.warn("[Read Speaking] Warmup sentence audio failed:", error);
+                }
+            }
+        });
+
+        await Promise.all(workers);
+    }, [ensureSentenceAudio, sentenceUnits.length]);
+
+    const stopSentencePlayback = useCallback(() => {
+        stopSentenceProgressLoop();
+        if (sentenceAudioRef.current) {
+            sentenceAudioRef.current.pause();
+            sentenceAudioRef.current.currentTime = 0;
+        }
+        setIsSentencePlaying(false);
+        setSentenceCurrentTimeMs(0);
+    }, [stopSentenceProgressLoop]);
+
+    const playSentence = useCallback(async (sentenceIndex: number) => {
+        const targetUnit = sentenceUnits[sentenceIndex];
+        if (!targetUnit) return;
+
+        setIsSentenceAudioLoading(true);
+        setActiveListenSentenceIndex(sentenceIndex);
+
+        try {
+            const entry = await ensureSentenceAudio(sentenceIndex);
+            const targetUrl = getSentenceAudioObjectUrl(sentenceIndex, entry);
+            prefetchNextSentenceAudio(sentenceIndex);
+
+            const existingAudio = sentenceAudioRef.current;
+            if (existingAudio && sentenceAudioIndexRef.current === sentenceIndex) {
+                if (!existingAudio.paused) {
+                    existingAudio.pause();
+                    setIsSentencePlaying(false);
+                    return;
+                }
+
+                existingAudio.playbackRate = playbackRate;
+                await existingAudio.play();
+                setIsSentencePlaying(true);
+                return;
+            }
+
+            clearSentencePlayback();
+
+            const audio = new Audio(targetUrl);
+            sentenceAudioRef.current = audio;
+            sentenceAudioIndexRef.current = sentenceIndex;
+
+            audio.onloadedmetadata = () => {
+                setSentenceDurationMs((audio.duration || 0) * 1000);
+            };
+            audio.onplay = () => {
+                setIsSentencePlaying(true);
+                startSentenceProgressLoop();
+            };
+            audio.onpause = () => {
+                stopSentenceProgressLoop();
+                if (!audio.ended) {
+                    setIsSentencePlaying(false);
+                }
+            };
+            audio.onended = () => {
+                stopSentenceProgressLoop();
+                setIsSentencePlaying(false);
+                setSentenceCurrentTimeMs((audio.duration || 0) * 1000);
+            };
+
+            audio.playbackRate = playbackRate;
+            await audio.play();
+        } catch (error) {
+            console.error("[Read Speaking] playSentence failed:", error);
+        } finally {
+            setIsSentenceAudioLoading(false);
+        }
+    }, [
+        clearSentencePlayback,
+        ensureSentenceAudio,
+        getSentenceAudioObjectUrl,
+        playbackRate,
+        prefetchNextSentenceAudio,
+        startSentenceProgressLoop,
+        stopSentenceProgressLoop,
+        sentenceUnits,
+    ]);
+
+    const seekSentenceMs = useCallback(async (timeMs: number, options?: { autoplay?: boolean }) => {
+        const autoplay = options?.autoplay ?? false;
+        const targetSeconds = Math.max(0, timeMs) / 1000;
+        const audio = sentenceAudioRef.current;
+
+        if (!audio) return false;
+
+        audio.currentTime = targetSeconds;
+        setSentenceCurrentTimeMs(targetSeconds * 1000);
+
+        if (autoplay) {
+            try {
+                await audio.play();
+                setIsSentencePlaying(true);
+            } catch (error) {
+                console.error("[Read Speaking] seekSentenceMs autoplay failed:", error);
+            }
+        }
+
+        return true;
+    }, []);
+
+    const handlePlay = () => {
+        if (playMode === "sentence") {
+            if (sentenceUnits.length === 0) return;
+            void playSentence(Math.max(0, Math.min(activeListenSentenceIndex, sentenceUnits.length - 1)));
+            return;
+        }
+
+        togglePlay();
+    };
+
+    const handleStopPlayback = () => {
+        if (playMode === "sentence") {
+            stopSentencePlayback();
+            return;
+        }
+        stop();
+    };
+
+    const handleToggleSegmentList = useCallback(() => {
+        setIsSegmentListOpen((prev) => {
+            const next = !prev;
+            setPlayMode(next ? "sentence" : "full");
+            if (!next) {
+                void preload();
+            }
+            return next;
+        });
+    }, [preload]);
+
     useEffect(() => {
         preload();
     }, [preload]);
+
+    useEffect(() => {
+        if (!isSpeakingOpen) return;
+        preload();
+        void warmupAllSentenceAudio();
+    }, [isSpeakingOpen, preload, warmupAllSentenceAudio]);
 
     useEffect(() => {
         if (!showGrammar) return;
@@ -339,9 +668,306 @@ export function ParagraphCard({
         setHoveredReadingNote(null);
     }, [showGrammar]);
 
-    const handlePlay = () => {
-        togglePlay();
-    };
+    useEffect(() => {
+        setSentenceBoundaries(buildAutoSentenceBoundaries(text));
+        setActiveListenSentenceIndex(0);
+        setIsSegmentListOpen(false);
+        setPlayMode("full");
+        clearSentencePlayback();
+        clearSentenceAudioCache();
+    }, [clearSentenceAudioCache, clearSentencePlayback, text]);
+
+    useEffect(() => {
+        return () => {
+            clearSentencePlayback();
+            clearSentenceAudioCache();
+        };
+    }, [clearSentenceAudioCache, clearSentencePlayback]);
+
+    useEffect(() => {
+        if (sentenceUnits.length === 0) {
+            setActiveListenSentenceIndex(0);
+            return;
+        }
+
+        setActiveListenSentenceIndex((prev) => Math.max(0, Math.min(prev, sentenceUnits.length - 1)));
+    }, [sentenceUnits.length]);
+
+    useEffect(() => {
+        if (sentenceAudioRef.current) {
+            sentenceAudioRef.current.playbackRate = playbackRate;
+        }
+    }, [playbackRate]);
+
+    useEffect(() => {
+        if (playMode === "full") {
+            stopSentencePlayback();
+            return;
+        }
+        stop();
+    }, [playMode, stop, stopSentencePlayback]);
+
+    const isSentenceMode = playMode === "sentence";
+    const playbackTimeMs = isSentenceMode ? sentenceCurrentTimeMs : currentTime * 1000;
+    const playbackDurationMs = isSentenceMode ? sentenceDurationMs : duration * 1000;
+    const playbackIsRunning = isSentenceMode ? isSentencePlaying : isPlaying;
+    const playbackIsLoading = isSentenceMode ? isSentenceAudioLoading : isTTSLoading;
+
+    const handleFullWordSeek = useCallback(async (tokenIndex: number) => {
+        if (!playbackIsRunning) return;
+
+        const linkedMarkIndex = fullTokenToMark.get(tokenIndex);
+        if (linkedMarkIndex !== undefined) {
+            const mark = fullMarks[linkedMarkIndex];
+            if (mark) {
+                await seekToMs(mark.start, { autoplay: true });
+                return;
+            }
+        }
+
+        const fallbackToken = fullWordTokens[tokenIndex];
+        if (!fallbackToken || duration <= 0) return;
+
+        const fallbackTimeMs = (fallbackToken.start / Math.max(1, text.length)) * duration * 1000;
+        await seekToMs(fallbackTimeMs, { autoplay: true });
+    }, [duration, fullMarks, fullTokenToMark, fullWordTokens, playbackIsRunning, seekToMs, text.length]);
+
+    const handleSentenceWordSeek = useCallback(async (tokenIndex: number) => {
+        if (!playbackIsRunning) return;
+        if (!activeSentenceUnit) return;
+
+        const linkedMarkIndex = activeSentenceTokenToMark.get(tokenIndex);
+        if (linkedMarkIndex !== undefined) {
+            const mark = activeSentenceMarks[linkedMarkIndex];
+            if (mark) {
+                await seekSentenceMs(mark.start, { autoplay: true });
+                return;
+            }
+        }
+
+        const fallbackToken = activeSentenceWordTokens[tokenIndex];
+        if (!fallbackToken || sentenceDurationMs <= 0) return;
+
+        const fallbackTimeMs = (fallbackToken.start / Math.max(1, activeSentenceUnit.text.length)) * sentenceDurationMs;
+        await seekSentenceMs(fallbackTimeMs, { autoplay: true });
+    }, [
+        activeSentenceMarks,
+        activeSentenceTokenToMark,
+        activeSentenceUnit,
+        activeSentenceWordTokens,
+        playbackIsRunning,
+        seekSentenceMs,
+        sentenceDurationMs,
+    ]);
+
+    const renderWordLevelKtv = useCallback((params: {
+        sourceText: string;
+        marks: TtsWordMark[];
+        tokenToMark: Map<number, number>;
+        currentMs: number;
+        dimInactive?: boolean;
+        isSeekEnabled?: boolean;
+        onWordSeek: (tokenIndex: number) => Promise<void> | void;
+    }) => {
+        const {
+            sourceText,
+            marks: sourceMarks,
+            tokenToMark,
+            currentMs,
+            dimInactive = false,
+            isSeekEnabled = false,
+            onWordSeek,
+        } = params;
+        const tokenRegex = /[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g;
+        const nodes: React.ReactNode[] = [];
+        let cursor = 0;
+        let tokenIndex = 0;
+        let match: RegExpExecArray | null;
+
+        tokenRegex.lastIndex = 0;
+        while (true) {
+            match = tokenRegex.exec(sourceText);
+            if (!match) break;
+
+            const start = match.index;
+            const end = start + match[0].length;
+            if (start > cursor) {
+                nodes.push(
+                    <React.Fragment key={`txt-${cursor}-${start}`}>
+                        {sourceText.slice(cursor, start)}
+                    </React.Fragment>,
+                );
+            }
+
+            const linkedMarkIndex = tokenToMark.get(tokenIndex);
+            const linkedMark = linkedMarkIndex !== undefined ? sourceMarks[linkedMarkIndex] : null;
+            const smoothTailMs = 90;
+            const isCurrent = Boolean(linkedMark && currentMs >= linkedMark.start && currentMs < linkedMark.end + smoothTailMs);
+            const isPlayed = Boolean(linkedMark && currentMs >= linkedMark.end + smoothTailMs);
+            const currentProgress = linkedMark
+                ? Math.max(0, Math.min(1, (currentMs - linkedMark.start) / Math.max(1, linkedMark.end - linkedMark.start)))
+                : 0;
+            const currentProgressPercent = `${Math.round(currentProgress * 1000) / 10}%`;
+            const wordText = match[0];
+
+            nodes.push(
+                <span
+                    key={`word-${start}-${end}-${tokenIndex}`}
+                    data-ktv-word-index={tokenIndex}
+                    onClick={(event) => {
+                        if (!isSeekEnabled) return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        void onWordSeek(tokenIndex);
+                    }}
+                    className={cn(
+                        "relative inline-block",
+                        isSeekEnabled ? "cursor-pointer" : "cursor-default",
+                        !isCurrent && isPlayed && "text-sky-500/90",
+                        !isCurrent && !isPlayed && (dimInactive ? "text-stone-400/95" : "text-stone-600/95"),
+                    )}
+                    title={isSeekEnabled ? "点击跳转到该单词" : ""}
+                >
+                    {isCurrent ? (
+                        <>
+                            <span className={cn(dimInactive ? "text-stone-400/95" : "text-stone-600/95")}>{wordText}</span>
+                            <span
+                                aria-hidden
+                                className="pointer-events-none absolute inset-y-0 left-0 overflow-hidden whitespace-nowrap text-sky-600"
+                                style={{ width: currentProgressPercent } as React.CSSProperties}
+                            >
+                                {wordText}
+                            </span>
+                        </>
+                    ) : (
+                        wordText
+                    )}
+                </span>,
+            );
+
+            cursor = end;
+            tokenIndex += 1;
+        }
+
+        if (cursor < sourceText.length) {
+            nodes.push(
+                <React.Fragment key={`tail-${cursor}`}>
+                    {sourceText.slice(cursor)}
+                </React.Fragment>,
+            );
+        }
+
+        if (nodes.length > 0) return <>{nodes}</>;
+        return sourceText;
+    }, []);
+
+    const renderCharacterFallback = useCallback((sourceText: string, currentMs: number, totalMs: number) => {
+        const chars = sourceText.split("");
+        const totalChars = Math.max(1, sourceText.length);
+        const progress = totalMs > 0 ? currentMs / totalMs : 0;
+        const highlightedChars = progress * totalChars;
+
+        return (
+            <span>
+                {chars.map((char, charIndex) => (
+                    <span
+                        key={`${char}-${charIndex}`}
+                        className={cn(
+                            "transition-colors duration-75",
+                            charIndex < highlightedChars ? "text-amber-600" : "text-stone-400",
+                        )}
+                    >
+                        {char}
+                    </span>
+                ))}
+            </span>
+        );
+    }, []);
+
+    const renderSegmentedSentenceList = useCallback(() => {
+        if (sentenceUnits.length === 0) return <span>{text}</span>;
+
+        return (
+            <div className="space-y-2">
+                <div className="text-[11px] text-stone-400">提示：点击左侧列表符号可播放该句</div>
+                <ul className="space-y-1.5">
+                {sentenceUnits.map((unit, unitIndex) => {
+                    const isSentenceActive = playMode === "sentence" && unitIndex === activeListenSentenceIndex;
+                    const showSentenceKtv = isSentenceActive && (playbackIsRunning || playbackTimeMs > 0);
+
+                    return (
+                        <li
+                            key={`segment-line-${unit.start}-${unit.end}`}
+                            className={cn(
+                                "group/segment flex items-start gap-2 rounded-md px-1 py-0.5 transition-colors",
+                                isSentenceActive ? "bg-amber-50/70" : "hover:bg-stone-50/70",
+                            )}
+                            onClick={() => {
+                                if (playMode !== "sentence") return;
+                                setActiveListenSentenceIndex(unitIndex);
+                            }}
+                        >
+                            <button
+                                type="button"
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setActiveListenSentenceIndex(unitIndex);
+                                    void playSentence(unitIndex);
+                                }}
+                                className={cn(
+                                    "mt-[5px] shrink-0 h-5 w-5 rounded-full border text-center leading-[18px] transition-all",
+                                    isSentenceActive
+                                        ? "border-amber-300 bg-amber-100 text-amber-600"
+                                        : "border-stone-300 bg-white text-stone-400 hover:border-amber-300 hover:text-amber-500 hover:scale-105",
+                                )}
+                                title={`播放第 ${unitIndex + 1} 句`}
+                                aria-label={`播放第 ${unitIndex + 1} 句`}
+                            >
+                                •
+                            </button>
+                            <div className={cn("min-w-0 flex-1", playMode === "sentence" && "cursor-pointer")}>
+                                {showSentenceKtv ? (
+                                    activeSentenceMarks.length > 0 ? (
+                                        renderWordLevelKtv({
+                                            sourceText: unit.text,
+                                            marks: activeSentenceMarks,
+                                            tokenToMark: activeSentenceTokenToMark,
+                                            currentMs: playbackTimeMs,
+                                            isSeekEnabled: playbackIsRunning,
+                                            onWordSeek: handleSentenceWordSeek,
+                                        })
+                                    ) : (
+                                        renderCharacterFallback(unit.text, playbackTimeMs, playbackDurationMs)
+                                    )
+                                ) : (
+                                    <span className={cn(isSentenceActive ? "text-stone-900" : "text-stone-700")}>
+                                        {unit.text}
+                                    </span>
+                                )}
+                            </div>
+                        </li>
+                    );
+                })}
+                </ul>
+            </div>
+        );
+    }, [
+        activeListenSentenceIndex,
+        activeSentenceMarks,
+        activeSentenceTokenToMark,
+        handleSentenceWordSeek,
+        playSentence,
+        playbackDurationMs,
+        playbackIsRunning,
+        playbackTimeMs,
+        playMode,
+        renderCharacterFallback,
+        renderWordLevelKtv,
+        sentenceUnits,
+        text,
+    ]);
+
     const renderAskMarkdown = (content: string) => (
         <div className="prose prose-sm max-w-none text-inherit leading-7 prose-p:my-2 prose-ol:my-3 prose-ol:space-y-2 prose-ul:my-3 prose-ul:space-y-1.5">
             <ReactMarkdown
@@ -929,7 +1555,7 @@ export function ParagraphCard({
     };
 
     useEffect(() => {
-        setActiveSentenceIndex(0);
+        setActiveGrammarSentenceIndex(0);
         setShowDeepAnalysis(false);
     }, [grammarBasicCacheKey]);
 
@@ -1027,7 +1653,7 @@ export function ParagraphCard({
             await syncReadingBalance(data, "grammar_basic");
 
             setStoreGrammarAnalysis(grammarBasicCacheKey, data);
-            setActiveSentenceIndex(0);
+            setActiveGrammarSentenceIndex(0);
             setShowDeepAnalysis(false);
         } catch (err) {
             console.error(err);
@@ -1041,7 +1667,7 @@ export function ParagraphCard({
     };
 
     const handleDeepSentenceChange = (nextIndex: number) => {
-        setActiveSentenceIndex(nextIndex);
+        setActiveGrammarSentenceIndex(nextIndex);
     };
 
     const grammarSentences = grammarHighlightSentences;
@@ -1051,9 +1677,9 @@ export function ParagraphCard({
     ), 0);
     const grammarModeLabel = grammarDisplayMode === "core" ? "主干视图" : "完整视图";
     const activeSentenceLabel = grammarSentenceCount > 0
-        ? `句子 ${Math.min(activeSentenceIndex + 1, grammarSentenceCount)}/${grammarSentenceCount}`
+        ? `句子 ${Math.min(activeGrammarSentenceIndex + 1, grammarSentenceCount)}/${grammarSentenceCount}`
         : "未定位句子";
-    const activeGrammarSentence = grammarSentences[activeSentenceIndex]?.sentence?.trim() ?? "";
+    const activeGrammarSentence = grammarSentences[activeGrammarSentenceIndex]?.sentence?.trim() ?? "";
     const activeDeepSentence = activeGrammarSentence
         ? deepBySentence[sentenceIdentity(activeGrammarSentence)]
         : null;
@@ -1130,7 +1756,7 @@ export function ParagraphCard({
                                     fullContent += parsed.content;
                                     setStreamingContent(fullContent);
                                 }
-                            } catch (e) {
+                            } catch {
                                 // Ignore parse errors for incomplete chunks
                             }
                         }
@@ -1177,10 +1803,6 @@ export function ParagraphCard({
             isSplitting.current = true;
             onSplit(index, textBefore, textAfter);
         }
-    };
-
-    const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
-        // ... existing handleInput logic if needed
     };
 
     const handleBlur = () => {
@@ -1315,13 +1937,13 @@ export function ParagraphCard({
                 {/* Play/Pause */}
                 <button
                     onClick={handlePlay}
-                    className={cn("p-1.5 rounded-full transition-colors", isPlaying ? "text-amber-600" : "text-stone-400 hover:text-amber-600")}
-                    title={isPlaying ? "Pause" : "Listen"}
-                    disabled={isTTSLoading}
+                    className={cn("p-1.5 rounded-full transition-colors", playbackIsRunning ? "text-amber-600" : "text-stone-400 hover:text-amber-600")}
+                    title={playbackIsRunning ? "Pause" : "Listen"}
+                    disabled={playbackIsLoading}
                 >
-                    {isTTSLoading ? (
+                    {playbackIsLoading ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : isPlaying ? (
+                    ) : playbackIsRunning ? (
                         <Pause className="w-4 h-4 fill-current" />
                     ) : (
                         <Play className="w-4 h-4 fill-current" />
@@ -1329,9 +1951,9 @@ export function ParagraphCard({
                 </button>
 
                 {/* Stop Button (Visible when playing or has progress) */}
-                {(isPlaying || currentTime > 0) && (
+                {(playbackIsRunning || playbackTimeMs > 0) && (
                     <button
-                        onClick={stop}
+                        onClick={handleStopPlayback}
                         className="p-1.5 rounded-full text-stone-500 hover:text-red-400 transition-colors"
                         title="Stop & Reset"
                     >
@@ -1340,7 +1962,7 @@ export function ParagraphCard({
                 )}
 
                 {/* Speed Control (Only visible when playing or has audio) */}
-                {(isPlaying || currentTime > 0) && (
+                {(playbackIsRunning || playbackTimeMs > 0) && (
                     <button
                         onClick={() => {
                             const rates = [1, 0.75, 0.5];
@@ -1363,7 +1985,7 @@ export function ParagraphCard({
                     onKeyDown={handleKeyDown}
                     onBlur={handleBlur}
                     className={cn(
-                        "leading-loose tracking-wide transition-all duration-300 outline-none focus:ring-0",
+                        "relative leading-loose tracking-wide transition-all duration-300 outline-none focus:ring-0",
                         fontSizeClass, // Apply dynamic size
                         // fontClass is applied globally but can be reinforced here if needed
                         // remove text-lg md:text-xl font-reading text-stone-800 to allow cascade/override
@@ -1377,7 +1999,7 @@ export function ParagraphCard({
                         if (isEditMode) return; // Disable click actions in edit mode
 
                         // 1. Calculate click position for audio seeking
-                        if (duration > 0) {
+                        if (playMode === "full" && duration > 0 && playbackIsRunning) {
                             const selection = window.getSelection();
                             if (selection && selection.rangeCount > 0) {
                                 const range = selection.getRangeAt(0);
@@ -1390,8 +2012,23 @@ export function ParagraphCard({
                                     const clickIndex = preCaretRange.toString().length;
 
                                     // Calculate timestamp (linear approximation)
-                                    const targetTime = (clickIndex / text.length) * duration;
-                                    seek(targetTime);
+                                    const targetTimeMs = (clickIndex / text.length) * duration * 1000;
+                                    void seekToMs(targetTimeMs, { autoplay: true });
+                                }
+                            }
+                        }
+                        if (playMode === "sentence" && activeSentenceUnit && sentenceDurationMs > 0 && playbackIsRunning) {
+                            const selection = window.getSelection();
+                            if (selection && selection.rangeCount > 0) {
+                                const range = selection.getRangeAt(0);
+                                if (pRef.current?.contains(range.commonAncestorContainer)) {
+                                    const preCaretRange = range.cloneRange();
+                                    preCaretRange.selectNodeContents(pRef.current);
+                                    preCaretRange.setEnd(range.endContainer, range.endOffset);
+                                    const clickIndex = preCaretRange.toString().length;
+                                    const sentenceRelativeIndex = Math.max(0, Math.min(activeSentenceUnit.text.length, clickIndex - activeSentenceUnit.start));
+                                    const targetTimeMs = (sentenceRelativeIndex / Math.max(1, activeSentenceUnit.text.length)) * sentenceDurationMs;
+                                    void seekSentenceMs(targetTimeMs, { autoplay: true });
                                 }
                             }
                         }
@@ -1417,70 +2054,86 @@ export function ParagraphCard({
                             <span className="text-stone-700">{text}</span>
                         )
                     ) : (
-                        // Karaoke Effect Logic (Character-based for smoothness)
-                        isPlaying || currentTime > 0 ? (
-                            (() => {
-                                const chars = text.split('');
-                                const totalChars = text.length;
-                                const progressChars = (currentTime / (duration || 1)) * totalChars;
-
-                                return (
+                        isSegmentListOpen ? (
+                            renderSegmentedSentenceList()
+                        ) : (
+                            playbackIsRunning || playbackTimeMs > 0 ? (
+                            playMode === "full" ? (
+                                fullMarks.length > 0
+                                    ? renderWordLevelKtv({
+                                        sourceText: text,
+                                        marks: fullMarks,
+                                        tokenToMark: fullTokenToMark,
+                                        currentMs: playbackTimeMs,
+                                        isSeekEnabled: playbackIsRunning,
+                                        onWordSeek: handleFullWordSeek,
+                                    })
+                                    : renderCharacterFallback(text, playbackTimeMs, playbackDurationMs)
+                            ) : (
+                                sentenceUnits.length === 0 ? (
+                                    <span>{text}</span>
+                                ) : (
                                     <span>
-                                        {chars.map((char, i) => {
-                                            const isHighlighted = i < progressChars;
+                                        {sentenceUnits.map((unit, unitIndex) => {
+                                        if (unitIndex !== activeListenSentenceIndex) {
                                             return (
                                                 <span
-                                                    key={i}
-                                                    className={cn(
-                                                        "transition-colors duration-75",
-                                                        isHighlighted ? "text-amber-600 font-medium" : "text-stone-400"
-                                                    )}
+                                                    key={`sentence-muted-${unit.start}-${unit.end}`}
+                                                    className="text-stone-400/95"
                                                 >
-                                                    {char}
-                                                </span>
-                                            );
-                                        })}
-                                    </span>
-                                );
-                            })()
-                        ) : (
-                            // Default or Bionic Text
-                            isBionicMode ? (
-                                <span>
-                                    {bionicText(text).map((segment, i) => {
-                                        if (segment.type === 'word') {
-                                            return (
-                                                <span key={i}>
-                                                    <strong className="font-bold">{segment.bold}</strong>
-                                                    <span className="font-normal">{segment.regular}</span>
+                                                    {unit.text}
                                                 </span>
                                             );
                                         }
-                                        return <span key={i}>{segment.text}</span>;
-                                    })}
-                                </span>
+
+                                        if (activeSentenceMarks.length > 0) {
+                                            return (
+                                                <React.Fragment key={`sentence-active-${unit.start}-${unit.end}`}>
+                                                    {renderWordLevelKtv({
+                                                        sourceText: unit.text,
+                                                        marks: activeSentenceMarks,
+                                                        tokenToMark: activeSentenceTokenToMark,
+                                                        currentMs: playbackTimeMs,
+                                                        isSeekEnabled: playbackIsRunning,
+                                                        onWordSeek: handleSentenceWordSeek,
+                                                    })}
+                                                </React.Fragment>
+                                            );
+                                        }
+
+                                        return (
+                                            <React.Fragment key={`sentence-fallback-${unit.start}-${unit.end}`}>
+                                                {renderCharacterFallback(unit.text, playbackTimeMs, playbackDurationMs)}
+                                            </React.Fragment>
+                                        );
+                                        })}
+                                    </span>
+                                )
+                            )
                             ) : (
-                                renderTextWithReadingMarks(text, highlightSnippet)
+                                // Default or Bionic Text
+                                isBionicMode ? (
+                                    <span>
+                                        {bionicText(text).map((segment, i) => {
+                                            if (segment.type === 'word') {
+                                                return (
+                                                    <span key={i}>
+                                                        <strong className="font-bold">{segment.bold}</strong>
+                                                        <span className="font-normal">{segment.regular}</span>
+                                                    </span>
+                                                );
+                                            }
+                                            return <span key={i}>{segment.text}</span>;
+                                        })}
+                                    </span>
+                                ) : (
+                                    renderTextWithReadingMarks(text, highlightSnippet)
+                                )
                             )
                         )
                     ))}
-                </div>
 
-                {/* Progress Bar (Only visible when playing or paused with progress) */}
-                {
-                    (isPlaying || currentTime > 0) && (
-                        <div className="h-1 bg-stone-200 rounded-full overflow-hidden cursor-pointer group/progress" onClick={(e) => {
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            const percent = (e.clientX - rect.left) / rect.width;
-                            seek(percent * duration);
-                        }}>
-                            <div
-                                className="h-full bg-amber-400 group-hover/progress:bg-amber-500 transition-all duration-100 ease-linear"
-                                style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
-                            />
-                        </div>
-                    )
-                }
+                </div>
 
                 {/* Inline Actions Bar (Visible on Hover) */}
                 <div className="h-8 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1532,12 +2185,14 @@ export function ParagraphCard({
                     {isSpeakingOpen && (
                         <SpeakingPanel
                             text={text}
-                            onPlayOriginal={togglePlay}
-                            isOriginalPlaying={isPlaying}
+                            onPlayOriginal={handlePlay}
+                            isOriginalPlaying={playbackIsRunning}
                             onRecordingComplete={(blob) => console.log("Recording complete", blob)}
                             onClose={() => setIsSpeakingOpen(false)}
                             isBlind={isBlind}
                             onToggleBlind={() => setIsBlind(!isBlind)}
+                            isSegmentListOpen={isSegmentListOpen}
+                            onToggleSegmentList={handleToggleSegmentList}
                         />
                     )}
                 </AnimatePresence>
@@ -1635,7 +2290,7 @@ export function ParagraphCard({
                                                         onClick={() => void handleDeepSentenceChange(idx)}
                                                         className={cn(
                                                             "whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium transition-all",
-                                                            activeSentenceIndex === idx
+                                                            activeGrammarSentenceIndex === idx
                                                                 ? "bg-white text-orange-600 shadow-sm"
                                                                 : "text-orange-500 hover:bg-white/65 hover:text-orange-700",
                                                         )}

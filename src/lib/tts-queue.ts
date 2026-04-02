@@ -1,9 +1,20 @@
 import { saveAudioToCache } from "./tts-cache";
 import { requestTtsPayload, resolveTtsAudioBlob } from "./tts-client";
 
+export interface TTSQueueResult {
+    blob: Blob;
+    marks: Array<{
+        time: number;
+        type: string;
+        start: number;
+        end: number;
+        value: string;
+    }>;
+}
+
 type TTSRequest = {
     text: string;
-    resolve: (blob: Blob) => void;
+    resolve: (result: TTSQueueResult) => void;
     reject: (error: unknown) => void;
 };
 
@@ -11,16 +22,16 @@ class TTSQueueManager {
     private queue: TTSRequest[] = [];
     private activeCount = 0;
     private CONCURRENCY_LIMIT = 5;
-    private pendingMap = new Map<string, Promise<Blob>>();
+    private pendingMap = new Map<string, Promise<TTSQueueResult>>();
 
-    async add(text: string): Promise<Blob> {
+    async add(text: string): Promise<TTSQueueResult> {
         // 1. Deduplication: If this text is already being processed or queued, return the existing promise
         if (this.pendingMap.has(text)) {
             return this.pendingMap.get(text)!;
         }
 
         // 2. Create a new promise for this text
-        const promise = new Promise<Blob>((resolve, reject) => {
+        const promise = new Promise<TTSQueueResult>((resolve, reject) => {
             this.queue.push({ text, resolve, reject });
             this.processQueue();
         });
@@ -52,12 +63,16 @@ class TTSQueueManager {
         try {
             const payload = await requestTtsPayload(request.text);
             const blob = await resolveTtsAudioBlob(payload.audio);
+            const marks = Array.isArray(payload.marks) ? payload.marks : [];
 
             // 2. Save to Cache
             saveAudioToCache(request.text, blob);
 
             // 3. Resolve
-            request.resolve(blob);
+            request.resolve({
+                blob,
+                marks,
+            });
 
         } catch (error) {
             console.error("TTS Queue Error:", error);

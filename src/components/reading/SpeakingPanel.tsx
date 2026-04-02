@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, Play, Square, RotateCcw, Volume2, Loader2, X, Eye, EyeOff, CheckCircle2, AlertCircle, Sparkles, Lightbulb, Repeat } from 'lucide-react';
+import { Mic, Play, RotateCcw, Volume2, Loader2, X, Eye, EyeOff, CheckCircle2, AlertCircle, Sparkles, Lightbulb, Repeat, List } from 'lucide-react';
 import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { cn } from '@/lib/utils';
 import { SpeechModelStatusPanel } from '@/components/speech/SpeechModelStatusPanel';
@@ -13,6 +13,8 @@ interface SpeakingPanelProps {
     onClose: () => void;
     isBlind: boolean;
     onToggleBlind: () => void;
+    isSegmentListOpen: boolean;
+    onToggleSegmentList: () => void;
 }
 
 export function SpeakingPanel({
@@ -22,7 +24,9 @@ export function SpeakingPanel({
     onRecordingComplete,
     onClose,
     isBlind,
-    onToggleBlind
+    onToggleBlind,
+    isSegmentListOpen,
+    onToggleSegmentList,
 }: SpeakingPanelProps) {
     const [reviewResults, setReviewResults] = useState<any>(null);
     const [aiFeedback, setAiFeedback] = useState<any>(null);
@@ -33,6 +37,8 @@ export function SpeakingPanel({
     const [isBlindChallenge, setIsBlindChallenge] = useState(false);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
     const lastAnalyzedTranscriptRef = useRef<string | null>(null);
+    const reviewAudioRef = useRef<HTMLAudioElement | null>(null);
+    const reviewAudioUrlRef = useRef<string | null>(null);
     const {
         isAvailable,
         canRecord,
@@ -54,8 +60,23 @@ export function SpeakingPanel({
     useEffect(() => {
         return () => {
             if (timerRef.current) clearInterval(timerRef.current);
+            reviewAudioRef.current?.pause();
+            reviewAudioRef.current = null;
+            if (reviewAudioUrlRef.current) {
+                URL.revokeObjectURL(reviewAudioUrlRef.current);
+                reviewAudioUrlRef.current = null;
+            }
         };
     }, []);
+
+    useEffect(() => {
+        reviewAudioRef.current?.pause();
+        reviewAudioRef.current = null;
+        if (reviewAudioUrlRef.current) {
+            URL.revokeObjectURL(reviewAudioUrlRef.current);
+            reviewAudioUrlRef.current = null;
+        }
+    }, [audioBlob]);
 
     const handleToggleRecording = () => {
         if (isRecording) {
@@ -70,9 +91,39 @@ export function SpeakingPanel({
     };
 
     const seekToWord = (index: number, totalWords: number) => {
-        if (audioBlob) {
-            playRecording();
+        if (!audioBlob) return;
+
+        if (!reviewAudioRef.current) {
+            const nextUrl = URL.createObjectURL(audioBlob);
+            reviewAudioUrlRef.current = nextUrl;
+            reviewAudioRef.current = new Audio(nextUrl);
         }
+
+        const audio = reviewAudioRef.current;
+        if (!audio) return;
+
+        const boundedIndex = Math.max(0, Math.min(index, Math.max(0, totalWords - 1)));
+        const ratio = totalWords <= 1 ? 0 : boundedIndex / Math.max(1, totalWords - 1);
+
+        const seekAndPlay = () => {
+            const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+            audio.currentTime = Math.max(0, duration * ratio);
+            void audio.play().catch((err) => {
+                console.error("Review word seek play failed:", err);
+            });
+        };
+
+        if (Number.isFinite(audio.duration) && audio.duration > 0) {
+            seekAndPlay();
+            return;
+        }
+
+        const handleLoaded = () => {
+            seekAndPlay();
+            audio.removeEventListener("loadedmetadata", handleLoaded);
+        };
+        audio.addEventListener("loadedmetadata", handleLoaded);
+        audio.load();
     };
 
     const handleReset = () => {
@@ -232,6 +283,16 @@ export function SpeakingPanel({
                         title={isBlind ? "显示原文" : "隐藏原文"}
                     >
                         {isBlind ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                    <button
+                        onClick={onToggleSegmentList}
+                        className={cn(
+                            "p-1.5 rounded-md transition-colors",
+                            isSegmentListOpen ? "text-amber-600 bg-amber-50" : "text-stone-400 hover:text-stone-600 hover:bg-stone-100",
+                        )}
+                        title={isSegmentListOpen ? "合并整段" : "分段显示"}
+                    >
+                        <List className="w-4 h-4" />
                     </button>
                     <button
                         onClick={onClose}
