@@ -22,6 +22,84 @@ interface InlineGrammarHighlightsProps {
     allowNestedTooltipDetails?: boolean;
 }
 
+interface ExplanationBlock {
+    label: string;
+    content: string;
+}
+
+interface ExplanationTone {
+    badgeClassName: string;
+    textClassName: string;
+}
+
+function normalizeExplanationText(raw: string) {
+    return raw
+        .replace(/\s+/g, " ")
+        .replace(/\s*([，。；：！？])/g, "$1")
+        .trim();
+}
+
+function extractExplanationSegment(text: string, key: string, nextKeys: string[]) {
+    const start = text.indexOf(key);
+    if (start < 0) return "";
+    const from = start + key.length;
+    const nextIndexes = nextKeys
+        .map((nextKey) => text.indexOf(nextKey, from))
+        .filter((index) => index >= 0);
+    const end = nextIndexes.length > 0 ? Math.min(...nextIndexes) : text.length;
+    return text.slice(from, end).trim().replace(/^[：:]/, "").trim();
+}
+
+function buildExplanationBlocks(explanation: string): ExplanationBlock[] {
+    const text = normalizeExplanationText(explanation);
+    if (!text) return [];
+
+    const structure = extractExplanationSegment(text, "结构判断", ["句中作用", "易错点"]);
+    const role = extractExplanationSegment(text, "句中作用", ["易错点"]);
+    const pitfalls = extractExplanationSegment(text, "易错点", []);
+
+    const parsedBlocks: ExplanationBlock[] = [];
+    if (structure) parsedBlocks.push({ label: "结构", content: structure });
+    if (role) parsedBlocks.push({ label: "作用", content: role });
+    if (pitfalls) parsedBlocks.push({ label: "易错", content: pitfalls });
+    if (parsedBlocks.length > 0) return parsedBlocks;
+
+    const fallbackLines = text
+        .split(/[。；]/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .slice(0, 3);
+
+    if (fallbackLines.length === 0) return [];
+    if (fallbackLines.length === 1) return [{ label: "说明", content: fallbackLines[0] }];
+    return fallbackLines.map((line, index) => ({ label: `说明${index + 1}`, content: line }));
+}
+
+function getExplanationTone(label: string): ExplanationTone {
+    if (label.startsWith("结构")) {
+        return {
+            badgeClassName: "bg-sky-100 text-sky-700",
+            textClassName: "text-stone-700",
+        };
+    }
+    if (label.startsWith("作用")) {
+        return {
+            badgeClassName: "bg-emerald-100 text-emerald-700",
+            textClassName: "text-stone-700",
+        };
+    }
+    if (label.startsWith("易错")) {
+        return {
+            badgeClassName: "bg-rose-100 text-rose-700",
+            textClassName: "text-stone-700",
+        };
+    }
+    return {
+        badgeClassName: "bg-stone-100 text-stone-600",
+        textClassName: "text-stone-700",
+    };
+}
+
 function getMarkerStyle(palette: GrammarHighlightPalette, layer: string): CSSProperties {
     const topStop = layer === "core" ? "42%" : layer === "structure" ? "49%" : "58%";
     const midStop = layer === "core" ? "82%" : layer === "structure" ? "84%" : "80%";
@@ -95,6 +173,7 @@ export function InlineGrammarHighlights({
                             layer: segment.highlight.layer,
                         });
                         const overlapCount = segment.highlight.overlapCount ?? 0;
+                        const explanationBlocks = buildExplanationBlocks(segment.highlight.explanation);
                         const rangeKey = `${segment.start}-${segment.end}`;
                         return (
                             <span
@@ -134,54 +213,59 @@ export function InlineGrammarHighlights({
                                     </span>
                                 ) : null}
                                 {segment.text}
-                                <span className="pointer-events-none absolute bottom-full left-1/2 z-[100] mb-3 w-[min(20rem,calc(100vw-2rem))] -translate-x-1/2 rounded-[22px] border border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,253,248,0.98),rgba(250,247,240,0.96))] p-3 opacity-0 shadow-[0_18px_44px_rgba(28,25,23,0.16)] ring-1 ring-white/70 transition-opacity duration-150 ease-out group-hover/highlight:opacity-100 group-focus/highlight:opacity-100">
-                                    <span className="mb-2 flex items-center gap-2 border-b border-stone-200/80 pb-2">
+                                <span className="pointer-events-none absolute bottom-full left-1/2 z-[100] mb-2.5 w-[min(18.5rem,calc(100vw-1rem))] max-h-[min(44vh,18rem)] -translate-x-1/2 overflow-hidden rounded-[22px] border border-rose-100 bg-[linear-gradient(145deg,#fffdfb_0%,#fff7fc_48%,#f4fbff_100%)] p-0 opacity-0 shadow-[0_16px_36px_rgba(244,114,182,0.14)] ring-1 ring-white/85 transition-opacity duration-150 ease-out group-hover/highlight:opacity-100 group-focus/highlight:opacity-100">
+                                    <span className="relative z-10 flex items-center gap-2 border-b border-rose-100/90 bg-[linear-gradient(90deg,rgba(255,255,255,0.98),rgba(255,241,248,0.85))] px-3.5 py-2.5">
                                         <span
-                                            className="flex h-7 w-7 items-center justify-center rounded-full border border-white/70 shadow-sm"
-                                            style={{ backgroundColor: palette.markerBase, color: palette.toneClassName === "text-stone-700" ? "#57534e" : undefined }}
+                                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white shadow-[0_6px_12px_rgba(244,114,182,0.15)] ring-1 ring-rose-100"
+                                            style={{ color: palette.toneClassName.includes("text-stone-") ? "#0f172a" : undefined }}
                                         >
                                             <BookOpen className={cn("h-3.5 w-3.5", palette.toneClassName)} />
                                         </span>
-                                        <span className="min-w-0">
-                                            <span className="block text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">
-                                                Grammar Note
+                                        <span className="min-w-0 leading-none">
+                                            <span className="block text-[9px] font-semibold uppercase tracking-[0.18em] text-rose-300">
+                                                Syntax Note
                                             </span>
-                                            <span className="block font-sans text-sm font-semibold text-stone-900">
+                                            <span className="mt-0.5 block font-sans text-[13px] font-semibold leading-tight text-stone-800">
                                                 {segment.highlight.translatedLabel}
                                             </span>
                                         </span>
                                     </span>
-                                    <span className="space-y-2.5 font-sans">
-                                        <span className="block rounded-2xl border border-stone-200/70 bg-white/70 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
-                                            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
-                                                语法功能
-                                            </span>
-                                            <span className="block text-xs leading-5 text-stone-700">
-                                                {segment.highlight.explanation}
-                                            </span>
-                                        </span>
+                                    <span className="relative z-10 block max-h-[calc(min(44vh,18rem)-42px)] overflow-y-auto px-3.5 py-2.5 font-sans">
+                                        {(explanationBlocks.length > 0 ? explanationBlocks : [{ label: "说明", content: segment.highlight.explanation }]).map((block, idx) => {
+                                            const tone = getExplanationTone(block.label);
+                                            return (
+                                                <span
+                                                    key={`${block.label}-${idx}`}
+                                                    className={cn(
+                                                        "block break-words py-2 text-[12px] leading-[1.72] tracking-[0.01em]",
+                                                        idx === 0 ? "pt-0" : "border-t border-rose-100/85",
+                                                        tone.textClassName,
+                                                    )}
+                                                >
+                                                    <span className={cn("mr-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]", tone.badgeClassName)}>
+                                                        {block.label}
+                                                    </span>
+                                                    <span className="text-stone-700">{block.content}</span>
+                                                </span>
+                                            );
+                                        })}
                                         {showSegmentTranslation && segment.highlight.segmentTranslation ? (
-                                            <span className="block rounded-2xl border border-stone-200/70 bg-stone-50/85 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
-                                                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+                                            <span className="block break-words border-t border-rose-100/85 py-2 text-[12px] leading-[1.72] tracking-[0.01em] text-stone-700">
+                                                <span className="mr-1.5 inline-flex items-center rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-emerald-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
                                                     片段义
                                                 </span>
-                                                <span className="block text-xs leading-5 text-stone-700">
-                                                    {segment.highlight.segmentTranslation}
-                                                </span>
+                                                <span>{segment.highlight.segmentTranslation}</span>
                                             </span>
                                         ) : null}
                                         {Array.isArray(segment.highlight.alternatives) && segment.highlight.alternatives.length > 0 ? (
-                                            <span className="block rounded-2xl border border-stone-200/70 bg-amber-50/70 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-                                                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em] text-stone-400">
+                                            <span className="block break-words border-t border-rose-100/85 pt-2 text-[12px] leading-[1.72] tracking-[0.01em] text-stone-700">
+                                                <span className="mr-1.5 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]">
                                                     重叠标签
                                                 </span>
-                                                <span className="block text-xs leading-5 text-stone-700">
-                                                    {segment.highlight.alternatives.slice(0, 3).map((item) => `${item.translatedLabel}：${item.explanation}`).join("；")}
-                                                </span>
+                                                <span>{segment.highlight.alternatives.slice(0, 3).map((item) => `${item.translatedLabel}：${item.explanation}`).join("；")}</span>
                                             </span>
                                         ) : null}
                                     </span>
-                                    <span className="absolute left-1/2 top-full -mt-[1px] h-3.5 w-3.5 -translate-x-1/2 rotate-45 rounded-[3px] border-b border-r border-stone-200/80 bg-[#fbf8f1]" />
                                 </span>
                             </span>
                         );
@@ -218,16 +302,16 @@ export function InlineGrammarHighlights({
                                 {markerIndex + 1}
                             </span>
                             {marker.translation ? (
-                                <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-3 w-80 rounded-[22px] border border-stone-200/90 bg-[linear-gradient(180deg,rgba(255,253,248,0.98),rgba(250,247,240,0.96))] p-4 text-left opacity-0 shadow-[0_18px_44px_rgba(28,25,23,0.16)] transition-opacity duration-150 ease-out group-hover/trans-icon:opacity-100 group-focus-within/trans-icon:opacity-100">
-                                    <span className="mb-2 flex items-center justify-between border-b border-stone-200/80 pb-2">
-                                        <span className="font-sans text-[10px] font-bold uppercase tracking-[0.24em] text-amber-700">
+                                <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-2.5 w-[min(16rem,calc(100vw-1rem))] max-h-[min(34vh,12rem)] overflow-hidden rounded-2xl border border-rose-100/90 bg-[linear-gradient(145deg,#fffdfb_0%,#fff7fc_48%,#f4fbff_100%)] p-0 text-left opacity-0 shadow-[0_12px_24px_rgba(244,114,182,0.15)] transition-opacity duration-150 ease-out group-hover/trans-icon:opacity-100 group-focus-within/trans-icon:opacity-100">
+                                    <span className="flex items-center justify-between border-b border-rose-100/90 px-3 py-2">
+                                        <span className="font-sans text-[9px] font-bold uppercase tracking-[0.16em] text-rose-400">
                                             第 {markerIndex + 1} 句
                                         </span>
-                                        <span className="rounded-full border border-stone-200/80 bg-white/80 px-2 py-0.5 font-sans text-[10px] font-medium text-stone-500">
+                                        <span className="rounded-full border border-rose-100 bg-white/90 px-1.5 py-0.5 font-sans text-[9px] font-medium text-rose-400">
                                             译文
                                         </span>
                                     </span>
-                                    <span className="block font-sans text-sm leading-6 text-stone-700">
+                                    <span className="block max-h-[calc(min(34vh,12rem)-36px)] overflow-y-auto px-3 py-2.5 font-sans text-[12px] leading-5 text-stone-700">
                                         {marker.translation}
                                     </span>
                                 </span>

@@ -452,6 +452,7 @@ export function ParagraphCard({
                             onClick={showNoteVisual && noteMarker?.id
                                 ? (event) => {
                                     event.stopPropagation();
+                                    if (!noteMarker.id) return;
                                     handleOpenExistingNoteEditor(noteMarker.id, event.currentTarget.getBoundingClientRect());
                                 }
                                 : undefined}
