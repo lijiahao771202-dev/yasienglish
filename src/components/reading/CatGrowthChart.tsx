@@ -149,29 +149,31 @@ export function CatGrowthChart({ currentScore }: CatGrowthChartProps) {
         <motion.div
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
-            className="overflow-hidden rounded-[26px] border border-white/70 bg-white/44 shadow-[0_24px_44px_-28px_rgba(15,23,42,0.7)] backdrop-blur-2xl"
+            className="overflow-hidden rounded-[30px] border-4 border-[#d8d3cb] bg-white shadow-[0_12px_0_0_#d8d3cb]"
         >
-            <div className="border-b border-white/70 px-4 py-3.5">
-                <div className="flex items-center justify-between gap-3">
+            <div className="border-b-4 border-[#ece7df] px-5 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <p className="text-[11px] font-semibold tracking-[0.12em] text-slate-500">成长曲线</p>
-                        <div className="mt-1 flex items-center gap-2">
-                            <span className="text-[1.28rem] font-semibold text-slate-900 tabular-nums">{currentPoint?.score ?? currentScore}</span>
-                            <span className="inline-flex items-center gap-1 rounded-full border border-white/70 bg-white/75 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#64748b]">成长趋势</p>
+                        <div className="mt-2 flex items-center gap-2">
+                            <span className="font-welcome-display text-[1.9rem] font-black leading-none tracking-[-0.04em] text-[#111827] tabular-nums">
+                                {currentPoint?.score ?? currentScore}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full border-2 border-[#d8d3cb] bg-[#fffdf8] px-2.5 py-1 text-xs font-bold text-slate-700">
                                 <span>{getCatRankIconByTierId(activeTier.id)}</span>
                                 {activeTier.name}
                             </span>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200/80 bg-amber-100/70 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center gap-1 rounded-full border-2 border-[#fdba74] bg-[#ffedd5] px-3 py-1 text-xs font-bold text-[#9a3412]">
                             <Crown className="h-3.5 w-3.5" /> 峰值 {peakScore}
                         </span>
                         <span className={cn(
-                            "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold",
-                            trendState === "up" && "border-emerald-200/80 bg-emerald-100/70 text-emerald-700",
-                            trendState === "down" && "border-rose-200/80 bg-rose-100/75 text-rose-700",
-                            trendState === "stable" && "border-slate-200/80 bg-white/75 text-slate-600",
+                            "inline-flex items-center gap-1 rounded-full border-2 px-3 py-1 text-xs font-bold",
+                            trendState === "up" && "border-[#86efac] bg-[#dcfce7] text-[#15803d]",
+                            trendState === "down" && "border-[#fda4af] bg-[#ffe4e6] text-[#e11d48]",
+                            trendState === "stable" && "border-[#d8d3cb] bg-[#fffdf8] text-slate-600",
                         )}>
                             {trendState === "up" ? <TrendingUp className="h-3.5 w-3.5" /> : trendState === "down" ? <ArrowDown className="h-3.5 w-3.5" /> : null}
                             {trendState === "stable" ? "近 5 局持平" : `近 5 局 ${trendDelta > 0 ? `+${trendDelta}` : trendDelta}`}
@@ -180,7 +182,7 @@ export function CatGrowthChart({ currentScore }: CatGrowthChartProps) {
                 </div>
             </div>
 
-            <div className="h-56 px-3 pb-3 pt-2 md:h-60">
+            <div className="h-64 bg-[#fffdf8] px-3 pb-4 pt-3 md:h-72">
                 {isLoading ? (
                     <div className="flex h-full items-center justify-center text-sm text-slate-500">曲线加载中...</div>
                 ) : chartData.length < 2 ? (
@@ -190,31 +192,31 @@ export function CatGrowthChart({ currentScore }: CatGrowthChartProps) {
                         <AreaChart data={chartData} margin={{ top: 8, right: 14, left: -8, bottom: 6 }}>
                             <defs>
                                 <linearGradient id="cat-curve-fill" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#22d3ee" stopOpacity={0.42} />
-                                    <stop offset="48%" stopColor="#6366f1" stopOpacity={0.22} />
+                                    <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.4} />
+                                    <stop offset="48%" stopColor="#818cf8" stopOpacity={0.22} />
                                     <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                                 </linearGradient>
                                 <linearGradient id="cat-curve-stroke" x1="0" y1="0" x2="1" y2="0">
-                                    <stop offset="0%" stopColor="#06b6d4" />
-                                    <stop offset="55%" stopColor="#6366f1" />
-                                    <stop offset="100%" stopColor="#a855f7" />
+                                    <stop offset="0%" stopColor="#2563eb" />
+                                    <stop offset="55%" stopColor="#4f46e5" />
+                                    <stop offset="100%" stopColor="#f59e0b" />
                                 </linearGradient>
                             </defs>
 
-                            <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="rgba(148,163,184,0.24)" />
+                            <CartesianGrid vertical={false} strokeDasharray="4 4" stroke="rgba(148,163,184,0.22)" />
 
                             {nextTier ? (
                                 <ReferenceLine
                                     y={nextTier.minScore}
-                                    stroke="rgba(99,102,241,0.34)"
+                                    stroke="rgba(37,99,235,0.34)"
                                     strokeDasharray="8 6"
                                     strokeWidth={1}
                                     label={{
                                         value: `下一段 ${nextTier.name}`,
                                         position: "right",
-                                        fill: "rgba(79,70,229,0.82)",
+                                        fill: "rgba(37,99,235,0.82)",
                                         fontSize: 10,
-                                        fontWeight: 600,
+                                        fontWeight: 700,
                                     }}
                                 />
                             ) : null}
@@ -239,14 +241,14 @@ export function CatGrowthChart({ currentScore }: CatGrowthChartProps) {
                                     if (!active || !payload || payload.length === 0) return null;
                                     const point = payload[0].payload as ChartPoint;
                                     return (
-                                        <div className="min-w-[150px] rounded-2xl border border-white/75 bg-white/88 p-3 shadow-[0_20px_36px_-22px_rgba(15,23,42,0.55)] backdrop-blur-xl">
+                                        <div className="min-w-[150px] rounded-[20px] border-2 border-[#d8d3cb] bg-white p-3 shadow-[0_8px_0_0_#d8d3cb]">
                                             <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">{point.fullDate}</p>
                                             <div className="mt-1 flex items-center justify-between">
-                                                <span className="text-xl font-semibold text-slate-900 tabular-nums">{point.score}</span>
-                                                <span className="text-xs text-slate-700">{point.rankIcon} {point.rankName}</span>
+                                                <span className="font-welcome-display text-xl font-black text-slate-900 tabular-nums">{point.score}</span>
+                                                <span className="text-xs font-bold text-slate-700">{point.rankIcon} {point.rankName}</span>
                                             </div>
                                             <p className={cn(
-                                                "mt-1 text-xs font-semibold",
+                                                "mt-1 text-xs font-bold",
                                                 point.delta >= 0 ? "text-emerald-600" : "text-rose-600",
                                             )}>
                                                 本局变化 {point.delta >= 0 ? `+${point.delta}` : point.delta}
@@ -260,10 +262,10 @@ export function CatGrowthChart({ currentScore }: CatGrowthChartProps) {
                                 type="natural"
                                 dataKey="score"
                                 stroke="url(#cat-curve-stroke)"
-                                strokeWidth={2.5}
+                                strokeWidth={3}
                                 fill="url(#cat-curve-fill)"
-                                dot={{ r: 4, fill: "#6366f1", stroke: "#ffffff", strokeWidth: 1.5 }}
-                                activeDot={{ r: 7, fill: "#22d3ee", stroke: "#ffffff", strokeWidth: 2 }}
+                                dot={{ r: 4, fill: "#2563eb", stroke: "#ffffff", strokeWidth: 2 }}
+                                activeDot={{ r: 7, fill: "#f59e0b", stroke: "#ffffff", strokeWidth: 2.5 }}
                                 animationDuration={900}
                             />
                         </AreaChart>

@@ -342,7 +342,7 @@ function ReadingPageContent() {
         coal: "bg-[linear-gradient(180deg,rgba(28,25,23,0.56),rgba(41,37,36,0.4))]",
     };
     const activeReadingFilm = article ? readingThemeFilm[theme] : undefined;
-    const shouldUseGlobalBackgroundLayers = !article || theme === "welcome";
+    const shouldUseGlobalBackgroundLayers = article ? theme === "welcome" : false;
     const catSettlementFilm = shouldUseGlobalBackgroundLayers
         ? backgroundSpec.transitionFilm
         : (activeReadingFilm ?? "bg-[linear-gradient(180deg,rgba(241,245,249,0.55),rgba(203,213,225,0.48))]");
@@ -1408,10 +1408,21 @@ function ReadingPageContent() {
             showStandardSplitQuiz
                 ? "min-h-screen px-6 pb-6 pt-24 md:px-12 md:pb-8 md:pt-28"
                 : "min-h-screen p-6 md:p-12",
+            !article && "bg-[#fefce8]",
             article ? READING_THEMES.find(t => t.id === theme)?.class : undefined,
             fontClass // Apply Font Global
         )}
         >
+            {!article && (
+                <>
+                    <div className="pointer-events-none fixed inset-0 z-0 bg-[#fefce8]" />
+                    <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(253,224,71,0.24),transparent_34%),radial-gradient(circle_at_90%_10%,rgba(196,181,253,0.28),transparent_28%),radial-gradient(circle_at_50%_28%,rgba(191,219,254,0.4),transparent_32%)]" />
+                    <div className="pointer-events-none fixed inset-x-0 top-0 z-0 h-[260px] bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(255,255,255,0))]" />
+                    <div className="pointer-events-none fixed -left-16 top-[28%] z-0 h-48 w-48 rounded-full bg-[#bfdbfe]/50 blur-3xl" />
+                    <div className="pointer-events-none fixed -right-10 top-[16%] z-0 h-56 w-56 rounded-full bg-[#fde68a]/45 blur-3xl" />
+                    <div className="pointer-events-none fixed bottom-[10%] left-[10%] z-0 h-44 w-44 rounded-full bg-[#ddd6fe]/45 blur-3xl" />
+                </>
+            )}
             {shouldUseGlobalBackgroundLayers && (
                 <>
                     <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.baseLayer}`} />
@@ -1590,19 +1601,18 @@ function ReadingPageContent() {
                     scheduleDockHide(700);
                 }}
             >
-                <div className="relative flex items-center gap-1 rounded-full border border-white/55 bg-white/42 px-2 py-1.5 shadow-[0_30px_56px_-38px_rgba(14,30,66,0.8)] ring-1 ring-white/65 backdrop-blur-2xl">
-                    <div className="pointer-events-none absolute inset-0 rounded-full bg-[linear-gradient(115deg,rgba(255,255,255,0.56),rgba(255,255,255,0.18),rgba(255,255,255,0.4))]" />
-                    <button
-                        type="button"
-                        onClick={() => handleRouteExit("home")}
-                        className="group relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-all hover:bg-white/65 hover:text-slate-900"
-                        title="Back to Welcome"
-                    >
-                        <House className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />
-                    </button>
+                {article ? (
+                    <div className="relative flex items-center gap-1 rounded-full border border-white/55 bg-white/42 px-2 py-1.5 shadow-[0_30px_56px_-38px_rgba(14,30,66,0.8)] ring-1 ring-white/65 backdrop-blur-2xl">
+                        <div className="pointer-events-none absolute inset-0 rounded-full bg-[linear-gradient(115deg,rgba(255,255,255,0.56),rgba(255,255,255,0.18),rgba(255,255,255,0.4))]" />
+                        <button
+                            type="button"
+                            onClick={() => handleRouteExit("home")}
+                            className="group relative z-10 flex h-10 w-10 items-center justify-center rounded-full text-slate-500 transition-all hover:bg-white/65 hover:text-slate-900"
+                            title="Back to Welcome"
+                        >
+                            <House className="w-5 h-5 group-hover:-translate-y-0.5 transition-transform" />
+                        </button>
 
-                    {/* Article List Back */}
-                    {article && (
                         <button
                             onClick={() => {
                                 setArticle(null);
@@ -1616,22 +1626,10 @@ function ReadingPageContent() {
                         >
                             <ArrowLeft className="w-5 h-5 group-hover:-translate-x-0.5 transition-transform" />
                         </button>
-                    )}
 
-                    {/* Brand Pill */}
-                    {!article && (
-                        <div className="relative z-10 px-4 py-2 font-newsreader text-xl font-bold italic text-slate-900">
-                            DeepSeek IELTS
-                        </div>
-                    )}
-
-                    {/* Progress Ring & Brand (When Article Active) */}
-                    {article && (
                         <div className="relative z-10 flex items-center gap-3 px-2">
-                            {/* Nano Progress Ring */}
-                            <div className="relative w-5 h-5 flex items-center justify-center">
-                                {/* Track */}
-                                <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                            <div className="relative flex h-5 w-5 items-center justify-center">
+                                <svg className="h-full w-full -rotate-90" viewBox="0 0 36 36">
                                     <path
                                         className="text-stone-200"
                                         d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
@@ -1639,7 +1637,6 @@ function ReadingPageContent() {
                                         stroke="currentColor"
                                         strokeWidth="4"
                                     />
-                                    {/* Indicator */}
                                     <path
                                         className="text-amber-500 transition-all duration-100 ease-out"
                                         strokeDasharray={`${scrollProgress * 100}, 100`}
@@ -1652,96 +1649,118 @@ function ReadingPageContent() {
                                 </svg>
                             </div>
 
-                            <div className="font-newsreader italic font-bold text-lg text-stone-800 hidden md:block">
+                            <div className="hidden font-newsreader text-lg font-bold italic text-stone-800 md:block">
                                 DeepSeek IELTS
                             </div>
                         </div>
-                    )}
 
-                    {/* Divider */}
-                    {article && <div className="w-px h-4 bg-stone-300/50 mx-1" />}
+                        <div className="mx-1 h-4 w-px bg-stone-300/50" />
 
-                    {/* Tools Group */}
-                    <div className="flex items-center gap-1">
-                        {/* Focus Mode Toggle */}
-                        {article && (
+                        <div className="flex items-center gap-1">
                             <button
                                 onClick={toggleFocusMode}
                                 className={cn(
-                                    "w-10 h-10 flex items-center justify-center rounded-full transition-all duration-300",
+                                    "flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300",
                                     isFocusMode
                                         ? "bg-slate-900 text-yellow-300 shadow-[0_0_20px_rgba(250,204,21,0.45)] ring-1 ring-yellow-300/45"
                                         : "text-slate-500 hover:bg-white/65 hover:text-slate-800"
                                 )}
                                 title="Deep Focus Mode"
                             >
-                                <Flashlight className={cn("w-4 h-4", isFocusMode && "fill-current")} />
+                                <Flashlight className={cn("h-4 w-4", isFocusMode && "fill-current")} />
                             </button>
-                        )}
 
-                        {/* Bionic Reading Toggle */}
-                        {article && (
                             <button
                                 onClick={toggleBionicMode}
                                 className={cn(
-                                    "w-10 h-10 flex items-center justify-center rounded-full transition-all duration-300",
+                                    "flex h-10 w-10 items-center justify-center rounded-full transition-all duration-300",
                                     isBionicMode
                                         ? "bg-slate-900 text-cyan-300 shadow-[0_0_20px_rgba(34,211,238,0.45)] ring-1 ring-cyan-300/45"
                                         : "text-slate-500 hover:bg-white/65 hover:text-slate-800"
                                 )}
                                 title="Bionic Reading"
                             >
-                                <Eye className={cn("w-4 h-4", isBionicMode && "fill-current")} />
+                                <Eye className={cn("h-4 w-4", isBionicMode && "fill-current")} />
                             </button>
-                        )}
 
-                        {/* Theme Switcher */}
+                            <div className="relative">
+                                <button
+                                    onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
+                                    className={cn(
+                                        "flex h-10 w-10 items-center justify-center rounded-full transition-all",
+                                        isThemeMenuOpen ? "bg-white/75 text-slate-900" : "text-slate-500 hover:bg-white/65 hover:text-slate-900"
+                                    )}
+                                    title="Appearance"
+                                >
+                                    <Palette className="h-5 w-5" />
+                                </button>
+
+                                {isThemeMenuOpen && (
+                                    <AppearanceMenu onClose={() => setIsThemeMenuOpen(false)} />
+                                )}
+                            </div>
+
+                            <button
+                                onClick={() => setIsEditMode(!isEditMode)}
+                                className={cn(
+                                    "flex h-10 w-10 items-center justify-center rounded-full transition-all",
+                                    isEditMode ? "bg-amber-100/90 text-amber-700" : "text-slate-500 hover:bg-white/65 hover:text-slate-900"
+                                )}
+                                title="Edit Text"
+                            >
+                                <Edit3 className="h-4 w-4" />
+                            </button>
+
+                            <button
+                                onClick={() => setIsWritingMode(true)}
+                                className="ml-1 flex h-10 items-center gap-2 rounded-full border border-white/60 bg-white/70 px-4 text-sm font-bold text-slate-700 shadow-[0_8px_22px_-16px_rgba(15,23,42,0.65)] transition-all hover:bg-white hover:text-slate-900"
+                            >
+                                <PenTool className="h-4 w-4" />
+                                <span>Drill</span>
+                            </button>
+                        </div>
+
+                        <div className="relative z-10 ml-1 hidden items-center gap-1 rounded-full border border-white/70 bg-white/62 px-3 py-1 text-xs font-semibold text-slate-700 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.55)] md:flex">
+                            <span>阅读币</span>
+                            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">{profile?.reading_coins ?? 0}</span>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-2 rounded-full border-4 border-[#d8d3cb] bg-white px-3 py-2 shadow-[0_8px_0_0_#d8d3cb]">
+                        <button
+                            type="button"
+                            onClick={() => handleRouteExit("home")}
+                            className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#2563eb] bg-[#2563eb] text-white transition-transform hover:-translate-y-0.5"
+                            title="Back to Welcome"
+                        >
+                            <House className="h-5 w-5" />
+                        </button>
+                        <div className="px-3">
+                            <p className="font-welcome-display text-lg font-black tracking-[-0.03em] text-[#111827]">
+                                DeepSeek IELTS
+                            </p>
+                        </div>
                         <div className="relative">
                             <button
                                 onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
                                 className={cn(
-                                    "w-10 h-10 flex items-center justify-center rounded-full transition-all",
-                                    isThemeMenuOpen ? "bg-white/75 text-slate-900" : "text-slate-500 hover:bg-white/65 hover:text-slate-900"
+                                    "flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#d8d3cb] bg-[#fffdf8] text-slate-600 transition-transform hover:-translate-y-0.5 hover:text-slate-900",
+                                    isThemeMenuOpen && "bg-[#ede9fe] text-[#4338ca]"
                                 )}
                                 title="Appearance"
                             >
-                                <Palette className="w-5 h-5" />
+                                <Palette className="h-5 w-5" />
                             </button>
-
                             {isThemeMenuOpen && (
                                 <AppearanceMenu onClose={() => setIsThemeMenuOpen(false)} />
                             )}
                         </div>
-
-                        {article && (
-                            <>
-                                <button
-                                    onClick={() => setIsEditMode(!isEditMode)}
-                                    className={cn(
-                                        "w-10 h-10 flex items-center justify-center rounded-full transition-all",
-                                        isEditMode ? "bg-amber-100/90 text-amber-700" : "text-slate-500 hover:bg-white/65 hover:text-slate-900"
-                                    )}
-                                    title="Edit Text"
-                                >
-                                    <Edit3 className="w-4 h-4" />
-                                </button>
-
-                                <button
-                                    onClick={() => setIsWritingMode(true)}
-                                    className="ml-1 flex h-10 items-center gap-2 rounded-full border border-white/60 bg-white/70 px-4 text-sm font-bold text-slate-700 shadow-[0_8px_22px_-16px_rgba(15,23,42,0.65)] transition-all hover:bg-white hover:text-slate-900"
-                                >
-                                    <PenTool className="w-4 h-4" />
-                                    <span>Drill</span>
-                                </button>
-                            </>
-                        )}
+                        <div className="ml-1 hidden items-center gap-2 rounded-full border-2 border-[#f59e0b] bg-[#ffedd5] px-3 py-2 text-sm font-black text-[#9a3412] shadow-[0_4px_0_0_#fdba74] md:flex">
+                            <span>阅读币</span>
+                            <span className="rounded-full bg-white px-2 py-0.5 text-[#b45309]">{profile?.reading_coins ?? 0}</span>
+                        </div>
                     </div>
-
-                    <div className="relative z-10 ml-1 hidden items-center gap-1 rounded-full border border-white/70 bg-white/62 px-3 py-1 text-xs font-semibold text-slate-700 shadow-[0_10px_24px_-18px_rgba(15,23,42,0.55)] md:flex">
-                        <span>阅读币</span>
-                        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700">{profile?.reading_coins ?? 0}</span>
-                    </div>
-                </div>
+                )}
             </motion.nav>
 
             <ReadingCoinIsland event={activeReadingCoinFx} />
@@ -1762,18 +1781,18 @@ function ReadingPageContent() {
                 {!article ? (
                         <div
                             key="picker"
-                            className="relative mx-auto flex w-full max-w-7xl flex-col gap-8 overflow-hidden pb-10"
+                            className="relative mx-auto flex w-full max-w-[1180px] flex-col gap-6 overflow-hidden pb-16"
                         >
                         {error && (
-                            <LiquidGlassPanel className="rounded-xl px-4 py-2 text-center text-sm text-red-700">
+                            <div className="rounded-[24px] border-4 border-[#fecaca] bg-[#fff1f2] px-5 py-3 text-center text-sm font-semibold text-rose-700 shadow-[0_8px_0_0_#fecaca]">
                                 {error}
-                            </LiquidGlassPanel>
+                            </div>
                         )}
 
                         {isLoading && (
-                            <LiquidGlassPanel className="rounded-xl px-4 py-2 text-center text-sm text-cyan-700">
+                            <div className="rounded-[24px] border-4 border-[#bfdbfe] bg-[#eff6ff] px-5 py-3 text-center text-sm font-semibold text-sky-700 shadow-[0_8px_0_0_#bfdbfe]">
                                 Loading article...
-                            </LiquidGlassPanel>
+                            </div>
                         )}
 
                         <div>
