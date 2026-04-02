@@ -38,6 +38,8 @@ const createBaseProps = (): React.ComponentProps<typeof SelectionActionPopup> =>
     qaPairs: [],
     question: "",
     onQuestionChange: vi.fn(),
+    askAnswerMode: "default",
+    onAskAnswerModeChange: vi.fn(),
     isAskLoading: false,
     onAsk: vi.fn(),
     renderAskMarkdown: renderMarkdown,
@@ -193,5 +195,56 @@ describe("SelectionActionPopup", () => {
             .find((button) => button.textContent?.includes("问题 1"));
         expect(reopenedQuestionButton?.getAttribute("aria-expanded")).toBe("false");
         expect(container.textContent).not.toContain("这里是在描述进行中的状态。");
+    });
+
+    it("auto opens ask panel when default-open token is provided", async () => {
+        const { container } = await renderPopup({
+            qaPairs: [
+                { id: 1, question: "这句什么意思？", answer: "这是在讨论就业场景。", isStreaming: false },
+            ],
+            askPanelDefaultOpenToken: 1,
+        });
+
+        expect(container.textContent).toContain("这是在讨论就业场景。");
+    });
+
+    it("switches ask answer mode when clicking segmented buttons", async () => {
+        const onAskAnswerModeChange = vi.fn();
+        const { container } = await renderPopup({
+            onAskAnswerModeChange,
+        });
+
+        const askToggleButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("向AI提问"));
+        expect(askToggleButton).toBeTruthy();
+
+        await act(async () => {
+            askToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const shortModeButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.trim() === "简短");
+        expect(shortModeButton).toBeTruthy();
+
+        await act(async () => {
+            shortModeButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onAskAnswerModeChange).toHaveBeenCalledWith("short");
+    });
+
+    it("shows ask replay view directly when popup mode is ask-replay", async () => {
+        const { container } = await renderPopup({
+            popupMode: "ask-replay",
+            qaPairs: [
+                { id: 1, question: "这句话想表达什么？", answer: "强调学历是过去求职的重要信号。", isStreaming: false },
+            ],
+            askPanelDefaultOpenToken: 1,
+        });
+
+        expect(container.textContent).toContain("AI 回答记录");
+        expect(container.textContent).toContain("强调学历是过去求职的重要信号。");
+        expect(container.textContent).not.toContain("向AI提问");
+        expect(container.textContent).not.toContain("高亮");
     });
 });

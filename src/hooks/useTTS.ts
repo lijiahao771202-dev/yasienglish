@@ -29,6 +29,7 @@ export function useTTS(text: string) {
     const rafRef = useRef<number | null>(null);
     const marksRef = useRef<TtsWordMark[]>([]);
     const latestTextRef = useRef(text);
+    const lastProgressUpdateRef = useRef(0);
 
     useEffect(() => {
         marksRef.current = marks;
@@ -72,7 +73,12 @@ export function useTTS(text: string) {
 
     const updateProgress = useCallback(function updateProgressLoop() {
         if (audioRef.current && !audioRef.current.paused) {
-            setCurrentTime(audioRef.current.currentTime);
+            const now = performance.now();
+            // Throttle UI updates to ~45fps for smoother rendering under heavy text layout.
+            if (now - lastProgressUpdateRef.current >= 22) {
+                setCurrentTime(audioRef.current.currentTime);
+                lastProgressUpdateRef.current = now;
+            }
             rafRef.current = requestAnimationFrame(updateProgressLoop);
         }
     }, []);
@@ -110,6 +116,7 @@ export function useTTS(text: string) {
 
     useEffect(() => {
         if (isPlaying) {
+            lastProgressUpdateRef.current = 0;
             rafRef.current = requestAnimationFrame(updateProgress);
         } else if (rafRef.current) {
             cancelAnimationFrame(rafRef.current);

@@ -1,8 +1,10 @@
 import {
     db,
+    type CachedArticle,
     type EloHistoryItem,
     type InventoryState,
     type LocalUserProfile,
+    type ReadingNoteItem,
     type ReadArticleItem,
     type SyncStatus,
     type VocabSourceKind,
@@ -124,6 +126,20 @@ export interface RemoteReadArticleRow {
     url: string;
     read_at: string;
     timestamp_ms: number;
+    article_key?: string | null;
+    article_title?: string | null;
+    article_payload?: CachedArticle | null;
+    reading_notes_payload?: Array<Omit<ReadingNoteItem, "id">> | null;
+    grammar_payload?: Array<{
+        key: string;
+        data: unknown;
+        timestamp: number;
+    }> | null;
+    ask_payload?: Array<{
+        key: string;
+        data: unknown;
+        timestamp: number;
+    }> | null;
     updated_at: string;
 }
 
@@ -481,6 +497,12 @@ export function toRemoteReadArticle(userId: string, item: ReadArticleItem): Remo
         url: item.url,
         read_at: new Date(item.read_at || item.timestamp).toISOString(),
         timestamp_ms: item.timestamp,
+        article_key: item.article_key || null,
+        article_title: item.article_title || null,
+        article_payload: item.article_payload || null,
+        reading_notes_payload: item.reading_notes_payload || null,
+        grammar_payload: item.grammar_payload || null,
+        ask_payload: item.ask_payload || null,
         updated_at: item.updated_at || new Date().toISOString(),
     };
 }
@@ -492,6 +514,12 @@ export function toLocalReadArticle(remote: RemoteReadArticleRow): ReadArticleIte
         url: remote.url,
         timestamp: remote.timestamp_ms,
         read_at: Date.parse(remote.read_at),
+        article_key: remote.article_key || undefined,
+        article_title: remote.article_title || undefined,
+        article_payload: remote.article_payload || undefined,
+        reading_notes_payload: remote.reading_notes_payload || undefined,
+        grammar_payload: remote.grammar_payload || undefined,
+        ask_payload: remote.ask_payload || undefined,
         updated_at: remote.updated_at,
         sync_status: "synced",
     };

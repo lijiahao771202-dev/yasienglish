@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Loader2, Volume2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Loader2, Trash2, Volume2, Sparkles, BookOpen, Fingerprint, Star, GripVertical } from "lucide-react";
+import { AnimatePresence, motion, Reorder } from "framer-motion";
 
 import { PretextTextarea } from "@/components/ui/PretextTextarea";
 import type { VocabItem } from "@/lib/db";
@@ -20,6 +21,11 @@ type PosGroup = {
     meanings: string[];
 };
 
+type PosGroupDraft = {
+    pos: string;
+    meanings: { id: string; text: string }[];
+};
+
 interface VocabReviewEditableCardProps {
     item: VocabItem;
     posGroups: PosGroup[];
@@ -28,6 +34,7 @@ interface VocabReviewEditableCardProps {
     onPlayAudio: (word: string) => void;
     onSaved: (item: VocabItem) => void;
     onGraduate?: (item: VocabItem, previousWord: string) => Promise<void> | void;
+    ghostInput?: string;
 }
 
 interface DraftState {
@@ -35,6 +42,7 @@ interface DraftState {
     phonetic: string;
     source_sentence: string;
     example: string;
+    highlighted_meanings: string[];
 }
 
 function buildDraft(item: VocabItem): DraftState {
@@ -43,6 +51,7 @@ function buildDraft(item: VocabItem): DraftState {
         phonetic: item.phonetic || "",
         source_sentence: item.source_sentence || "",
         example: item.example || "",
+        highlighted_meanings: Array.isArray(item.highlighted_meanings) ? item.highlighted_meanings : [],
     };
 }
 
@@ -57,11 +66,8 @@ function normalizeMeaningForMatch(value: string) {
 function meaningsLooselyMatch(left: string, right: string) {
     const normalizedLeft = normalizeMeaningForMatch(left);
     const normalizedRight = normalizeMeaningForMatch(right);
-
     if (!normalizedLeft || !normalizedRight) return false;
-    return normalizedLeft === normalizedRight
-        || normalizedLeft.includes(normalizedRight)
-        || normalizedRight.includes(normalizedLeft);
+    return normalizedLeft === normalizedRight;
 }
 
 function normalizeMeaningGroups(groups: PosGroup[]) {
@@ -77,6 +83,20 @@ function serializeMeaningGroups(groups: PosGroup[]) {
     return normalizeMeaningGroups(groups)
         .map((group) => `${group.pos} ${group.meanings.join("; ")}`)
         .join("；");
+}
+
+function toPosGroupDrafts(groups: PosGroup[]): PosGroupDraft[] {
+    return groups.map((g) => ({
+        pos: g.pos,
+        meanings: g.meanings.map((m) => ({ id: Math.random().toString(36).slice(2, 9), text: m }))
+    }));
+}
+
+function fromPosGroupDrafts(drafts: PosGroupDraft[]): PosGroup[] {
+    return drafts.map((g) => ({
+        pos: g.pos,
+        meanings: g.meanings.map((m) => m.text)
+    }));
 }
 
 function buildMeaningDraftGroups(item: VocabItem, posGroups: PosGroup[]) {
@@ -96,6 +116,8 @@ function getTextareaRows(value: string, min = 1, max = 6) {
     return Math.max(min, Math.min(max, Math.max(lines, estimated || 1)));
 }
 
+type TabKey = "meanings" | "examples" | "analysis";
+
 export function VocabReviewEditableCard({
     item,
     posGroups,
@@ -104,13 +126,22 @@ export function VocabReviewEditableCard({
     onPlayAudio,
     onSaved,
     onGraduate,
+    ghostInput = "",
 }: VocabReviewEditableCardProps) {
     const [draft, setDraft] = useState<DraftState>(() => buildDraft(item));
-    const [meaningDraftGroups, setMeaningDraftGroups] = useState<PosGroup[]>(() => buildMeaningDraftGroups(item, posGroups));
+    
+    const [meaningDraftGroups, setMeaningDraftGroups] = useState<PosGroupDraft[]>(() => 
+        toPosGroupDrafts(buildMeaningDraftGroups(item, posGroups))
+    );
+    
     const [isSaving, setIsSaving] = useState(false);
     const [isGraduating, setIsGraduating] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [resolvedPhonetic, setResolvedPhonetic] = useState("");
+    const [isWordInputFocused, setIsWordInputFocused] = useState(false);
+    
+    // UI State
+    const [activeTab, setActiveTab] = useState<TabKey>("meanings");
 
     const itemMeaningGroups = useMemo(
         () => buildMeaningDraftGroups(item, posGroups),
@@ -118,34 +149,35 @@ export function VocabReviewEditableCard({
     );
 
     useEffect(() => {
+        // Fix: ONLY resync when the word changes to prevent input stealing/reset
         setDraft(buildDraft(item));
-        setMeaningDraftGroups(itemMeaningGroups);
+        setMeaningDraftGroups(toPosGroupDrafts(buildMeaningDraftGroups(item, posGroups)));
         setIsSaving(false);
         setIsGraduating(false);
         setError(null);
         setResolvedPhonetic("");
-    }, [item, itemMeaningGroups]);
+    }, [item.word]);
 
-    const visibleExample = draft.source_sentence.trim() || draft.example.trim() || "";
-    const visibleExampleField = draft.source_sentence.trim() || !draft.example.trim() ? "source_sentence" : "example";
-    const saveDisabled = !normalizeWord(draft.word) || isSaving || isGraduating;
     const highlightedMeanings = useMemo(
-        () => (Array.isArray(item.highlighted_meanings) ? item.highlighted_meanings : []),
-        [item.highlighted_meanings],
+        () => (Array.isArray(draft.highlighted_meanings) ? draft.highlighted_meanings : []),
+        [draft.highlighted_meanings],
     );
+    
+    const plainMeaningDraftGroups = useMemo(() => fromPosGroupDrafts(meaningDraftGroups), [meaningDraftGroups]);
+    
     const resolvedHighlightedMeanings = useMemo(
-        () => resolveHighlightedMeaningsFromGroups(meaningDraftGroups, highlightedMeanings),
-        [highlightedMeanings, meaningDraftGroups],
+        () => resolveHighlightedMeaningsFromGroups(plainMeaningDraftGroups, highlightedMeanings),
+        [highlightedMeanings, plainMeaningDraftGroups],
     );
     const normalizedHighlightedMeanings = useMemo(
         () => resolvedHighlightedMeanings.map(normalizeMeaningForMatch).filter(Boolean),
         [resolvedHighlightedMeanings],
     );
-    const hasHighlightedWord = normalizedHighlightedMeanings.length > 0;
-    const hasAiHighlight = highlightedMeanings.length > 0 && hasHighlightedWord;
+    
     const wordBreakdown = Array.isArray(item.word_breakdown) ? item.word_breakdown : [];
     const morphologyNotes = Array.isArray(item.morphology_notes) ? item.morphology_notes : [];
     const hasWordAnalysis = wordBreakdown.length > 0 || morphologyNotes.length > 0;
+    
     const displayPhonetic = draft.phonetic.trim() || resolvedPhonetic.trim();
     const isGraduated = isCardGraduated(item);
 
@@ -192,73 +224,122 @@ export function VocabReviewEditableCard({
             || draft.phonetic.trim() !== (item.phonetic || "")
             || draft.source_sentence.trim() !== (item.source_sentence || "")
             || draft.example.trim() !== item.example
-            || serializeMeaningGroups(meaningDraftGroups) !== serializeMeaningGroups(itemMeaningGroups)
+            || draft.highlighted_meanings.join("|") !== (Array.isArray(item.highlighted_meanings) ? item.highlighted_meanings : []).join("|")
+            || serializeMeaningGroups(plainMeaningDraftGroups) !== serializeMeaningGroups(itemMeaningGroups)
         );
-    }, [draft, item, itemMeaningGroups, meaningDraftGroups]);
+    }, [draft, item, itemMeaningGroups, plainMeaningDraftGroups]);
 
     const handleChange = (field: keyof DraftState, value: string) => {
         setDraft((current) => ({ ...current, [field]: value }));
         setError(null);
     };
 
-    const handleMeaningChange = (groupIndex: number, meaningIndex: number, value: string) => {
+    const handleMeaningChange = (groupIndex: number, meaningId: string, value: string) => {
         setMeaningDraftGroups((current) => current.map((group, currentGroupIndex) => {
             if (currentGroupIndex !== groupIndex) return group;
             return {
                 ...group,
-                meanings: group.meanings.map((meaning, currentMeaningIndex) => (
-                    currentMeaningIndex === meaningIndex ? value : meaning
+                meanings: group.meanings.map((meaning) => (
+                    meaning.id === meaningId ? { ...meaning, text: value } : meaning
                 )),
             };
         }));
         setError(null);
     };
 
-    const handleCancel = () => {
-        setDraft(buildDraft(item));
-        setMeaningDraftGroups(itemMeaningGroups);
+    const handleReorderGroup = (groupIndex: number, newMeanings: {id: string, text: string}[]) => {
+        setMeaningDraftGroups((current) => {
+            const nextGroups = current.map((group, idx) => 
+                idx === groupIndex ? { ...group, meanings: newMeanings } : group
+            );
+            void persistDraft(draft, fromPosGroupDrafts(nextGroups));
+            return nextGroups;
+        });
         setError(null);
-        setIsSaving(false);
-        setIsGraduating(false);
     };
 
-    const buildPendingItem = (): VocabItem => {
-        const normalizedMeaningGroups = normalizeMeaningGroups(meaningDraftGroups);
+    const buildPendingItem = useCallback((nextDraft: DraftState = draft, nextMeaningDraftGroups: PosGroup[] = plainMeaningDraftGroups): VocabItem => {
+        const normalizedMeaningGroups = normalizeMeaningGroups(nextMeaningDraftGroups);
         const serializedTranslation = serializeMeaningGroups(normalizedMeaningGroups);
         return {
             ...item,
-            word: normalizeWord(draft.word),
-            phonetic: draft.phonetic.trim() || resolvedPhonetic.trim(),
+            word: normalizeWord(nextDraft.word),
+            phonetic: nextDraft.phonetic.trim() || resolvedPhonetic.trim(),
             definition: item.definition?.trim() || "",
-            translation: serializedTranslation || item.translation?.trim() || "",
-            source_sentence: draft.source_sentence.trim(),
-            example: draft.example.trim(),
+            translation: serializedTranslation,
+            source_sentence: nextDraft.source_sentence.trim(),
+            example: nextDraft.example.trim(),
             meaning_groups: normalizedMeaningGroups,
+            highlighted_meanings: nextDraft.highlighted_meanings,
         };
-    };
+    }, [draft, item, plainMeaningDraftGroups, resolvedPhonetic]);
 
-    const handleSave = async () => {
-        if (saveDisabled) return;
+    const persistDraft = useCallback(async (nextDraft: DraftState = draft, nextMeaningDraftGroups: PosGroup[] = plainMeaningDraftGroups) => {
+        const nextItem = buildPendingItem(nextDraft, nextMeaningDraftGroups);
+        const hasPendingChanges = (
+            normalizeWord(nextDraft.word) !== item.word
+            || nextDraft.phonetic.trim() !== (item.phonetic || "")
+            || nextDraft.source_sentence.trim() !== (item.source_sentence || "")
+            || nextDraft.example.trim() !== item.example
+            || serializeMeaningGroups(nextMeaningDraftGroups) !== serializeMeaningGroups(itemMeaningGroups)
+        );
 
+        if (!normalizeWord(nextDraft.word) || isSaving || isGraduating || !hasPendingChanges) return;
         setIsSaving(true);
         setError(null);
         try {
-            const nextItem = buildPendingItem();
             const saved = await updateVocabularyEntry(item.word, nextItem);
             onSaved(saved);
-            setDraft(buildDraft(saved));
-            setMeaningDraftGroups(buildMeaningDraftGroups(saved, posGroups));
         } catch (saveError) {
             const message = saveError instanceof Error ? saveError.message : "保存失败，请重试。";
             setError(message === "DUPLICATE_VOCAB_WORD" ? "这个词已经在生词本里了。" : "保存失败，请重试。");
         } finally {
             setIsSaving(false);
         }
+    }, [buildPendingItem, draft, isGraduating, isSaving, item, itemMeaningGroups, onSaved, plainMeaningDraftGroups]);
+
+    const handleAutoSave = () => {
+        if (!isDirty) return;
+        void persistDraft();
+    };
+
+    const handleMeaningRemove = (groupIndex: number, meaningId: string) => {
+        const nextMeaningDraftGroups = meaningDraftGroups
+            .map((group, currentGroupIndex) => {
+                if (currentGroupIndex !== groupIndex) return group;
+                return {
+                    ...group,
+                    meanings: group.meanings.filter((m) => m.id !== meaningId),
+                };
+            })
+            .filter((group) => group.meanings.length > 0);
+
+        setMeaningDraftGroups(nextMeaningDraftGroups);
+        setError(null);
+        void persistDraft(draft, fromPosGroupDrafts(nextMeaningDraftGroups));
+    };
+
+    const handleHighlightToggle = (meaning: string) => {
+        const normalized = normalizeMeaningForMatch(meaning);
+        if (!normalized) return;
+
+        setDraft((current) => {
+            const isCurrentlyHighlighted = current.highlighted_meanings.some((highlight) => meaningsLooselyMatch(meaning, highlight));
+            let nextHighlighted;
+            if (isCurrentlyHighlighted) {
+                nextHighlighted = current.highlighted_meanings.filter((highlight) => !meaningsLooselyMatch(meaning, highlight));
+            } else {
+                nextHighlighted = [...current.highlighted_meanings, meaning];
+            }
+            const nextDraft = { ...current, highlighted_meanings: nextHighlighted };
+            void persistDraft(nextDraft, plainMeaningDraftGroups);
+            return nextDraft;
+        });
+        setError(null);
     };
 
     const handleGraduate = async () => {
         if (!onGraduate || isSaving || isGraduating) return;
-
         setIsGraduating(true);
         setError(null);
         try {
@@ -271,228 +352,362 @@ export function VocabReviewEditableCard({
     };
 
     return (
-        <div style={{ transform: "translateZ(15px)" }} className="relative z-20 w-full space-y-4">
-            <div className={cn("grid gap-4", hasWordAnalysis ? "md:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.95fr)]" : "")}>
-                <div
-                    data-highlighted-word={hasHighlightedWord ? "true" : "false"}
-                    data-highlight-source={hasAiHighlight ? "ai" : "none"}
-                    className={cn(
-                        "flex flex-col gap-3 rounded-[1.5rem] border border-white/28 bg-white/16 p-3 shadow-sm backdrop-blur-md",
-                        hasHighlightedWord && "ring-1 ring-amber-200/85",
-                    )}
-                >
-                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div className="min-w-0 flex-1">
-                            <div className="mb-2 flex flex-wrap items-center gap-2">
-                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#345b46]/55">点击直接编辑</p>
-                                {isGraduated ? (
-                                    <span className="rounded-sm bg-[linear-gradient(180deg,transparent_0%,transparent_28%,rgba(250,204,21,0.46)_28%,rgba(250,204,21,0.46)_82%,transparent_82%)] px-1.5 py-0.5 text-[11px] font-bold text-[#7c5200]">
-                                        已熟记
-                                    </span>
-                                ) : null}
-                            </div>
-                            <input
-                                aria-label="编辑单词"
-                                value={draft.word}
-                                onChange={(event) => handleChange("word", event.target.value)}
-                                className={cn(
-                                    "w-full rounded-[1.2rem] border border-transparent bg-transparent px-2 py-2 font-newsreader text-[3.2rem] leading-[0.88] tracking-[-0.03em] text-[#1a3826] outline-none transition placeholder:text-[#1a3826]/35 focus:border-emerald-200/70 focus:bg-white/16 focus:ring-2 focus:ring-emerald-200/35 md:text-[4.3rem]",
-                                    hasHighlightedWord && "bg-[linear-gradient(180deg,transparent_0%,transparent_52%,rgba(250,204,21,0.14)_52%,rgba(250,204,21,0.14)_79%,transparent_79%)]",
-                                )}
-                            />
-                            <input
-                                aria-label="编辑音标"
-                                value={displayPhonetic}
-                                onChange={(event) => {
-                                    setResolvedPhonetic("");
-                                    handleChange("phonetic", event.target.value);
-                                }}
-                                placeholder="音标待补充"
-                                className="mt-2 w-full rounded-full border border-white/45 bg-white/32 px-3 py-1.5 text-sm font-medium text-[#345b46]/78 outline-none transition placeholder:text-[#345b46]/48 focus:border-emerald-200/75 focus:bg-white/54 focus:ring-2 focus:ring-emerald-200/35"
-                            />
-                        </div>
-                        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 self-start">
-                            {onGraduate ? (
-                                <button
-                                    type="button"
-                                    onClick={handleGraduate}
-                                    disabled={isSaving || isGraduating}
-                                    className="inline-flex min-h-11 items-center gap-2 rounded-full border border-amber-200/85 bg-[linear-gradient(180deg,transparent_0%,transparent_26%,rgba(250,204,21,0.44)_26%,rgba(250,204,21,0.58)_84%,transparent_84%)] px-4 py-2 text-sm font-bold text-[#7c5200] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {isGraduating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                                    {isGraduating ? "毕业中..." : "熟记毕业"}
-                                </button>
-                            ) : null}
+        <div data-review-layout="cute-bento" className="relative z-20 flex h-full min-h-0 flex-col bg-white/70 backdrop-blur-xl rounded-[28px] overflow-hidden shadow-inner border border-white/80">
+            {/* Header: Controls & Word Input */}
+            <div className="shrink-0 pt-4 px-4 pb-2 z-10 sticky top-0 bg-white/40 border-b border-[#e2e8f0]/60 backdrop-blur-md">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                    <div className="flex items-center gap-2">
+                        {isGraduated ? (
+                            <span className="flex items-center justify-center rounded-full bg-amber-100 text-amber-700 px-3 py-1 text-[11px] font-bold shadow-sm shadow-amber-200/50 outline outline-1 outline-amber-200/50">
+                                🌟 已熟记
+                            </span>
+                        ) : null}
+                        <p className={cn("text-[11px] font-bold text-slate-400 transition-opacity whitespace-nowrap", isSaving && "opacity-60")}>
+                            {error ? <span className="text-rose-500">{error}</span> : (isSaving ? "正在保存..." : "自动保存")}
+                        </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        {onGraduate ? (
                             <button
                                 type="button"
-                                onClick={() => onPlayAudio(draft.word)}
-                                className="liquid-glass-tap inline-flex min-h-11 items-center gap-2 rounded-full border border-emerald-200/50 bg-white/40 px-5 py-2 text-sm font-bold text-emerald-800 shadow-[inset_0_1px_rgba(255,255,255,0.8)] hover:bg-white/60"
+                                onClick={handleGraduate}
+                                disabled={isSaving || isGraduating}
+                                className="flex h-8 items-center gap-1.5 rounded-full bg-slate-100 text-slate-700 px-3 text-[12px] font-bold shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-60 disabled:scale-100"
                             >
-                                <Volume2 className="h-4 w-4" />
-                                发音
+                                {isGraduating ? <Loader2 className="h-3 w-3 animate-spin" /> : "⚡"} 熟记
                             </button>
-                        </div>
+                        ) : null}
+                        <button
+                            type="button"
+                            onClick={() => onPlayAudio(draft.word)}
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-sm transition-transform hover:scale-110 hover:bg-emerald-200 active:scale-95"
+                        >
+                            <Volume2 className="h-4 w-4" />
+                        </button>
                     </div>
                 </div>
 
-                {hasWordAnalysis ? (
-                    <div className="rounded-[1.4rem] border border-white/30 bg-white/20 p-4 shadow-sm backdrop-blur-md">
-                        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#345b46]/60">词形解析</p>
-                        {wordBreakdown.length > 0 ? (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                                {wordBreakdown.map((part) => (
-                                    <span key={part} className="rounded-full border border-white/55 bg-white/60 px-3 py-1 text-xs font-bold text-[#345b46]">
-                                        {part}
-                                    </span>
-                                ))}
-                            </div>
-                        ) : null}
-                        {morphologyNotes.length > 0 ? (
-                            <div className="mt-3 space-y-2">
-                                {morphologyNotes.map((note) => (
-                                    <p key={note} className="text-[13px] leading-relaxed text-[#1a3826]/78">
-                                        {note}
-                                    </p>
-                                ))}
-                            </div>
-                        ) : null}
-                    </div>
-                ) : null}
-            </div>
+                <div className="flex flex-col items-center group relative min-h-[5.5rem] justify-center">
+                    {!isWordInputFocused && (
+                        <div className="absolute inset-0 flex flex-wrap items-center justify-center text-[3.2rem] sm:text-[4rem] font-newsreader font-bold tracking-tight drop-shadow-sm leading-none pointer-events-none transition-colors z-0">
+                            {(() => {
+                                let inputCursorTracker = 0;
+                                const chars = draft.word.split("");
+                                return (
+                                    <>
+                                        {chars.map((char, idx) => {
+                                            const isSpace = /\s/.test(char);
+                                            if (isSpace) {
+                                                return <span key={idx} className="w-[0.5em]">&nbsp;</span>;
+                                            }
 
-            <div className="rounded-[1.4rem] border border-white/30 bg-white/20 p-4 shadow-sm backdrop-blur-md">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#345b46]/60">释义</p>
-                </div>
-
-                {meaningDraftGroups.length > 0 ? (
-                    <div className="columns-1 space-y-3 md:columns-2">
-                        {meaningDraftGroups.map((group, groupIndex) => {
-                            const groupKey = `${draft.word}-${group.pos}`;
-                            const isExpanded = expandedPosGroups[groupKey] ?? false;
-                            const visibleMeanings = isExpanded ? group.meanings : group.meanings.slice(0, 4);
-                            const hasMore = group.meanings.length > 4;
-
-                            return (
-                                <div key={groupKey} className="mb-3 break-inside-avoid rounded-[1.2rem] border border-white/24 bg-white/12 p-4 transition hover:bg-white/20">
-                                    <div className="mb-3 flex items-center justify-between gap-3">
-                                        <span className="rounded-full border border-emerald-200/60 bg-white/60 px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-emerald-800 drop-shadow-sm">
-                                            {group.pos}
-                                        </span>
-                                    </div>
-                                    <div className="space-y-2">
-                                        {visibleMeanings.map((meaning, meaningIndex) => {
-                                            const isHighlighted = normalizedHighlightedMeanings.some((highlight) => meaningsLooselyMatch(meaning, highlight));
+                                            const ghostChar = ghostInput[inputCursorTracker]?.toLowerCase();
+                                            const normalizedChar = char.toLowerCase();
+                                            
+                                            let status = "pending";
+                                            if (ghostChar) {
+                                                status = ghostChar === normalizedChar ? "correct" : "wrong";
+                                            }
+                                            
+                                            const isAnyTyping = ghostInput.length > 0;
+                                            if (!isAnyTyping) {
+                                                status = "correct";
+                                            }
+                                            
+                                            const isCursor = isAnyTyping && inputCursorTracker === ghostInput.length;
+                                            inputCursorTracker++;
 
                                             return (
-                                                <div
-                                                    key={`${groupKey}-${meaningIndex}`}
-                                                    data-highlighted-meaning={isHighlighted ? "true" : "false"}
-                                                    data-highlight-source={isHighlighted ? "ai" : "none"}
-                                                    className={cn(
-                                                        "rounded-[1.05rem] border border-transparent p-2.5 transition",
-                                                        isHighlighted
-                                                            ? "bg-[linear-gradient(180deg,transparent_0%,transparent_24%,rgba(250,204,21,0.42)_24%,rgba(253,224,71,0.56)_82%,transparent_82%)]"
-                                                            : "",
-                                                    )}
-                                                >
-                                                    <div className={cn("flex items-start gap-3", isHighlighted && "pl-1")}>
-                                                        <PretextTextarea
-                                                            aria-label={`编辑释义 ${group.pos} ${meaningIndex + 1}`}
-                                                            value={meaning}
-                                                            onChange={(event) => handleMeaningChange(groupIndex, meaningIndex, event.target.value)}
-                                                            rows={getTextareaRows(meaning, 1, 4)}
-                                                            minRows={1}
-                                                            maxRows={4}
-                                                            className={cn(
-                                                                "w-full resize-none border-none bg-transparent p-0 text-[15px] font-medium leading-relaxed text-[#1a3826]/80 outline-none transition placeholder:text-[#1a3826]/35 focus:text-[#1a3826]",
-                                                                isHighlighted && "font-semibold text-[#7c5200]",
-                                                            )}
+                                                <span key={idx} className="relative inline-block transition-colors duration-150">
+                                                    <span className={cn(
+                                                        status === "correct" && "text-slate-800",
+                                                        status === "wrong" && "text-rose-500",
+                                                        status === "pending" && "text-slate-200"
+                                                    )}>
+                                                        {char}
+                                                    </span>
+                                                    {isCursor && (
+                                                        <motion.span 
+                                                            animate={{ opacity: [1, 0, 1] }} 
+                                                            transition={{ repeat: Infinity, duration: 0.8 }} 
+                                                            className="absolute -left-[2px] top-[15%] h-[70%] w-[3px] rounded-full bg-emerald-400" 
                                                         />
+                                                    )}
+                                                </span>
+                                            );
+                                        })}
+                                        {ghostInput.length > 0 && inputCursorTracker === ghostInput.length && (
+                                            <span className="relative">
+                                                <motion.span 
+                                                    animate={{ opacity: [1, 0, 1] }} 
+                                                    transition={{ repeat: Infinity, duration: 0.8 }} 
+                                                    className="absolute -left-[2px] top-[15%] h-[70%] w-[3px] rounded-full bg-emerald-400" 
+                                                />
+                                            </span>
+                                        )}
+                                    </>
+                                );
+                            })()}
+                        </div>
+                    )}
+                    <input
+                        aria-label="编辑单词"
+                        value={draft.word}
+                        onChange={(event) => handleChange("word", event.target.value)}
+                        onFocus={() => setIsWordInputFocused(true)}
+                        onBlur={() => {
+                            setIsWordInputFocused(false);
+                            handleAutoSave();
+                        }}
+                        className={cn(
+                            "w-full text-center bg-transparent border-none outline-none font-newsreader text-[3.2rem] sm:text-[4rem] font-bold tracking-tight transition-all placeholder:text-slate-300 focus:scale-105 hover:bg-white/40 focus:bg-white/60 focus:rounded-[20px] relative z-10",
+                            isWordInputFocused ? "text-slate-800" : "text-transparent caret-transparent"
+                        )}
+                    />
+                    <input
+                        aria-label="编辑音标"
+                        value={displayPhonetic}
+                        onChange={(event) => {
+                            setResolvedPhonetic("");
+                            handleChange("phonetic", event.target.value);
+                        }}
+                        onBlur={handleAutoSave}
+                        placeholder="音标待补"
+                        className="mt-1 w-auto min-w-[120px] max-w-[260px] text-center rounded-full bg-slate-100/80 px-4 py-1 text-[13px] font-medium text-slate-500 shadow-inner outline-none transition-all placeholder:text-slate-300 focus:bg-white focus:ring-2 focus:ring-emerald-200"
+                    />
+                </div>
+            </div>
+
+            {/* Smart Segmented Control for Tabbing */}
+            <div className="flex-none px-4 pt-3 pb-1 flex justify-center z-10 sticky top-[138px]">
+                <div className="flex bg-slate-100/80 p-1.5 rounded-[20px] shadow-inner gap-1">
+                    {[
+                        { id: "meanings", label: "释义", icon: BookOpen },
+                        { id: "examples", label: "例句", icon: Sparkles },
+                        ...(hasWordAnalysis ? [{ id: "analysis", label: "解析", icon: Fingerprint }] : [])
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setActiveTab(tab.id as TabKey)}
+                            className={cn(
+                                "flex items-center gap-1.5 px-4 py-1.5 rounded-2xl text-[13px] font-bold transition-all whitespace-nowrap outline-none select-none",
+                                activeTab === tab.id 
+                                    ? "bg-white text-slate-800 shadow-[0_2px_10px_rgba(0,0,0,0.06)]" 
+                                    : "text-slate-400 hover:text-slate-600 hover:bg-white/40"
+                            )}
+                        >
+                            <tab.icon className="h-3.5 w-3.5" />
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Tabbed Content Area */}
+            <div className="flex-1 overflow-y-auto px-4 pb-6 pt-2 pretty-scroll">
+                <AnimatePresence mode="wait">
+                    {activeTab === "meanings" && (
+                        <motion.div
+                            key="tab-meanings"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.15, ease: "easeOut" }}
+                            className="flex flex-col gap-3"
+                        >
+                            {meaningDraftGroups.length > 0 ? (
+                                meaningDraftGroups.map((group, groupIndex) => {
+                                    const groupKey = `${draft.word}-${group.pos}`;
+                                    const isExpanded = expandedPosGroups[groupKey] ?? false;
+                                    const visibleMeanings = isExpanded ? group.meanings : group.meanings.slice(0, 3);
+                                    
+                                    return (
+                                        <div key={groupKey} className="bg-white/50 border border-slate-100/50 rounded-[24px] p-2 sm:p-3 transition-colors shadow-sm">
+                                            <div className="flex flex-col sm:flex-row items-start gap-2 sm:gap-3">
+                                                <div className="pt-2 sm:min-w-[40px] flex sm:justify-center px-2">
+                                                    <div className="flex h-7 items-center justify-center rounded-full bg-emerald-100/60 px-2.5 text-[11px] sm:text-[12px] font-black uppercase tracking-wider text-emerald-600 outline outline-1 outline-emerald-200/50">
+                                                        {group.pos.replace('.', '')}.
                                                     </div>
                                                 </div>
-                                                );
-                                            })}
-                                    </div>
-                                    {hasMore ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                onExpandedPosGroupsChange({ ...expandedPosGroups, [groupKey]: !isExpanded });
-                                            }}
-                                            className="mt-3 w-full text-center text-xs font-bold uppercase tracking-[0.12em] text-[#345b46]/60 transition-colors hover:text-emerald-700"
-                                        >
-                                            {isExpanded ? "收起" : `查看余下 ${group.meanings.length - 4} 个`}
-                                        </button>
-                                    ) : null}
+                                                <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
+                                                    <Reorder.Group 
+                                                        as="div" 
+                                                        axis="y" 
+                                                        values={visibleMeanings} 
+                                                        onReorder={(newMeanings) => handleReorderGroup(groupIndex, isExpanded ? newMeanings : [...newMeanings, ...group.meanings.slice(3)])} 
+                                                        className="flex flex-col gap-1.5"
+                                                    >
+                                                        {visibleMeanings.map((meaningObj) => {
+                                                            const isHighlighted = normalizedHighlightedMeanings.some((highlight) => meaningsLooselyMatch(meaningObj.text, highlight));
+                                                            
+                                                            return (
+                                                                <Reorder.Item 
+                                                                    as="div"
+                                                                    key={meaningObj.id}
+                                                                    value={meaningObj}
+                                                                    className={cn(
+                                                                        "group flex items-center gap-1 sm:gap-2 rounded-[16px] px-2 sm:px-3 py-1.5 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.01)] outline outline-1",
+                                                                        isHighlighted ? "bg-amber-50/80 outline-amber-200/50" : "bg-white/80 outline-slate-100/80 hover:bg-white"
+                                                                    )}
+                                                                >
+                                                                    <GripVertical className="h-4 w-4 shrink-0 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-slate-500 cursor-grab active:cursor-grabbing transition-opacity" />
+                                                                    
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <PretextTextarea
+                                                                            aria-label={`编辑 ${group.pos} 释义`}
+                                                                            value={meaningObj.text}
+                                                                            onChange={(event) => handleMeaningChange(groupIndex, meaningObj.id, event.target.value)}
+                                                                            onBlur={handleAutoSave}
+                                                                            rows={getTextareaRows(meaningObj.text, 1, 2)}
+                                                                            minRows={1}
+                                                                            maxRows={2}
+                                                                            className={cn(
+                                                                                "w-full resize-none border-none bg-transparent p-0 text-[13.5px] leading-snug font-bold outline-none transition placeholder:text-slate-300 m-0",
+                                                                                isHighlighted ? "text-amber-900" : "text-slate-700 focus:text-slate-900"
+                                                                            )}
+                                                                        />
+                                                                    </div>
+                                                                    <div className="shrink-0 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleHighlightToggle(meaningObj.text)}
+                                                                            className={cn(
+                                                                                "flex h-7 w-7 items-center justify-center rounded-full transition active:scale-95 shadow-sm outline outline-1",
+                                                                                isHighlighted ? "bg-amber-100 text-amber-500 hover:bg-amber-200 outline-amber-200" : "bg-slate-50 text-slate-400 hover:text-amber-500 hover:bg-amber-50 outline-slate-200/60"
+                                                                            )}
+                                                                        >
+                                                                            <Star className="h-3.5 w-3.5" fill={isHighlighted ? "currentColor" : "none"} />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleMeaningRemove(groupIndex, meaningObj.id)}
+                                                                            className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-50 text-rose-300 shadow-sm transition hover:bg-rose-50 hover:text-rose-500 active:scale-95 outline outline-1 outline-slate-200/60"
+                                                                        >
+                                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                                        </button>
+                                                                    </div>
+                                                                </Reorder.Item>
+                                                            )
+                                                        })}
+                                                    </Reorder.Group>
+                                                </div>
+                                            </div>
+                                            {group.meanings.length > 3 && (
+                                                <button
+                                                    onClick={() => onExpandedPosGroupsChange({ ...expandedPosGroups, [groupKey]: !isExpanded })}
+                                                    className="mt-2 w-full rounded-xl bg-slate-100/50 py-1.5 text-[11px] font-bold tracking-wider text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+                                                >
+                                                    {isExpanded ? "收起" : `展开其余 ${group.meanings.length - 3} 个释义`}
+                                                </button>
+                                            )}
+                                        </div>
+                                    )
+                                })
+                            ) : (
+                                <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-sm font-medium text-slate-400">
+                                    暂无释义
                                 </div>
-                            );
-                        })}
-                    </div>
-                ) : (
-                    <PretextTextarea
-                        aria-label="编辑释义"
-                        value=""
-                        readOnly
-                        rows={2}
-                        minRows={2}
-                        maxRows={2}
-                        className="w-full resize-none rounded-[1.2rem] border border-transparent bg-transparent p-2 text-[15px] font-medium leading-relaxed text-[#1a3826]/55 outline-none"
-                    />
-                )}
-            </div>
+                            )}
+                        </motion.div>
+                    )}
 
-            <div className="rounded-[1.4rem] border border-white/30 bg-white/20 p-4 shadow-sm backdrop-blur-md">
-                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                    <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-3">
-                            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#345b46]/60">例句</p>
-                            {draft.source_sentence.trim() ? (
-                                <span className="inline-flex rounded-full border border-emerald-200/50 bg-emerald-50/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">
-                                    {item.source_label || "来源"}
-                                </span>
-                            ) : null}
-                        </div>
-                        <PretextTextarea
-                            aria-label="编辑例句"
-                            value={visibleExample}
-                            onChange={(event) => handleChange(visibleExampleField, event.target.value)}
-                            rows={getTextareaRows(visibleExample || "暂无例句。", 3, 8)}
-                            minRows={3}
-                            maxRows={8}
-                            placeholder="暂无例句。"
-                            className="mt-2 w-full resize-none rounded-[1.2rem] border border-transparent bg-transparent px-2 py-2 font-newsreader text-[1.2rem] italic leading-relaxed text-[#1a3826] outline-none transition placeholder:text-[#1a3826]/35 focus:border-emerald-200/70 focus:bg-white/16 focus:ring-2 focus:ring-emerald-200/35"
-                        />
-                    </div>
-                </div>
-            </div>
+                    {activeTab === "examples" && (
+                        <motion.div
+                            key="tab-examples"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.15, ease: "easeOut" }}
+                            className="flex flex-col gap-3"
+                        >
+                            {(draft.source_sentence || draft.example) ? (
+                                <>
+                                    {draft.source_sentence && (
+                                        <div className="bg-sky-50/50 border border-sky-100 rounded-[20px] p-4 shadow-sm">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-600 uppercase tracking-wider">
+                                                    来源
+                                                </span>
+                                                {item.source_label && (
+                                                    <span className="text-[10px] font-black text-sky-800/40 uppercase tracking-widest">{item.source_label}</span>
+                                                )}
+                                            </div>
+                                            <PretextTextarea
+                                                value={draft.source_sentence}
+                                                onChange={(event) => handleChange("source_sentence", event.target.value)}
+                                                onBlur={handleAutoSave}
+                                                rows={getTextareaRows(draft.source_sentence, 2, 6)}
+                                                minRows={2}
+                                                maxRows={6}
+                                                className="w-full resize-none border-none bg-transparent p-0 font-newsreader text-[1.1rem] italic leading-relaxed text-sky-900 outline-none"
+                                            />
+                                        </div>
+                                    )}
 
-            {(isDirty || error) ? (
-                <div className="flex flex-col gap-3 rounded-[1.35rem] border border-white/38 bg-white/28 p-4 shadow-sm backdrop-blur-md md:flex-row md:items-center md:justify-between">
-                    <p className={cn("text-sm font-medium", error ? "text-rose-600" : "text-[#345b46]/78")}>
-                        {error || "你正在直接原地编辑，保存后继续背诵。"}
-                    </p>
-                    <div className="flex items-center gap-3">
-                        <button
-                            type="button"
-                            onClick={handleCancel}
-                            disabled={isSaving}
-                            className="rounded-2xl border border-white/55 bg-white/60 px-4 py-2.5 text-sm font-semibold text-[#345b46] transition hover:bg-white/80 disabled:opacity-60"
+                                    {draft.example && (
+                                        <div className="bg-emerald-50/60 border border-emerald-100 rounded-[20px] p-4 shadow-sm">
+                                            <div className="mb-2 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
+                                                AI 造句
+                                            </div>
+                                            <PretextTextarea
+                                                value={draft.example}
+                                                onChange={(event) => handleChange("example", event.target.value)}
+                                                onBlur={handleAutoSave}
+                                                rows={getTextareaRows(draft.example, 2, 6)}
+                                                minRows={2}
+                                                maxRows={6}
+                                                className="w-full resize-none border-none bg-transparent p-0 font-newsreader text-[1.1rem] italic leading-relaxed text-emerald-900 outline-none"
+                                            />
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-sm font-medium text-slate-400">
+                                    暂无例句
+                                </div>
+                            )}
+                        </motion.div>
+                    )}
+
+                    {activeTab === "analysis" && (
+                        <motion.div
+                            key="tab-analysis"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            transition={{ duration: 0.15, ease: "easeOut" }}
+                            className="flex flex-col gap-3"
                         >
-                            取消编辑
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleSave}
-                            disabled={saveDisabled}
-                            className="inline-flex min-w-[118px] items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#34d399,#10b981)] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_16px_32px_-16px_rgba(16,185,129,0.8)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                            {isSaving ? "保存中..." : "保存修改"}
-                        </button>
-                    </div>
-                </div>
-            ) : null}
+                            <div className="bg-indigo-50/50 border border-indigo-100 rounded-[20px] p-4 shadow-sm">
+                                <div className="mb-3 inline-flex rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                                    词根词缀剖析
+                                </div>
+                                {wordBreakdown.length > 0 && (
+                                    <div className="mb-3 flex flex-wrap gap-2">
+                                        {wordBreakdown.map((part) => (
+                                            <span key={part} className="rounded-[10px] bg-white text-indigo-700 px-3 py-1 text-[13px] font-bold shadow-sm border border-indigo-100/50">
+                                                {part}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                {morphologyNotes.length > 0 && (
+                                    <div className="flex flex-col gap-1.5">
+                                        {morphologyNotes.map((note) => (
+                                            <p key={note} className="text-[13px] leading-relaxed font-medium text-slate-600">
+                                                • {note}
+                                            </p>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+            
         </div>
     );
 }

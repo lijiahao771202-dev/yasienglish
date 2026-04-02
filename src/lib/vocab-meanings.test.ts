@@ -48,12 +48,12 @@ describe("resolveHighlightedMeaningsFromGroups", () => {
         ).toEqual(["⚡ 转达消息"]);
     });
 
-    it("falls back to the first displayed meaning when old AI highlight text no longer matches", () => {
+    it("returns no highlight when the AI-provided highlighted meaning does not match any displayed meaning", () => {
         expect(
             resolveHighlightedMeaningsFromGroups(
                 [{ pos: "n.", meanings: ["战役，战争", "争论，斗争"] }],
                 ["A military fight between armed forces"],
             ),
-        ).toEqual(["战役，战争"]);
+        ).toEqual([]);
     });
 });

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, Check, ChevronRight, CloudUpload, Image as ImageIcon, Loader2, LogOut, Mail, Play, RefreshCw, Settings2, Volume2, X } from "lucide-react";
+import { BadgeCheck, Check, ChevronRight, CloudUpload, Image as ImageIcon, Loader2, LogOut, Mail, Play, RefreshCw, Search, Settings2, Volume2, X } from "lucide-react";
 
 import { PresetAvatar } from "@/components/profile/PresetAvatar";
 import { SpeechModelStatusPanel } from "@/components/speech/SpeechModelStatusPanel";
@@ -91,6 +91,14 @@ function getVoiceOption(voice: TtsVoice) {
     return TTS_VOICE_OPTIONS.find((option) => option.voice === voice);
 }
 
+type VoiceFilter = "all" | "zh-CN" | "en-US";
+
+const VOICE_FILTER_OPTIONS: Array<{ value: VoiceFilter; label: string }> = [
+    { value: "all", label: "全部" },
+    { value: "en-US", label: "英文" },
+    { value: "zh-CN", label: "中文" },
+];
+
 export function UserAvatarMenu({
     userId,
     email,
@@ -110,8 +118,11 @@ export function UserAvatarMenu({
     const [ttsVoiceOpen, setTtsVoiceOpen] = useState(false);
     const [ttsVoiceBusy, setTtsVoiceBusy] = useState(false);
     const [previewVoice, setPreviewVoice] = useState<TtsVoice | null>(null);
+    const [voiceFilter, setVoiceFilter] = useState<VoiceFilter>("all");
+    const [voiceSearch, setVoiceSearch] = useState("");
     const [selectedVoice, setSelectedVoice] = useState<TtsVoice>(normalizeTtsVoice(learningPreferences.tts_voice));
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const voiceListRef = useRef<HTMLDivElement | null>(null);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const router = useRouter();
     const speechModel = useDesktopSpeechModel();
@@ -121,6 +132,22 @@ export function UserAvatarMenu({
         () => getVoiceOption(selectedVoice) ?? TTS_VOICE_OPTIONS[0],
         [selectedVoice],
     );
+    const normalizedVoiceSearch = voiceSearch.trim().toLowerCase();
+    const filteredVoiceGroups = useMemo(() => (
+        TTS_VOICE_GROUPS
+            .map((group) => ({
+                ...group,
+                voices: group.voices.filter((option) => {
+                    const matchesFilter = voiceFilter === "all" || option.voice.startsWith(voiceFilter);
+                    if (!matchesFilter) return false;
+
+                    if (!normalizedVoiceSearch) return true;
+                    const target = `${option.label} ${option.voice} ${option.description}`.toLowerCase();
+                    return target.includes(normalizedVoiceSearch);
+                }),
+            }))
+            .filter((group) => group.voices.length > 0)
+    ), [normalizedVoiceSearch, voiceFilter]);
 
     useEffect(() => {
         const handlePointerDown = (event: MouseEvent) => {
@@ -161,6 +188,26 @@ export function UserAvatarMenu({
             previewAudioRef.current = null;
         };
     }, []);
+
+    useEffect(() => {
+        if (!ttsVoiceOpen) return;
+        const timer = window.setTimeout(() => {
+            const listElement = voiceListRef.current;
+            if (!listElement) return;
+
+            const selectedCard = listElement.querySelector<HTMLElement>(`[data-voice-card="${selectedVoice}"]`);
+            if (selectedCard && typeof selectedCard.scrollIntoView === "function") {
+                selectedCard.scrollIntoView({ block: "center", inline: "nearest" });
+                return;
+            }
+            if (typeof listElement.scrollTo === "function") {
+                listElement.scrollTo({ top: 0 });
+            } else {
+                listElement.scrollTop = 0;
+            }
+        }, 0);
+        return () => window.clearTimeout(timer);
+    }, [selectedVoice, ttsVoiceOpen]);
 
     const handleSelectVoice = async (nextVoice: TtsVoice) => {
         if (nextVoice === selectedVoice) {
@@ -240,142 +287,93 @@ export function UserAvatarMenu({
             {open ? (
                 <div
                     className={isSidebar
-                        ? "absolute bottom-full left-0 mb-3 w-[22.5rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[2rem] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.94),rgba(246,244,239,0.92))] p-4 shadow-[0_38px_90px_-36px_rgba(46,39,33,0.18)] backdrop-blur-2xl"
-                        : "absolute right-0 mt-3 w-[22.5rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-[2rem] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.95),rgba(246,244,239,0.93))] p-4 shadow-[0_38px_90px_-36px_rgba(46,39,33,0.2)] backdrop-blur-2xl"}
+                        ? "absolute bottom-full left-0 mb-3 w-[19rem] max-w-[calc(100vw-2rem)] max-h-[min(82vh,36rem)] overflow-y-auto rounded-[1.8rem] border-3 border-[#e5e7eb] bg-[#fffbeb] p-3 shadow-[0_6px_0_0_#e5e7eb] __cute-hide-scrollbars"
+                        : "absolute right-0 mt-3 w-[19rem] max-w-[calc(100vw-2rem)] max-h-[min(82vh,36rem)] overflow-y-auto rounded-[1.8rem] border-3 border-[#e5e7eb] bg-[#fffbeb] p-3 shadow-[0_6px_0_0_#e5e7eb] __cute-hide-scrollbars"}
                 >
-                    <div className="rounded-[1.55rem] border border-white/70 bg-white/65 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)]">
-                        <div className="flex items-center gap-3">
-                            <PresetAvatar presetId={avatarPreset} size={56} />
-                            <div className="min-w-0">
-                                <p className="truncate text-2xl font-semibold tracking-[-0.02em] text-slate-900">{displayName}</p>
-                                <p className="mt-1 truncate text-sm text-slate-500">{email}</p>
-                            </div>
+                    {/* Profile Header */}
+                    <div className="rounded-[1.2rem] border-3 border-[#fbbf24] bg-white p-2.5 shadow-[0_4px_0_0_#fbbf24] flex items-center gap-2.5">
+                        <div className="flex-shrink-0"><PresetAvatar presetId={avatarPreset} size={38} /></div>
+                        <div className="min-w-0">
+                            <p className="truncate text-sm font-black text-[#1f2937]">{displayName}</p>
+                            <p className="truncate text-[11px] font-bold text-[#9ca3af]">{email}</p>
                         </div>
                     </div>
 
-                    <div className={`mt-3 rounded-[1.3rem] border px-4 py-3 ${getSyncTone(syncLabel)}`}>
-                        <div className="flex items-center gap-2 text-base font-semibold">
-                            <RefreshCw className="h-4 w-4" />
+                    {/* Sync status */}
+                    <div className={`mt-2 rounded-[1rem] border-3 px-3 py-2 ${
+                        syncLabel === "Synced"
+                            ? "border-[#6ee7b7] bg-[#ecfdf5] text-[#065f46]"
+                            : syncLabel === "Sync failed"
+                                ? "border-[#fca5a5] bg-[#fef2f2] text-[#991b1b]"
+                                : "border-[#93c5fd] bg-[#eff6ff] text-[#1e40af]"
+                    } shadow-[0_3px_0_0_currentColor/20]`}>
+                        <div className="flex items-center gap-1.5 text-xs font-black">
+                            <RefreshCw className="h-3.5 w-3.5" />
                             {syncLabel}
                         </div>
-                        <p className="mt-1 text-sm leading-5 opacity-90">{syncDescription}</p>
+                        <p className="mt-0.5 text-[11px] font-bold leading-4 opacity-80 line-clamp-2">{syncDescription}</p>
                     </div>
 
                     {speechModel.isDesktopApp ? (
-                        <div className="mt-3">
-                            <SpeechModelStatusPanel
-                                progress={speechModel.progress}
-                                onDownload={speechModel.downloadModel}
-                                compact
-                            />
+                        <div className="mt-2">
+                            <SpeechModelStatusPanel progress={speechModel.progress} onDownload={speechModel.downloadModel} compact />
                         </div>
                     ) : null}
 
-                    <div className="mt-4 grid grid-cols-2 gap-2.5">
+                    {/* Action grid */}
+                    <div className="mt-2 grid grid-cols-2 gap-2">
                         <button
                             type="button"
-                            onClick={async () => {
-                                setManualSyncing(true);
-                                try {
-                                    await syncNow();
-                                } catch (error) {
-                                    window.alert(getUserFacingSyncError(error));
-                                } finally {
-                                    setManualSyncing(false);
-                                }
-                            }}
-                            className="col-span-2 flex w-full cursor-pointer items-center justify-between rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 transition hover:border-amber-200 hover:text-slate-950"
+                            onClick={async () => { setManualSyncing(true); try { await syncNow(); } catch (error) { window.alert(getUserFacingSyncError(error)); } finally { setManualSyncing(false); } }}
+                            className="col-span-2 flex w-full cursor-pointer items-center justify-between rounded-[1rem] border-3 border-[#93c5fd] bg-white px-3 py-2 font-black text-xs text-[#1d4ed8] shadow-[0_4px_0_0_#93c5fd] transition active:shadow-none active:translate-y-0.5"
                         >
-                            <span className="flex items-center gap-2">
-                                <CloudUpload className="h-4 w-4" />
-                                {manualSyncing ? "同步中…" : "立即同步"}
-                            </span>
-                            <RefreshCw className={`h-4 w-4 text-amber-500 ${manualSyncing ? "animate-spin" : ""}`} />
+                            <span className="flex items-center gap-1.5"><CloudUpload className="h-3.5 w-3.5" />{manualSyncing ? "同步中…" : "立即同步"}</span>
+                            <RefreshCw className={`h-3.5 w-3.5 text-[#3b82f6] ${manualSyncing ? "animate-spin" : ""}`} />
                         </button>
                         <button
                             type="button"
-                            onClick={() => {
-                                setMailboxOpen(true);
-                                setOpen(false);
-                            }}
-                            className="flex min-h-[78px] cursor-pointer flex-col items-start justify-between rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:border-rose-200 hover:text-slate-950"
+                            onClick={() => { setMailboxOpen(true); setOpen(false); }}
+                            className="flex min-h-[52px] cursor-pointer flex-col items-start justify-between rounded-[1rem] border-3 border-[#fca5a5] bg-white px-3 py-2 text-left font-black text-xs text-[#991b1b] shadow-[0_4px_0_0_#fca5a5] transition active:shadow-none active:translate-y-0.5"
                         >
-                            <span className="flex items-center gap-2">
-                                <Mail className="h-4 w-4" />
-                                邮箱
-                            </span>
+                            <span className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />邮箱</span>
                             {unreadCount > 0 ? (
-                                <span className="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-semibold text-white">{unreadCount} 封未读</span>
+                                <span className="rounded-full border-2 border-[#fca5a5] bg-[#fef2f2] px-1.5 py-0.5 text-[10px] font-black text-[#dc2626]">{unreadCount} 封未读</span>
                             ) : (
-                                <span className="text-xs text-slate-400">无新消息</span>
+                                <span className="text-[10px] font-bold text-[#9ca3af]">无新消息</span>
                             )}
                         </button>
                         <button
                             type="button"
-                            onClick={() => {
-                                setBackgroundOpen(true);
-                                setOpen(false);
-                            }}
-                            className="flex min-h-[78px] cursor-pointer flex-col items-start justify-between rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:text-slate-950"
+                            onClick={() => { setBackgroundOpen(true); setOpen(false); }}
+                            className="flex min-h-[52px] cursor-pointer flex-col items-start justify-between rounded-[1rem] border-3 border-[#c4b5fd] bg-white px-3 py-2 text-left font-black text-xs text-[#5b21b6] shadow-[0_4px_0_0_#c4b5fd] transition active:shadow-none active:translate-y-0.5"
                         >
-                            <span className="flex items-center gap-2">
-                                <ImageIcon className="h-4 w-4" />
-                                背景
-                            </span>
-                            <span className="text-xs text-slate-400">主题可切换</span>
+                            <span className="flex items-center gap-1.5"><ImageIcon className="h-3.5 w-3.5" />背景</span>
+                            <span className="text-[10px] font-bold text-[#9ca3af]">主题可切换</span>
                         </button>
                     </div>
+
                     <button
                         type="button"
-                        onClick={() => {
-                            setTtsVoiceOpen((current) => !current);
-                            setMailboxOpen(false);
-                            setBackgroundOpen(false);
-                        }}
-                        className="mt-2 flex w-full items-center justify-between rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3.5 text-left text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950"
+                        onClick={() => { setMailboxOpen(false); setBackgroundOpen(false); setTtsVoiceOpen((c) => { const n = !c; if (n) { setVoiceFilter("all"); setVoiceSearch(""); } return n; }); }}
+                        className="mt-2 flex w-full cursor-pointer items-center justify-between rounded-[1rem] border-3 border-[#6ee7b7] bg-white px-3 py-2 font-black text-xs text-[#065f46] shadow-[0_4px_0_0_#6ee7b7] transition active:shadow-none active:translate-y-0.5"
                     >
-                        <span className="flex items-center gap-2">
-                            <Volume2 className="h-4 w-4" />
-                            发言人
-                        </span>
-                        <span className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
-                            {selectedVoiceOption.label}
-                            <ChevronRight className="h-3.5 w-3.5" />
-                        </span>
+                        <span className="flex items-center gap-1.5"><Volume2 className="h-3.5 w-3.5" />发言人</span>
+                        <span className="flex items-center gap-1 text-[11px] font-black text-[#6b7280]">{selectedVoiceOption.label}<ChevronRight className="h-3 w-3" /></span>
                     </button>
                     <div className="mt-2 space-y-2">
-                        <Link
-                            href="/profile"
-                            prefetch={false}
-                            className="flex cursor-pointer items-center justify-between rounded-[1.2rem] border border-indigo-200/70 bg-[linear-gradient(135deg,rgba(246,248,255,0.92),rgba(240,245,255,0.84))] px-4 py-3.5 text-sm font-semibold text-slate-800 transition hover:border-indigo-300 hover:text-slate-950"
-                        >
-                            <span className="flex items-center gap-2">
-                                <Settings2 className="h-4 w-4" />
-                                个人资料与密码
-                            </span>
-                            <BadgeCheck className="h-4 w-4 text-indigo-500" />
+                        <Link href="/profile" prefetch={false} className="flex cursor-pointer items-center justify-between rounded-[1rem] border-3 border-[#a5b4fc] bg-white px-3 py-2 font-black text-xs text-[#3730a3] shadow-[0_4px_0_0_#a5b4fc] transition active:shadow-none active:translate-y-0.5">
+                            <span className="flex items-center gap-1.5"><Settings2 className="h-3.5 w-3.5" />个人资料与密码</span>
+                            <BadgeCheck className="h-3.5 w-3.5 text-[#6366f1]" />
                         </Link>
                         <button
                             type="button"
-                            onClick={async () => {
-                                setLogoutBusy(true);
-                                try {
-                                    const supabase = createBrowserClientSingleton();
-                                    await supabase.auth.signOut();
-                                    await fetch("/logout", { method: "POST" }).catch(() => undefined);
-                                } finally {
-                                    setLogoutBusy(false);
-                                    router.replace("/login");
-                                }
-                            }}
-                            className="flex w-full cursor-pointer items-center justify-between rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:border-rose-200 hover:text-rose-700"
+                            onClick={async () => { setLogoutBusy(true); try { const supabase = createBrowserClientSingleton(); await supabase.auth.signOut(); await fetch("/logout", { method: "POST" }).catch(() => undefined); } finally { setLogoutBusy(false); router.replace("/login"); } }}
+                            className="flex w-full cursor-pointer items-center justify-between rounded-[1rem] border-3 border-[#fca5a5] bg-white px-3 py-2 font-black text-xs text-[#dc2626] shadow-[0_4px_0_0_#fca5a5] transition active:shadow-none active:translate-y-0.5"
                         >
-                            <span className="flex items-center gap-2">
-                                <LogOut className="h-4 w-4" />
-                                {logoutBusy ? "退出中…" : "退出登录"}
-                            </span>
+                            <span className="flex items-center gap-1.5"><LogOut className="h-3.5 w-3.5" />{logoutBusy ? "退出中…" : "退出登录"}</span>
                         </button>
                     </div>
+                    <style dangerouslySetInnerHTML={{ __html: `.__cute-hide-scrollbars::-webkit-scrollbar{display:none}.__cute-hide-scrollbars{-ms-overflow-style:none;scrollbar-width:none}` }} />
                 </div>
             ) : null}
             {ttsVoiceOpen ? (
@@ -383,129 +381,150 @@ export function UserAvatarMenu({
                     role="dialog"
                     aria-modal="true"
                     aria-label="发言人选择"
-                    className="fixed inset-0 z-[180] flex items-center justify-center bg-slate-950/28 px-4 py-6 backdrop-blur-[2px]"
+                    className="fixed inset-0 z-[180] flex items-center justify-center bg-[#1f2937]/40 px-4 py-6"
                     onClick={() => setTtsVoiceOpen(false)}
                 >
                     <div
-                        className="relative w-[min(92vw,32rem)] max-h-[min(84vh,42rem)] overflow-hidden rounded-[1.5rem] border border-white/80 bg-white p-3 shadow-[0_32px_90px_-44px_rgba(15,23,42,0.48)]"
+                        className="relative flex w-[min(94vw,48rem)] max-h-[min(82vh,38rem)] flex-col overflow-hidden rounded-[2rem] border-3 border-[#e5e7eb] bg-[#fffbeb] shadow-[0_8px_0_0_#e5e7eb]"
                         onClick={(event) => event.stopPropagation()}
                     >
                         <button
                             type="button"
                             onClick={() => setTtsVoiceOpen(false)}
-                            className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#dfe3ec] bg-white text-[#3f4a5a]"
+                            className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border-3 border-[#fca5a5] bg-white text-[#dc2626] font-black shadow-[0_3px_0_0_#fca5a5] transition active:shadow-none active:translate-y-0.5"
                             aria-label="Close voice picker"
                         >
-                            <X className="h-4 w-4" />
+                            <X className="h-3.5 w-3.5" />
                         </button>
-                        <div className="pr-10">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">发言人列表</p>
-                            <p className="mt-1 text-base font-semibold text-slate-900">选择一个声音</p>
-                            <p className="mt-1 text-xs leading-5 text-slate-500">切换后，后续合成会跟着这个发言人走。</p>
-                            <div className="mt-3 flex items-center justify-between gap-2 rounded-[0.95rem] border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <div className="border-b-3 border-[#e5e7eb] bg-white px-4 pb-3 pt-3 sm:px-5">
+                            <p className="pr-10 text-[10px] font-black uppercase tracking-widest text-[#d97706]">发言人列表</p>
+                            <p className="mt-0.5 pr-10 text-base font-black text-[#1f2937]">选择一个声音</p>
+                            <p className="mt-0.5 pr-10 text-[11px] font-bold text-[#6b7280]">切换后，后续合成会跟着这个发言人走。</p>
+                            <div className="mt-2 flex flex-col gap-2 rounded-[1rem] border-3 border-[#fbbf24] bg-[#fffbeb] p-2.5 shadow-[0_3px_0_0_#fbbf24] sm:flex-row sm:items-center sm:justify-between">
                                 <div className="min-w-0">
-                                    <p className="truncate text-sm font-semibold text-slate-800">当前：{selectedVoiceOption.label}</p>
-                                    <p className="truncate text-[11px] text-slate-500">{selectedVoiceOption.description}</p>
+                                    <p className="truncate text-xs font-black text-[#1f2937]">当前：{selectedVoiceOption.label}</p>
+                                    <p className="truncate text-[10px] font-bold text-[#9ca3af]">{selectedVoiceOption.voice}</p>
+                                    <p className="mt-0.5 text-[11px] font-bold text-[#6b7280]">{selectedVoiceOption.description}</p>
                                 </div>
                                 <button
                                     type="button"
                                     onClick={() => void handlePreviewVoice(selectedVoice)}
                                     disabled={ttsVoiceBusy || previewVoice !== null}
-                                    className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                                    className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-full border-3 border-[#93c5fd] bg-white px-3 text-[11px] font-black text-[#1d4ed8] shadow-[0_3px_0_0_#93c5fd] transition active:shadow-none active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                    {previewVoice === selectedVoice ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                                    {previewVoice === selectedVoice ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
                                     试听当前
                                 </button>
                             </div>
+                            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    {VOICE_FILTER_OPTIONS.map((option) => (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            onClick={() => setVoiceFilter(option.value)}
+                                            className={`inline-flex h-7 items-center justify-center rounded-full px-3 text-[11px] font-black transition ${
+                                                voiceFilter === option.value
+                                                    ? "border-3 border-[#1f2937] bg-[#1f2937] text-white shadow-[0_3px_0_0_#111827]"
+                                                    : "border-3 border-[#e5e7eb] bg-white text-[#374151] shadow-[0_3px_0_0_#e5e7eb] active:shadow-none active:translate-y-0.5"
+                                            }`}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                                <label className="flex h-7 w-full items-center gap-1.5 rounded-full border-3 border-[#e5e7eb] bg-white px-2.5 text-[11px] text-[#6b7280] shadow-[0_3px_0_0_#e5e7eb] sm:w-[13rem]">
+                                    <Search className="h-3 w-3 shrink-0" />
+                                    <input
+                                        value={voiceSearch}
+                                        onChange={(event) => setVoiceSearch(event.target.value)}
+                                        placeholder="搜索发言人"
+                                        aria-label="搜索发言人"
+                                        className="w-full border-0 bg-transparent p-0 text-[11px] font-bold text-[#1f2937] outline-none placeholder:text-[#9ca3af]"
+                                    />
+                                </label>
+                            </div>
                         </div>
-                        <div className="mt-3 max-h-[calc(84vh-10rem)] space-y-4 overflow-y-auto pr-0.5">
-                            {TTS_VOICE_GROUPS.map((group) => (
-                                <section key={group.title} className="space-y-2">
-                                    <div className="px-1">
-                                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">{group.title}</p>
-                                        <p className="mt-1 text-[11px] leading-4 text-slate-500">{group.subtitle}</p>
-                                    </div>
-                                    <div className="overflow-hidden rounded-[1rem] border border-slate-200 bg-white">
-                                        <table className="w-full border-collapse text-left">
-                                            <thead className="bg-slate-50">
-                                                <tr className="text-[11px] uppercase tracking-[0.16em] text-slate-400">
-                                                    <th className="px-3 py-2.5 font-semibold">发言人</th>
-                                                    <th className="px-3 py-2.5 font-semibold">说明</th>
-                                                    <th className="px-3 py-2.5 text-center font-semibold">试听</th>
-                                                    <th className="px-3 py-2.5 text-center font-semibold">选择</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {group.voices.map((option) => {
-                                                    const selected = option.voice === selectedVoice;
-                                                    return (
-                                                        <tr
-                                                            key={option.voice}
-                                                            className={`border-t border-slate-100 transition ${
-                                                                selected ? "bg-indigo-50/80" : "bg-white hover:bg-slate-50"
-                                                            }`}
-                                                        >
-                                                            <td className="px-3 py-3 align-top">
-                                                                <div className="flex items-start gap-2">
-                                                                    <span
-                                                                        className={`mt-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full border ${
-                                                                            selected ? "border-indigo-600 bg-indigo-600" : "border-slate-300 bg-white"
-                                                                        }`}
-                                                                    />
-                                                                    <div className="min-w-0">
-                                                                        <p className="truncate text-sm font-semibold text-slate-900">{option.label}</p>
-                                                                        <p className="mt-0.5 text-[11px] text-slate-500">{option.voice}</p>
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-3 py-3 align-top">
-                                                                <p className="text-[11px] leading-5 text-slate-500">{option.description}</p>
-                                                            </td>
-                                                            <td className="px-3 py-3 align-top text-center">
-                                                                <button
-                                                                    type="button"
-                                                                    aria-label={`试听 ${option.label}`}
-                                                                    onClick={() => void handlePreviewVoice(option.voice)}
-                                                                    disabled={ttsVoiceBusy || previewVoice !== null}
-                                                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-                                                                >
-                                                                    {previewVoice === option.voice ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                                                                </button>
-                                                            </td>
-                                                            <td className="px-3 py-3 align-top text-center">
-                                                                <button
-                                                                    type="button"
-                                                                    aria-label={`${selected ? "当前" : "选择"} ${option.label}`}
-                                                                    onClick={() => void handleSelectVoice(option.voice)}
-                                                                    disabled={ttsVoiceBusy}
-                                                                    className={`inline-flex h-9 items-center justify-center rounded-full px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-70 ${
-                                                                        selected
-                                                                            ? "border border-indigo-300 bg-indigo-100 text-indigo-700"
-                                                                            : "border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-950"
-                                                                    }`}
-                                                                >
-                                                                    {selected ? (
-                                                                        <span className="inline-flex items-center gap-1">
-                                                                            <Check className="h-3.5 w-3.5" />
-                                                                            当前
-                                                                        </span>
-                                                                    ) : (
-                                                                        "选择"
-                                                                    )}
-                                                                </button>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </section>
-                            ))}
+                        <div ref={voiceListRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-4 pt-3 sm:px-5">
+                            {filteredVoiceGroups.length === 0 ? (
+                                <div className="rounded-[1rem] border-3 border-dashed border-[#fcd34d] bg-white px-4 py-5 text-center shadow-[0_3px_0_0_#fcd34d]">
+                                    <p className="text-xs font-black text-[#d97706]">没有找到匹配的发言人</p>
+                                    <p className="mt-0.5 text-[11px] font-bold text-[#9ca3af]">试试改个关键词</p>
+                                </div>
+                            ) : (
+                                filteredVoiceGroups.map((group) => (
+                                    <section key={group.title} className="space-y-2">
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-[#d97706]">{group.title}</p>
+                                                <p className="mt-0.5 text-[10px] font-bold text-[#9ca3af]">{group.subtitle}</p>
+                                            </div>
+                                            <span className="inline-flex h-5 items-center rounded-full border-2 border-[#fbbf24] bg-[#fffbeb] px-2 text-[10px] font-black text-[#d97706]">
+                                                {group.voices.length} 个
+                                            </span>
+                                        </div>
+                                        <div className="grid gap-2 sm:grid-cols-2">
+                                            {group.voices.map((option) => {
+                                                const selected = option.voice === selectedVoice;
+                                                return (
+                                                    <article
+                                                        key={option.voice}
+                                                        data-voice-card={option.voice}
+                                                        className={`rounded-[1rem] border-3 p-2.5 transition ${
+                                                            selected
+                                                                ? "border-[#a5b4fc] bg-[#eef2ff] shadow-[0_4px_0_0_#a5b4fc]"
+                                                                : "border-[#e5e7eb] bg-white shadow-[0_3px_0_0_#e5e7eb] hover:border-[#c4b5fd]"
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-start gap-2">
+                                                            <span className={`mt-0.5 inline-flex h-2.5 w-2.5 shrink-0 rounded-full border-2 ${selected ? "border-[#6366f1] bg-[#6366f1]" : "border-[#d1d5db] bg-white"}`} />
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="truncate text-xs font-black text-[#1f2937]">{option.label}</p>
+                                                                <p className="truncate text-[10px] font-bold text-[#9ca3af]">{option.voice}</p>
+                                                                <p className="mt-0.5 text-[10px] font-bold leading-4 text-[#6b7280]">{option.description}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-2 flex items-center gap-1.5">
+                                                            <button
+                                                                type="button"
+                                                                aria-label={`试听 ${option.label}`}
+                                                                onClick={() => void handlePreviewVoice(option.voice)}
+                                                                disabled={ttsVoiceBusy || previewVoice !== null}
+                                                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-[#e5e7eb] bg-white text-[#6b7280] shadow-[0_2px_0_0_#e5e7eb] transition active:shadow-none active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            >
+                                                                {previewVoice === option.voice ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                aria-label={`${selected ? "当前" : "选择"} ${option.label}`}
+                                                                onClick={() => void handleSelectVoice(option.voice)}
+                                                                disabled={ttsVoiceBusy}
+                                                                className={`inline-flex h-7 flex-1 items-center justify-center rounded-full px-3 text-[10px] font-black transition disabled:cursor-not-allowed disabled:opacity-70 ${
+                                                                    selected
+                                                                        ? "border-2 border-[#a5b4fc] bg-[#eef2ff] text-[#4f46e5]"
+                                                                        : "border-2 border-[#e5e7eb] bg-white text-[#374151] shadow-[0_2px_0_0_#e5e7eb] active:shadow-none active:translate-y-0.5"
+                                                                }`}
+                                                            >
+                                                                {selected ? (
+                                                                    <span className="inline-flex items-center gap-1"><Check className="h-3 w-3" />当前</span>
+                                                                ) : (
+                                                                    "选择"
+                                                                )}
+                                                            </button>
+                                                        </div>
+                                                    </article>
+                                                );
+                                            })}
+                                        </div>
+                                    </section>
+                                ))
+                            )}
                         </div>
                     </div>
                 </div>
             ) : null}
+
+
             {mailboxOpen ? (
                 <div
                     className={isSidebar

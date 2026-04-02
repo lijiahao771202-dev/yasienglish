@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { db, VocabItem } from '@/lib/db';
 import { Rating, graduateCard, scheduleCard } from '@/lib/fsrs';
-import { motion, AnimatePresence, useMotionTemplate, useMotionValue, useSpring, useTransform } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Check, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import Link from 'next/link';
@@ -130,12 +130,12 @@ function RatingButton({
         <button
             onClick={onClick}
             className={cn(
-                "liquid-glass-tap h-14 rounded-2xl border text-sm font-semibold transition-all active:scale-[0.96]",
+                "flex h-14 flex-col items-center justify-center rounded-2xl border-2 text-[14px] font-black transition-all active:scale-[0.96] md:h-[60px] md:text-[15px]",
                 className,
             )}
         >
-            <span className="block">{label}</span>
-            <span className="mt-0.5 block text-[10px] font-medium opacity-75">{eta}</span>
+            <span className="block tracking-wide">{label}</span>
+            <span className="mt-0.5 block text-[10px] font-bold opacity-75 md:text-[11px]">{eta}</span>
         </button>
     );
 }
@@ -150,23 +150,8 @@ export default function ReviewPage() {
     const [expandedPosGroups, setExpandedPosGroups] = useState<Record<string, boolean>>({});
     const [ghostInput, setGhostInput] = useState("");
 
-    useEffect(() => {
-        document.documentElement.setAttribute('data-bg-theme', 'forest-glass');
-        return () => {
-            const saved = localStorage.getItem('yasi_bg_theme') || 'rose-milk';
-            document.documentElement.setAttribute('data-bg-theme', saved);
-        };
-    }, []);
     const ghostMatchedPrevRef = useRef(false);
     const ghostCompletionAudioPlayedRef = useRef(false);
-
-    const x = useMotionValue(0);
-    const y = useMotionValue(0);
-    const mouseX = useSpring(x, { stiffness: 360, damping: 44 });
-    const mouseY = useSpring(y, { stiffness: 360, damping: 44 });
-    const rotateX = useTransform(mouseY, [-180, 180], [6, -6]);
-    const rotateY = useTransform(mouseX, [-180, 180], [-6, 6]);
-    const glare = useMotionTemplate`radial-gradient(360px circle at ${mouseX}px ${mouseY}px, rgba(255,255,255,0.2), transparent 42%)`;
 
     useEffect(() => {
         const loadCards = async () => {
@@ -238,14 +223,13 @@ export default function ReviewPage() {
         };
     }, [currentCard, dictionaryPosMap]);
 
-    useEffect(() => {
-        if (!currentCard) return;
+    const resetCardUiState = useCallback(() => {
         setIsRevealed(false);
         setGhostInput("");
         setExpandedPosGroups({});
         ghostMatchedPrevRef.current = false;
         ghostCompletionAudioPlayedRef.current = false;
-    }, [currentCard]);
+    }, []);
 
     const moveToNextCard = useCallback((delayMs = 140) => {
         if (currentIndex < queue.length - 1) {
@@ -261,9 +245,9 @@ export default function ReviewPage() {
         const updatedCard = scheduleCard(currentCard, rating);
         await saveVocabulary(updatedCard);
 
-        setIsRevealed(false);
+        resetCardUiState();
         moveToNextCard();
-    }, [currentCard, moveToNextCard]);
+    }, [currentCard, moveToNextCard, resetCardUiState]);
 
     const handleGraduate = useCallback(async (nextItem: VocabItem, previousWord: string) => {
         const graduatedCard = graduateCard(nextItem);
@@ -272,9 +256,9 @@ export default function ReviewPage() {
         setQueue((prev) => prev.map((card, index) => (
             index === currentIndex ? saved : card
         )));
-        setIsRevealed(false);
+        resetCardUiState();
         moveToNextCard();
-    }, [currentIndex, moveToNextCard]);
+    }, [currentIndex, moveToNextCard, resetCardUiState]);
 
     const playAudio = useCallback((word: string) => {
         const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${word}&type=2`);
@@ -368,67 +352,39 @@ export default function ReviewPage() {
         return () => window.removeEventListener("keydown", onKeyDown);
     }, [currentCard, isRevealed, handleRating, ghostTargetNormalized]);
 
-    const handleCardMouseMove = ({ currentTarget, clientX, clientY }: React.MouseEvent) => {
-        const rect = currentTarget.getBoundingClientRect();
-        x.set(clientX - rect.left - rect.width / 2);
-        y.set(clientY - rect.top - rect.height / 2);
-    };
-
-    const handleCardMouseLeave = () => {
-        x.set(0);
-        y.set(0);
-    };
-
     if (isLoading) {
         return (
-            <main className="theme-forest-glass relative flex min-h-screen items-center justify-center overflow-hidden bg-[#eef3ef]">
-                <div className="fixed inset-0 z-0">
-                    <img
-                        src="https://images.unsplash.com/photo-1542273917363-3b1817f69a56?q=80&w=2670&auto=format&fit=crop"
-                        alt=""
-                        className="h-full w-full object-cover object-[center_30%] scale-105 opacity-80"
-                        loading="lazy"
-                    />
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.1),transparent_50%),linear-gradient(180deg,rgba(240,245,241,0.7),rgba(235,245,238,0.9)_60%,#eef3ef_90%)]" />
-                    <div className="absolute inset-0 backdrop-blur-[48px] backdrop-saturate-[1.1] mask-image-[linear-gradient(to_bottom,black_0%,black_100%)]" />
+            <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#fafaf9]">
+                <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(circle_at_50%_0%,#fdf4ff_0%,transparent_50%),radial-gradient(circle_at_80%_100%,#e0f2fe_0%,transparent_50%)]" />
+                <div className="relative z-10 flex w-[300px] flex-col items-center gap-4 rounded-[32px] bg-white p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+                    <Loader2 className="h-10 w-10 animate-spin text-pink-400" />
+                    <p className="text-sm font-black tracking-wide text-slate-500">正在准备生词本...</p>
                 </div>
-                <GlassCard className="liquid-glass-apple-radius relative z-10 flex w-[340px] flex-col items-center gap-3 border-emerald-300/30 bg-white/40 px-6 py-8 text-center shadow-sm backdrop-blur-3xl">
-                    <Loader2 className="h-9 w-9 animate-spin text-emerald-800/60" />
-                    <p className="text-sm font-bold tracking-wide text-emerald-800">Preparing session...</p>
-                </GlassCard>
             </main>
         );
     }
 
     if (queue.length === 0 || isFinished) {
         return (
-            <main className="theme-forest-glass relative flex min-h-screen items-center justify-center overflow-hidden bg-[#eef3ef] px-6">
-                <div className="fixed inset-0 z-0">
-                    <img
-                        src="https://images.unsplash.com/photo-1542273917363-3b1817f69a56?q=80&w=2670&auto=format&fit=crop"
-                        alt=""
-                        className="h-full w-full object-cover object-[center_30%] scale-105 opacity-80"
-                        loading="lazy"
-                    />
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.1),transparent_50%),linear-gradient(180deg,rgba(240,245,241,0.7),rgba(235,245,238,0.9)_60%,#eef3ef_90%)]" />
-                    <div className="absolute inset-0 backdrop-blur-[48px] backdrop-saturate-[1.1] mask-image-[linear-gradient(to_bottom,black_0%,black_100%)]" />
-                </div>
-                <motion.div initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative z-10 w-full max-w-md">
-                    <GlassCard breathe className="liquid-glass-hero liquid-glass-apple-radius border-emerald-300/30 bg-white/40 px-8 py-10 text-center shadow-sm backdrop-blur-3xl">
-                        <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full border border-emerald-200/70 bg-emerald-100/70 text-emerald-600 shadow-inner">
-                            <Check className="h-10 w-10" />
+            <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#fafaf9] px-6">
+                <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(circle_at_50%_0%,#fdf4ff_0%,transparent_50%),radial-gradient(circle_at_80%_100%,#e0f2fe_0%,transparent_50%)]" />
+                
+                <motion.div initial={{ scale: 0.9, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} className="relative z-10 w-full max-w-sm">
+                    <div className="rounded-[36px] bg-white px-8 py-10 text-center shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-pink-50/50">
+                        <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-pink-100 text-pink-500 shadow-inner overflow-hidden">
+                            <span className="text-5xl border-transparent">🎉</span>
                         </div>
-                        <h2 className="font-newsreader text-[2.6rem] leading-none text-[#1a3826]">Done For Today</h2>
-                        <p className="mt-3 text-sm font-medium leading-6 text-emerald-800/80">
-                            The review queue is clear. Splendid effort.
+                        <h2 className="font-newsreader text-[2.4rem] font-bold text-slate-800 tracking-tight">今日已搞定!</h2>
+                        <p className="mt-2 text-sm font-medium leading-relaxed text-slate-500">
+                            复习队列空空如也，真棒！
                         </p>
                         <Link
                             href="/vocab"
-                            className="liquid-glass-hover liquid-glass-tap mt-7 inline-flex items-center justify-center rounded-xl bg-[linear-gradient(135deg,#10b981,#059669)] px-6 py-3 text-sm font-bold text-white shadow-[0_8px_16px_-4px_rgba(16,185,129,0.4)] transition-all hover:brightness-110"
+                            className="mt-8 flex items-center justify-center rounded-2xl bg-slate-800 px-6 py-4 text-[15px] font-black tracking-wider text-white shadow-[0_8px_20px_rgb(0,0,0,0.12)] transition hover:bg-slate-700 hover:scale-[1.02] active:scale-95"
                         >
-                            Back to Glossary
+                            返回生词本
                         </Link>
-                    </GlassCard>
+                    </div>
                 </motion.div>
             </main>
         );
@@ -437,137 +393,172 @@ export default function ReviewPage() {
     const progress = (currentIndex / queue.length) * 100;
 
     return (
-        <main className="theme-forest-glass relative min-h-screen overflow-hidden bg-[#eef3ef] px-4 pb-28 pt-6 md:px-6 md:pt-8">
-            <div className="fixed inset-0 z-0">
-                <img
-                    src="https://images.unsplash.com/photo-1542273917363-3b1817f69a56?q=80&w=2670&auto=format&fit=crop"
-                    alt=""
-                    className="h-full w-full object-cover object-[center_30%] scale-105 opacity-80"
-                    loading="lazy"
-                />
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(16,185,129,0.1),transparent_50%),linear-gradient(180deg,rgba(240,245,241,0.7),rgba(235,245,238,0.9)_60%,#eef3ef_90%)]" />
-                <div className="absolute inset-0 backdrop-blur-[48px] backdrop-saturate-[1.1] mask-image-[linear-gradient(to_bottom,black_0%,black_100%)]" />
+        <main className="relative min-h-screen bg-[#fafaf9] px-4 pb-12 pt-6 md:px-6 md:pb-12 md:pt-8 font-sans">
+            {/* Cute Pastel Background */}
+            <div className="fixed inset-0 pointer-events-none z-0">
+                <div className="absolute inset-0 opacity-[0.35] bg-[radial-gradient(circle_at_20%_20%,#fbcfe8_0%,transparent_40%),radial-gradient(circle_at_80%_80%,#bae6fd_0%,transparent_40%)]" />
             </div>
 
-            <div className="relative z-10 mx-auto flex w-full max-w-4xl flex-col">
-                <GlassCard className="liquid-glass-apple-radius p-4 sm:p-5">
-                    <div className="flex items-center gap-3">
+            <div className="relative z-10 flex w-full flex-col h-[calc(100vh-48px)] overflow-hidden">
+                <div className="shrink-0 w-full max-w-[500px] mx-auto mb-4">
+                    <div className="flex items-center gap-3 rounded-full bg-white/70 backdrop-blur-md p-2 pl-3 shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-white/80">
                         <Link
                             href="/vocab"
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/45 bg-white/35 text-emerald-800 transition-colors hover:text-emerald-950"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-100/80 text-slate-500 transition hover:bg-slate-200 hover:scale-105 active:scale-95"
                         >
-                            <ArrowLeft className="h-5 w-5" />
+                            <ArrowLeft className="h-4 w-4" />
                         </Link>
                         <div className="min-w-0 flex-1">
-                            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-800/80">Review Session</p>
-                            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/45">
+                            <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 shadow-inner">
                                 <div
-                                    className="h-full rounded-full bg-[linear-gradient(135deg,#34d399,#10b981)] transition-all duration-300"
+                                    className="h-full rounded-full bg-emerald-400 transition-all duration-300"
                                     style={{ width: `${progress}%` }}
                                 />
                             </div>
                         </div>
-                        <span className="rounded-full border border-white/50 bg-white/35 px-3 py-1 text-xs font-bold text-emerald-800">
+                        <span className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-black text-slate-500 shadow-sm border border-slate-100">
                             {currentIndex + 1} / {queue.length}
                         </span>
                     </div>
-                </GlassCard>
-
-                <div className="mt-6">
-                    <AnimatePresence mode="wait">
-                        {!isRevealed ? (
-                            <motion.div
-                                key={`front-${currentCard.word}`}
-                                initial={{ rotateY: -90, opacity: 0 }}
-                                animate={{ rotateY: 0, opacity: 1 }}
-                                exit={{ rotateY: 90, opacity: 0 }}
-                                transition={{ duration: 0.3, ease: "easeOut" }}
-                                style={{ rotateX, rotateY, transformStyle: "preserve-3d" }}
-                                onMouseMove={handleCardMouseMove}
-                                onMouseLeave={handleCardMouseLeave}
-                                className="relative"
-                            >
-                                <GlassCard className="liquid-glass-apple-radius relative min-h-[470px] overflow-hidden px-6 py-8 text-center md:px-10 md:py-12">
-                                    <motion.div style={{ background: glare }} className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 hover:opacity-100" />
-                                    <div style={{ transform: "translateZ(30px)" }} className="relative z-20 flex min-h-[370px] flex-col items-center justify-center">
-                                        <h2 className="font-newsreader text-[4.4rem] leading-[0.88] tracking-[-0.04em] text-[#1a3826] md:text-[6.2rem] drop-shadow-sm">
-                                            {currentCard.word}
-                                        </h2>
-                                    </div>
-                                </GlassCard>
-                            </motion.div>
-                        ) : (
-                            <motion.div
-                                key={`back-${currentCard.word}`}
-                                initial={{ rotateY: -90, opacity: 0 }}
-                                animate={{ rotateY: 0, opacity: 1 }}
-                                exit={{ rotateY: 90, opacity: 0 }}
-                                transition={{ duration: 0.3, ease: "easeOut" }}
-                                style={{ rotateX, rotateY, transformStyle: "preserve-3d" }}
-                                onMouseMove={handleCardMouseMove}
-                                onMouseLeave={handleCardMouseLeave}
-                                className="relative"
-                            >
-                                <GlassCard className="liquid-glass-apple-radius relative min-h-[470px] overflow-hidden px-6 py-8 text-left md:px-10 md:py-12">
-                                    <motion.div style={{ background: glare }} className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 hover:opacity-100" />
-
-                                    <VocabReviewEditableCard
-                                        item={currentCard}
-                                        posGroups={displayPosGroups}
-                                        expandedPosGroups={expandedPosGroups}
-                                        onExpandedPosGroupsChange={setExpandedPosGroups}
-                                        onPlayAudio={playAudio}
-                                        onGraduate={handleGraduate}
-                                        onSaved={(savedCard) => {
-                                            setQueue((prev) => prev.map((card, index) => (
-                                                index === currentIndex ? savedCard : card
-                                            )));
-                                        }}
-                                    />
-                                </GlassCard>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
                 </div>
-            </div>
 
-            <div className="pointer-events-none fixed inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#eef3ef] via-[#eef3ef]/90 to-transparent" />
-            <div className="relative z-40 mx-auto mt-6 w-full max-w-4xl px-4 pb-5 md:px-0">
-                {!isRevealed ? (
-                    <button
-                        onClick={() => setIsRevealed(true)}
-                        className="liquid-glass-tap h-14 w-full rounded-2xl bg-[linear-gradient(135deg,#10b981,#059669)] text-base font-bold tracking-wide text-white shadow-[0_16px_32px_-8px_rgba(16,185,129,0.5),inset_0_1px_rgba(255,255,255,0.4)] transition-all hover:brightness-110"
-                    >
-                        Reveal Answer
-                    </button>
-                ) : (
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        <RatingButton
-                            label="Again"
-                            eta="1m"
-                            onClick={() => handleRating(Rating.Again)}
-                            className="bg-white/40 text-[#1a3826] hover:bg-white/60"
-                        />
-                        <RatingButton
-                            label="Hard"
-                            eta="5m"
-                            onClick={() => handleRating(Rating.Hard)}
-                            className="bg-white/40 text-[#1a3826] hover:bg-white/60"
-                        />
-                        <RatingButton
-                            label="Good"
-                            eta="1d"
-                            onClick={() => handleRating(Rating.Good)}
-                            className="bg-emerald-100/40 text-[#1a3826] hover:bg-emerald-200/60"
-                        />
-                        <RatingButton
-                            label="Easy"
-                            eta="3d"
-                            onClick={() => handleRating(Rating.Easy)}
-                            className="bg-[linear-gradient(135deg,#34d399,#10b981)] text-white shadow-[0_8px_16px_-4px_rgba(16,185,129,0.4)] hover:brightness-110"
-                        />
+                <div className="flex-1 overflow-y-auto px-1 pb-24 w-full flex justify-center pretty-scroll">
+                    <div className="w-full max-w-[500px] flex flex-col pt-2 relative">
+                        <AnimatePresence mode="wait">
+                            {!isRevealed ? (
+                                <motion.div
+                                    key={`front-${currentCard.word}`}
+                                    initial={{ y: 20, opacity: 0 }}
+                                    animate={{ y: 0, opacity: 1 }}
+                                    exit={{ y: -20, opacity: 0, filter: "blur(4px)" }}
+                                    transition={{ duration: 0.25, ease: "easeOut" }}
+                                    className="w-full flex-shrink-0"
+                                >
+                                    <div className="flex h-[38vh] min-h-[300px] flex-col items-center justify-center rounded-[36px] bg-white p-8 text-center shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-white/80">
+                                        <div className="flex flex-wrap items-center justify-center text-[3.8rem] md:text-[4.5rem] font-newsreader font-bold tracking-tight drop-shadow-sm leading-none relative">
+                                            {(() => {
+                                                let inputCursorTracker = 0;
+                                                const chars = currentCard.word.split("");
+                                                return (
+                                                    <>
+                                                        {chars.map((char, idx) => {
+                                                            const isSpace = /\s/.test(char);
+                                                            if (isSpace) {
+                                                                return <span key={idx} className="w-[0.5em]">&nbsp;</span>;
+                                                            }
+
+                                                            const ghostChar = ghostInput[inputCursorTracker]?.toLowerCase();
+                                                            const normalizedChar = char.toLowerCase();
+                                                            
+                                                            let status = "pending";
+                                                            if (ghostChar) {
+                                                                status = ghostChar === normalizedChar ? "correct" : "wrong";
+                                                            }
+                                                            
+                                                            const isCursor = inputCursorTracker === ghostInput.length;
+                                                            inputCursorTracker++;
+
+                                                            return (
+                                                                <span key={idx} className="relative inline-block transition-colors duration-150">
+                                                                    <span className={cn(
+                                                                        status === "correct" && "text-slate-800",
+                                                                        status === "wrong" && "text-rose-500",
+                                                                        status === "pending" && "text-slate-200"
+                                                                    )}>
+                                                                        {char}
+                                                                    </span>
+                                                                    {isCursor && (
+                                                                        <motion.span 
+                                                                            animate={{ opacity: [1, 0, 1] }} 
+                                                                            transition={{ repeat: Infinity, duration: 0.8 }} 
+                                                                            className="absolute -left-[2px] top-[15%] h-[70%] w-[3px] rounded-full bg-emerald-400" 
+                                                                        />
+                                                                    )}
+                                                                </span>
+                                                            );
+                                                        })}
+                                                        {inputCursorTracker === ghostInput.length && (
+                                                            <span className="relative">
+                                                                <motion.span 
+                                                                    animate={{ opacity: [1, 0, 1] }} 
+                                                                    transition={{ repeat: Infinity, duration: 0.8 }} 
+                                                                    className="absolute -left-[2px] top-[15%] h-[70%] w-[3px] rounded-full bg-emerald-400" 
+                                                                />
+                                                            </span>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    </div>
+                                    <div className="mt-6 flex justify-center">
+                                        <button
+                                            onClick={() => setIsRevealed(true)}
+                                            className="h-16 w-full max-w-[320px] rounded-[24px] bg-slate-800 text-[16px] font-black tracking-wide text-white shadow-[0_8px_20px_rgba(30,41,59,0.2)] transition active:scale-[0.98] hover:-translate-y-1 hover:shadow-[0_12px_24px_rgba(30,41,59,0.25)] hover:bg-slate-700"
+                                        >
+                                            🙌 看看答案
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            ) : (
+                                <motion.div
+                                    key={`back-${currentCard.word}`}
+                                    initial={{ y: 20, opacity: 0 }}
+                                    animate={{ y: 0, opacity: 1 }}
+                                    exit={{ y: -20, opacity: 0 }}
+                                    transition={{ duration: 0.25, ease: "easeOut" }}
+                                    className="flex flex-col gap-4 w-full"
+                                >
+                                    <div className="min-h-[460px] rounded-[36px] bg-white shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-white/80 overflow-hidden relative">
+                                        <VocabReviewEditableCard
+                                            item={currentCard}
+                                            posGroups={displayPosGroups}
+                                            expandedPosGroups={expandedPosGroups}
+                                            onExpandedPosGroupsChange={setExpandedPosGroups}
+                                            onPlayAudio={playAudio}
+                                            onGraduate={handleGraduate}
+                                            ghostInput={ghostInput}
+                                            onSaved={(savedCard) => {
+                                                setQueue((prev) => prev.map((card, index) => (
+                                                    index === currentIndex ? savedCard : card
+                                                )));
+                                            }}
+                                        />
+                                    </div>
+
+                                    <div className="rounded-[32px] bg-white p-2 sm:p-3 shadow-[0_8px_30px_rgb(0,0,0,0.05)] border border-white/80 shrink-0">
+                                        <div className="grid grid-cols-4 gap-2">
+                                            <RatingButton
+                                                label="重来"
+                                                eta="1m"
+                                                onClick={() => handleRating(Rating.Again)}
+                                                className="border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:border-rose-300"
+                                            />
+                                            <RatingButton
+                                                label="困难"
+                                                eta="5m"
+                                                onClick={() => handleRating(Rating.Hard)}
+                                                className="border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 hover:border-amber-300"
+                                            />
+                                            <RatingButton
+                                                label="熟悉"
+                                                eta="1d"
+                                                onClick={() => handleRating(Rating.Good)}
+                                                className="border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:border-blue-300"
+                                            />
+                                            <RatingButton
+                                                label="简单"
+                                                eta="3d"
+                                                onClick={() => handleRating(Rating.Easy)}
+                                                className="border-emerald-500 bg-emerald-400 text-white hover:bg-emerald-500 hover:border-emerald-600 shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
+                                            />
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </div>
-                )}
+                </div>
             </div>
         </main>
     );

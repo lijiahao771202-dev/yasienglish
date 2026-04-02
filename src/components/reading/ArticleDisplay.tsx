@@ -55,6 +55,7 @@ interface ArticleDisplayProps {
         startOffset: number;
         endOffset: number;
     }) => Promise<void> | void;
+    onArticleSnapshotDirty?: () => void;
 }
 
 export function ArticleDisplay({
@@ -70,6 +71,7 @@ export function ArticleDisplay({
     readingNotes = [],
     onCreateReadingNote,
     onDeleteReadingMarks,
+    onArticleSnapshotDirty,
 }: ArticleDisplayProps) {
     const contentRef = useRef<HTMLDivElement>(null);
     const videoPlayerRef = useRef<TEDVideoPlayerRef>(null);
@@ -501,6 +503,7 @@ export function ArticleDisplay({
                                             readingNotes={notesByParagraph.get(currentParagraphOrder) ?? []}
                                             onCreateReadingNote={onCreateReadingNote}
                                             onDeleteReadingMarks={onDeleteReadingMarks}
+                                            onSnapshotDirty={onArticleSnapshotDirty}
                                             onWordClick={handleArticleClick}
                                             onSplit={handleSplit}
                                             onMerge={handleMerge}

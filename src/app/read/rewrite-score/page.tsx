@@ -58,7 +58,7 @@ function scoreTone(score: number) {
     return "text-rose-600";
 }
 
-export default function RewriteScorePage() {
+function RewriteScoreContent() {
     const searchParams = useSearchParams();
     const scoreId = searchParams.get("id");
 
@@ -236,5 +236,15 @@ export default function RewriteScorePage() {
                 </section>
             </div>
         </main>
+    );
+}
+
+import { Suspense } from "react";
+
+export default function RewriteScorePage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+            <RewriteScoreContent />
+        </Suspense>
     );
 }

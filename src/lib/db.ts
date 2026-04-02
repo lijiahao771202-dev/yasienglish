@@ -46,6 +46,20 @@ export interface ReadArticleItem {
     url: string;
     timestamp: number;
     read_at?: number;
+    article_key?: string;
+    article_title?: string;
+    article_payload?: CachedArticle;
+    reading_notes_payload?: Array<Omit<ReadingNoteItem, "id">>;
+    grammar_payload?: Array<{
+        key: string;
+        data: unknown;
+        timestamp: number;
+    }>;
+    ask_payload?: Array<{
+        key: string;
+        data: unknown;
+        timestamp: number;
+    }>;
     remote_id?: string;
     updated_at?: string;
     sync_status?: SyncStatus;
@@ -109,13 +123,21 @@ export interface CachedArticle {
     timestamp: number;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     isAIGenerated?: boolean;
+    isCatMode?: boolean;
+    catSessionId?: string;
+    catBand?: number;
+    catScoreSnapshot?: number;
+    catThetaSnapshot?: number;
+    catSeSnapshot?: number;
+    catSessionBlueprint?: Record<string, unknown>;
+    catQuizBlueprint?: Record<string, unknown>;
     quizCompleted?: boolean;
     quizCorrect?: number;
     quizTotal?: number;
     quizScorePercent?: number;
 }
 
-export type ReadingMarkType = 'highlight' | 'underline' | 'note';
+export type ReadingMarkType = 'highlight' | 'underline' | 'note' | 'ask';
 
 export interface ReadingNoteItem {
     id?: number;

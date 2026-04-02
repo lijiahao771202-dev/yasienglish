@@ -10,7 +10,9 @@ import {
     DEFAULT_PROFILE_USERNAME,
     normalizeWordKey,
     toLocalProfile,
+    toLocalReadArticle,
     toRemoteEloHistoryRow,
+    toRemoteReadArticle,
     toLocalVocabularyItem,
     toRemoteVocabularyRow,
 } from "./user-sync";
@@ -248,5 +250,60 @@ describe("user sync helpers", () => {
         expect(row.elo).toBe(721);
         expect(row.change).toBe(13);
         expect(row.timestamp_ms).toBe(1234567890);
+    });
+
+    it("preserves read article snapshot payloads for cloud round-trip", () => {
+        const remote = toRemoteReadArticle("user-1", {
+            url: "ai-gen://ielts/123",
+            timestamp: 123,
+            read_at: 123,
+            article_key: "ai-gen://ielts/123",
+            article_title: "AI Snapshot",
+            article_payload: {
+                url: "ai-gen://ielts/123",
+                title: "AI Snapshot",
+                content: "Paragraph one.",
+                textContent: "Paragraph one.",
+                timestamp: 123,
+                isAIGenerated: true,
+            },
+            reading_notes_payload: [{
+                article_key: "ai-gen://ielts/123",
+                article_url: "ai-gen://ielts/123",
+                article_title: "AI Snapshot",
+                paragraph_order: 1,
+                paragraph_block_index: 0,
+                selected_text: "Paragraph",
+                note_text: "note",
+                mark_type: "note",
+                mark_color: "hsl(43 80% 86%)",
+                start_offset: 0,
+                end_offset: 9,
+                created_at: 123,
+                updated_at: 123,
+            }],
+            grammar_payload: [{
+                key: "grammar:basic:key",
+                data: { summary: "ok" },
+                timestamp: 123,
+            }],
+            ask_payload: [{
+                key: "ask:ai-gen://ielts/123:p1",
+                data: { messages: [{ role: "user", content: "Why?" }] },
+                timestamp: 123,
+            }],
+        });
+
+        const local = toLocalReadArticle({
+            ...remote,
+            updated_at: "2026-04-02T10:00:00.000Z",
+        });
+
+        expect(local.article_key).toBe("ai-gen://ielts/123");
+        expect(local.article_title).toBe("AI Snapshot");
+        expect(local.article_payload?.isAIGenerated).toBe(true);
+        expect(local.reading_notes_payload?.[0]?.selected_text).toBe("Paragraph");
+        expect(local.grammar_payload?.[0]?.key).toBe("grammar:basic:key");
+        expect(local.ask_payload?.[0]?.key).toBe("ask:ai-gen://ielts/123:p1");
     });
 });

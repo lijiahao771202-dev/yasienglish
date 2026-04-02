@@ -4,8 +4,11 @@ import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 import { useSyncStatusStore } from "@/lib/sync-status";
 import {
     db,
+    type AICacheItem,
+    type CachedArticle,
     type EloHistoryItem,
     type LocalUserProfile,
+    type ReadingNoteItem,
     type ReadArticleItem,
     type SyncOutboxItem,
     type VocabItem,
@@ -77,6 +80,23 @@ interface BootstrapResult {
     usedLocalCache: boolean;
 }
 
+export interface ReadArticleSnapshotMetadata {
+    articleKey?: string;
+    articleTitle?: string;
+    articlePayload?: CachedArticle;
+    readingNotesPayload?: Array<Omit<ReadingNoteItem, "id">>;
+    grammarPayload?: Array<{
+        key: string;
+        data: unknown;
+        timestamp: number;
+    }>;
+    askPayload?: Array<{
+        key: string;
+        data: unknown;
+        timestamp: number;
+    }>;
+}
+
 const REMOTE_PULL_INTERVAL_MS = 5 * 60 * 1000;
 const LISTENING_SCORING_VERSION = 2;
 
@@ -86,6 +106,14 @@ let pendingForcedPull = false;
 
 function nowIso() {
     return new Date().toISOString();
+}
+
+function safeJson(value: unknown) {
+    try {
+        return JSON.stringify(value ?? null);
+    } catch {
+        return "__SERIALIZE_ERROR__";
+    }
 }
 
 function parseUpdatedAtMs(value?: string | null) {
@@ -184,12 +212,15 @@ async function setActiveUserId(userId: string) {
 async function clearCoreTables() {
     await db.transaction(
         "rw",
-        [db.user_profile, db.vocabulary, db.writing_history, db.read_articles, db.elo_history, db.sync_outbox],
+        [db.user_profile, db.vocabulary, db.writing_history, db.read_articles, db.articles, db.reading_notes, db.ai_cache, db.elo_history, db.sync_outbox],
         async () => {
             await db.user_profile.clear();
             await db.vocabulary.clear();
             await db.writing_history.clear();
             await db.read_articles.clear();
+            await db.articles.clear();
+            await db.reading_notes.clear();
+            await db.ai_cache.clear();
             await db.elo_history.clear();
             await db.sync_outbox.clear();
         },
@@ -732,21 +763,138 @@ async function pullRemoteSnapshot(userId: string) {
     const localWriting = (writingRes.data as RemoteWritingHistoryRow[]).map(toLocalWritingEntry);
     const localRead = (readRes.data as RemoteReadArticleRow[]).map(toLocalReadArticle);
     const localElo = (eloRes.data as RemoteEloHistoryRow[]).map(toLocalEloHistoryItem);
+    const restoredArticlesByUrl = new Map<string, CachedArticle>();
+    const restoredNotesByKey = new Map<string, Omit<ReadingNoteItem, "id">>();
+    const restoredGrammarCacheByKey = new Map<string, AICacheItem>();
+    const restoredAskCacheByKey = new Map<string, AICacheItem>();
+    const allowedMarkTypes = new Set(["highlight", "underline", "note", "ask"]);
+
+    for (const readItem of localRead) {
+        if (readItem.article_payload && typeof readItem.article_payload === "object") {
+            const payload = readItem.article_payload as CachedArticle;
+            const restoredArticle: CachedArticle = {
+                ...payload,
+                url: readItem.url,
+                title: payload.title || readItem.article_title || "Untitled",
+                content: payload.content || "",
+                textContent: payload.textContent || payload.content || "",
+                timestamp: Number.isFinite(payload.timestamp) ? payload.timestamp : readItem.timestamp,
+            };
+            restoredArticlesByUrl.set(readItem.url, restoredArticle);
+        }
+
+        const noteRows = Array.isArray(readItem.reading_notes_payload)
+            ? readItem.reading_notes_payload
+            : [];
+        for (const rawNote of noteRows) {
+            if (!rawNote || typeof rawNote !== "object") continue;
+            const note = rawNote as Omit<ReadingNoteItem, "id">;
+            const articleKey = typeof note.article_key === "string" && note.article_key.trim()
+                ? note.article_key.trim()
+                : (readItem.article_key || readItem.url);
+            const paragraphOrder = Number.isFinite(note.paragraph_order) ? Number(note.paragraph_order) : 0;
+            const paragraphBlockIndex = Number.isFinite(note.paragraph_block_index) ? Number(note.paragraph_block_index) : 0;
+            const startOffset = Number.isFinite(note.start_offset) ? Number(note.start_offset) : 0;
+            const endOffset = Number.isFinite(note.end_offset) ? Number(note.end_offset) : startOffset;
+            const markType = typeof note.mark_type === "string" ? note.mark_type : "highlight";
+            const selectedText = typeof note.selected_text === "string" ? note.selected_text : "";
+            if (!allowedMarkTypes.has(markType) || endOffset <= startOffset || !selectedText.trim()) {
+                continue;
+            }
+
+            const createdAt = Number.isFinite(note.created_at) ? Number(note.created_at) : Date.now();
+            const updatedAt = Number.isFinite(note.updated_at) ? Number(note.updated_at) : createdAt;
+            const dedupeKey = [
+                articleKey,
+                paragraphOrder,
+                markType,
+                startOffset,
+                endOffset,
+                selectedText,
+            ].join("|");
+
+            restoredNotesByKey.set(dedupeKey, {
+                ...note,
+                article_key: articleKey,
+                article_url: note.article_url || readItem.url,
+                article_title: note.article_title || readItem.article_title || "",
+                paragraph_order: paragraphOrder,
+                paragraph_block_index: paragraphBlockIndex,
+                selected_text: selectedText,
+                mark_type: markType as ReadingNoteItem["mark_type"],
+                start_offset: startOffset,
+                end_offset: endOffset,
+                created_at: createdAt,
+                updated_at: updatedAt,
+            });
+        }
+
+        const grammarRows = Array.isArray(readItem.grammar_payload)
+            ? readItem.grammar_payload
+            : [];
+        for (const entry of grammarRows) {
+            if (!entry || typeof entry !== "object" || typeof entry.key !== "string") continue;
+            const cacheKey = entry.key.trim();
+            if (!cacheKey) continue;
+            restoredGrammarCacheByKey.set(cacheKey, {
+                key: cacheKey,
+                type: "grammar",
+                data: entry.data,
+                timestamp: Number.isFinite(entry.timestamp) ? Number(entry.timestamp) : Date.now(),
+            });
+        }
+
+        const askRows = Array.isArray(readItem.ask_payload)
+            ? readItem.ask_payload
+            : [];
+        for (const entry of askRows) {
+            if (!entry || typeof entry !== "object" || typeof entry.key !== "string") continue;
+            const cacheKey = entry.key.trim();
+            if (!cacheKey) continue;
+            restoredAskCacheByKey.set(cacheKey, {
+                key: cacheKey,
+                type: "ask_ai",
+                data: entry.data,
+                timestamp: Number.isFinite(entry.timestamp) ? Number(entry.timestamp) : Date.now(),
+            });
+        }
+    }
 
     await db.transaction(
         "rw",
-        [db.user_profile, db.vocabulary, db.writing_history, db.read_articles, db.elo_history],
+        [db.user_profile, db.vocabulary, db.writing_history, db.read_articles, db.articles, db.reading_notes, db.ai_cache, db.elo_history],
         async () => {
             await db.user_profile.clear();
             await db.vocabulary.clear();
             await db.writing_history.clear();
             await db.read_articles.clear();
+            await db.reading_notes.clear();
             await db.elo_history.clear();
 
             await db.user_profile.add(localProfile);
             if (localVocabulary.length) await db.vocabulary.bulkPut(localVocabulary);
             if (localWriting.length) await db.writing_history.bulkAdd(localWriting);
             if (localRead.length) await db.read_articles.bulkPut(localRead);
+            if (restoredArticlesByUrl.size > 0) {
+                await db.articles.bulkPut(Array.from(restoredArticlesByUrl.values()));
+            }
+            if (restoredNotesByKey.size > 0) {
+                await db.reading_notes.bulkAdd(Array.from(restoredNotesByKey.values()));
+            }
+            for (const cacheEntry of restoredGrammarCacheByKey.values()) {
+                const existing = await db.ai_cache.where("[key+type]").equals([cacheEntry.key, cacheEntry.type]).first();
+                await db.ai_cache.put({
+                    ...cacheEntry,
+                    id: existing?.id,
+                });
+            }
+            for (const cacheEntry of restoredAskCacheByKey.values()) {
+                const existing = await db.ai_cache.where("[key+type]").equals([cacheEntry.key, cacheEntry.type]).first();
+                await db.ai_cache.put({
+                    ...cacheEntry,
+                    id: existing?.id,
+                });
+            }
             if (localElo.length) await db.elo_history.bulkAdd(localElo);
         },
     );
@@ -1335,28 +1483,80 @@ export async function saveWritingHistory(entry: WritingEntry) {
     void scheduleBackgroundSync();
 }
 
-export async function markArticleAsRead(url: string) {
+export async function markArticleAsRead(url: string, metadata?: ReadArticleSnapshotMetadata) {
     const userId = await getActiveUserId();
     if (!userId) throw new Error("Missing active user.");
 
-    const existing = await db.read_articles.get(url);
-    if (existing) return;
+    const normalizedUrl = url.trim();
+    if (!normalizedUrl) {
+        throw new Error("Missing article url.");
+    }
+
+    const normalizedMetadata = metadata
+        ? {
+            article_key: metadata.articleKey?.trim() || undefined,
+            article_title: metadata.articleTitle?.trim() || undefined,
+            article_payload: metadata.articlePayload,
+            reading_notes_payload: metadata.readingNotesPayload,
+            grammar_payload: metadata.grammarPayload,
+            ask_payload: metadata.askPayload,
+        }
+        : null;
+
+    const existing = await db.read_articles.get(normalizedUrl);
+    if (existing) {
+        if (!normalizedMetadata) return;
+
+        const hasSnapshotChanges = (
+            existing.article_key !== normalizedMetadata.article_key
+            || existing.article_title !== normalizedMetadata.article_title
+            || safeJson(existing.article_payload) !== safeJson(normalizedMetadata.article_payload)
+            || safeJson(existing.reading_notes_payload) !== safeJson(normalizedMetadata.reading_notes_payload)
+            || safeJson(existing.grammar_payload) !== safeJson(normalizedMetadata.grammar_payload)
+            || safeJson(existing.ask_payload) !== safeJson(normalizedMetadata.ask_payload)
+        );
+
+        if (!hasSnapshotChanges) return;
+
+        const updatedAt = nowIso();
+        const remoteId = existing.remote_id || crypto.randomUUID();
+        const nextItem: ReadArticleItem = {
+            ...existing,
+            remote_id: remoteId,
+            user_id: userId,
+            updated_at: updatedAt,
+            sync_status: "pending",
+            ...normalizedMetadata,
+        };
+
+        await db.read_articles.put(nextItem);
+        await queueOutboxItem({
+            entity: "read_articles",
+            operation: "upsert",
+            recordKey: normalizedUrl,
+            payload: toRemoteReadArticle(userId, nextItem),
+        });
+        useSyncStatusStore.getState().setPhase("syncing");
+        void scheduleBackgroundSync();
+        return;
+    }
 
     const nextItem: ReadArticleItem = {
-        url,
+        url: normalizedUrl,
         timestamp: Date.now(),
         read_at: Date.now(),
         remote_id: crypto.randomUUID(),
         user_id: userId,
         updated_at: nowIso(),
         sync_status: "pending",
+        ...(normalizedMetadata || {}),
     };
 
     await db.read_articles.put(nextItem);
     await queueOutboxItem({
         entity: "read_articles",
         operation: "upsert",
-        recordKey: url,
+        recordKey: normalizedUrl,
         payload: toRemoteReadArticle(userId, nextItem),
     });
     useSyncStatusStore.getState().setPhase("syncing");

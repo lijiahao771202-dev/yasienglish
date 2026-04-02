@@ -18,14 +18,21 @@ import { LiquidGlassPanel } from "@/components/ui/LiquidGlassPanel";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { applyBackgroundThemeToDocument, BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
 import { useLiveQuery } from "dexie-react-hooks";
-import { db, type ReadingMarkType } from "@/lib/db";
+import { db, type ReadingMarkType, type ReadingNoteItem } from "@/lib/db";
 import {
     buildDailyLoginDedupeKey,
     buildQuizCompleteDedupeKey,
     buildReadCompleteDedupeKey,
     type ReadingEconomyAction,
 } from "@/lib/reading-economy";
-import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
+import { applyServerProfilePatchToLocal, markArticleAsRead as markArticleAsReadCloud } from "@/lib/user-repository";
+import {
+    buildGrammarCacheKey,
+    GRAMMAR_BASIC_MODEL,
+    GRAMMAR_BASIC_PROMPT_VERSION,
+    GRAMMAR_DEEP_MODEL,
+    GRAMMAR_DEEP_PROMPT_VERSION,
+} from "@/lib/grammar-analysis";
 import { ReadingCoinIsland } from "@/components/reading/ReadingCoinIsland";
 import {
     READING_COIN_FX_EVENT,
@@ -141,6 +148,77 @@ const buildReadingArticleKey = (article: Pick<ArticleData, "title" | "url">) => 
     return `title:${(article.title || "untitled").trim().toLowerCase()}`;
 };
 
+const extractParagraphTextsForGrammar = (article: ArticleData): string[] => {
+    if (Array.isArray(article.blocks) && article.blocks.length > 0) {
+        const fromBlocks = article.blocks.flatMap((block) => {
+            if (block.type === "paragraph" && typeof block.content === "string") {
+                const text = block.content.trim();
+                return text ? [text] : [];
+            }
+            if (block.type === "blockquote" && typeof block.content === "string") {
+                const text = block.content.trim();
+                return text ? [text] : [];
+            }
+            if (block.type === "list" && Array.isArray(block.items)) {
+                return block.items
+                    .map((item) => item.trim())
+                    .filter(Boolean);
+            }
+            return [];
+        });
+        if (fromBlocks.length > 0) return fromBlocks;
+    }
+
+    const fallback = (article.textContent || article.content || "")
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+    return fallback;
+};
+
+const buildArticleCloudPayload = (article: ArticleData, timestamp: number) => ({
+    url: article.url || "",
+    title: article.title || "",
+    content: article.content || "",
+    textContent: article.textContent || article.content || "",
+    byline: article.byline,
+    siteName: article.siteName,
+    videoUrl: article.videoUrl,
+    image: article.image ?? null,
+    blocks: article.blocks,
+    timestamp,
+    difficulty: article.difficulty,
+    isAIGenerated: article.isAIGenerated,
+    isCatMode: article.isCatMode,
+    catSessionId: article.catSessionId,
+    catBand: article.catBand,
+    catScoreSnapshot: article.catScoreSnapshot,
+    catThetaSnapshot: article.catThetaSnapshot,
+    catSeSnapshot: article.catSeSnapshot,
+    catSessionBlueprint: article.catSessionBlueprint,
+    catQuizBlueprint: article.catQuizBlueprint,
+    quizCompleted: article.quizCompleted,
+    quizCorrect: article.quizCorrect,
+    quizTotal: article.quizTotal,
+    quizScorePercent: article.quizScorePercent,
+});
+
+const toCloudReadingNote = (note: ReadingNoteItem): Omit<ReadingNoteItem, "id"> => ({
+    article_key: note.article_key,
+    article_url: note.article_url,
+    article_title: note.article_title,
+    paragraph_order: note.paragraph_order,
+    paragraph_block_index: note.paragraph_block_index,
+    selected_text: note.selected_text,
+    note_text: note.note_text,
+    mark_type: note.mark_type,
+    mark_color: note.mark_color,
+    start_offset: note.start_offset,
+    end_offset: note.end_offset,
+    created_at: note.created_at,
+    updated_at: note.updated_at,
+});
+
 const LEGACY_HIGHLIGHT_HUES: Record<string, number> = {
     mint: 158,
     gold: 43,
@@ -220,7 +298,7 @@ function ReadingPageContent() {
     const [quizPanelOffset, setQuizPanelOffset] = useState({ x: 0, y: 0 });
     const [quizPanelHeight, setQuizPanelHeight] = useState<number | null>(null);
     const [, forceBackgroundRefresh] = useState(0);
-    const { loadUserData, markArticleAsRead } = useUserStore();
+    const { loadUserData, markArticleAsRead: markReadArticleInStore } = useUserStore();
     const activeArticleKey = article ? buildReadingArticleKey(article) : null;
     const readingNotes = useLiveQuery(async () => {
         if (!activeArticleKey) return [];
@@ -240,9 +318,10 @@ function ReadingPageContent() {
     const wasSplitLayoutRef = useRef(false);
     const scrollBeforeSplitRef = useRef(0);
     const dockHideTimerRef = useRef<number | null>(null);
-    const catSettlementTimerRef = useRef<number | null>(null);
     const quizPrefetchRef = useRef<Record<string, boolean>>({});
     const resumedArticleRef = useRef<string | null>(null);
+    const snapshotPersistTimerRef = useRef<number | null>(null);
+    const [articleSnapshotRevision, setArticleSnapshotRevision] = useState(0);
 
     // Scroll Progress
     const [scrollProgress, setScrollProgress] = useState(0);
@@ -314,11 +393,97 @@ function ReadingPageContent() {
         }
     }, []);
 
-    const clearCatSettlementTimer = useCallback(() => {
-        if (catSettlementTimerRef.current) {
-            window.clearTimeout(catSettlementTimerRef.current);
-            catSettlementTimerRef.current = null;
-        }
+    const markArticleSnapshotDirty = useCallback(() => {
+        setArticleSnapshotRevision((prev) => prev + 1);
+    }, []);
+
+    const persistArticleLocally = useCallback(async (targetArticle: ArticleData | null | undefined) => {
+        if (!targetArticle?.url) return;
+        const articleUrl = targetArticle.url.trim();
+        if (!articleUrl) return;
+
+        await db.articles.put({
+            url: articleUrl,
+            title: targetArticle.title || "Untitled",
+            content: targetArticle.content || "",
+            textContent: targetArticle.textContent || targetArticle.content || "",
+            byline: targetArticle.byline,
+            siteName: targetArticle.siteName,
+            blocks: targetArticle.blocks,
+            image: targetArticle.image ?? null,
+            timestamp: Date.now(),
+            difficulty: targetArticle.difficulty,
+            isAIGenerated: targetArticle.isAIGenerated,
+            isCatMode: targetArticle.isCatMode,
+            catSessionId: targetArticle.catSessionId,
+            catBand: targetArticle.catBand,
+            catScoreSnapshot: targetArticle.catScoreSnapshot,
+            catThetaSnapshot: targetArticle.catThetaSnapshot,
+            catSeSnapshot: targetArticle.catSeSnapshot,
+            catSessionBlueprint: targetArticle.catSessionBlueprint,
+            catQuizBlueprint: targetArticle.catQuizBlueprint,
+            quizCompleted: targetArticle.quizCompleted,
+            quizCorrect: targetArticle.quizCorrect,
+            quizTotal: targetArticle.quizTotal,
+            quizScorePercent: targetArticle.quizScorePercent,
+        });
+    }, []);
+
+    const persistArticleCloudSnapshot = useCallback(async (targetArticle: ArticleData | null | undefined) => {
+        if (!targetArticle?.url) return;
+        const articleUrl = targetArticle.url.trim();
+        if (!articleUrl) return;
+
+        const articleKey = buildReadingArticleKey(targetArticle);
+        const paragraphTexts = extractParagraphTextsForGrammar(targetArticle);
+        const grammarKeys = Array.from(new Set(paragraphTexts.flatMap((paragraphText) => {
+            const trimmed = paragraphText.trim();
+            if (!trimmed) return [];
+            const basicKey = buildGrammarCacheKey({
+                text: trimmed,
+                mode: "basic",
+                promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
+                model: GRAMMAR_BASIC_MODEL,
+            });
+            const deepKey = buildGrammarCacheKey({
+                text: trimmed,
+                mode: "deep",
+                promptVersion: GRAMMAR_DEEP_PROMPT_VERSION,
+                model: GRAMMAR_DEEP_MODEL,
+            });
+            return [basicKey, deepKey];
+        })));
+
+        const [cachedArticle, noteRows, grammarRows, askRows] = await Promise.all([
+            db.articles.get(articleUrl),
+            db.reading_notes.where("article_key").equals(articleKey).sortBy("updated_at"),
+            grammarKeys.length > 0
+                ? db.ai_cache.where("[key+type]").anyOf(
+                    grammarKeys.map((key) => [key, "grammar"] as [string, "grammar"]),
+                ).toArray()
+                : Promise.resolve([]),
+            db.ai_cache.where("type").equals("ask_ai").filter((row) => row.key.startsWith(`ask:${articleKey}:`)).toArray(),
+        ]);
+        const stableTimestamp = typeof cachedArticle?.timestamp === "number"
+            ? cachedArticle.timestamp
+            : Date.now();
+
+        await markArticleAsReadCloud(articleUrl, {
+            articleKey,
+            articleTitle: targetArticle.title,
+            articlePayload: buildArticleCloudPayload(targetArticle, stableTimestamp),
+            readingNotesPayload: noteRows.map(toCloudReadingNote),
+            grammarPayload: grammarRows.map((row) => ({
+                key: row.key,
+                data: row.data,
+                timestamp: row.timestamp,
+            })),
+            askPayload: askRows.map((row) => ({
+                key: row.key,
+                data: row.data,
+                timestamp: row.timestamp,
+            })),
+        });
     }, []);
 
     const scheduleDockHide = useCallback((delay = 1100) => {
@@ -457,8 +622,9 @@ function ReadingPageContent() {
                 updated_at: now,
             });
         }
+        markArticleSnapshotDirty();
 
-    }, [article]);
+    }, [article, markArticleSnapshotDirty]);
 
     const handleDeleteReadingMarks = useCallback(async (payload: {
         paragraphOrder: number;
@@ -488,7 +654,28 @@ function ReadingPageContent() {
             .filter((id): id is number => typeof id === "number");
         if (ids.length === 0) return;
         await db.reading_notes.bulkDelete(ids);
-    }, [article]);
+        markArticleSnapshotDirty();
+    }, [article, markArticleSnapshotDirty]);
+
+    useEffect(() => {
+        if (!article?.url) return;
+        if (snapshotPersistTimerRef.current) {
+            window.clearTimeout(snapshotPersistTimerRef.current);
+            snapshotPersistTimerRef.current = null;
+        }
+        snapshotPersistTimerRef.current = window.setTimeout(() => {
+            void persistArticleCloudSnapshot(article).catch((error) => {
+                console.error("Failed to persist read article cloud snapshot:", error);
+            });
+        }, 260);
+
+        return () => {
+            if (snapshotPersistTimerRef.current) {
+                window.clearTimeout(snapshotPersistTimerRef.current);
+                snapshotPersistTimerRef.current = null;
+            }
+        };
+    }, [article, articleSnapshotRevision, persistArticleCloudSnapshot]);
 
     useEffect(() => {
         if (!article) {
@@ -531,12 +718,6 @@ function ReadingPageContent() {
         window.addEventListener("keydown", handleTabToggleEditMode);
         return () => window.removeEventListener("keydown", handleTabToggleEditMode);
     }, [article, isWritingMode, isQuizMode]);
-
-    useEffect(() => {
-        return () => {
-            clearCatSettlementTimer();
-        };
-    }, [clearCatSettlementTimer]);
 
     useEffect(() => {
         if (activeReadingCoinFx || readingCoinFxQueue.length === 0) return;
@@ -894,6 +1075,14 @@ function ReadingPageContent() {
                     url: cached.url,
                     difficulty: cached.difficulty,
                     isAIGenerated: cached.isAIGenerated,
+                    isCatMode: cached.isCatMode,
+                    catSessionId: cached.catSessionId,
+                    catBand: cached.catBand,
+                    catScoreSnapshot: cached.catScoreSnapshot,
+                    catThetaSnapshot: cached.catThetaSnapshot,
+                    catSeSnapshot: cached.catSeSnapshot,
+                    catSessionBlueprint: cached.catSessionBlueprint,
+                    catQuizBlueprint: cached.catQuizBlueprint,
                     quizCompleted: cached.quizCompleted,
                     quizCorrect: cached.quizCorrect,
                     quizTotal: cached.quizTotal,
@@ -902,7 +1091,7 @@ function ReadingPageContent() {
 
                 // Update timestamp
                 db.articles.update([cached.url, cached.title, cached.timestamp], { timestamp: Date.now() });
-                markArticleAsRead(cached.url);
+                markReadArticleInStore(cached.url);
                 setArticleStartedAt(Date.now());
                 if (sessionUser?.id) {
                     const dedupeKey = buildReadCompleteDedupeKey({ userId: sessionUser.id, articleUrl: cached.url });
@@ -922,7 +1111,7 @@ function ReadingPageContent() {
 
             const articleData = { ...response.data, url: finalUrl };
             setArticle(articleData);
-            markArticleAsRead(finalUrl);
+            markReadArticleInStore(finalUrl);
             setArticleStartedAt(Date.now());
             if (sessionUser?.id) {
                 const dedupeKey = buildReadCompleteDedupeKey({ userId: sessionUser.id, articleUrl: finalUrl });
@@ -952,7 +1141,7 @@ function ReadingPageContent() {
         } finally {
             setIsLoading(false);
         }
-    }, [applyReadingEconomy, markArticleAsRead, pushReadingCoinFx, sessionUser?.id]);
+    }, [applyReadingEconomy, markReadArticleInStore, pushReadingCoinFx, sessionUser?.id]);
 
     useEffect(() => {
         const candidate = (resumeArticleUrl || "").trim();
@@ -1089,26 +1278,19 @@ function ReadingPageContent() {
                                         window.setTimeout(() => setCatNotice(null), 4200);
                                     }
                                     if (payload?.animationPayload) {
-                                        const policyUsed = payload?.session?.policyUsed;
-                                        const animationPayload = {
-                                            ...(payload.animationPayload as CatSettlementPayload),
-                                            stopReason: payload?.session?.stopReason,
-                                            itemCount: payload?.session?.itemCount,
-                                            minItems: policyUsed?.minItems,
-                                            maxItems: policyUsed?.maxItems,
-                                        } as CatSettlementPayload;
-                                        setCatSettlement(animationPayload);
-                                        clearCatSettlementTimer();
-                                        catSettlementTimerRef.current = window.setTimeout(() => {
-                                            setCatSettlement(null);
-                                            setIsQuizMode(false);
-                                            setArticle(null);
-                                            setArticleStartedAt(null);
-                                        }, 3000);
-                                    }
-                                } catch (submitError) {
-                                    console.error(submitError);
+                                    const policyUsed = payload?.session?.policyUsed;
+                                    const animationPayload = {
+                                        ...(payload.animationPayload as CatSettlementPayload),
+                                        stopReason: payload?.session?.stopReason,
+                                        itemCount: payload?.session?.itemCount,
+                                        minItems: policyUsed?.minItems,
+                                        maxItems: policyUsed?.maxItems,
+                                    } as CatSettlementPayload;
+                                    setCatSettlement(animationPayload);
                                 }
+                            } catch (submitError) {
+                                console.error(submitError);
+                            }
                             })();
                         } else {
                             void applyReadingEconomy({
@@ -1278,7 +1460,8 @@ function ReadingPageContent() {
             <AnimatePresence>
                 {catSettlement && (
                     <motion.div
-                        className="pointer-events-none fixed inset-0 z-[85]"
+                        className="fixed inset-0 z-[85]"
+                        onClick={() => setCatSettlement(null)}
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -1291,7 +1474,10 @@ function ReadingPageContent() {
                             exit={{ opacity: 0, scale: 1.02 }}
                             transition={{ duration: 0.52, ease: [0.16, 1, 0.3, 1] }}
                         />
-                        <div className="absolute inset-0 flex items-center justify-center px-4">
+                        <div
+                            className="absolute inset-0 flex items-center justify-center px-4"
+                            onClick={(event) => event.stopPropagation()}
+                        >
                             <motion.div
                                 initial={{ opacity: 0, y: 28, scale: 0.96, filter: "blur(10px)" }}
                                 animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
@@ -1358,6 +1544,15 @@ function ReadingPageContent() {
                                         />
                                         <span className="pb-1 text-xs font-semibold text-slate-500">CAT Score</span>
                                     </div>
+                                </div>
+                                <div className="mt-5 flex justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={() => setCatSettlement(null)}
+                                        className="rounded-full border border-white/75 bg-white/78 px-4 py-2 text-sm font-semibold text-slate-800 shadow-[0_14px_28px_-20px_rgba(15,23,42,0.7)] transition-all hover:bg-white/92"
+                                    >
+                                        关闭，继续阅读
+                                    </button>
                                 </div>
                             </motion.div>
                         </div>
@@ -1588,8 +1783,15 @@ function ReadingPageContent() {
                                     const nextArticle = data as ArticleData;
                                     setArticle(nextArticle);
                                     setArticleStartedAt(Date.now());
+                                    void persistArticleLocally(nextArticle)
+                                        .then(() => {
+                                            markArticleSnapshotDirty();
+                                        })
+                                        .catch((persistError) => {
+                                            console.error("Failed to persist loaded article:", persistError);
+                                        });
                                     if (sessionUser?.id && nextArticle.url) {
-                                        void markArticleAsRead(nextArticle.url);
+                                        void markReadArticleInStore(nextArticle.url);
                                         const dedupeKey = buildReadCompleteDedupeKey({ userId: sessionUser.id, articleUrl: nextArticle.url });
                                         void applyReadingEconomy({
                                             action: "read_complete",
@@ -1662,6 +1864,7 @@ function ReadingPageContent() {
                                 readingNotes={readingNotes}
                                 onCreateReadingNote={handleCreateReadingNote}
                                 onDeleteReadingMarks={handleDeleteReadingMarks}
+                                onArticleSnapshotDirty={markArticleSnapshotDirty}
                             />
 
                             <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">

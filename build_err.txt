@@ -1,0 +1,116 @@
+
+> yasienglish@0.1.0 build
+> next build
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env.local, .env
+
+  Creating an optimized production build ...
+Turbopack build encountered 4 warnings:
+./src/lib/desktop-speech-server.ts:62:26
+The file pattern (<dynamic> '/decoder-epoch-99-avg-1.onnx' | <dynamic> 'decoder-epoch-99-avg-1.onnx' | <dynamic> '/' <dynamic> | <dynamic>) matches 19066 files in [project]/
+[0m [90m 60 |[39m             transducer[33m:[39m {
+ [90m 61 |[39m                 encoder[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mencoder)[33m,[39m
+[31m[1m>[22m[39m[90m 62 |[39m                 decoder[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mdecoder)[33m,[39m
+ [90m    |[39m                          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+ [90m 63 |[39m                 joiner[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mjoiner)[33m,[39m
+ [90m 64 |[39m             }[33m,[39m
+ [90m 65 |[39m             tokens[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mtokens)[33m,[39m[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/desktop-speech-server.ts
+    ./src/app/api/tts/route.ts
+
+  #2 [App Route]:
+    ./src/lib/desktop-speech-server.ts
+    ./src/app/api/ai/transcribe/route.ts
+
+
+./src/lib/desktop-speech-server.ts:61:26
+The file pattern (<dynamic> '/encoder-epoch-99-avg-1.int8.onnx' | <dynamic> 'encoder-epoch-99-avg-1.int8.onnx' | <dynamic> '/' <dynamic> | <dynamic>) matches 19066 files in [project]/
+[0m [90m 59 |[39m         modelConfig[33m:[39m {
+ [90m 60 |[39m             transducer[33m:[39m {
+[31m[1m>[22m[39m[90m 61 |[39m                 encoder[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mencoder)[33m,[39m
+ [90m    |[39m                          [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+ [90m 62 |[39m                 decoder[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mdecoder)[33m,[39m
+ [90m 63 |[39m                 joiner[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mjoiner)[33m,[39m
+ [90m 64 |[39m             }[33m,[39m[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/desktop-speech-server.ts
+    ./src/app/api/tts/route.ts
+
+  #2 [App Route]:
+    ./src/lib/desktop-speech-server.ts
+    ./src/app/api/ai/transcribe/route.ts
+
+
+./src/lib/desktop-speech-server.ts:63:25
+The file pattern (<dynamic> '/joiner-epoch-99-avg-1.int8.onnx' | <dynamic> 'joiner-epoch-99-avg-1.int8.onnx' | <dynamic> '/' <dynamic> | <dynamic>) matches 19066 files in [project]/
+[0m [90m 61 |[39m                 encoder[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mencoder)[33m,[39m
+ [90m 62 |[39m                 decoder[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mdecoder)[33m,[39m
+[31m[1m>[22m[39m[90m 63 |[39m                 joiner[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mjoiner)[33m,[39m
+ [90m    |[39m                         [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+ [90m 64 |[39m             }[33m,[39m
+ [90m 65 |[39m             tokens[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mtokens)[33m,[39m
+ [90m 66 |[39m             numThreads[33m:[39m [35m2[39m[33m,[39m[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/desktop-speech-server.ts
+    ./src/app/api/tts/route.ts
+
+  #2 [App Route]:
+    ./src/lib/desktop-speech-server.ts
+    ./src/app/api/ai/transcribe/route.ts
+
+
+./src/lib/desktop-speech-server.ts:65:21
+The file pattern (<dynamic> '/tokens.txt' | <dynamic> 'tokens.txt' | <dynamic> '/' <dynamic> | <dynamic>) matches 19066 files in [project]/
+[0m [90m 63 |[39m                 joiner[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mjoiner)[33m,[39m
+ [90m 64 |[39m             }[33m,[39m
+[31m[1m>[22m[39m[90m 65 |[39m             tokens[33m:[39m path[33m.[39mjoin(modelDir[33m,[39m [33mMODEL_REQUIRED_FILES[39m[33m.[39mtokens)[33m,[39m
+ [90m    |[39m                     [31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m[31m[1m^[22m[39m
+ [90m 66 |[39m             numThreads[33m:[39m [35m2[39m[33m,[39m
+ [90m 67 |[39m             provider[33m:[39m [32m"cpu"[39m[33m,[39m
+ [90m 68 |[39m         }[33m,[39m[0m
+
+Overly broad patterns can lead to build performance issues and over bundling.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/desktop-speech-server.ts
+    ./src/app/api/tts/route.ts
+
+  #2 [App Route]:
+    ./src/lib/desktop-speech-server.ts
+    ./src/app/api/ai/transcribe/route.ts
+
+
+✓ Compiled successfully in 24.2s
+  Running TypeScript ...
+Failed to compile.
+
+./src/app/api/ai/rewrite-practice/route.ts:179:31
+Type error: A type predicate's type must be assignable to its parameter's type.
+  Type '{ segment: string; correction: string; reason: string; category?: string | undefined; }' is not assignable to type '{ segment: string; correction: string; reason: string; category: string; }'.
+    Types of property 'category' are incompatible.
+      Type 'string | undefined' is not assignable to type 'string'.
+        Type 'undefined' is not assignable to type 'string'.
+
+[0m [90m 177 |[39m             [36mreturn[39m { segment[33m,[39m correction[33m,[39m reason[33m,[39m category }[33m;[39m
+ [90m 178 |[39m         })
+[31m[1m>[22m[39m[90m 179 |[39m         [33m.[39mfilter((row)[33m:[39m row is {
+ [90m     |[39m                               [31m[1m^[22m[39m
+ [90m 180 |[39m             segment[33m:[39m string[33m;[39m
+ [90m 181 |[39m             correction[33m:[39m string[33m;[39m
+ [90m 182 |[39m             reason[33m:[39m string[33m;[39m[0m
+Next.js build worker exited with code: 1 and signal: null

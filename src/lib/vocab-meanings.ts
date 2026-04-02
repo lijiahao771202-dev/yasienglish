@@ -152,9 +152,7 @@ export function resolveHighlightedMeaningsFromGroups(groups: MeaningGroup[] = []
         const matchedMeaning = flattenedMeanings.find((meaning) => {
             const normalizedMeaning = normalizeMeaningMatchText(meaning);
             if (!normalizedMeaning) return false;
-            return normalizedMeaning === normalizedHighlight
-                || normalizedMeaning.includes(normalizedHighlight)
-                || normalizedHighlight.includes(normalizedMeaning);
+            return normalizedMeaning === normalizedHighlight;
         });
 
         if (matchedMeaning && !resolved.includes(matchedMeaning)) {
@@ -162,11 +160,7 @@ export function resolveHighlightedMeaningsFromGroups(groups: MeaningGroup[] = []
         }
     }
 
-    if (resolved.length > 0) {
-        return resolved;
-    }
-
-    return flattenedMeanings[0] ? [flattenedMeanings[0]] : [];
+    return resolved;
 }
 
 function normalizeTextList(values: unknown, limit: number) {
