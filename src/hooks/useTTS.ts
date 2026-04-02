@@ -1,32 +1,98 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getAudioFromCache } from "@/lib/tts-cache";
+import { requestTtsPayload } from "@/lib/tts-client";
 import { ttsQueue } from "@/lib/tts-queue";
+
+interface TtsWordMark {
+    time: number;
+    type: string;
+    start: number;
+    end: number;
+    value: string;
+}
+
+const marksCache = new Map<string, TtsWordMark[]>();
 
 export function useTTS(text: string) {
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
+    const [marks, setMarks] = useState<TtsWordMark[]>([]);
+
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const objectUrlRef = useRef<string | null>(null);
 
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [playbackRate, setPlaybackRate] = useState(1);
 
-    // Initialize audio element
+    const rafRef = useRef<number | null>(null);
+    const marksRef = useRef<TtsWordMark[]>([]);
+    const latestTextRef = useRef(text);
+
     useEffect(() => {
-        audioRef.current = new Audio();
-        audioRef.current.onended = () => {
+        marksRef.current = marks;
+    }, [marks]);
+
+    const revokeObjectUrl = useCallback(() => {
+        if (!objectUrlRef.current) return;
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+    }, []);
+
+    const setResolvedAudioUrl = useCallback((nextUrl: string, isObjectUrl: boolean) => {
+        if (isObjectUrl) {
+            revokeObjectUrl();
+            objectUrlRef.current = nextUrl;
+        }
+        setAudioUrl(nextUrl);
+    }, [revokeObjectUrl]);
+
+    const hydrateMarksFromApi = useCallback(async (sourceText: string) => {
+        if (!sourceText.trim()) return;
+        if (marksCache.has(sourceText)) {
+            const cached = marksCache.get(sourceText) ?? [];
+            setMarks(cached);
+            return;
+        }
+
+        try {
+            const payload = await requestTtsPayload(sourceText);
+            const nextMarks = Array.isArray(payload.marks) ? payload.marks : [];
+            marksCache.set(sourceText, nextMarks);
+            if (latestTextRef.current === sourceText) {
+                setMarks(nextMarks);
+            }
+        } catch {
+            if (latestTextRef.current === sourceText) {
+                setMarks([]);
+            }
+        }
+    }, []);
+
+    const updateProgress = useCallback(function updateProgressLoop() {
+        if (audioRef.current && !audioRef.current.paused) {
+            setCurrentTime(audioRef.current.currentTime);
+            rafRef.current = requestAnimationFrame(updateProgressLoop);
+        }
+    }, []);
+
+    useEffect(() => {
+        const audio = new Audio();
+        audioRef.current = audio;
+
+        audio.onended = () => {
             setIsPlaying(false);
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
         };
-        audioRef.current.onerror = (e) => {
+        audio.onerror = (e) => {
             console.error("Audio playback error", e);
             setIsPlaying(false);
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
         };
-        audioRef.current.onloadedmetadata = () => {
+        audio.onloadedmetadata = () => {
             if (audioRef.current) {
-                setDuration(audioRef.current.duration);
+                setDuration(audioRef.current.duration || 0);
             }
         };
 
@@ -38,54 +104,83 @@ export function useTTS(text: string) {
             if (rafRef.current) {
                 cancelAnimationFrame(rafRef.current);
             }
-            if (audioUrl) {
-                URL.revokeObjectURL(audioUrl);
-            }
+            revokeObjectUrl();
         };
-    }, []);
-
-    // High-frequency update loop
-    const rafRef = useRef<number | null>(null);
-    const updateProgress = useCallback(() => {
-        if (audioRef.current && !audioRef.current.paused) {
-            setCurrentTime(audioRef.current.currentTime);
-            rafRef.current = requestAnimationFrame(updateProgress);
-        }
-    }, []);
+    }, [revokeObjectUrl]);
 
     useEffect(() => {
         if (isPlaying) {
             rafRef.current = requestAnimationFrame(updateProgress);
-        } else {
-            if (rafRef.current) cancelAnimationFrame(rafRef.current);
+        } else if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
         }
     }, [isPlaying, updateProgress]);
 
-    // Update playback rate when it changes
     useEffect(() => {
         if (audioRef.current) {
             audioRef.current.playbackRate = playbackRate;
         }
     }, [playbackRate]);
 
+    useEffect(() => {
+        if (latestTextRef.current === text) return;
+
+        latestTextRef.current = text;
+        setCurrentTime(0);
+        setDuration(0);
+        setIsPlaying(false);
+        setAudioUrl(null);
+        setMarks(marksCache.get(text) ?? []);
+
+        if (audioRef.current) {
+            audioRef.current.pause();
+            audioRef.current.src = "";
+            audioRef.current.currentTime = 0;
+        }
+
+        revokeObjectUrl();
+    }, [revokeObjectUrl, text]);
+
     const loadAudio = useCallback(async () => {
-        if (audioUrl) return audioUrl;
+        if (!text.trim()) return null;
+
+        if (audioUrl) {
+            if (marksCache.has(text)) {
+                setMarks(marksCache.get(text) ?? []);
+            }
+            return audioUrl;
+        }
 
         setIsLoading(true);
         try {
-            // 1. Check Cache
+            if (marksCache.has(text)) {
+                setMarks(marksCache.get(text) ?? []);
+            }
+
+            // 1. Cache first for audio bytes.
             const cachedBlob = await getAudioFromCache(text);
             if (cachedBlob) {
                 const url = URL.createObjectURL(cachedBlob);
-                setAudioUrl(url);
+                setResolvedAudioUrl(url, true);
+
+                // Audio may be in browser cache while marks are not; fetch marks in background.
+                if (!marksCache.has(text)) {
+                    void hydrateMarksFromApi(text);
+                }
+
                 setIsLoading(false);
                 return url;
             }
 
-            // 2. Request from Queue
-            const blob = await ttsQueue.add(text);
-            const url = URL.createObjectURL(blob);
-            setAudioUrl(url);
+            // 2. Queue request when cache misses.
+            const result = await ttsQueue.add(text);
+            const url = URL.createObjectURL(result.blob);
+            setResolvedAudioUrl(url, true);
+
+            const nextMarks = Array.isArray(result.marks) ? result.marks : [];
+            marksCache.set(text, nextMarks);
+            setMarks(nextMarks);
+
             setIsLoading(false);
             return url;
         } catch (error) {
@@ -93,7 +188,7 @@ export function useTTS(text: string) {
             setIsLoading(false);
             return null;
         }
-    }, [text, audioUrl]);
+    }, [audioUrl, hydrateMarksFromApi, setResolvedAudioUrl, text]);
 
     const play = useCallback(async () => {
         if (isPlaying) {
@@ -105,12 +200,15 @@ export function useTTS(text: string) {
         let url = audioUrl;
         if (!url) {
             url = await loadAudio();
+            if (!url) {
+                // Retry once for transient network / TTS backend instability.
+                url = await loadAudio();
+            }
         }
 
         if (url && audioRef.current) {
             audioRef.current.src = url;
 
-            // Replay if at the end
             if (Math.abs(currentTime - duration) < 0.5 || currentTime >= duration) {
                 audioRef.current.currentTime = 0;
                 setCurrentTime(0);
@@ -121,9 +219,11 @@ export function useTTS(text: string) {
             audioRef.current.playbackRate = playbackRate;
             audioRef.current.play()
                 .then(() => setIsPlaying(true))
-                .catch(err => console.error("Play failed:", err));
+                .catch((err) => console.error("Play failed:", err));
+        } else {
+            console.warn("TTS play aborted: no audio url resolved");
         }
-    }, [audioUrl, isPlaying, loadAudio, currentTime, duration, playbackRate]);
+    }, [audioUrl, currentTime, duration, isPlaying, loadAudio, playbackRate]);
 
     const stop = useCallback(() => {
         if (audioRef.current) {
@@ -135,14 +235,45 @@ export function useTTS(text: string) {
     }, []);
 
     const seek = useCallback((time: number) => {
+        const safeTime = Number.isFinite(time) ? Math.max(0, time) : 0;
         if (audioRef.current) {
-            audioRef.current.currentTime = time;
-            setCurrentTime(time);
+            audioRef.current.currentTime = safeTime;
         }
+        setCurrentTime(safeTime);
     }, []);
 
+    const seekToMs = useCallback(async (timeMs: number, options?: { autoplay?: boolean }) => {
+        const autoplay = options?.autoplay ?? false;
+        const targetSeconds = Math.max(0, timeMs) / 1000;
+
+        if (audioRef.current) {
+            audioRef.current.currentTime = targetSeconds;
+            setCurrentTime(targetSeconds);
+
+            if (autoplay) {
+                try {
+                    await audioRef.current.play();
+                    setIsPlaying(true);
+                } catch (error) {
+                    console.error("seekToMs autoplay failed:", error);
+                }
+            }
+            return;
+        }
+
+        seek(targetSeconds);
+    }, [seek]);
+
+    const seekToWord = useCallback(async (wordIndex: number, options?: { autoplay?: boolean }) => {
+        const mark = marksRef.current[wordIndex];
+        if (!mark) return false;
+
+        await seekToMs(mark.start, options);
+        return true;
+    }, [seekToMs]);
+
     const preload = useCallback(() => {
-        loadAudio();
+        void loadAudio();
     }, [loadAudio]);
 
     return {
@@ -155,7 +286,10 @@ export function useTTS(text: string) {
         currentTime,
         duration,
         seek,
+        seekToMs,
+        seekToWord,
+        marks,
         playbackRate,
-        setPlaybackRate
+        setPlaybackRate,
     };
 }
