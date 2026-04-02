@@ -131,14 +131,19 @@ async function runBasicInference(paragraphText: string) {
         GRAMMAR_BASIC_MODEL,
     );
     const second = sanitizeGrammarBasicPayload(secondRaw, paragraphText);
-    if (!second.retryRecommended) {
-        return second;
+    const bestByQuality = second.qualityScore >= first.qualityScore ? second : first;
+    if (!second.retryRecommended || !first.retryRecommended) {
+        return bestByQuality;
     }
 
-    const best = second.data.difficult_sentences.length >= first.data.difficult_sentences.length ? second : first;
+    const bestByCoverage = second.data.difficult_sentences.length >= first.data.difficult_sentences.length ? second : first;
+    const best = bestByQuality.qualityScore === first.qualityScore && bestByQuality.qualityScore === second.qualityScore
+        ? bestByCoverage
+        : bestByQuality;
     return {
         ...best,
         issues: [...new Set([...first.issues, ...second.issues])],
+        qualityScore: Math.max(first.qualityScore, second.qualityScore),
     };
 }
 
@@ -157,14 +162,19 @@ async function runDeepSentenceInference(sentence: string) {
         GRAMMAR_DEEP_MODEL,
     );
     const second = sanitizeGrammarDeepSentencePayload(secondRaw, sentence);
-    if (!second.retryRecommended) {
-        return second;
+    const bestByQuality = second.qualityScore >= first.qualityScore ? second : first;
+    if (!second.retryRecommended || !first.retryRecommended) {
+        return bestByQuality;
     }
 
-    const best = second.data.analysis_results.length >= first.data.analysis_results.length ? second : first;
+    const bestByCoverage = second.data.analysis_results.length >= first.data.analysis_results.length ? second : first;
+    const best = bestByQuality.qualityScore === first.qualityScore && bestByQuality.qualityScore === second.qualityScore
+        ? bestByCoverage
+        : bestByQuality;
     return {
         ...best,
         issues: [...new Set([...first.issues, ...second.issues])],
+        qualityScore: Math.max(first.qualityScore, second.qualityScore),
     };
 }
 

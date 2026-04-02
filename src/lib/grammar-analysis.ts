@@ -2,8 +2,8 @@ export type GrammarMode = "basic" | "deep";
 
 export const GRAMMAR_BASIC_MODEL = "deepseek-chat";
 export const GRAMMAR_DEEP_MODEL = "deepseek-chat";
-export const GRAMMAR_BASIC_PROMPT_VERSION = "2026-04-01-basic-v3";
-export const GRAMMAR_DEEP_PROMPT_VERSION = "2026-04-01-deep-v2";
+export const GRAMMAR_BASIC_PROMPT_VERSION = "2026-04-02-basic-v4";
+export const GRAMMAR_DEEP_PROMPT_VERSION = "2026-04-02-deep-v3";
 
 export interface GrammarBasicHighlight {
     substring: string;
@@ -52,6 +52,88 @@ export interface GrammarSanitizeResult<T> {
     data: T;
     issues: string[];
     retryRecommended: boolean;
+    qualityScore: number;
+}
+
+const CANONICAL_GRAMMAR_TYPES = [
+    "主语",
+    "谓语",
+    "宾语",
+    "表语",
+    "定语",
+    "状语",
+    "补语",
+    "同位语",
+    "从句",
+    "非谓语",
+    "短语",
+    "连接成分",
+    "语法点",
+];
+
+const WEAK_EXPLANATION_PATTERNS = [
+    "语法功能",
+    "语法成分",
+    "特定语法功能",
+    "更加丰富",
+    "表达更完整",
+    "用于强调",
+];
+
+function containsCjk(value: string) {
+    return /[\u4e00-\u9fff]/.test(value);
+}
+
+function normalizeGrammarType(rawType: string) {
+    const type = rawType.trim();
+    if (!type) return "语法点";
+    if (CANONICAL_GRAMMAR_TYPES.includes(type)) return type;
+
+    const normalized = type
+        .replace(/\s+/g, "")
+        .replace(/[()（）]/g, "")
+        .toLowerCase();
+    if (normalized.includes("subject") || normalized.includes("主语")) return "主语";
+    if (normalized.includes("predicate") || normalized.includes("谓语")) return "谓语";
+    if (normalized.includes("object") || normalized.includes("宾语")) return "宾语";
+    if (normalized.includes("predicative") || normalized.includes("表语")) return "表语";
+    if (normalized.includes("attributive") || normalized.includes("定语")) return "定语";
+    if (normalized.includes("adverbial") || normalized.includes("状语")) return "状语";
+    if (normalized.includes("complement") || normalized.includes("补语")) return "补语";
+    if (normalized.includes("appositive") || normalized.includes("同位语")) return "同位语";
+    if (normalized.includes("clause") || normalized.includes("从句")) return "从句";
+    if (normalized.includes("nonfinite") || normalized.includes("非谓语")) return "非谓语";
+    if (normalized.includes("phrase") || normalized.includes("短语")) return "短语";
+    return "语法点";
+}
+
+function isWeakExplanation(value: string) {
+    if (!value) return true;
+    if (value.length < 10) return true;
+    const lowered = value.toLowerCase();
+    return WEAK_EXPLANATION_PATTERNS.some((pattern) => lowered.includes(pattern.toLowerCase()));
+}
+
+function enrichBasicExplanation(type: string, substring: string, rawExplanation: string) {
+    const normalized = rawExplanation.trim();
+    if (!isWeakExplanation(normalized)) return normalized;
+    const safeChunk = substring.trim() || "该片段";
+    return `结构判断：${safeChunk}主要作${type}；句中作用：帮助明确句子主干与语义关系。`;
+}
+
+function normalizeSegmentTranslation(rawTranslation: string, substring: string) {
+    const translation = rawTranslation.trim();
+    if (translation && containsCjk(translation)) return translation;
+    const safeChunk = substring.trim();
+    if (!safeChunk) return "";
+    return `在本句中可理解为“${safeChunk}”所指的语义片段`;
+}
+
+function enrichDeepExplanation(raw: string, point: string) {
+    const normalized = raw.trim();
+    if (!isWeakExplanation(normalized)) return normalized;
+    const safePoint = point.trim() || "该语法点";
+    return `结构判断：句子包含${safePoint}；句中作用：支撑语义组织并影响信息重心。`;
 }
 
 function toFiniteString(value: unknown) {
@@ -142,6 +224,11 @@ OBJECTIVE:
    - Main components: Subject (主语), Predicate/Verb (谓语), Object/Predicative (宾语/表语).
    - Modifiers: Attributive (定语), Adverbial (状语), Complement (补语), Appositive (同位语).
    - Clauses/structures when present.
+4. Every highlight.explanation MUST include:
+   - 结构判断（该片段属于什么结构）
+   - 句中作用（该结构在本句承担什么功能）
+   - Optional 易错点（若容易误判）
+5. Every segment_translation MUST be contextual (in THIS sentence), not dictionary-only.
 
 OUTPUT STRICT JSON ONLY:
 {
@@ -166,7 +253,8 @@ OUTPUT STRICT JSON ONLY:
 CONSTRAINTS:
 - Keep sentence order exactly as original paragraph.
 - "sentence" must be an exact substring.
-- "type" must be Simplified Chinese.
+- "type" must be Simplified Chinese and should prefer: 主语/谓语/宾语/表语/定语/状语/补语/同位语/从句/非谓语/短语/连接成分.
+- Each sentence should contain at least one highlight unless truly trivial.
 - Return JSON object only, no markdown, no extra text.
 ${repairBlock}
 `.trim();
@@ -205,7 +293,7 @@ OUTPUT STRICT JSON ONLY:
   "analysis_results": [
     {
       "point": "语法点名称",
-      "explanation": "详细解释"
+      "explanation": "必须包含结构判断和句中作用，必要时补充易错点"
     }
   ]
 }
@@ -214,6 +302,7 @@ CONSTRAINTS:
 - Keep "sentence" exactly same as input sentence.
 - sentence_tree.label must be Simplified Chinese.
 - analysis_results must be an array (can be empty).
+- Each explanation should be concrete and sentence-specific; avoid vague generic text.
 - Return JSON object only.
 ${repairBlock}
 `.trim();
@@ -245,9 +334,16 @@ function sanitizeHighlights(rawHighlights: unknown, sentence: string, issues: st
             return;
         }
 
-        const type = toFiniteString(payload?.type) || "语法点";
-        const explanation = toFiniteString(payload?.explanation) || "该片段在句中承担特定语法功能。";
-        const segmentTranslation = toFiniteString(payload?.segment_translation);
+        const type = normalizeGrammarType(toFiniteString(payload?.type));
+        const explanation = enrichBasicExplanation(
+            type,
+            substring,
+            toFiniteString(payload?.explanation) || "",
+        );
+        const segmentTranslation = normalizeSegmentTranslation(
+            toFiniteString(payload?.segment_translation),
+            substring,
+        );
 
         highlights.push({
             substring,
@@ -302,6 +398,33 @@ function buildFallbackBasic(paragraphText: string): GrammarBasicResult {
     };
 }
 
+function scoreBasicQuality(result: GrammarBasicResult, expectedSentences: string[]) {
+    const sentenceCount = Math.max(1, expectedSentences.length || result.difficult_sentences.length);
+    const translatedCount = result.difficult_sentences.filter((item) => item.translation.trim().length > 0).length;
+    const highlightedCount = result.difficult_sentences.filter((item) => item.highlights.length > 0).length;
+    const totalHighlights = result.difficult_sentences.reduce((sum, item) => sum + item.highlights.length, 0);
+    const detailedHighlights = result.difficult_sentences.reduce((sum, item) => (
+        sum + item.highlights.filter((h) => !isWeakExplanation(h.explanation)).length
+    ), 0);
+    const contextualSegments = result.difficult_sentences.reduce((sum, item) => (
+        sum + item.highlights.filter((h) => Boolean(h.segment_translation && containsCjk(h.segment_translation))).length
+    ), 0);
+
+    const translationCoverage = translatedCount / sentenceCount;
+    const sentenceHighlightCoverage = highlightedCount / sentenceCount;
+    const detailCoverage = totalHighlights > 0 ? detailedHighlights / totalHighlights : 0;
+    const segmentCoverage = totalHighlights > 0 ? contextualSegments / totalHighlights : 0;
+    const overviewScore = result.overview.trim().length >= 12 ? 1 : 0;
+
+    return Number((
+        translationCoverage * 0.28
+        + sentenceHighlightCoverage * 0.28
+        + detailCoverage * 0.2
+        + segmentCoverage * 0.14
+        + overviewScore * 0.1
+    ).toFixed(4));
+}
+
 export function sanitizeGrammarBasicPayload(raw: unknown, paragraphText: string): GrammarSanitizeResult<GrammarBasicResult> {
     const issues: string[] = [];
     const fallback = buildFallbackBasic(paragraphText);
@@ -312,6 +435,7 @@ export function sanitizeGrammarBasicPayload(raw: unknown, paragraphText: string)
             data: fallback,
             issues,
             retryRecommended: true,
+            qualityScore: 0,
         };
     }
 
@@ -335,12 +459,22 @@ export function sanitizeGrammarBasicPayload(raw: unknown, paragraphText: string)
 
     const used = new Set<number>();
     const difficultSentences: GrammarBasicSentence[] = [];
+    let missingTranslationCount = 0;
+    let missingHighlightSentenceCount = 0;
 
     if (expectedSentences.length > 0) {
         expectedSentences.forEach((sentence) => {
             const matched = matchRawSentenceItem(rawSentenceItems, sentence, used) ?? {};
             const translation = toFiniteString(matched.translation);
+            if (!translation) {
+                missingTranslationCount += 1;
+                issues.push(`sentence "${sentence.slice(0, 32)}" translation is missing`);
+            }
             const highlights = sanitizeHighlights(matched.highlights, sentence, issues);
+            if (highlights.length === 0) {
+                missingHighlightSentenceCount += 1;
+                issues.push(`sentence "${sentence.slice(0, 32)}" has no valid highlights`);
+            }
             difficultSentences.push({
                 sentence,
                 translation,
@@ -371,15 +505,23 @@ export function sanitizeGrammarBasicPayload(raw: unknown, paragraphText: string)
         issues.push("no valid highlights");
     }
 
+    const data: GrammarBasicResult = {
+        mode: "basic",
+        tags: uniqueStrings(rawTags, 12).length > 0 ? uniqueStrings(rawTags, 12) : fallback.tags,
+        overview,
+        difficult_sentences: difficultSentences.length > 0 ? difficultSentences : fallback.difficult_sentences,
+    };
+    const qualityScore = scoreBasicQuality(data, expectedSentences);
+    const sentenceCount = Math.max(1, expectedSentences.length || data.difficult_sentences.length);
+    const severeCoverageIssue =
+        missingHighlightSentenceCount > Math.floor(sentenceCount * 0.45)
+        || missingTranslationCount > Math.floor(sentenceCount * 0.45);
+
     return {
-        data: {
-            mode: "basic",
-            tags: uniqueStrings(rawTags, 12).length > 0 ? uniqueStrings(rawTags, 12) : fallback.tags,
-            overview,
-            difficult_sentences: difficultSentences.length > 0 ? difficultSentences : fallback.difficult_sentences,
-        },
+        data,
         issues,
-        retryRecommended: issues.length > 0 && (highlightCount === 0 || difficultSentences.length === 0),
+        retryRecommended: severeCoverageIssue || (issues.length > 0 && (highlightCount === 0 || difficultSentences.length === 0 || qualityScore < 0.52)),
+        qualityScore,
     };
 }
 
@@ -425,6 +567,7 @@ export function sanitizeGrammarDeepSentencePayload(raw: unknown, sentence: strin
             data: fallback,
             issues,
             retryRecommended: true,
+            qualityScore: 0,
         };
     }
 
@@ -442,12 +585,15 @@ export function sanitizeGrammarDeepSentencePayload(raw: unknown, sentence: strin
     resultsRaw.forEach((item, index) => {
         const pointPayload = item as Record<string, unknown>;
         const point = toFiniteString(pointPayload?.point);
-        const explanation = toFiniteString(pointPayload?.explanation);
-        if (!point || !explanation) {
+        const explanationRaw = toFiniteString(pointPayload?.explanation);
+        if (!point || !explanationRaw) {
             issues.push(`analysis_results[${index}] is incomplete`);
             return;
         }
-        analysisResults.push({ point, explanation });
+        analysisResults.push({
+            point,
+            explanation: enrichDeepExplanation(explanationRaw, point),
+        });
     });
 
     const normalizedSentence = toFiniteString(payload.sentence) || sentence;
@@ -455,13 +601,22 @@ export function sanitizeGrammarDeepSentencePayload(raw: unknown, sentence: strin
         issues.push("sentence field mismatches request sentence");
     }
 
+    const data: GrammarDeepSentenceResult = {
+        sentence,
+        sentence_tree: tree ?? fallback.sentence_tree,
+        analysis_results: analysisResults,
+    };
+    const detailedCount = data.analysis_results.filter((item) => !isWeakExplanation(item.explanation)).length;
+    const qualityScore = Number((
+        (data.sentence_tree ? 0.4 : 0)
+        + (data.analysis_results.length > 0 ? 0.3 : 0)
+        + (data.analysis_results.length > 0 ? (detailedCount / data.analysis_results.length) * 0.3 : 0)
+    ).toFixed(4));
+
     return {
-        data: {
-            sentence,
-            sentence_tree: tree ?? fallback.sentence_tree,
-            analysis_results: analysisResults,
-        },
+        data,
         issues,
-        retryRecommended: issues.length > 0 && !tree && analysisResults.length === 0,
+        retryRecommended: (issues.length > 0 && (!tree || analysisResults.length === 0)) || qualityScore < 0.42,
+        qualityScore,
     };
 }
