@@ -437,6 +437,7 @@ export function ReadingQuizPanel({
     };
 
     const handleReset = () => {
+        onClearLocate?.();
         clearAutoCompactTimer();
         clearAutoFinalizeTimer();
         setAnswers({});
@@ -492,11 +493,13 @@ export function ReadingQuizPanel({
         : "暂无题目";
 
     const handlePrevStandardQuestion = () => {
+        onClearLocate?.();
         setStandardStepIndex((prev) => Math.max(0, prev - 1));
     };
 
     const handleNextStandardQuestion = () => {
         if (!standardCurrentGraded || standardAtLast) return;
+        onClearLocate?.();
         setStandardStepIndex((prev) => Math.min(standardQuestionCount - 1, prev + 1));
     };
 
@@ -527,12 +530,35 @@ export function ReadingQuizPanel({
 
     const handleNextCatQuestion = () => {
         if (nextUnsubmittedIndex < 0) return;
+        onClearLocate?.();
         clearAutoCompactTimer();
         setCatStepIndex(nextUnsubmittedIndex);
         if (quizMode === "cat" && floatingCompact) {
             setIsCatCompactMode(false);
         }
     };
+
+    useEffect(() => {
+        if (!onClearLocate || activeLocateQuestionNumber == null) return;
+        const activeQuestionNumber = quizMode === "cat"
+            ? (catCurrentQuestion ? catStepIndex + 1 : null)
+            : (standardCurrentQuestion ? standardSafeIndex + 1 : null);
+        if (activeQuestionNumber == null) {
+            onClearLocate();
+            return;
+        }
+        if (activeQuestionNumber !== activeLocateQuestionNumber) {
+            onClearLocate();
+        }
+    }, [
+        activeLocateQuestionNumber,
+        catCurrentQuestion,
+        catStepIndex,
+        onClearLocate,
+        quizMode,
+        standardCurrentQuestion,
+        standardSafeIndex,
+    ]);
 
     const handleFinalizeCatSession = useCallback(() => {
         if (!hasReachedCatMin) return;

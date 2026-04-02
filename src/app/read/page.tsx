@@ -242,10 +242,12 @@ function ReadingPageContent() {
     const dockHideTimerRef = useRef<number | null>(null);
     const catSettlementTimerRef = useRef<number | null>(null);
     const quizPrefetchRef = useRef<Record<string, boolean>>({});
+    const resumedArticleRef = useRef<string | null>(null);
 
     // Scroll Progress
     const [scrollProgress, setScrollProgress] = useState(0);
     const routeFrom = searchParams.get("from");
+    const resumeArticleUrl = searchParams.get("url");
     const hasRouteEntry = routeFrom === "battle" || routeFrom === "home";
     const backgroundTheme = getSavedBackgroundTheme(sessionUser?.id);
     const backgroundSpec = getBackgroundThemeSpec(backgroundTheme);
@@ -873,7 +875,7 @@ function ReadingPageContent() {
         quizDbKey,
     ]);
 
-    const handleUrlSubmit = async (url: string) => {
+    const handleUrlSubmit = useCallback(async (url: string) => {
         setIsLoading(true);
         setError(null);
         try {
@@ -950,7 +952,16 @@ function ReadingPageContent() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [applyReadingEconomy, markArticleAsRead, pushReadingCoinFx, sessionUser?.id]);
+
+    useEffect(() => {
+        const candidate = (resumeArticleUrl || "").trim();
+        if (!candidate) return;
+        if (resumedArticleRef.current === candidate) return;
+        resumedArticleRef.current = candidate;
+        if (article?.url?.trim() === candidate) return;
+        void handleUrlSubmit(candidate);
+    }, [article?.url, handleUrlSubmit, resumeArticleUrl]);
 
     const renderQuizPanel = () => {
         if (!article?.difficulty) return null;
