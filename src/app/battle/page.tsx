@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useCallback, type ComponentType } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { DrillCore } from "@/components/drill/DrillCore";
-import { Zap, Flame, ChevronRight, Lock, House, Sword, CircleHelp, X, Headphones, BookOpen, Feather, Gauge, Coins, Gift, Blocks } from "lucide-react";
+import { Zap, ChevronRight, Lock, House, Sword, CircleHelp, X, Headphones, BookOpen, Feather, Gauge, Coins, Gift, Blocks } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRank } from "@/lib/rankUtils";
 import { db } from "@/lib/db";
@@ -12,8 +12,6 @@ import { EloChart } from "@/components/battle/EloChart";
 import { BattleDrillSelection, shouldRefreshBattleChart } from "@/lib/battleUiState";
 import { TOPICS } from "@/lib/battle-topics";
 import { RANDOM_SCENARIO_TOPIC } from "@/lib/battle-quickmatch-topics";
-import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
-import { applyBackgroundThemeToDocument, BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -328,7 +326,6 @@ export default function BattlePage() {
         return saved === "bank" ? "bank" : "ai";
     };
     const router = useRouter();
-    const sessionUser = useAuthSessionUser();
     const [activeDrill, setActiveDrill] = useState<BattleDrillSelection | null>(null);
     const [eloRating, setEloRating] = useState(400); // Translation
     const [listeningElo, setListeningElo] = useState(400); // Listening
@@ -336,7 +333,6 @@ export default function BattlePage() {
     const [rebuildPracticeElo, setRebuildPracticeElo] = useState(400);
     const [rebuildBattleElo, setRebuildBattleElo] = useState(400);
     const [rebuildBattleStreak, setRebuildBattleStreak] = useState(0);
-    const [streak, setStreak] = useState(0);
     const [battleMode, setBattleMode] = useState<BattleMode>('rebuild');
     const [listeningSourceMode, setListeningSourceMode] = useState<ListeningSourceMode>(resolveInitialListeningSourceMode);
     const [rebuildVariant, setRebuildVariant] = useState<"sentence" | "passage">("sentence");
@@ -345,7 +341,6 @@ export default function BattlePage() {
     const [activeGuideSection, setActiveGuideSection] = useState<GuideSectionId>("overview");
     const [refreshCount, setRefreshCount] = useState(0);
     const [navTransition, setNavTransition] = useState<"home" | "read" | null>(null);
-    const [, forceBackgroundRefresh] = useState(0);
 
     const loadProfile = useCallback(() => {
         db.user_profile.orderBy('id').first().then(async (profile) => {
@@ -355,7 +350,6 @@ export default function BattlePage() {
                 setDictationElo(profile.dictation_elo ?? profile.listening_elo ?? 400);
                 setRebuildBattleElo(profile.rebuild_elo ?? profile.rebuild_hidden_elo ?? profile.listening_elo ?? 400);
                 setRebuildBattleStreak(profile.rebuild_streak ?? 0);
-                setStreak(profile.streak_count);
                 const activeUserMeta = await db.sync_meta.get("active_user_id");
                 const activeUserId = typeof activeUserMeta?.value === "string" ? activeUserMeta.value : "local";
                 const hiddenMeta = await db.sync_meta.get(`rebuild_hidden_elo::${activeUserId}`);
@@ -393,9 +387,6 @@ export default function BattlePage() {
         }, target === "home" ? 760 : 560);
     };
 
-    const transRank = getRank(eloRating);
-    const listenRank = getRank(listeningElo);
-    const dictationRank = getRank(dictationElo);
     const rebuildBattleRank = getRank(rebuildBattleElo);
     const rebuildTier = getRebuildPracticeTier(rebuildPracticeElo);
     const activeModeDifficultyElo = battleMode === "translation"
@@ -432,17 +423,6 @@ export default function BattlePage() {
         { key: "listening", label: "Listening", dotClass: "bg-emerald-500" },
     ];
     const activeBattleModeIndex = battleModeTabs.findIndex((item) => item.key === battleMode);
-    const backgroundTheme = getSavedBackgroundTheme(sessionUser?.id);
-    const backgroundSpec = getBackgroundThemeSpec(backgroundTheme);
-    const glassBlendTransition = { duration: 1.85, ease: [0.22, 1, 0.36, 1] as const };
-    const glassListeningLayer = "bg-[linear-gradient(140deg,rgba(228,242,255,0.56),rgba(172,210,255,0.26))]";
-    const glassRebuildLayer = "bg-[linear-gradient(140deg,rgba(228,255,248,0.58),rgba(167,243,208,0.28))]";
-    const glassDictationLayer = "bg-[linear-gradient(140deg,rgba(248,239,255,0.58),rgba(216,180,254,0.3))]";
-    const glassTranslationLayer = "bg-[linear-gradient(140deg,rgba(255,239,217,0.58),rgba(255,192,120,0.28))]";
-    const glassListeningHeroLayer = "bg-[linear-gradient(138deg,rgba(226,241,255,0.58),rgba(167,205,255,0.24))]";
-    const glassRebuildHeroLayer = "bg-[linear-gradient(138deg,rgba(229,255,249,0.62),rgba(134,239,172,0.22))]";
-    const glassDictationHeroLayer = "bg-[linear-gradient(138deg,rgba(247,238,255,0.6),rgba(206,162,247,0.26))]";
-    const glassTranslationHeroLayer = "bg-[linear-gradient(138deg,rgba(255,240,220,0.58),rgba(255,194,132,0.24))]";
     const modeOpacity = (targetMode: BattleMode) => (battleMode === targetMode ? 1 : 0);
     const glassToneByMode: Record<BattleMode, {
         soft: string;
@@ -501,50 +481,110 @@ export default function BattlePage() {
         },
     };
     const glassTone = glassToneByMode[battleMode];
-
-    useEffect(() => {
-        applyBackgroundThemeToDocument(backgroundTheme);
-    }, [backgroundTheme]);
-
-    useEffect(() => {
-        const onBackgroundChange = (event: Event) => {
-            const detail = (event as CustomEvent<{ themeId?: string }>).detail;
-            if (typeof detail?.themeId === "string") {
-                forceBackgroundRefresh((value) => value + 1);
-                return;
-            }
-            forceBackgroundRefresh((value) => value + 1);
-        };
-        window.addEventListener(BACKGROUND_CHANGED_EVENT, onBackgroundChange);
-        return () => window.removeEventListener(BACKGROUND_CHANGED_EVENT, onBackgroundChange);
-    }, [sessionUser?.id]);
+    const chunkySurface = "rounded-[2rem] border-4 border-[#d3c8b8] bg-white shadow-[0_20px_45px_rgba(199,183,152,0.18),8px_8px_0_rgba(236,229,215,0.95)]";
+    const chunkySurfaceSoft = "rounded-[1.7rem] border-4 border-[#d3c8b8] bg-white shadow-[0_16px_32px_rgba(199,183,152,0.16),6px_6px_0_rgba(238,232,220,0.95)]";
+    const segmentedShell = "rounded-[1.8rem] border-4 border-[#d3c8b8] bg-white p-2 shadow-[0_16px_32px_rgba(199,183,152,0.14),6px_6px_0_rgba(238,232,220,0.95)]";
+    const cuteToneByMode: Record<BattleMode, {
+        cardTint: string;
+        softTint: string;
+        badge: string;
+        button: string;
+        buttonSecondary: string;
+        iconWrap: string;
+        activeTab: string;
+        inactiveTab: string;
+        miniChip: string;
+        marker: string;
+        heroGlow: string;
+    }> = {
+        listening: {
+            cardTint: "bg-[linear-gradient(135deg,#eef5ff,rgba(255,255,255,0.98)_54%,#dfeaff)]",
+            softTint: "bg-[#eff5ff]",
+            badge: "border-[#b8ccff] bg-[#e9f1ff] text-[#2254d1]",
+            button: "border-[#295ce8] bg-[#2f66ff] text-white hover:bg-[#1f55e5]",
+            buttonSecondary: "border-[#b8ccff] bg-[#edf4ff] text-[#204ebd] hover:bg-[#e1edff]",
+            iconWrap: "border-[#b8ccff] bg-[#edf4ff] text-[#2254d1]",
+            activeTab: "border-[#adc4ff] bg-[#edf4ff] text-[#1e4cc0]",
+            inactiveTab: "text-[#64748b] hover:bg-[#f5f7ff] hover:text-[#1e293b]",
+            miniChip: "border-[#b8ccff] bg-[#edf4ff] text-[#2254d1]",
+            marker: "bg-[#2f66ff]",
+            heroGlow: "bg-[radial-gradient(circle_at_top_right,rgba(89,136,255,0.18),transparent_44%)]",
+        },
+        rebuild: {
+            cardTint: "bg-[linear-gradient(135deg,#ecfff7,rgba(255,255,255,0.98)_52%,#d7fbec)]",
+            softTint: "bg-[#ecfff7]",
+            badge: "border-[#9be4c5] bg-[#e6fff4] text-[#0f8a69]",
+            button: "border-[#159b76] bg-[#17b585] text-white hover:bg-[#13956e]",
+            buttonSecondary: "border-[#9be4c5] bg-[#e8fff6] text-[#0c7e60] hover:bg-[#daf8ee]",
+            iconWrap: "border-[#9be4c5] bg-[#e8fff6] text-[#0f8a69]",
+            activeTab: "border-[#9be4c5] bg-[#e8fff6] text-[#0c7e60]",
+            inactiveTab: "text-[#64748b] hover:bg-[#f3fffa] hover:text-[#1e293b]",
+            miniChip: "border-[#9be4c5] bg-[#e8fff6] text-[#0f8a69]",
+            marker: "bg-[#17b585]",
+            heroGlow: "bg-[radial-gradient(circle_at_top_right,rgba(22,181,133,0.18),transparent_44%)]",
+        },
+        dictation: {
+            cardTint: "bg-[linear-gradient(135deg,#f5eeff,rgba(255,255,255,0.98)_52%,#efe4ff)]",
+            softTint: "bg-[#f7f1ff]",
+            badge: "border-[#d9b5ff] bg-[#f4eaff] text-[#7c3aed]",
+            button: "border-[#8b5cf6] bg-[#9062ff] text-white hover:bg-[#7b4ef2]",
+            buttonSecondary: "border-[#d9b5ff] bg-[#f5ecff] text-[#7c3aed] hover:bg-[#efddff]",
+            iconWrap: "border-[#d9b5ff] bg-[#f5ecff] text-[#7c3aed]",
+            activeTab: "border-[#d9b5ff] bg-[#f5ecff] text-[#7c3aed]",
+            inactiveTab: "text-[#64748b] hover:bg-[#fbf6ff] hover:text-[#1e293b]",
+            miniChip: "border-[#d9b5ff] bg-[#f5ecff] text-[#7c3aed]",
+            marker: "bg-[#9062ff]",
+            heroGlow: "bg-[radial-gradient(circle_at_top_right,rgba(168,85,247,0.18),transparent_44%)]",
+        },
+        translation: {
+            cardTint: "bg-[linear-gradient(135deg,#fff4e8,rgba(255,255,255,0.98)_52%,#ffe8c8)]",
+            softTint: "bg-[#fff6ea]",
+            badge: "border-[#ffcf95] bg-[#fff1dd] text-[#dd7a09]",
+            button: "border-[#f08a18] bg-[#ff9c1a] text-white hover:bg-[#f08a18]",
+            buttonSecondary: "border-[#ffcf95] bg-[#fff3e2] text-[#d97706] hover:bg-[#ffecd1]",
+            iconWrap: "border-[#ffcf95] bg-[#fff3e2] text-[#d97706]",
+            activeTab: "border-[#ffcf95] bg-[#fff3e2] text-[#d97706]",
+            inactiveTab: "text-[#64748b] hover:bg-[#fff9f1] hover:text-[#1e293b]",
+            miniChip: "border-[#ffcf95] bg-[#fff3e2] text-[#d97706]",
+            marker: "bg-[#ff9c1a]",
+            heroGlow: "bg-[radial-gradient(circle_at_top_right,rgba(255,156,26,0.18),transparent_44%)]",
+        },
+    };
+    const cuteTone = cuteToneByMode[battleMode];
+    const activeModeLabel = battleMode === "listening"
+        ? "Shadowing"
+        : battleMode === "rebuild"
+            ? "Rebuild"
+            : battleMode === "dictation"
+                ? "Dictation"
+                : "Translation";
 
     return (
-        <div className="min-h-screen bg-stone-50 font-sans selection:bg-indigo-100 selection:text-indigo-900 pb-20">
-            <div className={`fixed inset-0 z-0 pointer-events-none ${backgroundSpec.baseLayer}`} />
-            {/* Background Decoration */}
+        <div className="min-h-screen bg-[#fff9eb] font-sans selection:bg-indigo-100 selection:text-indigo-900 pb-20">
+            <div className="fixed inset-0 z-0 pointer-events-none bg-[#fff9eb]" />
             <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-                <div className={`absolute inset-0 ${backgroundSpec.glassLayer}`} />
-                <div className={`absolute inset-0 ${backgroundSpec.glowLayer}`} />
-                <div className={`absolute inset-x-0 bottom-0 h-[34%] ${backgroundSpec.bottomLayer}`} />
-                <div className={`absolute inset-0 ${backgroundSpec.vignetteLayer}`} />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,211,127,0.24),transparent_32%),radial-gradient(circle_at_top_right,rgba(140,176,255,0.18),transparent_28%),linear-gradient(180deg,#fff9eb_0%,#fff7ea_100%)]" />
+                <div className="absolute left-[-8%] top-24 h-64 w-64 rounded-full bg-[#ffe3b9]/60 blur-3xl" />
+                <div className="absolute right-[-6%] top-32 h-72 w-72 rounded-full bg-[#dfe9ff]/70 blur-3xl" />
+                <div className="absolute bottom-[-8%] left-[22%] h-72 w-72 rounded-full bg-[#f0e6ff]/60 blur-3xl" />
+                <div className="absolute bottom-10 right-[18%] h-52 w-52 rounded-full bg-[#dff7eb]/60 blur-3xl" />
                 <motion.div
-                    className="absolute inset-0 bg-[radial-gradient(90%_70%_at_15%_0%,rgba(126,181,255,0.22),rgba(64,139,255,0.08)_42%,transparent_72%)]"
+                    className="absolute inset-0 bg-[radial-gradient(90%_70%_at_15%_0%,rgba(126,181,255,0.18),rgba(64,139,255,0.05)_42%,transparent_72%)]"
                     animate={{ opacity: modeOpacity("listening") }}
                     transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
                 />
                 <motion.div
-                    className="absolute inset-0 bg-[radial-gradient(90%_72%_at_50%_0%,rgba(45,212,191,0.22),rgba(20,184,166,0.08)_42%,transparent_74%)]"
+                    className="absolute inset-0 bg-[radial-gradient(90%_72%_at_50%_0%,rgba(45,212,191,0.18),rgba(20,184,166,0.06)_42%,transparent_74%)]"
                     animate={{ opacity: modeOpacity("rebuild") }}
                     transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
                 />
                 <motion.div
-                    className="absolute inset-0 bg-[radial-gradient(85%_66%_at_50%_0%,rgba(196,181,253,0.24),rgba(168,85,247,0.1)_44%,transparent_74%)]"
+                    className="absolute inset-0 bg-[radial-gradient(85%_66%_at_50%_0%,rgba(196,181,253,0.18),rgba(168,85,247,0.06)_44%,transparent_74%)]"
                     animate={{ opacity: modeOpacity("dictation") }}
                     transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
                 />
                 <motion.div
-                    className="absolute inset-0 bg-[radial-gradient(90%_70%_at_85%_0%,rgba(255,190,116,0.22),rgba(255,138,37,0.08)_42%,transparent_72%)]"
+                    className="absolute inset-0 bg-[radial-gradient(90%_70%_at_85%_0%,rgba(255,190,116,0.18),rgba(255,138,37,0.05)_42%,transparent_72%)]"
                     animate={{ opacity: modeOpacity("translation") }}
                     transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
                 />
@@ -560,7 +600,7 @@ export default function BattlePage() {
                         transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
                     >
                         <motion.div
-                            className={cn("absolute inset-0 backdrop-blur-[8px]", backgroundSpec.transitionFilm)}
+                            className="absolute inset-0 bg-[rgba(255,249,235,0.82)] backdrop-blur-[10px]"
                             initial={{ scale: 1.08, filter: "blur(22px)" }}
                             animate={{ scale: 1, filter: "blur(0px)" }}
                             transition={{ duration: 0.76, ease: [0.18, 1, 0.3, 1] }}
@@ -570,202 +610,229 @@ export default function BattlePage() {
             </AnimatePresence>
 
             <motion.div
-                className="relative z-10 max-w-6xl mx-auto px-6 py-12 md:py-20"
+                className="relative z-10 mx-auto max-w-6xl px-5 py-10 md:px-6 md:py-16"
                 animate={navTransition
                     ? { opacity: 0, y: 16, scale: 0.985, filter: "blur(8px)" }
                     : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
                 transition={{ duration: 0.58, ease: [0.22, 1, 0.36, 1] }}
             >
-                {/* Header Section */}
-                <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-8 mb-16">
-                    <div>
-                        <div className="mb-6 flex flex-wrap gap-3">
-                            <motion.button
-                                initial={{ opacity: 0, y: 22, scale: 0.92, filter: "blur(6px)" }}
-                                animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                                transition={{ delay: 0.02, duration: 0.86, ease: [0.16, 1, 0.3, 1] }}
-                                onClick={() => handleNavigateWithCard("home")}
-                                className="group inline-flex items-center gap-2 rounded-2xl border border-white/45 bg-[linear-gradient(135deg,rgba(232,244,255,0.64),rgba(188,220,255,0.34))] px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_14px_32px_-24px_rgba(18,88,203,0.8),inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-2xl saturate-[1.45] transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5 hover:text-slate-900 hover:shadow-[0_22px_42px_-24px_rgba(37,99,235,0.95),inset_0_1px_0_rgba(255,255,255,0.82)]"
-                                whileTap={{ scale: 0.965 }}
-                            >
-                                <motion.span animate={{ x: navTransition === "home" ? -4 : 0 }} transition={{ duration: 0.26, ease: [0.34, 1.56, 0.64, 1] }}>
-                                    <House className="h-4 w-4" />
-                                </motion.span>
-                                返回欢迎页
-                            </motion.button>
-                            <motion.button
-                                initial={{ opacity: 0, y: 22, scale: 0.92, filter: "blur(6px)" }}
-                                animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                                transition={{ delay: 0.1, duration: 0.88, ease: [0.16, 1, 0.3, 1] }}
-                                onClick={() => handleNavigateWithCard("read")}
-                                className="group inline-flex items-center gap-2 rounded-2xl border border-white/45 bg-[linear-gradient(135deg,rgba(239,247,255,0.62),rgba(203,226,255,0.34))] px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_14px_32px_-24px_rgba(18,88,203,0.8),inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-2xl saturate-[1.45] transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5 hover:text-slate-900 hover:shadow-[0_22px_42px_-24px_rgba(37,99,235,0.95),inset_0_1px_0_rgba(255,255,255,0.82)]"
-                                whileTap={{ scale: 0.965 }}
-                            >
-                                <motion.span animate={{ x: navTransition === "read" ? 4 : 0 }} transition={{ duration: 0.26, ease: [0.34, 1.56, 0.64, 1] }}>
-                                    <ChevronRight className="h-4 w-4" />
-                                </motion.span>
-                                打开阅读页面
-                            </motion.button>
-                            <motion.button
-                                initial={{ opacity: 0, y: 22, scale: 0.92, filter: "blur(6px)" }}
-                                animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                                transition={{ delay: 0.18, duration: 0.88, ease: [0.16, 1, 0.3, 1] }}
-                                onClick={() => {
-                                    setActiveGuideSection(sectionByMode[battleMode]);
-                                    setShowGuide(true);
-                                }}
-                                className="group inline-flex items-center gap-2 rounded-2xl border border-white/45 bg-[linear-gradient(135deg,rgba(252,247,255,0.66),rgba(221,214,254,0.4))] px-4 py-2.5 text-sm font-semibold text-purple-800 shadow-[0_14px_32px_-24px_rgba(124,58,237,0.8),inset_0_1px_0_rgba(255,255,255,0.76)] backdrop-blur-2xl saturate-[1.45] transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5 hover:text-purple-950 hover:shadow-[0_22px_42px_-24px_rgba(109,40,217,0.95),inset_0_1px_0_rgba(255,255,255,0.84)]"
-                                whileTap={{ scale: 0.965 }}
-                            >
-                                <CircleHelp className="h-4 w-4" />
-                                玩法说明
-                            </motion.button>
+                <div className="mb-10 flex justify-center">
+                    <div className={cn("flex w-full max-w-3xl flex-wrap items-center justify-center gap-3 px-4 py-3 md:px-5", chunkySurfaceSoft)}>
+                        <motion.button
+                            initial={{ opacity: 0, y: 22, scale: 0.92, filter: "blur(6px)" }}
+                            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                            transition={{ delay: 0.02, duration: 0.86, ease: [0.16, 1, 0.3, 1] }}
+                            onClick={() => handleNavigateWithCard("home")}
+                            className="inline-flex h-14 w-14 items-center justify-center rounded-[1.35rem] border-4 border-[#b8ccff] bg-[#edf4ff] text-[#2254d1] shadow-[0_6px_0_rgba(223,233,255,0.95)] transition hover:-translate-y-0.5 hover:bg-[#e3edff]"
+                            whileTap={{ scale: 0.96 }}
+                            aria-label="返回欢迎页"
+                        >
+                            <House className="h-6 w-6" />
+                        </motion.button>
+                        <div className="rounded-[1.45rem] border-4 border-[#d7d2c7] bg-[#fffaf0] px-5 py-3 text-center shadow-[0_8px_0_rgba(238,232,220,0.95)]">
+                            <p className="font-newsreader text-[1.55rem] italic leading-none text-stone-900 md:text-[1.75rem]">Battle Arena</p>
                         </div>
-                        <motion.h1
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="text-5xl md:text-7xl font-bold text-stone-900 mb-4 tracking-tight"
+                        <button
+                            type="button"
+                            onClick={() => handleNavigateWithCard("read")}
+                            className={cn("inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 px-4 py-2.5 text-sm font-bold shadow-[0_6px_0_rgba(232,255,246,0.95)] transition hover:-translate-y-0.5", cuteTone.buttonSecondary)}
                         >
-                            Battle Arena
-                        </motion.h1>
-                        <motion.p
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.1 }}
-                            className="text-xl text-stone-500 max-w-lg leading-relaxed font-newsreader italic"
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-current/20 bg-white/70">
+                                <ChevronRight className="h-4 w-4" />
+                            </span>
+                            阅读页
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setActiveGuideSection(sectionByMode[battleMode]);
+                                setShowGuide(true);
+                            }}
+                            className="inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 border-[#dcc4ff] bg-[#f5edff] px-4 py-2.5 text-sm font-bold text-[#7c3aed] shadow-[0_6px_0_rgba(243,233,255,0.95)] transition hover:-translate-y-0.5 hover:bg-[#efe2ff]"
                         >
-                            &quot;The only way to learn a language is to fight with it.&quot;
-                        </motion.p>
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-current/20 bg-white/70">
+                                <CircleHelp className="h-4 w-4" />
+                            </span>
+                            玩法说明
+                        </button>
+                        <div className={cn("inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 px-4 py-2.5 text-sm font-black shadow-[0_6px_0_rgba(232,255,246,0.95)]", cuteTone.badge)}>
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-current/20 bg-white/70">
+                                <Sword className="h-4 w-4" />
+                            </span>
+                            {activeModeLabel}
+                        </div>
                     </div>
+                </div>
 
-                    {/* Stats Cards Row */}
-                    <div className="flex flex-col sm:flex-row gap-4">
-                        {/* 1. Listening Stats */}
-                        <motion.div
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: 0.2 }}
-                            className={cn("relative overflow-hidden flex items-center gap-5 p-3 pr-6 rounded-[1.55rem] border backdrop-blur-2xl saturate-[1.42] transition duration-300 hover:-translate-y-0.5", glassTone.soft)}
-                        >
-                            <motion.div className={cn("absolute inset-0", glassListeningLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
-                            <motion.div className={cn("absolute inset-0", glassRebuildLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
-                            <motion.div className={cn("absolute inset-0", glassDictationLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
-                            <motion.div className={cn("absolute inset-0", glassTranslationLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
-                            <div className={cn("relative z-10 w-16 h-16 rounded-xl flex items-center justify-center shadow-md text-white bg-gradient-to-br border-2 border-white/20 overflow-hidden", listenRank.gradient)}>
-                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20" />
-                                <listenRank.icon className="w-8 h-8 relative z-10" />
+                <div className="mb-12">
+                    <div className={cn("p-5 md:p-6", chunkySurface)}>
+                        <div className="space-y-6">
+                            <div className={cn("relative flex w-full items-center gap-2 overflow-x-auto", segmentedShell)}>
+                                <motion.div
+                                    className={cn("absolute top-2 h-[calc(100%-16px)] rounded-[1.15rem] border-4", cuteTone.activeTab)}
+                                    initial={false}
+                                    animate={{
+                                        left: `calc(${activeBattleModeIndex} * ((100% - 16px) / 4) + 8px)`,
+                                        width: "calc((100% - 16px) / 4)",
+                                    }}
+                                    transition={{ type: "spring", stiffness: 210, damping: 24, mass: 0.84 }}
+                                />
+                                {battleModeTabs.map((tab) => (
+                                    <button
+                                        key={tab.key}
+                                        onClick={() => setBattleMode(tab.key)}
+                                        className={cn(
+                                            "relative z-10 flex min-w-[140px] flex-1 items-center justify-center gap-2 rounded-[1.15rem] px-4 py-3.5 text-sm font-black transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                                            battleMode === tab.key
+                                                ? "scale-[1.02] text-stone-900"
+                                                : cuteTone.inactiveTab
+                                        )}
+                                    >
+                                        <div className={cn("w-2 h-2 rounded-full", battleMode === tab.key ? `${tab.dotClass} animate-pulse` : "bg-stone-300")} />
+                                        {tab.label}
+                                    </button>
+                                ))}
                             </div>
-                            <div className="relative z-10">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className={cn("text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full border", glassTone.textTag)}>Listening</span>
-                                    <div className={cn("w-2 h-2 rounded-full", listenRank.bg.replace('bg-', 'bg-'))} />
-                                    <span className="text-xs font-bold text-slate-500">{listenRank.title}</span>
-                                </div>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-3xl font-bold text-slate-900 tabular-nums tracking-tight">{listeningElo}</span>
-                                    {streak > 1 && (
-                                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="flex items-center text-amber-500 text-xs font-bold">
-                                            <Flame className="w-3 h-3 mr-0.5 fill-amber-500" />
-                                            Streak
-                                        </motion.div>
-                                    )}
-                                </div>
-                            </div>
-                        </motion.div>
 
-                        {/* 2. Dictation Stats */}
-                        <motion.div
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: 0.3 }}
-                            className={cn("relative overflow-hidden flex items-center gap-5 p-3 pr-6 rounded-[1.55rem] border backdrop-blur-2xl saturate-[1.42] transition duration-300 hover:-translate-y-0.5", glassTone.soft)}
-                        >
-                            <motion.div className={cn("absolute inset-0", glassListeningLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
-                            <motion.div className={cn("absolute inset-0", glassRebuildLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
-                            <motion.div className={cn("absolute inset-0", glassDictationLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
-                            <motion.div className={cn("absolute inset-0", glassTranslationLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
-                            <div className={cn("relative z-10 w-16 h-16 rounded-xl flex items-center justify-center shadow-md text-white bg-gradient-to-br border-2 border-white/20 overflow-hidden", dictationRank.gradient)}>
-                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20" />
-                                <dictationRank.icon className="w-8 h-8 relative z-10" />
-                            </div>
-                            <div className="relative z-10">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className={cn("text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full border", glassTone.textTag)}>Dictation</span>
-                                    <div className={cn("w-2 h-2 rounded-full", dictationRank.bg.replace('bg-', 'bg-'))} />
-                                    <span className="text-xs font-bold text-slate-500">{dictationRank.title}</span>
-                                </div>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-3xl font-bold text-slate-900 tabular-nums tracking-tight">{dictationElo}</span>
-                                </div>
-                            </div>
-                        </motion.div>
-
-                        {/* 3. Translation Stats */}
-                        <motion.div
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: 0.36 }}
-                            className={cn("relative overflow-hidden flex items-center gap-5 p-3 pr-6 rounded-[1.55rem] border backdrop-blur-2xl saturate-[1.42] transition duration-300 hover:-translate-y-0.5", glassTone.soft)}
-                        >
-                            <motion.div className={cn("absolute inset-0", glassListeningLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
-                            <motion.div className={cn("absolute inset-0", glassRebuildLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
-                            <motion.div className={cn("absolute inset-0", glassDictationLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
-                            <motion.div className={cn("absolute inset-0", glassTranslationLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
-                            <div className={cn("relative z-10 w-16 h-16 rounded-xl flex items-center justify-center shadow-md text-white bg-gradient-to-br border-2 border-white/20 overflow-hidden", transRank.gradient)}>
-                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20" />
-                                <transRank.icon className="w-8 h-8 relative z-10" />
-                            </div>
-                            <div className="relative z-10">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className={cn("text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full border", glassTone.textTag)}>Translation</span>
-                                    <div className={cn("w-2 h-2 rounded-full", transRank.bg.replace('bg-', 'bg-'))} />
-                                    <span className="text-xs font-bold text-slate-500">{transRank.title}</span>
-                                </div>
-                                <div className="flex items-baseline gap-2">
-                                    <span className="text-3xl font-bold text-slate-900 tabular-nums tracking-tight">{eloRating}</span>
-                                </div>
-                            </div>
-                        </motion.div>
-
-                        <motion.div
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: 0.42 }}
-                            className={cn("relative overflow-hidden flex items-center gap-5 p-3 pr-6 rounded-[1.55rem] border backdrop-blur-2xl saturate-[1.42] transition duration-300 hover:-translate-y-0.5", glassTone.soft)}
-                        >
-                            <motion.div className={cn("absolute inset-0", glassListeningLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
-                            <motion.div className={cn("absolute inset-0", glassRebuildLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
-                            <motion.div className={cn("absolute inset-0", glassDictationLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
-                            <motion.div className={cn("absolute inset-0", glassTranslationLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
-                            <div className={cn("relative z-10 w-16 h-16 rounded-xl flex items-center justify-center shadow-md border-2 border-white/20 overflow-hidden", glassTone.icon)}>
-                                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-20" />
-                                <Blocks className="w-8 h-8 relative z-10" />
-                            </div>
-                            <div className="relative z-10">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <span className={cn("text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full border", glassTone.textTag)}>Rebuild</span>
-                                    <span className="text-xs font-bold text-slate-500">{rebuildVariant === "passage" ? "Battle Elo" : "Practice Tier"}</span>
-                                </div>
-                                <div className="flex items-baseline gap-2">
-                                    {rebuildVariant === "passage" ? (
-                                        <>
-                                            <span className="text-3xl font-bold text-slate-900 tracking-tight tabular-nums">{rebuildBattleElo}</span>
-                                            <span className="rounded-full border border-teal-200/80 bg-teal-50/80 px-2 py-0.5 text-xs font-bold text-teal-700">{rebuildBattleRank.title}</span>
-                                        </>
+                            <div className="rounded-[1.6rem] border-4 border-[#e5decd] bg-white p-5">
+                                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                    <div>
+                                        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-stone-500">Drill Source</p>
+                                        <p className="mt-1 text-sm leading-7 text-stone-600">
+                                            {battleMode === "listening"
+                                                ? "Listening 现在可以切换 AI 出题和题库题。"
+                                                : battleMode === "rebuild"
+                                                    ? rebuildVariant === "passage"
+                                                        ? "短文分段当前只开放 AI 出题，并在整篇结束后统一结算正式 Rebuild Elo。"
+                                                        : "单句 Rebuild 维持 AI 练习模式，只调整隐藏练习难度。"
+                                                    : "题库模式当前只开放给 Listening / Rebuild；其它模式继续走 AI 生成。"}
+                                        </p>
+                                    </div>
+                                    {battleMode === "listening" ? (
+                                        <div className="inline-flex items-center gap-2 rounded-full border-4 border-[#d3c8b8] bg-[#fffaf0] p-1.5">
+                                            <button
+                                                type="button"
+                                                onClick={() => setListeningSourceMode("ai")}
+                                                className={cn(
+                                                    "rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                    listeningSourceMode === "ai"
+                                                        ? cuteTone.button
+                                                        : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
+                                                )}
+                                            >
+                                                AI 出题
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setListeningSourceMode("bank")}
+                                                className={cn(
+                                                    "rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                    listeningSourceMode === "bank"
+                                                        ? cuteTone.button
+                                                        : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
+                                                )}
+                                            >
+                                                题库题
+                                            </button>
+                                        </div>
                                     ) : (
-                                        <>
-                                            <span className="text-2xl font-bold text-slate-900 tracking-tight">{rebuildTier.cefr}</span>
-                                            <span className="rounded-full border border-teal-200/80 bg-teal-50/80 px-2 py-0.5 text-xs font-bold text-teal-700">{rebuildTier.bandPosition}</span>
-                                        </>
+                                        <div className={cn("inline-flex items-center gap-2 rounded-full border-4 px-4 py-2 text-sm font-black", cuteTone.badge)}>
+                                            <Blocks className="h-4 w-4" />
+                                            AI Only
+                                        </div>
                                     )}
                                 </div>
+                                {battleMode === "rebuild" ? (
+                                    <div className="mt-4 space-y-4 border-t-2 border-[#efe7d8] pt-4">
+                                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-stone-500">Rebuild Branch</p>
+                                                <p className="mt-1 text-sm leading-7 text-stone-600">单句保留隐藏练习难度，短文分段使用正式 Elo 和历史曲线。</p>
+                                            </div>
+                                            <div className="inline-flex items-center gap-2 rounded-full border-4 border-[#d3c8b8] bg-[#fffaf0] p-1.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setRebuildVariant("sentence")}
+                                                    className={cn(
+                                                        "rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                        rebuildVariant === "sentence"
+                                                            ? cuteTone.button
+                                                            : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
+                                                    )}
+                                                >
+                                                    单句
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setRebuildVariant("passage")}
+                                                    className={cn(
+                                                        "rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                        rebuildVariant === "passage"
+                                                            ? cuteTone.button
+                                                            : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
+                                                    )}
+                                                >
+                                                    短文分段
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {rebuildVariant === "passage" ? (
+                                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                                <div>
+                                                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-stone-500">Segments</p>
+                                                    <p className="mt-1 text-sm leading-7 text-stone-600">一篇短文先按自然语义切段，再逐段完成词块重建。</p>
+                                                </div>
+                                                <div className="inline-flex items-center gap-2 rounded-full border-4 border-[#d3c8b8] bg-[#fffaf0] p-1.5">
+                                                    {([2, 3, 5] as const).map((count) => (
+                                                        <button
+                                                            key={count}
+                                                            type="button"
+                                                            onClick={() => setRebuildSegmentCount(count)}
+                                                            className={cn(
+                                                                "rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                                rebuildSegmentCount === count
+                                                                    ? cuteTone.button
+                                                                    : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
+                                                            )}
+                                                        >
+                                                            {count} 段
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ) : null}
                             </div>
-                        </motion.div>
+
+                            <button
+                                onClick={() => setActiveDrill(buildBattleSelection(RANDOM_SCENARIO_TOPIC))}
+                                className={cn("group relative w-full overflow-hidden rounded-[1.6rem] border-4 border-[#e5decd] p-6 text-left transition-all hover:-translate-y-1 md:p-8", cuteTone.cardTint)}
+                            >
+                                <div className={cn("absolute inset-0", cuteTone.heroGlow)} />
+                                <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+                                    <div className="text-left">
+                                        <div className={cn("mb-4 inline-flex items-center gap-2 rounded-full border-4 px-3 py-1 text-xs font-black uppercase tracking-wider", cuteTone.badge)}>
+                                            <Zap className="w-3 h-3" />
+                                            Quick Match
+                                        </div>
+                                        <h2 className="mb-2 text-3xl font-black text-stone-900 md:text-5xl">立即开练</h2>
+                                        <p className="max-w-2xl text-base leading-8 text-stone-600 md:text-lg">直接进入一局贴合你当前 Elo 的真实场景训练，打开就能开始练。</p>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="rounded-full border-4 border-[#ffd39e] bg-[#fff1dc] px-4 py-2 text-sm font-black text-[#d97706]">随机场景</div>
+                                        <div className={cn("flex h-20 w-20 items-center justify-center rounded-[2rem] border-4 transition-transform group-hover:scale-110 group-hover:rotate-6", cuteTone.iconWrap)}>
+                                            <Sword className="h-10 w-10" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
                 {/* Elo Chart */}
-                <div className="mb-12">
+                <div className="mb-10">
                     <AnimatePresence mode="wait" initial={false}>
                         <motion.div
                             key={`${battleMode}-${refreshCount}`}
@@ -776,21 +843,20 @@ export default function BattlePage() {
                         >
                             {battleMode === "rebuild" ? (
                                 rebuildVariant === "passage" ? (
-                                    <div className={cn("relative overflow-hidden rounded-[2rem] border border-white/45 p-6 backdrop-blur-2xl saturate-[1.4]", glassTone.soft)}>
-                                        <motion.div className={cn("absolute inset-0", glassRebuildHeroLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
+                                    <div className={cn("relative overflow-hidden p-6 md:p-7", chunkySurface, cuteTone.cardTint)}>
                                         <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                             <div>
-                                                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">Rebuild Passage Battle</p>
-                                                <h3 className="mt-2 text-2xl font-bold text-slate-900">短文分段正式 Elo</h3>
-                                                <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">整篇短文只结算一次正式 Rebuild Elo。每段保留词块重建和自评，最后自动合成为整场 shadowing 结算。</p>
+                                                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#0f8a69]">Rebuild Passage Battle</p>
+                                                <h3 className="mt-2 text-2xl font-black text-stone-900">短文分段正式 Elo</h3>
+                                                <p className="mt-2 max-w-2xl text-sm leading-7 text-stone-600">整篇短文只结算一次正式 Rebuild Elo。每段保留词块重建和自评，最后自动合成为整场 battle 结算。</p>
                                             </div>
-                                            <div className="rounded-[1.4rem] border border-teal-200/70 bg-white/70 px-5 py-4 shadow-[0_20px_40px_-30px_rgba(13,148,136,0.8)]">
-                                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-teal-600">Rebuild Elo</div>
+                                            <div className="rounded-[1.5rem] border-4 border-[#9be4c5] bg-[#eafff5] px-5 py-4 shadow-[0_10px_0_rgba(238,232,220,0.95)]">
+                                                <div className="text-xs font-black uppercase tracking-[0.18em] text-[#0f8a69]">Rebuild Elo</div>
                                                 <div className="mt-2 flex items-center gap-2">
-                                                    <span className="text-3xl font-bold text-slate-900">{rebuildBattleElo}</span>
-                                                    <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-700">{rebuildBattleRank.title}</span>
+                                                    <span className="text-3xl font-black text-stone-900">{rebuildBattleElo}</span>
+                                                    <span className="rounded-full border-4 border-[#9be4c5] bg-white px-3 py-1 text-sm font-black text-[#0f8a69]">{rebuildBattleRank.title}</span>
                                                 </div>
-                                                <div className="mt-2 text-xs font-semibold text-teal-700">当前连胜 {rebuildBattleStreak}</div>
+                                                <div className="mt-2 text-xs font-bold text-[#0f8a69]">当前连胜 {rebuildBattleStreak}</div>
                                             </div>
                                         </div>
                                         <div className="relative z-10 mt-6">
@@ -798,217 +864,59 @@ export default function BattlePage() {
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className={cn("relative overflow-hidden rounded-[2rem] border border-white/45 p-6 backdrop-blur-2xl saturate-[1.4]", glassTone.soft)}>
-                                        <motion.div className={cn("absolute inset-0", glassRebuildHeroLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
+                                    <div className={cn("relative overflow-hidden p-6 md:p-7", chunkySurface, cuteTone.cardTint)}>
                                         <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                             <div>
-                                                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-teal-700">Rebuild Practice</p>
-                                                <h3 className="mt-2 text-2xl font-bold text-slate-900">当前练习层：{rebuildTier.label}</h3>
-                                                <p className="mt-2 max-w-2xl text-sm leading-7 text-slate-600">单句 Rebuild 不改正式 Elo。系统会根据你的自评、重播次数、提示使用和拼句表现，在后台轻微上调或下调下一题难度。</p>
+                                                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#0f8a69]">Rebuild Practice</p>
+                                                <h3 className="mt-2 text-2xl font-black text-stone-900">当前练习层：{rebuildTier.label}</h3>
+                                                <p className="mt-2 max-w-2xl text-sm leading-7 text-stone-600">单句 Rebuild 不改正式 Elo。系统会根据你的自评、重播次数、提示使用和拼句表现，轻微上调或下调下一题难度。</p>
                                             </div>
-                                            <div className="rounded-[1.4rem] border border-teal-200/70 bg-white/70 px-5 py-4 shadow-[0_20px_40px_-30px_rgba(13,148,136,0.8)]">
-                                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-teal-600">Practice Tier</div>
+                                            <div className="rounded-[1.5rem] border-4 border-[#9be4c5] bg-[#eafff5] px-5 py-4 shadow-[0_10px_0_rgba(238,232,220,0.95)]">
+                                                <div className="text-xs font-black uppercase tracking-[0.18em] text-[#0f8a69]">Practice Tier</div>
                                                 <div className="mt-2 flex items-center gap-2">
-                                                    <span className="text-3xl font-bold text-slate-900">{rebuildTier.cefr}</span>
-                                                    <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm font-bold text-teal-700">{rebuildTier.bandPosition}</span>
+                                                    <span className="text-3xl font-black text-stone-900">{rebuildTier.cefr}</span>
+                                                    <span className="rounded-full border-4 border-[#9be4c5] bg-white px-3 py-1 text-sm font-black text-[#0f8a69]">{rebuildTier.bandPosition}</span>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                 )
                             ) : (
-                                <EloChart mode={battleMode} />
+                                <div className={cn("p-5 md:p-6", chunkySurface, cuteTone.cardTint)}>
+                                    <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            <p className="text-[11px] font-black uppercase tracking-[0.2em] text-stone-500">Battle Progress</p>
+                                            <h3 className="mt-2 text-2xl font-black text-stone-900">最近曲线</h3>
+                                            <p className="mt-1 text-sm leading-7 text-stone-600">看你在当前模式里的 Elo 变化、段位推进和最近训练节奏。</p>
+                                        </div>
+                                        <div className={cn("inline-flex items-center gap-2 rounded-full border-4 px-4 py-2 text-sm font-black", cuteTone.badge)}>
+                                            <Gauge className="h-4 w-4" />
+                                            {activeModeLabel}
+                                        </div>
+                                    </div>
+                                    <EloChart mode={battleMode} />
+                                </div>
                             )}
                         </motion.div>
                     </AnimatePresence>
                 </div>
 
-                {/* Mode Switcher */}
-                <div className="flex justify-center mb-12">
-                    <div className={cn("relative flex items-center gap-2 backdrop-blur-2xl saturate-[1.45] p-1.5 rounded-full border", glassTone.pill)}>
-                        <motion.div className={cn("absolute inset-0 rounded-full", glassListeningLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
-                        <motion.div className={cn("absolute inset-0 rounded-full", glassRebuildLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
-                        <motion.div className={cn("absolute inset-0 rounded-full", glassDictationLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
-                        <motion.div className={cn("absolute inset-0 rounded-full", glassTranslationLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
-                        <motion.div
-                            className={cn("absolute h-[calc(100%-12px)] top-[6px] rounded-full border border-white/50", glassTone.active)}
-                            initial={false}
-                            animate={{
-                                left: `calc(${activeBattleModeIndex} * ((100% - 12px) / 4) + 6px)`,
-                                width: "calc((100% - 12px) / 4)",
-                            }}
-                            transition={{ type: "spring", stiffness: 210, damping: 24, mass: 0.84 }}
-                        />
-                        {battleModeTabs.map((tab) => (
-                            <button
-                                key={tab.key}
-                                onClick={() => setBattleMode(tab.key)}
-                                className={cn(
-                                    "relative z-10 flex min-w-[122px] items-center justify-center gap-2 px-5 py-3 rounded-full text-sm font-bold transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                                    battleMode === tab.key
-                                        ? "text-slate-900 scale-105"
-                                        : "text-slate-600 hover:text-slate-800 hover:bg-white/35"
-                                )}
-                            >
-                                <div className={cn("w-2 h-2 rounded-full", battleMode === tab.key ? `${tab.dotClass} animate-pulse` : "bg-stone-300")} />
-                                {tab.label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                <div className="mb-12 flex justify-center">
-                    <div className={cn("w-full max-w-2xl rounded-[1.6rem] border border-white/55 px-5 py-4 backdrop-blur-2xl saturate-[1.35]", glassTone.soft)}>
-                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                            <div>
-                                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">Drill Source</p>
-                                <p className="mt-1 text-sm text-slate-700">
-                                    {battleMode === "listening"
-                                        ? "Listening 现在可以切换 AI 出题和题库题。"
-                                        : battleMode === "rebuild"
-                                            ? rebuildVariant === "passage"
-                                                ? "短文分段当前只开放 AI 出题，并在整篇结束后统一结算正式 Rebuild Elo。"
-                                                : "单句 Rebuild 维持 AI 练习模式，只调整隐藏练习难度。"
-                                            : "题库模式当前只开放给 Listening / Rebuild；其它模式继续走 AI 生成。"}
-                                </p>
-                            </div>
-                            {battleMode === "listening" ? (
-                                <div className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/55 p-1">
-                                    <button
-                                        type="button"
-                                        onClick={() => setListeningSourceMode("ai")}
-                                        className={cn(
-                                            "rounded-full px-4 py-2 text-sm font-semibold transition",
-                                            listeningSourceMode === "ai"
-                                                ? "bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
-                                                : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
-                                        )}
-                                    >
-                                        AI 出题
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setListeningSourceMode("bank")}
-                                        className={cn(
-                                            "rounded-full px-4 py-2 text-sm font-semibold transition",
-                                            listeningSourceMode === "bank"
-                                                ? "bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
-                                                : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
-                                        )}
-                                    >
-                                        题库题
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="inline-flex items-center gap-2 rounded-full border border-teal-200/70 bg-teal-50/75 px-4 py-2 text-sm font-semibold text-teal-700">
-                                    <Blocks className="h-4 w-4" />
-                                    AI Only
-                                </div>
-                            )}
-                        </div>
-                        {battleMode === "rebuild" ? (
-                            <div className="mt-4 space-y-4 border-t border-white/65 pt-4">
-                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                    <div>
-                                        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">Rebuild Branch</p>
-                                        <p className="mt-1 text-sm text-slate-700">单句保留隐藏练习难度，短文分段使用正式 Elo 和历史曲线。</p>
-                                    </div>
-                                    <div className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/55 p-1">
-                                        <button
-                                            type="button"
-                                            onClick={() => setRebuildVariant("sentence")}
-                                            className={cn(
-                                                "rounded-full px-4 py-2 text-sm font-semibold transition",
-                                                rebuildVariant === "sentence"
-                                                    ? "bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
-                                                    : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
-                                            )}
-                                        >
-                                            单句
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setRebuildVariant("passage")}
-                                            className={cn(
-                                                "rounded-full px-4 py-2 text-sm font-semibold transition",
-                                                rebuildVariant === "passage"
-                                                    ? "bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
-                                                    : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
-                                            )}
-                                        >
-                                            短文分段
-                                        </button>
-                                    </div>
-                                </div>
-                                {rebuildVariant === "passage" ? (
-                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                        <div>
-                                            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-500">Segments</p>
-                                            <p className="mt-1 text-sm text-slate-700">一篇短文先按自然语义切段，再逐段完成词块重建。</p>
-                                        </div>
-                                        <div className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/55 p-1">
-                                            {([2, 3, 5] as const).map((count) => (
-                                                <button
-                                                    key={count}
-                                                    type="button"
-                                                    onClick={() => setRebuildSegmentCount(count)}
-                                                    className={cn(
-                                                        "rounded-full px-4 py-2 text-sm font-semibold transition",
-                                                        rebuildSegmentCount === count
-                                                            ? "bg-slate-900 text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)]"
-                                                            : "text-slate-600 hover:bg-white/70 hover:text-slate-900"
-                                                    )}
-                                                >
-                                                    {count} 段
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ) : null}
-                            </div>
-                        ) : null}
-                    </div>
-                </div>
-
-                {/* Quick Start Hero */}
-                <motion.div
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                    className="mb-20"
-                >
-                    <button
-                        onClick={() => setActiveDrill(buildBattleSelection(RANDOM_SCENARIO_TOPIC))}
-                        className={cn("group relative w-full overflow-hidden rounded-[2.1rem] border border-white/45 text-slate-900 backdrop-blur-[22px] saturate-[1.5] transition-all hover:scale-[1.01]", glassTone.hero)}
-                    >
-                        <motion.div className={cn("absolute inset-0 z-0", glassListeningHeroLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
-                        <motion.div className={cn("absolute inset-0 z-0", glassRebuildHeroLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
-                        <motion.div className={cn("absolute inset-0 z-0", glassDictationHeroLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
-                        <motion.div className={cn("absolute inset-0 z-0", glassTranslationHeroLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
-                        <div className="absolute inset-0 bg-[radial-gradient(120%_120%_at_8%_0%,rgba(255,255,255,0.6),rgba(255,255,255,0.12)_44%,transparent_70%)] z-0" />
-
-                        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between p-8 md:p-12 gap-8">
-                            <div className="text-left">
-                                <div className={cn("inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-4 border border-white/45", glassTone.badge)}>
-                                    <Zap className="w-3 h-3" /> Quick Match
-                                </div>
-                                <h2 className="text-3xl md:text-5xl font-bold mb-2">Instant Combat</h2>
-                                <p className="text-slate-600 text-lg max-w-md">Enter a random real-world scenario tailored to your current Elo level.</p>
-                            </div>
-                            <div className={cn("w-16 h-16 rounded-full border border-white/55 flex items-center justify-center transition-transform group-hover:scale-110 group-hover:rotate-45", glassTone.icon)}>
-                                <Sword className="w-8 h-8" />
-                            </div>
-                        </div>
-                    </button>
-                </motion.div>
-
                 {/* Topic Grid */}
-                <div>
-                    <h3 className="text-2xl font-bold text-slate-900 mb-8 flex items-center gap-3">
-                        <span className={cn("w-2 h-8 rounded-full", glassTone.marker)} />
-                        Theme Academy
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className={cn("p-5 md:p-6", chunkySurface)}>
+                    <div className="mb-8 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                        <div>
+                            <h3 className="flex items-center gap-3 text-2xl font-black text-stone-900">
+                                <span className={cn("h-8 w-2 rounded-full", cuteTone.marker)} />
+                                训练主题
+                            </h3>
+                            <p className="mt-2 text-sm leading-7 text-stone-600">每张卡片就是一局可爱的 battle 场景，按当前模式和 Elo 自适应难度。</p>
+                        </div>
+                        <div className={cn("inline-flex items-center gap-2 rounded-full border-4 px-4 py-2 text-sm font-black", cuteTone.badge)}>
+                            <Gift className="h-4 w-4" />
+                            Topic Academy
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
                         {TOPICS.map((topic, i) => {
                             const isLocked = activeModeDifficultyElo < topic.minElo;
                             return (
@@ -1022,33 +930,26 @@ export default function BattlePage() {
                                         onClick={() => !isLocked && setActiveDrill(buildBattleSelection(topic.title))}
                                         disabled={isLocked}
                                         className={cn(
-                                            "w-full h-full text-left p-6 rounded-[1.8rem] border transition-all duration-300 relative overflow-hidden group",
+                                            "group relative h-full w-full overflow-hidden rounded-[1.8rem] border-4 p-6 text-left transition-all duration-300",
                                             isLocked
-                                                ? "bg-[linear-gradient(135deg,rgba(235,244,255,0.45),rgba(206,228,255,0.2))] border-white/35 opacity-75 cursor-not-allowed backdrop-blur-xl"
-                                                : cn("border-white/45 backdrop-blur-2xl saturate-[1.45] hover:-translate-y-1", glassTone.soft)
+                                                ? "cursor-not-allowed border-[#ddd5c9] bg-[#f8f4ec] opacity-75"
+                                                : cn("border-[#d3c8b8] bg-white shadow-[0_14px_30px_rgba(199,183,152,0.14),6px_6px_0_rgba(238,232,220,0.95)] hover:-translate-y-1", cuteTone.softTint)
                                         )}
                                     >
-                                        {!isLocked && (
-                                            <>
-                                                <motion.div className={cn("absolute inset-0 z-0", glassListeningLayer)} animate={{ opacity: modeOpacity("listening") }} transition={glassBlendTransition} />
-                                                <motion.div className={cn("absolute inset-0 z-0", glassRebuildLayer)} animate={{ opacity: modeOpacity("rebuild") }} transition={glassBlendTransition} />
-                                                <motion.div className={cn("absolute inset-0 z-0", glassDictationLayer)} animate={{ opacity: modeOpacity("dictation") }} transition={glassBlendTransition} />
-                                                <motion.div className={cn("absolute inset-0 z-0", glassTranslationLayer)} animate={{ opacity: modeOpacity("translation") }} transition={glassBlendTransition} />
-                                            </>
-                                        )}
-                                        <div className={cn("inline-flex p-3 rounded-2xl mb-4 transition-transform group-hover:scale-110", topic.color)}>
+                                        {!isLocked ? <div className={cn("absolute inset-0 opacity-60", cuteTone.heroGlow)} /> : null}
+                                        <div className={cn("relative z-10 mb-4 inline-flex rounded-[1.25rem] border-4 border-white p-3 shadow-[0_8px_18px_rgba(0,0,0,0.1)] transition-transform group-hover:scale-110", topic.color)}>
                                             <topic.icon className="w-6 h-6" />
                                         </div>
 
-                                        <h4 className="relative z-10 text-xl font-bold text-slate-800 mb-1">{topic.title}</h4>
-                                        <p className="relative z-10 text-sm text-slate-600 font-medium mb-4">{topic.description}</p>
+                                        <h4 className="relative z-10 mb-1 text-xl font-black text-stone-900">{topic.title}</h4>
+                                        <p className="relative z-10 mb-4 text-sm font-medium leading-7 text-stone-600">{topic.description}</p>
 
                                         {isLocked ? (
-                                            <div className="relative z-10 inline-flex items-center gap-2 text-xs font-bold text-slate-500 bg-white/45 px-3 py-1.5 rounded-full border border-white/45">
+                                            <div className="relative z-10 inline-flex items-center gap-2 rounded-full border-4 border-[#ddd5c9] bg-white px-3 py-1.5 text-xs font-black text-stone-500">
                                                 <Lock className="w-3 h-3" /> Requires {topic.minElo} Elo
                                             </div>
                                         ) : (
-                                            <div className={cn("absolute bottom-6 right-6 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all", glassTone.chevron)}>
+                                            <div className={cn("absolute bottom-6 right-6 opacity-0 -translate-x-2 transition-all group-hover:translate-x-0 group-hover:opacity-100", glassTone.chevron)}>
                                                 <ChevronRight className="w-6 h-6" />
                                             </div>
                                         )}
@@ -1066,7 +967,7 @@ export default function BattlePage() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[85] bg-slate-950/55 backdrop-blur-sm p-3 md:p-8"
+                        className="fixed inset-0 z-[85] bg-[rgba(80,66,41,0.22)] backdrop-blur-sm p-3 md:p-8"
                         onClick={() => setShowGuide(false)}
                     >
                         <motion.div
@@ -1075,16 +976,16 @@ export default function BattlePage() {
                             exit={{ y: 12, scale: 0.985, opacity: 0 }}
                             transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
                             onClick={(event) => event.stopPropagation()}
-                            className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] border border-white/60 bg-[linear-gradient(165deg,rgba(255,255,255,0.95),rgba(245,243,255,0.94))] shadow-[0_35px_100px_rgba(15,23,42,0.35)]"
+                            className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] border-4 border-[#d3c8b8] bg-[linear-gradient(165deg,#fffdf7,rgba(248,243,255,0.96))] shadow-[0_35px_100px_rgba(15,23,42,0.18),10px_10px_0_rgba(238,232,220,0.96)]"
                         >
-                            <div className="flex items-center justify-between border-b border-white/65 px-5 py-4 md:px-7">
+                            <div className="flex items-center justify-between border-b-2 border-[#efe7d8] px-5 py-4 md:px-7">
                                 <div>
                                     <p className="text-[11px] font-black uppercase tracking-[0.22em] text-purple-600">Battle Guide</p>
-                                    <h2 className="mt-1 text-xl font-bold text-stone-900">三模式详细玩法</h2>
+                                    <h2 className="mt-1 text-xl font-black text-stone-900">三模式详细玩法</h2>
                                 </div>
                                 <button
                                     onClick={() => setShowGuide(false)}
-                                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-purple-200/70 bg-white/80 text-purple-700 transition hover:bg-purple-50"
+                                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border-4 border-[#dcc4ff] bg-white text-purple-700 transition hover:bg-purple-50"
                                     aria-label="关闭玩法说明"
                                 >
                                     <X className="h-4 w-4" />
@@ -1093,7 +994,7 @@ export default function BattlePage() {
 
                             <div className="custom-scrollbar overflow-y-auto px-5 py-5 md:px-7 md:py-6">
                                 <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
-                                    <aside className="h-fit rounded-2xl border border-white/70 bg-white/70 p-3 backdrop-blur-xl">
+                                    <aside className="h-fit rounded-[1.6rem] border-4 border-[#d3c8b8] bg-white p-3 shadow-[0_10px_0_rgba(238,232,220,0.95)]">
                                         <p className="mb-2 px-2 text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">目录</p>
                                         <div className="space-y-1.5">
                                             {GUIDE_SECTIONS.map((section) => {
@@ -1104,10 +1005,10 @@ export default function BattlePage() {
                                                         key={section.id}
                                                         onClick={() => setActiveGuideSection(section.id)}
                                                         className={cn(
-                                                            "w-full rounded-xl border px-2.5 py-2 text-left transition-all",
+                                                            "w-full rounded-[1rem] border-4 px-2.5 py-2 text-left transition-all",
                                                             isActive
-                                                                ? cn("shadow-[0_10px_20px_rgba(15,23,42,0.08)]", section.tone)
-                                                                : "border-transparent bg-white/60 text-stone-600 hover:border-stone-200 hover:bg-white"
+                                                                ? cn("shadow-[0_10px_0_rgba(238,232,220,0.95)]", section.tone)
+                                                                : "border-transparent bg-[#fffaf0] text-stone-600 hover:border-[#e5decd] hover:bg-white"
                                                         )}
                                                     >
                                                         <div className="flex items-start gap-2">
@@ -1126,7 +1027,7 @@ export default function BattlePage() {
                                     </aside>
 
                                     <div className="space-y-4">
-                                        <div className={cn("rounded-2xl border px-4 py-3 shadow-[0_12px_24px_rgba(15,23,42,0.08)]", activeGuideMeta.tone)}>
+                                        <div className={cn("rounded-[1.5rem] border-4 px-4 py-3 shadow-[0_10px_0_rgba(238,232,220,0.95)]", activeGuideMeta.tone)}>
                                             <div className="flex items-center gap-2">
                                                 <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl border border-current/30 bg-white/75">
                                                     <activeGuideMeta.icon className="h-4 w-4" />
@@ -1369,7 +1270,7 @@ export default function BattlePage() {
                                             </div>
                                         )}
 
-                                        <div className="rounded-2xl border border-white/70 bg-white/78 px-4 py-4 shadow-[0_12px_24px_rgba(15,23,42,0.08)] md:px-5">
+                                        <div className="rounded-[1.6rem] border-4 border-[#d3c8b8] bg-white px-4 py-4 shadow-[0_10px_0_rgba(238,232,220,0.95)] md:px-5">
                                             <ReactMarkdown
                                                 remarkPlugins={[remarkGfm]}
                                                 components={GUIDE_MARKDOWN_COMPONENTS}
