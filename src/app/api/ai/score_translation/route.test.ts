@@ -35,6 +35,7 @@ function buildRequest(overrides: Partial<{
     current_elo: number;
     mode: "translation" | "listening" | "dictation";
     input_source: "keyboard" | "voice";
+    is_reverse: boolean;
 }> = {}) {
     return {
         json: async () => ({
@@ -44,6 +45,7 @@ function buildRequest(overrides: Partial<{
             current_elo: 860,
             mode: "dictation",
             input_source: "keyboard",
+            is_reverse: false,
             ...overrides,
         }),
     } as Parameters<typeof POST>[0];
@@ -112,5 +114,47 @@ describe("score_translation route", () => {
         expect(data.score).toBe(10);
         expect(data.feedback.dictation_tips[0]).toContain("标点");
         expect(data.error_analysis ?? []).toEqual([]);
+    });
+
+    it("normalizes translation score to 0-10 when model returns 100", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletionPayload({
+                score: 100,
+                judge_reasoning: "语义基本正确。",
+            }),
+        );
+
+        const response = await POST(buildRequest({
+            mode: "translation",
+            is_reverse: true,
+            user_translation: "我昨天去了超市",
+            original_chinese: "我昨天去了超市。",
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.score).toBe(10);
+    });
+
+    it("caps reverse translation score when answer is not Chinese", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletionPayload({
+                score: 10,
+                judge_reasoning: "perfect",
+            }),
+        );
+
+        const response = await POST(buildRequest({
+            mode: "translation",
+            is_reverse: true,
+            user_translation: "asdf qwer random text",
+            original_chinese: "我昨天去了超市。",
+            reference_english: "I went to the supermarket yesterday.",
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.score).toBeLessThanOrEqual(2);
+        expect(String(data.judge_reasoning)).toContain("需中文翻译");
     });
 });

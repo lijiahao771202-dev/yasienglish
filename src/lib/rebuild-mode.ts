@@ -239,13 +239,61 @@ export function buildRebuildTokenBank(params: {
     return shuffleWithRandom([...answerTokens, ...distractorTokens], random);
 }
 
+function buildLcsPairs(answerTokens: string[], selectedTokens: string[]) {
+    const answerNormalized = answerTokens.map((token) => normalizeRebuildToken(token));
+    const selectedNormalized = selectedTokens.map((token) => normalizeRebuildToken(token));
+    const answerLength = answerTokens.length;
+    const selectedLength = selectedTokens.length;
+
+    const dp = Array.from({ length: answerLength + 1 }, () => new Array(selectedLength + 1).fill(0));
+    for (let answerIndex = answerLength - 1; answerIndex >= 0; answerIndex -= 1) {
+        for (let selectedIndex = selectedLength - 1; selectedIndex >= 0; selectedIndex -= 1) {
+            if (
+                answerNormalized[answerIndex]
+                && selectedNormalized[selectedIndex]
+                && answerNormalized[answerIndex] === selectedNormalized[selectedIndex]
+            ) {
+                dp[answerIndex][selectedIndex] = dp[answerIndex + 1][selectedIndex + 1] + 1;
+            } else {
+                dp[answerIndex][selectedIndex] = Math.max(
+                    dp[answerIndex + 1][selectedIndex],
+                    dp[answerIndex][selectedIndex + 1],
+                );
+            }
+        }
+    }
+
+    const pairs: Array<{ answerIndex: number; selectedIndex: number }> = [];
+    let answerCursor = 0;
+    let selectedCursor = 0;
+    while (answerCursor < answerLength && selectedCursor < selectedLength) {
+        if (
+            answerNormalized[answerCursor]
+            && selectedNormalized[selectedCursor]
+            && answerNormalized[answerCursor] === selectedNormalized[selectedCursor]
+        ) {
+            pairs.push({ answerIndex: answerCursor, selectedIndex: selectedCursor });
+            answerCursor += 1;
+            selectedCursor += 1;
+            continue;
+        }
+
+        if (dp[answerCursor + 1][selectedCursor] >= dp[answerCursor][selectedCursor + 1]) {
+            answerCursor += 1;
+        } else {
+            selectedCursor += 1;
+        }
+    }
+
+    return pairs;
+}
+
 export function evaluateRebuildSelection(params: {
     answerTokens: string[];
     selectedTokens: string[];
 }) : RebuildEvaluationResult {
     const { answerTokens, selectedTokens } = params;
     const answerCounts = new Map<string, number>();
-    const usedExact = new Array(answerTokens.length).fill(false);
 
     for (const token of answerTokens) {
         const normalized = normalizeRebuildToken(token);
@@ -257,17 +305,24 @@ export function evaluateRebuildSelection(params: {
     let misplacedCount = 0;
     let distractorCount = 0;
     const matchedAnswerIndexes = new Set<number>();
+    const consumedAnswerIndexes = new Set<number>();
+    const lcsPairs = buildLcsPairs(answerTokens, selectedTokens);
+    const exactBySelectedIndex = new Map<number, number>();
+    lcsPairs.forEach(({ answerIndex, selectedIndex }) => {
+        exactBySelectedIndex.set(selectedIndex, answerIndex);
+        consumedAnswerIndexes.add(answerIndex);
+    });
 
     selectedTokens.forEach((token, selectedIndex) => {
-        if (answerTokens[selectedIndex] === token) {
+        const exactAnswerIndex = exactBySelectedIndex.get(selectedIndex);
+        if (exactAnswerIndex !== undefined) {
             tokenFeedback.push({
                 text: token,
                 selectedIndex,
-                expectedIndex: selectedIndex,
+                expectedIndex: exactAnswerIndex,
                 status: "correct",
             });
-            usedExact[selectedIndex] = true;
-            matchedAnswerIndexes.add(selectedIndex);
+            matchedAnswerIndexes.add(exactAnswerIndex);
             correctCount += 1;
             const normalized = normalizeRebuildToken(token);
             answerCounts.set(normalized, Math.max(0, (answerCounts.get(normalized) ?? 1) - 1));
@@ -276,7 +331,7 @@ export function evaluateRebuildSelection(params: {
 
         const normalized = normalizeRebuildToken(token);
         const matchingIndex = answerTokens.findIndex((answerToken, answerIndex) => (
-            !usedExact[answerIndex] && normalizeRebuildToken(answerToken) === normalized
+            !consumedAnswerIndexes.has(answerIndex) && normalizeRebuildToken(answerToken) === normalized
         ));
 
         if (matchingIndex >= 0) {
@@ -286,7 +341,7 @@ export function evaluateRebuildSelection(params: {
                 expectedIndex: matchingIndex,
                 status: "misplaced",
             });
-            usedExact[matchingIndex] = true;
+            consumedAnswerIndexes.add(matchingIndex);
             matchedAnswerIndexes.add(matchingIndex);
             misplacedCount += 1;
             answerCounts.set(normalized, Math.max(0, (answerCounts.get(normalized) ?? 1) - 1));
@@ -352,18 +407,18 @@ export function buildRebuildDisplaySentence(params: {
     evaluation: RebuildEvaluationResult;
 }): RebuildDisplaySentence {
     const { answerTokens, evaluation } = params;
-    const selectedFeedback = [...evaluation.tokenFeedback]
+    const selectedFeedback = evaluation.tokenFeedback
         .filter((token) => token.selectedIndex !== null)
         .sort((left, right) => (left.selectedIndex ?? 0) - (right.selectedIndex ?? 0));
-    const feedbackBySelectedIndex = new Map<number, RebuildEvaluationToken>();
+    const feedbackByExpectedIndex = new Map<number, RebuildEvaluationToken>();
     selectedFeedback.forEach((token) => {
-        if (token.selectedIndex !== null) {
-            feedbackBySelectedIndex.set(token.selectedIndex, token);
+        if (typeof token.expectedIndex === "number" && token.expectedIndex >= 0) {
+            feedbackByExpectedIndex.set(token.expectedIndex, token);
         }
     });
 
     const tokens: RebuildDisplayToken[] = answerTokens.map((answerToken, index) => {
-        const feedbackAtIndex = feedbackBySelectedIndex.get(index);
+        const feedbackAtIndex = feedbackByExpectedIndex.get(index);
         if (!feedbackAtIndex) {
             return {
                 text: answerToken,
@@ -394,7 +449,7 @@ export function buildRebuildDisplaySentence(params: {
     });
 
     const extraTokens = selectedFeedback
-        .filter((token) => (token.selectedIndex ?? -1) >= answerTokens.length)
+        .filter((token) => (token.expectedIndex ?? -1) < 0)
         .map((token) => ({
             text: token.text,
             kind: "removed" as const,

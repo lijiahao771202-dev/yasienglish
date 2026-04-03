@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useEffect, useRef, useCallback } from "react";
+import { memo, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Sparkles, RefreshCw, Send, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock, Shuffle, SkipForward, CheckCircle2, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -8,6 +8,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as Diff from 'diff';
 import confetti from 'canvas-confetti';
 import { WordPopup, PopupState } from "../reading/WordPopup";
+import { ListeningShadowingControls } from "../reading/ListeningShadowingControls";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 import { useIPA } from "@/hooks/useIPA";
 import { db } from "@/lib/db";
@@ -67,6 +68,15 @@ import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 import { buildTranslationHighlights, normalizeTranslationForComparison } from "@/lib/translation-diff";
 import { requestTtsPayload, resolveTtsAudioBlob } from "@/lib/tts-client";
 import { getDrillSurfacePhase, shouldExpandShopInventoryDock } from "@/lib/battleUiState";
+import { alignTokensToMarks, extractWordTokens, normalizeWordForMatch, type TtsWordMark } from "@/lib/read-speaking";
+import {
+    alignPronunciationTokens as alignSharedPronunciationTokens,
+    estimateListeningProgress as estimateSharedListeningProgress,
+    resolveListeningScoreTier as resolveSharedListeningScoreTier,
+    scoreListeningRecognition as scoreSharedListeningRecognition,
+    type ListeningScoreTier,
+    type PronunciationTokenState,
+} from "@/lib/listening-shadowing";
 import {
     createDailyDrillProgress,
     incrementStoredDailyDrillProgress,
@@ -105,6 +115,13 @@ import {
 import sphereSplitterAnimation from "@/assets/lottie/sphere-splitter.json";
 import { loadLocalProfile, saveProfilePatch, saveWritingHistory, settleBattle } from "@/lib/user-repository";
 import type { PronunciationWordResult } from "@/lib/pronunciation-scoring";
+import {
+    REBUILD_SHADOWING_AFFECTS_ELO,
+    createRebuildShadowingState,
+    getRebuildShadowingEntry,
+    type RebuildShadowingScope,
+    upsertRebuildShadowingEntry,
+} from "@/lib/rebuild-shadowing-state";
 
 // --- Interfaces ---
 
@@ -537,6 +554,112 @@ function buildConnectedSentenceIpa(
     return combined ? `/${combined}/` : "";
 }
 
+interface RebuildSpeechRecognitionResultEntry {
+    transcript?: string;
+}
+
+interface RebuildSpeechRecognitionResultLike {
+    isFinal?: boolean;
+    0?: RebuildSpeechRecognitionResultEntry;
+}
+
+interface RebuildSpeechRecognitionEventLike {
+    results?: ArrayLike<RebuildSpeechRecognitionResultLike>;
+    resultIndex?: number;
+}
+
+interface RebuildSpeechRecognitionErrorEventLike {
+    error?: string;
+    message?: string;
+}
+
+interface RebuildSpeechRecognition {
+    lang: string;
+    continuous: boolean;
+    interimResults: boolean;
+    maxAlternatives: number;
+    onresult: ((event: RebuildSpeechRecognitionEventLike) => void) | null;
+    onerror: ((event: RebuildSpeechRecognitionErrorEventLike) => void) | null;
+    onend: (() => void) | null;
+    start: () => void;
+    stop: () => void;
+    abort: () => void;
+}
+
+type RebuildSpeechRecognitionConstructor = new () => RebuildSpeechRecognition;
+type RebuildShadowingTokenState = Extract<PronunciationTokenState, "correct" | "incorrect" | "missed">;
+type RebuildShadowingScoreTier = ListeningScoreTier;
+
+function normalizeRebuildShadowingText(text: string) {
+    return text.replace(/\s+/g, " ").trim();
+}
+
+function scoreRebuildShadowingRecognition(referenceSentence: string, transcript: string) {
+    return scoreSharedListeningRecognition(referenceSentence, transcript);
+}
+
+function estimateRebuildShadowingProgress(referenceSentence: string, transcript: string) {
+    return estimateSharedListeningProgress(referenceSentence, transcript);
+}
+
+function resolveRebuildShadowingScoreTier(score: number): RebuildShadowingScoreTier {
+    return resolveSharedListeningScoreTier(score);
+}
+
+function alignRebuildShadowingTokens(params: {
+    targetTokens: Array<{ sourceIndex: number; token: string }>;
+    spokenTokens: string[];
+}) {
+    const result = alignSharedPronunciationTokens(params);
+    return {
+        tokenStates: result.tokenStates as Map<number, RebuildShadowingTokenState>,
+        correctCount: result.correctCount,
+    };
+}
+
+function buildRebuildShadowingWordResults(referenceSentence: string, transcript: string): PronunciationWordResult[] {
+    const sourceTokens = extractWordTokens(referenceSentence);
+    const targetTokens = sourceTokens
+        .map((token) => ({ sourceIndex: token.index, token: normalizeWordForMatch(token.text) }))
+        .filter((item) => Boolean(item.token));
+    const spokenTokens = extractWordTokens(transcript)
+        .map((token) => normalizeWordForMatch(token.text))
+        .filter(Boolean);
+    const { tokenStates } = alignRebuildShadowingTokens({
+        targetTokens,
+        spokenTokens,
+    });
+
+    return sourceTokens.map((token) => {
+        const state = tokenStates.get(token.index);
+        if (state === "correct") {
+            return {
+                word: token.text,
+                status: "correct",
+                score: 9.5,
+                accuracy_score: 9.4,
+                stress_score: 9.1,
+            } satisfies PronunciationWordResult;
+        }
+        if (state === "missed") {
+            return {
+                word: token.text,
+                status: "missing",
+                score: 0,
+                accuracy_score: 0,
+                stress_score: 0,
+            } satisfies PronunciationWordResult;
+        }
+        return {
+            word: token.text,
+            status: "weak",
+            score: 5.2,
+            accuracy_score: 5.0,
+            stress_score: 5.1,
+        } satisfies PronunciationWordResult;
+    });
+}
+
 interface DrillFeedback {
     score: number;
     pronunciation_score?: number;
@@ -634,6 +757,39 @@ interface RebuildFeedbackState {
     skipped: boolean;
     exceededSoftLimit: boolean;
     resolvedAt: number;
+}
+
+interface RebuildShadowingResult extends DrillFeedback {
+    submittedAt: number;
+}
+
+interface RebuildShadowingState {
+    sentence: {
+        wavBlob: Blob | null;
+        result: RebuildShadowingResult | null;
+        submitError: string | null;
+        updatedAt: number;
+    };
+    bySegment: Record<number, {
+        wavBlob: Blob | null;
+        result: RebuildShadowingResult | null;
+        submitError: string | null;
+        updatedAt: number;
+    }>;
+    isRecording: boolean;
+    isProcessing: boolean;
+    isSubmitting: boolean;
+}
+
+type RebuildSentenceShadowingFlow = "idle" | "prompt" | "shadowing" | "feedback";
+
+function createDefaultRebuildShadowingState(): RebuildShadowingState {
+    return {
+        ...createRebuildShadowingState<Blob, RebuildShadowingResult>(),
+        isRecording: false,
+        isProcessing: false,
+        isSubmitting: false,
+    };
 }
 
 interface RebuildPassageSegmentScore {
@@ -1578,6 +1734,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [rebuildPassageUiState, setRebuildPassageUiState] = useState<RebuildPassageSegmentUiState[]>([]);
     const [rebuildPassageScores, setRebuildPassageScores] = useState<RebuildPassageSegmentScore[]>([]);
     const [rebuildPassageSummary, setRebuildPassageSummary] = useState<RebuildPassageSummaryState | null>(null);
+    const [rebuildShadowingState, setRebuildShadowingState] = useState<RebuildShadowingState>(() => createDefaultRebuildShadowingState());
+    const [rebuildSentenceShadowingFlow, setRebuildSentenceShadowingFlow] = useState<RebuildSentenceShadowingFlow>("idle");
     const [pendingRebuildAdvanceElo, setPendingRebuildAdvanceElo] = useState<number | null>(null);
     const lastRebuildResolvedAtRef = useRef<number | null>(null);
     const lastScoreCelebrationRef = useRef<string>("");
@@ -1601,6 +1759,97 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const activePassageResult = isRebuildPassage
         ? (rebuildPassageResults.find((item) => item.segmentIndex === activePassageSegmentIndex) ?? null)
         : null;
+    const activeRebuildShadowingScope = useMemo<RebuildShadowingScope | null>(() => {
+        if (!isRebuildMode) return null;
+        if (isRebuildPassage) {
+            return activePassageResult
+                ? { kind: "segment", segmentIndex: activePassageSegmentIndex }
+                : null;
+        }
+        return rebuildFeedback ? { kind: "sentence" } : null;
+    }, [activePassageResult, activePassageSegmentIndex, isRebuildMode, isRebuildPassage, rebuildFeedback]);
+    const activeRebuildShadowingReferenceEnglish = useMemo(() => {
+        if (!drillData || !activeRebuildShadowingScope) return "";
+        if (activeRebuildShadowingScope.kind === "segment") {
+            return drillData._rebuildMeta?.passageSession?.segments?.[activeRebuildShadowingScope.segmentIndex]?.referenceEnglish || "";
+        }
+        return drillData.reference_english || "";
+    }, [activeRebuildShadowingScope, drillData]);
+    const activeRebuildShadowingEntry = useMemo(() => (
+        activeRebuildShadowingScope
+            ? getRebuildShadowingEntry<Blob, RebuildShadowingResult>(rebuildShadowingState, activeRebuildShadowingScope)
+            : null
+    ), [activeRebuildShadowingScope, rebuildShadowingState]);
+    const [rebuildShadowingLiveRecognitionTranscript, setRebuildShadowingLiveRecognitionTranscript] = useState("");
+    const [rebuildListeningProgressCursor, setRebuildListeningProgressCursor] = useState(0);
+    const [isRebuildSpeechRecognitionRunning, setIsRebuildSpeechRecognitionRunning] = useState(false);
+    const [isRebuildSpeechRecognitionSupported, setIsRebuildSpeechRecognitionSupported] = useState(true);
+    const rebuildShadowingRecorderRef = useRef<MediaRecorder | null>(null);
+    const rebuildShadowingRecorderStreamRef = useRef<MediaStream | null>(null);
+    const rebuildShadowingRecorderChunksRef = useRef<Blob[]>([]);
+    const rebuildShadowingDiscardRecordingOnStopRef = useRef(false);
+    const rebuildShadowingSpeechRecognitionRef = useRef<RebuildSpeechRecognition | null>(null);
+    const rebuildShadowingSpeechRecognitionStopRequestedRef = useRef(false);
+    const rebuildShadowingSpeechRecognitionFinalTranscriptRef = useRef("");
+    const rebuildShadowingSpeechRecognitionInterimTranscriptRef = useRef("");
+    const rebuildShadowingListeningProgressCursorRef = useRef(0);
+    const rebuildShadowingRecordingScopeRef = useRef<RebuildShadowingScope | null>(null);
+    const rebuildShadowingPlaybackRef = useRef<HTMLAudioElement | null>(null);
+    const rebuildShadowingPlaybackUrlRef = useRef<string | null>(null);
+    const resetRebuildShadowingState = useCallback(() => {
+        rebuildShadowingDiscardRecordingOnStopRef.current = true;
+        const recorder = rebuildShadowingRecorderRef.current;
+        if (recorder && recorder.state !== "inactive") {
+            try {
+                recorder.stop();
+            } catch {
+                // noop
+            }
+        }
+        if (rebuildShadowingRecorderStreamRef.current) {
+            for (const track of rebuildShadowingRecorderStreamRef.current.getTracks()) {
+                track.stop();
+            }
+            rebuildShadowingRecorderStreamRef.current = null;
+        }
+        rebuildShadowingRecorderRef.current = null;
+        rebuildShadowingRecorderChunksRef.current = [];
+        rebuildShadowingDiscardRecordingOnStopRef.current = false;
+
+        const speechRecognition = rebuildShadowingSpeechRecognitionRef.current;
+        if (speechRecognition) {
+            speechRecognition.onresult = null;
+            speechRecognition.onerror = null;
+            speechRecognition.onend = null;
+            try {
+                speechRecognition.abort();
+            } catch {
+                // noop
+            }
+            rebuildShadowingSpeechRecognitionRef.current = null;
+        }
+        rebuildShadowingSpeechRecognitionStopRequestedRef.current = true;
+        rebuildShadowingSpeechRecognitionFinalTranscriptRef.current = "";
+        rebuildShadowingSpeechRecognitionInterimTranscriptRef.current = "";
+        rebuildShadowingListeningProgressCursorRef.current = 0;
+        setIsRebuildSpeechRecognitionRunning(false);
+        setRebuildShadowingLiveRecognitionTranscript("");
+        setRebuildListeningProgressCursor(0);
+
+        rebuildShadowingRecordingScopeRef.current = null;
+        if (rebuildShadowingPlaybackRef.current) {
+            rebuildShadowingPlaybackRef.current.pause();
+            rebuildShadowingPlaybackRef.current.currentTime = 0;
+            rebuildShadowingPlaybackRef.current.src = "";
+            rebuildShadowingPlaybackRef.current = null;
+        }
+        if (rebuildShadowingPlaybackUrlRef.current) {
+            URL.revokeObjectURL(rebuildShadowingPlaybackUrlRef.current);
+            rebuildShadowingPlaybackUrlRef.current = null;
+        }
+        setRebuildShadowingState(createDefaultRebuildShadowingState());
+        setRebuildSentenceShadowingFlow("idle");
+    }, []);
 
     const persistRebuildHiddenElo = useCallback(async (nextElo: number) => {
         const updatedAt = Date.now();
@@ -1761,6 +2010,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setRebuildPassageScores([]);
         setRebuildPassageSummary(null);
         setRebuildFeedback(null);
+        setRebuildSentenceShadowingFlow("idle");
 
         const activeDraft = nextDrafts[initialSegmentIndex];
         if (activeDraft) {
@@ -3833,6 +4083,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setRebuildPassageUiState([]);
         setRebuildPassageScores([]);
         setRebuildPassageSummary(null);
+        resetRebuildShadowingState();
         resetGuidedLearningState(false);
 
         setIsGeneratingDrill(false);
@@ -3897,7 +4148,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 .catch(console.error)
                 .finally(() => setIsLoadingTeaching(false));
         }
-    }, [clearRebuildChoicePrefetch, currentElo, hydratePassageSegmentDrill, isDictationMode, mode, resetGuidedLearningState, resetResult, teachingMode]);
+    }, [clearRebuildChoicePrefetch, currentElo, hydratePassageSegmentDrill, isDictationMode, mode, resetGuidedLearningState, resetRebuildShadowingState, resetResult, teachingMode]);
 
     const prefetchNextDrill = (nextElo: number) => {
         console.log("[Prefetch] Starting background prefetch for next drill...");
@@ -3995,6 +4246,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setRebuildTypingBuffer("");
         setRebuildPassageScores([]);
         setRebuildPassageSummary(null);
+        resetRebuildShadowingState();
         setUserTranslation("");
         setFullReferenceHint((prev) => ({ version: prev.version + 1, text: "" }));
         setTutorAnswer(null);
@@ -5635,6 +5887,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         applyPassageDraftToActiveState(nextTargetDraft);
         setDrillData((current) => current ? hydratePassageSegmentDrill(current, segmentIndex) : current);
         setRebuildFeedback(null);
+        setRebuildSentenceShadowingFlow("idle");
         setAnalysisRequested(false);
         setAnalysisDetailsOpen(false);
         setWordPopup(null);
@@ -5771,6 +6024,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             }
         } else {
             setRebuildFeedback(nextFeedback);
+            setRebuildSentenceShadowingFlow("prompt");
         }
         setAnalysisRequested(false);
         setAnalysisDetailsOpen(false);
@@ -5795,6 +6049,579 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const handleSkipRebuild = useCallback(() => {
         return handleSubmitRebuild(true);
     }, [handleSubmitRebuild]);
+
+    const upsertRebuildShadowingScopePatch = useCallback((
+        scope: RebuildShadowingScope,
+        patch: Partial<{
+            wavBlob: Blob | null;
+            result: RebuildShadowingResult | null;
+            submitError: string | null;
+        }>,
+    ) => {
+        setRebuildShadowingState((currentState) => {
+            const scoped = upsertRebuildShadowingEntry(
+                currentState,
+                scope,
+                patch,
+                Date.now(),
+            );
+            return { ...currentState, ...scoped };
+        });
+    }, []);
+
+    const cleanupRebuildShadowingRecorderResources = useCallback(() => {
+        const recorder = rebuildShadowingRecorderRef.current;
+        if (recorder) {
+            recorder.ondataavailable = null;
+            recorder.onerror = null;
+            recorder.onstop = null;
+        }
+        rebuildShadowingRecorderRef.current = null;
+        rebuildShadowingRecorderChunksRef.current = [];
+
+        if (rebuildShadowingRecorderStreamRef.current) {
+            for (const track of rebuildShadowingRecorderStreamRef.current.getTracks()) {
+                track.stop();
+            }
+            rebuildShadowingRecorderStreamRef.current = null;
+        }
+
+        setRebuildShadowingState((currentState) => {
+            if (!currentState.isRecording && !currentState.isProcessing) {
+                return currentState;
+            }
+            return {
+                ...currentState,
+                isRecording: false,
+                isProcessing: false,
+            };
+        });
+    }, []);
+
+    const stopRebuildShadowingSpeechRecognition = useCallback((forceAbort = false, preserveTranscript = false) => {
+        rebuildShadowingSpeechRecognitionStopRequestedRef.current = true;
+        const recognition = rebuildShadowingSpeechRecognitionRef.current;
+        if (recognition) {
+            recognition.onresult = null;
+            recognition.onerror = null;
+            recognition.onend = null;
+            try {
+                if (forceAbort) {
+                    recognition.abort();
+                } else {
+                    recognition.stop();
+                }
+            } catch {
+                // noop
+            }
+            rebuildShadowingSpeechRecognitionRef.current = null;
+        }
+        setIsRebuildSpeechRecognitionRunning(false);
+        if (!preserveTranscript) {
+            rebuildShadowingSpeechRecognitionFinalTranscriptRef.current = "";
+            rebuildShadowingSpeechRecognitionInterimTranscriptRef.current = "";
+        }
+    }, []);
+
+    const startRebuildShadowingSpeechRecognition = useCallback((scope: RebuildShadowingScope, referenceSentence: string) => {
+        if (typeof window === "undefined") return false;
+
+        const speechWindow = window as typeof window & {
+            SpeechRecognition?: RebuildSpeechRecognitionConstructor;
+            webkitSpeechRecognition?: RebuildSpeechRecognitionConstructor;
+        };
+        const SpeechRecognitionCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+        if (!SpeechRecognitionCtor) {
+            setIsRebuildSpeechRecognitionSupported(false);
+            upsertRebuildShadowingScopePatch(scope, {
+                submitError: "当前浏览器不支持实时跟读反馈，你仍可录音并回放对比。",
+            });
+            return false;
+        }
+
+        stopRebuildShadowingSpeechRecognition(true);
+        rebuildShadowingSpeechRecognitionStopRequestedRef.current = false;
+        rebuildShadowingSpeechRecognitionFinalTranscriptRef.current = "";
+        rebuildShadowingSpeechRecognitionInterimTranscriptRef.current = "";
+
+        const recognition = new SpeechRecognitionCtor();
+        recognition.lang = "en-US";
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+        recognition.onresult = (event) => {
+            const rows = Array.from(event.results || []);
+            const finalParts: string[] = [];
+            const interimParts: string[] = [];
+
+            for (const result of rows) {
+                const transcript = normalizeRebuildShadowingText(result?.[0]?.transcript || "");
+                if (!transcript) continue;
+                if (result?.isFinal) {
+                    finalParts.push(transcript);
+                } else {
+                    interimParts.push(transcript);
+                }
+            }
+
+            const nextFinalTranscript = normalizeRebuildShadowingText(finalParts.join(" "));
+            const nextInterimTranscript = normalizeRebuildShadowingText(interimParts.join(" "));
+            rebuildShadowingSpeechRecognitionFinalTranscriptRef.current = nextFinalTranscript;
+            rebuildShadowingSpeechRecognitionInterimTranscriptRef.current = nextInterimTranscript;
+            const nextTranscript = normalizeRebuildShadowingText(`${nextFinalTranscript} ${nextInterimTranscript}`);
+            if (!nextTranscript) return;
+            setRebuildShadowingLiveRecognitionTranscript(nextTranscript);
+            const nextProgress = estimateRebuildShadowingProgress(referenceSentence, nextTranscript);
+            if (nextProgress > rebuildShadowingListeningProgressCursorRef.current) {
+                rebuildShadowingListeningProgressCursorRef.current = nextProgress;
+                setRebuildListeningProgressCursor(nextProgress);
+            }
+        };
+        recognition.onerror = (event) => {
+            const errorCode = `${event?.error || ""}`.toLowerCase();
+            if (!errorCode || errorCode === "aborted" || errorCode === "no-speech") {
+                return;
+            }
+            if (errorCode === "not-allowed" || errorCode === "service-not-allowed") {
+                upsertRebuildShadowingScopePatch(scope, {
+                    submitError: "语音识别权限被拒绝，请在浏览器设置中允许麦克风后重试。",
+                });
+                return;
+            }
+            upsertRebuildShadowingScopePatch(scope, {
+                submitError: `实时跟读识别异常：${event?.error || "未知错误"}`,
+            });
+        };
+        recognition.onend = () => {
+            if (rebuildShadowingSpeechRecognitionStopRequestedRef.current) {
+                setIsRebuildSpeechRecognitionRunning(false);
+                rebuildShadowingSpeechRecognitionRef.current = null;
+                return;
+            }
+
+            const recorder = rebuildShadowingRecorderRef.current;
+            if (recorder && recorder.state !== "inactive") {
+                try {
+                    recognition.start();
+                    return;
+                } catch {
+                    // fall through
+                }
+            }
+
+            setIsRebuildSpeechRecognitionRunning(false);
+            rebuildShadowingSpeechRecognitionRef.current = null;
+        };
+
+        rebuildShadowingSpeechRecognitionRef.current = recognition;
+        try {
+            recognition.start();
+            setIsRebuildSpeechRecognitionRunning(true);
+            return true;
+        } catch (error) {
+            rebuildShadowingSpeechRecognitionRef.current = null;
+            setIsRebuildSpeechRecognitionRunning(false);
+            const message = error instanceof Error ? error.message : "启动实时识别失败";
+            upsertRebuildShadowingScopePatch(scope, { submitError: message });
+            return false;
+        }
+    }, [stopRebuildShadowingSpeechRecognition, upsertRebuildShadowingScopePatch]);
+
+    const handleStartRebuildShadowingRecording = useCallback(async () => {
+        if (!isRebuildMode || !activeRebuildShadowingScope) return;
+        const referenceSentence = normalizeRebuildShadowingText(activeRebuildShadowingReferenceEnglish);
+        if (!referenceSentence) return;
+        if (rebuildShadowingState.isRecording || rebuildShadowingState.isProcessing || rebuildShadowingState.isSubmitting) return;
+        if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+            upsertRebuildShadowingScopePatch(activeRebuildShadowingScope, {
+                submitError: "当前浏览器不支持录音，请更换浏览器后再试。",
+            });
+            return;
+        }
+        if (typeof MediaRecorder === "undefined") {
+            upsertRebuildShadowingScopePatch(activeRebuildShadowingScope, {
+                submitError: "当前环境不支持录音组件，请更换浏览器后再试。",
+            });
+            return;
+        }
+
+        if (rebuildShadowingPlaybackRef.current) {
+            rebuildShadowingPlaybackRef.current.pause();
+            rebuildShadowingPlaybackRef.current.currentTime = 0;
+        }
+
+        cleanupRebuildShadowingRecorderResources();
+        stopRebuildShadowingSpeechRecognition(true);
+        rebuildShadowingRecordingScopeRef.current = activeRebuildShadowingScope;
+        rebuildShadowingSpeechRecognitionFinalTranscriptRef.current = "";
+        rebuildShadowingSpeechRecognitionInterimTranscriptRef.current = "";
+        rebuildShadowingListeningProgressCursorRef.current = 0;
+        setRebuildListeningProgressCursor(0);
+        setRebuildShadowingLiveRecognitionTranscript("");
+
+        setRebuildShadowingState((currentState) => ({
+            ...currentState,
+            ...upsertRebuildShadowingEntry(
+                currentState,
+                activeRebuildShadowingScope,
+                { wavBlob: null, submitError: null },
+                Date.now(),
+            ),
+            isRecording: false,
+            isProcessing: false,
+        }));
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const preferredMimeTypes = [
+                "audio/webm;codecs=opus",
+                "audio/webm",
+                "audio/mp4",
+            ];
+            const mimeType = preferredMimeTypes.find((type) => MediaRecorder.isTypeSupported(type));
+            const recorder = mimeType
+                ? new MediaRecorder(stream, { mimeType })
+                : new MediaRecorder(stream);
+
+            rebuildShadowingRecorderRef.current = recorder;
+            rebuildShadowingRecorderStreamRef.current = stream;
+            rebuildShadowingRecorderChunksRef.current = [];
+            rebuildShadowingDiscardRecordingOnStopRef.current = false;
+
+            recorder.ondataavailable = (event: BlobEvent) => {
+                if (event.data.size > 0) {
+                    rebuildShadowingRecorderChunksRef.current.push(event.data);
+                }
+            };
+            recorder.onerror = () => {
+                const scope = rebuildShadowingRecordingScopeRef.current;
+                if (scope) {
+                    upsertRebuildShadowingScopePatch(scope, { submitError: "录音失败，请重试。" });
+                }
+                stopRebuildShadowingSpeechRecognition(true);
+                cleanupRebuildShadowingRecorderResources();
+                rebuildShadowingRecordingScopeRef.current = null;
+            };
+            recorder.onstop = () => {
+                const scope = rebuildShadowingRecordingScopeRef.current;
+                const shouldDiscard = rebuildShadowingDiscardRecordingOnStopRef.current;
+                rebuildShadowingDiscardRecordingOnStopRef.current = false;
+
+                const transcriptFromRefs = normalizeRebuildShadowingText(
+                    `${rebuildShadowingSpeechRecognitionFinalTranscriptRef.current} ${rebuildShadowingSpeechRecognitionInterimTranscriptRef.current}`,
+                );
+                const transcript = transcriptFromRefs || normalizeRebuildShadowingText(rebuildShadowingLiveRecognitionTranscript);
+                setRebuildShadowingLiveRecognitionTranscript(transcript);
+                stopRebuildShadowingSpeechRecognition(true);
+
+                const blob = new Blob(
+                    rebuildShadowingRecorderChunksRef.current,
+                    { type: recorder.mimeType || "audio/webm" },
+                );
+                cleanupRebuildShadowingRecorderResources();
+                if (shouldDiscard || blob.size <= 0 || !scope) {
+                    rebuildShadowingRecordingScopeRef.current = null;
+                    return;
+                }
+
+                setRebuildShadowingState((currentState) => ({
+                    ...currentState,
+                    ...upsertRebuildShadowingEntry(
+                        currentState,
+                        scope,
+                        {
+                            wavBlob: blob,
+                            submitError: null,
+                        },
+                        Date.now(),
+                    ),
+                }));
+                rebuildShadowingRecordingScopeRef.current = null;
+            };
+
+            recorder.start();
+            setRebuildShadowingState((currentState) => ({
+                ...currentState,
+                isRecording: true,
+                isProcessing: false,
+            }));
+            startRebuildShadowingSpeechRecognition(activeRebuildShadowingScope, referenceSentence);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "";
+            if (message.toLowerCase().includes("notallowed") || message.toLowerCase().includes("permission")) {
+                upsertRebuildShadowingScopePatch(activeRebuildShadowingScope, {
+                    submitError: "麦克风权限被拒绝，请在浏览器设置里允许后重试。",
+                });
+            } else {
+                upsertRebuildShadowingScopePatch(activeRebuildShadowingScope, {
+                    submitError: message || "麦克风权限获取失败，请检查浏览器设置。",
+                });
+            }
+            cleanupRebuildShadowingRecorderResources();
+            stopRebuildShadowingSpeechRecognition(true);
+            rebuildShadowingRecordingScopeRef.current = null;
+        }
+    }, [
+        activeRebuildShadowingReferenceEnglish,
+        activeRebuildShadowingScope,
+        cleanupRebuildShadowingRecorderResources,
+        isRebuildMode,
+        rebuildShadowingState.isProcessing,
+        rebuildShadowingState.isRecording,
+        rebuildShadowingState.isSubmitting,
+        rebuildShadowingLiveRecognitionTranscript,
+        startRebuildShadowingSpeechRecognition,
+        stopRebuildShadowingSpeechRecognition,
+        upsertRebuildShadowingScopePatch,
+    ]);
+
+    const handleStopRebuildShadowingRecording = useCallback(() => {
+        if (!isRebuildMode) return;
+        const recorder = rebuildShadowingRecorderRef.current;
+        if (!recorder || recorder.state === "inactive") return;
+        stopRebuildShadowingSpeechRecognition(false, true);
+        rebuildShadowingDiscardRecordingOnStopRef.current = false;
+        setRebuildShadowingState((currentState) => ({
+            ...currentState,
+            isProcessing: true,
+        }));
+        try {
+            recorder.stop();
+        } catch (error) {
+            const scope = rebuildShadowingRecordingScopeRef.current;
+            if (scope) {
+                const message = error instanceof Error ? error.message : "停止录音失败，请重试。";
+                upsertRebuildShadowingScopePatch(scope, { submitError: message });
+            }
+            cleanupRebuildShadowingRecorderResources();
+        }
+    }, [
+        cleanupRebuildShadowingRecorderResources,
+        isRebuildMode,
+        stopRebuildShadowingSpeechRecognition,
+        upsertRebuildShadowingScopePatch,
+    ]);
+
+    const handlePlayRebuildShadowingRecording = useCallback(() => {
+        if (!activeRebuildShadowingEntry?.wavBlob) return;
+        if (rebuildShadowingPlaybackRef.current) {
+            rebuildShadowingPlaybackRef.current.pause();
+            rebuildShadowingPlaybackRef.current.currentTime = 0;
+        }
+        if (rebuildShadowingPlaybackUrlRef.current) {
+            URL.revokeObjectURL(rebuildShadowingPlaybackUrlRef.current);
+            rebuildShadowingPlaybackUrlRef.current = null;
+        }
+
+        const nextUrl = URL.createObjectURL(activeRebuildShadowingEntry.wavBlob);
+        rebuildShadowingPlaybackUrlRef.current = nextUrl;
+        const audio = rebuildShadowingPlaybackRef.current ?? new Audio();
+        rebuildShadowingPlaybackRef.current = audio;
+        audio.src = nextUrl;
+        audio.currentTime = 0;
+        void audio.play().catch(() => undefined);
+    }, [activeRebuildShadowingEntry?.wavBlob]);
+
+    const handleSubmitRebuildShadowing = useCallback(() => {
+        if (!isRebuildMode || !activeRebuildShadowingScope) return false;
+        const referenceSentence = normalizeRebuildShadowingText(activeRebuildShadowingReferenceEnglish);
+        if (!referenceSentence) return false;
+        const activeEntry = getRebuildShadowingEntry<Blob, RebuildShadowingResult>(
+            rebuildShadowingState,
+            activeRebuildShadowingScope,
+        );
+        if (!activeEntry.wavBlob) {
+            setRebuildShadowingState((currentState) => {
+                const scoped = upsertRebuildShadowingEntry(
+                    currentState,
+                    activeRebuildShadowingScope,
+                    { submitError: "先录一遍完整音频，再提交跟读评分。" },
+                    Date.now(),
+                );
+                return { ...currentState, ...scoped };
+            });
+            return false;
+        }
+        const transcript = normalizeRebuildShadowingText(
+            rebuildShadowingSpeechRecognitionFinalTranscriptRef.current
+            || rebuildShadowingLiveRecognitionTranscript
+            || "",
+        );
+        const metrics = scoreRebuildShadowingRecognition(referenceSentence, transcript);
+        if (!metrics.spokenCount) {
+            upsertRebuildShadowingScopePatch(activeRebuildShadowingScope, {
+                submitError: "先开始录音并完整跟读一遍，再提交评分。",
+            });
+            return false;
+        }
+
+        setRebuildShadowingState((currentState) => ({
+            ...currentState,
+            ...upsertRebuildShadowingEntry(
+                currentState,
+                activeRebuildShadowingScope,
+                { submitError: null },
+                Date.now(),
+            ),
+            isSubmitting: true,
+        }));
+
+        if (REBUILD_SHADOWING_AFFECTS_ELO) {
+            console.warn("[RebuildShadowing] Unexpected Elo-enabled flag detected.");
+        }
+
+        const tier = resolveRebuildShadowingScoreTier(metrics.score);
+        const summary = tier === "excellent"
+            ? "跟读非常稳，节奏和关键词覆盖都很好。"
+            : tier === "good"
+                ? "整体表现不错，少数词还可以更清晰。"
+                : tier === "ok"
+                    ? "能跟上主要内容，建议再来一遍提升完整度。"
+                    : "这次还没跟上节奏，先慢速复读再提速。";
+        const missingWords = buildRebuildShadowingWordResults(referenceSentence, transcript)
+            .filter((item) => item.status === "missing")
+            .slice(0, 2)
+            .map((item) => item.word);
+        const tips = [
+            missingWords.length > 0
+                ? `优先补上漏读词：${missingWords.join(" / ")}。`
+                : "保持语速稳定，尽量完整复现整句。",
+            "先慢速跟读一遍，再按正常语速复读一遍。",
+        ];
+        const pronunciationScore = Math.round(metrics.precision * 100);
+        const contentScore = Math.round(metrics.recall * 100);
+        const fluencyScore = Math.round(metrics.lengthBalance * 100);
+        const wordResults = buildRebuildShadowingWordResults(referenceSentence, transcript);
+        const normalizedResult: RebuildShadowingResult = {
+            score: metrics.score,
+            pronunciation_score: pronunciationScore,
+            content_score: contentScore,
+            fluency_score: fluencyScore,
+            coverage_ratio: metrics.totalCount > 0 ? metrics.correctCount / metrics.totalCount : 0,
+            transcript,
+            summary_cn: summary,
+            tips_cn: tips,
+            word_results: wordResults,
+            utterance_scores: {
+                accuracy: pronunciationScore,
+                completeness: contentScore,
+                fluency: fluencyScore,
+                prosody: pronunciationScore,
+                total: metrics.score,
+                content_reproduction: contentScore,
+                rhythm_fluency: fluencyScore,
+                pronunciation_clarity: pronunciationScore,
+            },
+            submittedAt: Date.now(),
+        };
+
+        setRebuildShadowingState((currentState) => ({
+            ...currentState,
+            ...upsertRebuildShadowingEntry(
+                currentState,
+                activeRebuildShadowingScope,
+                {
+                    result: normalizedResult,
+                    submitError: null,
+                },
+                Date.now(),
+            ),
+            isSubmitting: false,
+        }));
+        return true;
+    }, [
+        activeRebuildShadowingReferenceEnglish,
+        activeRebuildShadowingScope,
+        isRebuildMode,
+        rebuildShadowingLiveRecognitionTranscript,
+        rebuildShadowingState,
+        upsertRebuildShadowingScopePatch,
+    ]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const speechWindow = window as typeof window & {
+            SpeechRecognition?: RebuildSpeechRecognitionConstructor;
+            webkitSpeechRecognition?: RebuildSpeechRecognitionConstructor;
+        };
+        setIsRebuildSpeechRecognitionSupported(Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition));
+    }, []);
+
+    useEffect(() => {
+        if (!activeRebuildShadowingScope || rebuildShadowingState.isRecording) return;
+        const resultTranscript = normalizeRebuildShadowingText(activeRebuildShadowingEntry?.result?.transcript || "");
+        if (!resultTranscript) {
+            return;
+        }
+        rebuildShadowingListeningProgressCursorRef.current = estimateRebuildShadowingProgress(
+            activeRebuildShadowingReferenceEnglish,
+            resultTranscript,
+        );
+        setRebuildListeningProgressCursor(rebuildShadowingListeningProgressCursorRef.current);
+        setRebuildShadowingLiveRecognitionTranscript(resultTranscript);
+    }, [
+        activeRebuildShadowingEntry?.result?.transcript,
+        activeRebuildShadowingReferenceEnglish,
+        activeRebuildShadowingScope,
+        rebuildShadowingState.isRecording,
+    ]);
+
+    useEffect(() => {
+        if (isRebuildMode) return;
+        resetRebuildShadowingState();
+    }, [isRebuildMode, resetRebuildShadowingState]);
+
+    useEffect(() => {
+        if (!isRebuildMode || isRebuildPassage) return;
+        if (!rebuildFeedback) {
+            if (rebuildSentenceShadowingFlow !== "idle") {
+                setRebuildSentenceShadowingFlow("idle");
+            }
+            return;
+        }
+        if (rebuildSentenceShadowingFlow === "idle") {
+            setRebuildSentenceShadowingFlow("feedback");
+        }
+    }, [isRebuildMode, isRebuildPassage, rebuildFeedback, rebuildSentenceShadowingFlow]);
+
+    useEffect(() => {
+        return () => {
+            const speechRecognition = rebuildShadowingSpeechRecognitionRef.current;
+            if (speechRecognition) {
+                speechRecognition.onresult = null;
+                speechRecognition.onerror = null;
+                speechRecognition.onend = null;
+                try {
+                    speechRecognition.abort();
+                } catch {
+                    // noop
+                }
+                rebuildShadowingSpeechRecognitionRef.current = null;
+            }
+            const recorder = rebuildShadowingRecorderRef.current;
+            if (recorder && recorder.state !== "inactive") {
+                try {
+                    recorder.stop();
+                } catch {
+                    // noop
+                }
+            }
+            if (rebuildShadowingRecorderStreamRef.current) {
+                for (const track of rebuildShadowingRecorderStreamRef.current.getTracks()) {
+                    track.stop();
+                }
+                rebuildShadowingRecorderStreamRef.current = null;
+            }
+            if (rebuildShadowingPlaybackRef.current) {
+                rebuildShadowingPlaybackRef.current.pause();
+                rebuildShadowingPlaybackRef.current.currentTime = 0;
+                rebuildShadowingPlaybackRef.current.src = "";
+            }
+            if (rebuildShadowingPlaybackUrlRef.current) {
+                URL.revokeObjectURL(rebuildShadowingPlaybackUrlRef.current);
+            }
+        };
+    }, []);
 
     const rebuildTypingBufferRef = useRef("");
 
@@ -6826,6 +7653,381 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     );
                 })}
             </span>
+        );
+    };
+
+    const renderRebuildShadowingPanel = (params: {
+        referenceEnglish: string;
+        chinese: string;
+    }) => {
+        if (!isRebuildMode || !activeRebuildShadowingScope || !activeRebuildShadowingEntry) return null;
+        const { referenceEnglish, chinese } = params;
+        const shadowingResult = activeRebuildShadowingEntry.result;
+        const scoreValue = typeof shadowingResult?.score === "number"
+            ? shadowingResult.score.toFixed(1)
+            : (typeof shadowingResult?.utterance_scores?.total === "number"
+                ? shadowingResult.utterance_scores.total.toFixed(1)
+                : "--");
+        const primarySummary = shadowingResult?.summary_cn
+            || shadowingResult?.judge_reasoning
+            || shadowingResult?.tips_cn?.[0]
+            || "录完后点击提交，拿到词级发音反馈。";
+        const activeWordResults = shadowingResult?.word_results ?? [];
+        const liveTranscript = normalizeRebuildShadowingText(rebuildShadowingLiveRecognitionTranscript);
+        const referenceTokenCount = extractWordTokens(referenceEnglish).length;
+        const shouldShowPostRecordingCorrection = !rebuildShadowingState.isRecording
+            && !rebuildShadowingState.isProcessing
+            && liveTranscript.length > 0;
+        const canSubmitRebuildShadowing = Boolean(activeRebuildShadowingEntry.wavBlob) && !rebuildShadowingState.isSubmitting && liveTranscript.length > 0;
+        const isReferenceAudioLoading = audioSourceText === referenceEnglish && isAudioLoading;
+        const isReferenceAudioPlaying = audioSourceText === referenceEnglish && isPlaying;
+        const isReferenceAudioBusy = isReferenceAudioLoading || isReferenceAudioPlaying;
+        const sourceTokens = extractWordTokens(referenceEnglish);
+        const referenceMarksRaw = audioCache.current.get(getSentenceAudioCacheKey(referenceEnglish))?.marks;
+        const referenceWordMarks = Array.isArray(referenceMarksRaw)
+            ? referenceMarksRaw.filter((mark): mark is TtsWordMark => (
+                Boolean(mark)
+                && typeof mark.time === "number"
+                && typeof mark.start === "number"
+                && typeof mark.end === "number"
+                && typeof mark.value === "string"
+            ))
+            : [];
+        const sourceTokenToMarkIndex = alignTokensToMarks(sourceTokens, referenceWordMarks);
+        const activeReferenceWordMarkIndex = (() => {
+            if (!isReferenceAudioPlaying || referenceWordMarks.length === 0) return null;
+            const timeMs = currentAudioTime;
+            for (let index = 0; index < referenceWordMarks.length; index += 1) {
+                const mark = referenceWordMarks[index];
+                const markStart = Number(mark.start ?? mark.time ?? 0);
+                const markEnd = Number(mark.end ?? mark.start ?? mark.time ?? 0);
+                if (timeMs >= markStart && timeMs <= markEnd) {
+                    return index;
+                }
+            }
+            return null;
+        })();
+        const liveRecognitionTokens = extractWordTokens(liveTranscript)
+            .map((token) => normalizeWordForMatch(token.text))
+            .filter(Boolean);
+        const pronunciationFeedback = (() => {
+            const targetTokens = sourceTokens
+                .map((token) => ({ sourceIndex: token.index, token: normalizeWordForMatch(token.text) }))
+                .filter((item) => Boolean(item.token));
+
+            if (!shouldShowPostRecordingCorrection) {
+                return {
+                    tokenStates: new Map<number, RebuildShadowingTokenState>(),
+                    correctCount: 0,
+                    totalCount: targetTokens.length,
+                };
+            }
+
+            const { tokenStates, correctCount } = alignRebuildShadowingTokens({
+                targetTokens,
+                spokenTokens: liveRecognitionTokens,
+            });
+            return {
+                tokenStates,
+                correctCount,
+                totalCount: targetTokens.length,
+            };
+        })();
+        const sourceSentenceKaraokeContent = (() => {
+            if (!referenceEnglish || sourceTokens.length === 0) return referenceEnglish;
+
+            let cursor = 0;
+            const parts: ReactNode[] = [];
+
+            for (const token of sourceTokens) {
+                if (token.start > cursor) {
+                    parts.push(
+                        <span key={`plain-${token.index}-${cursor}`}>
+                            {referenceEnglish.slice(cursor, token.start)}
+                        </span>,
+                    );
+                }
+
+                const tokenState = pronunciationFeedback.tokenStates.get(token.index);
+                const markIndex = sourceTokenToMarkIndex.get(token.index);
+                const isActiveWord = isReferenceAudioPlaying
+                    && typeof markIndex === "number"
+                    && activeReferenceWordMarkIndex === markIndex;
+                const isPassedWord = isReferenceAudioPlaying
+                    && typeof markIndex === "number"
+                    && activeReferenceWordMarkIndex !== null
+                    && markIndex < activeReferenceWordMarkIndex;
+                parts.push(
+                    <span
+                        key={`token-${token.index}-${token.start}`}
+                        data-word-popup-segment={token.text}
+                        onClick={(event) => handleWordClick(event, token.text, referenceEnglish)}
+                        onMouseUp={() => handleInteractiveTextMouseUp(referenceEnglish)}
+                        className={cn(
+                            "cursor-pointer rounded-[0.38em] px-[0.08em] py-[0.01em] transition-colors duration-220 ease-out hover:bg-[#f3f4f6]/60",
+                            isActiveWord
+                                ? "bg-[#ffd970] text-[#7a3f00] shadow-[0_0_0_1px_rgba(234,163,27,0.42)]"
+                                : "",
+                            isPassedWord
+                                ? "text-[#6b6358]"
+                                : "",
+                            rebuildShadowingState.isRecording && token.index < rebuildListeningProgressCursor
+                                ? "bg-[#eef4ff] text-[#3f5f9a]"
+                                : "",
+                            rebuildShadowingState.isRecording && token.index === rebuildListeningProgressCursor
+                                ? "bg-[#ddeaff] text-[#2f58b0] shadow-[inset_0_-1px_0_rgba(78,122,219,0.22)]"
+                                : "",
+                            shouldShowPostRecordingCorrection && tokenState === "correct"
+                                ? "text-[#2f6f4d]"
+                                : "",
+                            shouldShowPostRecordingCorrection && (tokenState === "incorrect" || tokenState === "missed")
+                                ? "text-[#8e4a4a] underline decoration-[#d97a7a] decoration-2 underline-offset-[0.22em]"
+                                : "",
+                        )}
+                    >
+                        {referenceEnglish.slice(token.start, token.end)}
+                    </span>,
+                );
+                cursor = token.end;
+            }
+
+            if (cursor < referenceEnglish.length) {
+                parts.push(
+                    <span key={`plain-tail-${cursor}`}>
+                        {referenceEnglish.slice(cursor)}
+                    </span>,
+                );
+            }
+
+            return parts;
+        })();
+
+        return (
+            <motion.div
+                initial={prefersReducedMotion ? false : { opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: prefersReducedMotion ? 0.15 : 0.28 }}
+                className="rounded-[1.6rem] border-[3px] border-[#e9dfd1] bg-[#fff8ef] p-4 md:p-5"
+            >
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-[0.14em] text-[#a18f7b]">rebuild shadowing</p>
+                        <p className="mt-2 text-sm leading-7 text-[#6e6256]">
+                            可选训练反馈，评分仅用于跟读改进，不计入 Elo / 连胜。
+                        </p>
+                    </div>
+                    <span className="inline-flex items-center rounded-full border-2 border-[#80dcb7] bg-[#e7f9ef] px-3 py-1 text-[11px] font-black text-[#20895f]">
+                        训练模式 · 不计 Elo
+                    </span>
+                </div>
+
+                <div className="mt-4 rounded-[1.4rem] border-[3px] border-[#e9dfd1] bg-white/90 px-4 py-5 md:px-6">
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-[#a18f7b]">source sentence</p>
+                    <p
+                        data-word-popup-root="true"
+                        onMouseUp={() => handleInteractiveTextMouseUp(referenceEnglish)}
+                        className={cn(
+                            "mt-3 rounded-[0.95rem] px-2 py-1 font-bold text-[#3a322c] transition-all duration-250 text-lg leading-8 md:text-[1.55rem] md:leading-[2.2rem]",
+                            (rebuildShadowingState.isRecording || isReferenceAudioBusy || shouldShowPostRecordingCorrection)
+                                ? "bg-[#fff4cf] shadow-[0_0_0_2px_rgba(243,184,84,0.35),0_10px_24px_rgba(243,184,84,0.16)]"
+                                : "",
+                        )}
+                    >
+                        {sourceSentenceKaraokeContent}
+                    </p>
+                    <p className="mt-2 text-sm leading-7 text-[#6e6256]">{chinese}</p>
+                </div>
+
+                <div className="mt-4">
+                    <ListeningShadowingControls
+                        onPlayReference={() => { void playAudio(referenceEnglish); }}
+                        onToggleRecording={() => {
+                            if (rebuildShadowingState.isRecording) {
+                                handleStopRebuildShadowingRecording();
+                                return;
+                            }
+                            void handleStartRebuildShadowingRecording();
+                        }}
+                        onPlaySelfRecording={handlePlayRebuildShadowingRecording}
+                        onSubmit={() => { void handleSubmitRebuildShadowing(); }}
+                        isReferencePreparing={isReferenceAudioLoading}
+                        isReferenceDisabled={rebuildShadowingState.isRecording || rebuildShadowingState.isProcessing}
+                        referenceReadyLabel={isReferenceAudioPlaying ? "播放中..." : "听原句"}
+                        isRecording={rebuildShadowingState.isRecording}
+                        isRecordingProcessing={rebuildShadowingState.isProcessing}
+                        isRecordToggleDisabled={rebuildShadowingState.isSubmitting}
+                        hasSelfRecording={Boolean(activeRebuildShadowingEntry.wavBlob)}
+                        isPlaySelfDisabled={false}
+                        isSubmitting={rebuildShadowingState.isSubmitting}
+                        isSubmitted={Boolean(shadowingResult)}
+                        isSubmitDisabled={!canSubmitRebuildShadowing}
+                        helperText="先听原句再跟读；录音结束后点“提交跟读评分”，系统给分后由你手动查看结果。"
+                        progressLabel={rebuildShadowingState.isRecording
+                            ? `进度 ${rebuildListeningProgressCursor}/${referenceTokenCount || 0}`
+                            : shouldShowPostRecordingCorrection
+                                ? `纠正 ${pronunciationFeedback.correctCount}/${pronunciationFeedback.totalCount || 0}`
+                                : "等待录音"}
+                        recognitionLabel={isRebuildSpeechRecognitionRunning
+                            ? "跟读追踪中"
+                            : shouldShowPostRecordingCorrection
+                                ? "已生成纠正"
+                                : "识别待机"}
+                        transcriptText={rebuildShadowingState.isRecording
+                            ? (liveTranscript || "正在追踪你读到的位置...")
+                            : shouldShowPostRecordingCorrection
+                                ? (liveTranscript || "已完成本次录音纠正。")
+                                : "开始录音后，会实时跟踪你读到哪里；停止后才显示纠正。"}
+                        transcriptContent={(rebuildShadowingState.isRecording || shouldShowPostRecordingCorrection) && liveTranscript
+                            ? renderInteractiveCoachText(liveTranscript)
+                            : undefined}
+                        isSpeechRecognitionSupported={isRebuildSpeechRecognitionSupported}
+                    />
+
+                    {activeRebuildShadowingEntry.submitError ? (
+                        <p className="mt-3 text-sm text-rose-600">{activeRebuildShadowingEntry.submitError}</p>
+                    ) : null}
+                </div>
+
+                {shadowingResult ? (
+                    <>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <div className="rounded-[1.2rem] border border-emerald-100 bg-emerald-50/70 p-3.5">
+                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">总分</p>
+                                <p className="mt-2 text-2xl font-semibold text-emerald-900">{scoreValue}</p>
+                            </div>
+                            <div className="rounded-[1.2rem] border border-sky-100 bg-sky-50/70 p-3.5">
+                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-700">内容复现</p>
+                                <p className="mt-2 text-2xl font-semibold text-sky-900">
+                                    {shadowingResult.utterance_scores?.content_reproduction?.toFixed?.(1)
+                                        ?? shadowingResult.utterance_scores?.completeness?.toFixed?.(1)
+                                        ?? "--"}
+                                </p>
+                            </div>
+                            <div className="rounded-[1.2rem] border border-amber-100 bg-amber-50/70 p-3.5">
+                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-700">语流节奏</p>
+                                <p className="mt-2 text-2xl font-semibold text-amber-900">
+                                    {shadowingResult.utterance_scores?.rhythm_fluency?.toFixed?.(1)
+                                        ?? shadowingResult.utterance_scores?.fluency?.toFixed?.(1)
+                                        ?? shadowingResult.fluency_score?.toFixed?.(1)
+                                        ?? "--"}
+                                </p>
+                            </div>
+                            <div className="rounded-[1.2rem] border border-violet-100 bg-violet-50/70 p-3.5">
+                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-700">发音清晰</p>
+                                <p className="mt-2 text-2xl font-semibold text-violet-900">
+                                    {shadowingResult.utterance_scores?.pronunciation_clarity?.toFixed?.(1)
+                                        ?? shadowingResult.utterance_scores?.accuracy?.toFixed?.(1)
+                                        ?? shadowingResult.pronunciation_score?.toFixed?.(1)
+                                        ?? "--"}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="mt-4 rounded-[1.35rem] border border-amber-100 bg-amber-50/60 px-4 py-3">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-700">训练反馈</p>
+                            <p className="mt-2 text-sm leading-7 text-stone-700">{primarySummary}</p>
+                        </div>
+
+                        {activeWordResults.length > 0 ? (
+                            <div className="mt-4 rounded-[1.35rem] border border-stone-100 bg-white/85 px-4 py-4">
+                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">词级反馈（可点击查词）</p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    {activeWordResults.map((item, index) => {
+                                        const tokenClass = item.status === "correct"
+                                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                            : item.status === "weak"
+                                                ? "border-amber-200 bg-amber-50 text-amber-700"
+                                                : "border-rose-200 bg-rose-50 text-rose-700";
+                                        return (
+                                            <button
+                                                key={`rebuild-shadowing-word-${item.word}-${index}`}
+                                                type="button"
+                                                data-word-popup-segment={item.word}
+                                                onClick={(event) => handleWordClick(event, item.word, referenceEnglish)}
+                                                onMouseUp={() => handleInteractiveTextMouseUp(referenceEnglish)}
+                                                className={cn(
+                                                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold transition-all hover:-translate-y-0.5",
+                                                    tokenClass,
+                                                )}
+                                            >
+                                                <span>{item.word}</span>
+                                                {typeof item.score === "number" ? (
+                                                    <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[11px] font-bold">
+                                                        {item.score.toFixed(1)}
+                                                    </span>
+                                                ) : null}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {shadowingResult.transcript?.trim() ? (
+                            <div className="mt-4 rounded-[1.35rem] border border-sky-100 bg-sky-50/60 px-4 py-4">
+                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-700">识别转录</p>
+                                <div className="mt-2 text-base leading-8 text-stone-700 font-newsreader">
+                                    {renderInteractiveCoachText(shadowingResult.transcript.trim())}
+                                </div>
+                            </div>
+                        ) : null}
+                    </>
+                ) : null}
+            </motion.div>
+        );
+    };
+
+    const renderRebuildSentenceShadowingPrompt = () => {
+        if (!drillData || !rebuildFeedback || isRebuildPassage) return null;
+
+        return (
+            <motion.div
+                key={`rebuild-shadowing-prompt-${rebuildFeedback.resolvedAt}`}
+                initial={prefersReducedMotion ? false : { opacity: 0, y: 18 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: prefersReducedMotion ? 0.16 : 0.3 }}
+                className="mx-auto w-full max-w-3xl rounded-[1.9rem] border border-stone-100 bg-white/94 p-6 shadow-[0_18px_34px_rgba(15,23,42,0.05)]"
+            >
+                <div className="flex items-start gap-3">
+                    <div className="mt-1 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700">
+                        <Headphones className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">Rebuild 提交成功</p>
+                        <h3 className="mt-2 text-2xl font-bold tracking-tight text-stone-900">要先做 Shadowing 训练吗？</h3>
+                        <p className="mt-3 text-sm leading-7 text-stone-600">
+                            这是可选训练，不影响 Elo / 连胜。你可以先练一遍跟读，再回来看本题重组评分。
+                        </p>
+                    </div>
+                </div>
+
+                <div className="mt-5 rounded-[1.35rem] border border-sky-100 bg-sky-50/60 px-4 py-4">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-700">本题句子</p>
+                    <div className="mt-2 text-lg leading-8 text-stone-800 font-newsreader">
+                        {renderInteractiveCoachText(drillData.reference_english)}
+                    </div>
+                    <p className="mt-2 text-sm leading-7 text-stone-500">{drillData.chinese}</p>
+                </div>
+
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                    <button
+                        type="button"
+                        onClick={() => setRebuildSentenceShadowingFlow("shadowing")}
+                        className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-emerald-300 bg-emerald-500 px-5 text-sm font-bold text-white shadow-[0_10px_24px_rgba(16,185,129,0.25)] transition-all hover:-translate-y-0.5 hover:bg-emerald-600"
+                    >
+                        <Mic className="h-4 w-4" />
+                        开始 Shadowing 训练
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setRebuildSentenceShadowingFlow("feedback")}
+                        className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-stone-300 bg-white px-5 text-sm font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:bg-stone-50"
+                    >
+                        先看重组评分
+                        <ArrowRight className="h-4 w-4" />
+                    </button>
+                </div>
+            </motion.div>
         );
     };
 
@@ -8135,6 +9337,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         <div className="mt-5">
                             {renderRebuildComposer(`提交第 ${activePassageSegmentIndex + 1} 段`, true, Boolean(activeSegmentResult))}
                         </div>
+                        {activeSegmentResult ? (
+                            <div className="mt-5">
+                                {renderRebuildShadowingPanel({
+                                    referenceEnglish: activeSegment.referenceEnglish,
+                                    chinese: activeSegment.chinese,
+                                })}
+                            </div>
+                        ) : null}
                     </section>
                 ) : null}
 
@@ -11139,16 +12349,37 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     animate={{ opacity: 1 }}
                                     exit={{ opacity: 0 }}
                                     className="absolute inset-0 z-[60] overflow-y-auto custom-scrollbar bg-[rgba(248,250,252,0.78)] p-4 md:p-6 pb-28 backdrop-blur-[10px]"
-                                >
-                                    <motion.div
+                                    >
+                                        <motion.div
                                         initial={prefersReducedMotion ? false : { opacity: 0, y: 22, scale: 0.98 }}
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 16, scale: 0.98 }}
                                         transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, ease: "easeOut" }}
-                                        className="mx-auto w-full max-w-4xl pt-8 md:pt-10"
-                                    >
-                                        {renderRebuildFeedback()}
-                                    </motion.div>
+                                            className="mx-auto w-full max-w-4xl pt-8 md:pt-10"
+                                        >
+                                            {rebuildSentenceShadowingFlow === "prompt" ? (
+                                                renderRebuildSentenceShadowingPrompt()
+                                            ) : rebuildSentenceShadowingFlow === "shadowing" ? (
+                                                <div className="mx-auto w-full max-w-3xl space-y-4">
+                                                    {drillData ? renderRebuildShadowingPanel({
+                                                        referenceEnglish: drillData.reference_english,
+                                                        chinese: drillData.chinese,
+                                                    }) : null}
+                                                    <div className="flex justify-center">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setRebuildSentenceShadowingFlow("feedback")}
+                                                            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-stone-300 bg-white px-5 py-2 text-sm font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:bg-stone-50"
+                                                        >
+                                                            查看重组评分
+                                                            <ArrowRight className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                renderRebuildFeedback()
+                                            )}
+                                        </motion.div>
                                 </motion.div>
                             ) : null}
                         </AnimatePresence>
@@ -11233,7 +12464,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
                     {/* Floating Action Bar - Redesigned */}
                     <AnimatePresence>
-                        {isRebuildMode && rebuildFeedback && !isRebuildPassage && !rebuildPassageSummary && !bossState.active && !gambleState.active && (
+                        {isRebuildMode && rebuildFeedback && !isRebuildPassage && rebuildSentenceShadowingFlow === "feedback" && !rebuildPassageSummary && !bossState.active && !gambleState.active && (
                             <motion.div
                                 initial={{ y: 40, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}

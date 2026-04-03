@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     CheckCircle2,
+    X,
     XCircle,
     Loader2,
     Trophy,
@@ -725,6 +726,15 @@ export function ReadingQuizPanel({
                                 <ChevronDown className="h-3.5 w-3.5" />
                             </button>
                         ) : null}
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="rounded-full border-[3px] border-[#17120d] bg-white p-1.5 text-[#5f5448] transition hover:-translate-y-0.5 hover:text-[#17120d]"
+                            aria-label="关闭测试模式"
+                            title="关闭测试模式"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
                     </div>
                 </div>
                 {score && !isFloatingCat && (
