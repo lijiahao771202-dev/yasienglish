@@ -10,6 +10,111 @@ export function resolveListeningScoreTier(score: number): ListeningScoreTier {
     return "retry";
 }
 
+function levenshteinDistance(left: string, right: string) {
+    const leftLength = left.length;
+    const rightLength = right.length;
+    if (leftLength === 0) return rightLength;
+    if (rightLength === 0) return leftLength;
+
+    const matrix: number[][] = Array.from({ length: leftLength + 1 }, () => new Array(rightLength + 1).fill(0));
+    for (let i = 0; i <= leftLength; i += 1) matrix[i][0] = i;
+    for (let j = 0; j <= rightLength; j += 1) matrix[0][j] = j;
+
+    for (let i = 1; i <= leftLength; i += 1) {
+        for (let j = 1; j <= rightLength; j += 1) {
+            const cost = left[i - 1] === right[j - 1] ? 0 : 1;
+            matrix[i][j] = Math.min(
+                matrix[i - 1][j] + 1,
+                matrix[i][j - 1] + 1,
+                matrix[i - 1][j - 1] + cost,
+            );
+        }
+    }
+
+    return matrix[leftLength][rightLength];
+}
+
+function encodeSoundex(input: string) {
+    const letters = input.toLowerCase().replace(/[^a-z]/g, "");
+    if (!letters) return "";
+
+    const map: Record<string, string> = {
+        b: "1", f: "1", p: "1", v: "1",
+        c: "2", g: "2", j: "2", k: "2", q: "2", s: "2", x: "2", z: "2",
+        d: "3", t: "3",
+        l: "4",
+        m: "5", n: "5",
+        r: "6",
+    };
+
+    const first = letters[0];
+    let previousCode = map[first] || "";
+    let encoded = first.toUpperCase();
+
+    for (let index = 1; index < letters.length && encoded.length < 4; index += 1) {
+        const char = letters[index];
+        const code = map[char] || "";
+        if (!code || code === previousCode) {
+            previousCode = code || previousCode;
+            continue;
+        }
+        encoded += code;
+        previousCode = code;
+    }
+
+    while (encoded.length < 4) {
+        encoded += "0";
+    }
+
+    return encoded;
+}
+
+function arePronunciationTokensEquivalent(left: string, right: string) {
+    if (!left || !right) return false;
+    if (left === right) return true;
+
+    const looseLeft = left.replace(/'/g, "");
+    const looseRight = right.replace(/'/g, "");
+    if (looseLeft === looseRight) return true;
+    if (!looseLeft || !looseRight) return false;
+
+    const leftLen = looseLeft.length;
+    const rightLen = looseRight.length;
+    const maxLen = Math.max(leftLen, rightLen);
+    const lenGap = Math.abs(leftLen - rightLen);
+
+    if (lenGap <= 2 && maxLen >= 3) {
+        const leftSoundex = encodeSoundex(looseLeft);
+        const rightSoundex = encodeSoundex(looseRight);
+        if (leftSoundex && leftSoundex === rightSoundex) {
+            return true;
+        }
+    }
+
+    const distance = levenshteinDistance(looseLeft, looseRight);
+    if (maxLen <= 4 && distance <= 1) {
+        return true;
+    }
+
+    if (
+        maxLen <= 6
+        && distance <= 2
+        && looseLeft[0] === looseRight[0]
+        && looseLeft.slice(0, 2) === looseRight.slice(0, 2)
+    ) {
+        return true;
+    }
+
+    if (maxLen >= 5) {
+        const similarity = 1 - (distance / maxLen);
+        if (similarity >= 0.82) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function computeLcsLength(source: string[], target: string[]) {
     const sourceLength = source.length;
     const targetLength = target.length;
@@ -20,7 +125,7 @@ function computeLcsLength(source: string[], target: string[]) {
 
     for (let row = 1; row <= sourceLength; row += 1) {
         for (let col = 1; col <= targetLength; col += 1) {
-            if (source[row - 1] === target[col - 1]) {
+            if (arePronunciationTokensEquivalent(source[row - 1], target[col - 1])) {
                 current[col] = previous[col - 1] + 1;
             } else {
                 current[col] = Math.max(previous[col], current[col - 1]);
@@ -103,7 +208,8 @@ export function alignPronunciationTokens(params: {
 
     for (let i = 1; i <= targetLength; i += 1) {
         for (let j = 1; j <= spokenLength; j += 1) {
-            const matchCost = targetTokens[i - 1].token === spokenTokens[j - 1] ? 0 : 1;
+            const isEquivalent = arePronunciationTokensEquivalent(targetTokens[i - 1].token, spokenTokens[j - 1]);
+            const matchCost = isEquivalent ? 0 : 1;
             dp[i][j] = Math.min(
                 dp[i - 1][j - 1] + matchCost,
                 dp[i - 1][j] + 1,
@@ -118,16 +224,12 @@ export function alignPronunciationTokens(params: {
 
     while (i > 0 || j > 0) {
         if (i > 0 && j > 0) {
-            const isMatch = targetTokens[i - 1].token === spokenTokens[j - 1];
+            const isMatch = arePronunciationTokensEquivalent(targetTokens[i - 1].token, spokenTokens[j - 1]);
             const diagonalCost = dp[i - 1][j - 1] + (isMatch ? 0 : 1);
-            if (dp[i][j] === diagonalCost) {
+            if (isMatch && dp[i][j] === diagonalCost) {
                 const sourceIndex = targetTokens[i - 1].sourceIndex;
-                if (isMatch) {
-                    tokenStates.set(sourceIndex, "correct");
-                    correctCount += 1;
-                } else {
-                    tokenStates.set(sourceIndex, "incorrect");
-                }
+                tokenStates.set(sourceIndex, "correct");
+                correctCount += 1;
                 i -= 1;
                 j -= 1;
                 continue;
@@ -146,6 +248,14 @@ export function alignPronunciationTokens(params: {
         }
 
         if (i > 0 && j > 0) {
+            const isMatch = arePronunciationTokensEquivalent(targetTokens[i - 1].token, spokenTokens[j - 1]);
+            if (isMatch && dp[i][j] === dp[i - 1][j - 1]) {
+                tokenStates.set(targetTokens[i - 1].sourceIndex, "correct");
+                correctCount += 1;
+                i -= 1;
+                j -= 1;
+                continue;
+            }
             tokenStates.set(targetTokens[i - 1].sourceIndex, "incorrect");
             i -= 1;
             j -= 1;
@@ -159,4 +269,3 @@ export function alignPronunciationTokens(params: {
 
     return { tokenStates, correctCount };
 }
-

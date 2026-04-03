@@ -782,6 +782,7 @@ interface RebuildShadowingState {
 }
 
 type RebuildSentenceShadowingFlow = "idle" | "prompt" | "shadowing" | "feedback";
+const REBUILD_PASSAGE_SHADOWING_PROMPT_DELAY_MS = 2000;
 
 function createDefaultRebuildShadowingState(): RebuildShadowingState {
     return {
@@ -1736,6 +1737,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [rebuildPassageSummary, setRebuildPassageSummary] = useState<RebuildPassageSummaryState | null>(null);
     const [rebuildShadowingState, setRebuildShadowingState] = useState<RebuildShadowingState>(() => createDefaultRebuildShadowingState());
     const [rebuildSentenceShadowingFlow, setRebuildSentenceShadowingFlow] = useState<RebuildSentenceShadowingFlow>("idle");
+    const [rebuildPassageShadowingFlow, setRebuildPassageShadowingFlow] = useState<RebuildSentenceShadowingFlow>("idle");
+    const [rebuildPassageShadowingSegmentIndex, setRebuildPassageShadowingSegmentIndex] = useState<number | null>(null);
     const [pendingRebuildAdvanceElo, setPendingRebuildAdvanceElo] = useState<number | null>(null);
     const lastRebuildResolvedAtRef = useRef<number | null>(null);
     const lastScoreCelebrationRef = useRef<string>("");
@@ -1759,6 +1762,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const activePassageResult = isRebuildPassage
         ? (rebuildPassageResults.find((item) => item.segmentIndex === activePassageSegmentIndex) ?? null)
         : null;
+    const activePassageSegmentForShadowing = isRebuildPassage
+        ? (passageSession?.segments?.[activePassageSegmentIndex] ?? null)
+        : null;
     const activeRebuildShadowingScope = useMemo<RebuildShadowingScope | null>(() => {
         if (!isRebuildMode) return null;
         if (isRebuildPassage) {
@@ -1781,9 +1787,17 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             : null
     ), [activeRebuildShadowingScope, rebuildShadowingState]);
     const [rebuildShadowingLiveRecognitionTranscript, setRebuildShadowingLiveRecognitionTranscript] = useState("");
+    const [showRebuildShadowingCorrection, setShowRebuildShadowingCorrection] = useState(false);
     const [rebuildListeningProgressCursor, setRebuildListeningProgressCursor] = useState(0);
     const [isRebuildSpeechRecognitionRunning, setIsRebuildSpeechRecognitionRunning] = useState(false);
     const [isRebuildSpeechRecognitionSupported, setIsRebuildSpeechRecognitionSupported] = useState(true);
+    const [rebuildListeningScoreFx, setRebuildListeningScoreFx] = useState<{
+        score: number;
+        tier: ListeningScoreTier;
+        title: string;
+        detail: string;
+    } | null>(null);
+    const rebuildListeningScoreFxTimerRef = useRef<number | null>(null);
     const rebuildShadowingRecorderRef = useRef<MediaRecorder | null>(null);
     const rebuildShadowingRecorderStreamRef = useRef<MediaStream | null>(null);
     const rebuildShadowingRecorderChunksRef = useRef<Blob[]>([]);
@@ -1796,7 +1810,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const rebuildShadowingRecordingScopeRef = useRef<RebuildShadowingScope | null>(null);
     const rebuildShadowingPlaybackRef = useRef<HTMLAudioElement | null>(null);
     const rebuildShadowingPlaybackUrlRef = useRef<string | null>(null);
+    const rebuildPassageShadowingPromptTimerRef = useRef<number | null>(null);
+    const clearRebuildPassageShadowingPromptTimer = useCallback(() => {
+        if (rebuildPassageShadowingPromptTimerRef.current !== null) {
+            window.clearTimeout(rebuildPassageShadowingPromptTimerRef.current);
+            rebuildPassageShadowingPromptTimerRef.current = null;
+        }
+    }, []);
     const resetRebuildShadowingState = useCallback(() => {
+        clearRebuildPassageShadowingPromptTimer();
         rebuildShadowingDiscardRecordingOnStopRef.current = true;
         const recorder = rebuildShadowingRecorderRef.current;
         if (recorder && recorder.state !== "inactive") {
@@ -1834,6 +1856,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         rebuildShadowingListeningProgressCursorRef.current = 0;
         setIsRebuildSpeechRecognitionRunning(false);
         setRebuildShadowingLiveRecognitionTranscript("");
+        setShowRebuildShadowingCorrection(false);
         setRebuildListeningProgressCursor(0);
 
         rebuildShadowingRecordingScopeRef.current = null;
@@ -1849,7 +1872,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         }
         setRebuildShadowingState(createDefaultRebuildShadowingState());
         setRebuildSentenceShadowingFlow("idle");
-    }, []);
+        setRebuildPassageShadowingFlow("idle");
+        setRebuildPassageShadowingSegmentIndex(null);
+    }, [clearRebuildPassageShadowingPromptTimer]);
 
     const persistRebuildHiddenElo = useCallback(async (nextElo: number) => {
         const updatedAt = Date.now();
@@ -1988,6 +2013,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     useEffect(() => {
         if (!isRebuildPassage || !passageSession) return;
+        clearRebuildPassageShadowingPromptTimer();
 
         const initialSegmentIndex = Math.min(
             Math.max(passageSession.currentIndex ?? 0, 0),
@@ -2011,12 +2037,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setRebuildPassageSummary(null);
         setRebuildFeedback(null);
         setRebuildSentenceShadowingFlow("idle");
+        setRebuildPassageShadowingFlow("idle");
+        setRebuildPassageShadowingSegmentIndex(null);
 
         const activeDraft = nextDrafts[initialSegmentIndex];
         if (activeDraft) {
             applyPassageDraftToActiveState(activeDraft);
         }
-    }, [applyPassageDraftToActiveState, isRebuildPassage, passageSession?.sessionId]);
+    }, [applyPassageDraftToActiveState, clearRebuildPassageShadowingPromptTimer, isRebuildPassage, passageSession?.sessionId]);
 
     useEffect(() => {
         if (!isRebuildPassage || rebuildPassageDrafts.length === 0) return;
@@ -2062,6 +2090,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         rebuildStartedAt,
         rebuildTypingBuffer,
     ]);
+
+    useEffect(() => {
+        return () => {
+            clearRebuildPassageShadowingPromptTimer();
+        };
+    }, [clearRebuildPassageShadowingPromptTimer]);
 
     useEffect(() => {
         if (!isRebuildMode) return;
@@ -3754,6 +3788,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     }, [playRebuildSfx, prefersReducedMotion]);
 
     useEffect(() => {
+        if (isRebuildPassage) return;
         if (!rebuildFeedback?.resolvedAt) return;
         if (lastRebuildResolvedAtRef.current === rebuildFeedback.resolvedAt) return;
         lastRebuildResolvedAtRef.current = rebuildFeedback.resolvedAt;
@@ -3764,7 +3799,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         }
 
         playRebuildSfx("error");
-    }, [launchRebuildSuccessCelebration, rebuildFeedback, playRebuildSfx]);
+    }, [isRebuildPassage, launchRebuildSuccessCelebration, rebuildFeedback, playRebuildSfx]);
 
 
     // --- Spacebar Logic ---
@@ -5868,6 +5903,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         if (!isRebuildPassage || !passageSession) return;
         const targetSegment = passageSession.segments[segmentIndex];
         if (!targetSegment) return;
+        clearRebuildPassageShadowingPromptTimer();
 
         const nextDrafts = [...rebuildPassageDrafts];
         const currentDraft = nextDrafts[activePassageSegmentIndex];
@@ -5888,6 +5924,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setDrillData((current) => current ? hydratePassageSegmentDrill(current, segmentIndex) : current);
         setRebuildFeedback(null);
         setRebuildSentenceShadowingFlow("idle");
+        setRebuildPassageShadowingSegmentIndex(targetResult ? segmentIndex : null);
+        setRebuildPassageShadowingFlow("idle");
         setAnalysisRequested(false);
         setAnalysisDetailsOpen(false);
         setWordPopup(null);
@@ -5895,6 +5933,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         activePassageSegmentIndex,
         applyPassageDraftToActiveState,
         buildActivePassageDraftSnapshot,
+        clearRebuildPassageShadowingPromptTimer,
         hydratePassageSegmentDrill,
         isRebuildPassage,
         passageSession,
@@ -6022,6 +6061,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             } else {
                 playRebuildSfx("error");
             }
+            const submittedSegmentIndex = activePassageSegmentIndex;
+            clearRebuildPassageShadowingPromptTimer();
+            setRebuildPassageShadowingSegmentIndex(submittedSegmentIndex);
+            setRebuildPassageShadowingFlow("idle");
+            rebuildPassageShadowingPromptTimerRef.current = window.setTimeout(() => {
+                setRebuildPassageShadowingSegmentIndex(submittedSegmentIndex);
+                setRebuildPassageShadowingFlow("prompt");
+                rebuildPassageShadowingPromptTimerRef.current = null;
+            }, REBUILD_PASSAGE_SHADOWING_PROMPT_DELAY_MS);
         } else {
             setRebuildFeedback(nextFeedback);
             setRebuildSentenceShadowingFlow("prompt");
@@ -6039,6 +6087,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         rebuildFeedback,
         rebuildPassageResults,
         currentElo,
+        clearRebuildPassageShadowingPromptTimer,
         rebuildEditCount,
         rebuildReplayCount,
         rebuildStartedAt,
@@ -6098,7 +6147,55 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         });
     }, []);
 
-    const stopRebuildShadowingSpeechRecognition = useCallback((forceAbort = false, preserveTranscript = false) => {
+    const clearRebuildListeningScoreFxTimer = useCallback(() => {
+        if (rebuildListeningScoreFxTimerRef.current !== null) {
+            window.clearTimeout(rebuildListeningScoreFxTimerRef.current);
+            rebuildListeningScoreFxTimerRef.current = null;
+        }
+    }, []);
+
+    const playRebuildListeningScoreSfx = useCallback((tier: ListeningScoreTier) => {
+        if (typeof window === "undefined") return;
+        const AudioContextCtor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextCtor) return;
+
+        const audioContext = new AudioContextCtor();
+        const base = audioContext.currentTime;
+
+        const scheduleTone = (frequency: number, startOffset: number, duration: number, gain = 0.09, type: OscillatorType = "sine") => {
+            const oscillator = audioContext.createOscillator();
+            const amp = audioContext.createGain();
+            oscillator.type = type;
+            oscillator.frequency.setValueAtTime(frequency, base + startOffset);
+            amp.gain.setValueAtTime(0.0001, base + startOffset);
+            amp.gain.exponentialRampToValueAtTime(gain, base + startOffset + 0.018);
+            amp.gain.exponentialRampToValueAtTime(0.0001, base + startOffset + duration);
+            oscillator.connect(amp);
+            amp.connect(audioContext.destination);
+            oscillator.start(base + startOffset);
+            oscillator.stop(base + startOffset + duration + 0.01);
+        };
+
+        if (tier === "excellent") {
+            scheduleTone(659, 0, 0.16, 0.11, "triangle");
+            scheduleTone(880, 0.13, 0.16, 0.12, "triangle");
+            scheduleTone(1047, 0.27, 0.2, 0.13, "triangle");
+        } else if (tier === "good") {
+            scheduleTone(587, 0, 0.16, 0.095, "triangle");
+            scheduleTone(784, 0.14, 0.18, 0.105, "triangle");
+        } else if (tier === "ok") {
+            scheduleTone(523, 0, 0.22, 0.08, "sine");
+        } else {
+            scheduleTone(392, 0, 0.14, 0.07, "sawtooth");
+            scheduleTone(311, 0.12, 0.2, 0.07, "sawtooth");
+        }
+
+        window.setTimeout(() => {
+            void audioContext.close().catch(() => undefined);
+        }, 900);
+    }, []);
+
+    const stopRebuildShadowingSpeechRecognition = useCallback((forceAbort = false) => {
         rebuildShadowingSpeechRecognitionStopRequestedRef.current = true;
         const recognition = rebuildShadowingSpeechRecognitionRef.current;
         if (recognition) {
@@ -6117,10 +6214,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             rebuildShadowingSpeechRecognitionRef.current = null;
         }
         setIsRebuildSpeechRecognitionRunning(false);
-        if (!preserveTranscript) {
-            rebuildShadowingSpeechRecognitionFinalTranscriptRef.current = "";
-            rebuildShadowingSpeechRecognitionInterimTranscriptRef.current = "";
-        }
+        rebuildShadowingSpeechRecognitionFinalTranscriptRef.current = "";
+        rebuildShadowingSpeechRecognitionInterimTranscriptRef.current = "";
     }, []);
 
     const startRebuildShadowingSpeechRecognition = useCallback((scope: RebuildShadowingScope, referenceSentence: string) => {
@@ -6249,6 +6344,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             rebuildShadowingPlaybackRef.current.pause();
             rebuildShadowingPlaybackRef.current.currentTime = 0;
         }
+        if (audioRef.current && !audioRef.current.paused) {
+            resetAudioPlayback();
+        }
 
         cleanupRebuildShadowingRecorderResources();
         stopRebuildShadowingSpeechRecognition(true);
@@ -6258,6 +6356,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         rebuildShadowingListeningProgressCursorRef.current = 0;
         setRebuildListeningProgressCursor(0);
         setRebuildShadowingLiveRecognitionTranscript("");
+        setShowRebuildShadowingCorrection(false);
+        clearRebuildListeningScoreFxTimer();
+        setRebuildListeningScoreFx(null);
 
         setRebuildShadowingState((currentState) => ({
             ...currentState,
@@ -6307,19 +6408,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 const shouldDiscard = rebuildShadowingDiscardRecordingOnStopRef.current;
                 rebuildShadowingDiscardRecordingOnStopRef.current = false;
 
-                const transcriptFromRefs = normalizeRebuildShadowingText(
-                    `${rebuildShadowingSpeechRecognitionFinalTranscriptRef.current} ${rebuildShadowingSpeechRecognitionInterimTranscriptRef.current}`,
-                );
-                const transcript = transcriptFromRefs || normalizeRebuildShadowingText(rebuildShadowingLiveRecognitionTranscript);
-                setRebuildShadowingLiveRecognitionTranscript(transcript);
-                stopRebuildShadowingSpeechRecognition(true);
-
                 const blob = new Blob(
                     rebuildShadowingRecorderChunksRef.current,
                     { type: recorder.mimeType || "audio/webm" },
                 );
                 cleanupRebuildShadowingRecorderResources();
                 if (shouldDiscard || blob.size <= 0 || !scope) {
+                    setShowRebuildShadowingCorrection(false);
                     rebuildShadowingRecordingScopeRef.current = null;
                     return;
                 }
@@ -6365,13 +6460,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         activeRebuildShadowingReferenceEnglish,
         activeRebuildShadowingScope,
         cleanupRebuildShadowingRecorderResources,
+        clearRebuildListeningScoreFxTimer,
         isRebuildMode,
         rebuildShadowingState.isProcessing,
         rebuildShadowingState.isRecording,
         rebuildShadowingState.isSubmitting,
-        rebuildShadowingLiveRecognitionTranscript,
         startRebuildShadowingSpeechRecognition,
         stopRebuildShadowingSpeechRecognition,
+        resetAudioPlayback,
         upsertRebuildShadowingScopePatch,
     ]);
 
@@ -6379,8 +6475,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         if (!isRebuildMode) return;
         const recorder = rebuildShadowingRecorderRef.current;
         if (!recorder || recorder.state === "inactive") return;
-        stopRebuildShadowingSpeechRecognition(false, true);
+        stopRebuildShadowingSpeechRecognition(false);
         rebuildShadowingDiscardRecordingOnStopRef.current = false;
+        setShowRebuildShadowingCorrection(true);
         setRebuildShadowingState((currentState) => ({
             ...currentState,
             isProcessing: true,
@@ -6471,6 +6568,27 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         }
 
         const tier = resolveRebuildShadowingScoreTier(metrics.score);
+        const scoreTitle = tier === "excellent"
+            ? "太稳了！"
+            : tier === "good"
+                ? "表现不错！"
+                : tier === "ok"
+                    ? "继续冲！"
+                    : "再来一遍更好";
+        const scoreDetail = `匹配 ${metrics.correctCount}/${Math.max(1, metrics.totalCount)} 个词，系统自动评分 ${metrics.score}/100`;
+        clearRebuildListeningScoreFxTimer();
+        setRebuildListeningScoreFx({
+            score: metrics.score,
+            tier,
+            title: scoreTitle,
+            detail: scoreDetail,
+        });
+        playRebuildListeningScoreSfx(tier);
+        rebuildListeningScoreFxTimerRef.current = window.setTimeout(() => {
+            setRebuildListeningScoreFx((current) => (current?.score === metrics.score ? null : current));
+            rebuildListeningScoreFxTimerRef.current = null;
+        }, 1800);
+
         const summary = tier === "excellent"
             ? "跟读非常稳，节奏和关键词覆盖都很好。"
             : tier === "good"
@@ -6532,7 +6650,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     }, [
         activeRebuildShadowingReferenceEnglish,
         activeRebuildShadowingScope,
+        clearRebuildListeningScoreFxTimer,
         isRebuildMode,
+        playRebuildListeningScoreSfx,
         rebuildShadowingLiveRecognitionTranscript,
         rebuildShadowingState,
         upsertRebuildShadowingScopePatch,
@@ -6548,9 +6668,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     }, []);
 
     useEffect(() => {
-        if (!activeRebuildShadowingScope || rebuildShadowingState.isRecording) return;
+        if (!activeRebuildShadowingScope) return;
         const resultTranscript = normalizeRebuildShadowingText(activeRebuildShadowingEntry?.result?.transcript || "");
         if (!resultTranscript) {
+            rebuildShadowingListeningProgressCursorRef.current = 0;
+            setRebuildListeningProgressCursor(0);
+            setRebuildShadowingLiveRecognitionTranscript("");
+            setShowRebuildShadowingCorrection(false);
             return;
         }
         rebuildShadowingListeningProgressCursorRef.current = estimateRebuildShadowingProgress(
@@ -6559,11 +6683,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         );
         setRebuildListeningProgressCursor(rebuildShadowingListeningProgressCursorRef.current);
         setRebuildShadowingLiveRecognitionTranscript(resultTranscript);
+        setShowRebuildShadowingCorrection(true);
     }, [
         activeRebuildShadowingEntry?.result?.transcript,
         activeRebuildShadowingReferenceEnglish,
-        activeRebuildShadowingScope,
-        rebuildShadowingState.isRecording,
+        activeRebuildShadowingScope?.kind,
+        activeRebuildShadowingScope?.kind === "segment" ? activeRebuildShadowingScope.segmentIndex : -1,
     ]);
 
     useEffect(() => {
@@ -6586,6 +6711,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     useEffect(() => {
         return () => {
+            clearRebuildListeningScoreFxTimer();
             const speechRecognition = rebuildShadowingSpeechRecognitionRef.current;
             if (speechRecognition) {
                 speechRecognition.onresult = null;
@@ -6621,7 +6747,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 URL.revokeObjectURL(rebuildShadowingPlaybackUrlRef.current);
             }
         };
-    }, []);
+    }, [clearRebuildListeningScoreFxTimer]);
 
     const rebuildTypingBufferRef = useRef("");
 
@@ -7663,21 +7789,16 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         if (!isRebuildMode || !activeRebuildShadowingScope || !activeRebuildShadowingEntry) return null;
         const { referenceEnglish, chinese } = params;
         const shadowingResult = activeRebuildShadowingEntry.result;
-        const scoreValue = typeof shadowingResult?.score === "number"
-            ? shadowingResult.score.toFixed(1)
-            : (typeof shadowingResult?.utterance_scores?.total === "number"
-                ? shadowingResult.utterance_scores.total.toFixed(1)
-                : "--");
-        const primarySummary = shadowingResult?.summary_cn
-            || shadowingResult?.judge_reasoning
-            || shadowingResult?.tips_cn?.[0]
-            || "录完后点击提交，拿到词级发音反馈。";
-        const activeWordResults = shadowingResult?.word_results ?? [];
         const liveTranscript = normalizeRebuildShadowingText(rebuildShadowingLiveRecognitionTranscript);
+        const liveRecognitionTokens = extractWordTokens(liveTranscript)
+            .map((token) => normalizeWordForMatch(token.text))
+            .filter(Boolean);
         const referenceTokenCount = extractWordTokens(referenceEnglish).length;
-        const shouldShowPostRecordingCorrection = !rebuildShadowingState.isRecording
+        const shouldShowListeningProgress = rebuildShadowingState.isRecording;
+        const shouldShowPostRecordingCorrection = showRebuildShadowingCorrection
+            && !rebuildShadowingState.isRecording
             && !rebuildShadowingState.isProcessing
-            && liveTranscript.length > 0;
+            && liveRecognitionTokens.length > 0;
         const canSubmitRebuildShadowing = Boolean(activeRebuildShadowingEntry.wavBlob) && !rebuildShadowingState.isSubmitting && liveTranscript.length > 0;
         const isReferenceAudioLoading = audioSourceText === referenceEnglish && isAudioLoading;
         const isReferenceAudioPlaying = audioSourceText === referenceEnglish && isPlaying;
@@ -7687,11 +7808,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         const referenceWordMarks = Array.isArray(referenceMarksRaw)
             ? referenceMarksRaw.filter((mark): mark is TtsWordMark => (
                 Boolean(mark)
-                && typeof mark.time === "number"
-                && typeof mark.start === "number"
-                && typeof mark.end === "number"
                 && typeof mark.value === "string"
-            ))
+                && Number.isFinite(Number(mark.start))
+                && Number.isFinite(Number(mark.end))
+            )).sort((left, right) => Number(left.start) - Number(right.start))
             : [];
         const sourceTokenToMarkIndex = alignTokensToMarks(sourceTokens, referenceWordMarks);
         const activeReferenceWordMarkIndex = (() => {
@@ -7699,17 +7819,18 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             const timeMs = currentAudioTime;
             for (let index = 0; index < referenceWordMarks.length; index += 1) {
                 const mark = referenceWordMarks[index];
-                const markStart = Number(mark.start ?? mark.time ?? 0);
-                const markEnd = Number(mark.end ?? mark.start ?? mark.time ?? 0);
-                if (timeMs >= markStart && timeMs <= markEnd) {
+                const markStart = Number(mark.start);
+                const rawMarkEnd = Number(mark.end);
+                const markEnd = Number.isFinite(rawMarkEnd) && rawMarkEnd > markStart
+                    ? rawMarkEnd
+                    : markStart + 220;
+                if (timeMs >= markStart && timeMs < markEnd) {
                     return index;
                 }
+                if (timeMs < markStart) break;
             }
             return null;
         })();
-        const liveRecognitionTokens = extractWordTokens(liveTranscript)
-            .map((token) => normalizeWordForMatch(token.text))
-            .filter(Boolean);
         const pronunciationFeedback = (() => {
             const targetTokens = sourceTokens
                 .map((token) => ({ sourceIndex: token.index, token: normalizeWordForMatch(token.text) }))
@@ -7731,6 +7852,16 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 tokenStates,
                 correctCount,
                 totalCount: targetTokens.length,
+            };
+        })();
+        const rebuildListeningSummary = (() => {
+            if (!shadowingResult) return null;
+            const transcript = normalizeRebuildShadowingText(shadowingResult.transcript || liveTranscript);
+            const metrics = scoreRebuildShadowingRecognition(referenceEnglish, transcript);
+            const score = metrics.score;
+            return {
+                score,
+                detail: `匹配 ${metrics.correctCount}/${Math.max(1, metrics.totalCount)} 个词，系统自动评分 ${score}/100`,
             };
         })();
         const sourceSentenceKaraokeContent = (() => {
@@ -7771,16 +7902,16 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             isPassedWord
                                 ? "text-[#6b6358]"
                                 : "",
-                            rebuildShadowingState.isRecording && token.index < rebuildListeningProgressCursor
+                            !isReferenceAudioPlaying && shouldShowListeningProgress && token.index < rebuildListeningProgressCursor
                                 ? "bg-[#eef4ff] text-[#3f5f9a]"
                                 : "",
-                            rebuildShadowingState.isRecording && token.index === rebuildListeningProgressCursor
+                            !isReferenceAudioPlaying && shouldShowListeningProgress && token.index === rebuildListeningProgressCursor
                                 ? "bg-[#ddeaff] text-[#2f58b0] shadow-[inset_0_-1px_0_rgba(78,122,219,0.22)]"
                                 : "",
-                            shouldShowPostRecordingCorrection && tokenState === "correct"
+                            !isReferenceAudioPlaying && shouldShowPostRecordingCorrection && tokenState === "correct"
                                 ? "text-[#2f6f4d]"
                                 : "",
-                            shouldShowPostRecordingCorrection && (tokenState === "incorrect" || tokenState === "missed")
+                            !isReferenceAudioPlaying && shouldShowPostRecordingCorrection && (tokenState === "incorrect" || tokenState === "missed")
                                 ? "text-[#8e4a4a] underline decoration-[#d97a7a] decoration-2 underline-offset-[0.22em]"
                                 : "",
                         )}
@@ -7888,91 +8019,53 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     ) : null}
                 </div>
 
-                {shadowingResult ? (
-                    <>
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                            <div className="rounded-[1.2rem] border border-emerald-100 bg-emerald-50/70 p-3.5">
-                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">总分</p>
-                                <p className="mt-2 text-2xl font-semibold text-emerald-900">{scoreValue}</p>
-                            </div>
-                            <div className="rounded-[1.2rem] border border-sky-100 bg-sky-50/70 p-3.5">
-                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-700">内容复现</p>
-                                <p className="mt-2 text-2xl font-semibold text-sky-900">
-                                    {shadowingResult.utterance_scores?.content_reproduction?.toFixed?.(1)
-                                        ?? shadowingResult.utterance_scores?.completeness?.toFixed?.(1)
-                                        ?? "--"}
-                                </p>
-                            </div>
-                            <div className="rounded-[1.2rem] border border-amber-100 bg-amber-50/70 p-3.5">
-                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-700">语流节奏</p>
-                                <p className="mt-2 text-2xl font-semibold text-amber-900">
-                                    {shadowingResult.utterance_scores?.rhythm_fluency?.toFixed?.(1)
-                                        ?? shadowingResult.utterance_scores?.fluency?.toFixed?.(1)
-                                        ?? shadowingResult.fluency_score?.toFixed?.(1)
-                                        ?? "--"}
-                                </p>
-                            </div>
-                            <div className="rounded-[1.2rem] border border-violet-100 bg-violet-50/70 p-3.5">
-                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-violet-700">发音清晰</p>
-                                <p className="mt-2 text-2xl font-semibold text-violet-900">
-                                    {shadowingResult.utterance_scores?.pronunciation_clarity?.toFixed?.(1)
-                                        ?? shadowingResult.utterance_scores?.accuracy?.toFixed?.(1)
-                                        ?? shadowingResult.pronunciation_score?.toFixed?.(1)
-                                        ?? "--"}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="mt-4 rounded-[1.35rem] border border-amber-100 bg-amber-50/60 px-4 py-3">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-amber-700">训练反馈</p>
-                            <p className="mt-2 text-sm leading-7 text-stone-700">{primarySummary}</p>
-                        </div>
-
-                        {activeWordResults.length > 0 ? (
-                            <div className="mt-4 rounded-[1.35rem] border border-stone-100 bg-white/85 px-4 py-4">
-                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">词级反馈（可点击查词）</p>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                    {activeWordResults.map((item, index) => {
-                                        const tokenClass = item.status === "correct"
-                                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                            : item.status === "weak"
-                                                ? "border-amber-200 bg-amber-50 text-amber-700"
-                                                : "border-rose-200 bg-rose-50 text-rose-700";
-                                        return (
-                                            <button
-                                                key={`rebuild-shadowing-word-${item.word}-${index}`}
-                                                type="button"
-                                                data-word-popup-segment={item.word}
-                                                onClick={(event) => handleWordClick(event, item.word, referenceEnglish)}
-                                                onMouseUp={() => handleInteractiveTextMouseUp(referenceEnglish)}
-                                                className={cn(
-                                                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold transition-all hover:-translate-y-0.5",
-                                                    tokenClass,
-                                                )}
-                                            >
-                                                <span>{item.word}</span>
-                                                {typeof item.score === "number" ? (
-                                                    <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[11px] font-bold">
-                                                        {item.score.toFixed(1)}
-                                                    </span>
-                                                ) : null}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        ) : null}
-
-                        {shadowingResult.transcript?.trim() ? (
-                            <div className="mt-4 rounded-[1.35rem] border border-sky-100 bg-sky-50/60 px-4 py-4">
-                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-sky-700">识别转录</p>
-                                <div className="mt-2 text-base leading-8 text-stone-700 font-newsreader">
-                                    {renderInteractiveCoachText(shadowingResult.transcript.trim())}
-                                </div>
-                            </div>
-                        ) : null}
-                    </>
+                {shadowingResult && rebuildListeningSummary ? (
+                    <div className="mt-4 rounded-[1rem] border-[3px] border-[#bfead4] bg-[#f2fff8] px-4 py-3">
+                        <p className="text-sm font-black text-[#15744a]">
+                            跟读评分 {rebuildListeningSummary.score}/100
+                        </p>
+                        <p className="mt-1 text-sm text-[#2f5d46]">{rebuildListeningSummary.detail}</p>
+                    </div>
                 ) : null}
+
+                <AnimatePresence>
+                    {rebuildListeningScoreFx && (
+                        <motion.div
+                            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 20, scale: 0.9 }}
+                            animate={
+                                prefersReducedMotion
+                                    ? { opacity: 1 }
+                                    : {
+                                        opacity: [0, 1, 1],
+                                        y: [20, -8, 0],
+                                        scale: [0.9, 1.08, 1],
+                                    }
+                            }
+                            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.95 }}
+                            transition={{ duration: prefersReducedMotion ? 0.12 : 0.52, ease: [0.22, 1, 0.36, 1] }}
+                            className={cn(
+                                "relative mt-3 w-full overflow-hidden rounded-[1rem] border-[3px] px-3 py-2.5 shadow-[0_10px_0_rgba(19,14,10,0.09),0_20px_28px_rgba(0,0,0,0.08)]",
+                                rebuildListeningScoreFx.tier === "excellent"
+                                    ? "border-[#8ed7ad] bg-[#eafff1] text-[#155738]"
+                                    : rebuildListeningScoreFx.tier === "good"
+                                        ? "border-[#b9d8ff] bg-[#eef6ff] text-[#1f4b8f]"
+                                        : rebuildListeningScoreFx.tier === "ok"
+                                            ? "border-[#ffd7a3] bg-[#fff4e7] text-[#8f5a22]"
+                                            : "border-[#f0b8b8] bg-[#fff0f0] text-[#933535]",
+                            )}
+                        >
+                            <motion.div
+                                aria-hidden
+                                initial={prefersReducedMotion ? { opacity: 0 } : { x: "-120%", opacity: 0.45 }}
+                                animate={prefersReducedMotion ? { opacity: 0 } : { x: "130%", opacity: 0 }}
+                                transition={{ duration: 0.78, ease: "easeOut" }}
+                                className="pointer-events-none absolute inset-y-0 left-0 w-1/3 bg-white/50 blur-sm"
+                            />
+                            <p className="text-sm font-black">{rebuildListeningScoreFx.title} · {rebuildListeningScoreFx.score}/100</p>
+                            <p className="mt-1 text-xs font-semibold">{rebuildListeningScoreFx.detail}</p>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </motion.div>
         );
     };
@@ -8024,6 +8117,77 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-stone-300 bg-white px-5 text-sm font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:bg-stone-50"
                     >
                         先看重组评分
+                        <ArrowRight className="h-4 w-4" />
+                    </button>
+                </div>
+            </motion.div>
+        );
+    };
+
+    const renderRebuildPassageShadowingPrompt = () => {
+        if (!isRebuildPassage || !activePassageSegmentForShadowing || !activePassageResult) return null;
+
+        return (
+            <motion.div
+                key={`rebuild-passage-shadowing-prompt-${activePassageSegmentIndex}-${activePassageResult.feedback.resolvedAt}`}
+                initial={prefersReducedMotion ? false : { opacity: 0, y: 28, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={prefersReducedMotion ? { duration: 0.14 } : { type: "spring", stiffness: 280, damping: 24, mass: 0.82 }}
+                className="relative mx-auto w-full max-w-3xl overflow-hidden rounded-[2.1rem] border border-pink-200/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,244,251,0.95))] p-6 shadow-[0_24px_56px_rgba(236,72,153,0.14)]"
+            >
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-[radial-gradient(circle_at_top,rgba(251,207,232,0.55),transparent_70%)]" />
+                <motion.div
+                    className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-pink-200/45 blur-2xl"
+                    animate={prefersReducedMotion ? { opacity: 0.6 } : { opacity: [0.45, 0.8, 0.45], scale: [0.95, 1.08, 0.95] }}
+                    transition={{ duration: 2.8, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
+                />
+                <div className="flex items-start gap-3">
+                    <div className="mt-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-pink-200 bg-pink-50 text-pink-600 shadow-[0_8px_16px_rgba(244,114,182,0.18)]">
+                        <Heart className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-pink-500">Rebuild Passage · 第 {activePassageSegmentIndex + 1} 段</p>
+                        <h3 className="mt-2 text-2xl font-bold tracking-tight text-stone-900">要先做 Shadowing 训练吗？</h3>
+                        <p className="mt-3 text-sm leading-7 text-stone-600">
+                            可选训练，不影响 Elo / 连胜。先练一下当前段跟读，再返回短文继续就好。
+                        </p>
+                    </div>
+                </div>
+
+                <div className="mt-4 flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-pink-200 bg-pink-50 px-2.5 py-1 text-[10px] font-bold tracking-[0.14em] text-pink-600">
+                        <Sparkles className="h-3 w-3" />
+                        CUTE MODE
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold tracking-[0.14em] text-emerald-600">
+                        <Headphones className="h-3 w-3" />
+                        SHADOWING
+                    </span>
+                </div>
+
+                <div className="mt-5 rounded-[1.45rem] border border-pink-100 bg-[linear-gradient(180deg,rgba(252,231,243,0.55),rgba(239,246,255,0.52))] px-4 py-4">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-pink-600">当前段句子</p>
+                    <div className="mt-2 text-lg leading-8 text-stone-800 font-newsreader">
+                        {renderInteractiveCoachText(activePassageSegmentForShadowing.referenceEnglish)}
+                    </div>
+                    <p className="mt-2 text-sm leading-7 text-stone-500">{activePassageSegmentForShadowing.chinese}</p>
+                </div>
+
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                    <button
+                        type="button"
+                        onClick={() => setRebuildPassageShadowingFlow("shadowing")}
+                        className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-pink-300 bg-gradient-to-r from-pink-500 to-rose-500 px-5 text-sm font-bold text-white shadow-[0_12px_26px_rgba(244,114,182,0.3)] transition-all hover:-translate-y-0.5 hover:from-pink-600 hover:to-rose-600"
+                    >
+                        <Mic className="h-4 w-4" />
+                        开始 Shadowing 训练
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setRebuildPassageShadowingFlow("idle")}
+                        className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-sky-200 bg-white/92 px-5 text-sm font-semibold text-sky-700 transition-all hover:-translate-y-0.5 hover:bg-sky-50"
+                    >
+                        先继续短文
                         <ArrowRight className="h-4 w-4" />
                     </button>
                 </div>
@@ -9337,14 +9501,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         <div className="mt-5">
                             {renderRebuildComposer(`提交第 ${activePassageSegmentIndex + 1} 段`, true, Boolean(activeSegmentResult))}
                         </div>
-                        {activeSegmentResult ? (
-                            <div className="mt-5">
-                                {renderRebuildShadowingPanel({
-                                    referenceEnglish: activeSegment.referenceEnglish,
-                                    chinese: activeSegment.chinese,
-                                })}
-                            </div>
-                        ) : null}
                     </section>
                 ) : null}
 
@@ -11193,7 +11349,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                 : isDictationMode
                                                     ? "p-4 md:p-5 pb-6 md:pb-8"
                                                     : "p-6 md:p-8 pb-10 md:pb-12",
-                                            isRebuildMode && rebuildFeedback
+                                            isRebuildMode && rebuildFeedback && !isRebuildPassage
                                                 ? "pointer-events-none opacity-15 blur-[3px]"
                                                 : ""
                                         )}
@@ -12380,6 +12536,53 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                 renderRebuildFeedback()
                                             )}
                                         </motion.div>
+                                </motion.div>
+                            ) : null}
+                        </AnimatePresence>
+
+                        <AnimatePresence>
+                            {isRebuildMode
+                                && isRebuildPassage
+                                && !rebuildPassageSummary
+                                && activePassageResult
+                                && activePassageSegmentForShadowing
+                                && rebuildPassageShadowingSegmentIndex === activePassageSegmentIndex
+                                && (rebuildPassageShadowingFlow === "prompt" || rebuildPassageShadowingFlow === "shadowing") ? (
+                                <motion.div
+                                    key={`rebuild-passage-shadowing-modal-${activePassageSegmentIndex}-${activePassageResult.feedback.resolvedAt}`}
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="absolute inset-0 z-[60] overflow-y-auto custom-scrollbar bg-[radial-gradient(circle_at_top,rgba(255,245,251,0.88),rgba(240,249,255,0.82),rgba(248,250,252,0.88))] p-4 md:p-6 pb-28 backdrop-blur-[12px]"
+                                >
+                                    <motion.div
+                                        initial={prefersReducedMotion ? false : { opacity: 0, y: 34, scale: 0.96 }}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 22, scale: 0.97 }}
+                                        transition={prefersReducedMotion ? { duration: 0.14 } : { type: "spring", stiffness: 260, damping: 24, mass: 0.85 }}
+                                        className="mx-auto w-full max-w-4xl pt-8 md:pt-10"
+                                    >
+                                        {rebuildPassageShadowingFlow === "prompt" ? (
+                                            renderRebuildPassageShadowingPrompt()
+                                        ) : (
+                                            <div className="mx-auto w-full max-w-3xl space-y-4">
+                                                {renderRebuildShadowingPanel({
+                                                    referenceEnglish: activePassageSegmentForShadowing.referenceEnglish,
+                                                    chinese: activePassageSegmentForShadowing.chinese,
+                                                })}
+                                                <div className="flex justify-center">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setRebuildPassageShadowingFlow("idle")}
+                                                        className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-stone-300 bg-white px-5 py-2 text-sm font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:bg-stone-50"
+                                                    >
+                                                        返回短文继续
+                                                        <ArrowRight className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </motion.div>
                                 </motion.div>
                             ) : null}
                         </AnimatePresence>
