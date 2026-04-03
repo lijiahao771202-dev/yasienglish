@@ -9,6 +9,7 @@ import { AudioPlayer } from "@/components/shadowing/AudioPlayer";
 import { WritingEditor } from "@/components/writing/WritingEditor";
 import { RecommendedArticles } from "@/components/reading/RecommendedArticles";
 import { ReadingQuizPanel, QuizQuestion, type QuizSubmitPayload } from "@/components/reading/ReadingQuizPanel";
+import { ReadPretestOverlay } from "@/components/reading/ReadPretestOverlay";
 import { ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import axios from "axios";
@@ -288,6 +289,8 @@ function ReadingPageContent() {
     const [isWritingMode, setIsWritingMode] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [isQuizMode, setIsQuizMode] = useState(false);
+    const [isPretestOverlayOpen, setIsPretestOverlayOpen] = useState(false);
+    const [isPretestCompletedForArticle, setIsPretestCompletedForArticle] = useState(false);
     const [routeExitTarget, setRouteExitTarget] = useState<"home" | "battle" | null>(null);
     const [quizLocateRequest, setQuizLocateRequest] = useState<QuizLocateRequest | null>(null);
     const [articleStartedAt, setArticleStartedAt] = useState<number | null>(null);
@@ -299,6 +302,7 @@ function ReadingPageContent() {
     const [, forceBackgroundRefresh] = useState(0);
     const { loadUserData, markArticleAsRead: markReadArticleInStore } = useUserStore();
     const activeArticleKey = article ? buildReadingArticleKey(article) : null;
+    const pretestCompletionCacheKey = activeArticleKey ? `read-pretest-complete::${activeArticleKey}` : "";
     const readingNotes = useLiveQuery(async () => {
         if (!activeArticleKey) return [];
         const rows = await db.reading_notes.where("article_key").equals(activeArticleKey).sortBy("updated_at");
@@ -531,6 +535,65 @@ function ReadingPageContent() {
         }
         window.addEventListener('scroll', handleScroll);
         return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
+
+    useEffect(() => {
+        if (!pretestCompletionCacheKey) {
+            setIsPretestCompletedForArticle(false);
+            return;
+        }
+        let cancelled = false;
+        void (async () => {
+            try {
+                const cached = await db.ai_cache.where("[key+type]").equals([pretestCompletionCacheKey, "quiz"]).first();
+                if (cancelled) return;
+                setIsPretestCompletedForArticle(Boolean(cached?.data?.completed));
+            } catch (error) {
+                console.error("Failed to load pretest completion cache:", error);
+                if (!cancelled) {
+                    setIsPretestCompletedForArticle(false);
+                }
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [pretestCompletionCacheKey]);
+
+    useEffect(() => {
+        if (article?.isAIGenerated && article?.difficulty) return;
+        setIsPretestOverlayOpen(false);
+    }, [article?.difficulty, article?.isAIGenerated]);
+
+    const persistPretestCompletion = useCallback(async () => {
+        if (!pretestCompletionCacheKey) return;
+        const existing = await db.ai_cache.where("[key+type]").equals([pretestCompletionCacheKey, "quiz"]).first();
+        await db.ai_cache.put({
+            id: existing?.id,
+            key: pretestCompletionCacheKey,
+            type: "quiz",
+            data: {
+                completed: true,
+                completed_at: Date.now(),
+            },
+            timestamp: Date.now(),
+        });
+        setIsPretestCompletedForArticle(true);
+    }, [pretestCompletionCacheKey]);
+
+    const enterQuizMode = useCallback(() => {
+        const currentWindowScroll = window.scrollY || document.documentElement.scrollTop || 0;
+        scrollBeforeSplitRef.current = currentWindowScroll;
+        window.scrollTo({ top: 0, behavior: "auto" });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        const node = readingColumnRef.current;
+        if (node) {
+            node.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        }
+        setQuizLocateRequest(null);
+        setIsPretestOverlayOpen(false);
+        setIsQuizMode(true);
     }, []);
 
     const applyReadingEconomy = useCallback(async (params: {
@@ -1358,19 +1421,16 @@ function ReadingPageContent() {
             <button
                 onClick={(event) => {
                     event.currentTarget.blur();
-                    if (!isQuizMode) {
-                        const currentWindowScroll = window.scrollY || document.documentElement.scrollTop || 0;
-                        scrollBeforeSplitRef.current = currentWindowScroll;
-                        window.scrollTo({ top: 0, behavior: "auto" });
-                        document.documentElement.scrollTop = 0;
-                        document.body.scrollTop = 0;
-                        const node = readingColumnRef.current;
-                        if (node) {
-                            node.scrollTo({ top: 0, left: 0, behavior: "auto" });
-                        }
+                    if (isQuizMode) {
+                        setQuizLocateRequest(null);
+                        setIsQuizMode(false);
+                        return;
                     }
-                    setQuizLocateRequest(null);
-                    setIsQuizMode((prev) => !prev);
+                    if (!isPretestCompletedForArticle) {
+                        setIsPretestOverlayOpen(true);
+                        return;
+                    }
+                    enterQuizMode();
                 }}
                 aria-pressed={isQuizMode}
                 className="ui-pressable group flex items-center gap-2.5 rounded-full border-[3px] border-[#17120d] bg-[#2f66f3] px-5 py-2.5 text-sm font-black text-white transition-all duration-300"
@@ -1386,6 +1446,11 @@ function ReadingPageContent() {
                 )}>
                     {article.difficulty === 'cet4' ? '四级' : article.difficulty === 'cet6' ? '六级' : '雅思'}
                 </span>
+                {!isQuizMode && !isPretestCompletedForArticle ? (
+                    <span className="rounded-full border-2 border-[#17120d] bg-[#fff4da] px-2 py-0.5 text-[10px] font-black text-[#9a6700]">
+                        前测
+                    </span>
+                ) : null}
             </button>
         );
     };
@@ -1613,6 +1678,7 @@ function ReadingPageContent() {
                                 setIsWritingMode(false);
                                 setIsEditMode(false);
                                 setIsQuizMode(false);
+                                setIsPretestOverlayOpen(false);
                             }}
                             className="ui-pressable group inline-flex h-10 items-center justify-center gap-2 rounded-full border-[3px] border-[#17120d] bg-[#fff7d8] px-4 text-sm font-black text-[#17120d]"
                             style={getPressableStyle("rgba(23,18,13,0.1)", 4)}
@@ -1732,6 +1798,20 @@ function ReadingPageContent() {
             </motion.nav>
 
             <ReadingCoinIsland event={activeReadingCoinFx} />
+
+            {article?.isAIGenerated && article?.difficulty && activeArticleKey ? (
+                <ReadPretestOverlay
+                    visible={isPretestOverlayOpen}
+                    articleTitle={article.title}
+                    articleText={article.textContent || article.content}
+                    articleKey={activeArticleKey}
+                    currentElo={profile?.elo_rating}
+                    onClose={() => setIsPretestOverlayOpen(false)}
+                    onDirectQuiz={enterQuizMode}
+                    onEnterQuiz={enterQuizMode}
+                    onMarkCompleted={persistPretestCompletion}
+                />
+            ) : null}
 
                 <motion.div
                 className={cn(
