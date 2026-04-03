@@ -9,6 +9,8 @@ import {
 const TRANSLATION_MAX_TOKENS = 96;
 const DICTATION_MAX_TOKENS = 128;
 const SCORING_TEMPERATURE = 0.2;
+const CJK_CHAR_REGEX = /[\u3400-\u9fff]/;
+const LATIN_CHAR_REGEX = /[a-zA-Z]/;
 
 type ScoreCompletion = {
     choices: Array<{
@@ -17,6 +19,100 @@ type ScoreCompletion = {
         };
     }>;
 };
+
+function clampScoreToTen(value: unknown, fallback = 0) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return Math.max(0, Math.min(10, fallback));
+    return Math.max(0, Math.min(10, numeric));
+}
+
+function normalizeChineseForSimilarity(text: string) {
+    return text.replace(/[^\u3400-\u9fff0-9]/g, "");
+}
+
+function splitBigrams(text: string) {
+    if (text.length < 2) return text.length ? [text] : [];
+    const bigrams: string[] = [];
+    for (let index = 0; index < text.length - 1; index += 1) {
+        bigrams.push(text.slice(index, index + 2));
+    }
+    return bigrams;
+}
+
+function computeDiceSimilarity(left: string, right: string) {
+    const leftBigrams = splitBigrams(left);
+    const rightBigrams = splitBigrams(right);
+    if (!leftBigrams.length || !rightBigrams.length) return 0;
+    const rightCounts = new Map<string, number>();
+    for (const token of rightBigrams) {
+        rightCounts.set(token, (rightCounts.get(token) ?? 0) + 1);
+    }
+    let overlap = 0;
+    for (const token of leftBigrams) {
+        const count = rightCounts.get(token) ?? 0;
+        if (count > 0) {
+            overlap += 1;
+            rightCounts.set(token, count - 1);
+        }
+    }
+    return (2 * overlap) / (leftBigrams.length + rightBigrams.length);
+}
+
+function applyTranslationSanityGuard(params: {
+    score: number;
+    userTranslation: string;
+    goldenText: string;
+    isReverse: boolean;
+}) {
+    const userText = typeof params.userTranslation === "string" ? params.userTranslation.trim() : "";
+    if (!userText) {
+        return {
+            score: 0,
+            forcedReasoning: "答案为空，暂未形成有效翻译。",
+        };
+    }
+
+    if (params.isReverse) {
+        if (!CJK_CHAR_REGEX.test(userText)) {
+            return {
+                score: Math.min(params.score, 2),
+                forcedReasoning: "答案与题型不匹配：本题需中文翻译，请先写出中文主干。",
+            };
+        }
+
+        const normalizedUser = normalizeChineseForSimilarity(userText);
+        const normalizedGolden = normalizeChineseForSimilarity(params.goldenText || "");
+        if (normalizedUser.length <= 2) {
+            return {
+                score: Math.min(params.score, 2),
+                forcedReasoning: "答案过短，信息不足，建议先写出主谓宾核心意思。",
+            };
+        }
+
+        if (normalizedGolden.length >= 4) {
+            const similarity = computeDiceSimilarity(normalizedUser, normalizedGolden);
+            if (similarity < 0.08) {
+                return {
+                    score: Math.min(params.score, 3),
+                    forcedReasoning: "与参考语义偏离较大，请先确保主干意思一致。",
+                };
+            }
+            if (similarity < 0.14) {
+                return {
+                    score: Math.min(params.score, 5),
+                    forcedReasoning: "语义对齐不足，建议补全关键信息再优化表达。",
+                };
+            }
+        }
+    } else if (!LATIN_CHAR_REGEX.test(userText)) {
+        return {
+            score: Math.min(params.score, 2),
+            forcedReasoning: "答案与题型不匹配：本题需英文翻译，请先写出英文句子。",
+        };
+    }
+
+    return { score: params.score };
+}
 
 export async function POST(req: NextRequest) {
     try {
@@ -210,6 +306,19 @@ export async function POST(req: NextRequest) {
                 if (Array.isArray(data.error_analysis)) {
                     data.error_analysis = [];
                 }
+            }
+        } else {
+            // Always normalize translation/listening-family score to 0-10 to prevent model format drift.
+            const normalizedScore = clampScoreToTen(data.score, 0);
+            const sanityGuard = applyTranslationSanityGuard({
+                score: normalizedScore,
+                userTranslation: typeof user_translation === "string" ? user_translation : "",
+                goldenText: typeof original_chinese === "string" ? original_chinese : "",
+                isReverse: Boolean(is_reverse),
+            });
+            data.score = sanityGuard.score;
+            if (sanityGuard.forcedReasoning) {
+                data.judge_reasoning = sanityGuard.forcedReasoning;
             }
         }
 

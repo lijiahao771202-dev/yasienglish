@@ -103,18 +103,32 @@ describe("rebuild mode helpers", () => {
 
         expect(display.tokens.map((token) => token.kind)).toEqual([
             "correct",
-            "misplaced",
+            "inserted",
             "correct",
             "correct",
             "correct",
-            "replacement",
             "misplaced",
             "misplaced",
+            "correct",
         ]);
-        expect(display.tokens[1]).toMatchObject({ text: "me", originalText: "gate" });
-        expect(display.tokens[5]).toMatchObject({ text: "gate", originalText: "before" });
-        expect(display.tokens[6]).toMatchObject({ text: "after", originalText: "class." });
-        expect(display.tokens[7]).toMatchObject({ text: "class.", originalText: "after" });
+        expect(display.tokens[1]).toMatchObject({ text: "me" });
+        expect(display.tokens[5]).toMatchObject({ text: "gate", kind: "misplaced" });
+        expect(display.tokens[6]).toMatchObject({ text: "after", kind: "misplaced" });
+        expect(display.tokens[7]).toMatchObject({ text: "class." });
+    });
+
+    it("keeps downstream tokens correct when one token is missing", () => {
+        const answerTokens = ["This", "personal", "case", "shows"];
+        const result = evaluateRebuildSelection({
+            answerTokens,
+            selectedTokens: ["This", "case", "shows"],
+        });
+
+        expect(result.correctCount).toBe(3);
+        expect(result.missingCount).toBe(1);
+        expect(result.misplacedCount).toBe(0);
+        expect(result.distractorCount).toBe(0);
+        expect(result.accuracyRatio).toBeCloseTo(0.75, 5);
     });
 
     it("computes hidden difficulty deltas from self-eval and rich system signals", () => {

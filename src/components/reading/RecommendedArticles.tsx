@@ -1321,14 +1321,19 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
     isAnyLoading?: boolean,
 }) {
     const isRead = status === 'read';
+    const difficultyMeta = getDifficultyBadgeMeta(item.difficulty);
     const statusMeta = status === 'new'
         ? { label: '新到达', className: 'border-amber-200/80 bg-amber-100/80 text-amber-700' }
         : status === 'read'
             ? { label: '已读', className: 'border-emerald-200/80 bg-emerald-100/80 text-emerald-700' }
             : { label: '未读', className: 'border-slate-200/80 bg-white/75 text-slate-600' };
     const sourceLabel = category === "ai_gen" ? "AI Studio" : item.source;
-    const imageUrl = typeof item.image === "string" && item.image.trim().length > 0 ? item.image.trim() : null;
-    const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+    const primaryImageUrl = typeof item.image === "string" && item.image.trim().length > 0 ? item.image.trim() : null;
+    const backupImageUrl = `https://picsum.photos/seed/${encodeURIComponent((item.title || item.link).slice(0, 64))}/960/540`;
+    const imageCandidates = Array.from(
+        new Set([primaryImageUrl, backupImageUrl].filter((candidate): candidate is string => Boolean(candidate)))
+    );
+    const [failedImageUrlsByLink, setFailedImageUrlsByLink] = useState<Record<string, string[]>>({});
 
     // Deterministic gradient generator
     const getGradient = (id: string) => {
@@ -1351,14 +1356,22 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
         return gradients[Math.abs(hash) % gradients.length];
     };
     const fallbackGradient = getGradient(item.title || item.link);
-    const resolvedImageUrl = imageUrl && failedImageUrl !== imageUrl ? imageUrl : null;
+    const failedImageUrls = failedImageUrlsByLink[item.link] ?? [];
+    const resolvedImageUrl = imageCandidates.find((candidate) => !failedImageUrls.includes(candidate)) ?? null;
+    const handleOpenArticle = () => {
+        if (isAnyLoading) return;
+        onSelect(item.link);
+    };
 
     return (
-        <button
-            type="button"
-            onClick={() => {
-                if (isAnyLoading) return;
-                onSelect(item.link);
+        <div
+            role="button"
+            tabIndex={isAnyLoading ? -1 : 0}
+            onClick={handleOpenArticle}
+            onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                handleOpenArticle();
             }}
             className={cn(
                 "ui-pressable group relative flex h-full min-h-[320px] cursor-pointer flex-col overflow-hidden rounded-[28px] border-4 border-[#d8d3cb] bg-white text-left transition-all duration-300",
@@ -1367,38 +1380,59 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
             style={getPressableStyle("#d8d3cb", 8)}
         >
             <div className="relative h-40 overflow-hidden border-b-4 border-[#ece7df]">
-                <div className={cn("absolute inset-0", fallbackGradient)} />
+                <div className={cn("absolute inset-0 z-0", fallbackGradient)} />
                 {resolvedImageUrl && (
                     <img
                         src={resolvedImageUrl}
                         alt={item.title}
-                        className="h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-[1.03]"
+                        className="absolute inset-0 z-10 h-full w-full object-cover object-center transition-transform duration-500 group-hover:scale-[1.03]"
                         onError={() => {
-                            setFailedImageUrl(resolvedImageUrl);
+                            setFailedImageUrlsByLink((previous) => {
+                                const current = previous[item.link] ?? [];
+                                if (current.includes(resolvedImageUrl)) return previous;
+                                return {
+                                    ...previous,
+                                    [item.link]: [...current, resolvedImageUrl],
+                                };
+                            });
                         }}
                     />
                 )}
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.35),transparent_38%)]" />
-                <div className={cn(
-                    "absolute left-3 top-3 rounded-full border-2 px-2.5 py-1 text-[10px] font-black tracking-wide",
-                    statusMeta.className
-                )}>
-                    {statusMeta.label}
+                <div className="absolute inset-0 z-20 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.35),transparent_38%)]" />
+                <div className="absolute left-3 top-3 z-20 flex items-center gap-2">
+                    <div className={cn(
+                        "rounded-full border-2 px-2.5 py-1 text-[10px] font-black tracking-wide",
+                        statusMeta.className
+                    )}>
+                        {statusMeta.label}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            onDelete(item.link);
+                        }}
+                        className="ui-pressable flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#fbcfe8] bg-white text-rose-500"
+                        style={getPressableStyle("#fbcfe8", 3)}
+                        title="删除文章"
+                        aria-label="删除文章"
+                    >
+                        <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                 </div>
-                <div className="absolute right-3 top-3 rounded-full border-2 border-white/80 bg-white/90 px-2.5 py-1 text-[10px] font-black text-slate-700">
-                    {sourceLabel}
+                <div className="absolute right-3 top-3 z-20 flex items-center gap-2">
+                    {difficultyMeta ? (
+                        <div className={cn(
+                            "rounded-full border-2 px-2.5 py-1 text-[10px] font-black tracking-wide",
+                            difficultyMeta.className
+                        )}>
+                            {difficultyMeta.label}
+                        </div>
+                    ) : null}
+                    <div className="rounded-full border-2 border-white/80 bg-white/90 px-2.5 py-1 text-[10px] font-black text-slate-700">
+                        {sourceLabel}
+                    </div>
                 </div>
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(item.link);
-                    }}
-                    className="ui-pressable absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#fbcfe8] bg-white text-rose-500"
-                    style={getPressableStyle("#fbcfe8", 4)}
-                    title="Remove article"
-                >
-                    <Trash2 className="h-3.5 w-3.5" />
-                </button>
             </div>
 
             <div className="flex flex-1 flex-col gap-3 px-4 py-4">
@@ -1453,6 +1487,6 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
                     </span>
                 </div>
             </div>
-        </button>
+        </div>
     );
 }
