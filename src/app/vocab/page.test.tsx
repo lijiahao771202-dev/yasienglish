@@ -11,10 +11,12 @@ let liveQueryValue: VocabItem[] | undefined;
 
 const {
     deleteVocabularyMock,
+    pushMock,
     saveVocabularyMock,
     updateVocabularyEntryMock,
 } = vi.hoisted(() => ({
     deleteVocabularyMock: vi.fn(),
+    pushMock: vi.fn(),
     saveVocabularyMock: vi.fn(),
     updateVocabularyEntryMock: vi.fn(),
 }));
@@ -33,10 +35,48 @@ vi.mock("@/components/vocab/VocabEditDialog", () => ({
     VocabEditDialog: () => null,
 }));
 
-vi.mock("next/link", () => ({
-    default: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-        <a href={href} {...props}>{children}</a>
-    ),
+vi.mock("framer-motion", async () => {
+    const React = await import("react");
+
+    const stripMotionProps = (props: Record<string, unknown>) => {
+        const nextProps = { ...props };
+        delete nextProps.initial;
+        delete nextProps.animate;
+        delete nextProps.exit;
+        delete nextProps.layout;
+        delete nextProps.whileHover;
+        delete nextProps.whileTap;
+        delete nextProps.whileInView;
+        delete nextProps.viewport;
+        delete nextProps.transition;
+        return nextProps;
+    };
+
+    const createMotionComponent = (tag: string) => {
+        const MotionComponent = React.forwardRef<HTMLElement, React.HTMLAttributes<HTMLElement> & Record<string, unknown>>(
+            (props, ref) => React.createElement(tag, { ref, ...stripMotionProps(props) }, props.children),
+        );
+        MotionComponent.displayName = `Motion(${tag})`;
+        return MotionComponent;
+    };
+
+    return {
+        AnimatePresence: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+        motion: new Proxy(
+            {},
+            {
+                get: (_, tag: string) => createMotionComponent(tag),
+            },
+        ),
+        useReducedMotion: () => true,
+    };
+});
+
+vi.mock("next/navigation", () => ({
+    useRouter: () => ({
+        push: pushMock,
+    }),
+    useSearchParams: () => new URLSearchParams(),
 }));
 
 import VocabPage from "./page";
@@ -84,8 +124,12 @@ function findButtonByText(container: HTMLElement, text: string) {
 }
 
 function setInputValue(element: HTMLInputElement, value: string) {
-    const setter = Object.getOwnPropertyDescriptor(element.constructor.prototype, "value")?.set;
+    const prototype = Object.getPrototypeOf(element) as HTMLInputElement;
+    const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+    const previousValue = element.value;
     setter?.call(element, value);
+    const tracker = (element as HTMLInputElement & { _valueTracker?: { setValue(value: string): void } })._valueTracker;
+    tracker?.setValue(previousValue);
     element.dispatchEvent(new Event("input", { bubbles: true }));
     element.dispatchEvent(new Event("change", { bubbles: true }));
 }
@@ -137,6 +181,7 @@ describe("vocab page category filters", () => {
         vi.useFakeTimers();
         vi.setSystemTime(NOW);
         deleteVocabularyMock.mockReset();
+        pushMock.mockReset();
         saveVocabularyMock.mockReset();
         updateVocabularyEntryMock.mockReset();
     });
@@ -161,8 +206,8 @@ describe("vocab page category filters", () => {
         expect(findButtonByText(container, "待复习")).toBeTruthy();
         expect(findButtonByText(container, "学习中")).toBeTruthy();
         expect(findButtonByText(container, "最近添加")).toBeTruthy();
-        expect(findButtonByText(container, "已熟记")).toBeTruthy();
-        expect(container.textContent).toContain("Recently Added (12)");
+        expect(findButtonByText(container, "已掌握")).toBeTruthy();
+        expect(container.textContent).toContain("最近添加");
         expect(container.textContent).toContain("recent-8");
         expect(container.textContent).not.toContain("alpha-oldest");
         expect(container.textContent).not.toContain("beta-old");
@@ -198,7 +243,7 @@ describe("vocab page category filters", () => {
         expect(container.textContent).not.toContain("graduated-card");
 
         await act(async () => {
-            clickButtonByText(container, "已熟记");
+            clickButtonByText(container, "已掌握");
         });
         expect(container.textContent).toContain("graduated-card");
         expect(container.textContent).not.toContain("learning-card");
@@ -224,22 +269,27 @@ describe("vocab page category filters", () => {
         expect(container.textContent).toContain("graduated-card");
         expect(container.textContent).not.toContain("due-card");
 
-        const searchInput = container.querySelector<HTMLInputElement>('input[placeholder="搜索你的森林词库..."]');
+        const searchInput = container.querySelector<HTMLInputElement>('input[placeholder="搜索我的单词卡..."]');
         expect(searchInput).toBeTruthy();
 
         await act(async () => {
             if (!searchInput) throw new Error("Missing search input");
             setInputValue(searchInput, "due-card");
+            await Promise.resolve();
         });
-        expect(container.textContent).toContain("Search Results (1)");
+        expect(container.textContent).toContain("找到 1 张相关词卡");
         expect(container.textContent).toContain("due-card");
         expect(container.textContent).not.toContain("graduated-card");
 
         await act(async () => {
-            if (!searchInput) throw new Error("Missing search input");
-            setInputValue(searchInput, "");
+            const latestSearchInput = container.querySelector<HTMLInputElement>('input[placeholder="搜索我的单词卡..."]');
+            if (!latestSearchInput) throw new Error("Missing search input");
+            setInputValue(latestSearchInput, "");
+            await Promise.resolve();
         });
-        expect(container.textContent).not.toContain("Search Results (1)");
+        const clearedSearchInput = container.querySelector<HTMLInputElement>('input[placeholder="搜索我的单词卡..."]');
+        expect(clearedSearchInput?.value).toBe("");
+        expect(container.textContent).not.toContain("找到 1 张相关词卡");
         expect(container.textContent).toContain("graduated-card");
         expect(container.textContent).not.toContain("due-card");
 

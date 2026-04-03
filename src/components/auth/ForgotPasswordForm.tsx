@@ -4,9 +4,9 @@ import { FormEvent, useMemo, useState } from "react";
 
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 
-const fieldLabelClassName = "text-[0.82rem] font-medium text-[#716b78]";
-const fieldInputClassName = "h-14 w-full rounded-[1rem] border border-[#d9dfea] bg-white px-4 text-[15px] text-[#18141e] shadow-[0_12px_24px_-24px_rgba(15,23,42,0.55)] outline-none transition placeholder:text-[#b5b0bd] focus:border-[#8ab2db] focus:ring-2 focus:ring-[#d7e8fb]";
-const primaryButtonClassName = "inline-flex h-14 w-full cursor-pointer items-center justify-center rounded-[1rem] bg-[#18141e] text-sm font-semibold text-white shadow-[0_26px_36px_-26px_rgba(15,23,42,0.92)] transition hover:bg-[#27212f] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#18141e] disabled:cursor-not-allowed disabled:opacity-60";
+const fieldLabelClassName = "text-[12px] font-black uppercase tracking-[0.16em] text-[#9ca3af]";
+const fieldInputClassName = "h-15 w-full rounded-[1.4rem] border-4 border-[#111827] bg-white px-4 text-[15px] font-bold text-[#111827] shadow-[0_6px_0_0_#111827] outline-none transition placeholder:text-[#c2b5a5] focus:bg-[#fffefb] focus:translate-y-[1px] focus:shadow-[0_4px_0_0_#111827]";
+const primaryButtonClassName = "inline-flex h-15 w-full cursor-pointer items-center justify-center rounded-[1.5rem] border-4 border-[#111827] bg-[#bfdbfe] text-[15px] font-black text-[#1d4ed8] shadow-[0_6px_0_0_#111827] transition hover:bg-[#93c5fd] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#111827] active:translate-y-1 active:shadow-[0_2px_0_0_#111827] disabled:cursor-not-allowed disabled:opacity-60";
 
 export function ForgotPasswordForm() {
     const [email, setEmail] = useState("");
@@ -61,10 +61,10 @@ export function ForgotPasswordForm() {
                 disabled={status === "loading" || !email}
                 className={primaryButtonClassName}
             >
-                {status === "loading" ? "Sending..." : "Send reset link"}
+                {status === "loading" ? "Sending..." : "发送重置链接"}
             </button>
             {message ? (
-                <p className={`text-sm ${status === "error" ? "text-rose-600" : "text-emerald-600"}`}>
+                <p className={`text-sm font-bold ${status === "error" ? "text-rose-600" : "text-emerald-600"}`}>
                     {message}
                 </p>
             ) : null}

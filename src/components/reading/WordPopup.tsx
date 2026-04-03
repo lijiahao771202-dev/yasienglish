@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AnimatePresence, motion } from "framer-motion";
-import { X, Loader2, Book, Volume2, Sparkles, Check, BookPlus } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { X, Loader2, Book, Volume2, Check, BookPlus } from "lucide-react";
 import { db, type VocabItem, type VocabSourceKind } from "@/lib/db";
 import { createEmptyCard } from "@/lib/fsrs";
 import { applyServerProfilePatchToLocal, saveVocabulary } from "@/lib/user-repository";
@@ -11,6 +11,7 @@ import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { buildWordLookupDedupeKey, INSUFFICIENT_READING_COINS, type ReadingEconomyAction } from "@/lib/reading-economy";
 import { dispatchReadingCoinFx } from "@/lib/reading-coin-fx";
 import { type MeaningGroup } from "@/lib/vocab-meanings";
+import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 
 export interface PopupState {
     word: string;
@@ -147,7 +148,6 @@ export function WordPopup({
     const normalizedPopupWord = normalizeWordKey(popup.word);
     const [definition, setDefinition] = useState<DefinitionData | null>(null);
     const [isLoadingDict, setIsLoadingDict] = useState(false);
-    const [isLoadingAI, setIsLoadingAI] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isSaved, setIsSaved] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
@@ -157,10 +157,16 @@ export function WordPopup({
     const [readingError, setReadingError] = useState<string | null>(null);
     const popupRef = useRef<HTMLDivElement>(null);
     const dragStateRef = useRef<{ startX: number; startY: number; originLeft: number; originTop: number } | null>(null);
+    const isMountedRef = useRef(true);
     const [isDragging, setIsDragging] = useState(false);
     const [position, setPosition] = useState({ left: POPUP_EDGE_PADDING, top: POPUP_EDGE_PADDING });
     const positionRef = useRef(position);
     const isReadingMode = mode === "reading";
+    const reducedMotion = useReducedMotion();
+    const candyTap = getPressableTap(Boolean(reducedMotion), 4, 0.985);
+    const candyPressStyle = getPressableStyle("rgba(244, 211, 231, 0.96)", 4);
+    const mintPressStyle = getPressableStyle("rgba(186, 239, 219, 0.96)", 4);
+    const lavenderPressStyle = getPressableStyle("rgba(220, 212, 255, 0.96)", 4);
 
     const clampPopupPosition = useCallback((left: number, top: number) => {
         if (typeof window === "undefined") return { left, top };
@@ -204,6 +210,13 @@ export function WordPopup({
             dispatchReadingCoinFx({ delta, action: action as ReadingEconomyAction });
         }
     }, [isReadingMode]);
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
 
     useEffect(() => {
         positionRef.current = position;
@@ -265,7 +278,6 @@ export function WordPopup({
         let isMounted = true;
         setDefinition(null);
         setIsLoadingDict(true);
-        setIsLoadingAI(false);
         setIsSaving(false);
         setIsSaved(false);
         setSaveError(null);
@@ -447,42 +459,30 @@ export function WordPopup({
         return loaded;
     }, [isReadingMode, mode, popup.articleUrl, popup.word, sessionUser?.id]);
 
-    const handleAnalyzeContext = async () => {
-        setIsLoadingAI(true);
-        setReadingError(null);
-        try {
-            if (!isReadingMode && battleConsumeDeepAnalyzeTicket && !battleConsumeDeepAnalyzeTicket()) {
-                setReadingError(battleInsufficientHint);
-                return;
-            }
-            const analysisContext = isReadingMode
-                ? popup.context
-                : extractAnalysisContext(popup.context, popup.word);
-            const { result, payload } = await requestAiDefinition(analysisContext);
-            await syncReadingBalance(payload, "word_deep_analyze");
-            setDefinition(prev => ({
-                ...prev,
-                ...result,
-            }));
-        } catch (error) {
-            const responseData = (error as Error & { responseData?: { errorCode?: string } }).responseData;
-            if (responseData?.errorCode === INSUFFICIENT_READING_COINS) {
-                setReadingError("阅读币不足，暂时无法 Deep Analyze。");
-            } else {
-                console.error("AI error:", error);
-            }
-        } finally {
-            setIsLoadingAI(false);
-        }
-    };
-
     const handleAddToVocab = async () => {
         if (isSaved || isSaving) return;
+
+        const rollbackOptimisticSave = (options?: {
+            saveError?: string | null;
+            saveNotice?: string | null;
+            readingError?: string | null;
+        }) => {
+            if (!isMountedRef.current) return;
+            setIsSaved(false);
+            setShowSaveFeedback(false);
+            setSaveNotice(options?.saveNotice ?? null);
+            setSaveError(options?.saveError ?? null);
+            setReadingError(options?.readingError ?? null);
+        };
 
         setIsSaving(true);
         setSaveError(null);
         setSaveNotice(null);
         setReadingError(null);
+        setIsSaved(true);
+        setSaveNotice("已加入生词本。");
+        setSaveFeedbackTick((current) => current + 1);
+        setShowSaveFeedback(true);
 
         let aiDefinition = definition?.context_meaning;
         let aiExample = definition?.example || "";
@@ -500,16 +500,13 @@ export function WordPopup({
         try {
             const existing = await db.vocabulary.where("word_key").equals(normalizedPopupWord).first();
             if (existing) {
-                setIsSaved(true);
                 setSaveNotice("这个词/短语已经在生词本里了，不重复入库。");
-                setSaveFeedbackTick((current) => current + 1);
-                setShowSaveFeedback(true);
                 return;
             }
 
             if (!aiDefinition) {
                 if (!isReadingMode && battleConsumeDeepAnalyzeTicket && !battleConsumeDeepAnalyzeTicket()) {
-                    setReadingError(battleInsufficientHint);
+                    rollbackOptimisticSave({ readingError: battleInsufficientHint });
                     return;
                 }
 
@@ -533,7 +530,7 @@ export function WordPopup({
             }
 
             if (!aiDefinition) {
-                setSaveError("AI 词义生成失败，请重试。");
+                rollbackOptimisticSave({ saveError: "AI 词义生成失败，请重试。" });
                 return;
             }
 
@@ -564,27 +561,25 @@ export function WordPopup({
                 due: base.due ?? Date.now(),
             };
 
-            setIsSaved(true);
-            setSaveNotice("已加入生词本。");
-            setSaveFeedbackTick((current) => current + 1);
-            setShowSaveFeedback(true);
-
             await saveVocabulary(card);
         } catch (error) {
             console.error("Failed to save vocab:", error);
+            const responseData = (error as Error & { responseData?: { errorCode?: string } }).responseData;
             const existingAfterError = await db.vocabulary.where("word_key").equals(normalizedPopupWord).first();
             if (existingAfterError) {
-                setIsSaved(true);
+                if (!isMountedRef.current) return;
                 setSaveNotice("这个词/短语已经在生词本里了，不重复入库。");
-                setSaveFeedbackTick((current) => current + 1);
-                setShowSaveFeedback(true);
+                setSaveError(null);
+                setReadingError(null);
+            } else if (responseData?.errorCode === INSUFFICIENT_READING_COINS) {
+                rollbackOptimisticSave({ readingError: "阅读币不足，暂时无法加入生词本。" });
             } else {
-                setIsSaved(false);
-                setSaveNotice(null);
-                setSaveError("保存失败，请重试");
+                rollbackOptimisticSave({ saveError: "保存失败，请重试" });
             }
         } finally {
-            setIsSaving(false);
+            if (isMountedRef.current) {
+                setIsSaving(false);
+            }
         }
     };
 
@@ -616,52 +611,59 @@ export function WordPopup({
                 left: position.left,
                 top: position.top,
             }}
-            className="z-[9999] w-[320px] rounded-2xl backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-white/40 overflow-hidden bg-white/95 ring-1 ring-black/5 text-left"
+            className="z-[9999] w-[336px] overflow-hidden rounded-[30px] border border-[#ffd9ec]/90 bg-[linear-gradient(180deg,rgba(255,250,253,0.97),rgba(248,245,255,0.95))] text-left shadow-[0_22px_50px_rgba(221,113,183,0.22),0_10px_0_rgba(245,218,236,0.92)] backdrop-blur-2xl"
         >
-            {/* Header: Word & Audio */}
             <div
                 onMouseDown={handleDragStart}
                 className={cn(
-                    "bg-gradient-to-br from-amber-50/80 to-white/50 p-4 border-b border-white/50 relative select-none",
+                    "relative select-none border-b border-[#f8d9ea]/90 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(255,244,249,0.95)_58%,rgba(244,244,255,0.92))] px-4 pb-4 pt-3.5",
                     isDragging ? "cursor-grabbing" : "cursor-grab",
                 )}
             >
+                <div className="pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[28px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.92),rgba(255,255,255,0))]" />
                 <div className="flex justify-between items-start">
-                    <div>
-                        <h3 className="text-2xl font-serif font-bold text-stone-800 tracking-tight flex items-center gap-2">
+                    <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#d27cb0]">
+                            Word Lookup
+                        </p>
+                        <h3 className="mt-1 text-[30px] font-serif font-bold tracking-tight text-[#6f3f60] flex items-center gap-2 break-words">
                             {popup.word}
                         </h3>
                         {definition?.phonetic && (
-                            <div className="flex items-center gap-2 mt-1">
-                                <span className="text-sm font-mono text-stone-500 bg-stone-100/50 px-1.5 py-0.5 rounded">
+                            <div className="mt-2 flex items-center gap-2">
+                                <span className="rounded-full border border-[#eadcf6] bg-white/85 px-2.5 py-1 text-xs font-semibold tracking-[0.08em] text-[#8f7bb0] shadow-[0_3px_0_rgba(238,228,248,0.9)]">
                                     {definition.phonetic}
                                 </span>
                             </div>
                         )}
-                        <p className="text-[11px] mt-2 text-stone-500">
-                            {isReadingMode ? "首次查词 -1 阅读币，Deep Analyze -2 阅读币。" : battleLookupCostHint}
+                        <p className="mt-3 text-[11px] leading-5 text-[#9c85a8]">
+                            {isReadingMode ? "首次查词 -1 阅读币。" : battleLookupCostHint}
                         </p>
                     </div>
-                    <div className="flex gap-1">
-                        <button
+                    <div className="ml-3 flex shrink-0 gap-1.5">
+                        <motion.button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 playPronunciation(popup.word, true);
                             }}
-                            className="p-2 rounded-full bg-amber-100/80 hover:bg-amber-200 text-amber-700 transition-colors shadow-sm"
+                            whileTap={candyTap}
+                            style={mintPressStyle}
+                            className="ui-pressable rounded-full border border-[#bcefd9] bg-[linear-gradient(180deg,#f4fff9,#dcfff0)] p-2 text-[#2a9f78] transition-colors hover:bg-[#ecfff6]"
                             title="Play Pronunciation"
                         >
                             <Volume2 className="w-4 h-4" />
-                        </button>
+                        </motion.button>
                         <div className="relative">
                             <motion.button
                                 onClick={handleAddToVocab}
                                 disabled={isSaving && !isSaved}
+                                whileTap={isSaved ? undefined : candyTap}
+                                style={isSaved ? undefined : lavenderPressStyle}
                                 className={cn(
-                                    "relative p-2 rounded-full transition-colors shadow-sm disabled:cursor-default",
+                                    "relative rounded-full p-2 transition-colors disabled:cursor-default",
                                     isSaved
-                                        ? "cursor-default bg-emerald-100 text-emerald-600"
-                                        : "bg-white/80 hover:bg-amber-100 text-stone-500 hover:text-amber-600"
+                                        ? "cursor-default rounded-full border border-[#bfead7] bg-[linear-gradient(180deg,#effff6,#ddfaec)] text-[#2c9b74] shadow-[0_4px_0_rgba(186,239,219,0.96)]"
+                                        : "ui-pressable border border-[#d9ccff] bg-[linear-gradient(180deg,#fbf8ff,#eee7ff)] text-[#7a58e8] hover:bg-[#f6f1ff]"
                                 )}
                                 title={isSaved ? "已加入生词本" : isSaving ? "正在加入生词本" : "加入生词本"}
                                 animate={showSaveFeedback ? { scale: [1, 1.18, 1], boxShadow: ["0 1px 2px rgba(0,0,0,0.08)", "0 0 0 8px rgba(16,185,129,0.14)", "0 1px 2px rgba(0,0,0,0.08)"] } : undefined}
@@ -698,149 +700,64 @@ export function WordPopup({
                                 ) : null}
                             </AnimatePresence>
                         </div>
-                        <button
+                        <motion.button
                             onClick={onClose}
-                            className="p-2 text-stone-400 hover:text-stone-600 hover:bg-stone-100/50 rounded-full transition-colors"
+                            whileTap={candyTap}
+                            style={candyPressStyle}
+                            className="ui-pressable rounded-full border border-[#f5d8e9] bg-white/92 p-2 text-[#c489ae] transition-colors hover:bg-[#fff0f8] hover:text-[#a95a8d]"
                         >
                             <X className="w-4 h-4" />
-                        </button>
+                        </motion.button>
                     </div>
                 </div>
             </div>
 
-            {/* Content Body */}
-            <div className="p-0">
-                {/* Dictionary Definition */}
-                <div className="p-4 space-y-3">
-                    <div className="flex items-center gap-2 text-xs font-bold text-stone-400 uppercase tracking-wider mb-2">
-                        <Book className="w-3 h-3" />
+            <div className="space-y-3 bg-[linear-gradient(180deg,rgba(255,251,253,0.96),rgba(245,244,255,0.92))] p-4">
+                <div className="rounded-[24px] border border-[#f7ddeb] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,247,251,0.9))] p-3.5 shadow-[0_6px_0_rgba(248,223,236,0.95)]">
+                    <div className="mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em] text-[#cb7bab]">
+                        <Book className="h-3.5 w-3.5" />
                         <span>Dictionary</span>
                     </div>
 
                     {isLoadingDict ? (
-                        <div className="flex items-center gap-2 text-stone-400 py-2">
+                        <div className="flex items-center gap-2 rounded-[18px] border border-[#f1e3ee] bg-white/72 px-3 py-3 text-[#b28ea8]">
                             <Loader2 className="w-4 h-4 animate-spin" />
-                            <span className="text-sm">Searching...</span>
+                            <span className="text-sm font-semibold">Searching...</span>
                         </div>
                     ) : definition?.dictionary_meaning ? (
-                        <div className="space-y-1">
-                            <p className="text-stone-700 font-medium leading-snug">
+                        <div className="space-y-2 rounded-[20px] border border-[#efe3ee] bg-white/78 p-3 shadow-[0_4px_0_rgba(243,230,240,0.85)]">
+                            <p className="text-sm font-semibold leading-snug text-[#5e4c62]">
                                 {definition.dictionary_meaning.definition}
                             </p>
                             {definition.dictionary_meaning.translation && (
-                                <p className="text-stone-500 text-sm">
+                                <p className="text-sm text-[#9a6f8a]">
                                     {definition.dictionary_meaning.translation}
                                 </p>
                             )}
                         </div>
                     ) : (
-                        <p className="text-sm text-stone-400 italic">No definition found.</p>
+                        <p className="rounded-[18px] border border-[#efe5f0] bg-white/70 px-3 py-3 text-sm italic text-[#b296af]">No definition found.</p>
                     )}
                 </div>
-
-                {/* AI Context Section */}
-                <div className="bg-stone-50/50 p-4 border-t border-stone-100/50">
-                    {saveError && (
-                        <div className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-600">
-                            {saveError}
-                        </div>
-                    )}
-                    {saveNotice && !saveError && (
-                        <div className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                            {saveNotice}
-                        </div>
-                    )}
-                    {readingError && (
-                        <div className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                            {readingError}
-                        </div>
-                    )}
-
-                    <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2 text-xs font-bold text-amber-600/70 uppercase tracking-wider">
-                            <Sparkles className="w-3 h-3" />
-                            <span>In Context</span>
-                        </div>
-
-                        {!definition?.context_meaning && !isLoadingAI && (
-                            <button
-                                onClick={handleAnalyzeContext}
-                                className="text-xs bg-white hover:bg-amber-50 text-amber-600 border border-amber-200 hover:border-amber-300 px-3 py-1.5 rounded-full shadow-sm transition-all font-medium flex items-center gap-1"
-                            >
-                                <Sparkles className="w-3 h-3" />
-                                Deep Analyze · -2
-                            </button>
+                {(saveError || (saveNotice && !saveError) || readingError) ? (
+                    <div className="space-y-2">
+                        {saveError && (
+                            <div className="rounded-[16px] border border-[#ffc8d9] bg-[#fff3f7] px-3 py-2 text-xs font-semibold text-[#d65084]">
+                                {saveError}
+                            </div>
+                        )}
+                        {saveNotice && !saveError && (
+                            <div className="rounded-[16px] border border-[#c5ebd7] bg-[#f1fff8] px-3 py-2 text-xs font-semibold text-[#248e66]">
+                                {saveNotice}
+                            </div>
+                        )}
+                        {readingError && (
+                            <div className="rounded-[16px] border border-[#ffd8ac] bg-[#fff7ec] px-3 py-2 text-xs font-semibold text-[#c07b2e]">
+                                {readingError}
+                            </div>
                         )}
                     </div>
-
-                    {isLoadingAI ? (
-                        <div className="flex items-center justify-center gap-2 text-amber-600/70 py-4 bg-amber-50/30 rounded-lg border border-amber-100/50">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span className="text-sm font-medium">AI is analyzing context...</span>
-                        </div>
-                    ) : definition?.context_meaning ? (
-                        <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <div className="bg-white/60 p-3 rounded-xl border border-white/60 shadow-sm">
-                                <p className="text-sm text-stone-800 leading-relaxed font-medium">
-                                    {definition.context_meaning.definition}
-                                </p>
-                                <p className="text-sm text-rose-600 mt-1">
-                                    {definition.context_meaning.translation}
-                                </p>
-                            </div>
-
-                            {Array.isArray(definition.highlighted_meanings) && definition.highlighted_meanings.length > 0 ? (
-                                <div className="space-y-2">
-                                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-amber-700/70">Focus Meaning</p>
-                                    <div className="flex flex-wrap gap-2">
-                                        {definition.highlighted_meanings.map((meaning) => (
-                                            <span key={meaning} className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                                                {meaning}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            ) : null}
-
-                            {Array.isArray(definition.word_breakdown) && definition.word_breakdown.length > 0 ? (
-                                <div className="space-y-2">
-                                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">Word Breakdown</p>
-                                    <div className="flex flex-wrap gap-2">
-                                        {definition.word_breakdown.map((part) => (
-                                            <span key={part} className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold text-stone-700">
-                                                {part}
-                                            </span>
-                                        ))}
-                                    </div>
-                                </div>
-                            ) : null}
-
-                            {Array.isArray(definition.morphology_notes) && definition.morphology_notes.length > 0 ? (
-                                <div className="rounded-xl border border-stone-200/70 bg-white/70 p-3">
-                                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-500">Roots & Affixes</p>
-                                    <div className="mt-2 space-y-1.5">
-                                        {definition.morphology_notes.map((note) => (
-                                            <p key={note} className="text-xs leading-relaxed text-stone-600">
-                                                {note}
-                                            </p>
-                                        ))}
-                                    </div>
-                                </div>
-                            ) : null}
-
-                            {(popup.sourceSentence?.trim() || popup.context?.trim()) ? (
-                                <div className="flex gap-2 items-start text-xs text-stone-500 italic pl-2 border-l-2 border-amber-200">
-                                    <span className="shrink-0 mt-0.5">Src.</span>
-                                    <span>&ldquo;{popup.sourceSentence?.trim() || popup.context.trim()}&rdquo;</span>
-                                </div>
-                            ) : null}
-                        </div>
-                    ) : (
-                        <div className="text-xs text-stone-400 text-center py-1">
-                            Tap Deep Analyze to see meaning in this sentence.
-                        </div>
-                    )}
-                </div>
+                ) : null}
             </div>
         </motion.div>,
         document.body

@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, Settings2, LayoutGrid, ChevronDown } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useFeedStore } from "@/lib/feed-store";
 import { useUserStore } from "@/lib/store";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
+import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
 import { CAT_RANK_TIERS, getCatRankIconByTierId, getCatRankTier, getCatScoreToNextRank, getLegacyBandFromScore } from "@/lib/cat-score";
 import { CatGrowthChart } from "@/components/reading/CatGrowthChart";
@@ -19,6 +20,7 @@ export interface ArticleItem {
     source: string;
     snippet?: string;
     image?: string;
+    difficulty?: 'cet4' | 'cet6' | 'ielts';
     fetchedAt?: number;
     quizCompleted?: boolean;
     quizCorrect?: number;
@@ -31,7 +33,9 @@ interface AIGenHistoryRecord {
     title: string;
     content?: string;
     textContent?: string;
+    image?: string | null;
     timestamp: number;
+    difficulty?: 'cet4' | 'cet6' | 'ielts';
     isAIGenerated?: boolean;
     isCatMode?: boolean;
     quizCompleted?: boolean;
@@ -116,6 +120,34 @@ function uniqueByLink(items: ArticleItem[]): ArticleItem[] {
     });
 }
 
+function mergeFeedArticles(existingArticles: ArticleItem[], fetchedArticles: ArticleItem[]): ArticleItem[] {
+    const existingByLink = new Map(existingArticles.map((article) => [article.link, article]));
+
+    const refreshedArticles = fetchedArticles.map((article) => {
+        const existing = existingByLink.get(article.link);
+        if (!existing) return article;
+
+        return {
+            ...existing,
+            ...article,
+            title: article.title || existing.title,
+            source: article.source || existing.source,
+            snippet: article.snippet || existing.snippet,
+            image: article.image ?? existing.image,
+            difficulty: article.difficulty ?? existing.difficulty,
+            pubDate: article.pubDate || existing.pubDate,
+            fetchedAt: article.fetchedAt ?? existing.fetchedAt,
+            quizCompleted: article.quizCompleted ?? existing.quizCompleted,
+            quizCorrect: article.quizCorrect ?? existing.quizCorrect,
+            quizTotal: article.quizTotal ?? existing.quizTotal,
+            quizScorePercent: article.quizScorePercent ?? existing.quizScorePercent,
+        };
+    });
+
+    const appendedExisting = existingArticles.filter((article) => !refreshedArticles.some((candidate) => candidate.link === article.link));
+    return uniqueByLink(sortByNewest([...refreshedArticles, ...appendedExisting]));
+}
+
 function formatArticleDate(article: ArticleItem): string {
     const timestamp = getArticleTimestamp(article);
     if (!timestamp) {
@@ -123,6 +155,28 @@ function formatArticleDate(article: ArticleItem): string {
     }
 
     return new Date(timestamp).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
+}
+
+function getDifficultyBadgeMeta(difficulty?: ArticleItem["difficulty"]) {
+    if (difficulty === "cet4") {
+        return {
+            label: "四级",
+            className: "border-emerald-200/80 bg-emerald-100/80 text-emerald-700",
+        };
+    }
+    if (difficulty === "cet6") {
+        return {
+            label: "六级",
+            className: "border-sky-200/80 bg-sky-100/80 text-sky-700",
+        };
+    }
+    if (difficulty === "ielts") {
+        return {
+            label: "雅思",
+            className: "border-violet-200/80 bg-violet-100/80 text-violet-700",
+        };
+    }
+    return null;
 }
 
 function isArticleItem(value: unknown): value is ArticleItem {
@@ -136,6 +190,8 @@ function isArticleItem(value: unknown): value is ArticleItem {
 }
 
 export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }: RecommendedArticlesProps) {
+    const prefersReducedMotion = useReducedMotion();
+    const silentImageHydrationRef = useRef<Record<string, boolean>>({});
     const [articles, setArticles] = useState<ArticleItem[]>([]);
     const [category, setCategory] = useState<FeedCategory>('cat_mode');
     const [activeView, setActiveView] = useState<ArticleView>('all');
@@ -188,6 +244,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         cet6: ["Social Issues", "Economics", "Education Reform", "Environment", "Psychology"],
         ielts: ["Urbanization", "Globalization", "Scientific Ethics", "Cultural Heritage", "AI & Society"],
     };
+    const syncVisibleArticles = useCallback((nextArticles: ArticleItem[]) => {
+        setArticles(nextArticles);
+        if (onListUpdate) {
+            onListUpdate(nextArticles);
+        }
+    }, [onListUpdate]);
     const feedViewModel = useMemo(() => {
         const now = Date.now();
         const ONE_DAY = 24 * 60 * 60 * 1000;
@@ -263,6 +325,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 pubDate: new Date(row.timestamp || Date.now()).toISOString(),
                 source: "AI Gen",
                 snippet: (row.textContent || row.content || "").slice(0, 180),
+                image: row.image ?? undefined,
+                difficulty: row.difficulty,
                 fetchedAt: row.timestamp || Date.now(),
                 quizCompleted: row.quizCompleted,
                 quizCorrect: row.quizCorrect,
@@ -294,6 +358,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 pubDate: new Date(row.timestamp || Date.now()).toISOString(),
                 source: "CAT",
                 snippet: (row.textContent || row.content || "").slice(0, 180),
+                image: row.image ?? undefined,
+                difficulty: row.difficulty,
                 fetchedAt: row.timestamp || Date.now(),
                 quizCompleted: row.quizCompleted,
                 quizCorrect: row.quizCorrect,
@@ -311,6 +377,77 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         }
     }, [onListUpdate]);
 
+    const refreshStandardFeed = useCallback(async (
+        selectedCategory: Extract<FeedCategory, "psychology" | "ai_news">,
+        options?: {
+            silent?: boolean;
+            baseArticles?: ArticleItem[];
+        },
+    ) => {
+        const silent = options?.silent ?? false;
+        const baseArticles = options?.baseArticles ?? articles;
+
+        if (!silent) {
+            setIsFetching(true);
+        }
+
+        try {
+            const res = await fetch(`/api/feed?category=${selectedCategory}&count=${fetchCount}&t=${Date.now()}`);
+            const data: unknown = await res.json();
+            if (!Array.isArray(data)) return;
+
+            const fetchedAt = Date.now();
+            const fetchedArticles = data
+                .filter(isArticleItem)
+                .slice(0, fetchCount)
+                .map((item) => ({
+                    ...item,
+                    pubDate: item.pubDate || new Date(fetchedAt).toISOString(),
+                    fetchedAt: item.fetchedAt ?? fetchedAt,
+                }));
+
+            const existingByLink = new Map(baseArticles.map((article) => [article.link, article]));
+            const uniqueNewCount = fetchedArticles.filter((article) => !existingByLink.has(article.link)).length;
+            const recoveredImageCount = fetchedArticles.filter((article) => {
+                const existing = existingByLink.get(article.link);
+                return Boolean(existing && !existing.image && article.image);
+            }).length;
+            const mergedArticles = mergeFeedArticles(baseArticles, fetchedArticles);
+
+            syncVisibleArticles(mergedArticles);
+            await setFeed(selectedCategory, mergedArticles);
+
+            if (!silent) {
+                if (uniqueNewCount > 0) {
+                    setNotification({
+                        message: `成功抓取 ${uniqueNewCount} 篇新文章`,
+                        type: 'success'
+                    });
+                } else if (recoveredImageCount > 0) {
+                    setNotification({
+                        message: `已补全 ${recoveredImageCount} 张文章封面`,
+                        type: 'success'
+                    });
+                } else {
+                    setNotification({
+                        message: "暂时没有发现新文章",
+                        type: 'info'
+                    });
+                }
+            }
+        } catch (error) {
+            console.error("Refresh error:", error);
+            if (!silent) {
+                setNotification({ message: "抓取失败，请稍后重试", type: 'info' });
+            }
+        } finally {
+            if (!silent) {
+                setIsFetching(false);
+                setTimeout(() => setNotification(null), 3000);
+            }
+        }
+    }, [articles, fetchCount, setFeed, syncVisibleArticles]);
+
     // Load from DB only (no auto-fetch from API)
     useEffect(() => {
         if (category === 'cat_mode') {
@@ -325,15 +462,23 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
 
         // Only load from DB/memory - NO auto-fetch
         loadFeedFromDB(category).then(() => {
-            const cachedFeeds = getFeed(category);
-            if (cachedFeeds) {
-                setArticles(sortByNewest(cachedFeeds));
-                if (onListUpdate) {
-                    onListUpdate(sortByNewest(cachedFeeds));
-                }
+            const cachedFeeds = sortByNewest(getFeed(category) ?? []);
+            if (cachedFeeds.length > 0) {
+                syncVisibleArticles(cachedFeeds);
+            } else {
+                syncVisibleArticles([]);
+            }
+
+            const needsImageHydration = cachedFeeds.length > 0
+                && cachedFeeds.some((article) => !article.image)
+                && !silentImageHydrationRef.current[category];
+
+            if (needsImageHydration) {
+                silentImageHydrationRef.current[category] = true;
+                void refreshStandardFeed(category, { silent: true, baseArticles: cachedFeeds });
             }
         });
-    }, [category, getFeed, loadAIGenHistory, loadCatHistory, loadFeedFromDB, onListUpdate]);
+    }, [category, getFeed, loadAIGenHistory, loadCatHistory, loadFeedFromDB, refreshStandardFeed, syncVisibleArticles]);
 
     useEffect(() => {
         setActiveView('all');
@@ -384,6 +529,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                     pubDate: new Date(timestamp).toISOString(),
                     source: "AI Gen",
                     snippet: (data.textContent || data.content || "").slice(0, 180),
+                    image: typeof data.image === "string" ? data.image : undefined,
+                    difficulty: genDifficulty,
                     fetchedAt: timestamp,
                     quizCompleted: false,
                 };
@@ -414,57 +561,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
             await loadAIGenHistory();
             return;
         }
-        setIsFetching(true); // Use isFetching instead of loading to avoid skeleton
-        try {
-            // Add timestamp to bypass cache and count parameter
-            const res = await fetch(`/api/feed?category=${category}&count=${fetchCount}&t=${Date.now()}`);
-            const data: unknown = await res.json();
-            if (Array.isArray(data)) {
-                const fetchedAt = Date.now();
-                const fetchedArticles = data
-                    .filter(isArticleItem)
-                    .slice(0, fetchCount)
-                    .map((item) => ({
-                        ...item,
-                        pubDate: item.pubDate || new Date(fetchedAt).toISOString(),
-                        fetchedAt: item.fetchedAt ?? fetchedAt,
-                    }));
-
-                // Merge with existing articles (keep old, add new at top, remove duplicates)
-                const existingLinks = new Set(articles.map(a => a.link));
-                const uniqueNewArticles = uniqueByLink(fetchedArticles.filter((article) => !existingLinks.has(article.link)));
-
-                if (uniqueNewArticles.length > 0) {
-                    // Show success notification
-                    setNotification({
-                        message: `成功抓取 ${uniqueNewArticles.length} 篇新文章`,
-                        type: 'success'
-                    });
-
-                    // Combine and sort by time, then dedupe by link.
-                    const mergedArticles = uniqueByLink(sortByNewest([...fetchedArticles, ...articles]));
-
-                    setArticles(mergedArticles);
-                    // Update global store & DB
-                    await setFeed(category, mergedArticles);
-                    if (onListUpdate) {
-                        onListUpdate(mergedArticles);
-                    }
-                } else {
-                    setNotification({
-                        message: "暂时没有发现新文章",
-                        type: 'info'
-                    });
-                }
-            }
-        } catch (error) {
-            console.error("Refresh error:", error);
-            setNotification({ message: "抓取失败，请稍后重试", type: 'info' });
-        } finally {
-            setIsFetching(false);
-            // Clear notification after 3 seconds
-            setTimeout(() => setNotification(null), 3000);
-        }
+        await refreshStandardFeed(category, { baseArticles: articles });
     };
 
     const handleStartCatSession = async () => {
@@ -545,38 +642,52 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
 
     const shellCardClass = "rounded-[30px] border-4 border-[#d8d3cb] bg-white shadow-[0_12px_0_0_#d8d3cb]";
     const insetCardClass = "rounded-[24px] border-4 border-[#ebe6de] bg-[#fffdf8]";
-    const utilityButtonClass = "inline-flex h-11 items-center justify-center gap-2 rounded-full border-2 border-[#d8d3cb] bg-white px-4 text-sm font-black text-slate-700 shadow-[0_4px_0_0_#d8d3cb] transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0";
+    const utilityButtonClass = "ui-pressable inline-flex h-11 items-center justify-center gap-2 rounded-full border-2 border-[#d8d3cb] bg-white px-4 text-sm font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none";
     const tabItems: Array<{ id: FeedCategory; label: string }> = [
         { id: "cat_mode", label: "CAT 成长" },
         { id: "ai_gen", label: "AI 生成" },
         { id: "psychology", label: "心理学" },
         { id: "ai_news", label: "AI 资讯" },
     ];
+    const panelTransition = {
+        duration: prefersReducedMotion ? 0.16 : 0.44,
+        ease: [0.22, 1, 0.36, 1] as const,
+    };
+    const panelEnter = prefersReducedMotion
+        ? { opacity: 0 }
+        : { opacity: 0, y: 18, scale: 0.992, filter: "blur(12px)" };
+    const panelExit = prefersReducedMotion
+        ? { opacity: 0 }
+        : { opacity: 0, y: -12, scale: 0.99, filter: "blur(10px)" };
 
     return (
         <motion.div
             className="mx-auto w-full max-w-[1180px]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 18, scale: 0.994, filter: "blur(12px)" }}
+            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: prefersReducedMotion ? 0.16 : 0.72, ease: [0.22, 1, 0.36, 1] }}
         >
-            <div className="relative mb-6 overflow-hidden rounded-[34px] border-4 border-[#d8d3cb] bg-[#f4ddff] px-5 py-5 shadow-[0_12px_0_0_#d8d3cb] md:px-6 md:py-6">
+            <motion.div
+                layout
+                transition={{ layout: panelTransition, duration: panelTransition.duration, ease: panelTransition.ease }}
+                className="relative mb-6 overflow-hidden rounded-[34px] border-4 border-[#d8d3cb] bg-[#eaf2ff] px-5 py-5 shadow-[0_12px_0_0_#d8d3cb] md:px-6 md:py-6"
+            >
                 <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(255,255,255,0.48),rgba(255,255,255,0))]" />
-                <div className="pointer-events-none absolute -left-10 top-8 h-24 w-24 rounded-full bg-[#bfdbfe]/50 blur-3xl" />
-                <div className="pointer-events-none absolute right-10 top-3 hidden h-28 w-40 rounded-[28px] border-4 border-[#1f2937] bg-[#1f2937] shadow-[0_10px_0_0_#374151] md:block">
-                    <div className="absolute inset-0 rounded-[24px] bg-[radial-gradient(circle_at_50%_40%,rgba(255,255,255,0.24),rgba(255,255,255,0)_52%)]" />
-                    <div className="absolute left-5 top-4 rounded-full bg-[#fef3c7] px-2 py-1 text-[10px] font-black text-[#92400e]">2x</div>
-                    <div className="absolute inset-x-0 bottom-4 flex justify-center">
-                        <div className="rounded-full border-2 border-[#4f46e5] bg-white px-3 py-1 text-[10px] font-black text-[#4f46e5]">
-                            CAT Focus
-                        </div>
-                    </div>
-                </div>
+                <div className="pointer-events-none absolute -left-10 top-8 h-24 w-24 rounded-full bg-[#bfdbfe]/55 blur-3xl" />
+                <div className="pointer-events-none absolute right-16 top-8 hidden h-28 w-28 rounded-full bg-[#dbeafe]/75 blur-3xl md:block" />
 
-                <div className="relative flex flex-col gap-5">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <motion.div
+                    layout
+                    transition={{ layout: panelTransition, duration: panelTransition.duration, ease: panelTransition.ease }}
+                    className="relative flex flex-col gap-5"
+                >
+                    <motion.div
+                        layout
+                        transition={{ layout: panelTransition, duration: panelTransition.duration, ease: panelTransition.ease }}
+                        className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between"
+                    >
                         <div className="max-w-2xl">
-                            <p className="inline-flex items-center gap-2 rounded-full border-2 border-[#d8d3cb] bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-[#4338ca]">
+                            <p className="inline-flex items-center gap-2 rounded-full border-2 border-[#d8d3cb] bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-[#2563eb]">
                                 <Sparkles className="h-3.5 w-3.5" />
                                 Reading Flow
                             </p>
@@ -588,62 +699,75 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                             </p>
                         </div>
 
-                        {category === "cat_mode" ? null : (
-                            <div className="relative flex flex-wrap items-center gap-2">
-                                {category !== "ai_gen" ? (
-                                    <button
-                                        onClick={() => setShowSettings(!showSettings)}
-                                        className={utilityButtonClass}
-                                        title="设置抓取数量"
-                                    >
-                                        <Settings2 className="h-4 w-4" />
-                                        数量 {fetchCount}
-                                    </button>
-                                ) : null}
-                                <button
-                                    onClick={handleRefresh}
-                                    disabled={isFetching}
-                                    className={cn(utilityButtonClass, "border-[#bfdbfe] text-[#1d4ed8] shadow-[0_4px_0_0_#bfdbfe]")}
-                                    title={category === "ai_gen" ? "刷新 AI 历史" : `刷新 ${category} 文章`}
+                        <AnimatePresence initial={false} mode="wait">
+                            {category === "cat_mode" ? null : (
+                                <motion.div
+                                    key={`toolbar-${category}`}
+                                    layout
+                                    initial={panelEnter}
+                                    animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                                    exit={panelExit}
+                                    transition={panelTransition}
+                                    className="relative flex flex-wrap items-center gap-2"
                                 >
-                                    <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
-                                    {category === "ai_gen" ? "刷新历史" : `抓取 ${fetchCount} 篇`}
-                                </button>
-
-                                <AnimatePresence>
-                                    {showSettings && category !== "ai_gen" && (
-                                        <motion.div
-                                            initial={{ opacity: 0, y: -8, scale: 0.95 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                            className="absolute right-0 top-full z-50 mt-3 rounded-[22px] border-4 border-[#d8d3cb] bg-white p-3 shadow-[0_10px_0_0_#d8d3cb]"
+                                    {category !== "ai_gen" ? (
+                                        <button
+                                            onClick={() => setShowSettings(!showSettings)}
+                                            className={utilityButtonClass}
+                                            style={getPressableStyle("#d8d3cb", 4)}
+                                            title="设置抓取数量"
                                         >
-                                            <div className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">抓取数量</div>
-                                            <div className="flex gap-2">
-                                                {[1, 2, 3, 4, 5].map((count) => (
-                                                    <button
-                                                        key={count}
-                                                        onClick={() => {
-                                                            setFetchCount(count);
-                                                            setShowSettings(false);
-                                                        }}
-                                                        className={cn(
-                                                            "rounded-full border-2 px-3 py-1.5 text-xs font-black transition-all",
-                                                            fetchCount === count
-                                                                ? "border-[#2563eb] bg-[#2563eb] text-white shadow-[0_4px_0_0_#1d4ed8]"
-                                                                : "border-[#d8d3cb] bg-[#fffdf8] text-slate-600"
-                                                        )}
-                                                    >
-                                                        {count}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
-                        )}
-                    </div>
+                                            <Settings2 className="h-4 w-4" />
+                                            数量 {fetchCount}
+                                        </button>
+                                    ) : null}
+                                    <button
+                                        onClick={handleRefresh}
+                                        disabled={isFetching}
+                                        className={cn(utilityButtonClass, "border-[#bfdbfe] text-[#1d4ed8] shadow-[0_4px_0_0_#bfdbfe]")}
+                                        style={getPressableStyle("#bfdbfe", 4)}
+                                        title={category === "ai_gen" ? "刷新 AI 历史" : `刷新 ${category} 文章`}
+                                    >
+                                        <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
+                                        {category === "ai_gen" ? "刷新历史" : `抓取 ${fetchCount} 篇`}
+                                    </button>
+
+                                    <AnimatePresence>
+                                        {showSettings && category !== "ai_gen" && (
+                                            <motion.div
+                                                initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                                                className="absolute right-0 top-full z-50 mt-3 rounded-[22px] border-4 border-[#d8d3cb] bg-white p-3 shadow-[0_10px_0_0_#d8d3cb]"
+                                            >
+                                                <div className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">抓取数量</div>
+                                                <div className="flex gap-2">
+                                                    {[1, 2, 3, 4, 5].map((count) => (
+                                                        <button
+                                                            key={count}
+                                                            onClick={() => {
+                                                                setFetchCount(count);
+                                                                setShowSettings(false);
+                                                            }}
+                                                            className={cn(
+                                                                "ui-pressable rounded-full border-2 px-3 py-1.5 text-xs font-black",
+                                                                fetchCount === count
+                                                                    ? "border-[#2563eb] bg-[#2563eb] text-white"
+                                                                    : "border-[#d8d3cb] bg-[#fffdf8] text-slate-600"
+                                                            )}
+                                                            style={getPressableStyle(fetchCount === count ? "#1d4ed8" : "#d8d3cb", 4)}
+                                                        >
+                                                            {count}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </motion.div>
 
                     <div className="grid gap-3 rounded-[28px] border-4 border-[#d8d3cb] bg-white p-2 md:grid-cols-4">
                         {tabItems.map((tab) => (
@@ -665,48 +789,78 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     }
                                 }}
                                 className={cn(
-                                    "rounded-full px-4 py-3 text-center text-sm font-black tracking-wide transition-all",
+                                    "ui-pressable relative overflow-hidden rounded-full px-4 py-3 text-center text-sm font-black tracking-wide",
                                     category === tab.id
-                                        ? "bg-[#2563eb] text-white shadow-[0_6px_0_0_#1d4ed8]"
+                                        ? "text-white"
                                         : "bg-[#fffdf8] text-slate-500 hover:text-slate-700"
                                 )}
+                                style={getPressableStyle(category === tab.id ? "#1d4ed8" : "#d8d3cb", 4)}
                             >
-                                {tab.label}
+                                {category === tab.id ? (
+                                    <motion.span
+                                        layoutId="read-category-pill"
+                                        className="absolute inset-0 rounded-full bg-[#2563eb] shadow-[0_6px_0_0_#1d4ed8]"
+                                        transition={panelTransition}
+                                    />
+                                ) : null}
+                                <span className="relative z-10">{tab.label}</span>
                             </button>
                         ))}
                     </div>
 
-                    {category !== "ai_gen" && category !== "cat_mode" && (
-                        <div className="grid gap-3 rounded-[28px] border-4 border-[#d8d3cb] bg-white p-2 md:grid-cols-4">
-                            {feedViewModel.filterItems.map((filterItem) => {
-                                const Icon = filterItem.icon;
-                                const isActive = activeView === filterItem.id;
-                                return (
-                                    <button
-                                        key={filterItem.id}
-                                        onClick={() => setActiveView(filterItem.id)}
-                                        className={cn(
-                                            "flex min-h-[48px] items-center justify-center gap-2 rounded-full px-3 py-2 text-sm font-black transition-all",
-                                            isActive
-                                                ? "bg-[#111827] text-white shadow-[0_6px_0_0_#374151]"
-                                                : "bg-[#fffdf8] text-slate-600 hover:text-slate-800"
-                                        )}
-                                    >
-                                        <Icon className="h-4 w-4" />
-                                        <span>{filterItem.label}</span>
-                                        <span className={cn(
-                                            "rounded-full px-2 py-0.5 text-[10px] font-black",
-                                            isActive ? "bg-white/20 text-white" : "bg-[#eef2ff] text-[#4338ca]"
-                                        )}>
-                                            {filterItem.count}
-                                        </span>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-            </div>
+                    <AnimatePresence initial={false}>
+                        {category !== "ai_gen" && category !== "cat_mode" && (
+                            <motion.div
+                                key="feed-view-filters"
+                                layout
+                                initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -10, filter: "blur(8px)" }}
+                                animate={{ opacity: 1, height: "auto", y: 0, filter: "blur(0px)" }}
+                                exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -10, filter: "blur(8px)" }}
+                                transition={panelTransition}
+                                className="overflow-hidden"
+                            >
+                                <div className="grid gap-3 rounded-[28px] border-4 border-[#d8d3cb] bg-white p-2 md:grid-cols-4">
+                                    {feedViewModel.filterItems.map((filterItem) => {
+                                        const Icon = filterItem.icon;
+                                        const isActive = activeView === filterItem.id;
+                                        return (
+                                            <button
+                                                key={filterItem.id}
+                                                onClick={() => setActiveView(filterItem.id)}
+                                                className={cn(
+                                                    "ui-pressable relative flex min-h-[48px] items-center justify-center gap-2 overflow-hidden rounded-full px-3 py-2 text-sm font-black",
+                                                    isActive
+                                                        ? "text-white"
+                                                        : "bg-[#fffdf8] text-slate-600 hover:text-slate-800"
+                                                )}
+                                                style={getPressableStyle(isActive ? "#374151" : "#d8d3cb", 4)}
+                                            >
+                                                {isActive ? (
+                                                    <motion.span
+                                                        layoutId="read-view-pill"
+                                                        className="absolute inset-0 rounded-full bg-[#111827] shadow-[0_6px_0_0_#374151]"
+                                                        transition={panelTransition}
+                                                    />
+                                                ) : null}
+                                                <span className="relative z-10 flex items-center gap-2">
+                                                    <Icon className="h-4 w-4" />
+                                                    <span>{filterItem.label}</span>
+                                                    <span className={cn(
+                                                        "rounded-full px-2 py-0.5 text-[10px] font-black",
+                                                        isActive ? "bg-white/20 text-white" : "bg-[#eef2ff] text-[#4338ca]"
+                                                    )}>
+                                                        {filterItem.count}
+                                                    </span>
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </motion.div>
+            </motion.div>
 
             {category === "cat_mode" && catStartError ? (
                 <div className="mb-5 rounded-[24px] border-4 border-[#fecaca] bg-[#fff1f2] px-5 py-3 text-sm font-semibold text-rose-700 shadow-[0_8px_0_0_#fecaca]">
@@ -714,8 +868,16 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 </div>
             ) : null}
 
-            {category === 'ai_gen' ? (
-                <div className="space-y-6">
+            <AnimatePresence mode="wait" initial={false}>
+                {category === 'ai_gen' ? (
+                <motion.div
+                    key="board-ai-gen"
+                    className="space-y-6"
+                    initial={panelEnter}
+                    animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                    exit={panelExit}
+                    transition={panelTransition}
+                >
                     <section className={cn(shellCardClass, "p-5 md:p-6")}>
                         <div className="flex flex-wrap items-start justify-between gap-4">
                             <div>
@@ -768,9 +930,10 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             type="button"
                                             onClick={() => setGenDifficulty(diff.id)}
                                             whileHover={{ y: -2 }}
-                                            whileTap={{ scale: 0.99 }}
+                                            whileTap={getPressableTap(prefersReducedMotion, 6, 0.985)}
+                                            style={getPressableStyle("#d8d3cb", 6)}
                                             className={cn(
-                                                "group relative overflow-hidden rounded-[24px] border-4 p-4 text-left transition-all duration-350 shadow-[0_8px_0_0_#d8d3cb]",
+                                                "ui-pressable group relative overflow-hidden rounded-[24px] border-4 p-4 text-left transition-all duration-350",
                                                 isActive
                                                     ? cn(diff.activeClass, "border-[#d8d3cb]")
                                                     : "border-[#d8d3cb] bg-[#fffdf8] text-slate-700"
@@ -814,11 +977,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             type="button"
                                             onClick={() => setGenTopic(topic)}
                                             whileHover={{ y: -1, scale: 1.02 }}
-                                            whileTap={{ scale: 0.98 }}
+                                            whileTap={getPressableTap(prefersReducedMotion, 4, 0.98)}
+                                            style={getPressableStyle(genTopic === topic ? "#374151" : "#d8d3cb", 4)}
                                             className={cn(
-                                                "rounded-full border-2 px-3.5 py-1.5 text-xs font-black transition-all duration-250",
+                                                "ui-pressable rounded-full border-2 px-3.5 py-1.5 text-xs font-black transition-all duration-250",
                                                 genTopic === topic
-                                                    ? "border-[#111827] bg-[#111827] text-white shadow-[0_4px_0_0_#374151]"
+                                                    ? "border-[#111827] bg-[#111827] text-white"
                                                     : "border-[#d8d3cb] bg-white text-slate-600 hover:text-slate-800"
                                             )}
                                         >
@@ -841,12 +1005,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                         onClick={handleGenerate}
                                         disabled={isGenerating}
                                         whileHover={isGenerating ? undefined : { y: -1, scale: 1.01 }}
-                                        whileTap={isGenerating ? undefined : { scale: 0.99 }}
+                                        whileTap={isGenerating ? undefined : getPressableTap(prefersReducedMotion, 6, 0.985)}
+                                        style={getPressableStyle(isGenerating ? "#d8d3cb" : "#1d4ed8", 6)}
                                         className={cn(
-                                            "group relative overflow-hidden rounded-full px-5 py-3 text-sm font-black transition-all duration-300",
+                                            "ui-pressable group relative overflow-hidden rounded-full px-5 py-3 text-sm font-black transition-all duration-300 disabled:shadow-none",
                                             isGenerating
                                                 ? "cursor-not-allowed border-4 border-[#d8d3cb] bg-[#f8fafc] text-slate-400"
-                                                : "border-4 border-[#1d4ed8] bg-[#2563eb] text-white shadow-[0_6px_0_0_#1d4ed8]"
+                                                : "border-4 border-[#1d4ed8] bg-[#2563eb] text-white"
                                         )}
                                     >
                                         <span className="relative flex items-center gap-2">
@@ -894,9 +1059,16 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                             </motion.div>
                         )}
                     </div>
-                </div>
+                </motion.div>
             ) : category === "cat_mode" ? (
-                <div className="space-y-6">
+                <motion.div
+                    key="board-cat-mode"
+                    className="space-y-6"
+                    initial={panelEnter}
+                    animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                    exit={panelExit}
+                    transition={panelTransition}
+                >
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.95fr)]">
                         <section className={cn(shellCardClass, "p-5 md:p-6")}>
                             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -918,7 +1090,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                 <button
                                     type="button"
                                     onClick={() => setIsCatRankOverviewOpen((prev) => !prev)}
-                                    className={cn(insetCardClass, "w-full px-4 py-4 text-left transition-all hover:-translate-y-0.5")}
+                                    className={cn("ui-pressable w-full px-4 py-4 text-left", insetCardClass)}
+                                    style={getPressableStyle("#ebe6de", 6)}
                                 >
                                     <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3">
                                         <span className="inline-flex h-12 w-12 items-center justify-center rounded-[18px] border-2 border-[#d8d3cb] bg-white text-xl shadow-[0_4px_0_0_#d8d3cb]">
@@ -960,7 +1133,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             type="button"
                                             onClick={handleStartCatSession}
                                             disabled={isStartingCat}
-                                            className="inline-flex items-center justify-center gap-2 rounded-full border-4 border-[#1d4ed8] bg-[#2563eb] px-5 py-3 text-sm font-black text-white shadow-[0_6px_0_0_#1d4ed8] transition-all hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0"
+                                            className="ui-pressable inline-flex items-center justify-center gap-2 rounded-full border-4 border-[#1d4ed8] bg-[#2563eb] px-5 py-3 text-sm font-black text-white disabled:opacity-50 disabled:shadow-none"
+                                            style={getPressableStyle("#1d4ed8", 6)}
                                         >
                                             {isStartingCat ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
                                             {isStartingCat ? "生成中..." : "开始训练"}
@@ -1051,9 +1225,16 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                             </motion.div>
                         )}
                     </div>
-                </div>
+                </motion.div>
             ) : (
-                <div className="space-y-8">
+                <motion.div
+                    key={`board-feed-${category}`}
+                    className="space-y-8"
+                    initial={panelEnter}
+                    animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                    exit={panelExit}
+                    transition={panelTransition}
+                >
                     {articles.length === 0 && (
                         <div className={cn(shellCardClass, "py-16 text-center text-sm italic text-slate-500")}>
                             点击刷新按钮抓取文章 / Click refresh to fetch articles
@@ -1061,40 +1242,50 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                     )}
 
                     {articles.length > 0 && (
-                        <div className="space-y-6">
-                            {feedViewModel.filteredArticles.length === 0 ? (
-                                <div className={cn(shellCardClass, "p-10 text-center text-sm text-slate-500")}>
-                                    这个分组暂时没有文章
-                                </div>
-                            ) : (
-                                <motion.div
-                                    className="grid gap-5 md:grid-cols-2 xl:grid-cols-3"
-                                    variants={listContainerVariants}
-                                    initial="hidden"
-                                    animate="show"
-                                >
-                                    {feedViewModel.filteredArticles.map((item) => (
-                                        <motion.div
-                                            key={item.link}
-                                            variants={listItemVariants}
-                                        >
-                                            <ArticleCard
-                                                item={item}
-                                                status={feedViewModel.statusByLink.get(item.link) ?? 'unread'}
-                                                category={category}
-                                                onSelect={handleSelectArticle}
-                                                onDelete={handleDelete}
-                                                isLoading={loadingArticleLink === item.link}
-                                                isAnyLoading={Boolean(loadingArticleLink)}
-                                            />
-                                        </motion.div>
-                                    ))}
-                                </motion.div>
-                            )}
-                        </div>
+                        <AnimatePresence mode="wait" initial={false}>
+                            <motion.div
+                                key={`feed-view-${category}-${activeView}-${feedViewModel.filteredArticles.length === 0 ? "empty" : "filled"}`}
+                                className="space-y-6"
+                                initial={panelEnter}
+                                animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                                exit={panelExit}
+                                transition={panelTransition}
+                            >
+                                {feedViewModel.filteredArticles.length === 0 ? (
+                                    <div className={cn(shellCardClass, "p-10 text-center text-sm text-slate-500")}>
+                                        这个分组暂时没有文章
+                                    </div>
+                                ) : (
+                                    <motion.div
+                                        className="grid gap-5 md:grid-cols-2 xl:grid-cols-3"
+                                        variants={listContainerVariants}
+                                        initial="hidden"
+                                        animate="show"
+                                    >
+                                        {feedViewModel.filteredArticles.map((item) => (
+                                            <motion.div
+                                                key={item.link}
+                                                variants={listItemVariants}
+                                            >
+                                                <ArticleCard
+                                                    item={item}
+                                                    status={feedViewModel.statusByLink.get(item.link) ?? 'unread'}
+                                                    category={category}
+                                                    onSelect={handleSelectArticle}
+                                                    onDelete={handleDelete}
+                                                    isLoading={loadingArticleLink === item.link}
+                                                    isAnyLoading={Boolean(loadingArticleLink)}
+                                                />
+                                            </motion.div>
+                                        ))}
+                                    </motion.div>
+                                )}
+                            </motion.div>
+                        </AnimatePresence>
                     )}
-                </div>
+                </motion.div>
             )}
+            </AnimatePresence>
 
             {/* Notification Toast */}
             <AnimatePresence>
@@ -1170,10 +1361,10 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
                 onSelect(item.link);
             }}
             className={cn(
-                "group relative flex h-full min-h-[320px] cursor-pointer flex-col overflow-hidden rounded-[28px] border-4 border-[#d8d3cb] bg-white text-left shadow-[0_10px_0_0_#d8d3cb] transition-all duration-300",
-                !isAnyLoading && "hover:-translate-y-1",
+                "ui-pressable group relative flex h-full min-h-[320px] cursor-pointer flex-col overflow-hidden rounded-[28px] border-4 border-[#d8d3cb] bg-white text-left transition-all duration-300",
                 isAnyLoading && !isLoading && "opacity-75"
             )}
+            style={getPressableStyle("#d8d3cb", 8)}
         >
             <div className="relative h-40 overflow-hidden border-b-4 border-[#ece7df]">
                 <div className={cn("absolute inset-0", fallbackGradient)} />
@@ -1202,7 +1393,8 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
                         e.stopPropagation();
                         onDelete(item.link);
                     }}
-                    className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#fbcfe8] bg-white text-rose-500 shadow-[0_4px_0_0_#fbcfe8] transition-all hover:-translate-y-0.5"
+                    className="ui-pressable absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#fbcfe8] bg-white text-rose-500"
+                    style={getPressableStyle("#fbcfe8", 4)}
                     title="Remove article"
                 >
                     <Trash2 className="h-3.5 w-3.5" />

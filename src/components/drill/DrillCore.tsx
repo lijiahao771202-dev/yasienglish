@@ -859,7 +859,7 @@ const normalizeInventory = (inventory: unknown, legacyCapsule?: number): Invento
 };
 
 // ===== COSMETIC THEMES =====
-type CosmeticThemeId = 'morning_coffee' | 'verdant_atelier' | 'sakura' | 'golden_hour' | 'holo_pearl' | 'cloud_nine' | 'lilac_dream';
+type CosmeticThemeId = 'morning_coffee' | 'verdant_atelier' | 'cute_cream' | 'sakura' | 'golden_hour' | 'holo_pearl' | 'cloud_nine' | 'lilac_dream';
 
 interface CosmeticTheme {
     id: CosmeticThemeId;
@@ -931,6 +931,20 @@ const COSMETIC_THEMES: Record<CosmeticThemeId, CosmeticTheme> = {
         textClass: 'text-emerald-950',
         mutedClass: 'text-emerald-700/60',
         headerBg: 'bg-white/82',
+        isDark: false,
+    },
+    cute_cream: {
+        id: 'cute_cream',
+        name: '🧁 可爱奶油风',
+        icon: '🧁',
+        price: 0,
+        description: '奶油书桌灵感的可爱主题，免费领取直接切换',
+        preview: '奶油纸面 + 薄荷按钮 + 杏桃点缀',
+        bgClass: 'bg-[linear-gradient(135deg,#fff8ef_0%,#fffdf8_42%,#eef9f1_72%,#fff2e4_100%)]',
+        cardClass: 'bg-[linear-gradient(180deg,rgba(255,252,246,0.98),rgba(255,249,239,0.96),rgba(247,255,249,0.94))] border border-[#eadfc9] shadow-[0_24px_56px_rgba(198,172,132,0.22),inset_0_1px_0_rgba(255,255,255,0.98)] ring-1 ring-[#fffaf1]',
+        textClass: 'text-[#54453a]',
+        mutedClass: 'text-[#9d8b7c]',
+        headerBg: 'bg-[#fff7eb]',
         isDark: false,
     },
     sakura: {
@@ -1057,6 +1071,32 @@ const COSMETIC_THEME_UI: Record<CosmeticThemeId, CosmeticThemeUi> = {
         nextButtonGradient: "linear-gradient(90deg, #10b981 0%, #059669 54%, #047857 100%)",
         nextButtonShadow: "0 20px 38px -12px rgba(5,150,105,0.46)",
         nextButtonGlow: "rgba(16,185,129,0.24)",
+    },
+    cute_cream: {
+        ledgerClass: "bg-[linear-gradient(180deg,rgba(255,253,248,0.98),rgba(255,247,234,0.94),rgba(241,251,244,0.92))] border-[#eadfc9] ring-[#fff3dc] shadow-[0_16px_34px_rgba(199,170,128,0.14)]",
+        toolbarClass: "border-[#e6d7bf] bg-[linear-gradient(180deg,rgba(255,251,243,0.98),rgba(255,245,230,0.95),rgba(240,251,244,0.92))] shadow-[0_12px_28px_rgba(206,177,136,0.14)]",
+        inputShellClass: "border-[#e6d7bf] bg-[linear-gradient(180deg,rgba(255,253,248,0.98),rgba(255,247,235,0.95))] shadow-[0_14px_34px_rgba(206,177,136,0.14),inset_0_1px_0_rgba(255,255,255,1)] hover:shadow-[0_18px_40px_rgba(206,177,136,0.18),inset_0_1px_0_rgba(255,255,255,1)] focus-within:border-[#d8c3a5] focus-within:ring-[4px] focus-within:ring-[#f3c89f]/18",
+        textareaClass: "text-[#5a4638] placeholder:text-[#b59b85]",
+        audioLockedClass: "border-[#f0cba7] bg-[linear-gradient(180deg,rgba(255,248,239,0.98),rgba(255,233,207,0.92))] text-[#b86d2c] shadow-[0_10px_22px_rgba(240,168,91,0.16)] hover:border-[#ebb784] hover:text-[#9d5920]",
+        audioUnlockedClass: "border-[#bfe5d0] bg-[linear-gradient(180deg,rgba(248,255,250,0.98),rgba(228,249,237,0.92))] text-[#2f8a67] shadow-[0_10px_22px_rgba(91,183,141,0.14)] hover:border-[#9ed7bb] hover:text-[#206a4f]",
+        speedShellClass: "border-[#e3d6c3] bg-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,1)]",
+        speedActiveClass: "bg-[linear-gradient(180deg,rgba(255,205,146,0.98),rgba(244,155,103,0.96))] text-[#6b3d13] shadow-[0_10px_18px_rgba(244,155,103,0.2)]",
+        speedIdleClass: "text-[#9d8b7c] hover:bg-[#fff8ef] hover:text-[#5a4638]",
+        vocabButtonClass: "border-[#bfe5d0] bg-[linear-gradient(180deg,rgba(247,255,250,0.98),rgba(228,249,237,0.92))] text-[#2f8a67] hover:border-[#9ed7bb] hover:bg-[#dff6e8]",
+        keywordChipClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(255,248,239,0.95))] border-[#eadfc9] text-[#6f5a4a] hover:bg-[#fffaf3] hover:border-[#d9c7b1] hover:text-[#4b3a30] shadow-[0_8px_18px_rgba(206,177,136,0.12)]",
+        wordBadgeActiveClass: "border-[#bfe5d0] bg-[#f1fbf4] text-[#2f8a67] shadow-[0_6px_16px_rgba(91,183,141,0.08)]",
+        wordBadgeIdleClass: "bg-transparent text-[#c4b4a4]",
+        hintButtonClass: "border-[#f0cba7] bg-[linear-gradient(180deg,rgba(255,249,242,0.98),rgba(255,237,216,0.92))] text-[#b86d2c] shadow-[0_8px_18px_rgba(244,155,103,0.12)] hover:border-[#ebb784] hover:text-[#9d5920] hover:shadow-[0_12px_24px_rgba(244,155,103,0.16)]",
+        iconButtonClass: "border-[#e6d7bf] bg-white/94 text-[#8d7666] shadow-[0_6px_16px_rgba(206,177,136,0.08)] hover:border-[#d9c7b1] hover:bg-[#fff8ef] hover:text-[#5a4638]",
+        checkButtonClass: "border-[#f0b77f] bg-[linear-gradient(180deg,rgba(255,214,155,0.98),rgba(246,158,106,0.96))] text-[#5c3514] shadow-[0_14px_28px_rgba(244,155,103,0.24)] hover:shadow-[0_18px_34px_rgba(244,155,103,0.3)]",
+        tutorPanelClass: "bg-[linear-gradient(180deg,rgba(255,253,248,0.99),rgba(255,246,233,0.96),rgba(244,252,246,0.93))] border-[#eadfc9] shadow-[0_20px_42px_rgba(206,177,136,0.16)]",
+        tutorAnswerClass: "bg-[linear-gradient(90deg,rgba(255,241,223,0.8),rgba(242,251,245,0.78))] text-[#5a4638]",
+        tutorInputClass: "bg-white/92 border-[#e6d7bf] text-[#5a4638] focus:ring-[#f0cba7]",
+        tutorSendClass: "text-[#c96f57]",
+        analysisButtonClass: "bg-[linear-gradient(180deg,rgba(191,229,208,0.98),rgba(117,194,158,0.96))] text-[#184f3b] hover:brightness-105",
+        nextButtonGradient: "linear-gradient(90deg, #bfe5d0 0%, #ffd5ad 55%, #f4a76f 100%)",
+        nextButtonShadow: "0 18px 34px -12px rgba(233,167,112,0.36)",
+        nextButtonGlow: "rgba(255,213,173,0.32)",
     },
     sakura: {
         ledgerClass: "bg-[linear-gradient(180deg,rgba(255,255,255,0.76),rgba(252,231,243,0.66))] border-pink-200/60 ring-pink-100/40 shadow-[0_12px_30px_rgba(236,72,153,0.08)]",
@@ -9128,6 +9168,37 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                         <div className="absolute inset-0 bg-[url('/themes/forest-photo.jpg')] bg-cover bg-center bg-no-repeat opacity-[0.78]" />
                                         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,44,34,0.1),rgba(2,44,34,0.06),rgba(2,44,34,0.16))]" />
                                     </>
+                                )}
+
+                                {/* Cute Cream — premium cream desk with soft stationery accents */}
+                                {cosmeticTheme === 'cute_cream' && (
+                                    <div className="absolute inset-0 overflow-hidden">
+                                        <motion.div
+                                            className="absolute -top-[8%] left-[8%] h-[32vw] w-[32vw] rounded-full bg-[#ffe1bf]/55 blur-[110px]"
+                                            animate={{ scale: [1, 1.08, 1], x: [0, 24, 0], y: [0, -12, 0] }}
+                                            transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
+                                        />
+                                        <motion.div
+                                            className="absolute top-[10%] right-[6%] h-[28vw] w-[28vw] rounded-full bg-[#d9f3e3]/58 blur-[110px]"
+                                            animate={{ scale: [1.05, 1, 1.05], x: [0, -20, 0], y: [0, 18, 0] }}
+                                            transition={{ duration: 17, repeat: Infinity, ease: "easeInOut" }}
+                                        />
+                                        <motion.div
+                                            className="absolute bottom-[-6%] left-[28%] h-[30vw] w-[30vw] rounded-full bg-[#fff3d2]/60 blur-[120px]"
+                                            animate={{ scale: [1, 1.12, 1], x: [0, 28, 0], y: [0, -16, 0] }}
+                                            transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
+                                        />
+                                        <motion.div
+                                            className="absolute bottom-[4%] right-[16%] h-[20vw] w-[20vw] rounded-full bg-[#ffd8cc]/42 blur-[100px]"
+                                            animate={{ scale: [1.08, 1, 1.08], x: [0, -18, 0], y: [0, 16, 0] }}
+                                            transition={{ duration: 14, repeat: Infinity, ease: "easeInOut" }}
+                                        />
+                                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,252,246,0.9),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(240,251,244,0.68),transparent_28%)]" />
+                                        <div className="absolute inset-0 opacity-[0.08] bg-[linear-gradient(rgba(185,160,126,0.18)_1px,transparent_1px),linear-gradient(90deg,rgba(185,160,126,0.14)_1px,transparent_1px)] bg-[size:48px_48px]" />
+                                        <div className="absolute left-[6%] top-[12%] h-12 w-12 rounded-[18px] border border-[#ffd4ab] bg-white/38" />
+                                        <div className="absolute right-[10%] top-[18%] h-10 w-10 rounded-full border border-[#cbe9d7] bg-white/28" />
+                                        <div className="absolute bottom-[16%] left-[10%] h-14 w-14 rounded-[20px] border border-[#ffe4c7] bg-white/26" />
+                                    </div>
                                 )}
 
                                 {/* Cloud Nine — Ultra-clean white background with breathable cyan/blue pastel gradients */}

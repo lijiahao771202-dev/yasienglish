@@ -57,6 +57,7 @@ interface ArticleDisplayProps {
         endOffset: number;
     }) => Promise<void> | void;
     onArticleSnapshotDirty?: () => void;
+    topActionNode?: React.ReactNode;
 }
 
 export function ArticleDisplay({
@@ -67,13 +68,13 @@ export function ArticleDisplay({
     siteName,
     videoUrl,
     articleUrl,
-    difficulty,
     isEditMode,
     locateRequest,
     readingNotes = [],
     onCreateReadingNote,
     onDeleteReadingMarks,
     onArticleSnapshotDirty,
+    topActionNode,
 }: ArticleDisplayProps) {
     const contentRef = useRef<HTMLDivElement>(null);
     const videoPlayerRef = useRef<TEDVideoPlayerRef>(null);
@@ -272,16 +273,14 @@ export function ArticleDisplay({
     const canOpenOriginalArticle = typeof articleUrl === "string"
         && /^https?:\/\//i.test(articleUrl);
     const articleSourceLabel = siteName || "Reading Flow";
-    const difficultyLabel = difficulty === "cet4" ? "四级" : difficulty === "cet6" ? "六级" : difficulty === "ielts" ? "雅思" : null;
-    const difficultyClassName = difficulty === "cet4"
-        ? "bg-[#b7f0d4] text-[#0f8a69]"
-        : difficulty === "cet6"
-            ? "bg-[#dbeafe] text-[#1d4ed8]"
-            : "bg-[#eadcff] text-[#7b45e7]";
     const estimatedReadMinutes = Math.max(
         3,
         Math.round(((content || "").split(/\s+/).filter(Boolean).length || 600) / 220),
     );
+
+    const openWordPopup = useCallback((nextPopup: PopupState) => {
+        setPopup(nextPopup);
+    }, []);
 
     const handleSplit = (index: number, textBefore: string, textAfter: string) => {
         const newBlocks = [...activeBlocks];
@@ -335,7 +334,7 @@ export function ArticleDisplay({
         setActiveBlocks(newBlocks);
     };
 
-    const handleArticleClick = async (e: React.MouseEvent) => {
+    const handleArticleClick = useCallback(async (e: React.MouseEvent) => {
         let word = "";
         let context = "";
         const selection = window.getSelection();
@@ -429,7 +428,7 @@ export function ArticleDisplay({
             y = rect.bottom + 10;
         }
 
-        setPopup({
+        openWordPopup({
             word,
             context,
             x,
@@ -440,7 +439,7 @@ export function ArticleDisplay({
             sourceSentence: context,
             sourceNote: title || "",
         });
-    };
+    }, [articleUrl, openWordPopup, title]);
 
     return (
         <motion.article
@@ -450,16 +449,18 @@ export function ArticleDisplay({
         >
             <div className="relative mb-24 overflow-hidden rounded-[2rem] border-[3px] border-[#17120d] bg-[#fffdf8] p-6 shadow-[0_10px_0_rgba(23,18,13,0.14)] transition-all duration-500 md:p-10 xl:p-12">
                 <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[linear-gradient(180deg,rgba(255,249,235,0.95),rgba(255,249,235,0))]" />
-                <header className="relative mb-12 border-b-2 border-[#e9decb] pb-8 pt-1 text-left">
+                {topActionNode ? (
+                    <div className="absolute right-6 top-6 z-20 md:right-10 md:top-10 xl:right-12 xl:top-10">
+                        {topActionNode}
+                    </div>
+                ) : null}
+                <header className="relative mb-12 border-b-2 border-[#e9decb] pb-8 pt-1 text-left md:pr-60 xl:pr-72">
                     <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex rounded-full border-[3px] border-[#17120d] bg-white px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#5f5448] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
                             {articleSourceLabel}
                         </span>
                         <span className="inline-flex rounded-full border-[3px] border-[#17120d] bg-[#dbeafe] px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#1d4ed8] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
                             {estimatedReadMinutes} min read
-                        </span>
-                        <span className="inline-flex rounded-full border-[3px] border-[#17120d] bg-[#ffe8a3] px-3 py-2 text-[11px] font-black text-[#9a6700] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
-                            选词可加入生词本
                         </span>
                         {canOpenOriginalArticle && (
                             <a
@@ -474,18 +475,10 @@ export function ArticleDisplay({
                         )}
                     </div>
 
-                    <div className="mt-7 flex flex-wrap items-start gap-3">
-                        <h1 className="max-w-[15ch] flex-1 font-newsreader text-[2.8rem] font-medium leading-[0.95] tracking-tight text-[#17120d] md:text-[3.6rem] xl:text-[4.1rem]">
+                    <div className="mt-7">
+                        <h1 className="max-w-[15ch] font-newsreader text-[2.8rem] font-medium leading-[0.95] tracking-tight text-[#17120d] md:text-[3.6rem] xl:text-[4.1rem]">
                             {title}
                         </h1>
-                        {difficultyLabel ? (
-                            <span className={cn(
-                                "mt-2 inline-flex rounded-full border-[3px] border-[#17120d] px-3 py-2 text-sm font-black shadow-[0_4px_0_rgba(23,18,13,0.08)]",
-                                difficultyClassName,
-                            )}>
-                                {difficultyLabel}
-                            </span>
-                        ) : null}
                     </div>
 
                     <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-[#7d6e61]">
@@ -545,6 +538,7 @@ export function ArticleDisplay({
                                             onDeleteReadingMarks={onDeleteReadingMarks}
                                             onSnapshotDirty={onArticleSnapshotDirty}
                                             onWordClick={handleArticleClick}
+                                            onOpenWordPopupFromSelection={openWordPopup}
                                             onSplit={handleSplit}
                                             onMerge={handleMerge}
                                             onUpdate={handleUpdate}

@@ -617,3 +617,11 @@
     at TLSSocket.emit (node:events:536:35)
     at endReadableNT (node:internal/streams/readable:1698:12)
     at process.processTicksAndRejections (node:internal/process/task_queues:90:21)
+[2026-04-03T05:03:40.609Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)
+[2026-04-03T05:03:40.623Z] Step: Generating | Error: Edge TTS request timed out | Stack: Error: Edge TTS request timed out
+    at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:317:28)
+    at listOnTimeout (node:internal/timers:594:17)
+    at process.processTimers (node:internal/timers:529:7)

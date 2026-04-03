@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, BookOpenText, BrainCircuit, Sparkles, Swords } from "lucide-react";
+import { ArrowRight, BookOpenText, BrainCircuit, Clock3, Sparkles, Stars, Swords, X } from "lucide-react";
 
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { HomeDashboardPanels_v2 } from "@/components/home/HomeDashboardPanels_v2";
@@ -19,6 +19,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
     const router = useRouter();
     const searchParams = useSearchParams();
     const sessionUser = useAuthSessionUser();
+    const [reviewReminderNow] = useState(() => Date.now());
     const activityCutoff = useMemo(() => {
         const now = new Date();
         return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
@@ -35,6 +36,14 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
         () => db.vocabulary.where("timestamp").aboveOrEqual(activityCutoff).toArray(),
         [activityCutoff],
     );
+    const dueVocabularyCount = useLiveQuery(
+        () => db.vocabulary.where("due").belowOrEqual(reviewReminderNow).count(),
+        [reviewReminderNow],
+    );
+    const dueVocabularyPreview = useLiveQuery(
+        () => db.vocabulary.where("due").belowOrEqual(reviewReminderNow).limit(3).toArray(),
+        [reviewReminderNow],
+    );
     const recentWritingEntries = useLiveQuery(
         () => db.writing_history.where("timestamp").aboveOrEqual(activityCutoff).toArray(),
         [activityCutoff],
@@ -45,7 +54,9 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
     );
     const resolvedPasswordUpdated = passwordUpdated || searchParams.get("password") === "updated";
     const fromBattle = searchParams.get("from") === "battle";
-    const [routeTransitionTarget, setRouteTransitionTarget] = useState<"read" | "battle" | "vocab" | null>(null);
+    const [routeTransitionTarget, setRouteTransitionTarget] = useState<"read" | "battle" | "vocab" | "review" | null>(null);
+    const [showReviewReminder, setShowReviewReminder] = useState(false);
+    const [reviewReminderDismissed, setReviewReminderDismissed] = useState(false);
 
     const model = useMemo(() => buildHomeDashboardModel({
         email: sessionUser?.email,
@@ -69,7 +80,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
         writingCount,
     ]);
 
-    const handleNavigateFromHome = (target: "read" | "battle" | "vocab") => {
+    const handleNavigateFromHome = (target: "read" | "battle" | "vocab" | "review") => {
         if (routeTransitionTarget) return;
         setRouteTransitionTarget(target);
         window.setTimeout(() => {
@@ -81,11 +92,34 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                 router.push("/battle?from=home");
                 return;
             }
+            if (target === "review") {
+                router.push("/vocab/review?from=home");
+                return;
+            }
             router.push("/vocab?from=home");
         }, 560);
     };
 
     const springTransition = { type: "spring" as const, stiffness: 400, damping: 25 };
+    const dueWordCount = dueVocabularyCount ?? 0;
+    const dueWords = useMemo(
+        () => (dueVocabularyPreview ?? []).map((item) => item.word.trim()).filter(Boolean),
+        [dueVocabularyPreview],
+    );
+
+    useEffect(() => {
+        if (reviewReminderDismissed || routeTransitionTarget || dueWordCount <= 0 || showReviewReminder) {
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            setShowReviewReminder(true);
+        }, 3200);
+
+        return () => {
+            window.clearTimeout(timer);
+        };
+    }, [dueWordCount, reviewReminderDismissed, routeTransitionTarget, showReviewReminder]);
 
     return (
         <main className="font-welcome-ui relative h-screen w-screen overflow-hidden px-4 py-4 sm:px-6 sm:py-6 lg:px-8 flex flex-col items-center justify-center bg-[#fefce8]">
@@ -101,6 +135,116 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
                     />
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {showReviewReminder && !routeTransitionTarget && dueWordCount > 0 && (
+                    <motion.div
+                        className="fixed inset-0 z-[85] flex items-center justify-center bg-[#111827]/18 px-4 backdrop-blur-[2px]"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.22 }}
+                    >
+                        <motion.div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label="生词复习提醒"
+                            initial={{ opacity: 0, y: 26, scale: 0.92, rotate: -1.5 }}
+                            animate={{ opacity: 1, y: 0, scale: 1, rotate: 0 }}
+                            exit={{ opacity: 0, y: 16, scale: 0.94, rotate: 1 }}
+                            transition={{ type: "spring", stiffness: 320, damping: 24 }}
+                            className="relative w-full max-w-[440px] rounded-[2.4rem] border-4 border-[#111827] bg-[#fffaf0] p-5 shadow-[0_14px_0_0_#111827]"
+                        >
+                            <button
+                                type="button"
+                                aria-label="关闭复习提醒"
+                                onClick={() => {
+                                    setShowReviewReminder(false);
+                                    setReviewReminderDismissed(true);
+                                }}
+                                className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border-4 border-[#111827] bg-white text-[#6b7280] shadow-[0_4px_0_0_#111827] transition-transform hover:-translate-y-0.5"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+
+                            <div className="space-y-4">
+                                <div className="flex flex-wrap items-center gap-2 pr-12">
+                                    <span className="inline-flex items-center gap-1 rounded-full border-2 border-[#111827] bg-[#fde68a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-[#92400e] shadow-[0_3px_0_0_#111827]">
+                                        <Stars className="h-3.5 w-3.5" />
+                                        review ping
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 rounded-full border-2 border-[#111827] bg-[#dcfce7] px-3 py-1 text-[11px] font-black text-[#166534] shadow-[0_3px_0_0_#111827]">
+                                        <Clock3 className="h-3.5 w-3.5" />
+                                        待复习 {dueWordCount}
+                                    </span>
+                                </div>
+
+                                <div>
+                                    <p className="font-welcome-display text-[2.2rem] leading-[0.92] tracking-[-0.05em] text-[#111827]">
+                                        生词本在等你翻牌
+                                    </p>
+                                    <p className="mt-2 text-[15px] font-bold leading-6 text-[#6b7280]">
+                                        你现在有 {dueWordCount} 个单词到了复习时间。趁热刷一轮，记忆会更稳。
+                                    </p>
+                                </div>
+
+                                {dueWords.length > 0 && (
+                                    <div className="rounded-[1.8rem] border-4 border-[#111827] bg-white p-4 shadow-[0_6px_0_0_#111827]">
+                                        <p className="text-[12px] font-black uppercase tracking-[0.18em] text-[#9ca3af]">
+                                            first up
+                                        </p>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            {dueWords.map((word) => (
+                                                <span
+                                                    key={word}
+                                                    className="inline-flex items-center rounded-full border-2 border-[#111827] bg-[#f5f3ff] px-3 py-1.5 text-sm font-black text-[#6d28d9] shadow-[0_3px_0_0_#111827]"
+                                                >
+                                                    {word}
+                                                </span>
+                                            ))}
+                                            {dueWordCount > dueWords.length && (
+                                                <span className="inline-flex items-center rounded-full border-2 border-[#111827] bg-[#ffedd5] px-3 py-1.5 text-sm font-black text-[#c2410c] shadow-[0_3px_0_0_#111827]">
+                                                    +{dueWordCount - dueWords.length}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex flex-col gap-3 sm:flex-row">
+                                    <motion.button
+                                        whileHover={{ scale: 1.03, y: -2 }}
+                                        whileTap={{ scale: 0.97 }}
+                                        transition={springTransition}
+                                        type="button"
+                                        onClick={() => {
+                                            setShowReviewReminder(false);
+                                            setReviewReminderDismissed(true);
+                                        }}
+                                        className="flex-1 rounded-[1.7rem] border-4 border-[#111827] bg-white px-5 py-3 text-[15px] font-black text-[#6b7280] shadow-[0_6px_0_0_#111827] active:translate-y-1 active:shadow-[0_2px_0_0_#111827]"
+                                    >
+                                        稍后再说
+                                    </motion.button>
+                                    <motion.button
+                                        whileHover={{ scale: 1.03, y: -2 }}
+                                        whileTap={{ scale: 0.97 }}
+                                        transition={springTransition}
+                                        type="button"
+                                        onClick={() => {
+                                            setShowReviewReminder(false);
+                                            setReviewReminderDismissed(true);
+                                            handleNavigateFromHome("review");
+                                        }}
+                                        className="flex-1 rounded-[1.7rem] border-4 border-[#111827] bg-[#facc15] px-5 py-3 text-[15px] font-black text-[#111827] shadow-[0_6px_0_0_#111827] active:translate-y-1 active:shadow-[0_2px_0_0_#111827]"
+                                    >
+                                        立即复习
+                                    </motion.button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
                 )}
             </AnimatePresence>
 

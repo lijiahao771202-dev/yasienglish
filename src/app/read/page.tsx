@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { ArticleDisplay } from "@/components/reading/ArticleDisplay";
 import { AudioPlayer } from "@/components/shadowing/AudioPlayer";
 import { WritingEditor } from "@/components/writing/WritingEditor";
@@ -38,6 +38,7 @@ import {
     createReadingCoinFxEvent,
     type ReadingCoinFxEvent,
 } from "@/lib/reading-coin-fx";
+import { getPressableStyle } from "@/lib/pressable";
 
 interface ArticleData {
     title: string;
@@ -326,6 +327,7 @@ function ReadingPageContent() {
     const routeFrom = searchParams.get("from");
     const resumeArticleUrl = searchParams.get("url");
     const hasRouteEntry = routeFrom === "battle" || routeFrom === "home";
+    const prefersReducedMotion = useReducedMotion();
     const backgroundTheme = getSavedBackgroundTheme(sessionUser?.id);
     const backgroundSpec = getBackgroundThemeSpec(backgroundTheme);
     const readingThemeFilm: Record<string, string> = {
@@ -500,7 +502,7 @@ function ReadingPageContent() {
                 return;
             }
             router.push("/battle?from=read");
-        }, 560);
+        }, prefersReducedMotion ? 140 : 560);
     };
 
     useEffect(() => {
@@ -1329,16 +1331,16 @@ function ReadingPageContent() {
                 }}
                 onClearLocate={() => setQuizLocateRequest(null)}
                 activeLocateQuestionNumber={quizLocateRequest?.questionNumber ?? null}
-                titleNode={renderQuizToggleButton(true)}
                 dragHandleNode={
                     shouldEnableQuizPanelDrag ? (
                         <button
                             type="button"
                             onPointerDown={handleQuizPanelDragStart}
                             className={cn(
-                                "flex h-8 w-12 items-center justify-center rounded-full border-[3px] border-[#17120d] bg-white text-[#5f5448] shadow-[0_3px_0_rgba(23,18,13,0.08)] transition-colors",
-                                isQuizPanelDragging ? "cursor-grabbing bg-[#fff7d8] text-[#17120d]" : "cursor-grab hover:-translate-y-0.5 hover:text-[#17120d]",
+                                "ui-pressable flex h-8 w-12 items-center justify-center rounded-full border-[3px] border-[#17120d] bg-white text-[#5f5448] transition-colors",
+                                isQuizPanelDragging ? "cursor-grabbing bg-[#fff7d8] text-[#17120d]" : "cursor-grab hover:text-[#17120d]",
                             )}
+                            style={getPressableStyle("rgba(23,18,13,0.08)", 3)}
                             title="拖动答题框"
                             aria-label="拖动答题框"
                         >
@@ -1350,7 +1352,7 @@ function ReadingPageContent() {
         );
     };
 
-    const renderQuizToggleButton = (isEmbedded = false) => {
+    const renderQuizToggleButton = () => {
         if (!article?.isAIGenerated || !article?.difficulty) return null;
         return (
             <button
@@ -1371,14 +1373,10 @@ function ReadingPageContent() {
                     setIsQuizMode((prev) => !prev);
                 }}
                 aria-pressed={isQuizMode}
-                className={cn(
-                    "group flex items-center gap-2.5 rounded-full border-[3px] border-[#17120d] text-sm font-black transition-all duration-300",
-                    isEmbedded
-                        ? "bg-[#fff7d8] px-4 py-1.5 text-[#17120d] shadow-[0_4px_0_rgba(23,18,13,0.08)] hover:-translate-y-0.5"
-                        : "bg-[#2f66f3] px-5 py-2.5 text-white shadow-[0_6px_0_rgba(23,18,13,0.12)] hover:-translate-y-0.5"
-                )}
+                className="ui-pressable group flex items-center gap-2.5 rounded-full border-[3px] border-[#17120d] bg-[#2f66f3] px-5 py-2.5 text-sm font-black text-white transition-all duration-300"
+                style={getPressableStyle("rgba(23,18,13,0.12)", 6)}
             >
-                <ClipboardCheck className={cn("h-4 w-4 transition-transform group-hover:scale-110", isEmbedded ? "text-[#9a6700]" : "text-white")} />
+                <ClipboardCheck className="h-4 w-4 text-white transition-transform group-hover:scale-110" />
                 <span>{isQuizMode ? "隐藏题目" : "开始答题"}</span>
                 <span className={cn(
                     "rounded-full border-2 border-[#17120d] px-2 py-0.5 text-[10px] font-black",
@@ -1564,7 +1562,8 @@ function ReadingPageContent() {
                                     <button
                                         type="button"
                                         onClick={() => setCatSettlement(null)}
-                                        className="rounded-full border border-white/75 bg-white/78 px-4 py-2 text-sm font-semibold text-slate-800 shadow-[0_14px_28px_-20px_rgba(15,23,42,0.7)] transition-all hover:bg-white/92"
+                                        className="ui-pressable rounded-full border border-white/75 bg-white/78 px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-white/92"
+                                        style={getPressableStyle("rgba(15,23,42,0.18)", 4)}
                                     >
                                         关闭，继续阅读
                                     </button>
@@ -1615,7 +1614,8 @@ function ReadingPageContent() {
                                 setIsEditMode(false);
                                 setIsQuizMode(false);
                             }}
-                            className="group inline-flex h-10 items-center justify-center gap-2 rounded-full border-[3px] border-[#17120d] bg-[#fff7d8] px-4 text-sm font-black text-[#17120d] transition hover:-translate-y-0.5"
+                            className="ui-pressable group inline-flex h-10 items-center justify-center gap-2 rounded-full border-[3px] border-[#17120d] bg-[#fff7d8] px-4 text-sm font-black text-[#17120d]"
+                            style={getPressableStyle("rgba(23,18,13,0.1)", 4)}
                             title="返回文章列表"
                         >
                             <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
@@ -1626,11 +1626,12 @@ function ReadingPageContent() {
                             <button
                                 onClick={toggleFocusMode}
                                 className={cn(
-                                    "flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all duration-300",
+                                    "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all duration-300",
                                     isFocusMode
                                         ? "bg-[#17120d] text-[#fde68a]"
-                                        : "bg-white text-[#5f5448] hover:-translate-y-0.5 hover:text-[#17120d]"
+                                        : "bg-white text-[#5f5448] hover:text-[#17120d]"
                                 )}
+                                style={getPressableStyle("rgba(23,18,13,0.1)", 4)}
                                 title="专注模式"
                             >
                                 <Flashlight className={cn("h-4 w-4", isFocusMode && "fill-current")} />
@@ -1639,11 +1640,12 @@ function ReadingPageContent() {
                             <button
                                 onClick={toggleBionicMode}
                                 className={cn(
-                                    "flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all duration-300",
+                                    "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all duration-300",
                                     isBionicMode
                                         ? "bg-[#17120d] text-[#93c5fd]"
-                                        : "bg-white text-[#5f5448] hover:-translate-y-0.5 hover:text-[#17120d]"
+                                        : "bg-white text-[#5f5448] hover:text-[#17120d]"
                                 )}
+                                style={getPressableStyle("rgba(23,18,13,0.1)", 4)}
                                 title="仿生阅读"
                             >
                                 <Eye className={cn("h-4 w-4", isBionicMode && "fill-current")} />
@@ -1653,9 +1655,10 @@ function ReadingPageContent() {
                                 <button
                                     onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
                                     className={cn(
-                                        "flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all",
-                                        isThemeMenuOpen ? "bg-[#ede9fe] text-[#4338ca]" : "bg-white text-[#5f5448] hover:-translate-y-0.5 hover:text-[#17120d]"
+                                        "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all",
+                                        isThemeMenuOpen ? "bg-[#ede9fe] text-[#4338ca]" : "bg-white text-[#5f5448] hover:text-[#17120d]"
                                     )}
+                                    style={getPressableStyle("rgba(23,18,13,0.1)", 4)}
                                     title="外观"
                                 >
                                     <Palette className="h-5 w-5" />
@@ -1669,9 +1672,10 @@ function ReadingPageContent() {
                             <button
                                 onClick={() => setIsEditMode(!isEditMode)}
                                 className={cn(
-                                    "flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all",
-                                    isEditMode ? "bg-[#ffe7aa] text-[#9a6700]" : "bg-white text-[#5f5448] hover:-translate-y-0.5 hover:text-[#17120d]"
+                                    "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all",
+                                    isEditMode ? "bg-[#ffe7aa] text-[#9a6700]" : "bg-white text-[#5f5448] hover:text-[#17120d]"
                                 )}
+                                style={getPressableStyle("rgba(23,18,13,0.1)", 4)}
                                 title="编辑文本"
                             >
                                 <Edit3 className="h-4 w-4" />
@@ -1692,7 +1696,8 @@ function ReadingPageContent() {
                         <button
                             type="button"
                             onClick={() => handleRouteExit("home")}
-                            className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#2563eb] bg-[#2563eb] text-white transition-transform hover:-translate-y-0.5"
+                            className="ui-pressable flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#2563eb] bg-[#2563eb] text-white"
+                            style={getPressableStyle("#1d4ed8", 4)}
                             title="Back to Welcome"
                         >
                             <House className="h-5 w-5" />
@@ -1706,9 +1711,10 @@ function ReadingPageContent() {
                             <button
                                 onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
                                 className={cn(
-                                    "flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#d8d3cb] bg-[#fffdf8] text-slate-600 transition-transform hover:-translate-y-0.5 hover:text-slate-900",
+                                    "ui-pressable flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#d8d3cb] bg-[#fffdf8] text-slate-600 hover:text-slate-900",
                                     isThemeMenuOpen && "bg-[#ede9fe] text-[#4338ca]"
                                 )}
+                                style={getPressableStyle("#d8d3cb", 4)}
                                 title="Appearance"
                             >
                                 <Palette className="h-5 w-5" />
@@ -1727,11 +1733,33 @@ function ReadingPageContent() {
 
             <ReadingCoinIsland event={activeReadingCoinFx} />
 
-                <div
+                <motion.div
                 className={cn(
                     showStandardSplitQuiz ? "flex min-h-0 flex-col" : "mt-20",
                     isWritingMode && "h-[calc(100vh-120px)]"
                 )}
+                initial={prefersReducedMotion
+                    ? false
+                    : {
+                        opacity: 0,
+                        y: hasRouteEntry ? 18 : 12,
+                        scale: 0.994,
+                        filter: "blur(10px)",
+                    }}
+                animate={routeExitTarget
+                    ? {
+                        opacity: 0,
+                        y: prefersReducedMotion ? 0 : 18,
+                        scale: prefersReducedMotion ? 1 : 0.988,
+                        filter: prefersReducedMotion ? "none" : "blur(10px)",
+                    }
+                    : {
+                        opacity: 1,
+                        y: 0,
+                        scale: 1,
+                        filter: "blur(0px)",
+                    }}
+                transition={{ duration: prefersReducedMotion ? 0.18 : 0.5, ease: pageIntroEase }}
             >
                 {catNotice ? (
                     <div className="mx-auto mb-4 flex w-full max-w-4xl flex-col gap-2">
@@ -1740,68 +1768,83 @@ function ReadingPageContent() {
                         </div>
                     </div>
                 ) : null}
-                {!article ? (
-                        <div
+                <AnimatePresence mode="wait" initial={false}>
+                    {!article ? (
+                        <motion.div
                             key="picker"
+                            initial={prefersReducedMotion ? false : { opacity: 0, y: 14, scale: 0.994, filter: "blur(8px)" }}
+                            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -14, scale: 0.988, filter: "blur(10px)" }}
+                            transition={{ duration: prefersReducedMotion ? 0.16 : 0.48, ease: [0.16, 1, 0.3, 1] }}
                             className="relative mx-auto flex w-full max-w-[1180px] flex-col gap-6 overflow-hidden pb-16"
                         >
-                        {error && (
-                            <div className="rounded-[24px] border-4 border-[#fecaca] bg-[#fff1f2] px-5 py-3 text-center text-sm font-semibold text-rose-700 shadow-[0_8px_0_0_#fecaca]">
-                                {error}
-                            </div>
-                        )}
+                            {error && (
+                                <div className="rounded-[24px] border-4 border-[#fecaca] bg-[#fff1f2] px-5 py-3 text-center text-sm font-semibold text-rose-700 shadow-[0_8px_0_0_#fecaca]">
+                                    {error}
+                                </div>
+                            )}
 
-                        {isLoading && (
-                            <div className="rounded-[24px] border-4 border-[#bfdbfe] bg-[#eff6ff] px-5 py-3 text-center text-sm font-semibold text-sky-700 shadow-[0_8px_0_0_#bfdbfe]">
-                                Loading article...
-                            </div>
-                        )}
+                            {isLoading && (
+                                <div className="rounded-[24px] border-4 border-[#bfdbfe] bg-[#eff6ff] px-5 py-3 text-center text-sm font-semibold text-sky-700 shadow-[0_8px_0_0_#bfdbfe]">
+                                    Loading article...
+                                </div>
+                            )}
 
-                        <div>
-                            <RecommendedArticles
-                                onSelect={handleUrlSubmit}
-                                onArticleLoaded={(data) => {
-                                    const nextArticle = data as ArticleData;
-                                    setArticle(nextArticle);
-                                    setArticleStartedAt(Date.now());
-                                    void persistArticleLocally(nextArticle)
-                                        .then(() => {
-                                            markArticleSnapshotDirty();
-                                        })
-                                        .catch((persistError) => {
-                                            console.error("Failed to persist loaded article:", persistError);
-                                        });
-                                    if (sessionUser?.id && nextArticle.url) {
-                                        void markReadArticleInStore(nextArticle.url);
-                                        const dedupeKey = buildReadCompleteDedupeKey({ userId: sessionUser.id, articleUrl: nextArticle.url });
-                                        void applyReadingEconomy({
-                                            action: "read_complete",
-                                            dedupeKey,
-                                            articleUrl: nextArticle.url,
-                                            meta: { source: nextArticle.isCatMode ? "cat_open" : "ai_gen_open" },
-                                        }).then((result) => pushReadingCoinFx(result));
-                                    }
-                                }}
-                            />
-                        </div>
-                        </div>
+                            <div>
+                                <RecommendedArticles
+                                    onSelect={handleUrlSubmit}
+                                    onArticleLoaded={(data) => {
+                                        const nextArticle = data as ArticleData;
+                                        setArticle(nextArticle);
+                                        setArticleStartedAt(Date.now());
+                                        void persistArticleLocally(nextArticle)
+                                            .then(() => {
+                                                markArticleSnapshotDirty();
+                                            })
+                                            .catch((persistError) => {
+                                                console.error("Failed to persist loaded article:", persistError);
+                                            });
+                                        if (sessionUser?.id && nextArticle.url) {
+                                            void markReadArticleInStore(nextArticle.url);
+                                            const dedupeKey = buildReadCompleteDedupeKey({ userId: sessionUser.id, articleUrl: nextArticle.url });
+                                            void applyReadingEconomy({
+                                                action: "read_complete",
+                                                dedupeKey,
+                                                articleUrl: nextArticle.url,
+                                                meta: { source: nextArticle.isCatMode ? "cat_open" : "ai_gen_open" },
+                                            }).then((result) => pushReadingCoinFx(result));
+                                        }
+                                    }}
+                                />
+                            </div>
+                        </motion.div>
                     ) : (
                         <motion.div
                             key={article.url || article.title}
-                            initial={{
-                                opacity: 0,
-                                y: 20,
-                                scale: 0.992,
-                                filter: "blur(10px)",
-                            }}
+                            initial={prefersReducedMotion
+                                ? false
+                                : {
+                                    opacity: 0,
+                                    y: 20,
+                                    scale: 0.992,
+                                    filter: "blur(10px)",
+                                }}
                             animate={{
                                 opacity: 1,
                                 y: 0,
                                 scale: 1,
                                 filter: "blur(0px)",
                             }}
+                            exit={prefersReducedMotion
+                                ? { opacity: 0 }
+                                : {
+                                    opacity: 0,
+                                    y: -16,
+                                    scale: 0.988,
+                                    filter: "blur(12px)",
+                                }}
                             transition={{
-                                duration: 0.62,
+                                duration: prefersReducedMotion ? 0.16 : 0.62,
                                 ease: [0.16, 1, 0.3, 1],
                             }}
                             className={cn(
@@ -1825,13 +1868,6 @@ function ReadingPageContent() {
                                 : "overflow-visible",
                             showStandardSplitQuiz ? "max-w-none" : "mx-auto max-w-4xl"
                         )}>
-                            {/* Quiz Entry Button - only for AI generated articles */}
-                            {!showStandardSplitQuiz && article.isAIGenerated && article.difficulty && (
-                                <div className="sticky top-[94px] z-40 flex justify-end">
-                                    {renderQuizToggleButton()}
-                                </div>
-                            )}
-
                             <ArticleDisplay
                                 title={article.title}
                                 content={article.content}
@@ -1847,6 +1883,7 @@ function ReadingPageContent() {
                                 onCreateReadingNote={handleCreateReadingNote}
                                 onDeleteReadingMarks={handleDeleteReadingMarks}
                                 onArticleSnapshotDirty={markArticleSnapshotDirty}
+                                topActionNode={article.isAIGenerated && article.difficulty ? renderQuizToggleButton() : undefined}
                             />
 
                             <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">
@@ -1884,7 +1921,8 @@ function ReadingPageContent() {
                         )}
                         </motion.div>
                     )}
-            </div>
+                </AnimatePresence>
+            </motion.div>
             </div>
         </main >
     );
