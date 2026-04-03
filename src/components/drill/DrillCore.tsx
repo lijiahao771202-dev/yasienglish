@@ -1737,6 +1737,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [rebuildPassageSummary, setRebuildPassageSummary] = useState<RebuildPassageSummaryState | null>(null);
     const [rebuildShadowingState, setRebuildShadowingState] = useState<RebuildShadowingState>(() => createDefaultRebuildShadowingState());
     const [rebuildSentenceShadowingFlow, setRebuildSentenceShadowingFlow] = useState<RebuildSentenceShadowingFlow>("idle");
+    const [pendingRebuildSentenceFeedback, setPendingRebuildSentenceFeedback] = useState<RebuildFeedbackState | null>(null);
     const [rebuildPassageShadowingFlow, setRebuildPassageShadowingFlow] = useState<RebuildSentenceShadowingFlow>("idle");
     const [rebuildPassageShadowingSegmentIndex, setRebuildPassageShadowingSegmentIndex] = useState<number | null>(null);
     const [pendingRebuildAdvanceElo, setPendingRebuildAdvanceElo] = useState<number | null>(null);
@@ -1772,8 +1773,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 ? { kind: "segment", segmentIndex: activePassageSegmentIndex }
                 : null;
         }
-        return rebuildFeedback ? { kind: "sentence" } : null;
-    }, [activePassageResult, activePassageSegmentIndex, isRebuildMode, isRebuildPassage, rebuildFeedback]);
+        return (rebuildFeedback || pendingRebuildSentenceFeedback) ? { kind: "sentence" } : null;
+    }, [activePassageResult, activePassageSegmentIndex, isRebuildMode, isRebuildPassage, pendingRebuildSentenceFeedback, rebuildFeedback]);
     const activeRebuildShadowingReferenceEnglish = useMemo(() => {
         if (!drillData || !activeRebuildShadowingScope) return "";
         if (activeRebuildShadowingScope.kind === "segment") {
@@ -1810,7 +1811,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const rebuildShadowingRecordingScopeRef = useRef<RebuildShadowingScope | null>(null);
     const rebuildShadowingPlaybackRef = useRef<HTMLAudioElement | null>(null);
     const rebuildShadowingPlaybackUrlRef = useRef<string | null>(null);
+    const rebuildSentenceShadowingPromptTimerRef = useRef<number | null>(null);
     const rebuildPassageShadowingPromptTimerRef = useRef<number | null>(null);
+    const clearRebuildSentenceShadowingPromptTimer = useCallback(() => {
+        if (rebuildSentenceShadowingPromptTimerRef.current !== null) {
+            window.clearTimeout(rebuildSentenceShadowingPromptTimerRef.current);
+            rebuildSentenceShadowingPromptTimerRef.current = null;
+        }
+    }, []);
     const clearRebuildPassageShadowingPromptTimer = useCallback(() => {
         if (rebuildPassageShadowingPromptTimerRef.current !== null) {
             window.clearTimeout(rebuildPassageShadowingPromptTimerRef.current);
@@ -1818,6 +1826,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         }
     }, []);
     const resetRebuildShadowingState = useCallback(() => {
+        clearRebuildSentenceShadowingPromptTimer();
         clearRebuildPassageShadowingPromptTimer();
         rebuildShadowingDiscardRecordingOnStopRef.current = true;
         const recorder = rebuildShadowingRecorderRef.current;
@@ -1872,9 +1881,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         }
         setRebuildShadowingState(createDefaultRebuildShadowingState());
         setRebuildSentenceShadowingFlow("idle");
+        setPendingRebuildSentenceFeedback(null);
         setRebuildPassageShadowingFlow("idle");
         setRebuildPassageShadowingSegmentIndex(null);
-    }, [clearRebuildPassageShadowingPromptTimer]);
+    }, [clearRebuildPassageShadowingPromptTimer, clearRebuildSentenceShadowingPromptTimer]);
 
     const persistRebuildHiddenElo = useCallback(async (nextElo: number) => {
         const updatedAt = Date.now();
@@ -2037,6 +2047,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setRebuildPassageSummary(null);
         setRebuildFeedback(null);
         setRebuildSentenceShadowingFlow("idle");
+        setPendingRebuildSentenceFeedback(null);
         setRebuildPassageShadowingFlow("idle");
         setRebuildPassageShadowingSegmentIndex(null);
 
@@ -2093,9 +2104,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     useEffect(() => {
         return () => {
+            clearRebuildSentenceShadowingPromptTimer();
             clearRebuildPassageShadowingPromptTimer();
         };
-    }, [clearRebuildPassageShadowingPromptTimer]);
+    }, [clearRebuildPassageShadowingPromptTimer, clearRebuildSentenceShadowingPromptTimer]);
 
     useEffect(() => {
         if (!isRebuildMode) return;
@@ -5983,6 +5995,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         if (isRebuildPassage && activePassageResult) return false;
         if (!isRebuildPassage && rebuildFeedback) return false;
         if (!skipped && rebuildAnswerTokens.length === 0) return false;
+        clearRebuildSentenceShadowingPromptTimer();
 
         playRebuildSfx("submit");
 
@@ -6071,8 +6084,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 rebuildPassageShadowingPromptTimerRef.current = null;
             }, REBUILD_PASSAGE_SHADOWING_PROMPT_DELAY_MS);
         } else {
+            clearRebuildSentenceShadowingPromptTimer();
+            setPendingRebuildSentenceFeedback(null);
             setRebuildFeedback(nextFeedback);
-            setRebuildSentenceShadowingFlow("prompt");
+            setRebuildSentenceShadowingFlow("feedback");
+            rebuildSentenceShadowingPromptTimerRef.current = window.setTimeout(() => {
+                setRebuildSentenceShadowingFlow("prompt");
+                rebuildSentenceShadowingPromptTimerRef.current = null;
+            }, REBUILD_PASSAGE_SHADOWING_PROMPT_DELAY_MS);
         }
         setAnalysisRequested(false);
         setAnalysisDetailsOpen(false);
@@ -6088,6 +6107,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         rebuildPassageResults,
         currentElo,
         clearRebuildPassageShadowingPromptTimer,
+        clearRebuildSentenceShadowingPromptTimer,
         rebuildEditCount,
         rebuildReplayCount,
         rebuildStartedAt,
@@ -6098,6 +6118,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const handleSkipRebuild = useCallback(() => {
         return handleSubmitRebuild(true);
     }, [handleSubmitRebuild]);
+
+    const revealRebuildSentenceFeedback = useCallback(() => {
+        const nextFeedback = rebuildFeedback ?? pendingRebuildSentenceFeedback;
+        if (!nextFeedback) return;
+        setRebuildFeedback(nextFeedback);
+        setPendingRebuildSentenceFeedback(null);
+        setRebuildSentenceShadowingFlow("feedback");
+    }, [pendingRebuildSentenceFeedback, rebuildFeedback]);
 
     const upsertRebuildShadowingScopePatch = useCallback((
         scope: RebuildShadowingScope,
@@ -6698,6 +6726,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     useEffect(() => {
         if (!isRebuildMode || isRebuildPassage) return;
+        if (pendingRebuildSentenceFeedback) return;
         if (!rebuildFeedback) {
             if (rebuildSentenceShadowingFlow !== "idle") {
                 setRebuildSentenceShadowingFlow("idle");
@@ -6707,7 +6736,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         if (rebuildSentenceShadowingFlow === "idle") {
             setRebuildSentenceShadowingFlow("feedback");
         }
-    }, [isRebuildMode, isRebuildPassage, rebuildFeedback, rebuildSentenceShadowingFlow]);
+    }, [isRebuildMode, isRebuildPassage, pendingRebuildSentenceFeedback, rebuildFeedback, rebuildSentenceShadowingFlow]);
 
     useEffect(() => {
         return () => {
@@ -8071,11 +8100,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     };
 
     const renderRebuildSentenceShadowingPrompt = () => {
-        if (!drillData || !rebuildFeedback || isRebuildPassage) return null;
+        const sentenceFeedback = rebuildFeedback ?? pendingRebuildSentenceFeedback;
+        if (!drillData || !sentenceFeedback || isRebuildPassage) return null;
 
         return (
             <motion.div
-                key={`rebuild-shadowing-prompt-${rebuildFeedback.resolvedAt}`}
+                key={`rebuild-shadowing-prompt-${sentenceFeedback.resolvedAt}`}
                 initial={prefersReducedMotion ? false : { opacity: 0, y: 18 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: prefersReducedMotion ? 0.16 : 0.3 }}
@@ -8113,7 +8143,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     </button>
                     <button
                         type="button"
-                        onClick={() => setRebuildSentenceShadowingFlow("feedback")}
+                        onClick={revealRebuildSentenceFeedback}
                         className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-stone-300 bg-white px-5 text-sm font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:bg-stone-50"
                     >
                         先看重组评分
@@ -12498,9 +12528,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         ) : null}
 
                         <AnimatePresence>
-                            {isRebuildMode && rebuildFeedback && !isRebuildPassage ? (
+                            {isRebuildMode
+                                && !isRebuildPassage
+                                && (rebuildFeedback || pendingRebuildSentenceFeedback)
+                                && (rebuildSentenceShadowingFlow !== "idle" || Boolean(rebuildFeedback)) ? (
                                 <motion.div
-                                    key={`rebuild-feedback-modal-${rebuildFeedback.resolvedAt}`}
+                                    key={`rebuild-feedback-modal-${(rebuildFeedback ?? pendingRebuildSentenceFeedback)?.resolvedAt ?? "pending"}`}
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
                                     exit={{ opacity: 0 }}
@@ -12524,7 +12557,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                     <div className="flex justify-center">
                                                         <button
                                                             type="button"
-                                                            onClick={() => setRebuildSentenceShadowingFlow("feedback")}
+                                                            onClick={revealRebuildSentenceFeedback}
                                                             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-stone-300 bg-white px-5 py-2 text-sm font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:bg-stone-50"
                                                         >
                                                             查看重组评分

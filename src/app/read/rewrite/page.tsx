@@ -192,7 +192,7 @@ export default function RewritePracticePage() {
     };
 
     const handleScoreRewrite = async () => {
-        if (!rewritePrompt || !rewriteAttempt.trim()) return;
+        if (!payload || !rewritePrompt || !rewriteAttempt.trim()) return;
 
         setIsScoringRewrite(true);
         setRewriteCycleHint(null);
