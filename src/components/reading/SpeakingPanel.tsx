@@ -402,7 +402,7 @@ export function SpeakingPanel({
                                     ? "请大声朗读..."
                                     : isProcessing
                                         ? "正在分析您的发音..."
-                                        : "先听原音，然后录音。"}
+                                        : "先听全部，然后录音。"}
                             </p>
                             {result.text ? (
                                 <div className="rounded-2xl border border-stone-100 bg-stone-50/70 px-4 py-3 text-left">
@@ -437,7 +437,7 @@ export function SpeakingPanel({
                             )}
                         >
                             {isOriginalPlaying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Volume2 className="w-3.5 h-3.5" />}
-                            原音
+                            听全部
                         </button>
 
                         <button

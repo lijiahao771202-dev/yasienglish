@@ -278,6 +278,40 @@ body {
     0 0 0 1px rgba(251, 191, 36, 0.2);
 }
 
+.ui-pressable {
+  --press-depth: 6px;
+  --press-shadow-color: #d8d3cb;
+  --press-hover-lift: -2px;
+  position: relative;
+  transform: translateY(0);
+  box-shadow: 0 var(--press-depth) 0 0 var(--press-shadow-color);
+  transition:
+    transform 120ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 120ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform, box-shadow;
+}
+
+.ui-pressable:hover:not(:disabled) {
+  transform: translateY(var(--press-hover-lift));
+}
+
+.ui-pressable:active:not(:disabled) {
+  transform: translateY(var(--press-depth));
+  box-shadow: 0 0 0 0 var(--press-shadow-color);
+}
+
+.ui-pressable:disabled {
+  cursor: not-allowed;
+}
+
+.ui-pressable:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.22);
+  outline-offset: 2px;
+}
+
 /* Liquid Glass Tokens */
 :root {
   --lg-blur: 30px;
@@ -750,6 +784,13 @@ html[data-hydrated="0"] .liquid-glass-panel .liquid-glass-sheen {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .ui-pressable,
+  .ui-pressable:hover:not(:disabled),
+  .ui-pressable:active:not(:disabled) {
+    transform: none;
+    transition-duration: 0.01ms;
+  }
+
   .liquid-glass-breathe {
     animation: none;
   }

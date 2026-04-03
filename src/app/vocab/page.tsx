@@ -5,7 +5,7 @@ import { db, VocabItem } from "@/lib/db";
 import { deleteVocabulary, saveVocabulary } from "@/lib/user-repository";
 import { defaultVocabSourceLabel } from "@/lib/user-sync";
 import { useLiveQuery } from "dexie-react-hooks";
-import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
     ArrowLeft,
     Brain,
@@ -18,8 +18,9 @@ import {
     Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { createEmptyCard, isCardGraduated, State } from "@/lib/fsrs";
+import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 import { VocabEditDialog } from "@/components/vocab/VocabEditDialog";
 
 type AddWordFeedback = { type: "success" | "error"; text: string } | null;
@@ -37,6 +38,40 @@ const VOCAB_FILTERS: Array<{
     { key: "learning", label: "学习中", emptyTitle: "当前没有学习中的词卡", emptyHint: "新的词卡开始滚动后，这里就会热闹起来。" },
     { key: "graduated", label: "已掌握", emptyTitle: "还没有毕业词卡", emptyHint: "等你把一些词真正记牢，这里就会慢慢积累起来。" },
 ];
+
+const VOCAB_PAGE_EASE = [0.22, 1, 0.36, 1] as const;
+
+function getBlockEnterProps(reducedMotion: boolean, delay = 0) {
+    return {
+        initial: reducedMotion
+            ? { opacity: 0 }
+            : { opacity: 0, y: 22, scale: 0.992, filter: "blur(12px)" },
+        whileInView: { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" },
+        viewport: { once: true, amount: 0.2 } as const,
+        transition: {
+            duration: reducedMotion ? 0.18 : 0.58,
+            delay: reducedMotion ? 0 : delay,
+            ease: VOCAB_PAGE_EASE,
+        },
+    };
+}
+
+function getCardEnterProps(reducedMotion: boolean, index: number) {
+    return {
+        initial: reducedMotion
+            ? { opacity: 0 }
+            : { opacity: 0, y: 26, scale: 0.985, rotate: 0, filter: "blur(14px)" },
+        animate: { opacity: 1, y: 0, scale: 1, rotate: 0, filter: "blur(0px)" },
+        exit: reducedMotion
+            ? { opacity: 0 }
+            : { opacity: 0, y: 12, scale: 0.992, filter: "blur(10px)" },
+        transition: {
+            duration: reducedMotion ? 0.16 : 0.52,
+            delay: reducedMotion ? 0 : Math.min(index * 0.05, 0.28),
+            ease: VOCAB_PAGE_EASE,
+        },
+    };
+}
 
 function compareByDueThenTimestamp(a: VocabItem, b: VocabItem) {
     if (a.due !== b.due) return a.due - b.due;
@@ -129,12 +164,14 @@ function VocabWordCard({
     item,
     index,
     now,
+    reducedMotion,
     onEdit,
     onDelete,
 }: {
     item: VocabItem;
     index: number;
     now: number;
+    reducedMotion: boolean;
     onEdit: (item: VocabItem) => void;
     onDelete: (word: string) => void;
 }) {
@@ -144,8 +181,9 @@ function VocabWordCard({
 
     return (
         <motion.article
-            whileHover={{ y: -5, rotate: 0, scale: 1.01 }}
-            transition={{ type: "spring", stiffness: 260, damping: 20 }}
+            layout
+            {...getCardEnterProps(reducedMotion, index)}
+            whileHover={reducedMotion ? undefined : { y: -5, rotate: 0, scale: 1.01 }}
             className={cn(
                 "group relative flex min-h-[300px] flex-col rounded-[1.7rem] border-[3px] border-[#17120d] bg-[#fffdf7] p-4 shadow-[0_6px_0_rgba(23,18,13,0.14)] transition-all duration-200",
                 "hover:shadow-[0_10px_0_rgba(23,18,13,0.16)]",
@@ -172,14 +210,16 @@ function VocabWordCard({
                 <div className="flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                     <button
                         onClick={() => onEdit(item)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#17120d] bg-white text-[#17120d] shadow-[0_2px_0_rgba(23,18,13,0.16)] transition hover:bg-[#f3efe6]"
+                        className="ui-pressable inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#17120d] bg-white text-[#17120d] hover:bg-[#f3efe6]"
+                        style={getPressableStyle("rgba(23,18,13,0.16)", 2)}
                         title="编辑"
                     >
                         <PencilLine className="h-3.5 w-3.5" />
                     </button>
                     <button
                         onClick={() => onDelete(item.word)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#17120d] bg-[#fff0f3] text-[#ca3c69] shadow-[0_2px_0_rgba(23,18,13,0.16)] transition hover:bg-[#ffd6df]"
+                        className="ui-pressable inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#17120d] bg-[#fff0f3] text-[#ca3c69] hover:bg-[#ffd6df]"
+                        style={getPressableStyle("rgba(23,18,13,0.16)", 2)}
                         title="删除"
                     >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -231,23 +271,37 @@ function VocabWordCard({
 }
 
 export default function VocabDashboard() {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const prefersReducedMotion = useReducedMotion();
     const [search, setSearch] = useState("");
     const [manualWord, setManualWord] = useState("");
     const [isAddingWord, setIsAddingWord] = useState(false);
     const [addWordFeedback, setAddWordFeedback] = useState<AddWordFeedback>(null);
     const [editingItem, setEditingItem] = useState<VocabItem | null>(null);
     const [activeFilter, setActiveFilter] = useState<VocabFilterKey>("recent");
+    const [routeExitTarget, setRouteExitTarget] = useState<"home" | "review" | null>(null);
     const manualInputRef = useRef<HTMLInputElement>(null);
 
     const vocabQuery = useLiveQuery(() => db.vocabulary.toArray());
     const vocab = useMemo(() => vocabQuery ?? [], [vocabQuery]);
     const searchQuery = search.trim().toLowerCase();
     const now = Date.now();
+    const routeFrom = searchParams.get("from");
     const activeFilterMeta = VOCAB_FILTERS.find((filter) => filter.key === activeFilter) ?? VOCAB_FILTERS[1];
 
     const totalWords = vocab.length;
     const dueWords = vocab.filter((item) => item.due <= now).length;
     const masteredWords = vocab.filter((item) => isCardGraduated(item)).length;
+
+    const handleRouteExit = (target: "home" | "review") => {
+        if (routeExitTarget) return;
+        if (target === "review" && dueWords === 0) return;
+        setRouteExitTarget(target);
+        window.setTimeout(() => {
+            router.push(target === "home" ? "/?from=vocab" : "/vocab/review?from=vocab");
+        }, prefersReducedMotion ? 140 : 520);
+    };
 
     const filterCounts = useMemo(
         () =>
@@ -346,16 +400,63 @@ export default function VocabDashboard() {
     };
 
     return (
-        <main className="min-h-screen bg-[#f6efdf] pb-20 text-[#17120d]">
+        <>
+            <AnimatePresence>
+                {routeExitTarget && (
+                    <motion.div
+                        className="pointer-events-none fixed inset-0 z-[90]"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: prefersReducedMotion ? 0.16 : 0.48, ease: VOCAB_PAGE_EASE }}
+                    >
+                        <motion.div
+                            className="absolute inset-0 bg-[linear-gradient(180deg,rgba(246,239,223,0.74),rgba(250,245,232,0.92))] backdrop-blur-[10px]"
+                            initial={{ scale: 1.04, filter: "blur(18px)" }}
+                            animate={{ scale: 1, filter: "blur(0px)" }}
+                            transition={{ duration: prefersReducedMotion ? 0.18 : 0.52, ease: [0.18, 1, 0.3, 1] }}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <motion.main
+                className="min-h-screen bg-[#f6efdf] pb-20 text-[#17120d]"
+                initial={prefersReducedMotion
+                    ? false
+                    : {
+                        opacity: 0,
+                        y: routeFrom ? 18 : 12,
+                        scale: 0.992,
+                        filter: "blur(12px)",
+                    }}
+                animate={routeExitTarget
+                    ? {
+                        opacity: 0,
+                        y: prefersReducedMotion ? 0 : 18,
+                        scale: prefersReducedMotion ? 1 : 0.988,
+                        filter: prefersReducedMotion ? "none" : "blur(10px)",
+                    }
+                    : {
+                        opacity: 1,
+                        y: 0,
+                        scale: 1,
+                        filter: "blur(0px)",
+                    }}
+                transition={{ duration: prefersReducedMotion ? 0.18 : 0.56, ease: VOCAB_PAGE_EASE }}
+            >
             <div className="border-b-2 border-[#17120d] bg-[#fbf5e8]">
                 <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
                     <div className="flex items-center gap-3">
-                        <Link
-                            href="/read"
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-[0.7rem] border-2 border-[#17120d] bg-white shadow-[0_2px_0_rgba(23,18,13,0.16)] transition hover:-translate-y-0.5"
+                        <button
+                            type="button"
+                            onClick={() => handleRouteExit("home")}
+                            className="ui-pressable inline-flex h-8 w-8 items-center justify-center rounded-[0.7rem] border-2 border-[#17120d] bg-white"
+                            style={getPressableStyle("rgba(23,18,13,0.16)", 2)}
+                            aria-label="返回首页"
                         >
                             <ArrowLeft className="h-4 w-4" />
-                        </Link>
+                        </button>
                         <span className="inline-flex rounded-full border-2 border-[#17120d] bg-[#c53f82] px-3 py-1 text-[11px] font-black tracking-[0.14em] text-white">
                             生词卡册
                         </span>
@@ -372,7 +473,7 @@ export default function VocabDashboard() {
 
                 <div className="relative mx-auto max-w-7xl px-4 pt-8 sm:px-6 sm:pt-10">
                     <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                        <div>
+                        <motion.div {...getBlockEnterProps(prefersReducedMotion, 0.06)}>
                             <h1 className="text-[2.8rem] font-black tracking-tight text-[#17120d] sm:text-[3.6rem]">生词本</h1>
                             <div className="mt-4 flex flex-wrap items-center gap-3">
                                 <span className="inline-flex items-center gap-2 rounded-full border-2 border-[#17120d] bg-white px-3 py-1.5 text-[12px] font-black text-[#17120d] shadow-[0_2px_0_rgba(23,18,13,0.12)]">
@@ -388,24 +489,31 @@ export default function VocabDashboard() {
                                     已掌握 {masteredWords}
                                 </span>
                             </div>
-                        </div>
+                        </motion.div>
 
-                        <Link
-                            href="/vocab/review"
+                        <motion.button
+                            type="button"
+                            {...getBlockEnterProps(prefersReducedMotion, 0.14)}
+                            whileTap={getPressableTap(prefersReducedMotion, 4, 0.98)}
                             className={cn(
-                                "inline-flex h-14 items-center justify-center gap-2 rounded-[1.1rem] border-[3px] border-[#17120d] px-8 text-[16px] font-black shadow-[0_4px_0_rgba(23,18,13,0.2)] transition hover:-translate-y-0.5 active:translate-y-0",
+                                "ui-pressable inline-flex h-14 items-center justify-center gap-2 rounded-[1.1rem] border-[3px] border-[#17120d] px-8 text-[16px] font-black",
                                 dueWords > 0
                                     ? "bg-[#ffcd2e] text-[#17120d]"
-                                    : "cursor-not-allowed bg-[#efe5c8] text-[#8e806d]",
+                                    : "cursor-not-allowed bg-[#efe5c8] text-[#8e806d] shadow-none",
                             )}
-                            onClick={(e) => dueWords === 0 && e.preventDefault()}
+                            style={getPressableStyle("rgba(23,18,13,0.2)", 4)}
+                            onClick={() => handleRouteExit("review")}
+                            disabled={dueWords === 0 || Boolean(routeExitTarget)}
                         >
                             <Brain className="h-5 w-5" />
                             开始复习
-                        </Link>
+                        </motion.button>
                     </div>
 
-                    <section className="mt-8 rounded-[1.8rem] border-[3px] border-[#17120d] bg-[#fffaf0] p-4 shadow-[0_8px_0_rgba(23,18,13,0.1)] sm:p-5">
+                    <motion.section
+                        {...getBlockEnterProps(prefersReducedMotion, 0.2)}
+                        className="mt-8 rounded-[1.8rem] border-[3px] border-[#17120d] bg-[#fffaf0] p-4 shadow-[0_8px_0_rgba(23,18,13,0.1)] sm:p-5"
+                    >
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                             <label className="relative block flex-1">
                                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#675846]" />
@@ -436,7 +544,8 @@ export default function VocabDashboard() {
                                 <button
                                     type="submit"
                                     disabled={isAddingWord || !manualWord.trim()}
-                                    className="inline-flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-[#17120d] bg-[#f36ba8] text-[#17120d] shadow-[0_4px_0_rgba(23,18,13,0.2)] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-[#f6c6d9] disabled:text-[#8e806d]"
+                                    className="ui-pressable inline-flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-[#17120d] bg-[#f36ba8] text-[#17120d] disabled:cursor-not-allowed disabled:bg-[#f6c6d9] disabled:text-[#8e806d] disabled:shadow-none"
+                                    style={getPressableStyle("rgba(23,18,13,0.2)", 4)}
                                 >
                                     {isAddingWord ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
                                 </button>
@@ -454,11 +563,12 @@ export default function VocabDashboard() {
                                         type="button"
                                         onClick={() => setActiveFilter(filter.key)}
                                         className={cn(
-                                            "inline-flex items-center gap-2 rounded-full border-[3px] px-4 py-2 text-[13px] font-black transition",
+                                            "ui-pressable inline-flex items-center gap-2 rounded-full border-[3px] px-4 py-2 text-[13px] font-black",
                                             isActive
-                                                ? "border-[#17120d] bg-[#fffdf7] text-[#17120d] shadow-[0_3px_0_rgba(23,18,13,0.15)]"
+                                                ? "border-[#17120d] bg-[#fffdf7] text-[#17120d]"
                                                 : "border-[#17120d] bg-[#f4ead4] text-[#5f5448]",
                                         )}
+                                        style={getPressableStyle("rgba(23,18,13,0.15)", 3)}
                                     >
                                         <span
                                             className={cn(
@@ -491,9 +601,12 @@ export default function VocabDashboard() {
                                 {addWordFeedback.text}
                             </motion.div>
                         ) : null}
-                    </section>
+                    </motion.section>
 
-                    <section className="mt-8 rounded-[2rem] border-[3px] border-[#17120d] bg-[#fbf7ec] p-4 shadow-[0_8px_0_rgba(23,18,13,0.1)] sm:p-6">
+                    <motion.section
+                        {...getBlockEnterProps(prefersReducedMotion, 0.28)}
+                        className="mt-8 rounded-[2rem] border-[3px] border-[#17120d] bg-[#fbf7ec] p-4 shadow-[0_8px_0_rgba(23,18,13,0.1)] sm:p-6"
+                    >
                         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                             <div>
                                 <p className="text-[12px] font-black uppercase tracking-[0.24em] text-[#6a5c4e]">
@@ -511,34 +624,40 @@ export default function VocabDashboard() {
                         </div>
 
                         {filteredVocab.length > 0 ? (
-                            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-                                {filteredVocab.map((item, index) => (
-                                    <VocabWordCard
-                                        key={item.word}
-                                        item={item}
-                                        index={index}
-                                        now={now}
-                                        onEdit={setEditingItem}
-                                        onDelete={handleDelete}
-                                    />
-                                ))}
+                            <motion.div layout className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+                                <AnimatePresence initial={false} mode="popLayout">
+                                    {filteredVocab.map((item, index) => (
+                                        <VocabWordCard
+                                            key={item.word}
+                                            item={item}
+                                            index={index}
+                                            now={now}
+                                            reducedMotion={Boolean(prefersReducedMotion)}
+                                            onEdit={setEditingItem}
+                                            onDelete={handleDelete}
+                                        />
+                                    ))}
 
-                                {!searchQuery ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => manualInputRef.current?.focus()}
-                                        className="flex min-h-[300px] flex-col items-center justify-center rounded-[1.7rem] border-[3px] border-dashed border-[#b8aa97] bg-[#f8f1e4] px-6 py-8 text-center shadow-[inset_0_0_0_2px_rgba(255,255,255,0.5)] transition hover:border-[#17120d] hover:bg-[#fff7ea]"
-                                    >
-                                        <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-[#17120d] bg-white text-[#17120d]">
-                                            <Plus className="h-6 w-6" />
-                                        </span>
-                                        <p className="mt-5 text-xl font-black text-[#17120d]">再添一张新卡</p>
-                                        <p className="mt-2 max-w-[16rem] text-sm leading-6 text-[#7d6e61]">
-                                            点这里直接跳到添加输入框，把今天遇到的新词继续收进卡册里。
-                                        </p>
-                                    </button>
-                                ) : null}
-                            </div>
+                                    {!searchQuery ? (
+                                        <motion.button
+                                            key="add-card-tile"
+                                            layout
+                                            type="button"
+                                            {...getCardEnterProps(Boolean(prefersReducedMotion), filteredVocab.length)}
+                                            onClick={() => manualInputRef.current?.focus()}
+                                            className="flex min-h-[300px] flex-col items-center justify-center rounded-[1.7rem] border-[3px] border-dashed border-[#b8aa97] bg-[#f8f1e4] px-6 py-8 text-center shadow-[inset_0_0_0_2px_rgba(255,255,255,0.5)] transition hover:border-[#17120d] hover:bg-[#fff7ea]"
+                                        >
+                                            <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-[#17120d] bg-white text-[#17120d]">
+                                                <Plus className="h-6 w-6" />
+                                            </span>
+                                            <p className="mt-5 text-xl font-black text-[#17120d]">再添一张新卡</p>
+                                            <p className="mt-2 max-w-[16rem] text-sm leading-6 text-[#7d6e61]">
+                                                点这里直接跳到添加输入框，把今天遇到的新词继续收进卡册里。
+                                            </p>
+                                        </motion.button>
+                                    ) : null}
+                                </AnimatePresence>
+                            </motion.div>
                         ) : (
                             <div className="rounded-[1.7rem] border-[3px] border-dashed border-[#b8aa97] bg-[#fffaf2] px-6 py-14 text-center">
                                 <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-full border-[3px] border-[#17120d] bg-white">
@@ -562,7 +681,7 @@ export default function VocabDashboard() {
                                 ) : null}
                             </div>
                         )}
-                    </section>
+                    </motion.section>
                 </div>
             </div>
 
@@ -572,6 +691,7 @@ export default function VocabDashboard() {
                 onClose={() => setEditingItem(null)}
                 onSaved={(nextItem) => setEditingItem(nextItem)}
             />
-        </main>
+            </motion.main>
+        </>
     );
 }

@@ -35,6 +35,7 @@ const createBaseProps = (): React.ComponentProps<typeof SelectionActionPopup> =>
     onDeleteNote: vi.fn(),
     onSaveNote: vi.fn(),
     onAnalyze: vi.fn(),
+    onLookupWord: vi.fn(),
     qaPairs: [],
     question: "",
     onQuestionChange: vi.fn(),
@@ -246,5 +247,31 @@ describe("SelectionActionPopup", () => {
         expect(container.textContent).toContain("强调学历是过去求职的重要信号。");
         expect(container.textContent).not.toContain("向AI提问");
         expect(container.textContent).not.toContain("高亮");
+    });
+
+    it("shows lookup action in normal selection mode and triggers callback", async () => {
+        const onLookupWord = vi.fn();
+        const { container } = await renderPopup({
+            onLookupWord,
+        });
+
+        const lookupButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("查询"));
+
+        expect(lookupButton).toBeTruthy();
+
+        await act(async () => {
+            lookupButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onLookupWord).toHaveBeenCalledTimes(1);
+    });
+
+    it("hides lookup action in ask replay mode", async () => {
+        const { container } = await renderPopup({
+            popupMode: "ask-replay",
+        });
+
+        expect(container.textContent).not.toContain("查询");
     });
 });

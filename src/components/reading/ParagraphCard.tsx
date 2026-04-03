@@ -1,7 +1,7 @@
 import React, { useLayoutEffect, useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline, List } from "lucide-react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
@@ -46,6 +46,9 @@ import {
     extractWordTokens,
     type TtsWordMark,
 } from "@/lib/read-speaking";
+import type { PopupState } from "./WordPopup";
+import { hasMeaningfulTextSelection } from "./selection-helpers";
+import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 
 interface ParagraphCardProps {
     text: string;
@@ -72,6 +75,7 @@ interface ParagraphCardProps {
     }) => Promise<void> | void;
     onSnapshotDirty?: () => void;
     onWordClick: (e: React.MouseEvent) => void;
+    onOpenWordPopupFromSelection?: (payload: PopupState) => void;
     onSplit?: (index: number, textBefore: string, textAfter: string) => void;
     onMerge?: (sourceIndex: number, targetIndex: number) => void;
     onUpdate?: (index: number, newText: string) => void; // New: Update text
@@ -124,17 +128,12 @@ interface RewritePracticeScore {
     }>;
 }
 
-interface RewriteScoreNavigationPayload {
-    scoredAt: string;
+interface RewritePracticeNavigationPayload {
+    openedAt: string;
     articleTitle?: string;
     articleUrl?: string;
     paragraphOrder: number;
-    source_sentence_en: string;
-    imitation_prompt_cn: string;
-    pattern_focus_cn: string;
-    rewrite_tips_cn: string[];
-    user_rewrite_en: string;
-    score: RewritePracticeScore;
+    paragraphText: string;
 }
 
 interface PhraseAnalysisResult {
@@ -228,6 +227,7 @@ export function ParagraphCard({
     onDeleteReadingMarks,
     onSnapshotDirty,
     onWordClick,
+    onOpenWordPopupFromSelection,
     onSplit,
     onMerge,
     onUpdate,
@@ -362,6 +362,7 @@ export function ParagraphCard({
         anchorBottom: number;
     } | null>(null);
     const [hoveredNoteId, setHoveredNoteId] = useState<number | null>(null);
+    const [pressedAskNoteId, setPressedAskNoteId] = useState<number | null>(null);
     const [readingCoinHint, setReadingCoinHint] = useState<string | null>(null);
 
     const pRef = useRef<HTMLDivElement>(null);
@@ -372,6 +373,7 @@ export function ParagraphCard({
     const sentenceProgressRafRef = useRef<number | null>(null);
     const sentenceProgressLastUiTsRef = useRef(0);
     const wordLayoutCacheRef = useRef<Map<string, WordLayoutToken[]>>(new Map());
+    const askReplayOpenTimeoutRef = useRef<number | null>(null);
 
     usePretextMeasuredLayout(pRef, {
         text,
@@ -379,6 +381,14 @@ export function ParagraphCard({
         enabled: !isEditMode,
         whiteSpaceMode: "pre-wrap",
     });
+
+    useEffect(() => {
+        return () => {
+            if (askReplayOpenTimeoutRef.current !== null) {
+                window.clearTimeout(askReplayOpenTimeoutRef.current);
+            }
+        };
+    }, []);
 
     const {
         play: togglePlay,
@@ -704,6 +714,20 @@ export function ParagraphCard({
 
         togglePlay();
     };
+
+    // Keep "听全部" behavior stable even when sentence layout mode is enabled.
+    const handlePlayOriginalFull = useCallback(() => {
+        stopSentencePlayback();
+
+        if (isPlaying) {
+            stop();
+            return;
+        }
+
+        // Always restart from the beginning for full-paragraph listening.
+        stop();
+        void togglePlay();
+    }, [isPlaying, stop, stopSentencePlayback, togglePlay]);
 
     const handleStopPlayback = () => {
         if (playMode === "sentence") {
@@ -1154,10 +1178,11 @@ export function ParagraphCard({
                                 "rounded-[3px] px-[1px] transition-colors",
                                 showHighlightVisual && "ring-1 ring-black/5",
                                 hasUnderlineVisible && "underline decoration-fuchsia-500 decoration-2 underline-offset-[3px]",
-                                showNoteVisual && "inline-block cursor-pointer rounded-[9px] border border-sky-500/45 bg-[linear-gradient(160deg,rgba(236,247,255,0.98),rgba(189,223,255,0.95))] px-[4px] text-slate-900 ring-1 ring-white/72 shadow-[0_2px_0_rgba(59,130,246,0.28),0_10px_22px_-12px_rgba(37,99,235,0.6),inset_0_1px_0_rgba(255,255,255,0.98)] transition-all duration-220 transform-gpu will-change-transform",
+                                showNoteVisual && "inline-block cursor-text select-text rounded-[11px] border border-sky-400/45 bg-[linear-gradient(160deg,rgba(241,250,255,0.98),rgba(206,232,255,0.95))] px-[4px] text-slate-900 ring-1 ring-white/72 shadow-[0_2px_0_rgba(125,182,255,0.24),0_10px_22px_-12px_rgba(37,99,235,0.42),inset_0_1px_0_rgba(255,255,255,0.98)] transition-all duration-220 transform-gpu will-change-transform",
                                 showNoteVisual && isNoteHovered && "z-[2] -translate-y-[4px] scale-[1.03] border-sky-500/70 bg-[linear-gradient(160deg,rgba(244,251,255,1),rgba(205,232,255,0.98))] ring-sky-100 shadow-[0_5px_0_rgba(59,130,246,0.36),0_22px_38px_-14px_rgba(37,99,235,0.76),inset_0_1px_0_rgba(255,255,255,1)]",
-                                showAskVisual && "inline-block cursor-pointer rounded-[9px] border border-indigo-400/55 bg-[linear-gradient(165deg,rgba(238,242,255,0.98),rgba(224,231,255,0.95))] px-[4px] text-indigo-900 ring-1 ring-white/80 shadow-[0_1px_0_rgba(99,102,241,0.3),0_8px_18px_-10px_rgba(79,70,229,0.55),inset_0_1px_0_rgba(255,255,255,0.98)] transition-all duration-220",
+                                showAskVisual && "inline-block cursor-text select-text rounded-[11px] border border-[#c6bcff]/70 bg-[linear-gradient(165deg,rgba(249,242,255,0.99),rgba(236,232,255,0.96))] px-[4px] text-[#5a43b7] ring-1 ring-white/80 shadow-[0_2px_0_rgba(178,162,255,0.28),0_8px_18px_-10px_rgba(120,94,240,0.34),inset_0_1px_0_rgba(255,255,255,0.98)] transition-all duration-220",
                                 showAskVisual && isAskHovered && "z-[2] -translate-y-[2px] border-indigo-500/70 shadow-[0_2px_0_rgba(99,102,241,0.36),0_16px_30px_-14px_rgba(79,70,229,0.65),inset_0_1px_0_rgba(255,255,255,1)]",
+                                showAskVisual && askMarker?.id === pressedAskNoteId && "translate-y-[3px] scale-[0.985] border-[#8d77ff]/85 shadow-[0_0_0_rgba(120,94,240,0)]",
                                 showLocateVisual && "rounded-[4px] bg-amber-100/58 text-stone-900 border-b border-amber-500/75",
                             )}
                             style={markStyle}
@@ -1202,6 +1227,7 @@ export function ParagraphCard({
                                 : undefined}
                             onClick={showNoteVisual && noteMarker?.id
                                 ? (event) => {
+                                    if (hasMeaningfulTextSelection(window.getSelection())) return;
                                     event.stopPropagation();
                                     if (!noteMarker.id) return;
                                     const targetNote = normalizedReadingNotes.find((note) => note.id === noteMarker.id && note.mark_type === "note");
@@ -1221,10 +1247,11 @@ export function ParagraphCard({
                                 }
                                 : showAskVisual && askMarker?.id
                                     ? (event) => {
+                                        if (hasMeaningfulTextSelection(window.getSelection())) return;
                                         event.stopPropagation();
                                         const targetAskNote = normalizedReadingNotes.find((note) => note.id === askMarker.id && note.mark_type === "ask");
                                         if (!targetAskNote) return;
-                                        openAskThreadFromNote(targetAskNote, event.currentTarget.getBoundingClientRect());
+                                        triggerAskReplayFromMarker(targetAskNote, event.currentTarget.getBoundingClientRect());
                                     }
                                 : undefined}
                         >
@@ -1519,6 +1546,19 @@ export function ParagraphCard({
         setHoveredReadingNote(null);
     }, [text]);
 
+    const triggerAskReplayFromMarker = useCallback((note: ReadingNoteItem, anchorRect: DOMRect) => {
+        if (askReplayOpenTimeoutRef.current !== null) {
+            window.clearTimeout(askReplayOpenTimeoutRef.current);
+        }
+        setPressedAskNoteId(note.id ?? null);
+        setHoveredReadingNote(null);
+        askReplayOpenTimeoutRef.current = window.setTimeout(() => {
+            setPressedAskNoteId(null);
+            openAskThreadFromNote(note, anchorRect);
+            askReplayOpenTimeoutRef.current = null;
+        }, 110);
+    }, [openAskThreadFromNote]);
+
     const selectionOverlapState = useMemo(() => {
         if (!selectionOffsets) {
             return {
@@ -1733,6 +1773,33 @@ export function ParagraphCard({
         }
     };
 
+    const handleLookupSelectedText = useCallback(() => {
+        const normalizedSelectedText = selectedText?.trim().replace(/\s+/g, " ") || "";
+        if (!normalizedSelectedText || normalizedSelectedText.length < 2 || !selectionRect || !onOpenWordPopupFromSelection) {
+            return;
+        }
+
+        onOpenWordPopupFromSelection({
+            word: normalizedSelectedText,
+            context: text,
+            x: selectionRect.left + (selectionRect.width / 2),
+            y: selectionRect.bottom,
+            articleUrl,
+            sourceKind: "read",
+            sourceLabel: "来自 Read",
+            sourceSentence: text,
+            sourceNote: articleTitle || "",
+        });
+        closePhraseAnalysis();
+    }, [
+        articleTitle,
+        articleUrl,
+        onOpenWordPopupFromSelection,
+        selectedText,
+        selectionRect,
+        text,
+    ]);
+
     const closePhraseAnalysis = () => {
         setSelectionRect(null);
         setSelectedText(null);
@@ -1747,6 +1814,25 @@ export function ParagraphCard({
         setIsNoteComposerOpen(false);
         setNoteDraft("");
         window.getSelection()?.removeAllRanges();
+    };
+
+    const openRewritePractice = () => {
+        if (typeof window === "undefined") return;
+        const rewriteId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        const payload: RewritePracticeNavigationPayload = {
+            openedAt: new Date().toISOString(),
+            articleTitle,
+            articleUrl,
+            paragraphOrder,
+            paragraphText: text,
+        };
+        try {
+            window.sessionStorage.setItem(`rewrite-practice:${rewriteId}`, JSON.stringify(payload));
+            router.push(`/read/rewrite?id=${rewriteId}`);
+        } catch (error) {
+            console.error("Failed to persist rewrite practice payload:", error);
+            router.push("/read/rewrite");
+        }
     };
 
     const requestRewritePrompt = async (excludedSentences: string[]) => {
@@ -1798,13 +1884,6 @@ export function ParagraphCard({
         }
     };
 
-    const openRewritePractice = () => {
-        setIsRewriteModeOpen(true);
-        setRewriteAttempt("");
-        setRewriteScore(null);
-        void requestRewritePrompt([]);
-    };
-
     const closeRewritePractice = () => {
         setIsRewriteModeOpen(false);
         setRewritePrompt(null);
@@ -1819,7 +1898,18 @@ export function ParagraphCard({
         await requestRewritePrompt(seenRewriteSentences);
     };
 
-    const navigateToRewriteScorePage = (payload: RewriteScoreNavigationPayload) => {
+    const navigateToRewriteScorePage = (payload: {
+        scoredAt: string;
+        articleTitle?: string;
+        articleUrl?: string;
+        paragraphOrder: number;
+        source_sentence_en: string;
+        imitation_prompt_cn: string;
+        pattern_focus_cn: string;
+        rewrite_tips_cn: string[];
+        user_rewrite_en: string;
+        score: RewritePracticeScore;
+    }) => {
         if (typeof window === "undefined") return;
         const reviewId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
         try {
@@ -2469,7 +2559,7 @@ export function ParagraphCard({
             )} />
 
             {/* Controls - Floating on the left or right, or inline */}
-            <div className="absolute -left-12 top-0 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col gap-1 items-center z-10">
+            <div className="absolute left-2 top-2 z-10 flex -translate-x-[calc(100%+0.35rem)] flex-col items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                 {/* ... (Keep existing controls) ... */}
                 {/* Drag Handle */}
                 <div
@@ -2734,8 +2824,8 @@ export function ParagraphCard({
                     </button>
 
                     <button
-                        onClick={() => (isRewriteModeOpen ? closeRewritePractice() : openRewritePractice())}
-                        className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", isRewriteModeOpen ? "bg-amber-100 text-amber-600" : "text-stone-400 hover:bg-stone-100 hover:text-amber-500")}
+                        onClick={openRewritePractice}
+                        className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-stone-400 transition-colors hover:bg-stone-100 hover:text-amber-500"
                     >
                         <PenTool className="w-3 h-3" /> 仿写模式
                     </button>
@@ -2751,8 +2841,8 @@ export function ParagraphCard({
                     {isSpeakingOpen && (
                         <SpeakingPanel
                             text={text}
-                            onPlayOriginal={handlePlay}
-                            isOriginalPlaying={playbackIsRunning}
+                            onPlayOriginal={handlePlayOriginalFull}
+                            isOriginalPlaying={isPlaying || isTTSLoading}
                             onRecordingComplete={(blob) => console.log("Recording complete", blob)}
                             onClose={() => setIsSpeakingOpen(false)}
                             isBlind={isBlind}
@@ -3062,122 +3152,160 @@ export function ParagraphCard({
 
             {isRewriteModeOpen && typeof document !== "undefined" && createPortal(
                 <div
-                    className="fixed inset-0 z-[13000] flex items-center justify-center bg-black/30 px-4 py-8 backdrop-blur-[1px]"
+                    className="fixed inset-0 z-[13000] flex items-start justify-center overflow-y-auto bg-black/24 px-3 py-4 backdrop-blur-[1px] sm:px-4 sm:py-6"
                     onClick={closeRewritePractice}
                 >
                     <motion.div
                         initial={{ opacity: 0, y: 16, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 10, scale: 0.98 }}
-                        className="relative w-full max-w-2xl rounded-[22px] border border-white/70 bg-gradient-to-br from-white via-amber-50/60 to-rose-50/60 shadow-[0_36px_80px_-45px_rgba(15,23,42,0.7)]"
+                        className="relative my-auto w-full max-w-[980px] overflow-hidden rounded-[30px] bg-[#e8eaf0] p-4 shadow-[18px_18px_40px_rgba(15,23,42,0.11),-16px_-16px_36px_rgba(255,255,255,0.72)] sm:max-h-[calc(100vh-2.5rem)] sm:overflow-y-auto sm:rounded-[40px] sm:p-5"
                         onClick={(event) => event.stopPropagation()}
                     >
+                        <div className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-[#f6ad55]/20 blur-3xl" />
+                        <div className="pointer-events-none absolute -bottom-16 -left-14 h-52 w-52 rounded-full bg-[#c6f6d5]/30 blur-3xl" />
+
                         <button
                             onClick={closeRewritePractice}
-                            className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-stone-200/80 bg-white/85 text-stone-500 transition hover:border-stone-300 hover:text-stone-800"
+                            className="absolute right-5 top-5 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#e8eaf0] text-[#585a68] shadow-[6px_6px_14px_rgba(15,23,42,0.08),-6px_-6px_14px_rgba(255,255,255,0.68)] transition hover:scale-[1.03] hover:text-[#2e3040]"
                             aria-label="关闭仿写模式"
                         >
                             <X className="h-4 w-4" />
                         </button>
 
-                        <div className="space-y-4 p-5 sm:p-6">
-                            <div className="flex items-start justify-between gap-3 pr-9">
-                                <div>
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-600">Rewrite Studio</p>
-                                    <h3 className="mt-1 text-xl font-semibold text-stone-900">仿写模式</h3>
-                                    <p className="mt-1 text-xs text-stone-500">从当前段落抽一句练习，先仿写再拿评分反馈。</p>
+                        <div className="relative space-y-4 p-3 sm:p-4 md:p-5">
+                            <div className="flex flex-col gap-3 pr-12 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] bg-white text-[#f6ad55] shadow-[7px_7px_16px_rgba(15,23,42,0.08),-7px_-7px_16px_rgba(255,255,255,0.7)]">
+                                        <PenTool className="h-6 w-6" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-[#6366f1]">Rewrite Studio</p>
+                                        <h3 className="mt-1 text-[1.65rem] font-black tracking-tight text-[#1f2435] sm:text-[1.9rem]">仿写模式</h3>
+                                        <p className="mt-1 text-[13px] font-medium text-[#585a68]">Step into the shoes of a native speaker</p>
+                                    </div>
                                 </div>
-                                <button
-                                    onClick={() => void handleShuffleRewriteSentence()}
-                                    disabled={isGeneratingRewritePrompt}
-                                    className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-100/70 px-3 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {isGeneratingRewritePrompt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                                    换一句
-                                </button>
+                                <div className="flex flex-wrap items-center gap-2.5">
+                                    <div className="inline-flex items-center gap-2 rounded-full bg-white px-3.5 py-1.5 text-[11px] font-black text-[#585a68] shadow-[7px_7px_16px_rgba(15,23,42,0.08),-7px_-7px_16px_rgba(255,255,255,0.7)]">
+                                        <span className="h-2.5 w-2.5 rounded-full bg-[#f6ad55]" />
+                                        LIVE SESSION
+                                    </div>
+                                    <button
+                                        onClick={() => void handleShuffleRewriteSentence()}
+                                        disabled={isGeneratingRewritePrompt}
+                                        className="inline-flex items-center gap-2 rounded-full bg-[#e8eaf0] px-3.5 py-1.5 text-[11px] font-black text-[#6366f1] shadow-[7px_7px_16px_rgba(15,23,42,0.08),-7px_-7px_16px_rgba(255,255,255,0.7)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {isGeneratingRewritePrompt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                                        换一句
+                                    </button>
+                                </div>
                             </div>
 
                             {rewriteCycleHint ? (
-                                <div className="rounded-xl border border-amber-200 bg-amber-50/85 px-3 py-2 text-xs font-medium text-amber-700">
+                                <div className="rounded-[22px] bg-[#fff4d8] px-4 py-3 text-sm font-medium text-[#9a6700] shadow-[inset_4px_4px_9px_rgba(15,23,42,0.04),inset_-4px_-4px_9px_rgba(255,255,255,0.75)]">
                                     {rewriteCycleHint}
                                 </div>
                             ) : null}
 
-                            <div className="rounded-2xl border border-stone-200/90 bg-white/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+                            <div className="rounded-[28px] bg-[#eef1f8] px-5 py-5 shadow-[inset_8px_8px_16px_rgba(15,23,42,0.06),inset_-8px_-8px_16px_rgba(255,255,255,0.78)] sm:px-7 sm:py-6">
+                                <div className="mb-3 flex items-center gap-2 text-[#6366f1]">
+                                    <Quote className="h-4 w-4" />
+                                    <span className="text-[11px] font-black uppercase tracking-[0.22em]">Target Sentence</span>
+                                </div>
                                 {isGeneratingRewritePrompt ? (
-                                    <div className="flex items-center gap-2 text-sm text-stone-500">
-                                        <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                                    <div className="flex items-center gap-2 text-sm font-medium text-[#585a68]">
+                                        <Loader2 className="h-4 w-4 animate-spin text-[#f6ad55]" />
                                         正在抽取适合仿写的句子…
                                     </div>
                                 ) : rewritePrompt ? (
-                                    <p className="text-[19px] leading-8 text-stone-900">
+                                    <p className="text-[1.08rem] font-semibold leading-[1.68] text-[#1f2435] sm:text-[1.32rem]">
                                         {rewritePrompt.source_sentence_en}
                                     </p>
                                 ) : (
-                                    <p className="text-sm text-stone-500">
+                                    <p className="text-sm font-medium text-[#585a68]">
                                         暂时无法生成仿写句，请点击“换一句”重试。
                                     </p>
                                 )}
                             </div>
 
                             {rewritePrompt && (
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    <div className="rounded-2xl border border-emerald-200/80 bg-emerald-50/80 px-4 py-3">
-                                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-emerald-700">灵感提示（可选）</p>
-                                        <p className="mt-1.5 text-sm leading-6 text-emerald-900">{rewritePrompt.imitation_prompt_cn}</p>
-                                        <p className="mt-1 text-[11px] leading-5 text-emerald-700/85">这是仿写灵感线索，不要求和原句语义一一对应，可自由替换场景与主语。</p>
+                                <div className="grid gap-3 lg:grid-cols-2">
+                                    <div className="rounded-[26px] bg-[#c6f6d5]/34 px-4 py-4 shadow-[9px_9px_18px_rgba(15,23,42,0.05),-7px_-7px_14px_rgba(255,255,255,0.6)]">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-white text-green-600 shadow-[5px_5px_12px_rgba(15,23,42,0.07),-5px_-5px_12px_rgba(255,255,255,0.68)]">
+                                                <Lightbulb className="h-4.5 w-4.5 fill-current" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[1.05rem] font-black text-green-800">Inspiration</p>
+                                                <p className="mt-1 text-[13px] leading-6 text-green-900/90">{rewritePrompt.imitation_prompt_cn}</p>
+                                                <p className="mt-1 text-[10px] leading-5 text-green-800/72">这是仿写灵感线索，不要求和原句语义一一对应，可自由替换场景与主语。</p>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="rounded-2xl border border-violet-200/80 bg-violet-50/80 px-4 py-3">
-                                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-violet-700">结构焦点</p>
-                                        <p className="mt-1.5 text-sm leading-6 text-violet-900">{rewritePrompt.pattern_focus_cn}</p>
+                                    <div className="rounded-[26px] bg-[#e9d8fd]/38 px-4 py-4 shadow-[9px_9px_18px_rgba(15,23,42,0.05),-7px_-7px_14px_rgba(255,255,255,0.6)]">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] bg-white text-purple-600 shadow-[5px_5px_12px_rgba(15,23,42,0.07),-5px_-5px_12px_rgba(255,255,255,0.68)]">
+                                                <GitBranch className="h-4.5 w-4.5" />
+                                            </div>
+                                            <div>
+                                                <p className="text-[1.05rem] font-black text-purple-800">Structure Focus</p>
+                                                <p className="mt-1 text-[13px] leading-6 text-purple-900/92">{rewritePrompt.pattern_focus_cn}</p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             )}
 
                             {rewritePrompt?.rewrite_tips_cn?.length ? (
-                                <div className="rounded-2xl border border-stone-200 bg-white/75 px-4 py-3">
-                                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">仿写建议</p>
-                                    <div className="mt-2 space-y-1.5">
+                                <div className="px-1">
+                                    <p className="text-[12px] font-black uppercase tracking-[0.18em] text-[#585a68]">Expert Advice</p>
+                                    <div className="mt-3 space-y-3">
                                         {rewritePrompt.rewrite_tips_cn.map((tip, idx) => (
-                                            <p key={`${tip}-${idx}`} className="text-sm text-stone-700">
-                                                {idx + 1}. {tip}
-                                            </p>
+                                            <div key={`${tip}-${idx}`} className="flex items-start gap-3">
+                                                <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[#6366f1] shadow-[5px_5px_12px_rgba(15,23,42,0.07),-5px_-5px_12px_rgba(255,255,255,0.68)]">
+                                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                                </div>
+                                                <p className="pt-0.5 text-[13px] font-medium leading-6 text-[#2e3040]">{tip}</p>
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
                             ) : null}
 
-                            <div className="space-y-3">
-                                <PretextTextarea
-                                    value={rewriteAttempt}
-                                    onChange={(event) => setRewriteAttempt(event.target.value)}
-                                    placeholder="输入你的英文仿写句子…"
-                                    className="w-full rounded-xl border border-stone-200 bg-white/90 px-3 py-2.5 text-sm text-stone-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.92)] focus:outline-none focus:border-amber-400 min-h-[92px] resize-y"
-                                    minRows={3}
-                                    maxRows={12}
-                                />
-                                <div className="flex justify-end">
+                            <div className="relative">
+                                <div className="rounded-[32px] bg-[#dde1ea] p-2 shadow-[inset_9px_9px_18px_rgba(15,23,42,0.06),inset_-9px_-9px_18px_rgba(255,255,255,0.74)]">
+                                    <PretextTextarea
+                                        value={rewriteAttempt}
+                                        onChange={(event) => setRewriteAttempt(event.target.value)}
+                                        placeholder="Write your version here..."
+                                        className="min-h-[132px] w-full resize-y rounded-[26px] border-none bg-transparent px-5 py-5 pr-32 text-[15px] font-medium leading-7 text-[#1f2435] placeholder:text-[#a1a5b5] focus:outline-none sm:min-h-[150px] sm:px-6 sm:py-6 sm:pr-40"
+                                        minRows={4}
+                                        maxRows={14}
+                                    />
+                                </div>
+                                <div className="pointer-events-none absolute inset-x-6 bottom-5 h-14 rounded-full bg-[radial-gradient(circle_at_center,rgba(246,173,85,0.12),transparent_70%)] blur-2xl" />
+                                <div className="absolute bottom-4 right-4 sm:bottom-5 sm:right-5">
                                     <button
                                         onClick={() => void handleScoreRewrite()}
                                         disabled={isScoringRewrite || isGeneratingRewritePrompt || !rewritePrompt || !rewriteAttempt.trim()}
-                                        className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_18px_-10px_rgba(234,88,12,0.75)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55"
+                                        className="inline-flex items-center gap-2 rounded-full bg-[#f6ad55] px-4 py-2.5 text-[13px] font-black text-white shadow-[10px_10px_20px_rgba(15,23,42,0.12),-8px_-8px_16px_rgba(255,255,255,0.2)] transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-55 sm:px-5 sm:py-2.5"
                                     >
-                                        {isScoringRewrite ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                        {isScoringRewrite ? <Loader2 className="h-4 w-4 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
                                         提交评分
                                     </button>
                                 </div>
                             </div>
 
                             {rewriteScore && (
-                                <div className="space-y-3 rounded-2xl border border-amber-200/90 bg-amber-50/70 px-4 py-4">
+                                <div className="space-y-4 rounded-[30px] bg-[#f5ecd7] px-5 py-5 shadow-[inset_6px_6px_14px_rgba(15,23,42,0.05),inset_-6px_-6px_14px_rgba(255,255,255,0.72)]">
                                     <div className="flex items-center justify-between">
-                                        <p className="text-sm font-semibold text-amber-800">总分 {rewriteScore.total_score}</p>
+                                        <p className="text-base font-black text-[#9a6700]">总分 {rewriteScore.total_score}</p>
                                         {rewriteScore.copy_penalty_applied ? (
-                                            <span className="rounded-full border border-rose-200 bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                            <span className="rounded-full bg-[#fee2e2] px-3 py-1 text-[11px] font-bold text-[#be123c] shadow-[4px_4px_10px_rgba(15,23,42,0.05),-4px_-4px_10px_rgba(255,255,255,0.65)]">
                                                 仿写度降分（{Math.round(rewriteScore.copy_similarity * 100)}%）
                                             </span>
                                         ) : (
-                                            <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                            <span className="rounded-full bg-[#d1fae5] px-3 py-1 text-[11px] font-bold text-[#047857] shadow-[4px_4px_10px_rgba(15,23,42,0.05),-4px_-4px_10px_rgba(255,255,255,0.65)]">
                                                 仿写通过
                                             </span>
                                         )}
@@ -3190,31 +3318,31 @@ export function ParagraphCard({
                                             { label: "内容表达", value: rewriteScore.dimension_scores.semantics },
                                             { label: "仿写度", value: rewriteScore.dimension_scores.imitation },
                                         ].map((item) => (
-                                            <div key={item.label} className="rounded-xl border border-white/70 bg-white/80 px-2.5 py-2 text-center">
-                                                <p className="text-[11px] font-medium text-stone-500">{item.label}</p>
-                                                <p className="mt-1 text-base font-semibold text-stone-900">{item.value}</p>
+                                            <div key={item.label} className="rounded-[20px] bg-[#eef1f8] px-3 py-3 text-center shadow-[6px_6px_14px_rgba(15,23,42,0.05),-6px_-6px_14px_rgba(255,255,255,0.68)]">
+                                                <p className="text-[11px] font-bold text-[#585a68]">{item.label}</p>
+                                                <p className="mt-1 text-lg font-black text-[#1f2435]">{item.value}</p>
                                             </div>
                                         ))}
                                     </div>
 
-                                    <div className="rounded-xl border border-amber-200/70 bg-white/80 px-3 py-2.5">
-                                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">反馈</p>
-                                        <p className="mt-1.5 text-sm leading-6 text-stone-700">{rewriteScore.feedback_cn}</p>
+                                    <div className="rounded-[22px] bg-white/80 px-4 py-3 shadow-[6px_6px_14px_rgba(15,23,42,0.05),-6px_-6px_14px_rgba(255,255,255,0.68)]">
+                                        <p className="text-xs font-black uppercase tracking-[0.14em] text-[#585a68]">反馈</p>
+                                        <p className="mt-1.5 text-sm leading-6 text-[#2e3040]">{rewriteScore.feedback_cn}</p>
                                     </div>
 
                                     {rewriteScore.better_version_en ? (
-                                        <div className="rounded-xl border border-blue-200/80 bg-blue-50/70 px-3 py-2.5">
-                                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">推荐改写</p>
-                                            <p className="mt-1.5 text-sm leading-6 text-blue-900">{rewriteScore.better_version_en}</p>
+                                        <div className="rounded-[22px] bg-[#e0e7ff]/75 px-4 py-3 shadow-[6px_6px_14px_rgba(15,23,42,0.05),-6px_-6px_14px_rgba(255,255,255,0.68)]">
+                                            <p className="text-xs font-black uppercase tracking-[0.14em] text-[#4338ca]">推荐改写</p>
+                                            <p className="mt-1.5 text-sm leading-6 text-[#312e81]">{rewriteScore.better_version_en}</p>
                                         </div>
                                     ) : null}
 
                                     {rewriteScore.improvement_points_cn?.length ? (
-                                        <div className="rounded-xl border border-stone-200 bg-white/80 px-3 py-2.5">
-                                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-stone-500">提升建议</p>
+                                        <div className="rounded-[22px] bg-white/82 px-4 py-3 shadow-[6px_6px_14px_rgba(15,23,42,0.05),-6px_-6px_14px_rgba(255,255,255,0.68)]">
+                                            <p className="text-xs font-black uppercase tracking-[0.14em] text-[#585a68]">提升建议</p>
                                             <div className="mt-1.5 space-y-1">
                                                 {rewriteScore.improvement_points_cn.map((point, idx) => (
-                                                    <p key={`${point}-${idx}`} className="text-sm text-stone-700">{idx + 1}. {point}</p>
+                                                    <p key={`${point}-${idx}`} className="text-sm leading-6 text-[#2e3040]">{idx + 1}. {point}</p>
                                                 ))}
                                             </div>
                                         </div>
@@ -3259,6 +3387,7 @@ export function ParagraphCard({
                     onDeleteNote={() => void handleDeleteReadingMark("note")}
                     onSaveNote={() => void handleCreateReadingMark("note", noteDraft)}
                     onAnalyze={handleAnalyzePhrase}
+                    onLookupWord={handleLookupSelectedText}
                     qaPairs={selectionQaPairs}
                     question={selectionAskQuestion}
                     onQuestionChange={setSelectionAskQuestion}
@@ -3332,6 +3461,7 @@ interface SelectionActionPopupProps {
     onDeleteNote: () => void;
     onSaveNote: () => void;
     onAnalyze: () => void;
+    onLookupWord: () => void;
     qaPairs: AskQaPair[];
     question: string;
     onQuestionChange: (value: string) => void;
@@ -3370,6 +3500,7 @@ export function SelectionActionPopup({
     onDeleteNote,
     onSaveNote,
     onAnalyze,
+    onLookupWord,
     qaPairs,
     question,
     onQuestionChange,
@@ -3382,6 +3513,7 @@ export function SelectionActionPopup({
     onClose,
 }: SelectionActionPopupProps) {
     const ref = useRef<HTMLDivElement>(null);
+    const reducedMotion = useReducedMotion();
     const dragStateRef = useRef<{
         pointerId: number;
         startClientX: number;
@@ -3401,6 +3533,10 @@ export function SelectionActionPopup({
             : (askPanelDefaultOpenToken ? qaPairs.map((pair) => pair.id) : [])
     ));
     const latestAskPairId = isAskReplayMode && qaPairs.length > 0 ? qaPairs[qaPairs.length - 1].id : null;
+    const candyTap = getPressableTap(reducedMotion, 4, 0.985);
+    const candyPressStyle = getPressableStyle("rgba(238, 199, 225, 0.95)", 4);
+    const berryPressStyle = getPressableStyle("rgba(216, 208, 255, 0.95)", 4);
+    const softPressStyle = getPressableStyle("rgba(223, 232, 255, 0.95)", 4);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -3497,122 +3633,158 @@ export function SelectionActionPopup({
             }}
             onMouseDown={(e) => e.stopPropagation()}
         >
-            <div className="max-h-[min(560px,calc(100vh-2rem))] overflow-y-auto rounded-2xl border border-white/45 bg-white/82 p-3 shadow-[0_12px_36px_rgba(0,0,0,0.16)] backdrop-blur-xl">
+            <div className="relative max-h-[min(560px,calc(100vh-2rem))] overflow-y-auto rounded-[28px] border border-[#ffd9ec]/90 bg-[linear-gradient(180deg,rgba(255,250,253,0.97),rgba(249,245,255,0.95))] p-3.5 shadow-[0_18px_44px_rgba(225,112,185,0.2),0_8px_0_rgba(246,218,236,0.95)] backdrop-blur-2xl">
+                <div className="pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[24px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.95),rgba(255,255,255,0))]" />
                 <div
-                    className="mb-2 flex items-start justify-between gap-2 cursor-grab active:cursor-grabbing"
+                    className="relative mb-3 flex items-start justify-between gap-3 cursor-grab active:cursor-grabbing"
                     onPointerDown={handleDragStart}
                     onPointerMove={handleDragMove}
                     onPointerUp={handleDragEnd}
                     onPointerCancel={handleDragEnd}
                 >
-                    <p className="line-clamp-2 text-xs font-semibold text-stone-600">
-                        {selectedText || "选中文本"}
-                    </p>
-                    <button
+                    <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#d27cb0]">
+                            Selected Text
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-sm font-semibold leading-6 text-[#6d4a62]">
+                            {selectedText || "选中文本"}
+                        </p>
+                    </div>
+                    <motion.button
                         type="button"
                         onClick={onClose}
-                        className="rounded-full p-1 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700"
+                        whileTap={candyTap}
+                        style={candyPressStyle}
+                        className="ui-pressable shrink-0 rounded-full border border-[#f5d8e9] bg-white/90 p-1.5 text-[#c489ae] shadow-[0_3px_0_rgba(245,216,233,0.9)] transition-colors hover:bg-[#fff0f8] hover:text-[#a95a8d]"
                     >
                         <X className="h-3.5 w-3.5" />
-                    </button>
+                    </motion.button>
                 </div>
 
                 {!isAskReplayMode ? (
-                    <div className="grid grid-cols-2 gap-2">
-                    <button
-                        type="button"
-                        onClick={onCreateHighlight}
-                        disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        <Highlighter className="h-3.5 w-3.5" />
-                        高亮
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onCreateUnderline}
-                        disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-fuchsia-200 bg-fuchsia-50 px-2 py-1.5 text-xs font-semibold text-fuchsia-700 transition-colors hover:bg-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        <Underline className="h-3.5 w-3.5" />
-                        下划线
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onOpenNoteComposer}
-                        disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-xs font-semibold text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        <PenTool className="h-3.5 w-3.5" />
-                        {isEditingNote ? "编辑标注" : "标注"}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onAnalyze}
-                        disabled={isAnalyzingPhrase}
-                        className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-2 py-1.5 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        {isAnalyzingPhrase ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                        解读 · -{getReadingCoinCost("analyze_phrase")}
-                    </button>
+                    <>
+                    <div className="grid grid-cols-2 gap-2.5">
+                        <motion.button
+                            type="button"
+                            onClick={onCreateHighlight}
+                            disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                            whileTap={candyTap}
+                            style={getPressableStyle("rgba(174,236,207,0.95)", 4)}
+                            className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[18px] border border-[#9fe6c7] bg-[linear-gradient(180deg,#f4fff9,#dcfff0)] px-3 py-2.5 text-sm font-black text-[#1b9c72] shadow-[0_4px_0_rgba(174,236,207,0.95)] transition-all hover:bg-[#ecfff6] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            <Highlighter className="h-3.5 w-3.5" />
+                            高亮
+                        </motion.button>
+                        <motion.button
+                            type="button"
+                            onClick={onCreateUnderline}
+                            disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                            whileTap={candyTap}
+                            style={getPressableStyle("rgba(244,202,255,0.95)", 4)}
+                            className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[18px] border border-[#f0b8ff] bg-[linear-gradient(180deg,#fff6ff,#fbe4ff)] px-3 py-2.5 text-sm font-black text-[#b13dd3] shadow-[0_4px_0_rgba(244,202,255,0.95)] transition-all hover:bg-[#fff0ff] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            <Underline className="h-3.5 w-3.5" />
+                            下划线
+                        </motion.button>
+                        <motion.button
+                            type="button"
+                            onClick={onOpenNoteComposer}
+                            disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                            whileTap={candyTap}
+                            style={getPressableStyle("rgba(205,234,255,0.95)", 4)}
+                            className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[18px] border border-[#bfe4ff] bg-[linear-gradient(180deg,#f8fcff,#e7f5ff)] px-3 py-2.5 text-sm font-black text-[#1780c9] shadow-[0_4px_0_rgba(205,234,255,0.95)] transition-all hover:bg-[#f0f9ff] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            <PenTool className="h-3.5 w-3.5" />
+                            {isEditingNote ? "编辑标注" : "标注"}
+                        </motion.button>
+                        <motion.button
+                            type="button"
+                            onClick={onAnalyze}
+                            disabled={isAnalyzingPhrase}
+                            whileTap={candyTap}
+                            style={berryPressStyle}
+                            className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[18px] border border-[#d6c6ff] bg-[linear-gradient(180deg,#faf7ff,#eee7ff)] px-3 py-2.5 text-sm font-black text-[#7c49ff] shadow-[0_4px_0_rgba(228,215,255,0.95)] transition-all hover:bg-[#f6f1ff] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {isAnalyzingPhrase ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                            解读 · -{getReadingCoinCost("analyze_phrase")}
+                        </motion.button>
                     </div>
+                    <div className="mt-2.5">
+                        <motion.button
+                            type="button"
+                            onClick={onLookupWord}
+                            whileTap={candyTap}
+                            style={softPressStyle}
+                            className="ui-pressable inline-flex w-full items-center justify-center gap-1.5 rounded-[18px] border border-[#c9d3ff] bg-[linear-gradient(180deg,#f7f8ff,#edf1ff)] px-3 py-2.5 text-sm font-black text-[#5e63ff] shadow-[0_4px_0_rgba(216,223,255,0.95)] transition-all hover:bg-[#f2f5ff]"
+                        >
+                            <BookOpen className="h-3.5 w-3.5" />
+                            查询
+                        </motion.button>
+                    </div>
+                    </>
                 ) : null}
 
                 {!isAskReplayMode && deleteActionCount > 0 ? (
-                    <div className={cn("mt-2 grid gap-2", deleteActionCount === 1 ? "grid-cols-1" : "grid-cols-2")}>
+                    <div className={cn("mt-2.5 grid gap-2", deleteActionCount === 1 ? "grid-cols-1" : "grid-cols-2")}>
                         {canDeleteHighlight ? (
-                            <button
+                            <motion.button
                                 type="button"
                                 onClick={onDeleteHighlight}
                                 disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                whileTap={candyTap}
+                                style={getPressableStyle("rgba(255, 209, 224, 0.92)", 4)}
+                                className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[16px] border border-[#ffc3d6] bg-[#fff4f7] px-2 py-2 text-xs font-black text-[#dc4d83] transition-colors hover:bg-[#ffeaf1] disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 删除高亮
-                            </button>
+                            </motion.button>
                         ) : null}
                         {canDeleteUnderline ? (
-                            <button
+                            <motion.button
                                 type="button"
                                 onClick={onDeleteUnderline}
                                 disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                                className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-2 py-1.5 text-xs font-semibold text-orange-700 transition-colors hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                whileTap={candyTap}
+                                style={getPressableStyle("rgba(255, 223, 192, 0.92)", 4)}
+                                className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[16px] border border-[#ffd3ad] bg-[#fff6ec] px-2 py-2 text-xs font-black text-[#d57a2b] transition-colors hover:bg-[#fff0df] disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 删除下划线
-                            </button>
+                            </motion.button>
                         ) : null}
                     </div>
                 ) : null}
 
                 {isAskReplayMode ? (
-                    <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50/60 px-2 py-1.5 text-xs font-semibold text-blue-700">
+                    <div className="mt-2.5 rounded-[18px] border border-[#cfd6ff] bg-[linear-gradient(180deg,rgba(241,244,255,0.95),rgba(234,239,255,0.92))] px-3 py-2 text-xs font-black text-[#5460d9] shadow-[0_4px_0_rgba(220,227,255,0.9)]">
                         AI 回答记录
                     </div>
                 ) : (
-                    <div className="mt-2">
-                        <button
+                    <div className="mt-2.5">
+                        <motion.button
                             type="button"
                             onClick={() => {
                                 setExpandedQaIds([]);
                                 setIsAskComposerOpen((prev) => !prev);
                             }}
+                            whileTap={candyTap}
+                            style={softPressStyle}
                             className={cn(
-                                "inline-flex w-full items-center justify-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors",
+                                "ui-pressable inline-flex w-full items-center justify-center gap-1.5 rounded-[18px] border px-3 py-2.5 text-sm font-black transition-colors",
                                 isAskComposerOpen
-                                    ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
-                                    : "border-blue-100 bg-white text-blue-600 hover:bg-blue-50",
+                                    ? "border-[#bfd5ff] bg-[linear-gradient(180deg,#f4f8ff,#e8f1ff)] text-[#3270f6] shadow-[0_4px_0_rgba(210,226,255,0.92)]"
+                                    : "border-[#dce6ff] bg-white/92 text-[#4f76d9] hover:bg-[#f7faff]",
                             )}
                         >
                             <MessageCircleQuestion className="h-3.5 w-3.5" />
                             向AI提问 · -{getReadingCoinCost("ask_ai")}
-                        </button>
+                        </motion.button>
                     </div>
                 )}
 
                 {isAskReplayMode || isAskComposerOpen ? (
-                    <div className="mt-2 overflow-hidden rounded-xl border border-blue-100 bg-white/75">
-                        <div className="max-h-52 space-y-2 overflow-y-auto px-2.5 py-2">
+                    <div className="mt-2.5 overflow-hidden rounded-[24px] border border-[#dfe3ff] bg-[linear-gradient(180deg,rgba(255,252,255,0.96),rgba(244,246,255,0.92))] shadow-[0_8px_0_rgba(227,232,255,0.92),0_16px_36px_rgba(157,169,255,0.12)]">
+                        <div className="max-h-52 space-y-2.5 overflow-y-auto px-3 py-3">
                             {qaPairs.length === 0 ? (
-                                <div className="rounded-lg border border-white/60 bg-white/70 px-2.5 py-2 text-xs text-stone-500">
+                                <div className="rounded-[18px] border border-[#eadfff] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,244,255,0.92))] px-3 py-2.5 text-xs leading-6 text-[#7f7199] shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
                                     输入问题，AI 会基于当前段落和选中文本来回答。
                                 </div>
                             ) : (
@@ -3623,9 +3795,9 @@ export function SelectionActionPopup({
                                         return (
                                             <div
                                                 key={pair.id}
-                                                className="overflow-hidden rounded-lg border border-white/70 bg-white/85"
+                                                className="overflow-hidden rounded-[20px] border border-[#e6dcff] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,243,255,0.94))] shadow-[0_6px_0_rgba(234,226,255,0.92)]"
                                             >
-                                                <button
+                                                <motion.button
                                                     type="button"
                                                     aria-expanded={isExpanded}
                                                     onClick={() => {
@@ -3635,22 +3807,24 @@ export function SelectionActionPopup({
                                                                 : [...prev, pair.id]
                                                         ));
                                                     }}
-                                                    className="flex w-full items-center justify-between gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 px-2.5 py-1.5 text-left text-xs font-medium text-white"
+                                                    whileTap={candyTap}
+                                                    style={berryPressStyle}
+                                                    className="ui-pressable flex w-full items-center justify-between gap-2 bg-[linear-gradient(90deg,#8d6bff,#a96dff)] px-3 py-2 text-left text-xs font-black text-white"
                                                 >
                                                     <span className="min-w-0 truncate">
                                                         {`问题 ${index + 1} · ${questionTitle}`}
                                                     </span>
-                                                    <span className="shrink-0 text-[11px] font-semibold text-indigo-100">
+                                                    <span className="shrink-0 text-[11px] font-bold text-[#efe9ff]">
                                                         {isExpanded ? "收起" : "展开"}
                                                     </span>
-                                                </button>
+                                                </motion.button>
                                                 {isExpanded ? (
-                                                    <div className="px-2.5 py-2 text-xs text-stone-700">
+                                                    <div className="px-3 py-2.5 text-xs leading-6 text-[#675b80]">
                                                         {pair.answer
                                                             ? renderAskMarkdown(pair.answer)
-                                                            : <div className="text-stone-400">等待回答…</div>}
+                                                            : <div className="text-[#9f92b9]">等待回答…</div>}
                                                         {pair.isStreaming ? (
-                                                            <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-indigo-500/50 align-middle" />
+                                                            <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-[#8d6bff]/50 align-middle" />
                                                         ) : null}
                                                     </div>
                                                 ) : null}
@@ -3661,30 +3835,32 @@ export function SelectionActionPopup({
                             )}
                         </div>
 
-                        <div className="border-t border-white/70 px-2.5 py-2">
-                            <div className="mb-2 flex items-center justify-between gap-2">
-                                <span className="text-[11px] font-semibold text-stone-500">回答模式</span>
-                                <div className="inline-flex items-center rounded-full border border-stone-200 bg-white/85 p-0.5">
+                        <div className="border-t border-[#ece4ff] bg-[linear-gradient(180deg,rgba(250,247,255,0.92),rgba(244,246,255,0.86))] px-3 py-3">
+                            <div className="mb-2.5 flex items-center justify-between gap-2">
+                                <span className="text-[11px] font-black tracking-[0.12em] text-[#9a81c6]">回答模式</span>
+                                <div className="inline-flex items-center rounded-full border border-[#eadfff] bg-white/92 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
                                     {ASK_ANSWER_MODE_OPTIONS.map((option) => (
-                                        <button
+                                        <motion.button
                                             key={`ask-mode-selection-${option.mode}`}
                                             type="button"
                                             onClick={() => onAskAnswerModeChange(option.mode)}
                                             disabled={isAskLoading}
+                                            whileTap={candyTap}
+                                            style={askAnswerMode === option.mode ? berryPressStyle : candyPressStyle}
                                             className={cn(
-                                                "rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors",
+                                                "ui-pressable rounded-full px-2.5 py-1 text-[10px] font-black transition-colors",
                                                 askAnswerMode === option.mode
-                                                    ? "bg-indigo-600 text-white shadow-sm"
-                                                    : "text-stone-500 hover:bg-stone-100 hover:text-stone-700",
+                                                    ? "bg-[linear-gradient(180deg,#8c6bff,#7056ff)] text-white shadow-[0_3px_0_rgba(194,183,255,0.9)]"
+                                                    : "text-[#8a7ca8] hover:bg-[#f5f1ff] hover:text-[#6c5b8f]",
                                             )}
                                         >
                                             {option.label}
-                                        </button>
+                                        </motion.button>
                                     ))}
                                 </div>
                             </div>
 
-                            <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-2 py-1.5">
+                            <div className="flex items-center gap-2 rounded-[22px] border border-[#d5ddff] bg-[linear-gradient(180deg,#ffffff,#f5f8ff)] px-3 py-2 shadow-[0_5px_0_rgba(222,231,255,0.92)]">
                                 <input
                                     type="text"
                                     value={question}
@@ -3696,16 +3872,18 @@ export function SelectionActionPopup({
                                         }
                                     }}
                                     placeholder={selectedText ? "针对选中文本提问..." : "输入你的问题..."}
-                                    className="w-full bg-transparent border-none text-xs text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-0"
+                                    className="w-full bg-transparent border-none text-sm font-medium text-[#5b5470] placeholder:text-[#b4aacd] focus:outline-none focus:ring-0"
                                 />
-                                <button
+                                <motion.button
                                     type="button"
                                     onClick={onAsk}
                                     disabled={isAskLoading || !question.trim()}
-                                    className="inline-flex h-7 w-7 items-center justify-center rounded-full text-stone-500 transition-all hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                    whileTap={candyTap}
+                                    style={softPressStyle}
+                                    className="ui-pressable inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#cfd8ff] bg-[linear-gradient(180deg,#f4f7ff,#e6eeff)] text-[#5d79ff] transition-all hover:bg-[#eef4ff] disabled:cursor-not-allowed disabled:opacity-40"
                                 >
                                     {isAskLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                                </button>
+                                </motion.button>
                             </div>
                         </div>
                     </div>
@@ -3713,22 +3891,26 @@ export function SelectionActionPopup({
 
                 {!isAskReplayMode && canDeleteNote ? (
                     <div className="mt-2 grid grid-cols-2 gap-2">
-                        <button
+                        <motion.button
                             type="button"
                             onClick={onEditNote}
                             disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-xs font-semibold text-sky-700 transition-colors hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            whileTap={candyTap}
+                            style={getPressableStyle("rgba(205,234,255,0.95)", 4)}
+                            className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[16px] border border-[#bfe4ff] bg-[#f1faff] px-2 py-2 text-xs font-black text-[#1780c9] transition-colors hover:bg-[#e8f6ff] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             编辑标注
-                        </button>
-                        <button
+                        </motion.button>
+                        <motion.button
                             type="button"
                             onClick={onDeleteNote}
                             disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            whileTap={candyTap}
+                            style={getPressableStyle("rgba(255, 209, 224, 0.92)", 4)}
+                            className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[16px] border border-[#ffc3d6] bg-[#fff4f7] px-2 py-2 text-xs font-black text-[#dc4d83] transition-colors hover:bg-[#ffeaf1] disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             删除标注
-                        </button>
+                        </motion.button>
                     </div>
                 ) : null}
 
@@ -3745,29 +3927,33 @@ export function SelectionActionPopup({
                 ) : null}
 
                 {!isAskReplayMode && isNoteComposerOpen && (
-                    <div className="mt-3 space-y-2 rounded-xl border border-sky-200 bg-white/75 p-2.5">
+                    <div className="mt-3 space-y-2.5 rounded-[22px] border border-[#d8e9ff] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(243,249,255,0.92))] p-3 shadow-[0_6px_0_rgba(220,237,255,0.9)]">
                         <textarea
                             value={noteDraft}
                             onChange={(event) => onNoteDraftChange(event.target.value)}
                             placeholder="写下你的标注..."
-                            className="h-20 w-full resize-none rounded-md border border-sky-100 bg-white px-2 py-1.5 text-xs text-stone-700 outline-none ring-sky-200 placeholder:text-stone-400 focus:ring-2"
+                            className="h-20 w-full resize-none rounded-[18px] border border-[#d6e9ff] bg-[linear-gradient(180deg,#ffffff,#f5fbff)] px-3 py-2 text-sm text-[#5a6277] outline-none ring-[#d7e6ff] placeholder:text-[#b2bdd3] focus:ring-2"
                         />
                         <div className="flex justify-end gap-2">
-                            <button
+                            <motion.button
                                 type="button"
                                 onClick={onCancelNoteComposer}
-                                className="rounded-md border border-stone-200 px-2.5 py-1 text-xs font-semibold text-stone-500 transition-colors hover:bg-stone-50"
+                                whileTap={candyTap}
+                                style={candyPressStyle}
+                                className="ui-pressable rounded-[14px] border border-[#e6dff5] bg-white/92 px-3 py-1.5 text-xs font-black text-[#8b7ca8] transition-colors hover:bg-[#fbf8ff]"
                             >
                                 取消
-                            </button>
-                            <button
+                            </motion.button>
+                            <motion.button
                                 type="button"
                                 onClick={onSaveNote}
                                 disabled={!noteDraft.trim() || isSavingReadingNote}
-                                className="rounded-md bg-sky-600 px-2.5 py-1 text-xs font-semibold text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                whileTap={candyTap}
+                                style={softPressStyle}
+                                className="ui-pressable rounded-[14px] border border-[#b7d7ff] bg-[linear-gradient(180deg,#63b7ff,#3b92ff)] px-3 py-1.5 text-xs font-black text-white transition-colors hover:bg-[#4ea3ff] disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 {isSavingReadingNote ? "保存中..." : (isEditingNote ? "更新标注" : "保存标注")}
-                            </button>
+                            </motion.button>
                         </div>
                     </div>
                 )}

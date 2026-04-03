@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useMemo } from "react";
-import { ArrowLeft, CircleCheckBig, TriangleAlert } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
+import {
+    ArrowLeft,
+    CircleCheckBig,
+    Loader2,
+    RotateCcw,
+    Sparkles,
+    TriangleAlert,
+} from "lucide-react";
 
 type RewritePracticeScore = {
     total_score: number;
@@ -28,9 +35,12 @@ type RewritePracticeScore = {
 
 type RewriteScoreNavigationPayload = {
     scoredAt: string;
+    rewriteId: string;
     articleTitle?: string;
     articleUrl?: string;
     paragraphOrder: number;
+    paragraphText: string;
+    seenRewriteSentences: string[];
     source_sentence_en: string;
     imitation_prompt_cn: string;
     pattern_focus_cn: string;
@@ -44,7 +54,6 @@ function formatTime(iso: string | undefined) {
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) return "";
     return new Intl.DateTimeFormat("zh-CN", {
-        year: "numeric",
         month: "2-digit",
         day: "2-digit",
         hour: "2-digit",
@@ -53,28 +62,30 @@ function formatTime(iso: string | undefined) {
 }
 
 function scoreTone(score: number) {
-    if (score >= 85) return "text-emerald-600";
-    if (score >= 70) return "text-amber-600";
-    return "text-rose-600";
+    if (score >= 85) return "text-[#047857]";
+    if (score >= 70) return "text-[#9a6700]";
+    return "text-[#be123c]";
 }
 
-function RewriteScoreContent() {
+function scoreSurface(score: number) {
+    if (score >= 85) return "border-[#9ae6b4] bg-[#ecfdf3]";
+    if (score >= 70) return "border-[#f4d38a] bg-[#fff7df]";
+    return "border-[#f8b4c6] bg-[#fff1f4]";
+}
+
+export default function RewriteScorePage() {
+    const router = useRouter();
     const searchParams = useSearchParams();
     const scoreId = searchParams.get("id");
 
+    const [isContinuing, setIsContinuing] = useState(false);
     const payload = useMemo(() => {
-        if (!scoreId || typeof window === "undefined") {
-            return null;
-        }
-
+        if (!scoreId || typeof window === "undefined") return null;
         const raw = window.sessionStorage.getItem(`rewrite-score:${scoreId}`);
-        if (!raw) {
-            return null;
-        }
-
+        if (!raw) return null;
         try {
             const parsed = JSON.parse(raw) as RewriteScoreNavigationPayload;
-            if (!parsed?.score || !parsed?.source_sentence_en) {
+            if (!parsed?.score || !parsed?.source_sentence_en || !parsed?.rewriteId) {
                 return null;
             }
             return parsed;
@@ -83,7 +94,15 @@ function RewriteScoreContent() {
         }
     }, [scoreId]);
 
-    const scoredAt = useMemo(() => formatTime(payload?.scoredAt), [payload?.scoredAt]);
+    const handleContinueNext = () => {
+        if (!payload || typeof window === "undefined") return;
+        setIsContinuing(true);
+        window.sessionStorage.setItem(
+            `rewrite-progress:${payload.rewriteId}`,
+            JSON.stringify({ seenRewriteSentences: payload.seenRewriteSentences }),
+        );
+        router.push(`/read/rewrite?id=${payload.rewriteId}&continue=1`);
+    };
 
     if (!payload) {
         return (
@@ -104,147 +123,169 @@ function RewriteScoreContent() {
     }
 
     const score = payload.score;
+    const scoredAt = formatTime(payload.scoredAt);
     const returnHref = payload.articleUrl
         ? `/read?from=rewrite-score&url=${encodeURIComponent(payload.articleUrl)}`
         : "/read?from=home";
 
     return (
-        <main className="min-h-screen bg-[radial-gradient(circle_at_18%_8%,rgba(253,224,71,0.2),transparent_45%),radial-gradient(circle_at_92%_14%,rgba(147,197,253,0.18),transparent_42%),linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-4 py-10 sm:px-6 sm:py-14">
-            <div className="mx-auto max-w-4xl space-y-5">
+        <main className="min-h-screen bg-[radial-gradient(circle_at_18%_8%,rgba(253,224,71,0.2),transparent_45%),radial-gradient(circle_at_92%_14%,rgba(147,197,253,0.18),transparent_42%),linear-gradient(180deg,#efe5d3_0%,#ece7db_100%)] px-4 py-5 sm:px-6 sm:py-6 lg:h-screen lg:overflow-hidden">
+            <div className="mx-auto flex max-w-[1360px] flex-col gap-4 lg:h-full">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <Link
                         href={returnHref}
-                        className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/88 px-4 py-2 text-sm font-semibold text-slate-700 shadow-[0_14px_26px_-18px_rgba(15,23,42,0.55)] transition hover:text-slate-900"
+                        className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-black text-[#585a68] shadow-[7px_7px_16px_rgba(15,23,42,0.08),-7px_-7px_16px_rgba(255,255,255,0.7)]"
                     >
                         <ArrowLeft className="h-4 w-4" />
-                        返回阅读继续练
+                        返回阅读
                     </Link>
-                    {scoredAt ? <p className="text-xs font-medium text-slate-500">评分时间：{scoredAt}</p> : null}
-                </div>
-
-                <section className="rounded-3xl border border-white/70 bg-white/90 p-6 shadow-[0_44px_86px_-52px_rgba(15,23,42,0.62)] sm:p-7">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.17em] text-amber-600">Rewrite Score</p>
-                            <h1 className="mt-1.5 text-3xl font-bold text-slate-900">仿写评分结果</h1>
-                            <p className="mt-2 text-sm text-slate-600">
-                                {payload.articleTitle ? `${payload.articleTitle} · ` : ""}第 {payload.paragraphOrder} 段
-                            </p>
-                        </div>
-                        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-center">
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-700">总分</p>
-                            <p className={`mt-1 text-4xl font-bold ${scoreTone(score.total_score)}`}>{score.total_score}</p>
-                        </div>
-                    </div>
-
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">原句</p>
-                            <p className="mt-2 text-xl leading-8 text-slate-900">{payload.source_sentence_en}</p>
-                        </div>
-                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700">灵感提示（可选）</p>
-                            <p className="mt-2 text-base leading-7 text-emerald-900">{payload.imitation_prompt_cn}</p>
-                            <p className="mt-1 text-[11px] text-emerald-700/85">这是仿写灵感线索，不要求和原句语义一一对应，可自由替换场景和主语。</p>
-                            <p className="mt-3 text-xs text-emerald-700/90">结构焦点：{payload.pattern_focus_cn}</p>
-                        </div>
-                    </div>
-
-                    <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white/92">
-                        <div className="bg-blue-50/70 px-4 py-4">
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">你的仿写</p>
-                            <p className="mt-2 text-lg leading-8 text-blue-950">{payload.user_rewrite_en}</p>
-                        </div>
-
-                        <div className="border-t border-slate-200/80 bg-indigo-50/65 px-4 py-4">
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-indigo-700">推荐改写</p>
-                            <p className="mt-2 text-base leading-7 text-indigo-950">
-                                {score.better_version_en || "暂无推荐改写。"}
-                            </p>
-                        </div>
-
-                        <div className="border-t border-slate-200/80 bg-rose-50/55 px-4 py-4">
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-rose-700">批改修订</p>
-                            {score.corrections?.length ? (
-                                <div className="mt-3 space-y-2.5">
-                                    {score.corrections.map((item, idx) => (
-                                        <div key={`${item.segment}-${idx}`} className="rounded-xl border border-rose-200/75 bg-white/92 px-3 py-2.5">
-                                            <div className="flex flex-wrap items-center gap-2 text-sm">
-                                                <span className="font-semibold text-rose-700 line-through decoration-rose-300">{item.segment}</span>
-                                                <span className="text-slate-400">→</span>
-                                                <span className="font-semibold text-emerald-700">{item.correction}</span>
-                                                {item.category ? (
-                                                    <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">{item.category}</span>
-                                                ) : null}
-                                            </div>
-                                            <p className="mt-1.5 text-xs leading-5 text-slate-600">{item.reason}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="mt-2 text-sm leading-6 text-rose-700/90">未发现明确错误。</p>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                        {[
-                            { label: "语法", value: score.dimension_scores.grammar },
-                            { label: "词汇", value: score.dimension_scores.vocabulary },
-                            { label: "内容表达", value: score.dimension_scores.semantics },
-                            { label: "仿写度", value: score.dimension_scores.imitation },
-                        ].map((item) => (
-                            <div key={item.label} className="rounded-2xl border border-slate-200 bg-white p-3 text-center">
-                                <p className="text-xs font-semibold text-slate-500">{item.label}</p>
-                                <p className={`mt-1.5 text-2xl font-bold ${scoreTone(item.value)}`}>{item.value}</p>
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="mt-5 space-y-3">
-                        <div className="rounded-2xl border border-amber-200 bg-amber-50/65 p-4">
-                            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-700">反馈</p>
-                            <p className="mt-2 text-base leading-7 text-slate-800">{score.feedback_cn}</p>
-                        </div>
-
-                        {score.improvement_points_cn?.length ? (
-                            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">提升建议</p>
-                                <div className="mt-2 space-y-1.5">
-                                    {score.improvement_points_cn.map((point, idx) => (
-                                        <p key={`${point}-${idx}`} className="text-sm leading-6 text-slate-700">{idx + 1}. {point}</p>
-                                    ))}
-                                </div>
-                            </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-white px-3.5 py-1.5 text-[11px] font-black text-[#9a6700] shadow-[7px_7px_16px_rgba(15,23,42,0.08),-7px_-7px_16px_rgba(255,255,255,0.7)]">
+                            Rewrite Score
+                        </span>
+                        {scoredAt ? (
+                            <span className="rounded-full bg-white px-3.5 py-1.5 text-[11px] font-black text-[#6366f1] shadow-[7px_7px_16px_rgba(15,23,42,0.08),-7px_-7px_16px_rgba(255,255,255,0.7)]">
+                                {scoredAt}
+                            </span>
                         ) : null}
                     </div>
+                </div>
 
-                    <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/85 px-4 py-3 text-sm text-slate-700">
-                        <div className="flex items-center gap-2">
-                            {score.copy_penalty_applied ? (
-                                <TriangleAlert className="h-4 w-4 text-rose-500" />
-                            ) : (
-                                <CircleCheckBig className="h-4 w-4 text-emerald-500" />
-                            )}
-                            <span>
-                                与原句相似度：
-                                <span className="ml-1 font-semibold text-slate-900">{Math.round(score.copy_similarity * 100)}%</span>
-                                {score.copy_penalty_applied ? "（已触发仿写度降分）" : "（未触发照抄惩罚）"}
-                            </span>
+                <section className="rounded-[40px] bg-[#e8eaf0] p-4 shadow-[18px_18px_40px_rgba(15,23,42,0.11),-16px_-16px_36px_rgba(255,255,255,0.72)] sm:p-6 lg:flex-1 lg:min-h-0">
+                    <div className="grid h-full min-h-[calc(100vh-10rem)] gap-5 lg:min-h-0 lg:grid-cols-[minmax(0,0.92fr)_minmax(420px,1.08fr)]">
+                        <div className="space-y-4 lg:min-h-0">
+                            <div className="rounded-[30px] bg-[#eef1f8] px-5 py-5 shadow-[inset_8px_8px_16px_rgba(15,23,42,0.06),inset_-8px_-8px_16px_rgba(255,255,255,0.78)]">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div>
+                                        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-[#6366f1]">Rewrite Studio</p>
+                                        <h1 className="mt-1 text-[1.7rem] font-black text-[#1f2435] sm:text-[1.95rem]">仿写评分</h1>
+                                        <p className="mt-2 text-[13px] leading-6 text-[#585a68]">
+                                            {payload.articleTitle ? `${payload.articleTitle} · ` : ""}第 {payload.paragraphOrder} 段
+                                        </p>
+                                    </div>
+                                    <div className={`rounded-[24px] border px-5 py-3 text-center shadow-[6px_6px_14px_rgba(15,23,42,0.07),-6px_-6px_14px_rgba(255,255,255,0.7)] ${scoreSurface(score.total_score)}`}>
+                                        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#7b6a46]">总分</p>
+                                        <p className={`mt-1 text-4xl font-black ${scoreTone(score.total_score)}`}>{score.total_score}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-4 xl:grid-cols-2">
+                                <div className="rounded-[28px] bg-white/72 px-4 py-4 shadow-[6px_6px_14px_rgba(15,23,42,0.05),-6px_-6px_14px_rgba(255,255,255,0.68)]">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#6366f1]">Target Sentence</p>
+                                    <p className="mt-2 text-[15px] font-semibold leading-7 text-[#1f2435]">{payload.source_sentence_en}</p>
+                                </div>
+
+                                <div className="rounded-[28px] bg-white/72 px-4 py-4 shadow-[6px_6px_14px_rgba(15,23,42,0.05),-6px_-6px_14px_rgba(255,255,255,0.68)]">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#047857]">你的仿写</p>
+                                    <p className="mt-2 text-[15px] font-semibold leading-7 text-[#1f2435]">{payload.user_rewrite_en}</p>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                {[
+                                    { label: "语法", value: score.dimension_scores.grammar },
+                                    { label: "词汇", value: score.dimension_scores.vocabulary },
+                                    { label: "内容", value: score.dimension_scores.semantics },
+                                    { label: "仿写度", value: score.dimension_scores.imitation },
+                                ].map((item) => (
+                                    <div key={item.label} className="rounded-[24px] bg-white/72 px-4 py-3 text-center shadow-[6px_6px_14px_rgba(15,23,42,0.05),-6px_-6px_14px_rgba(255,255,255,0.68)]">
+                                        <p className="text-[11px] font-black tracking-[0.08em] text-[#7b6a46]">{item.label}</p>
+                                        <p className={`mt-1 text-2xl font-black ${scoreTone(item.value)}`}>{item.value}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+                                <div className="rounded-[28px] bg-[#dff7e9] px-4 py-4 shadow-[6px_6px_14px_rgba(15,23,42,0.05),-6px_-6px_14px_rgba(255,255,255,0.68)]">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#047857]">灵感提示</p>
+                                    <p className="mt-2 text-[13px] leading-6 text-[#214a3b]">{payload.imitation_prompt_cn}</p>
+                                </div>
+                                <div className="rounded-[28px] bg-[#efe7fb] px-4 py-4 shadow-[6px_6px_14px_rgba(15,23,42,0.05),-6px_-6px_14px_rgba(255,255,255,0.68)]">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#6d28d9]">结构焦点</p>
+                                    <p className="mt-2 text-[13px] leading-6 text-[#43206c]">{payload.pattern_focus_cn}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 lg:min-h-0 lg:grid-rows-[auto_auto_auto_1fr_auto]">
+                            <div className="rounded-[28px] bg-white/72 px-4 py-4 shadow-[6px_6px_14px_rgba(15,23,42,0.05),-6px_-6px_14px_rgba(255,255,255,0.68)]">
+                                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#7b6a46]">反馈</p>
+                                <p className="mt-2 text-[13px] leading-6 text-[#2e3040]">{score.feedback_cn}</p>
+                            </div>
+
+                            {score.better_version_en ? (
+                                <div className="rounded-[28px] bg-[#eef1f8] px-4 py-4 shadow-[inset_4px_4px_10px_rgba(15,23,42,0.04),inset_-4px_-4px_10px_rgba(255,255,255,0.72)]">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#6366f1]">推荐改写</p>
+                                    <p className="mt-2 text-[13px] leading-6 text-[#1f2435]">{score.better_version_en}</p>
+                                </div>
+                            ) : null}
+
+                            <div className={`rounded-[24px] border px-4 py-3 text-[12px] font-bold ${scoreSurface(score.total_score)} ${scoreTone(score.total_score)}`}>
+                                <div className="flex items-center gap-2">
+                                    {score.copy_penalty_applied ? (
+                                        <TriangleAlert className="h-4 w-4" />
+                                    ) : (
+                                        <CircleCheckBig className="h-4 w-4" />
+                                    )}
+                                    <span>
+                                        相似度 {Math.round(score.copy_similarity * 100)}%
+                                        {score.copy_penalty_applied ? "，已触发仿写度降分。" : "，未触发照抄惩罚。"}
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-4 lg:min-h-0 lg:grid-cols-2">
+                                <div className="rounded-[28px] bg-white/72 px-4 py-4 shadow-[6px_6px_14px_rgba(15,23,42,0.05),-6px_-6px_14px_rgba(255,255,255,0.68)]">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#7b6a46]">提升建议</p>
+                                    <div className="mt-2 space-y-2">
+                                        {(score.improvement_points_cn ?? []).slice(0, 3).map((point, idx) => (
+                                            <p key={`${point}-${idx}`} className="text-[13px] leading-6 text-[#2e3040]">
+                                                {idx + 1}. {point}
+                                            </p>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="rounded-[28px] bg-white/72 px-4 py-4 shadow-[6px_6px_14px_rgba(15,23,42,0.05),-6px_-6px_14px_rgba(255,255,255,0.68)]">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-[#7b6a46]">批改修订</p>
+                                    <div className="mt-2 space-y-2">
+                                        {(score.corrections ?? []).slice(0, 3).map((item, idx) => (
+                                            <div key={`${item.segment}-${idx}`} className="rounded-[18px] bg-[#fff7df] px-3 py-2">
+                                                <p className="text-[12px] font-black text-[#9a6700]">
+                                                    {item.segment} → {item.correction}
+                                                </p>
+                                                <p className="mt-1 text-[12px] leading-5 text-[#5d5544]">{item.reason}</p>
+                                            </div>
+                                        ))}
+                                        {!(score.corrections ?? []).length ? (
+                                            <p className="text-[13px] leading-6 text-[#2e3040]">这一句没有明显硬伤，可以直接继续下一题。</p>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap gap-3 pt-1">
+                                <Link
+                                    href={`/read/rewrite?id=${payload.rewriteId}`}
+                                    className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2.5 text-[12px] font-black text-[#585a68] shadow-[6px_6px_14px_rgba(15,23,42,0.08),-6px_-6px_14px_rgba(255,255,255,0.7)] transition hover:scale-[1.02]"
+                                >
+                                    <RotateCcw className="h-3.5 w-3.5" />
+                                    返回仿写页
+                                </Link>
+                                <button
+                                    onClick={handleContinueNext}
+                                    disabled={isContinuing}
+                                    className="inline-flex items-center gap-2 rounded-full bg-[#f6ad55] px-4 py-2.5 text-[12px] font-black text-white shadow-[8px_8px_18px_rgba(15,23,42,0.12),-6px_-6px_14px_rgba(255,255,255,0.24)] transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {isContinuing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                                    继续抽一句
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </section>
             </div>
         </main>
-    );
-}
-
-import { Suspense } from "react";
-
-export default function RewriteScorePage() {
-    return (
-        <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
-            <RewriteScoreContent />
-        </Suspense>
     );
 }

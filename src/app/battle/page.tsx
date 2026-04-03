@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useEffect, useCallback, type ComponentType } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { DrillCore } from "@/components/drill/DrillCore";
 import { Zap, ChevronRight, Lock, House, Sword, CircleHelp, X, Headphones, BookOpen, Feather, Gauge, Coins, Gift, Blocks } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,6 +12,7 @@ import { EloChart } from "@/components/battle/EloChart";
 import { BattleDrillSelection, shouldRefreshBattleChart } from "@/lib/battleUiState";
 import { TOPICS } from "@/lib/battle-topics";
 import { RANDOM_SCENARIO_TOPIC } from "@/lib/battle-quickmatch-topics";
+import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -326,6 +327,8 @@ export default function BattlePage() {
         return saved === "bank" ? "bank" : "ai";
     };
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const prefersReducedMotion = useReducedMotion();
     const [activeDrill, setActiveDrill] = useState<BattleDrillSelection | null>(null);
     const [eloRating, setEloRating] = useState(400); // Translation
     const [listeningElo, setListeningElo] = useState(400); // Listening
@@ -384,11 +387,14 @@ export default function BattlePage() {
         setNavTransition(target);
         setTimeout(() => {
             router.push(target === "home" ? "/?from=battle" : "/read?from=battle");
-        }, target === "home" ? 760 : 560);
+        }, prefersReducedMotion ? 160 : target === "home" ? 760 : 560);
     };
 
     const rebuildBattleRank = getRank(rebuildBattleElo);
     const rebuildTier = getRebuildPracticeTier(rebuildPracticeElo);
+    const routeFrom = searchParams.get("from");
+    const hasBattleEntry = routeFrom === "home" || routeFrom === "read";
+    const battleIntroEase = [0.22, 1, 0.36, 1] as const;
     const activeModeDifficultyElo = battleMode === "translation"
         ? eloRating
         : battleMode === "dictation"
@@ -611,10 +617,18 @@ export default function BattlePage() {
 
             <motion.div
                 className="relative z-10 mx-auto max-w-6xl px-5 py-10 md:px-6 md:py-16"
+                initial={prefersReducedMotion
+                    ? false
+                    : {
+                        opacity: 0,
+                        y: hasBattleEntry ? 24 : 14,
+                        scale: 0.988,
+                        filter: "blur(14px)",
+                    }}
                 animate={navTransition
                     ? { opacity: 0, y: 16, scale: 0.985, filter: "blur(8px)" }
                     : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                transition={{ duration: 0.58, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: prefersReducedMotion ? 0.18 : 0.58, ease: battleIntroEase }}
             >
                 <div className="mb-10 flex justify-center">
                     <div className={cn("flex w-full max-w-3xl flex-wrap items-center justify-center gap-3 px-4 py-3 md:px-5", chunkySurfaceSoft)}>
@@ -623,8 +637,9 @@ export default function BattlePage() {
                             animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
                             transition={{ delay: 0.02, duration: 0.86, ease: [0.16, 1, 0.3, 1] }}
                             onClick={() => handleNavigateWithCard("home")}
-                            className="inline-flex h-14 w-14 items-center justify-center rounded-[1.35rem] border-4 border-[#b8ccff] bg-[#edf4ff] text-[#2254d1] shadow-[0_6px_0_rgba(223,233,255,0.95)] transition hover:-translate-y-0.5 hover:bg-[#e3edff]"
-                            whileTap={{ scale: 0.96 }}
+                            className="ui-pressable inline-flex h-14 w-14 items-center justify-center rounded-[1.35rem] border-4 border-[#b8ccff] bg-[#edf4ff] text-[#2254d1] hover:bg-[#e3edff]"
+                            style={getPressableStyle("rgba(223,233,255,0.95)", 6)}
+                            whileTap={getPressableTap(Boolean(prefersReducedMotion), 6, 0.96)}
                             aria-label="返回欢迎页"
                         >
                             <House className="h-6 w-6" />
@@ -635,7 +650,8 @@ export default function BattlePage() {
                         <button
                             type="button"
                             onClick={() => handleNavigateWithCard("read")}
-                            className={cn("inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 px-4 py-2.5 text-sm font-bold shadow-[0_6px_0_rgba(232,255,246,0.95)] transition hover:-translate-y-0.5", cuteTone.buttonSecondary)}
+                            className={cn("ui-pressable inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 px-4 py-2.5 text-sm font-bold", cuteTone.buttonSecondary)}
+                            style={getPressableStyle("rgba(232,255,246,0.95)", 6)}
                         >
                             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-current/20 bg-white/70">
                                 <ChevronRight className="h-4 w-4" />
@@ -648,7 +664,8 @@ export default function BattlePage() {
                                 setActiveGuideSection(sectionByMode[battleMode]);
                                 setShowGuide(true);
                             }}
-                            className="inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 border-[#dcc4ff] bg-[#f5edff] px-4 py-2.5 text-sm font-bold text-[#7c3aed] shadow-[0_6px_0_rgba(243,233,255,0.95)] transition hover:-translate-y-0.5 hover:bg-[#efe2ff]"
+                            className="ui-pressable inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 border-[#dcc4ff] bg-[#f5edff] px-4 py-2.5 text-sm font-bold text-[#7c3aed] hover:bg-[#efe2ff]"
+                            style={getPressableStyle("rgba(243,233,255,0.95)", 6)}
                         >
                             <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-current/20 bg-white/70">
                                 <CircleHelp className="h-4 w-4" />
@@ -682,11 +699,12 @@ export default function BattlePage() {
                                         key={tab.key}
                                         onClick={() => setBattleMode(tab.key)}
                                         className={cn(
-                                            "relative z-10 flex min-w-[140px] flex-1 items-center justify-center gap-2 rounded-[1.15rem] px-4 py-3.5 text-sm font-black transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                                            "ui-pressable relative z-10 flex min-w-[140px] flex-1 items-center justify-center gap-2 rounded-[1.15rem] px-4 py-3.5 text-sm font-black transition-all duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]",
                                             battleMode === tab.key
                                                 ? "scale-[1.02] text-stone-900"
                                                 : cuteTone.inactiveTab
                                         )}
+                                        style={getPressableStyle("rgba(238,232,220,0.95)", 4)}
                                     >
                                         <div className={cn("w-2 h-2 rounded-full", battleMode === tab.key ? `${tab.dotClass} animate-pulse` : "bg-stone-300")} />
                                         {tab.label}
@@ -714,11 +732,12 @@ export default function BattlePage() {
                                                 type="button"
                                                 onClick={() => setListeningSourceMode("ai")}
                                                 className={cn(
-                                                    "rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                    "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black",
                                                     listeningSourceMode === "ai"
                                                         ? cuteTone.button
                                                         : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
                                                 )}
+                                                style={getPressableStyle("rgba(238,232,220,0.95)", 4)}
                                             >
                                                 AI 出题
                                             </button>
@@ -726,11 +745,12 @@ export default function BattlePage() {
                                                 type="button"
                                                 onClick={() => setListeningSourceMode("bank")}
                                                 className={cn(
-                                                    "rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                    "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black",
                                                     listeningSourceMode === "bank"
                                                         ? cuteTone.button
                                                         : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
                                                 )}
+                                                style={getPressableStyle("rgba(238,232,220,0.95)", 4)}
                                             >
                                                 题库题
                                             </button>
@@ -754,11 +774,12 @@ export default function BattlePage() {
                                                     type="button"
                                                     onClick={() => setRebuildVariant("sentence")}
                                                     className={cn(
-                                                        "rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                        "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition",
                                                         rebuildVariant === "sentence"
                                                             ? cuteTone.button
                                                             : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
                                                     )}
+                                                    style={getPressableStyle("rgba(238,232,220,0.95)", 4)}
                                                 >
                                                     单句
                                                 </button>
@@ -766,11 +787,12 @@ export default function BattlePage() {
                                                     type="button"
                                                     onClick={() => setRebuildVariant("passage")}
                                                     className={cn(
-                                                        "rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                        "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition",
                                                         rebuildVariant === "passage"
                                                             ? cuteTone.button
                                                             : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
                                                     )}
+                                                    style={getPressableStyle("rgba(238,232,220,0.95)", 4)}
                                                 >
                                                     短文分段
                                                 </button>
@@ -789,11 +811,12 @@ export default function BattlePage() {
                                                             type="button"
                                                             onClick={() => setRebuildSegmentCount(count)}
                                                             className={cn(
-                                                                "rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                                "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition",
                                                                 rebuildSegmentCount === count
                                                                     ? cuteTone.button
                                                                     : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
                                                             )}
+                                                            style={getPressableStyle("rgba(238,232,220,0.95)", 4)}
                                                         >
                                                             {count} 段
                                                         </button>
@@ -807,7 +830,8 @@ export default function BattlePage() {
 
                             <button
                                 onClick={() => setActiveDrill(buildBattleSelection(RANDOM_SCENARIO_TOPIC))}
-                                className={cn("group relative w-full overflow-hidden rounded-[1.6rem] border-4 border-[#e5decd] p-6 text-left transition-all hover:-translate-y-1 md:p-8", cuteTone.cardTint)}
+                                className={cn("ui-pressable group relative w-full overflow-hidden rounded-[1.6rem] border-4 border-[#e5decd] p-6 text-left transition-all md:p-8", cuteTone.cardTint)}
+                                style={getPressableStyle("rgba(238,232,220,0.95)", 6)}
                             >
                                 <div className={cn("absolute inset-0", cuteTone.heroGlow)} />
                                 <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
@@ -930,11 +954,12 @@ export default function BattlePage() {
                                         onClick={() => !isLocked && setActiveDrill(buildBattleSelection(topic.title))}
                                         disabled={isLocked}
                                         className={cn(
-                                            "group relative h-full w-full overflow-hidden rounded-[1.8rem] border-4 p-6 text-left transition-all duration-300",
+                                            "ui-pressable group relative h-full w-full overflow-hidden rounded-[1.8rem] border-4 p-6 text-left transition-all duration-300 disabled:shadow-none",
                                             isLocked
                                                 ? "cursor-not-allowed border-[#ddd5c9] bg-[#f8f4ec] opacity-75"
-                                                : cn("border-[#d3c8b8] bg-white shadow-[0_14px_30px_rgba(199,183,152,0.14),6px_6px_0_rgba(238,232,220,0.95)] hover:-translate-y-1", cuteTone.softTint)
+                                                : cn("border-[#d3c8b8] bg-white", cuteTone.softTint)
                                         )}
+                                        style={getPressableStyle("rgba(238,232,220,0.95)", 6)}
                                     >
                                         {!isLocked ? <div className={cn("absolute inset-0 opacity-60", cuteTone.heroGlow)} /> : null}
                                         <div className={cn("relative z-10 mb-4 inline-flex rounded-[1.25rem] border-4 border-white p-3 shadow-[0_8px_18px_rgba(0,0,0,0.1)] transition-transform group-hover:scale-110", topic.color)}>

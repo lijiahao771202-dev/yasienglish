@@ -1,0 +1,983 @@
+[     540ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[     719ms] [LOG] [HMR] connected @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[     805ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:3000/api/ai/cat/history?limit=48:0
+[     955ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[    1005ms] [LOG] [Fast Refresh] done in 152ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   37137ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   37220ms] [LOG] [Fast Refresh] done in 171ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  154457ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  154593ms] [LOG] [Fast Refresh] done in 220ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  517412ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  517463ms] [LOG] [Fast Refresh] done in 152ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  675163ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  675474ms] [LOG] [Fast Refresh] done in 400ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  676109ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  676179ms] [LOG] [Fast Refresh] done in 171ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  689553ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  689708ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  704920ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  704971ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  707548ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  707588ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  719903ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  719962ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  734378ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  734795ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  734903ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  734965ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  738794ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  738832ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  738984ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  739079ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  739142ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  741453ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  741512ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  754928ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  754963ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  769292ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  769293ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  780262ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  780421ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  784060ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  784121ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  788730ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  788786ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  799070ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  799120ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  799953ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  800075ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  809976ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  810072ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  814059ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  814120ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  829995ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  830002ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  844910ms] [ERROR] ./src/app/read/page.tsx:1756:30
+Parsing ecmascript source code failed
+  1754 |                         <div className="rounded-full border-[3px] border-[#17120d] bg-[#f3e8ff] px-4 py-2 text-center text-sm font-black text-[#7b45e7] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+  1755 |                             {catNotice}
+> 1756 |                 </motion.div>
+       |                              ^
+> 1757 |                     </div>
+       | ^^^^^^^^^^^^^^^^^^^^^
+  1758 |                 ) : null}
+  1759 |                 {!article ? (
+  1760 |                         <div
+
+Expected '</', got 'jsx text (
+                    )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  844962ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  848042ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  848163ms] [ERROR] ./src/app/read/page.tsx:1903:19
+Parsing ecmascript source code failed
+  1901 |                         </motion.div>
+  1902 |                     )}
+> 1903 |             </div>
+       |                   ^
+> 1904 |             </div>
+       | ^^^^^^^^^^^^^
+  1905 |         </main >
+  1906 |     );
+  1907 | }
+
+Expected '</', got 'jsx text (
+            )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  859189ms] [ERROR] ./src/app/read/page.tsx:1903:19
+Parsing ecmascript source code failed
+  1901 |                         </motion.div>
+  1902 |                     )}
+> 1903 |             </div>
+       |                   ^
+> 1904 |             </div>
+       | ^^^^^^^^^^^^^
+  1905 |         </main >
+  1906 |     );
+  1907 | }
+
+Expected '</', got 'jsx text (
+            )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  859228ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  874919ms] [ERROR] ./src/app/read/page.tsx:1903:19
+Parsing ecmascript source code failed
+  1901 |                         </motion.div>
+  1902 |                     )}
+> 1903 |             </div>
+       |                   ^
+> 1904 |             </div>
+       | ^^^^^^^^^^^^^
+  1905 |         </main >
+  1906 |     );
+  1907 | }
+
+Expected '</', got 'jsx text (
+            )'
+
+Import traces:
+  Client Component Browser:
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  874965ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  883352ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  883521ms] [LOG] [Fast Refresh] done in 261ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  951619ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  951655ms] [LOG] [Fast Refresh] done in 138ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  956247ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  956284ms] [LOG] [Fast Refresh] done in 139ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  972404ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  972421ms] [LOG] [Fast Refresh] done in 118ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1054970ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1055117ms] [LOG] [Fast Refresh] done in 233ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1091798ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1091812ms] [LOG] [Fast Refresh] done in 115ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1171826ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1171834ms] [LOG] [Fast Refresh] done in 109ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1332897ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1333016ms] [LOG] [Fast Refresh] done in 195ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1343564ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1343582ms] [LOG] [Fast Refresh] done in 118ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1381252ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1381430ms] [LOG] [Fast Refresh] done in 254ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1386680ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1386696ms] [LOG] [Fast Refresh] done in 119ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1415151ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1415212ms] [LOG] [Fast Refresh] done in 162ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1482998ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1483067ms] [LOG] [Fast Refresh] done in 170ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1504612ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1504692ms] [LOG] [Fast Refresh] done in 181ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1555650ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1555811ms] [LOG] [Fast Refresh] done in 263ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1600534ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1600599ms] [LOG] [Fast Refresh] done in 167ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1637809ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1637928ms] [LOG] [Fast Refresh] done in 220ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1671553ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1671672ms] [LOG] [Fast Refresh] done in 220ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1708012ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1708143ms] [LOG] [Fast Refresh] done in 232ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1719108ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1719506ms] [LOG] [Fast Refresh] done in 499ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1723714ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1723728ms] [LOG] [Fast Refresh] done in 115ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1779396ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1779499ms] [LOG] [Fast Refresh] done in 179ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1784849ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1784869ms] [LOG] [Fast Refresh] done in 122ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1837267ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1837515ms] [LOG] [Fast Refresh] done in 140ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1897673ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1897846ms] [LOG] [Fast Refresh] done in 216ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1900516ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1900551ms] [LOG] [Fast Refresh] done in 138ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1902224ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1902368ms] [LOG] [Fast Refresh] done in 199ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1911276ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1911368ms] [LOG] [Fast Refresh] done in 186ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1976342ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1976350ms] [LOG] [Fast Refresh] done in 109ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2072414ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2072477ms] [LOG] [Fast Refresh] done in 165ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2166926ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2167055ms] [LOG] [Fast Refresh] done in 211ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2295927ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2295959ms] [LOG] [Fast Refresh] done in 133ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2322795ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2322980ms] [LOG] [Fast Refresh] done in 271ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2329862ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2329873ms] [LOG] [Fast Refresh] done in 112ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2399911ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2400061ms] [LOG] [Fast Refresh] done in 233ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2400697ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2400718ms] [LOG] [Fast Refresh] done in 123ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2647644ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2647720ms] [LOG] [Fast Refresh] done in 152ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2655546ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2655596ms] [LOG] [Fast Refresh] done in 151ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2692491ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2692641ms] [LOG] [Fast Refresh] done in 229ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2732129ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2732230ms] [LOG] [Fast Refresh] done in 203ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3210743ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3211581ms] [LOG] [Fast Refresh] done in 905ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3218746ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3219287ms] [LOG] [Fast Refresh] done in 643ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3305087ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3305460ms] [LOG] [Fast Refresh] done in 450ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3322075ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3322448ms] [ERROR] ./src/app/login/page.tsx:3:1
+Module not found: Can't resolve '@/components/auth/AuthShell'
+  1 | import { redirect } from "next/navigation";
+  2 |
+> 3 | import { AuthShell } from "@/components/auth/AuthShell";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { LoginForm } from "@/components/auth/LoginForm";
+  5 | import { getAuthPageErrorMessage } from "@/lib/auth-errors";
+  6 | import { APP_HOME_PATH } from "@/lib/auth-routing";
+
+Import map: aliased to relative './src/components/auth/AuthShell' inside of [project]/
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3322448ms] [ERROR] ./src/app/register/page.tsx:3:1
+Module not found: Can't resolve '@/components/auth/AuthShell'
+  1 | import { redirect } from "next/navigation";
+  2 |
+> 3 | import { AuthShell } from "@/components/auth/AuthShell";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { RegisterForm } from "@/components/auth/RegisterForm";
+  5 | import { getAuthPageErrorMessage } from "@/lib/auth-errors";
+  6 | import { APP_HOME_PATH } from "@/lib/auth-routing";
+
+Import map: aliased to relative './src/components/auth/AuthShell' inside of [project]/
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3336077ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3336424ms] [ERROR] ./src/app/login/page.tsx:3:1
+Module not found: Can't resolve '@/components/auth/AuthShell'
+  1 | import { redirect } from "next/navigation";
+  2 |
+> 3 | import { AuthShell } from "@/components/auth/AuthShell";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { LoginForm } from "@/components/auth/LoginForm";
+  5 | import { getAuthPageErrorMessage } from "@/lib/auth-errors";
+  6 | import { APP_HOME_PATH } from "@/lib/auth-routing";
+
+Import map: aliased to relative './src/components/auth/AuthShell' inside of [project]/
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3336425ms] [ERROR] ./src/app/register/page.tsx:3:1
+Module not found: Can't resolve '@/components/auth/AuthShell'
+  1 | import { redirect } from "next/navigation";
+  2 |
+> 3 | import { AuthShell } from "@/components/auth/AuthShell";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { RegisterForm } from "@/components/auth/RegisterForm";
+  5 | import { getAuthPageErrorMessage } from "@/lib/auth-errors";
+  6 | import { APP_HOME_PATH } from "@/lib/auth-routing";
+
+Import map: aliased to relative './src/components/auth/AuthShell' inside of [project]/
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3348548ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3348651ms] [ERROR] ./src/app/login/page.tsx:3:1
+Module not found: Can't resolve '@/components/auth/AuthShell'
+  1 | import { redirect } from "next/navigation";
+  2 |
+> 3 | import { AuthShell } from "@/components/auth/AuthShell";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { LoginForm } from "@/components/auth/LoginForm";
+  5 | import { getAuthPageErrorMessage } from "@/lib/auth-errors";
+  6 | import { APP_HOME_PATH } from "@/lib/auth-routing";
+
+Import map: aliased to relative './src/components/auth/AuthShell' inside of [project]/
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3348652ms] [ERROR] ./src/app/register/page.tsx:3:1
+Module not found: Can't resolve '@/components/auth/AuthShell'
+  1 | import { redirect } from "next/navigation";
+  2 |
+> 3 | import { AuthShell } from "@/components/auth/AuthShell";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { RegisterForm } from "@/components/auth/RegisterForm";
+  5 | import { getAuthPageErrorMessage } from "@/lib/auth-errors";
+  6 | import { APP_HOME_PATH } from "@/lib/auth-routing";
+
+Import map: aliased to relative './src/components/auth/AuthShell' inside of [project]/
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3374124ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3374288ms] [ERROR] ./src/app/login/page.tsx:3:1
+Module not found: Can't resolve '@/components/auth/AuthShell'
+  1 | import { redirect } from "next/navigation";
+  2 |
+> 3 | import { AuthShell } from "@/components/auth/AuthShell";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { LoginForm } from "@/components/auth/LoginForm";
+  5 | import { getAuthPageErrorMessage } from "@/lib/auth-errors";
+  6 | import { APP_HOME_PATH } from "@/lib/auth-routing";
+
+Import map: aliased to relative './src/components/auth/AuthShell' inside of [project]/
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3374288ms] [ERROR] ./src/app/register/page.tsx:3:1
+Module not found: Can't resolve '@/components/auth/AuthShell'
+  1 | import { redirect } from "next/navigation";
+  2 |
+> 3 | import { AuthShell } from "@/components/auth/AuthShell";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { RegisterForm } from "@/components/auth/RegisterForm";
+  5 | import { getAuthPageErrorMessage } from "@/lib/auth-errors";
+  6 | import { APP_HOME_PATH } from "@/lib/auth-routing";
+
+Import map: aliased to relative './src/components/auth/AuthShell' inside of [project]/
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3386173ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3386221ms] [ERROR] ./src/app/login/page.tsx:3:1
+Module not found: Can't resolve '@/components/auth/AuthShell'
+  1 | import { redirect } from "next/navigation";
+  2 |
+> 3 | import { AuthShell } from "@/components/auth/AuthShell";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { LoginForm } from "@/components/auth/LoginForm";
+  5 | import { getAuthPageErrorMessage } from "@/lib/auth-errors";
+  6 | import { APP_HOME_PATH } from "@/lib/auth-routing";
+
+Import map: aliased to relative './src/components/auth/AuthShell' inside of [project]/
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3386221ms] [ERROR] ./src/app/register/page.tsx:3:1
+Module not found: Can't resolve '@/components/auth/AuthShell'
+  1 | import { redirect } from "next/navigation";
+  2 |
+> 3 | import { AuthShell } from "@/components/auth/AuthShell";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { RegisterForm } from "@/components/auth/RegisterForm";
+  5 | import { getAuthPageErrorMessage } from "@/lib/auth-errors";
+  6 | import { APP_HOME_PATH } from "@/lib/auth-routing";
+
+Import map: aliased to relative './src/components/auth/AuthShell' inside of [project]/
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3392458ms] [ERROR] ./src/app/login/page.tsx:3:1
+Module not found: Can't resolve '@/components/auth/AuthShell'
+  1 | import { redirect } from "next/navigation";
+  2 |
+> 3 | import { AuthShell } from "@/components/auth/AuthShell";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { LoginForm } from "@/components/auth/LoginForm";
+  5 | import { getAuthPageErrorMessage } from "@/lib/auth-errors";
+  6 | import { APP_HOME_PATH } from "@/lib/auth-routing";
+
+Import map: aliased to relative './src/components/auth/AuthShell' inside of [project]/
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3392458ms] [ERROR] ./src/app/register/page.tsx:3:1
+Module not found: Can't resolve '@/components/auth/AuthShell'
+  1 | import { redirect } from "next/navigation";
+  2 |
+> 3 | import { AuthShell } from "@/components/auth/AuthShell";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { RegisterForm } from "@/components/auth/RegisterForm";
+  5 | import { getAuthPageErrorMessage } from "@/lib/auth-errors";
+  6 | import { APP_HOME_PATH } from "@/lib/auth-routing";
+
+Import map: aliased to relative './src/components/auth/AuthShell' inside of [project]/
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3392521ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3405692ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3405994ms] [LOG] [Fast Refresh] done in 379ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3406148ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3406188ms] [LOG] [Fast Refresh] done in 142ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3419792ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3419896ms] [LOG] [Fast Refresh] done in 187ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3427542ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3427579ms] [LOG] [Fast Refresh] done in 139ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3430830ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3430907ms] [LOG] [Fast Refresh] done in 162ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3437929ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3438090ms] [LOG] [Fast Refresh] done in 238ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3443858ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3443872ms] [LOG] [Fast Refresh] done in 117ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3444028ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3444051ms] [LOG] [Fast Refresh] done in 124ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3471983ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3472159ms] [LOG] [Fast Refresh] done in 246ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3498054ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3498107ms] [LOG] [Fast Refresh] done in 154ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3500173ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3500363ms] [LOG] [Fast Refresh] done in 254ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3549594ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3549713ms] [LOG] [Fast Refresh] done in 206ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3553742ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3553775ms] [LOG] [Fast Refresh] done in 135ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3568109ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3568257ms] [LOG] [Fast Refresh] done in 237ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3600937ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3601052ms] [LOG] [Fast Refresh] done in 203ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3620232ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3620378ms] [LOG] [Fast Refresh] done in 229ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3626078ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3626151ms] [LOG] [Fast Refresh] done in 175ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3669698ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3669785ms] [LOG] [Fast Refresh] done in 168ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3684033ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3684084ms] [LOG] [Fast Refresh] done in 132ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3697438ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3697697ms] [ERROR] ./src/components/auth/AuthShell.tsx:125:13
+Parsing ecmascript source code failed
+  123 |                     </div>
+  124 |                 </div>
+> 125 |             </div>
+      |             ^
+  126 |         </main>
+  127 |     );
+  128 | }
+
+Expression expected
+
+Import trace:
+  Server Component:
+    ./src/components/auth/AuthShell.tsx
+    ./src/app/login/page.tsx @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3697697ms] [ERROR] ./src/components/auth/AuthShell.tsx:125:14
+Parsing ecmascript source code failed
+  123 |                     </div>
+  124 |                 </div>
+> 125 |             </div>
+      |              ^^^^^
+  126 |         </main>
+  127 |     );
+  128 | }
+
+Unterminated regexp literal
+
+Import trace:
+  Server Component:
+    ./src/components/auth/AuthShell.tsx
+    ./src/app/login/page.tsx @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3711937ms] [ERROR] ./src/components/auth/AuthShell.tsx:125:13
+Parsing ecmascript source code failed
+  123 |                     </div>
+  124 |                 </div>
+> 125 |             </div>
+      |             ^
+  126 |         </main>
+  127 |     );
+  128 | }
+
+Expression expected
+
+Import trace:
+  Server Component:
+    ./src/components/auth/AuthShell.tsx
+    ./src/app/login/page.tsx @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3711937ms] [ERROR] ./src/components/auth/AuthShell.tsx:125:14
+Parsing ecmascript source code failed
+  123 |                     </div>
+  124 |                 </div>
+> 125 |             </div>
+      |              ^^^^^
+  126 |         </main>
+  127 |     );
+  128 | }
+
+Unterminated regexp literal
+
+Import trace:
+  Server Component:
+    ./src/components/auth/AuthShell.tsx
+    ./src/app/login/page.tsx @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3712006ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3726929ms] [ERROR] ./src/components/auth/AuthShell.tsx:125:13
+Parsing ecmascript source code failed
+  123 |                     </div>
+  124 |                 </div>
+> 125 |             </div>
+      |             ^
+  126 |         </main>
+  127 |     );
+  128 | }
+
+Expression expected
+
+Import trace:
+  Server Component:
+    ./src/components/auth/AuthShell.tsx
+    ./src/app/login/page.tsx @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3726929ms] [ERROR] ./src/components/auth/AuthShell.tsx:125:14
+Parsing ecmascript source code failed
+  123 |                     </div>
+  124 |                 </div>
+> 125 |             </div>
+      |              ^^^^^
+  126 |         </main>
+  127 |     );
+  128 | }
+
+Unterminated regexp literal
+
+Import trace:
+  Server Component:
+    ./src/components/auth/AuthShell.tsx
+    ./src/app/login/page.tsx @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 3726997ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3733474ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3733594ms] [LOG] [Fast Refresh] done in 185ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3738496ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3738539ms] [LOG] [Fast Refresh] done in 143ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3745742ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3745788ms] [LOG] [Fast Refresh] done in 147ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3762034ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 3762071ms] [LOG] [Fast Refresh] done in 138ms @ http://127.0.0.1:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
