@@ -1,0 +1,165 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e4]:
+        - generic [ref=e5]:
+          - button "返回首页" [ref=e6]:
+            - img [ref=e7]
+          - paragraph [ref=e9]: Alchemist Audio
+        - navigation [ref=e10]:
+          - generic [ref=e11]: Library
+          - generic [ref=e12]: Sessions
+          - generic [ref=e13]: Insights
+        - generic [ref=e14]: Listening Cabin
+      - generic [ref=e15]:
+        - generic [ref=e16]:
+          - generic [ref=e18]:
+            - generic [ref=e19]:
+              - generic [ref=e20]:
+                - paragraph [ref=e21]: Describe Your Script
+                - paragraph [ref=e22]: Paint the scene, production angle, listening level, and what the learner should feel.
+              - generic [ref=e23]: Intentive Mode
+            - textbox "e.g. A warm product update for a small creative team, with natural pacing and encouraging language." [ref=e25]: 做一个 B1 难度的产品经理晨会英语口播，语气自然流畅，适合逐句精听。
+            - generic [ref=e26]:
+              - button "日常对话" [ref=e27]
+              - button "故事讲述" [ref=e28]
+              - button "新闻解释" [ref=e29]
+              - button "职场沟通" [ref=e30]
+              - button "旅行场景" [ref=e31]
+              - button "面试表达" [ref=e32]
+              - button "学术短讲" [ref=e33]
+          - generic [ref=e34]:
+            - generic [ref=e35]:
+              - img [ref=e37]
+              - generic [ref=e38]:
+                - paragraph [ref=e39]: Fine-Tune Audio
+                - paragraph [ref=e40]: Shape the accent, density, and pace before the script is generated.
+            - generic [ref=e41]:
+              - generic [ref=e42]:
+                - text: Voice
+                - combobox "Voice" [ref=e44]:
+                  - option "Ava"
+                  - option "Aria"
+                  - option "Emma"
+                  - option "Andrew"
+                  - option "Brian"
+                  - option "Christopher"
+                  - option "Eric"
+                  - option "Guy"
+                  - option "Michelle"
+                  - option "Roger"
+                  - option "Steffan"
+                  - option "Ana"
+                  - option "Andrew Multi"
+                  - option "Ava Multi"
+                  - option "Brian Multi"
+                  - option "Emma Multi"
+                  - option "Jenny" [selected]
+              - generic [ref=e45]:
+                - text: CEFR Level
+                - generic [ref=e46]:
+                  - button "A1" [ref=e47]
+                  - button "A2" [ref=e48]
+                  - button "B1" [ref=e49]
+                  - button "B2" [ref=e50]
+                  - button "C1" [ref=e51]
+                  - button "C2" [ref=e52]
+              - generic [ref=e53]:
+                - text: Appearance
+                - generic [ref=e54]:
+                  - generic [ref=e55]:
+                    - generic [ref=e56]: Slow
+                    - generic [ref=e57]: 1.00x
+                  - slider [ref=e58]: "1"
+              - generic [ref=e59]:
+                - text: Material Volume
+                - generic [ref=e60]:
+                  - combobox [ref=e62]:
+                    - option "2 min"
+                    - option "3 min" [selected]
+                    - option "5 min"
+                    - option "8 min"
+                    - option "10 min"
+                  - combobox [ref=e64]:
+                    - option "4 lines"
+                    - option "5 lines"
+                    - option "6 lines" [selected]
+                    - option "8 lines"
+                    - option "10 lines"
+                    - option "12 lines"
+            - button "Show Chinese translation The player follows this default when you open immersive mode." [ref=e65]:
+              - generic [ref=e66]:
+                - paragraph [ref=e67]: Show Chinese translation
+                - paragraph [ref=e68]: The player follows this default when you open immersive mode.
+          - generic [ref=e71]:
+            - generic [ref=e72]:
+              - img [ref=e74]
+              - generic [ref=e77]:
+                - paragraph [ref=e78]: Learning Focus Targets
+                - paragraph [ref=e79]: "Add just enough pressure: linking, weak forms, numbers, or fast spoken rhythm."
+            - generic [ref=e80]:
+              - button "弱读缩读" [ref=e81]:
+                - generic [ref=e82]: 弱读缩读
+              - button "连读" [ref=e84]:
+                - generic [ref=e85]: 连读
+              - button "日常词汇" [ref=e87]:
+                - generic [ref=e88]: 日常词汇
+              - button "商务词汇" [ref=e90]:
+                - generic [ref=e91]: 商务词汇
+              - button "数字日期" [ref=e93]:
+                - generic [ref=e94]: 数字日期
+              - button "快语速" [ref=e96]:
+                - generic [ref=e97]: 快语速
+              - button "口音暴露" [ref=e99]:
+                - generic [ref=e100]: 口音暴露
+            - button "Generate Script" [ref=e102]:
+              - img [ref=e103]
+              - text: Generate Script
+          - generic [ref=e106]:
+            - generic [ref=e107]:
+              - img [ref=e109]
+              - generic [ref=e111]:
+                - paragraph [ref=e112]: Generated Script Preview
+                - paragraph [ref=e113]: Review the exact subtitle rhythm before entering the immersive player.
+            - generic [ref=e115]: Generate your first script and the sentence-by-sentence preview will appear here.
+        - complementary [ref=e116]:
+          - generic [ref=e117]:
+            - generic [ref=e118]: Your Session
+            - generic [ref=e119]:
+              - generic [ref=e120]:
+                - paragraph [ref=e121]: Session Title
+                - heading "Intentive view" [level=2] [ref=e122]
+                - paragraph [ref=e123]: A curated listening chamber for one continuous voice-over script.
+              - generic [ref=e124]:
+                - generic [ref=e125]:
+                  - paragraph [ref=e126]: Accent
+                  - paragraph [ref=e127]: Jenny
+                - generic [ref=e128]:
+                  - paragraph [ref=e129]: Duration
+                  - paragraph [ref=e130]: 3 min
+                - generic [ref=e131]:
+                  - paragraph [ref=e132]: Density
+                  - paragraph [ref=e133]: 6 lines
+              - button "Enter Immersive View" [disabled] [ref=e134]:
+                - img [ref=e135]
+                - text: Enter Immersive View
+          - generic [ref=e137]:
+            - generic [ref=e138]:
+              - generic [ref=e139]:
+                - paragraph [ref=e140]: Your Path
+                - heading "Recent Library" [level=3] [ref=e141]
+              - img [ref=e142]
+            - generic [ref=e147]: No archive yet. Your generated monologues will appear here.
+          - generic [ref=e148]:
+            - generic [ref=e149]:
+              - img [ref=e151]
+              - generic [ref=e154]:
+                - paragraph [ref=e155]: Flow
+                - paragraph [ref=e156]: Create → Preview → Immerse
+            - generic [ref=e157]:
+              - paragraph [ref=e158]: Describe the voice-over you want.
+              - paragraph [ref=e159]: Preview sentence rhythm and bilingual subtitles.
+              - paragraph [ref=e160]: Open the full-screen chamber and let the monologue carry the session.
+  - button "Open Next.js Dev Tools" [ref=e166] [cursor=pointer]:
+    - img [ref=e167]
+  - alert [ref=e170]

@@ -191,6 +191,7 @@ function isArticleItem(value: unknown): value is ArticleItem {
 
 export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }: RecommendedArticlesProps) {
     const prefersReducedMotion = useReducedMotion();
+    const reducedMotion = Boolean(prefersReducedMotion);
     const silentImageHydrationRef = useRef<Record<string, boolean>>({});
     const [articles, setArticles] = useState<ArticleItem[]>([]);
     const [category, setCategory] = useState<FeedCategory>('cat_mode');
@@ -930,7 +931,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             type="button"
                                             onClick={() => setGenDifficulty(diff.id)}
                                             whileHover={{ y: -2 }}
-                                            whileTap={getPressableTap(prefersReducedMotion, 6, 0.985)}
+                                            whileTap={getPressableTap(reducedMotion, 6, 0.985)}
                                             style={getPressableStyle("#d8d3cb", 6)}
                                             className={cn(
                                                 "ui-pressable group relative overflow-hidden rounded-[24px] border-4 p-4 text-left transition-all duration-350",
@@ -977,7 +978,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             type="button"
                                             onClick={() => setGenTopic(topic)}
                                             whileHover={{ y: -1, scale: 1.02 }}
-                                            whileTap={getPressableTap(prefersReducedMotion, 4, 0.98)}
+                                            whileTap={getPressableTap(reducedMotion, 4, 0.98)}
                                             style={getPressableStyle(genTopic === topic ? "#374151" : "#d8d3cb", 4)}
                                             className={cn(
                                                 "ui-pressable rounded-full border-2 px-3.5 py-1.5 text-xs font-black transition-all duration-250",
@@ -1005,7 +1006,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                         onClick={handleGenerate}
                                         disabled={isGenerating}
                                         whileHover={isGenerating ? undefined : { y: -1, scale: 1.01 }}
-                                        whileTap={isGenerating ? undefined : getPressableTap(prefersReducedMotion, 6, 0.985)}
+                                        whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 6, 0.985)}
                                         style={getPressableStyle(isGenerating ? "#d8d3cb" : "#1d4ed8", 6)}
                                         className={cn(
                                             "ui-pressable group relative overflow-hidden rounded-full px-5 py-3 text-sm font-black transition-all duration-300 disabled:shadow-none",
