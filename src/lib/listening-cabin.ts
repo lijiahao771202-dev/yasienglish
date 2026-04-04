@@ -37,7 +37,7 @@ export type ListeningCabinScriptMode = "monologue" | "dialogue" | "podcast";
 export type ListeningCabinThinkingMode = "standard" | "deep";
 export type ListeningCabinLexicalDensity = "safe" | "balanced" | "challenging";
 export type ListeningCabinSentenceLength = "short" | "medium" | "long";
-export type ListeningCabinScriptLength = "short" | "medium" | "long";
+export type ListeningCabinScriptLength = "short" | "medium" | "long" | "ultra_long";
 export type ListeningCabinSpeakerStrategy = "fixed" | "random_single" | "mixed_dialogue";
 export type ListeningCabinSentenceEmotion =
     | "neutral"
@@ -242,6 +242,7 @@ export const LISTENING_CABIN_SCRIPT_LENGTH_OPTIONS: Array<Option<ListeningCabinS
     { value: "short", label: "短文", hint: "轻量练习，快速开练。" },
     { value: "medium", label: "中文", hint: "中篇幅，适合完整一轮训练。" },
     { value: "long", label: "长文", hint: "完整沉浸，约 10 分钟上下。" },
+    { value: "ultra_long", label: "超长", hint: "更长篇幅，适合深度沉浸和耐力训练。" },
 ];
 
 export const LISTENING_CABIN_SPEAKER_STRATEGY_OPTIONS: Array<Option<ListeningCabinSpeakerStrategy>> = [
@@ -265,6 +266,7 @@ export const LISTENING_CABIN_PLAYBACK_RATE_OPTIONS = [0.85, 0.95, 1, 1.1, 1.2];
 export const LISTENING_CABIN_MULTI_SPEAKER_MIN = 2;
 export const LISTENING_CABIN_MULTI_SPEAKER_MAX = 4;
 export const LISTENING_CABIN_RANDOM_TOPIC_POOL_SIZE_PER_MODE = 2500;
+export { TTS_VOICE_OPTIONS };
 
 const LISTENING_CABIN_LEGACY_STYLE_MAP: Record<ListeningCabinLegacyScriptStyle, ListeningCabinScriptStyle> = {
     daily_conversation: "natural",
@@ -555,11 +557,11 @@ export function isListeningCabinMultiSpeakerMode(scriptMode: ListeningCabinScrip
     return scriptMode !== "monologue";
 }
 
-function getVoiceLabel(voice: TtsVoice) {
+export function getVoiceLabel(voice: TtsVoice) {
     return TTS_VOICE_LABEL_MAP.get(voice) ?? voice;
 }
 
-function normalizeListeningCabinVoice(value: unknown, fallback: TtsVoice) {
+export function normalizeListeningCabinVoice(value: unknown, fallback: TtsVoice) {
     const normalized = normalizeVoice(value, fallback);
     if (ENGLISH_TTS_VOICE_SET.has(normalized)) {
         return normalized;
@@ -587,7 +589,7 @@ function nextUnusedVoice(used: Set<TtsVoice>, fallback: TtsVoice) {
     return candidate ?? fallback;
 }
 
-function ensureUniqueVoiceAssignments(
+export function ensureUniqueVoiceAssignments(
     assignments: ListeningCabinSpeakerAssignment[],
     fallbackVoice: TtsVoice,
 ) {
@@ -604,7 +606,7 @@ function ensureUniqueVoiceAssignments(
     });
 }
 
-function buildDefaultMultiSpeakerAssignments(
+export function buildDefaultMultiSpeakerAssignments(
     _scriptMode: Exclude<ListeningCabinScriptMode, "monologue">,
     primaryVoice: TtsVoice,
 ): ListeningCabinSpeakerAssignment[] {
@@ -883,6 +885,7 @@ export function resolveListeningCabinLengthProfile(
         short: { minutes: 2.2, words: 200 },
         medium: { minutes: 4.5, words: 520 },
         long: { minutes: 10, words: 1320 },
+        ultra_long: { minutes: 18, words: 2400 },
     };
     const sentenceLengthTarget: Record<ListeningCabinSentenceLength, { min: number; max: number }> = {
         short: { min: 7, max: 13 },
@@ -997,6 +1000,7 @@ Strict writing constraints:
 - english must sound spoken, rhythmic, and life-like.
 - chinese should be concise and easy to map to the spoken line.
 - Use punctuation naturally to express emotion (comma, ellipsis, question mark, exclamation) without overusing.
+- You may use occasional natural repetition to express hesitation, emphasis, correction, or emotional pressure, for example repeating a word or short phrase once ("that, that is not true", "I just, I just froze"), but keep it rare and intentional.
 - No markdown, no extra explanation outside JSON.
 - Avoid rigid templates like "In conclusion", "This essay", "Firstly", "Secondly".
 
@@ -1210,9 +1214,9 @@ export function normalizeListeningCabinSentences(
                 emotion,
                 pace,
                 ...(isListeningCabinMultiSpeakerMode(scriptMode) && speaker ? { speaker } : {}),
-            } satisfies ListeningCabinSentence;
+            } as ListeningCabinSentence;
         })
-        .filter((item): item is ListeningCabinSentence => Boolean(item));
+        .filter((item): item is ListeningCabinSentence => item !== null);
 
     return sentences.slice(0, fallbackCount);
 }

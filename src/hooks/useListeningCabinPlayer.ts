@@ -32,6 +32,8 @@ const STOP_TAIL_BUFFER_MS = 160;
 const STOP_BLEED_GUARD_MS = 56;
 const STOP_MIN_AUDIBLE_WINDOW_MS = 420;
 const STOP_MIN_VALID_OFFSET_FROM_SEEK_MS = 300;
+const SEEK_BACKTRACK_TOLERANCE_MS = 40;
+const SEEK_UNMUTE_EPSILON_MS = 12;
 
 function clampSentenceIndex(index: number, count: number) {
     if (count <= 0) return 0;
@@ -316,6 +318,7 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
     const baseTimingsRef = useRef<ListeningCabinSentenceTiming[]>([]);
     const timingsRef = useRef<ListeningCabinSentenceTiming[]>([]);
     const stopAtMsRef = useRef<number | null>(null);
+    const suppressedUntilMsRef = useRef<number | null>(null);
     const commandTokenRef = useRef(0);
     const stopBoundaryFrameRef = useRef<number | null>(null);
     const isPlayingRef = useRef(false);
@@ -362,6 +365,40 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             anchorMs + STOP_MIN_VALID_OFFSET_FROM_SEEK_MS,
         );
     }, [subtitleChunks]);
+
+    const seekWithinSentence = useCallback((
+        audio: HTMLAudioElement,
+        sentenceIndex: number,
+        mode: ListeningCabinPlaybackMode,
+    ) => {
+        const timing = resolveSafeTimingForSentence(sentenceIndex);
+        const targetMs = timing?.startMs ?? 0;
+        audio.currentTime = targetMs / 1000;
+        audio.playbackRate = playbackRate;
+
+        const actualStartMs = audio.currentTime * 1000;
+        const backwardDriftMs = Math.max(0, targetMs - actualStartMs - SEEK_BACKTRACK_TOLERANCE_MS);
+        const computedStopAtMs = mode === "auto_all"
+            ? null
+            : computeSafeStopAtMs(sentenceIndex, actualStartMs);
+
+        if (backwardDriftMs > 0) {
+            suppressedUntilMsRef.current = Math.max(0, targetMs - SEEK_UNMUTE_EPSILON_MS);
+            audio.muted = true;
+        } else {
+            suppressedUntilMsRef.current = null;
+            audio.muted = false;
+        }
+
+        stopAtMsRef.current = computedStopAtMs === null
+            ? null
+            : computedStopAtMs + backwardDriftMs;
+
+        return {
+            targetMs,
+            actualStartMs,
+        };
+    }, [computeSafeStopAtMs, playbackRate, resolveSafeTimingForSentence]);
 
     useEffect(() => {
         currentSentenceIndexRef.current = currentSentenceIndex;
@@ -492,16 +529,8 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             return;
         }
 
-        const timing = resolveSafeTimingForSentence(nextSentenceIndex);
-        const targetSeconds = timing ? timing.startMs / 1000 : 0;
-
-        audio.currentTime = targetSeconds;
-        audio.playbackRate = playbackRate;
+        seekWithinSentence(audio, nextSentenceIndex, playbackModeRef.current);
         setProgressRatio(audio.duration && Number.isFinite(audio.duration) ? audio.currentTime / audio.duration : 0);
-        const currentMsAfterSeek = audio.currentTime * 1000;
-        stopAtMsRef.current = playbackModeRef.current === "auto_all"
-            ? null
-            : computeSafeStopAtMs(nextSentenceIndex, currentMsAfterSeek);
 
         if (!shouldPlay) {
             audio.pause();
@@ -533,15 +562,19 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             }
             throw error;
         }
-    }, [computeSafeStopAtMs, ensureNarrationReady, persistSessionPatch, playbackRate, resolveSafeTimingForSentence, resolvedSentences.length]);
+    }, [ensureNarrationReady, persistSessionPatch, resolvedSentences.length, seekWithinSentence]);
 
     const replayCurrentSentence = useCallback(async () => {
         await seekToSentence(currentSentenceIndexRef.current, true);
     }, [seekToSentence]);
 
-    const pausePlayback = useCallback(() => {
+        const pausePlayback = useCallback(() => {
         commandTokenRef.current += 1;
         stopAtMsRef.current = null;
+        suppressedUntilMsRef.current = null;
+        if (audioRef.current) {
+            audioRef.current.muted = false;
+        }
         audioRef.current?.pause();
         setIsPlaying(false);
     }, []);
@@ -669,13 +702,7 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
 
             const mode = playbackModeRef.current;
             if (mode === "repeat_current") {
-                const currentTiming = timingsRef.current[currentSentenceIndexRef.current];
-                audio.currentTime = (currentTiming?.startMs ?? 0) / 1000;
-                const currentMsAfterSeek = audio.currentTime * 1000;
-                stopAtMsRef.current = computeSafeStopAtMs(
-                    currentSentenceIndexRef.current,
-                    currentMsAfterSeek,
-                );
+                seekWithinSentence(audio, currentSentenceIndexRef.current, mode);
                 void audio.play().catch(() => undefined);
                 return true;
             }
@@ -732,6 +759,12 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
                 setProgressRatio(audio.currentTime / audio.duration);
             }
 
+             const suppressedUntilMs = suppressedUntilMsRef.current;
+             if (suppressedUntilMs !== null && audio.currentTime * 1000 >= suppressedUntilMs) {
+                 suppressedUntilMsRef.current = null;
+                 audio.muted = false;
+             }
+
             if (enforceStopBoundary()) {
                 return;
             }
@@ -766,10 +799,14 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             setIsPlaying(false);
             setProgressRatio(1);
             stopAtMsRef.current = null;
+            suppressedUntilMsRef.current = null;
+            audio.muted = false;
         };
 
         const handlePause = () => {
             clearStopBoundaryMonitor();
+            suppressedUntilMsRef.current = null;
+            audio.muted = false;
             setIsPlaying(false);
         };
 
@@ -832,7 +869,7 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             }
             audioRef.current = null;
         };
-    }, [computeSafeStopAtMs, persistSessionPatch, resolvedSentences.length, subtitleChunks]);
+    }, [computeSafeStopAtMs, persistSessionPatch, resolvedSentences.length, seekWithinSentence, subtitleChunks]);
 
     useEffect(() => {
         const audio = audioRef.current;
@@ -866,13 +903,8 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
 
             if (mode !== "auto_all") {
                 const audio = audioRef.current;
-                const timing = resolveSafeTimingForSentence(currentSentenceIndexRef.current);
-                if (audio && timing) {
-                    audio.currentTime = timing.startMs / 1000;
-                    stopAtMsRef.current = computeSafeStopAtMs(
-                        currentSentenceIndexRef.current,
-                        audio.currentTime * 1000,
-                    );
+                if (audio) {
+                    seekWithinSentence(audio, currentSentenceIndexRef.current, mode);
                     setProgressRatio(
                         audio.duration && Number.isFinite(audio.duration)
                             ? audio.currentTime / audio.duration
@@ -881,8 +913,14 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
                 }
                 return;
             }
+
+            suppressedUntilMsRef.current = null;
+            const audio = audioRef.current;
+            if (audio) {
+                audio.muted = false;
+            }
         },
-        [computeSafeStopAtMs, computeStopAtMs, resolveSafeTimingForSentence],
+        [computeStopAtMs, seekWithinSentence],
     );
 
     const setSinglePauseMode = useCallback(() => {

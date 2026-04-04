@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
     buildListeningCabinAudioCacheKey,
+    buildListeningCabinPrompt,
     canonicalizeListeningCabinSentenceSpeakers,
     buildListeningCabinMixedAudioCacheKey,
     buildListeningCabinNarrationSegments,
@@ -121,6 +122,14 @@ describe("listening cabin helpers", () => {
         expect(profile.targetWords).toBeGreaterThan(1000);
         expect(profile.sentenceWordRange.min).toBeGreaterThanOrEqual(16);
         expect(profile.targetSentenceRange.max).toBeGreaterThan(profile.targetSentenceRange.min);
+    });
+
+    it("supports an ultra-long profile for extended listening sessions", () => {
+        const profile = resolveListeningCabinLengthProfile("ultra_long", "medium");
+
+        expect(profile.estimatedMinutes).toBe(18);
+        expect(profile.targetWords).toBe(2400);
+        expect(profile.targetWordRange.max).toBeGreaterThan(3000);
     });
 
     it("provides 2500 de-duplicated random topics per mode", () => {
@@ -379,5 +388,24 @@ describe("listening cabin helpers", () => {
 
         expect(sentences[0]?.emotion).toBe("neutral");
         expect(sentences[0]?.pace).toBe("normal");
+    });
+
+    it("asks the model to use rare natural repetition for emotional delivery", () => {
+        const request = normalizeListeningCabinRequest({
+            prompt: "做一个有情绪起伏的单人口播",
+            topicMode: "manual",
+            scriptMode: "monologue",
+            scriptLength: "ultra_long",
+        });
+        const profile = resolveListeningCabinLengthProfile(request.scriptLength, request.sentenceLength);
+        const prompt = buildListeningCabinPrompt({
+            request,
+            effectivePrompt: request.prompt,
+            profile,
+            speakerPlan: request.speakerPlan,
+        });
+
+        expect(prompt).toContain("occasional natural repetition");
+        expect(prompt).toContain("that, that is not true");
     });
 });

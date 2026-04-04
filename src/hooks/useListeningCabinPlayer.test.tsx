@@ -29,12 +29,27 @@ type Deferred<T> = {
     reject: (error: unknown) => void;
 };
 
+let mockSeekSnapbackSeconds = 0;
+
 class MockAudio {
     src = "";
     preload = "auto";
     duration = 9;
-    currentTime = 0;
     paused = true;
+    muted = false;
+
+    private currentTimeValue = 0;
+
+    get currentTime() {
+        return this.currentTimeValue;
+    }
+
+    set currentTime(value: number) {
+        const snappedValue = value > 0
+            ? Math.max(0, value - mockSeekSnapbackSeconds)
+            : value;
+        this.currentTimeValue = snappedValue;
+    }
 
     readonly load = vi.fn(() => {
         this.dispatch("loadedmetadata");
@@ -190,6 +205,7 @@ describe("useListeningCabinPlayer", () => {
 
     beforeEach(() => {
         vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+        mockSeekSnapbackSeconds = 0;
         container = document.createElement("div");
         document.body.appendChild(container);
         root = createRoot(container);
@@ -768,6 +784,69 @@ describe("useListeningCabinPlayer", () => {
         });
         expect(latestPlayer.playerState.isPlaying).toBe(false);
         expect(latestAudio.currentTime).toBeGreaterThanOrEqual(1.24);
+    });
+
+    it("compensates for backward seek drift in single-pause mode so it does not leak previous audio or cut the current sentence early", async () => {
+        mockSeekSnapbackSeconds = 0.2;
+
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://dialogue",
+            marks: [],
+            segmentTimings: [
+                { index: 1, startMs: 0, endMs: 1200 },
+                { index: 2, startMs: 1300, endMs: 2500 },
+                { index: 3, startMs: 2600, endMs: 3900 },
+            ],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={buildDialogueSession()}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+        await flushMicrotasks();
+
+        if (!latestAudio || !latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        await act(async () => {
+            latestAudio.duration = 3.9;
+            latestAudio.dispatch("loadedmetadata");
+        });
+
+        await act(async () => {
+            latestPlayer?.setSinglePauseMode();
+            await latestPlayer?.nextSentenceAction();
+        });
+
+        expect(latestAudio.currentTime).toBeCloseTo(1.1, 2);
+        expect(latestAudio.muted).toBe(true);
+        mockSeekSnapbackSeconds = 0;
+
+        await act(async () => {
+            latestAudio.currentTime = 1.32;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestAudio.muted).toBe(false);
+        expect(latestPlayer.playerState.isPlaying).toBe(true);
+
+        await act(async () => {
+            latestAudio.currentTime = 2.5;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.isPlaying).toBe(true);
+
+        await act(async () => {
+            latestAudio.currentTime = 2.72;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.isPlaying).toBe(false);
     });
 
     it("restarts current sentence immediately when switching from auto-all to single-pause", async () => {

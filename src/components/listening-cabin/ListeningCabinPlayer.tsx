@@ -68,47 +68,163 @@ const FONT_OPTIONS_ZH = [
     { name: "系统黑体 (雅黑)", value: "sans-serif" },
 ];
 
-function renderSubtitleBlock(sentences: ListeningCabinSentence[], activeIndex: number, themeColor: string, fontFamily: string) {
+function renderSubtitleBlock(
+    sentences: ListeningCabinSentence[], 
+    activeIndex: number, 
+    themeColor: string, 
+    fontFamily: string,
+    transitionStyle: string,
+    typographyStyle: string,
+    onWordClick: (word: string, context: string) => void
+) {
     if (!sentences) return null;
     return sentences.map((sentence, sIdx) => {
         if (!sentence) return null;
         const isActive = sentence.index === activeIndex;
-        const words = (renderSentence(sentence.english) || "").split(" ");
+        const rawContent = renderSentence(sentence.english) || "";
+        const words = rawContent.split(" ");
         
-        return (
-            <motion.div 
-                key={sentence.index}
-                initial={false}
-                animate={{ 
-                    opacity: isActive ? 1 : 0.35,
-                    y: isActive ? 0 : 4
-                }}
-                transition={{ duration: 0.6, ease: "easeOut" }}
-                className="mb-8 last:mb-0 relative"
-                style={{ fontFamily }}
-            >
-                {words.map((word, wIdx) => (
+        // Define Typography Styles
+        const getStyleConfig = () => {
+            const baseStyle = {
+                color: "#1e293b",
+                fontWeight: 700,
+            } as const;
+
+            switch (typographyStyle) {
+                case "aurora":
+                    return { 
+                        ...baseStyle,
+                        textShadow: `0 0 4px ${themeColor}35, 0 0 8px ${themeColor}15`,
+                    };
+                case "hollow":
+                    return { 
+                        ...baseStyle,
+                        color: "transparent", 
+                        WebkitTextStroke: "1.5px #1e293b",
+                        fontWeight: 900 
+                    };
+                case "honey":
+                    return { 
+                        ...baseStyle,
+                        color: "#713f12", 
+                        textShadow: "0.5px 0.5px 1px rgba(0,0,0,0.05)",
+                    };
+                default: // crystal
+                    return baseStyle;
+            }
+        };
+
+        const styleConfig = getStyleConfig();
+
+        // Block-Level Container Variants
+        const containerVariants = {
+            hidden: { opacity: 0 },
+            visible: { 
+                opacity: 1,
+                transition: {
+                    staggerChildren: transitionStyle === "radiant" ? 0.045 : 
+                                     transitionStyle === "typewriter" ? 0.08 : 
+                                     transitionStyle === "glide" ? 0.06 : 0,
+                    delayChildren: 0.05
+                }
+            },
+            exit: { 
+                opacity: 0,
+                transition: { 
+                    staggerChildren: 0.015, 
+                    staggerDirection: -1 
+                }
+            }
+        };
+
+        // Subtitle Style Logic
+        const renderWords = () => {
+            if (transitionStyle === "radiant") {
+                return words.map((word, wIdx) => (
                     <motion.span
                         key={`${sIdx}-${wIdx}`}
-                        whileHover={{ 
-                            scale: 1.04,
-                            color: themeColor,
-                        }}
                         variants={{
-                            hidden: { opacity: 0, scale: 0.98, y: 10 },
-                            visible: { opacity: 1, scale: 1, y: 0 },
+                            hidden: { opacity: 0 },
+                            visible: { opacity: 1, transition: { staggerChildren: 0.008 } },
+                            exit: { opacity: 0, transition: { duration: 0.2 } }
                         }}
-                        transition={{
-                            type: "spring",
-                            stiffness: 140,
-                            damping: 24
-                        }}
-                        className="inline-block mr-[0.24em] cursor-pointer transition-colors duration-300 select-none"
-                        style={{ color: "#000000", fontWeight: 800 }}
+                        className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer selection:bg-blue-500/10 active:text-blue-600 transition-colors duration-400"
+                        onClick={() => onWordClick(word, rawContent)}
+                        style={styleConfig}
+                    >
+                        {word.split("").map((char, cIdx) => (
+                            <motion.span
+                                key={cIdx}
+                                variants={{
+                                    hidden: { opacity: 0, y: 12 },
+                                    visible: { 
+                                        opacity: 1, y: 0,
+                                        transition: { type: "spring", stiffness: 120, damping: 28, mass: 1 }
+                                    },
+                                    exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
+                                }}
+                                className="inline-block"
+                            >
+                                {char}
+                            </motion.span>
+                        ))}
+                    </motion.span>
+                ));
+            }
+
+            return words.map((word, wIdx) => {
+                const wordVar = {
+                    hidden: transitionStyle === "glide" ? { opacity: 0, y: 15 } :
+                             transitionStyle === "typewriter" ? { opacity: 0, y: 4, filter: "blur(4px)" } :
+                             { opacity: 0 },
+                    visible: { 
+                        opacity: 1, y: 0,
+                        transition: { type: "spring", stiffness: 90, damping: 22 }
+                    },
+                    exit: { opacity: 0, y: -8, transition: { duration: 0.2 } }
+                };
+
+                return (
+                    <motion.span
+                        key={`${sIdx}-${wIdx}`}
+                        variants={wordVar}
+                        className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer hover:opacity-70 transition-opacity"
+                        onClick={() => onWordClick(word, rawContent)}
+                        style={styleConfig}
                     >
                         {word}
                     </motion.span>
-                ))}
+                );
+            });
+        };
+
+        const blockVariants = {
+            hidden: transitionStyle === "mist" ? { opacity: 0, filter: "blur(20px) scale(0.98)" } :
+                    transitionStyle === "classic" ? { opacity: 0 } : {},
+            visible: transitionStyle === "mist" ? { 
+                        opacity: 1, scale: 1,
+                        transition: { duration: 0.9, ease: [0.22, 1, 0.36, 1] } 
+                    } :
+                    transitionStyle === "classic" ? { 
+                        opacity: 1, transition: { duration: 0.5 } 
+                    } : {},
+            exit: { opacity: 0, transition: { duration: 0.3 } }
+        };
+
+        return (
+            <motion.div 
+                key={sentence.index}
+                variants={transitionStyle === "mist" || transitionStyle === "classic" ? blockVariants : containerVariants}
+                className="mb-8 last:mb-0 relative"
+                style={{ 
+                    fontFamily, 
+                    pointerEvents: isActive ? "auto" : "none",
+                    opacity: isActive ? 1 : 0.22,
+                    WebkitFontSmoothing: "antialiased",
+                }}
+            >
+                {renderWords()}
             </motion.div>
         );
     });
@@ -164,6 +280,13 @@ function ListeningCabinPlayerView({
     const [showSettings, setShowSettings] = useState(false);
     const [fontEn, setFontEn] = useState("var(--font-inter)");
     const [fontZh, setFontZh] = useState("var(--font-zh-sans-modern)");
+    const [transitionStyle, setTransitionStyle] = useState<"radiant" | "mist" | "glide" | "classic" | "typewriter">("radiant");
+    const [typographyStyle, setTypographyStyle] = useState<"crystal" | "aurora" | "hollow" | "honey">("crystal");
+    
+    // Word Gloss State:
+    const [selectedWord, setSelectedWord] = useState<string | null>(null);
+    const [wordDefinition, setWordDefinition] = useState<any>(null);
+    const [isDefining, setIsDefining] = useState(false);
 
     const hideControlsTimerRef = useRef<number | null>(null);
 
@@ -171,15 +294,21 @@ function ListeningCabinPlayerView({
     useEffect(() => {
         const savedEn = localStorage.getItem("listening_cabin_font_en");
         const savedZh = localStorage.getItem("listening_cabin_font_zh");
+        const savedStyle = localStorage.getItem("listening_cabin_transition_style") as any;
+        const savedTypo = localStorage.getItem("listening_cabin_typography_style") as any;
         if (savedEn) setFontEn(savedEn);
         if (savedZh) setFontZh(savedZh);
+        if (savedStyle) setTransitionStyle(savedStyle);
+        if (savedTypo) setTypographyStyle(savedTypo);
     }, []);
 
     // Persistence: Save
     useEffect(() => {
         localStorage.setItem("listening_cabin_font_en", fontEn);
         localStorage.setItem("listening_cabin_font_zh", fontZh);
-    }, [fontEn, fontZh]);
+        localStorage.setItem("listening_cabin_transition_style", transitionStyle);
+        localStorage.setItem("listening_cabin_typography_style", typographyStyle);
+    }, [fontEn, fontZh, transitionStyle, typographyStyle]);
 
     const completionLabel = useMemo(() => {
         const current = String(playerState.currentSentenceIndex + 1).padStart(2, "0");
@@ -204,12 +333,12 @@ function ListeningCabinPlayerView({
         return ordered;
     }, [currentSubtitleSentences]);
     const subtitleTypographyClass = useMemo(() => {
-        const base = "mx-auto text-balance-editorial font-sans transition-all duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] selection:bg-[#3b82f6]/20";
+        const base = "mx-auto text-balance-editorial font-sans selection:bg-[#3b82f6]/20";
         
         // Fluid Typography: clamp(min, preferred, max)
         const fluidFontSize = "text-[clamp(1.8rem,4vw+1rem,3.8rem)]";
         
-        return `${base} ${fluidFontSize} leading-[1.18] tracking-[-0.028em] text-[#000000]`;
+        return `${base} ${fluidFontSize} leading-[1.18] tracking-[-0.028em] text-[#1e293b]`;
     }, []);
     const currentSpeakerIndex = useMemo(() => {
         if (currentSpeakerTags.length === 0) return 0;
@@ -275,8 +404,46 @@ function ListeningCabinPlayerView({
         scheduleHideControls();
     }, [scheduleHideControls]);
 
+    const handleWordClick = useCallback(async (word: string, context: string) => {
+        const sanitized = word.replace(/[.,!?;:()\[\]{}'"]/g, "").trim();
+        if (!sanitized) return;
+
+        setSelectedWord(sanitized);
+        setWordDefinition(null);
+        setIsDefining(true);
+        player.pausePlayback();
+        revealControls();
+
+        try {
+            const response = await fetch("/api/ai/define", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    word: sanitized,
+                    context,
+                    uiSurface: "listening_cabin_player",
+                }),
+            });
+
+            if (!response.ok) throw new Error("Define failed");
+            const data = await response.json();
+            setWordDefinition(data);
+        } catch (error) {
+            console.error("Word definition failed:", error);
+            setWordDefinition({ error: "无法获取释义，请稍后重试" });
+        } finally {
+            setIsDefining(false);
+        }
+    }, [player, revealControls]);
+
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                setSelectedWord(null);
+                setShowSettings(false);
+                return;
+            }
+
             if (event.key === " " || event.code === "Space") {
                 event.preventDefault();
                 void replayCurrentSentence();
@@ -517,9 +684,9 @@ function ListeningCabinPlayerView({
                                     </div>
 
                                     {/* Chinese Section */}
-                                    <div>
+                                    <div className="mb-5">
                                         <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2.5 block px-1">Chinese Font</label>
-                                        <div className="grid grid-cols-1 gap-1.5 max-h-[140px] overflow-y-auto pr-2 custom-scrollbar">
+                                        <div className="grid grid-cols-1 gap-1.5 max-h-[100px] overflow-y-auto pr-2 custom-scrollbar">
                                             {FONT_OPTIONS_ZH.map((opt) => (
                                                 <button
                                                     key={opt.value}
@@ -537,6 +704,59 @@ function ListeningCabinPlayerView({
                                             ))}
                                         </div>
                                     </div>
+
+                                    {/* Motion Style Section */}
+                                    <div className="mb-5">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2.5 block px-1">Motion Style</label>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                            {[
+                                                { id: "radiant", label: "✨ 流光溢彩" },
+                                                { id: "mist", label: "🌫️ 空灵迷雾" },
+                                                { id: "glide", label: "🕊️ 垂直滑翔" },
+                                                { id: "classic", label: "🎞️ 经典淡入" },
+                                                { id: "typewriter", label: "⌨️ 逐词律动" }
+                                            ].map((style) => (
+                                                <button
+                                                    key={style.id}
+                                                    onClick={() => setTransitionStyle(style.id as any)}
+                                                    className={cn(
+                                                        "px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-left transition-all duration-300 border flex items-center justify-between",
+                                                        transitionStyle === style.id 
+                                                            ? "bg-blue-600 text-white border-blue-600 shadow-[0_4px_12px_rgba(37,99,235,0.2)]" 
+                                                            : "bg-slate-50 text-slate-500 border-slate-100 hover:bg-white hover:shadow-md"
+                                                    )}
+                                                >
+                                                    {style.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Typography Style Section */}
+                                    <div>
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2.5 block px-1">Text Style</label>
+                                        <div className="grid grid-cols-2 gap-1.5">
+                                            {[
+                                                { id: "crystal", label: "💎 晶莹剔透" },
+                                                { id: "aurora", label: "✨ 极光溢彩" },
+                                                { id: "hollow", label: "💠 剔透冰晶" },
+                                                { id: "honey", label: "🍯 琥珀流金" }
+                                            ].map((style) => (
+                                                <button
+                                                    key={style.id}
+                                                    onClick={() => setTypographyStyle(style.id as any)}
+                                                    className={cn(
+                                                        "px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-left transition-all duration-300 border flex items-center justify-between",
+                                                        typographyStyle === style.id 
+                                                            ? "bg-amber-600 text-white border-amber-600 shadow-[0_4px_12px_rgba(217,119,6,0.2)]" 
+                                                            : "bg-slate-50 text-slate-500 border-slate-100 hover:bg-white hover:shadow-md"
+                                                    )}
+                                                >
+                                                    {style.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             </motion.div>
                         )}
@@ -545,23 +765,23 @@ function ListeningCabinPlayerView({
 
                 <div className="relative flex flex-1 flex-col items-center justify-center py-6 text-center">
                     <div className="flex w-full max-w-[76rem] flex-col items-center justify-center gap-7">
-                        <AnimatePresence mode="wait">
+                        <AnimatePresence mode="popLayout">
                             <motion.div
                                 key={activeSubtitleKey}
-                                initial={{ opacity: 0, y: 18 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -14 }}
-                                transition={{
-                                    duration: 0.34,
-                                    ease: [0.22, 1, 0.36, 1],
-                                }}
-                                className="w-full"
+                                initial="hidden"
+                                animate="visible"
+                                exit="exit"
+                                className="w-full origin-center relative z-20"
+                                style={{ perspective: "1000px" }}
                             >
                                 {currentSpeakerTags.length > 0 ? (
                                     <motion.div 
-                                        initial={{ opacity: 0, scale: 0.96 }}
-                                        animate={{ opacity: 1, scale: 1 }}
                                         className="mb-10 flex flex-wrap items-center justify-center gap-8"
+                                        variants={{
+                                            hidden: { opacity: 0, y: 10 },
+                                            visible: { opacity: 1, y: 0, transition: { delay: 0.1 } },
+                                            exit: { opacity: 0, y: -10 }
+                                        }}
                                     >
                                         {currentSpeakerTags.map((speaker) => {
                                             const isActive = speaker === activeSpeaker;
@@ -599,53 +819,34 @@ function ListeningCabinPlayerView({
                                         })}
                                     </motion.div>
                                 ) : null}
-                                <motion.div
-                                    initial="hidden"
-                                    animate="visible"
-                                    variants={{
-                                        visible: {
-                                            transition: {
-                                                staggerChildren: 0.08,
-                                            },
-                                        },
-                                    }}
-                                    className="relative"
-                                >
-                                    <motion.h1
-                                        className={subtitleTypographyClass}
-                                        variants={{
-                                            hidden: { opacity: 0, y: 16 },
-                                            visible: { opacity: 1, y: 0 },
-                                        }}
-                                        transition={{
-                                            duration: 1.0,
-                                            ease: [0.22, 1, 0.36, 1],
-                                        }}
-                                    >
-                                        {renderSubtitleBlock(currentSubtitleSentences, playerState.currentSentenceIndex, activeMistTheme[0], fontEn)}
-                                    </motion.h1>
+                                
+                                <div className="relative">
+                                    <h1 className={subtitleTypographyClass}>
+                                        {renderSubtitleBlock(currentSubtitleSentences, playerState.currentSentenceIndex, activeMistTheme[0], fontEn, transitionStyle, typographyStyle, handleWordClick)}
+                                    </h1>
                                     
-                                    <motion.p
-                                        className={cn(
-                                            "font-sans mx-auto mt-10 max-w-[56rem] text-[clamp(1.1rem,2vw,1.35rem)] font-medium leading-relaxed tracking-wide transition-all duration-700",
-                                            playerState.showChineseSubtitle ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2 pointer-events-none",
-                                        )}
-                                        style={{ color: "#000000" }}
+                                    <motion.div
                                         variants={{
-                                            hidden: { opacity: 0, y: 16 },
-                                            visible: { opacity: 1, y: 0 },
+                                            hidden: { opacity: 0, y: 15, filter: "blur(12px)" },
+                                            visible: { 
+                                                opacity: 1, 
+                                                y: 0, 
+                                                filter: "blur(0px)",
+                                                transition: { delay: 0.35, duration: 0.8, ease: [0.22, 1, 0.36, 1] } 
+                                            },
+                                            exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
                                         }}
-                                        transition={{
-                                            duration: 0.6,
-                                            ease: [0.22, 1, 0.36, 1],
-                                            delay: 0.12,
-                                        }}
+                                        className={cn(
+                                            "font-sans mx-auto mt-10 max-w-[56rem] text-[clamp(1.1rem,2vw,1.35rem)] font-medium leading-relaxed tracking-wide antialiased",
+                                            playerState.showChineseSubtitle ? "visible" : "hidden pointer-events-none"
+                                        )}
+                                        style={{ color: "#1e293b", textRendering: "optimizeLegibility" }}
                                     >
                                         <span style={{ fontFamily: fontZh }}>
                                             {joinChineseSubtitle(currentSubtitleSentences)}
                                         </span>
-                                    </motion.p>
-                                </motion.div>
+                                    </motion.div>
+                                </div>
                             </motion.div>
                         </AnimatePresence>
                         <div className="w-full max-w-[36rem] px-12">
@@ -816,6 +1017,95 @@ function ListeningCabinPlayerView({
                         </div>
                     </motion.div>
                 </div>
+
+                {/* Phase 26: Word Gloss Cinematic Popup */}
+                <AnimatePresence>
+                    {selectedWord && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-slate-900/10 backdrop-blur-sm"
+                            onClick={() => setSelectedWord(null)}
+                        >
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                                transition={{ type: "spring", stiffness: 200, damping: 25 }}
+                                className="w-full max-w-sm glass-panel rounded-[3rem] border-white/60 bg-white/95 p-8 shadow-2xl relative overflow-hidden"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-400 via-rose-400 to-indigo-400" />
+                                
+                                <div className="flex items-start justify-between mb-6">
+                                    <div>
+                                        <p className="text-[10px] font-black tracking-[0.3em] uppercase text-slate-400 mb-1">Vocabulary Echo</p>
+                                        <h2 className="text-3xl font-black text-slate-900 tracking-tight">{selectedWord}</h2>
+                                        {wordDefinition?.phonetic && (
+                                            <p className="text-sm font-bold text-slate-500 mt-1">/ {wordDefinition.phonetic} /</p>
+                                        )}
+                                    </div>
+                                    <button 
+                                        onClick={() => setSelectedWord(null)}
+                                        className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-50 text-slate-300 hover:text-slate-900 transition-all hover:bg-slate-100"
+                                    >
+                                        <X size={20} />
+                                    </button>
+                                </div>
+
+                                <div className="space-y-6">
+                                    {isDefining ? (
+                                        <div className="py-12 flex flex-col items-center justify-center gap-4">
+                                            <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
+                                            <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Generating Insight...</p>
+                                        </div>
+                                    ) : wordDefinition?.error ? (
+                                        <div className="p-4 rounded-[1.5rem] bg-rose-50 border border-rose-100 text-rose-600 text-xs font-bold leading-relaxed">
+                                            {wordDefinition.error}
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="space-y-4">
+                                                {wordDefinition?.context_meaning && (
+                                                    <div className="p-5 rounded-[2rem] bg-slate-50 border border-slate-100">
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">In Context</p>
+                                                        <p className="text-sm font-bold text-slate-800 leading-relaxed italic">"{wordDefinition.context_meaning.definition}"</p>
+                                                        <p className="text-xs text-slate-400 mt-2 font-black">— {wordDefinition.context_meaning.translation}</p>
+                                                    </div>
+                                                )}
+
+                                                <div className="space-y-4">
+                                                    {wordDefinition?.meaning_groups?.slice(0, 2).map((group: any, idx: number) => (
+                                                        <div key={idx} className="px-1">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <span className="text-[10px] font-black bg-slate-900 text-white px-2 py-0.5 rounded italic">{group.pos}</span>
+                                                            </div>
+                                                            <div className="space-y-1.5 pl-1">
+                                                                {group.meanings?.slice(0, 2).map((m: any, midx: number) => (
+                                                                    <p key={midx} className="text-[13px] font-bold text-slate-700 leading-relaxed flex gap-2">
+                                                                        <span className="text-slate-200 mt-0.5">•</span> {m}
+                                                                    </p>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <button 
+                                                className="w-full py-4 bg-slate-900 text-white rounded-full text-[13px] font-black uppercase tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-transform"
+                                                onClick={() => setSelectedWord(null)}
+                                            >
+                                                Understood
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
         </main>
     );
