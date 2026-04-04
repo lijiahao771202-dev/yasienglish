@@ -276,13 +276,19 @@ describe("useListeningCabinPlayer", () => {
         }
 
         await act(async () => {
-            latestAudio.currentTime = 3.02;
+            latestAudio.currentTime = 2.0;
             latestAudio.dispatch("timeupdate");
         });
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
 
         await act(async () => {
-            latestAudio.currentTime = 3.08;
+            latestAudio.currentTime = 2.1;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
+
+        await act(async () => {
+            latestAudio.currentTime = 2.2;
             latestAudio.dispatch("timeupdate");
         });
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
@@ -607,16 +613,61 @@ describe("useListeningCabinPlayer", () => {
         });
 
         await act(async () => {
-            latestAudio.currentTime = 1.31;
+            latestAudio.currentTime = 0.35;
             latestAudio.dispatch("timeupdate");
         });
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
 
         await act(async () => {
-            latestAudio.currentTime = 1.33;
+            latestAudio.currentTime = 0.39;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
+
+        await act(async () => {
+            latestAudio.currentTime = 0.45;
             latestAudio.dispatch("timeupdate");
         });
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+    });
+
+    it("progressively corrects segment timing drift so later sentences still advance into the final subtitle", async () => {
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://dialogue",
+            marks: [],
+            segmentTimings: [
+                { index: 1, startMs: 0, endMs: 900 },
+                { index: 2, startMs: 920, endMs: 1800 },
+                { index: 3, startMs: 1820, endMs: 2700 },
+            ],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={buildDialogueSession()}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+        await flushMicrotasks();
+
+        if (!latestAudio || !latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        await act(async () => {
+            latestAudio.duration = 3.6;
+            latestAudio.dispatch("loadedmetadata");
+        });
+
+        await act(async () => {
+            latestAudio.currentTime = 1.6;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(2);
     });
 
     it("can resume playback after switching between single-pause and repeat modes", async () => {

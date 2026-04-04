@@ -23,8 +23,10 @@ type UseListeningCabinPlayerOptions = {
     restart?: boolean;
 };
 
-const SUBTITLE_SWITCH_DELAY_MS = 18;
-const SUBTITLE_END_HOLD_MS = 24;
+const SUBTITLE_SWITCH_DELAY_MS = 3;
+const SUBTITLE_END_HOLD_MS = 4;
+const SUBTITLE_END_EARLY_ALLOWANCE_MS = 40;
+const SUBTITLE_GLOBAL_ADVANCE_MS = 900;
 const STOP_BOUNDARY_GUARD_MS = 0;
 const STOP_TAIL_BUFFER_MS = 160;
 const STOP_BLEED_GUARD_MS = 56;
@@ -52,7 +54,7 @@ function findSentenceIndexByTime(timings: ListeningCabinSentenceTiming[], curren
         const nextStartMs = Math.max(nextTiming.startMs, currentEndMs);
         const switchAtMs = Math.max(
             nextStartMs + SUBTITLE_SWITCH_DELAY_MS,
-            currentEndMs + SUBTITLE_END_HOLD_MS,
+            currentEndMs + SUBTITLE_END_HOLD_MS - SUBTITLE_END_EARLY_ALLOWANCE_MS,
         );
 
         if (currentMs < switchAtMs) {
@@ -137,13 +139,14 @@ function buildEvenSentenceTimings(sentenceCount: number, durationMs: number) {
 function fitSentenceTimingsToDuration(
     timings: ListeningCabinSentenceTiming[],
     durationMs: number,
-    options?: { allowExpand?: boolean },
+    options?: { allowExpand?: boolean; progressiveExpand?: boolean },
 ) {
     if (timings.length === 0 || durationMs <= 0) {
         return timings;
     }
 
     const allowExpand = options?.allowExpand ?? true;
+    const progressiveExpand = options?.progressiveExpand ?? false;
     const lastEndMs = Math.max(1, timings[timings.length - 1]?.endMs ?? 1);
     const roundedDurationMs = Math.max(1, Math.round(durationMs));
     const delta = roundedDurationMs - lastEndMs;
@@ -154,6 +157,34 @@ function fitSentenceTimingsToDuration(
 
     if (Math.abs(delta) <= 120) {
         return timings;
+    }
+
+    if (delta > 0 && progressiveExpand) {
+        const fitted: ListeningCabinSentenceTiming[] = [];
+        let previousEnd = 0;
+
+        for (let index = 0; index < timings.length; index += 1) {
+            const timing = timings[index];
+            const startProgress = Math.min(1, Math.max(0, timing.startMs / lastEndMs));
+            const endProgress = Math.min(1, Math.max(0, timing.endMs / lastEndMs));
+            const easedStartOffset = Math.round(delta * Math.pow(startProgress, 1.18));
+            const easedEndOffset = Math.round(delta * Math.pow(endProgress, 1.08));
+            const startMs = Math.max(previousEnd, timing.startMs + easedStartOffset);
+            const endMs = Math.max(startMs + 1, timing.endMs + easedEndOffset);
+            fitted.push({
+                index: timing.index,
+                startMs,
+                endMs,
+            });
+            previousEnd = endMs;
+        }
+
+        const lastTiming = fitted[fitted.length - 1];
+        if (lastTiming) {
+            lastTiming.endMs = Math.max(lastTiming.startMs + 1, roundedDurationMs);
+        }
+
+        return fitted;
     }
 
     const ratio = roundedDurationMs / lastEndMs;
@@ -282,6 +313,7 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
     const narrationReadyRef = useRef(false);
     const loadingNarrationRef = useRef<Promise<void> | null>(null);
     const narrationPayloadRef = useRef<TtsPayload | null>(null);
+    const baseTimingsRef = useRef<ListeningCabinSentenceTiming[]>([]);
     const timingsRef = useRef<ListeningCabinSentenceTiming[]>([]);
     const stopAtMsRef = useRef<number | null>(null);
     const commandTokenRef = useRef(0);
@@ -297,6 +329,7 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
 
         if (isTimingLikelyUnreliable(timings, sentenceIndex, resolvedSentences.length) && hasDuration) {
             timings = buildEvenSentenceTimings(resolvedSentences.length, (audio?.duration ?? 0) * 1000);
+            baseTimingsRef.current = timings;
             timingsRef.current = timings;
             timingsSourceRef.current = "even";
             timing = timings[sentenceIndex];
@@ -406,9 +439,11 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
                 const segmentTimings = resolveSegmentTimings(payload.segmentTimings, resolvedSentences.length);
                 const markTimings = buildListeningCabinSentenceTimings(resolvedSentences, payload.marks);
                 if (hasCompleteUsableTimings(segmentTimings, resolvedSentences.length)) {
+                    baseTimingsRef.current = segmentTimings;
                     timingsRef.current = segmentTimings;
                     timingsSourceRef.current = "segment";
                 } else {
+                    baseTimingsRef.current = markTimings;
                     timingsRef.current = markTimings;
                     timingsSourceRef.current = "marks";
                 }
@@ -568,7 +603,10 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
         const initAnalyser = () => {
             if (analyserRef.current) return;
             try {
-                const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+                const AudioCtx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+                if (!AudioCtx) {
+                    return;
+                }
                 const context = new AudioCtx();
                 const analyser = context.createAnalyser();
                 analyser.fftSize = 128;
@@ -708,7 +746,10 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
                 return;
             }
 
-            const nextSentenceIndex = findSentenceIndexByTime(timings, currentMs);
+            const nextSentenceIndex = findSentenceIndexByTime(
+                timings,
+                currentMs + SUBTITLE_GLOBAL_ADVANCE_MS,
+            );
 
             if (nextSentenceIndex !== currentSentenceIndexRef.current) {
                 currentSentenceIndexRef.current = nextSentenceIndex;
@@ -746,22 +787,28 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             }
 
             if (!hasCompleteUsableTimings(timingsRef.current, resolvedSentences.length)) {
-                timingsRef.current = buildEvenSentenceTimings(resolvedSentences.length, audio.duration * 1000);
+                const evenTimings = buildEvenSentenceTimings(resolvedSentences.length, audio.duration * 1000);
+                baseTimingsRef.current = evenTimings;
+                timingsRef.current = evenTimings;
                 timingsSourceRef.current = "even";
                 return;
             }
 
+            const baseTimings = hasCompleteUsableTimings(baseTimingsRef.current, resolvedSentences.length)
+                ? baseTimingsRef.current
+                : timingsRef.current;
+
             if (timingsSourceRef.current === "segment") {
                 timingsRef.current = fitSentenceTimingsToDuration(
-                    timingsRef.current,
+                    baseTimings,
                     audio.duration * 1000,
-                    { allowExpand: false },
+                    { allowExpand: true, progressiveExpand: true },
                 );
                 return;
             }
 
             timingsRef.current = fitSentenceTimingsToDuration(
-                timingsRef.current,
+                baseTimings,
                 audio.duration * 1000,
             );
         };
