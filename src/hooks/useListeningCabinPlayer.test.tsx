@@ -304,7 +304,13 @@ describe("useListeningCabinPlayer", () => {
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
 
         await act(async () => {
-            latestAudio.currentTime = 2.2;
+            latestAudio.currentTime = 2.9;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
+
+        await act(async () => {
+            latestAudio.currentTime = 3.05;
             latestAudio.dispatch("timeupdate");
         });
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
@@ -596,7 +602,7 @@ describe("useListeningCabinPlayer", () => {
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
     });
 
-    it("uses segmentTimings in dialogue mode to avoid early subtitle switching", async () => {
+    it("uses segmentTimings in dialogue mode without aggressive early subtitle switching", async () => {
         getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
             audio: "mock://dialogue",
             marks: [],
@@ -635,13 +641,13 @@ describe("useListeningCabinPlayer", () => {
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
 
         await act(async () => {
-            latestAudio.currentTime = 0.39;
+            latestAudio.currentTime = 1.29;
             latestAudio.dispatch("timeupdate");
         });
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
 
         await act(async () => {
-            latestAudio.currentTime = 0.45;
+            latestAudio.currentTime = 1.31;
             latestAudio.dispatch("timeupdate");
         });
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
@@ -681,6 +687,57 @@ describe("useListeningCabinPlayer", () => {
 
         await act(async () => {
             latestAudio.currentTime = 1.6;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+
+        await act(async () => {
+            latestAudio.currentTime = 2.45;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(2);
+    });
+
+    it("does not shrink segment timings when browser duration is slightly shorter, avoiding cumulative early switching", async () => {
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://dialogue",
+            marks: [],
+            segmentTimings: [
+                { index: 1, startMs: 0, endMs: 1000 },
+                { index: 2, startMs: 1000, endMs: 2000 },
+                { index: 3, startMs: 2000, endMs: 3000 },
+            ],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={buildDialogueSession()}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+        await flushMicrotasks();
+
+        if (!latestAudio || !latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        await act(async () => {
+            latestAudio.duration = 2.7;
+            latestAudio.dispatch("loadedmetadata");
+        });
+
+        await act(async () => {
+            latestAudio.currentTime = 1.85;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+
+        await act(async () => {
+            latestAudio.currentTime = 2.02;
             latestAudio.dispatch("timeupdate");
         });
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(2);

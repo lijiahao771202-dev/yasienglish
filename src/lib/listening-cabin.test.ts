@@ -12,6 +12,7 @@ import {
     createListeningCabinSession,
     LISTENING_CABIN_RANDOM_TOPIC_POOLS,
     LISTENING_CABIN_RANDOM_TOPIC_POOL_SIZE_PER_MODE,
+    lintListeningCabinDraft,
     normalizeListeningCabinRequest,
     normalizeListeningCabinSentences,
     pickListeningCabinRandomTopic,
@@ -121,15 +122,16 @@ describe("listening cabin helpers", () => {
         expect(profile.estimatedMinutes).toBe(10);
         expect(profile.targetWords).toBeGreaterThan(1000);
         expect(profile.sentenceWordRange.min).toBeGreaterThanOrEqual(16);
-        expect(profile.targetSentenceRange.max).toBeGreaterThan(profile.targetSentenceRange.min);
+        expect(profile.targetSentenceRange).toEqual({ min: 40, max: 60 });
     });
 
     it("supports an ultra-long profile for extended listening sessions", () => {
         const profile = resolveListeningCabinLengthProfile("ultra_long", "medium");
 
         expect(profile.estimatedMinutes).toBe(18);
-        expect(profile.targetWords).toBe(2400);
-        expect(profile.targetWordRange.max).toBeGreaterThan(3000);
+        expect(profile.targetSentenceRange).toEqual({ min: 70, max: 100 });
+        expect(profile.targetWords).toBe(1360);
+        expect(profile.targetWordRange.max).toBeGreaterThan(1700);
     });
 
     it("provides 2500 de-duplicated random topics per mode", () => {
@@ -407,5 +409,60 @@ describe("listening cabin helpers", () => {
 
         expect(prompt).toContain("occasional natural repetition");
         expect(prompt).toContain("that, that is not true");
+    });
+
+    it("uses gentler lint thresholds for ultra-long scripts", () => {
+        const request = normalizeListeningCabinRequest({
+            prompt: "做一个超长单人口播",
+            topicMode: "manual",
+            scriptMode: "monologue",
+            scriptLength: "ultra_long",
+            sentenceLength: "medium",
+        });
+        const profile = resolveListeningCabinLengthProfile(request.scriptLength, request.sentenceLength);
+        const sentences = Array.from({ length: 60 }, (_, index) => ({
+            index: index + 1,
+            english: "This week I want to share a practical way to stay steady when work feels heavy and the pressure keeps building around you.",
+            chinese: "这周我想分享一种实用方法，帮助你在工作压力不断累积时保持稳定。",
+            emotion: "calm" as const,
+            pace: "normal" as const,
+        }));
+
+        const lint = lintListeningCabinDraft({
+            title: "Ultra Long Practice",
+            sentences,
+            request,
+            profile,
+        });
+
+        expect(lint.issues).not.toContain("overall script is too short for the selected script length");
+        expect(lint.issues).not.toContain("sentence rhythm is too choppy; lines are too short");
+    });
+
+    it("requires long scripts to stay within the configured sentence-count band", () => {
+        const request = normalizeListeningCabinRequest({
+            prompt: "做一个长篇单人口播",
+            topicMode: "manual",
+            scriptMode: "monologue",
+            scriptLength: "long",
+            sentenceLength: "medium",
+        });
+        const profile = resolveListeningCabinLengthProfile(request.scriptLength, request.sentenceLength);
+        const sentences = Array.from({ length: 32 }, (_, index) => ({
+            index: index + 1,
+            english: "Today I want to share a practical story about how people handle pressure at work without losing their sense of rhythm or balance.",
+            chinese: "今天我想分享一个实用故事，讲讲人们如何在工作压力下依然保持节奏和平衡。",
+            emotion: "serious" as const,
+            pace: "normal" as const,
+        }));
+
+        const lint = lintListeningCabinDraft({
+            title: "Long Practice",
+            sentences,
+            request,
+            profile,
+        });
+
+        expect(lint.issues).toContain("sentence count is too low for the selected script length");
     });
 });

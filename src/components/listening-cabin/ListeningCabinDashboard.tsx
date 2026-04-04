@@ -143,8 +143,22 @@ export default function ListeningCabinDashboard() {
                 body: JSON.stringify(finalRequest),
             });
 
-            const data = await response.json() as ListeningCabinGenerationResponse & { error?: string };
-            if (!response.ok) throw new Error(data.error || "生成失败");
+            const data = await response.json() as ListeningCabinGenerationResponse & {
+                error?: string;
+                details?: string;
+                issues?: string[];
+            };
+            if (!response.ok) {
+                const issueMessage = Array.isArray(data.issues) && data.issues.length > 0
+                    ? `：${data.issues.join("；")}`
+                    : "";
+                const detailMessage = typeof data.details === "string" && data.details.trim()
+                    ? `：${data.details.trim()}`
+                    : "";
+                throw new Error(data.error
+                    ? `${data.error}${issueMessage || detailMessage}`
+                    : "生成失败");
+            }
 
             const newSession = await createSession({
                 response: data,
