@@ -1,4 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,400..700;1,400..700&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Outfit:wght@100..900&family=Cormorant+Garamond:ital,wght@0,300..700;1,300..700&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Noto+Sans+SC:wght@100..900&family=Noto+Serif+SC:wght@200..900&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Long+Cang&family=Liu+Jian+Mao+Cao&family=ZCOOL+QingKe+HuangYou&display=swap');
 @import "tailwindcss";
+
+/* Phase 24: The Typographic Atelier - High-End Font Library */
 
 @theme {
   /* Warm Liquid Palette (Light Mode Base) */
@@ -69,6 +72,30 @@
     "Microsoft YaHei UI",
     "Segoe UI",
     sans-serif;
+  
+  /* Phase 24: Editorial Font Stacks */
+  --font-en-serif-elegant: "Playfair Display", serif;
+  --font-en-serif-classic: "Lora", serif;
+  --font-en-sans-geometric: "Montserrat", sans-serif;
+  --font-en-sans-soft: "Outfit", sans-serif;
+  --font-en-serif-luxury: "Cormorant Garamond", serif;
+  --font-en-serif-editorial: "Newsreader", serif;
+  --font-en-serif-trad: "Libre Baskerville", serif;
+  
+  --font-zh-sans-modern: "PingFang SC", "Hiragino Sans GB", "Heiti SC", sans-serif;
+  --font-zh-serif-elegant: "Noto Serif SC", "Source Han Serif SC", serif;
+  --font-zh-handwriting: "Ma Shan Zheng", cursive;
+  --font-zh-calligraphy: "Zhi Mang Xing", cursive;
+  --font-zh-cursive: "Long Cang", cursive;
+  --font-zh-bold-calligraphy: "Liu Jian Mao Cao", cursive;
+  --font-zh-artistic: "ZCOOL QingKe HuangYou", cursive;
+  --font-zh-kaiti: "STKaiti", "Kaiti SC", serif;
+  
+  /* Premium Subtitle Specifics */
+  --subtitle-line-height: 1.34;
+  --subtitle-letter-spacing: -0.022em;
+  --subtitle-chinese-opacity: 0.62;
+  --subtitle-chinese-size-ratio: 0.44;
 }
 
 /* Font Utilities */
@@ -106,6 +133,8 @@
 
 .font-newsreader {
   font-family: var(--font-newsreader), serif;
+  font-optical-sizing: auto;
+  font-kerning: normal;
 }
 
 .font-welcome-display {
@@ -114,6 +143,32 @@
 
 .font-welcome-ui {
   font-family: var(--font-welcome-ui), sans-serif;
+}
+
+.text-balance-editorial {
+  text-wrap: balance;
+  line-height: var(--subtitle-line-height);
+  letter-spacing: var(--subtitle-letter-spacing);
+}
+
+.premium-subtitle-focus {
+  text-shadow: 0 0 42px rgba(255, 255, 255, 0.44);
+  background: linear-gradient(180deg, #1e293b 0%, #334155 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  padding-bottom: 0.12em; /* Ensure descenders are not clipped */
+  letter-spacing: -0.015em;
+}
+
+.premium-grain-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.015;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  z-index: 1;
 }
 
 /* Textures & Themes */
