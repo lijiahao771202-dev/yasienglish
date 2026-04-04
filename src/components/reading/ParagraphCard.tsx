@@ -3514,6 +3514,7 @@ export function SelectionActionPopup({
 }: SelectionActionPopupProps) {
     const ref = useRef<HTMLDivElement>(null);
     const reducedMotion = useReducedMotion();
+    const shouldReduceMotion = Boolean(reducedMotion);
     const dragStateRef = useRef<{
         pointerId: number;
         startClientX: number;
@@ -3533,7 +3534,7 @@ export function SelectionActionPopup({
             : (askPanelDefaultOpenToken ? qaPairs.map((pair) => pair.id) : [])
     ));
     const latestAskPairId = isAskReplayMode && qaPairs.length > 0 ? qaPairs[qaPairs.length - 1].id : null;
-    const candyTap = getPressableTap(reducedMotion, 4, 0.985);
+    const candyTap = getPressableTap(shouldReduceMotion, 4, 0.985);
     const candyPressStyle = getPressableStyle("rgba(238, 199, 225, 0.95)", 4);
     const berryPressStyle = getPressableStyle("rgba(216, 208, 255, 0.95)", 4);
     const softPressStyle = getPressableStyle("rgba(223, 232, 255, 0.95)", 4);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect, useCallback, type ComponentType } from "react";
+import { Suspense, useState, useEffect, useCallback, type ComponentType } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { DrillCore } from "@/components/drill/DrillCore";
 import { Zap, ChevronRight, Lock, House, Sword, CircleHelp, X, Headphones, BookOpen, Feather, Gauge, Coins, Gift, Blocks } from "lucide-react";
@@ -318,7 +318,7 @@ const GACHA_POOL_TABLE = [
     { pool: "普通卡（其余4张）", reward: "胶囊/关键词券/朗读券/10币/20币", weight: "25/25/20/20/10" },
 ] as const;
 
-export default function BattlePage() {
+function BattlePageContent() {
     type BattleMode = "listening" | "rebuild" | "dictation" | "translation";
     type ListeningSourceMode = "ai" | "bank";
     const resolveInitialListeningSourceMode = (): ListeningSourceMode => {
@@ -1324,5 +1324,13 @@ export default function BattlePage() {
                 )}
             </AnimatePresence>
         </div>
+    );
+}
+
+export default function BattlePage() {
+    return (
+        <Suspense fallback={null}>
+            <BattlePageContent />
+        </Suspense>
     );
 }

@@ -1,0 +1,155 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - button "返回首页" [ref=e6]:
+          - img [ref=e7]
+        - generic [ref=e9]:
+          - generic [ref=e10]:
+            - img [ref=e11]
+            - text: AI + EdgeTTS
+          - heading "听力舱" [level=1] [ref=e14]
+      - generic [ref=e15]:
+        - img [ref=e16]
+        - text: 逐句生成，逐句精听
+    - generic [ref=e19]:
+      - generic [ref=e20]:
+        - generic [ref=e21]:
+          - generic [ref=e22]:
+            - generic [ref=e23]:
+              - paragraph [ref=e24]: Immersive Listening Generator
+              - heading "先描述你想听什么，再把它变成一句一句的口播训练。" [level=2] [ref=e25]
+              - paragraph [ref=e26]: AI 会生成自然英语口播脚本，逐句切开并进入全屏精听模式。你只需要决定场景、难度和听力重点。
+            - generic [ref=e27]:
+              - img [ref=e28]
+              - text: Describe -> Tune -> Preview -> Immerse
+          - generic [ref=e31]:
+            - generic [ref=e32]:
+              - generic [ref=e33]: 描述你想要的口播
+              - textbox "描述你想要的口播" [ref=e34]:
+                - /placeholder: 比如：做一个 B1 难度的旅行英语口播，包含问路、时间和数字，语速自然，适合逐句精听。
+                - text: 做一个 B1 难度的产品经理晨会英语口播，句子短一点，自然口语一点。
+            - generic [ref=e35]:
+              - paragraph [ref=e36]: 脚本风格
+              - generic [ref=e37]:
+                - button "日常对话" [ref=e38]
+                - button "故事讲述" [ref=e39]
+                - button "新闻解释" [ref=e40]
+                - button "职场沟通" [ref=e41]
+                - button "旅行场景" [ref=e42]
+                - button "面试表达" [ref=e43]
+                - button "学术短讲" [ref=e44]
+            - generic [ref=e45]:
+              - generic [ref=e46]:
+                - generic [ref=e47]: CEFR
+                - combobox "CEFR" [ref=e48]:
+                  - option "A1"
+                  - option "A2"
+                  - option "B1" [selected]
+                  - option "B2"
+                  - option "C1"
+                  - option "C2"
+              - generic [ref=e49]:
+                - generic [ref=e50]: 目标时长
+                - combobox "目标时长" [ref=e51]:
+                  - option "2 分钟"
+                  - option "3 分钟" [selected]
+                  - option "5 分钟"
+                  - option "8 分钟"
+                  - option "10 分钟"
+              - generic [ref=e52]:
+                - generic [ref=e53]: 句子数量
+                - combobox "句子数量" [ref=e54]:
+                  - option "6 句"
+                  - option "8 句"
+                  - option "10 句" [selected]
+                  - option "12 句"
+                  - option "15 句"
+                  - option "18 句"
+              - generic [ref=e55]:
+                - generic [ref=e56]: 声音
+                - combobox "声音" [ref=e57]:
+                  - option "Ava"
+                  - option "Aria"
+                  - option "Emma"
+                  - option "Andrew"
+                  - option "Brian"
+                  - option "Christopher"
+                  - option "Eric"
+                  - option "Guy"
+                  - option "Michelle"
+                  - option "Roger"
+                  - option "Steffan"
+                  - option "Ana"
+                  - option "Andrew Multi"
+                  - option "Ava Multi"
+                  - option "Brian Multi"
+                  - option "Emma Multi"
+                  - option "Jenny" [selected]
+              - generic [ref=e58]:
+                - generic [ref=e59]: 播放速度
+                - combobox "播放速度" [ref=e60]:
+                  - option "0.85x"
+                  - option "0.95x"
+                  - option "1.00x" [selected]
+                  - option "1.10x"
+                  - option "1.20x"
+              - generic [ref=e61]:
+                - generic [ref=e62]:
+                  - paragraph [ref=e63]: 显示中文字幕
+                  - paragraph [ref=e64]: 播放器默认跟随这个开关。
+                - button "显示中文字幕 播放器默认跟随这个开关。" [ref=e65]
+            - generic [ref=e67]:
+              - paragraph [ref=e68]: 听力重点
+              - generic [ref=e69]:
+                - button "弱读缩读" [ref=e70]
+                - button "连读" [ref=e71]
+                - button "日常词汇" [ref=e72]
+                - button "商务词汇" [ref=e73]
+                - button "数字日期" [ref=e74]
+                - button "快语速" [ref=e75]
+                - button "口音暴露" [ref=e76]
+          - generic [ref=e77]:
+            - generic [ref=e78]: 生成后会自动存进本地历史库，你可以随时回来继续练习。
+            - button "生成口播脚本" [ref=e79]:
+              - img [ref=e80]
+              - text: 生成口播脚本
+        - generic [ref=e83]:
+          - generic [ref=e85]:
+            - generic [ref=e86]:
+              - img [ref=e87]
+              - text: Sentence Preview
+            - heading "还没有生成脚本" [level=3] [ref=e89]
+            - paragraph [ref=e90]: 先生成一份脚本，这里会显示逐句预览和进入沉浸模式入口。
+          - generic [ref=e92]: 生成后这里会出现逐句脚本、中文翻译和单句试听。
+      - complementary [ref=e93]:
+        - generic [ref=e94]:
+          - generic [ref=e95]:
+            - img [ref=e96]
+            - text: Immersive Preview
+          - generic [ref=e97]:
+            - paragraph [ref=e100]: Your sentence will live here.
+            - paragraph [ref=e101]: 生成脚本后，这里会预览全屏模式里的当前字幕与翻译。
+            - generic [ref=e102]:
+              - img [ref=e103]
+              - text: 00 / 00
+        - generic [ref=e106]:
+          - generic [ref=e107]:
+            - generic [ref=e108]:
+              - img [ref=e109]
+              - heading "本地历史库" [level=3] [ref=e113]
+            - generic [ref=e114]: 0 份
+          - generic [ref=e116]:
+            - img [ref=e117]
+            - text: 还没有历史脚本。生成第一份口播后，这里会自动存档。
+        - generic [ref=e120]:
+          - generic [ref=e121]:
+            - img [ref=e122]
+            - text: 训练流程
+          - generic [ref=e126]:
+            - generic [ref=e127]: 1. AI 按你的要求写出可口播的英语脚本。
+            - generic [ref=e128]: 2. EdgeTTS 把每一句独立合成为可重复练习的音频。
+            - generic [ref=e129]: 3. 进入全屏模式，跟着一句一句精听。
+  - button "Open Next.js Dev Tools" [ref=e135] [cursor=pointer]:
+    - img [ref=e136]
+  - alert [ref=e139]

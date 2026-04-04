@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { Suspense, useMemo, useRef, useState } from "react";
 import { db, VocabItem } from "@/lib/db";
 import { deleteVocabulary, saveVocabulary } from "@/lib/user-repository";
 import { defaultVocabSourceLabel } from "@/lib/user-sync";
@@ -270,10 +270,11 @@ function VocabWordCard({
     );
 }
 
-export default function VocabDashboard() {
+function VocabDashboardContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const prefersReducedMotion = useReducedMotion();
+    const reducedMotion = Boolean(prefersReducedMotion);
     const [search, setSearch] = useState("");
     const [manualWord, setManualWord] = useState("");
     const [isAddingWord, setIsAddingWord] = useState(false);
@@ -300,7 +301,7 @@ export default function VocabDashboard() {
         setRouteExitTarget(target);
         window.setTimeout(() => {
             router.push(target === "home" ? "/?from=vocab" : "/vocab/review?from=vocab");
-        }, prefersReducedMotion ? 140 : 520);
+        }, reducedMotion ? 140 : 520);
     };
 
     const filterCounts = useMemo(
@@ -408,13 +409,13 @@ export default function VocabDashboard() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        transition={{ duration: prefersReducedMotion ? 0.16 : 0.48, ease: VOCAB_PAGE_EASE }}
+                        transition={{ duration: reducedMotion ? 0.16 : 0.48, ease: VOCAB_PAGE_EASE }}
                     >
                         <motion.div
                             className="absolute inset-0 bg-[linear-gradient(180deg,rgba(246,239,223,0.74),rgba(250,245,232,0.92))] backdrop-blur-[10px]"
                             initial={{ scale: 1.04, filter: "blur(18px)" }}
                             animate={{ scale: 1, filter: "blur(0px)" }}
-                            transition={{ duration: prefersReducedMotion ? 0.18 : 0.52, ease: [0.18, 1, 0.3, 1] }}
+                            transition={{ duration: reducedMotion ? 0.18 : 0.52, ease: [0.18, 1, 0.3, 1] }}
                         />
                     </motion.div>
                 )}
@@ -422,7 +423,7 @@ export default function VocabDashboard() {
 
             <motion.main
                 className="min-h-screen bg-[#f6efdf] pb-20 text-[#17120d]"
-                initial={prefersReducedMotion
+                initial={reducedMotion
                     ? false
                     : {
                         opacity: 0,
@@ -433,9 +434,9 @@ export default function VocabDashboard() {
                 animate={routeExitTarget
                     ? {
                         opacity: 0,
-                        y: prefersReducedMotion ? 0 : 18,
-                        scale: prefersReducedMotion ? 1 : 0.988,
-                        filter: prefersReducedMotion ? "none" : "blur(10px)",
+                        y: reducedMotion ? 0 : 18,
+                        scale: reducedMotion ? 1 : 0.988,
+                        filter: reducedMotion ? "none" : "blur(10px)",
                     }
                     : {
                         opacity: 1,
@@ -443,7 +444,7 @@ export default function VocabDashboard() {
                         scale: 1,
                         filter: "blur(0px)",
                     }}
-                transition={{ duration: prefersReducedMotion ? 0.18 : 0.56, ease: VOCAB_PAGE_EASE }}
+                transition={{ duration: reducedMotion ? 0.18 : 0.56, ease: VOCAB_PAGE_EASE }}
             >
             <div className="border-b-2 border-[#17120d] bg-[#fbf5e8]">
                 <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
@@ -473,7 +474,7 @@ export default function VocabDashboard() {
 
                 <div className="relative mx-auto max-w-7xl px-4 pt-8 sm:px-6 sm:pt-10">
                     <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                        <motion.div {...getBlockEnterProps(prefersReducedMotion, 0.06)}>
+                        <motion.div {...getBlockEnterProps(reducedMotion, 0.06)}>
                             <h1 className="text-[2.8rem] font-black tracking-tight text-[#17120d] sm:text-[3.6rem]">生词本</h1>
                             <div className="mt-4 flex flex-wrap items-center gap-3">
                                 <span className="inline-flex items-center gap-2 rounded-full border-2 border-[#17120d] bg-white px-3 py-1.5 text-[12px] font-black text-[#17120d] shadow-[0_2px_0_rgba(23,18,13,0.12)]">
@@ -493,8 +494,8 @@ export default function VocabDashboard() {
 
                         <motion.button
                             type="button"
-                            {...getBlockEnterProps(prefersReducedMotion, 0.14)}
-                            whileTap={getPressableTap(prefersReducedMotion, 4, 0.98)}
+                            {...getBlockEnterProps(reducedMotion, 0.14)}
+                            whileTap={getPressableTap(reducedMotion, 4, 0.98)}
                             className={cn(
                                 "ui-pressable inline-flex h-14 items-center justify-center gap-2 rounded-[1.1rem] border-[3px] border-[#17120d] px-8 text-[16px] font-black",
                                 dueWords > 0
@@ -511,7 +512,7 @@ export default function VocabDashboard() {
                     </div>
 
                     <motion.section
-                        {...getBlockEnterProps(prefersReducedMotion, 0.2)}
+                        {...getBlockEnterProps(reducedMotion, 0.2)}
                         className="mt-8 rounded-[1.8rem] border-[3px] border-[#17120d] bg-[#fffaf0] p-4 shadow-[0_8px_0_rgba(23,18,13,0.1)] sm:p-5"
                     >
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
@@ -604,7 +605,7 @@ export default function VocabDashboard() {
                     </motion.section>
 
                     <motion.section
-                        {...getBlockEnterProps(prefersReducedMotion, 0.28)}
+                        {...getBlockEnterProps(reducedMotion, 0.28)}
                         className="mt-8 rounded-[2rem] border-[3px] border-[#17120d] bg-[#fbf7ec] p-4 shadow-[0_8px_0_rgba(23,18,13,0.1)] sm:p-6"
                     >
                         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -693,5 +694,13 @@ export default function VocabDashboard() {
             />
             </motion.main>
         </>
+    );
+}
+
+export default function VocabDashboard() {
+    return (
+        <Suspense fallback={null}>
+            <VocabDashboardContent />
+        </Suspense>
     );
 }

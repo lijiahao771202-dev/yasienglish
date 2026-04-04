@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, BookOpenText, BrainCircuit, Clock3, Sparkles, Stars, Swords, X } from "lucide-react";
+import { ArrowRight, BookAudio, BookOpenText, BrainCircuit, Clock3, Sparkles, Stars, Swords, X } from "lucide-react";
 
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { HomeDashboardPanels_v2 } from "@/components/home/HomeDashboardPanels_v2";
@@ -54,7 +54,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
     );
     const resolvedPasswordUpdated = passwordUpdated || searchParams.get("password") === "updated";
     const fromBattle = searchParams.get("from") === "battle";
-    const [routeTransitionTarget, setRouteTransitionTarget] = useState<"read" | "battle" | "vocab" | "review" | null>(null);
+    const [routeTransitionTarget, setRouteTransitionTarget] = useState<"read" | "battle" | "vocab" | "review" | "cabin" | null>(null);
     const [showReviewReminder, setShowReviewReminder] = useState(false);
     const [reviewReminderDismissed, setReviewReminderDismissed] = useState(false);
 
@@ -80,7 +80,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
         writingCount,
     ]);
 
-    const handleNavigateFromHome = (target: "read" | "battle" | "vocab" | "review") => {
+    const handleNavigateFromHome = (target: "read" | "battle" | "vocab" | "review" | "cabin") => {
         if (routeTransitionTarget) return;
         setRouteTransitionTarget(target);
         window.setTimeout(() => {
@@ -94,6 +94,10 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
             }
             if (target === "review") {
                 router.push("/vocab/review?from=home");
+                return;
+            }
+            if (target === "cabin") {
+                router.push("/listening-cabin?from=home");
                 return;
             }
             router.push("/vocab?from=home");
@@ -274,6 +278,19 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                 </h1>
                             </div>
                             <div className="flex flex-wrap md:flex-nowrap gap-4">
+                                <motion.button
+                                    whileHover={{ scale: 1.04, y: -2 }}
+                                    whileTap={{ scale: 0.96 }}
+                                    transition={springTransition}
+                                    type="button"
+                                    onClick={() => handleNavigateFromHome("cabin")}
+                                    className="flex w-full md:w-auto min-w-[170px] items-center justify-between gap-3 rounded-[2rem] bg-white border-4 border-[#60a5fa] px-6 py-4 shadow-[0_8px_0_0_#60a5fa] text-[#1f2937] group active:shadow-[0_0px_0_0_#60a5fa] active:translate-y-2 transition-all duration-75"
+                                >
+                                    <span className="flex items-center gap-2 text-[16px] font-black">
+                                        <BookAudio className="h-6 w-6 text-[#2563eb]" />听力舱
+                                    </span>
+                                    <ArrowRight className="h-5 w-5 text-[#9ca3af] group-hover:translate-x-1 transition-transform" />
+                                </motion.button>
                                 <motion.button
                                     whileHover={{ scale: 1.04, y: -2 }}
                                     whileTap={{ scale: 0.96 }}

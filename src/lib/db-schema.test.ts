@@ -29,4 +29,10 @@ describe("Dexie schema regressions", () => {
         expect(getIndexNames("reading_notes")).toContain("article_key");
         expect(getIndexNames("reading_notes")).toContain("[article_key+paragraph_order]");
     });
+
+    it("keeps the listening_cabin_sessions table indexed for local history lookups", () => {
+        expect(db.tables.some((table) => table.name === "listening_cabin_sessions")).toBe(true);
+        expect(getIndexNames("listening_cabin_sessions")).toContain("updated_at");
+        expect(getIndexNames("listening_cabin_sessions")).toContain("lastPlayedAt");
+    });
 });

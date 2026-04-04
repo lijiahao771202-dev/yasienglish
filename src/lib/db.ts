@@ -1,5 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import type { LearningPreferences } from "@/lib/profile-settings";
+import type { ListeningCabinSession } from "@/lib/listening-cabin";
 import type { MeaningGroup } from "@/lib/vocab-meanings";
 
 export type SyncStatus = 'synced' | 'pending' | 'error';
@@ -281,6 +282,7 @@ export class YasiDB extends Dexie {
     user_profile!: Table<LocalUserProfile>;
     sync_outbox!: Table<SyncOutboxItem, number>;
     sync_meta!: Table<SyncMetaItem, string>;
+    listening_cabin_sessions!: Table<ListeningCabinSession, string>;
 
     constructor() {
         super('YasiDB');
@@ -996,6 +998,24 @@ export class YasiDB extends Dexie {
             user_profile: '++id, user_id, updated_at, sync_status',
             sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
             sync_meta: '&key, updated_at',
+        });
+
+        // Version 36: add local listening cabin session history.
+        this.version(36).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
         });
     }
 }
