@@ -270,8 +270,12 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
     const [showChineseSubtitle, setShowChineseSubtitle] = useState(session.showChineseSubtitle);
     const [progressRatio, setProgressRatio] = useState(0);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const [audioEnergy, setAudioEnergy] = useState(0);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const analyserRef = useRef<AnalyserNode | null>(null);
+    const dataArrayRef = useRef<Uint8Array | null>(null);
     const currentSentenceIndexRef = useRef(initialSentenceIndex);
     const playbackModeRef = useRef<ListeningCabinPlaybackMode>("auto_all");
     const initializedAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -522,6 +526,10 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             const commandToken = commandTokenRef.current + 1;
             commandTokenRef.current = commandToken;
             try {
+                // Resume AudioContext (required for Web Audio API rhythm)
+                if (audioContextRef.current?.state === "suspended") {
+                    await audioContextRef.current.resume();
+                }
                 audio.playbackRate = playbackRate;
                 await audio.play();
                 if (commandToken !== commandTokenRef.current) {
@@ -553,7 +561,36 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
     useEffect(() => {
         const audio = new Audio();
         audio.preload = "auto";
+        audio.crossOrigin = "anonymous";
         audioRef.current = audio;
+
+        // Initialize Analyser for Rhythm
+        const initAnalyser = () => {
+            if (analyserRef.current) return;
+            try {
+                const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+                const context = new AudioCtx();
+                const analyser = context.createAnalyser();
+                analyser.fftSize = 128;
+                const source = context.createMediaElementSource(audio);
+                source.connect(analyser);
+                analyser.connect(context.destination);
+                
+                audioContextRef.current = context;
+                analyserRef.current = analyser;
+                dataArrayRef.current = new Uint8Array(analyser.frequencyBinCount);
+            } catch (err) {
+                console.warn("Failed to initialize audio analyzer:", err);
+            }
+        };
+
+        const onFirstInteraction = () => {
+            initAnalyser();
+            window.removeEventListener("mousedown", onFirstInteraction);
+            window.removeEventListener("keydown", onFirstInteraction);
+        };
+        window.addEventListener("mousedown", onFirstInteraction);
+        window.addEventListener("keydown", onFirstInteraction);
 
         const scheduleFrame = (callback: () => void) => {
             if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
@@ -631,6 +668,25 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             stopBoundaryFrameRef.current = scheduleFrame(monitorStopBoundary);
         };
 
+        const monitorRhythm = () => {
+            if (!audioRef.current || audioRef.current.paused) {
+                setAudioEnergy(0);
+                return;
+            }
+
+            if (analyserRef.current && dataArrayRef.current) {
+                analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+                let sum = 0;
+                for (let i = 0; i < dataArrayRef.current.length; i++) {
+                    sum += dataArrayRef.current[i];
+                }
+                const avg = sum / dataArrayRef.current.length;
+                setAudioEnergy(avg / 255);
+            }
+
+            scheduleFrame(monitorRhythm);
+        };
+
         const handleTimeUpdate = () => {
             if (!audio.duration || !Number.isFinite(audio.duration)) {
                 setProgressRatio(0);
@@ -678,6 +734,7 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
 
         const handlePlay = () => {
             setIsPlaying(true);
+            monitorRhythm();
             if (stopAtMsRef.current !== null && stopBoundaryFrameRef.current === null) {
                 stopBoundaryFrameRef.current = scheduleFrame(monitorStopBoundary);
             }
@@ -849,5 +906,6 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
         setRepeatCurrentMode,
         cyclePlaybackRate,
         toggleChineseSubtitle,
+        audioEnergy,
     };
 }
