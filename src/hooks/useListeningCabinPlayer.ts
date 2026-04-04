@@ -326,6 +326,7 @@ export function useListeningCabinPlayer({
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
+    const lastEnergyRef = useRef<number>(0);
     const analyserRef = useRef<AnalyserNode | null>(null);
     const dataArrayRef = useRef<Uint8Array | null>(null);
     const currentSentenceIndexRef = useRef(initialSentenceIndex);
@@ -676,10 +677,14 @@ export function useListeningCabinPlayer({
 
         const onFirstInteraction = () => {
             initAnalyser();
+            // Start the monitoring loops
+            monitorRhythm();
             window.removeEventListener("mousedown", onFirstInteraction);
+            window.removeEventListener("touchstart", onFirstInteraction);
             window.removeEventListener("keydown", onFirstInteraction);
         };
         window.addEventListener("mousedown", onFirstInteraction);
+        window.addEventListener("touchstart", onFirstInteraction);
         window.addEventListener("keydown", onFirstInteraction);
 
         const scheduleFrame = (callback: () => void) => {
@@ -752,23 +757,46 @@ export function useListeningCabinPlayer({
             stopBoundaryFrameRef.current = scheduleFrame(monitorStopBoundary);
         };
 
-        const monitorRhythm = () => {
+        const monitorRhythm = (timeMs: number = 0) => {
             if (!audioRef.current || audioRef.current.paused) {
                 setAudioEnergy(0);
+                lastEnergyRef.current = 0;
                 return;
             }
+
+            let newEnergy = 0;
+            let capturedData = false;
 
             if (analyserRef.current && dataArrayRef.current) {
                 analyserRef.current.getByteFrequencyData(dataArrayRef.current);
                 let sum = 0;
-                for (let i = 0; i < dataArrayRef.current.length; i++) {
-                    sum += dataArrayRef.current[i];
+                // Focus on human speech frequencies
+                const voiceRange = dataArrayRef.current.slice(0, Math.floor(dataArrayRef.current.length * 0.6));
+                for (let i = 0; i < voiceRange.length; i++) {
+                    sum += voiceRange[i];
                 }
-                const avg = sum / dataArrayRef.current.length;
-                setAudioEnergy(avg / 255);
+                const avg = sum / voiceRange.length;
+                if (avg > 0) {
+                    newEnergy = Math.pow(avg / 255, 0.7) * 2.2;
+                    capturedData = true;
+                }
             }
 
-            scheduleFrame(monitorRhythm);
+            // Procedural Fallback if Real-Time Analyzer is blocked or silent
+            if (!capturedData) {
+                // Organic Noise-stipple breathing [0.12 - 0.45 peak]
+                const slowBreathing = (Math.sin(timeMs / 800) + 1) / 2;
+                const organicPulse = (Math.sin(timeMs / 120) + Math.cos(timeMs / 70) + 2) / 4;
+                newEnergy = (slowBreathing * 0.1) + (organicPulse * 0.35);
+            }
+
+            // [CRITICAL] Vocal Smoothing Low-Pass Filter
+            // Smoothly interpolate (LERP) to remove jitter and flickering
+            const smoothed = lastEnergyRef.current * 0.7 + Math.min(newEnergy, 1) * 0.3;
+            lastEnergyRef.current = smoothed;
+
+            setAudioEnergy(smoothed);
+            scheduleFrame(() => monitorRhythm(timeMs + 16.6));
         };
 
         const handleTimeUpdate = () => {

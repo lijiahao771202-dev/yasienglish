@@ -116,31 +116,36 @@ function renderSubtitleBlock(
         const rawContent = renderSentence(sentence.english) || "";
         const words = rawContent.split(" ");
         
-        // Define Typography Styles
+        // Define Typography Styles with Ambient Shadow Support
         const getStyleConfig = () => {
             const baseStyle = {
                 color: "#1e293b",
                 fontWeight: 700,
+                // Soft Ambient Light Bleed:
+                textShadow: isActive && themeColor ? `0 0 15px ${themeColor.replace('0.6', '0.12').replace('0.65', '0.12')}` : "none",
             } as const;
 
             switch (typographyStyle) {
                 case "aurora":
                     return { 
                         ...baseStyle,
-                        textShadow: `0 0 4px ${themeColor}35, 0 0 8px ${themeColor}15`,
+                        textShadow: isActive && themeColor 
+                            ? `0 0 4px ${themeColor.replace('0.6', '0.35')}, 0 0 12px ${themeColor.replace('0.6', '0.15')}` 
+                            : `0 0 4px #00000010`,
                     };
                 case "hollow":
                     return { 
                         ...baseStyle,
                         color: "transparent", 
-                        WebkitTextStroke: "1.5px #1e293b",
-                        fontWeight: 900 
+                        WebkitTextStroke: "1px #1e293b",
+                        fontWeight: 900,
+                        textShadow: "none"
                     };
                 case "honey":
                     return { 
                         ...baseStyle,
                         color: "#713f12", 
-                        textShadow: "0.5px 0.5px 1px rgba(0,0,0,0.05)",
+                        textShadow: isActive && themeColor ? `0 2px 10px ${themeColor.replace('0.6', '0.2')}` : "0.5px 0.5px 1px rgba(0,0,0,0.05)",
                     };
                 default: // crystal
                     return baseStyle;
@@ -311,7 +316,7 @@ function ListeningCabinPlayerView({
     const router = useRouter();
     const [subtitleAdvanceMs, setSubtitleAdvanceMs] = useState(1000);
     const player = useListeningCabinPlayer({ session, restart, subtitleAdvanceMs });
-    const { playerState, currentSubtitleSentences } = player;
+    const { playerState, currentSubtitleSentences, audioEnergy } = player;
     
     // Mercury Physics for Progress
     const springProgress = useSpring(playerState.progressRatio, {
@@ -874,31 +879,54 @@ function ListeningCabinPlayerView({
                                     >
                                         {currentSpeakerTags.map((speaker) => {
                                             const isActive = speaker === activeSpeaker;
+                                            
+                                            // Radiant Premium v7: Solid-Luminous + Spring-Smoothed Pulse
                                             return (
                                                 <motion.div
                                                     key={speaker}
                                                     initial={false}
                                                     animate={{
-                                                        scale: isActive ? 1.05 : 1,
-                                                        backgroundColor: isActive ? "rgba(255, 255, 255, 0.98)" : "rgba(255, 255, 255, 0.3)",
+                                                        // Stable, Sharp Definition
+                                                        scale: isActive ? 1.02 : 0.96,
+                                                        backgroundColor: isActive ? "rgba(255, 255, 255, 1)" : "rgba(255, 255, 255, 0.4)",
+                                                        borderColor: isActive 
+                                                            ? activeMistTheme[0].replace('0.6', (0.3 + (audioEnergy * 0.5)).toString()) 
+                                                            : "rgba(0, 0, 0, 0.08)",
                                                         boxShadow: isActive 
-                                                            ? `0 12px 32px rgba(0, 0, 0, 0.08), 0 0 0 0.5px rgba(255, 255, 255, 0.8), 0 0 15px ${activeMistTheme[0].replace('0.35', '0.2')}` 
-                                                            : "0 4px 12px rgba(0, 0, 0, 0.02), 0 0 0 0.5px rgba(255, 255, 255, 0.4)",
+                                                            ? `0 10px 30px -5px rgba(0,0,0,0.05), 0 0 ${15 + (audioEnergy * 45)}px ${activeMistTheme[0].replace('0.6', (0.15 + (audioEnergy * 0.25)).toString())}` 
+                                                            : "0 2px 4px rgba(0,0,0,0.02)",
                                                     }}
-                                                    className="px-5 py-2 rounded-full backdrop-blur-md transition-all duration-700 border-[0.5px] border-white/20"
+                                                    transition={{ type: "spring", stiffness: 120, damping: 25, mass: 1 }}
+                                                    className="px-5 py-2 rounded-full backdrop-blur-[12px] border-[1px] relative overflow-hidden flex items-center gap-3.5"
                                                 >
-                                                    <div className="flex items-center gap-2.5">
-                                                        {isActive && (
-                                                            <motion.div 
-                                                                animate={{ scale: [1, 1.3, 1], opacity: [0.6, 1, 0.6] }}
-                                                                transition={{ duration: 2, repeat: Infinity }}
-                                                                style={{ backgroundColor: activeMistTheme[0] }}
-                                                                className="w-1.5 h-1.5 rounded-full"
-                                                            />
-                                                        )}
+                                                    {/* Internal Subtle Liquid Pulse for Active State */}
+                                                    {isActive && (
+                                                        <motion.div 
+                                                            animate={{ 
+                                                                opacity: 0.05 + (audioEnergy * 0.15),
+                                                                scale: 1 + (audioEnergy * 0.3)
+                                                            }}
+                                                            style={{ backgroundColor: activeMistTheme[0] }}
+                                                            className="absolute inset-0 z-0 blur-2xl pointer-events-none"
+                                                        />
+                                                    )}
+                                                    
+                                                    <div className="relative z-10 flex items-center gap-3.5">
+                                                        <motion.div 
+                                                            animate={{ 
+                                                                scale: 1 + (audioEnergy * 0.6),
+                                                                backgroundColor: activeMistTheme[0],
+                                                                boxShadow: `0 0 ${10 + (audioEnergy * 30)}px ${activeMistTheme[0]}`
+                                                            }}
+                                                            transition={{ type: "spring", stiffness: 100, damping: 20 }}
+                                                            className={cn(
+                                                                "w-1.5 h-1.5 rounded-full ring-2 ring-white transition-opacity duration-500",
+                                                                isActive ? "opacity-100" : "opacity-20"
+                                                            )}
+                                                        />
                                                         <span className={cn(
-                                                            "text-[10px] font-black tracking-[0.25em] uppercase",
-                                                            isActive ? "text-[#1a1f24]" : "text-[#64748b]/40"
+                                                            "text-[10px] font-black tracking-[0.45em] uppercase transition-colors duration-500",
+                                                            isActive ? "text-slate-900" : "text-slate-400/40"
                                                         )}>
                                                             {speaker}
                                                         </span>
@@ -910,7 +938,13 @@ function ListeningCabinPlayerView({
                                 ) : null}
                                 
                                 <div className="relative">
-                                    <h1 className={subtitleTypographyClass}>
+                                    <h1 
+                                        className={subtitleTypographyClass}
+                                        style={{
+                                            transition: "text-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
+                                            textShadow: `0 0 ${12 + (audioEnergy * 40)}px ${activeMistTheme[0].replace('0.6', (0.2 + (audioEnergy * 0.2)).toString())}`
+                                        }}
+                                    >
                                         {renderSubtitleBlock(currentSubtitleSentences, playerState.currentSentenceIndex, activeMistTheme[0], fontEn, transitionStyle, typographyStyle, handleWordClick)}
                                     </h1>
                                     
@@ -921,7 +955,7 @@ function ListeningCabinPlayerView({
                                                 opacity: 1, 
                                                 y: 0, 
                                                 filter: "blur(0px)",
-                                                transition: { delay: 0.35, duration: 0.8, ease: [0.22, 1, 0.36, 1] } 
+                                                transition: { delay: 0.35, duration: 0.8, ease: [0.22, 1, 0.36, 1] as any } 
                                             },
                                             exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
                                         }}
