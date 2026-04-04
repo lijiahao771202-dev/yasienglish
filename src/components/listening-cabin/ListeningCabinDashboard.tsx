@@ -1,397 +1,218 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
-import { motion } from "framer-motion";
+import { useState, useMemo, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import {
     ArrowLeft,
-    BookAudio,
-    Loader2,
-    Play,
-    Trash2,
     WandSparkles,
+    Play,
+    Loader2,
+    Trash2,
+    BookAudio,
+    ChevronRight,
+    ChevronLeft,
+    X,
 } from "lucide-react";
-
-import { db } from "@/lib/db";
-import { getListeningCabinTtsPayload } from "@/lib/listening-cabin-audio";
+import { cn } from "@/lib/utils";
 import {
-    createListeningCabinSession,
     DEFAULT_LISTENING_CABIN_REQUEST,
-    isListeningCabinMultiSpeakerMode,
-    LISTENING_CABIN_CEFR_OPTIONS,
     LISTENING_CABIN_FOCUS_OPTIONS,
-    LISTENING_CABIN_LEXICAL_DENSITY_OPTIONS,
-    LISTENING_CABIN_MULTI_SPEAKER_MAX,
-    LISTENING_CABIN_MULTI_SPEAKER_MIN,
-    LISTENING_CABIN_SCRIPT_LENGTH_OPTIONS,
     LISTENING_CABIN_SCRIPT_MODE_OPTIONS,
     LISTENING_CABIN_SCRIPT_STYLE_OPTIONS,
-    LISTENING_CABIN_THINKING_MODE_OPTIONS,
-    LISTENING_CABIN_SPEAKER_STRATEGY_OPTIONS,
+    LISTENING_CABIN_CEFR_OPTIONS,
+    LISTENING_CABIN_LEXICAL_DENSITY_OPTIONS,
+    LISTENING_CABIN_MULTI_SPEAKER_MIN,
+    LISTENING_CABIN_MULTI_SPEAKER_MAX,
+    LISTENING_CABIN_SCRIPT_LENGTH_OPTIONS,
     LISTENING_CABIN_SENTENCE_LENGTH_OPTIONS,
+    LISTENING_CABIN_SPEAKER_STRATEGY_OPTIONS,
+    LISTENING_CABIN_THINKING_MODE_OPTIONS,
     LISTENING_CABIN_TOPIC_MODE_OPTIONS,
-    getListeningCabinRandomTopicPoolSize,
-    pickListeningCabinRandomTopic,
-    resolveListeningCabinLengthProfile,
-    type ListeningCabinGenerationRequest,
-    type ListeningCabinGenerationResponse,
-    type ListeningCabinSession,
+    TTS_VOICE_OPTIONS,
 } from "@/lib/listening-cabin";
-import { deleteListeningCabinSession, saveListeningCabinSession } from "@/lib/listening-cabin-store";
-import { DEFAULT_TTS_VOICE, TTS_VOICE_OPTIONS } from "@/lib/profile-settings";
-import { getPressableStyle } from "@/lib/pressable";
-import { cn } from "@/lib/utils";
+import {
+    resolveListeningCabinLengthProfile,
+    isListeningCabinMultiSpeakerMode,
+    buildDefaultMultiSpeakerAssignments,
+    normalizeListeningCabinVoice,
+    ensureUniqueVoiceAssignments,
+    pickListeningCabinRandomTopic,
+    getListeningCabinRandomTopicPoolSize,
+    getVoiceLabel,
+} from "@/lib/listening-cabin";
+import { getListeningCabinTtsPayload } from "@/lib/listening-cabin-audio";
+import { useListeningCabin } from "@/hooks/use-listening-cabin";
+import type {
+    ListeningCabinFocusTag,
+    ListeningCabinGenerationRequest,
+    ListeningCabinGenerationResponse,
+    ListeningCabinScriptMode,
+    ListeningCabinSession,
+} from "@/lib/listening-cabin";
 
-const LISTENING_CABIN_VOICE_OPTIONS = TTS_VOICE_OPTIONS.filter((option) => option.voice.startsWith("en-"));
-const LISTENING_CABIN_DEFAULT_VOICE = LISTENING_CABIN_VOICE_OPTIONS.find((option) => option.voice === DEFAULT_TTS_VOICE)?.voice
-    ?? LISTENING_CABIN_VOICE_OPTIONS[0]?.voice
-    ?? DEFAULT_TTS_VOICE;
+// --- Minimal Dashboard Card Component ---
+type MultiSpeakerMode = Exclude<ListeningCabinScriptMode, "monologue">;
 
-function ensureListeningCabinVoice(voice: (typeof TTS_VOICE_OPTIONS)[number]["voice"] | string | null | undefined) {
-    if (typeof voice === "string" && LISTENING_CABIN_VOICE_OPTIONS.some((option) => option.voice === voice)) {
-        return voice as (typeof TTS_VOICE_OPTIONS)[number]["voice"];
-    }
+const DashboardCard = ({ children, className }: { children: ReactNode; className?: string }) => (
+    <div className={cn("glass-panel rounded-[2.5rem] border-white/60 bg-white/60 shadow-xl backdrop-blur-md", className)}>
+        {children}
+    </div>
+);
 
-    return LISTENING_CABIN_DEFAULT_VOICE;
-}
+const getPressableStyle = (color: string, radius: number) => ({
+    "--ui-pressable-color": color,
+    "--ui-pressable-radius": `${radius}px`,
+} as CSSProperties);
 
-function formatSessionTime(timestamp: number) {
-    return new Intl.DateTimeFormat("zh-CN", {
-        month: "numeric",
+const formatSessionTime = (isoString: number) => {
+    const date = new Date(isoString);
+    return date.toLocaleString("zh-CN", {
+        month: "short",
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit",
-    }).format(timestamp);
-}
-
-function DashboardCard({
-    children,
-    className,
-}: {
-    children: ReactNode;
-    className?: string;
-}) {
-    return (
-        <section
-            className={cn(
-                "rounded-[28px] border border-[#e5ddd3] bg-[rgba(255,255,255,0.88)] p-5 shadow-[0_16px_38px_rgba(60,37,11,0.05)] backdrop-blur-sm sm:p-6",
-                className,
-            )}
-        >
-            {children}
-        </section>
-    );
-}
-
-function normalizeSpeakerLabel(value: string) {
-    return value.trim();
-}
-
-function isGenericSpeakerName(value: string) {
-    const normalized = normalizeSpeakerLabel(value).toLowerCase();
-    return (
-        /^speaker\s*[a-z0-9]+$/i.test(normalized)
-        || /^guest\s*\d*$/i.test(normalized)
-        || normalized === "host"
-        || normalized === "narrator"
-    );
-}
-
-function getVoiceOption(voice: (typeof TTS_VOICE_OPTIONS)[number]["voice"]) {
-    return LISTENING_CABIN_VOICE_OPTIONS.find((option) => option.voice === voice);
-}
-
-function getVoiceLabel(voice: (typeof TTS_VOICE_OPTIONS)[number]["voice"]) {
-    return getVoiceOption(voice)?.label ?? voice;
-}
-
-function ensureUniqueVoices(
-    voices: Array<(typeof TTS_VOICE_OPTIONS)[number]["voice"]>,
-    fallbackVoice: (typeof TTS_VOICE_OPTIONS)[number]["voice"],
-) {
-    const used = new Set<(typeof TTS_VOICE_OPTIONS)[number]["voice"]>();
-    const resolvedFallback = ensureListeningCabinVoice(fallbackVoice);
-    return voices.map((voice) => {
-        const normalizedVoice = ensureListeningCabinVoice(voice);
-        if (!used.has(normalizedVoice)) {
-            used.add(normalizedVoice);
-            return normalizedVoice;
-        }
-
-        const next = LISTENING_CABIN_VOICE_OPTIONS.find((option) => !used.has(option.voice))?.voice ?? resolvedFallback;
-        used.add(next);
-        return next;
+        hour12: false,
     });
+};
+
+function getMultiSpeakerMode(scriptMode: ListeningCabinScriptMode): MultiSpeakerMode | null {
+    return scriptMode === "monologue" ? null : scriptMode;
 }
 
-function buildMultiSpeakerAssignments(
-    scriptMode: ListeningCabinGenerationRequest["scriptMode"],
-    primaryVoice: (typeof TTS_VOICE_OPTIONS)[number]["voice"],
-    assignments: ListeningCabinGenerationRequest["speakerPlan"]["assignments"],
-) {
-    const resolvedPrimaryVoice = ensureListeningCabinVoice(primaryVoice);
-
-    if (!isListeningCabinMultiSpeakerMode(scriptMode)) {
-        return [{ speaker: "Narrator", voice: resolvedPrimaryVoice }];
-    }
-
-    const bounded = assignments.slice(0, LISTENING_CABIN_MULTI_SPEAKER_MAX);
-    const expectedCount = Math.min(
-        LISTENING_CABIN_MULTI_SPEAKER_MAX,
-        Math.max(LISTENING_CABIN_MULTI_SPEAKER_MIN, bounded.length),
-    );
-
-    const provisionalVoices = Array.from({ length: expectedCount }, (_, index) => {
-        if (bounded[index]?.voice) {
-            return ensureListeningCabinVoice(bounded[index].voice);
-        }
-
-        const fallback = LISTENING_CABIN_VOICE_OPTIONS.find((option) => option.voice !== resolvedPrimaryVoice)?.voice ?? resolvedPrimaryVoice;
-        return index === 0 ? resolvedPrimaryVoice : fallback;
-    });
-    const uniqueVoices = ensureUniqueVoices(provisionalVoices, resolvedPrimaryVoice);
-
-    const usedSpeakerNames = new Set<string>();
-    return uniqueVoices.map((voice, index) => {
-        const existingSpeaker = normalizeSpeakerLabel(bounded[index]?.speaker ?? "");
-        const defaultSpeaker = getVoiceLabel(voice);
-        const candidate = existingSpeaker && !isGenericSpeakerName(existingSpeaker) ? existingSpeaker : defaultSpeaker;
-        let speaker = candidate || defaultSpeaker;
-        if (usedSpeakerNames.has(speaker)) {
-            speaker = `${defaultSpeaker} ${index + 1}`;
-        }
-        usedSpeakerNames.add(speaker);
-
-        return {
-            speaker,
-            voice,
-        };
-    });
-}
-
-function SoftChip({
-    active,
-    children,
-    onClick,
-    className,
-}: {
-    active: boolean;
-    children: ReactNode;
-    onClick: () => void;
-    className?: string;
-}) {
-    return (
-        <button
-            type="button"
-            onClick={onClick}
-            className={cn(
-                "ui-pressable rounded-full border px-3 py-1.5 text-[11px] font-medium tracking-[0.02em] transition",
-                active
-                    ? "border-[#d2caf8] bg-[#f1edff] text-[#49446b]"
-                    : "border-[#ebe3da] bg-white/88 text-[#72685c]",
-                className,
-            )}
-            style={getPressableStyle(active ? "rgba(182,168,255,0.18)" : "rgba(40,26,10,0.05)", 2)}
-        >
-            {children}
-        </button>
-    );
-}
-
-export function ListeningCabinDashboard() {
+export default function ListeningCabinDashboard() {
     const router = useRouter();
-    const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
-    const rawSessions = useLiveQuery(
-        () => db.listening_cabin_sessions.orderBy("updated_at").reverse().toArray(),
-        [],
-    );
-    const sessions = useMemo(() => rawSessions ?? [], [rawSessions]);
+    const {
+        sessions,
+        createSession,
+        deleteSession,
+    } = useListeningCabin();
+
+    const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generateError, setGenerateError] = useState<string | null>(null);
+    const [isGeneratingAiTopic, setIsGeneratingAiTopic] = useState(false);
+    const [topicNotice, setTopicNotice] = useState<string | null>(null);
+    const [showChineseSubtitle, setShowChineseSubtitle] = useState(true);
+    const [randomTopicLocked, setRandomTopicLocked] = useState(false);
+    const [previewSentenceKey, setPreviewSentenceKey] = useState<string | null>(null);
+
+    // Phase 25: Wizard & View Transitions
+    const [showWizard, setShowWizard] = useState(false);
+    const [wizardStep, setWizardStep] = useState(1);
+    const [activeView, setActiveView] = useState<'dashboard' | 'script'>('dashboard');
+
+    const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+    const usedRandomTopicsRef = useRef<Set<string>>(new Set());
 
     const [request, setRequest] = useState<ListeningCabinGenerationRequest>({
         ...DEFAULT_LISTENING_CABIN_REQUEST,
-        prompt: "做一个 B1 难度的产品经理晨会英语口播，语气自然流畅，适合逐句精听。",
+        topicMode: "random",
+        topicSource: "pool",
+        style: "storytelling",
     });
-    const [showChineseSubtitle, setShowChineseSubtitle] = useState(true);
-    const [randomTopicLocked, setRandomTopicLocked] = useState(false);
-    const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [isGeneratingAiTopic, setIsGeneratingAiTopic] = useState(false);
-    const [generateError, setGenerateError] = useState<string | null>(null);
-    const [topicNotice, setTopicNotice] = useState<string | null>(null);
-    const [previewSentenceKey, setPreviewSentenceKey] = useState<string | null>(null);
-
-    const previewAudioRef = useRef<HTMLAudioElement | null>(null);
-    const usedRandomTopicsRef = useRef<Record<ListeningCabinGenerationRequest["scriptMode"], Set<string>>>({
-        monologue: new Set<string>(),
-        dialogue: new Set<string>(),
-        podcast: new Set<string>(),
-    });
-    const profileVoiceHydratedRef = useRef(false);
-
-    useEffect(() => {
-        if (profileVoiceHydratedRef.current) {
-            return;
-        }
-
-        const preferredVoice = profile?.learning_preferences?.tts_voice;
-        const resolvedVoice = ensureListeningCabinVoice(preferredVoice);
-        setRequest((current) => ({
-            ...current,
-            speakerPlan: {
-                ...current.speakerPlan,
-                primaryVoice: resolvedVoice,
-                assignments: current.speakerPlan.assignments.length > 0
-                    ? current.speakerPlan.assignments.map((assignment, index) => (
-                        index === 0 ? { ...assignment, voice: resolvedVoice } : assignment
-                    ))
-                    : [{ speaker: "Narrator", voice: resolvedVoice }],
-            },
-        }));
-        profileVoiceHydratedRef.current = true;
-    }, [profile?.learning_preferences?.tts_voice]);
-
-    useEffect(() => {
-        if (selectedSessionId && sessions.some((session) => session.id === selectedSessionId)) {
-            return;
-        }
-
-        setSelectedSessionId(sessions[0]?.id ?? null);
-    }, [selectedSessionId, sessions]);
-
-    useEffect(() => {
-        const audio = new Audio();
-        previewAudioRef.current = audio;
-
-        const handleEnded = () => {
-            setPreviewSentenceKey(null);
-        };
-
-        audio.addEventListener("ended", handleEnded);
-
-        return () => {
-            audio.pause();
-            audio.removeEventListener("ended", handleEnded);
-            previewAudioRef.current = null;
-        };
-    }, []);
 
     const selectedSession = useMemo(
-        () => sessions.find((session) => session.id === selectedSessionId) ?? null,
-        [selectedSessionId, sessions],
+        () => sessions.find((s: ListeningCabinSession) => s.id === selectedSessionId) || (sessions.length > 0 ? sessions[0] : null),
+        [sessions, selectedSessionId],
     );
 
-    const toggleFocusTag = (value: typeof LISTENING_CABIN_FOCUS_OPTIONS[number]["value"]) => {
-        setRequest((current) => {
-            const exists = current.focusTags.includes(value);
-            return {
-                ...current,
-                focusTags: exists
-                    ? current.focusTags.filter((item) => item !== value)
-                    : [...current.focusTags, value],
-            };
-        });
-    };
-
-    const handleGenerate = async () => {
-        setGenerateError(null);
-        setIsGenerating(true);
-
-        try {
-            const response = await fetch("/api/ai/listening-cabin/generate", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(request),
-            });
-
-            const data = await response.json().catch(() => null);
-            if (!response.ok) {
-                throw new Error(data?.error || "生成失败，请稍后再试。");
-            }
-
-            const session = createListeningCabinSession({
-                response: data as ListeningCabinGenerationResponse,
-                request,
-                showChineseSubtitle,
-            });
-
-            await saveListeningCabinSession(session);
-            setSelectedSessionId(session.id);
-        } catch (error) {
-            console.error("Listening cabin generation failed:", error);
-            setGenerateError(error instanceof Error ? error.message : "生成失败，请稍后再试。");
-        } finally {
-            setIsGenerating(false);
+    useEffect(() => {
+        if (!selectedSessionId && sessions.length > 0) {
+            setSelectedSessionId(sessions[0].id);
         }
-    };
-
-    const handlePreviewSentence = async (session: ListeningCabinSession, sentenceIndex: number) => {
-        const sentence = session.sentences[sentenceIndex];
-        const audio = previewAudioRef.current;
-        if (!sentence || !audio) {
-            return;
-        }
-
-        const nextKey = `${session.id}:${sentence.index}`;
-        if (previewSentenceKey === nextKey && !audio.paused) {
-            audio.pause();
-            setPreviewSentenceKey(null);
-            return;
-        }
-
-        setPreviewSentenceKey(nextKey);
-
-        try {
-            const payload = await getListeningCabinTtsPayload(sentence.english, session.voice, session.playbackRate);
-            audio.pause();
-            audio.src = payload.audio;
-            audio.currentTime = 0;
-            await audio.play();
-        } catch (error) {
-            console.error("Listening cabin preview failed:", error);
-            setPreviewSentenceKey(null);
-        }
-    };
-
-    const openSession = (sessionId: string, restart = false) => {
-        previewAudioRef.current?.pause();
-        router.push(restart ? `/listening-cabin/${sessionId}?restart=1` : `/listening-cabin/${sessionId}`);
-    };
-
-    const handleDeleteSession = async (sessionId: string) => {
-        if (selectedSessionId === sessionId) {
-            previewAudioRef.current?.pause();
-            setPreviewSentenceKey(null);
-        }
-
-        await deleteListeningCabinSession(sessionId);
-    };
+    }, [sessions, selectedSessionId]);
 
     const lengthProfile = useMemo(
         () => resolveListeningCabinLengthProfile(request.scriptLength, request.sentenceLength),
         [request.scriptLength, request.sentenceLength],
     );
 
-    const randomizeTopicFromPool = () => {
-        const poolSize = getListeningCabinRandomTopicPoolSize(request.scriptMode);
-        const usedTopics = usedRandomTopicsRef.current[request.scriptMode];
-        if (usedTopics.size >= poolSize) {
-            usedTopics.clear();
-        }
+    const handleGenerate = async () => {
+        setIsGenerating(true);
+        setGenerateError(null);
+        try {
+            const finalRequest = { ...request };
+            if (isRandomTopicMode && !finalRequest.prompt) {
+                finalRequest.prompt = randomizeTopicFromPool() || "";
+            }
 
-        let randomTopic = "";
-        for (let attempt = 0; attempt < 48; attempt += 1) {
-            const seed = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${attempt}`;
-            const candidate = pickListeningCabinRandomTopic(seed, request.scriptMode);
-            if (!usedTopics.has(candidate)) {
-                randomTopic = candidate;
-                break;
+            const response = await fetch("/api/ai/listening-cabin/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(finalRequest),
+            });
+
+            const data = await response.json() as ListeningCabinGenerationResponse & { error?: string };
+            if (!response.ok) throw new Error(data.error || "生成失败");
+
+            const newSession = await createSession({
+                response: data,
+                request: finalRequest,
+                showChineseSubtitle,
+            });
+            router.push(`/listening-cabin/${newSession.id}?showChinese=${showChineseSubtitle}`);
+        } catch (error) {
+            setGenerateError(error instanceof Error ? error.message : "锻造失败，请稍后重试");
+            setIsGenerating(false);
+        }
+    };
+
+    const handleDeleteSession = async (sessionId: string) => {
+        if (confirm("确定要删除这个脚本吗？删除后无法恢复。")) {
+            await deleteSession(sessionId);
+            if (selectedSessionId === sessionId) {
+                setSelectedSessionId(null);
             }
         }
+    };
 
-        if (!randomTopic) {
+    const openSession = (id: string, restart = false) => {
+        router.push(`/listening-cabin/${id}?showChinese=${showChineseSubtitle}${restart ? "&restart=true" : ""}`);
+    };
+
+    const handlePreviewSentence = async (session: ListeningCabinSession, index: number) => {
+        const sentence = session.sentences[index];
+        const previewKey = `${session.id}:${index}`;
+
+        if (previewSentenceKey === previewKey) {
+            previewAudioRef.current?.pause();
+            setPreviewSentenceKey(null);
+            return;
+        }
+
+        setPreviewSentenceKey(previewKey);
+        try {
+            const audio = previewAudioRef.current;
+            if (!audio) {
+                throw new Error("Preview audio element is unavailable");
+            }
+
+            const speakerVoice = sentence.speaker
+                ? session.speakerPlan.assignments.find((assignment) => assignment.speaker === sentence.speaker)?.voice
+                : undefined;
+            const payload = await getListeningCabinTtsPayload(
+                sentence.english,
+                speakerVoice || session.speakerPlan.primaryVoice,
+                session.playbackRate,
+            );
+
+            audio.pause();
+            audio.src = payload.audio;
+            audio.currentTime = 0;
+            audio.onended = () => setPreviewSentenceKey(null);
+            await audio.play();
+        } catch (error) {
+            console.error("Preview failed:", error);
+            setPreviewSentenceKey(null);
+        }
+    };
+
+    const randomizeTopicFromPool = () => {
+        const usedTopics = usedRandomTopicsRef.current;
+        let randomTopic = pickListeningCabinRandomTopic(`${Date.now()}-${Math.random()}`, request.scriptMode);
+
+        if (usedTopics.has(randomTopic) && usedTopics.size < getListeningCabinRandomTopicPoolSize(request.scriptMode)) {
             const seed = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-fallback`;
             randomTopic = pickListeningCabinRandomTopic(seed, request.scriptMode);
         }
@@ -405,16 +226,22 @@ export function ListeningCabinDashboard() {
         return randomTopic;
     };
 
+    const toggleFocusTag = (tag: ListeningCabinFocusTag) => {
+        setRequest((current) => ({
+            ...current,
+            focusTags: current.focusTags.includes(tag)
+                ? current.focusTags.filter((value) => value !== tag)
+                : [...current.focusTags, tag],
+        }));
+    };
+
     const generateAiRandomTopic = async () => {
         setIsGeneratingAiTopic(true);
-        setTopicNotice(null);
 
         try {
             const response = await fetch("/api/ai/listening-cabin/random-topic", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     scriptMode: request.scriptMode,
                     style: request.style,
@@ -437,7 +264,6 @@ export function ListeningCabinDashboard() {
                 topicMode: "hybrid",
                 topicSource: "ai",
             }));
-            setTopicNotice("已生成 AI 随机主题，并自动切换到混合模式。");
         } catch (error) {
             randomizeTopicFromPool();
             setRequest((current) => ({
@@ -445,22 +271,25 @@ export function ListeningCabinDashboard() {
                 topicMode: "random",
                 topicSource: "pool",
             }));
-            setTopicNotice("AI 生成失败，已切换为本地随机主题。");
             console.error("Listening cabin AI random topic failed:", error);
         } finally {
             setIsGeneratingAiTopic(false);
         }
     };
 
-    const updatePrimaryVoice = (nextVoice: (typeof TTS_VOICE_OPTIONS)[number]["voice"]) => {
-        const resolvedVoice = ensureListeningCabinVoice(nextVoice);
+    const updatePrimaryVoice = (nextVoice: string) => {
+        const resolvedVoice = normalizeListeningCabinVoice(
+            nextVoice,
+            DEFAULT_LISTENING_CABIN_REQUEST.speakerPlan.primaryVoice,
+        );
+        const multiSpeakerMode = getMultiSpeakerMode(request.scriptMode);
         setRequest((current) => ({
             ...current,
             speakerPlan: {
                 ...current.speakerPlan,
                 primaryVoice: resolvedVoice,
-                assignments: isListeningCabinMultiSpeakerMode(current.scriptMode)
-                    ? buildMultiSpeakerAssignments(current.scriptMode, resolvedVoice, current.speakerPlan.assignments).map((assignment, index) => (
+                assignments: multiSpeakerMode
+                    ? ensureUniqueVoiceAssignments(buildDefaultMultiSpeakerAssignments(multiSpeakerMode, resolvedVoice), resolvedVoice).map((assignment, index) => (
                         index === 0 ? { ...assignment, speaker: getVoiceLabel(resolvedVoice), voice: resolvedVoice } : assignment
                     ))
                     : [{ speaker: "Narrator", voice: resolvedVoice }],
@@ -468,17 +297,16 @@ export function ListeningCabinDashboard() {
         }));
     };
 
-    const updateMultiSpeakerVoice = (speakerIndex: number, voice: (typeof TTS_VOICE_OPTIONS)[number]["voice"]) => {
-        const resolvedVoice = ensureListeningCabinVoice(voice);
+    const updateMultiSpeakerVoice = (speakerIndex: number, voice: string) => {
+        const resolvedVoice = normalizeListeningCabinVoice(
+            voice,
+            DEFAULT_LISTENING_CABIN_REQUEST.speakerPlan.primaryVoice,
+        );
         setRequest((current) => {
             if (!isListeningCabinMultiSpeakerMode(current.scriptMode)) {
                 return current;
             }
-            const nextAssignments = buildMultiSpeakerAssignments(
-                current.scriptMode,
-                current.speakerPlan.primaryVoice,
-                current.speakerPlan.assignments,
-            );
+            const nextAssignments = [...current.speakerPlan.assignments];
             const duplicated = nextAssignments.some((assignment, index) => (
                 index !== speakerIndex && assignment.voice === resolvedVoice
             ));
@@ -508,17 +336,13 @@ export function ListeningCabinDashboard() {
             if (!isListeningCabinMultiSpeakerMode(current.scriptMode)) {
                 return current;
             }
-            const nextAssignments = buildMultiSpeakerAssignments(
-                current.scriptMode,
-                current.speakerPlan.primaryVoice,
-                current.speakerPlan.assignments,
-            );
+            const nextAssignments = [...current.speakerPlan.assignments];
 
             if (nextAssignments.length >= LISTENING_CABIN_MULTI_SPEAKER_MAX) {
                 return current;
             }
             const usedVoices = new Set(nextAssignments.map((assignment) => assignment.voice));
-            const candidateVoice = LISTENING_CABIN_VOICE_OPTIONS.find((option) => !usedVoices.has(option.voice))?.voice
+            const candidateVoice = TTS_VOICE_OPTIONS.find((option) => !usedVoices.has(option.voice))?.voice
                 ?? current.speakerPlan.primaryVoice;
 
             nextAssignments.push({
@@ -543,20 +367,19 @@ export function ListeningCabinDashboard() {
                 return current;
             }
 
-            const currentAssignments = buildMultiSpeakerAssignments(
-                current.scriptMode,
-                current.speakerPlan.primaryVoice,
-                current.speakerPlan.assignments,
-            );
-            const targetCount = currentAssignments.length;
-            const shuffled = [...LISTENING_CABIN_VOICE_OPTIONS]
+            const targetCount = current.speakerPlan.assignments.length;
+            const shuffled = [...TTS_VOICE_OPTIONS]
+                .filter((v) => v.voice.startsWith("en-"))
                 .sort(() => Math.random() - 0.5)
                 .slice(0, targetCount)
                 .map((option) => option.voice);
-            const uniqueVoices = ensureUniqueVoices(shuffled, current.speakerPlan.primaryVoice);
-            const randomizedAssignments = uniqueVoices.map((voice) => ({
-                speaker: getVoiceLabel(voice),
+            const uniqueVoices = ensureUniqueVoiceAssignments(shuffled.map((voice, index) => ({
+                speaker: `Speaker ${index + 1}`,
                 voice,
+            })), current.speakerPlan.primaryVoice);
+            const randomizedAssignments = uniqueVoices.map((assignment) => ({
+                speaker: getVoiceLabel(assignment.voice),
+                voice: assignment.voice,
             }));
 
             return {
@@ -576,11 +399,7 @@ export function ListeningCabinDashboard() {
             if (!isListeningCabinMultiSpeakerMode(current.scriptMode)) {
                 return current;
             }
-            const nextAssignments = buildMultiSpeakerAssignments(
-                current.scriptMode,
-                current.speakerPlan.primaryVoice,
-                current.speakerPlan.assignments,
-            );
+            const nextAssignments = [...current.speakerPlan.assignments];
 
             if (nextAssignments.length <= LISTENING_CABIN_MULTI_SPEAKER_MIN) {
                 return current;
@@ -608,17 +427,41 @@ export function ListeningCabinDashboard() {
         }
     }, [randomTopicLocked, request.topicMode, request.topicSource]);
 
-    const voiceOptions = useMemo(() => LISTENING_CABIN_VOICE_OPTIONS, []);
+    const voiceOptions = useMemo(() => TTS_VOICE_OPTIONS.filter((v) => v.voice.startsWith("en-")), []);
     const isRandomTopicMode = request.topicMode === "random" || request.topicMode === "hybrid";
-    const isMultiSpeakerMode = isListeningCabinMultiSpeakerMode(request.scriptMode);
-    const multiSpeakerAssignments = isMultiSpeakerMode
-        ? buildMultiSpeakerAssignments(request.scriptMode, request.speakerPlan.primaryVoice, request.speakerPlan.assignments)
-        : [];
-    const promptPlaceholder = request.topicMode === "manual"
-        ? "例如：一个单人老师讲解‘为什么总是拖延’，口语自然，贴近生活。"
-        : request.topicMode === "hybrid"
-            ? "输入你的主题方向，系统会叠加随机池灵感（AI随机主题会直接填入）。"
-            : "随机池模式下可留空，系统会自动给出生活化主题。";
+    const isMultiSpeaker = isListeningCabinMultiSpeakerMode(request.scriptMode);
+
+    // Auto-init multi-speaker assignments when scriptMode changes
+    useEffect(() => {
+        const multiSpeakerMode = getMultiSpeakerMode(request.scriptMode);
+        if (multiSpeakerMode) {
+            if (request.speakerPlan.assignments.length < LISTENING_CABIN_MULTI_SPEAKER_MIN) {
+                const defaults = buildDefaultMultiSpeakerAssignments(multiSpeakerMode, request.speakerPlan.primaryVoice);
+                const unique = ensureUniqueVoiceAssignments(defaults, request.speakerPlan.primaryVoice);
+                setRequest(c => ({
+                    ...c,
+                    speakerPlan: {
+                        ...c.speakerPlan,
+                        strategy: "mixed_dialogue",
+                        assignments: unique.map((assignment) => ({
+                            speaker: getVoiceLabel(assignment.voice),
+                            voice: assignment.voice,
+                        })),
+                    },
+                }));
+            }
+        } else {
+            setRequest(c => ({
+                ...c,
+                speakerPlan: {
+                    ...c.speakerPlan,
+                    strategy: "fixed",
+                    assignments: [{ speaker: "Narrator", voice: c.speakerPlan.primaryVoice }],
+                },
+            }));
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [request.scriptMode]);
 
     return (
         <main className="relative min-h-screen overflow-hidden bg-[linear-gradient(180deg,#f6f2eb_0%,#f2ece3_48%,#f5f0ea_100%)] text-[#1b1611]">
@@ -626,604 +469,818 @@ export function ListeningCabinDashboard() {
             <div className="pointer-events-none absolute inset-x-0 top-0 h-[18rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.58),transparent)]" />
 
             <div className="relative mx-auto max-w-[1120px] px-4 pb-10 pt-5 sm:px-6 lg:px-8">
-                <header className="mb-6 flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
+                <header className="mb-8 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
                         <button
                             type="button"
                             onClick={() => router.push("/?from=listening-cabin")}
-                            className="ui-pressable inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/80 text-[#1b1611] shadow-[0_8px_18px_rgba(46,27,8,0.06)]"
+                            className="ui-pressable group inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-[#1b1611] shadow-[0_8px_18px_rgba(46,27,8,0.06)] backdrop-blur-md transition-all active:scale-90"
                             style={getPressableStyle("rgba(24,20,17,0.08)", 2)}
                             aria-label="返回首页"
                         >
-                            <ArrowLeft className="h-4 w-4" />
+                            <ArrowLeft className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
                         </button>
                         <div>
-                            <p className="text-sm font-medium tracking-[-0.02em] text-[#221a14]">沉浸听力</p>
-                            <p className="text-[11px] text-[#8f8478]">生成单人 / 对话 / 播客听力稿并直接进入练习</p>
+                            <p className="text-sm font-black tracking-[0.2em] text-[#1a1c1d] uppercase">The Listening Cabin</p>
+                            <p className="text-[11px] text-[#8f8478] font-bold mt-0.5">引导式深度听力锻造系统 · Guidance Forge v2.5</p>
                         </div>
                     </div>
                 </header>
 
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,410px)]">
-                    <div className="space-y-5">
-                        <motion.div
-                            initial={{ opacity: 0, y: 12 }}
+                <AnimatePresence mode="wait">
+                    {activeView === 'dashboard' ? (
+                        <motion.div 
+                            key="dashboard"
+                            initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            className="flex flex-col gap-16 max-w-7xl mx-auto w-full"
                         >
-                            <DashboardCard className="p-5 sm:p-6">
-                                <div className="flex items-start justify-between gap-4">
-                                    <div>
-                                        <p className="text-[13px] font-medium text-[#2b231d]">听力稿控制台</p>
-                                        <p className="mt-1 max-w-[34rem] text-[12px] leading-6 text-[#91867a]">
-                                            按“内容模式 → 风格 → 语言难度 → 节奏控制 → 声线策略”一步完成配置，避免参数互相冲突。
-                                        </p>
+                            {/* Top Hero: Guidance Forge */}
+                            <section className="flex flex-col items-center">
+                                <motion.div
+                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    transition={{ type: "spring", damping: 20, stiffness: 100 }}
+                                    className="relative group w-full max-w-5xl"
+                                >
+                                    <div className="absolute -inset-4 bg-gradient-to-br from-pink-300 via-amber-200 to-indigo-200 rounded-[4rem] blur-3xl opacity-15 group-hover:opacity-30 transition duration-1000" />
+                                    <button
+                                        onClick={() => { setWizardStep(1); setShowWizard(true); }}
+                                        className="relative w-full min-h-[480px] bg-[#fffaf5]/80 backdrop-blur-sm border-[4px] border-white/90 rounded-[4rem] p-12 lg:p-20 flex flex-col items-center justify-center text-center overflow-hidden shadow-[0_48px_80px_-16px_rgba(255,160,122,0.15),inset_0_4px_16px_rgba(255,255,255,1)] group active:scale-[0.98] transition-all"
+                                    >
+                                        {/* Floating Decorative Elements */}
+                                        <motion.div 
+                                            animate={{ y: [0, -15, 0], x: [0, 10, 0] }}
+                                            transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+                                            className="absolute top-12 left-12 w-32 h-32 bg-pink-100/40 rounded-full blur-2xl" 
+                                        />
+                                        <motion.div 
+                                            animate={{ y: [0, 12, 0], x: [0, -8, 0] }}
+                                            transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+                                            className="absolute bottom-10 right-24 w-40 h-40 bg-blue-100/40 rounded-full blur-3xl" 
+                                        />
+
+                                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.8)_0%,transparent_80%)]" />
+                                        
+                                        <div className="relative z-10 flex flex-col items-center gap-10">
+                                            <motion.div 
+                                                whileHover={{ rotate: [0, -15, 15, 0], scale: 1.2 }}
+                                                transition={{ type: "spring", stiffness: 400, damping: 12 }}
+                                                className="w-32 h-32 rounded-[2.5rem] bg-white flex items-center justify-center shadow-[0_24px_48px_-8px_rgba(255,165,0,0.15)] border-2 border-orange-50 group-hover:border-orange-100 transition-colors"
+                                            >
+                                                <div className="text-7xl">🪄</div>
+                                            </motion.div>
+                                            <div>
+                                                <h2 className="text-5xl font-black tracking-tighter text-[#4a3a2a] drop-shadow-sm mb-6">开启引导式锻造</h2>
+                                                <p className="text-lg text-[#8f8478] max-w-xl font-black leading-relaxed opacity-80">
+                                                    超级可爱的导览体验，只需几步，即可定制专属于你的梦想英语听力 🌈
+                                                </p>
+                                            </div>
+                                            <div className="px-16 py-6 bg-gradient-to-r from-[#ff8ca0] to-[#ff6b95] text-white text-[16px] font-black uppercase tracking-[0.2em] rounded-[2rem] shadow-[0_20px_40px_-8px_rgba(255,107,149,0.35)] group-hover:shadow-[0_24px_48px_-8px_rgba(255,107,149,0.45)] group-hover:translate-y-[-4px] transition-all">
+                                                Start Your Magic ✨
+                                            </div>
+                                        </div>
+                                    </button>
+                                </motion.div>
+
+                                {generateError && (
+                                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-8 p-6 rounded-[2.5rem] bg-red-50 border-2 border-red-100 text-red-600 text-[14px] font-black italic max-w-xl text-center">
+                                        {generateError}
+                                    </motion.div>
+                                )}
+                            </section>
+
+                            {/* Bottom Section: History Records Gallery */}
+                            <section className="flex flex-col gap-10 pb-20">
+                                <div className="flex items-end justify-between px-6">
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-2xl bg-orange-100 flex items-center justify-center text-2xl shadow-sm">📜</div>
+                                            <h3 className="text-2xl font-black text-[#5c4033] tracking-tighter uppercase">冒险日志</h3>
+                                        </div>
+                                        <p className="text-[12px] font-black text-slate-400 uppercase tracking-[0.3em] ml-13">Adventure Records</p>
                                     </div>
-                                    <div className="rounded-full bg-[#fff7e2] px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-[#a67a13]">
-                                        Listening v2.1
+                                    <div className="hidden sm:flex items-center gap-3 px-4 py-2 bg-white/50 rounded-2xl border border-white/80 text-[11px] font-black text-slate-400 uppercase tracking-widest shadow-sm">
+                                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                        Ready for New Echoes
                                     </div>
                                 </div>
 
-                                <div className="mt-5 space-y-4">
-                                    <section className="rounded-[20px] border border-[#e8e0d6] bg-[#fffdfa] px-4 py-4">
-                                        <p className="text-[11px] uppercase tracking-[0.22em] text-[#988b7e]">内容模式</p>
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            {LISTENING_CABIN_SCRIPT_MODE_OPTIONS.map((option) => (
-                                                <SoftChip
-                                                    key={option.value}
-                                                    active={request.scriptMode === option.value}
-                                                    onClick={() => setRequest((current) => ({
-                                                        ...current,
-                                                        scriptMode: option.value,
-                                                        speakerPlan: isListeningCabinMultiSpeakerMode(option.value)
-                                                            ? {
-                                                                strategy: "mixed_dialogue",
-                                                                primaryVoice: current.speakerPlan.primaryVoice,
-                                                                assignments: buildMultiSpeakerAssignments(
-                                                                    option.value,
-                                                                    current.speakerPlan.primaryVoice,
-                                                                    current.speakerPlan.assignments,
-                                                                ),
-                                                            }
-                                                            : {
-                                                                strategy: current.speakerPlan.strategy === "mixed_dialogue" ? "fixed" : current.speakerPlan.strategy,
-                                                                primaryVoice: current.speakerPlan.primaryVoice,
-                                                                assignments: [{ speaker: "Narrator", voice: current.speakerPlan.primaryVoice }],
-                                                            },
-                                                    }))}
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                    {sessions.length > 0 ? sessions.slice(0, 12).map((session: ListeningCabinSession) => (
+                                        <motion.div 
+                                            key={session.id} 
+                                            whileHover={{ y: -8, scale: 1.02 }}
+                                            className={cn(
+                                                "rounded-[3rem] border-2 p-8 transition-all duration-500 relative group overflow-hidden h-full flex flex-col justify-between",
+                                                selectedSessionId === session.id 
+                                                    ? "border-pink-300 bg-white shadow-[0_32px_64px_-16px_rgba(255,107,149,0.18)]" 
+                                                    : "border-[#ede4db] bg-white/60 hover:bg-white hover:border-pink-200 shadow-[0_16px_32px_-12px_rgba(0,0,0,0.03)] hover:shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)]"
+                                            )}
+                                        >
+                                            {/* Top corner gloss */}
+                                            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-pink-50/20 to-transparent rounded-full -translate-y-12 translate-x-12 blur-2xl" />
+                                            
+                                            <div className="relative z-10 mb-8" onClick={() => setSelectedSessionId(session.id)}>
+                                                <div className="flex items-center gap-3 mb-4">
+                                                    <span className={cn(
+                                                        "px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border-2 shadow-sm",
+                                                        session.cefrLevel === 'A1' || session.cefrLevel === 'A2' ? "bg-emerald-50 border-emerald-100 text-emerald-500" :
+                                                        session.cefrLevel === 'B1' || session.cefrLevel === 'B2' ? "bg-blue-50 border-blue-100 text-blue-500" :
+                                                        "bg-purple-50 border-purple-100 text-purple-500"
+                                                    )}>
+                                                        {session.cefrLevel} Level
+                                                    </span>
+                                                    <span className="text-[11px] text-slate-300 font-black">•</span>
+                                                    <p className="text-[11px] text-slate-400 font-black">{formatSessionTime(session.updated_at)}</p>
+                                                </div>
+                                                <h4 className="text-xl font-black text-[#5c4033] leading-tight line-clamp-2 tracking-tight group-hover:text-pink-400 transition-colors">{session.title}</h4>
+                                            </div>
+
+                                            <div className="mt-auto flex items-center gap-3 pt-6 border-t border-slate-50 relative z-10">
+                                                <button 
+                                                    onClick={() => openSession(session.id)} 
+                                                    className="flex-1 px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.1em] hover:scale-105 active:scale-95 transition-all shadow-lg"
                                                 >
-                                                    {option.label}
-                                                </SoftChip>
-                                            ))}
-                                        </div>
-
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            {LISTENING_CABIN_THINKING_MODE_OPTIONS.map((option) => (
-                                                <SoftChip
-                                                    key={option.value}
-                                                    active={request.thinkingMode === option.value}
-                                                    onClick={() => setRequest((current) => ({
-                                                        ...current,
-                                                        thinkingMode: option.value,
-                                                    }))}
+                                                    Continue
+                                                </button>
+                                                <button 
+                                                    onClick={() => { setSelectedSessionId(session.id); setActiveView('script'); }} 
+                                                    className="px-6 py-3.5 bg-white border-2 border-slate-100 text-[#5c4033] rounded-2xl text-[11px] font-black uppercase tracking-[0.1em] hover:border-pink-200 hover:text-pink-400 transition-all active:scale-95 shadow-sm"
                                                 >
-                                                    {option.label}
-                                                </SoftChip>
-                                            ))}
-                                        </div>
-
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            {LISTENING_CABIN_TOPIC_MODE_OPTIONS.map((option) => (
-                                                <SoftChip
-                                                    key={option.value}
-                                                    active={request.topicMode === option.value}
-                                                    onClick={() => setRequest((current) => ({
-                                                        ...current,
-                                                        topicMode: option.value,
-                                                        topicSource: option.value === "manual"
-                                                            ? "manual"
-                                                            : option.value === "random"
-                                                                ? "pool"
-                                                                : current.topicSource,
-                                                    }))}
+                                                    Script 📜
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleDeleteSession(session.id)} 
+                                                    className="w-12 h-12 flex items-center justify-center rounded-2xl bg-red-50 text-red-300 hover:bg-red-500 hover:text-white transition-all active:scale-95 shadow-sm"
                                                 >
-                                                    {option.label}
-                                                </SoftChip>
-                                            ))}
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            </div>
+                                        </motion.div>
+                                    )) : (
+                                        <div className="lg:col-span-3 py-32 text-center rounded-[3rem] bg-white/40 border-2 border-dashed border-slate-200">
+                                            <div className="text-7xl mb-6 opacity-20">🍯</div>
+                                            <p className="text-lg font-black text-slate-300 italic">空空如也，快去锻造你的第一段听力吧！</p>
                                         </div>
-
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            {LISTENING_CABIN_SCRIPT_STYLE_OPTIONS.map((option) => (
-                                                <SoftChip
-                                                    key={option.value}
-                                                    active={request.style === option.value}
-                                                    onClick={() => setRequest((current) => ({ ...current, style: option.value }))}
-                                                >
-                                                    {option.label}
-                                                </SoftChip>
-                                            ))}
-                                        </div>
-
-                                        <div className="mt-3 rounded-[18px] bg-[linear-gradient(180deg,#efebfa_0%,#ebe6f7_100%)] p-4">
-                                            <textarea
-                                                value={request.prompt}
-                                                onChange={(event) => setRequest((current) => ({
-                                                    ...current,
-                                                    prompt: event.target.value,
-                                                    topicSource: "manual",
-                                                }))}
-                                                className="min-h-[96px] w-full resize-none bg-transparent text-[14px] leading-7 text-[#574f6d] outline-none placeholder:text-[#9e95b9]"
-                                                placeholder={promptPlaceholder}
-                                            />
-                                        </div>
-
-                                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    void generateAiRandomTopic();
-                                                }}
-                                                disabled={isGeneratingAiTopic}
-                                                className="ui-pressable rounded-full border border-[#d8cfbf] bg-[#fff8ea] px-3 py-1.5 text-[11px] font-medium text-[#6a4b16] disabled:cursor-not-allowed disabled:opacity-55"
-                                                style={getPressableStyle("rgba(166,122,19,0.14)", 2)}
+                                    )}
+                                </div>
+                            </section>
+                        </motion.div>
+                    ) : (
+                        <motion.div 
+                            key="script"
+                            initial={{ opacity: 0, x: 30 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -30 }}
+                            className="flex flex-col gap-8 max-w-5xl mx-auto w-full px-4 lg:px-0"
+                        >
+                            {selectedSession && (
+                                <>
+                                    <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-4 p-8 rounded-[3rem] bg-white/40 border-2 border-white/60 backdrop-blur-xl">
+                                        <div className="flex items-center gap-8 text-center md:text-left">
+                                            <motion.button 
+                                                whileHover={{ scale: 1.1, rotate: -10 }}
+                                                whileTap={{ scale: 0.9 }}
+                                                onClick={() => setActiveView('dashboard')}
+                                                className="w-14 h-14 rounded-2xl bg-white border-2 border-slate-100 flex items-center justify-center text-slate-600 hover:border-pink-200 hover:text-pink-400 transition-all shadow-[0_8px_24px_-4px_rgba(0,0,0,0.05)] active:scale-90"
                                             >
-                                                {isGeneratingAiTopic ? "AI 生成中..." : "AI随机主题"}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    if (!randomTopicLocked && isRandomTopicMode) {
+                                                <ChevronLeft size={24} strokeWidth={3} />
+                                            </motion.button>
+                                            <div>
+                                                <div className="flex items-center justify-center md:justify-start gap-3 mb-2">
+                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-400 bg-pink-50 px-3 py-1 rounded-full border border-pink-100 shadow-sm">Script Artifact 💎</span>
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{selectedSession.cefrLevel} Level</span>
+                                                </div>
+                                                <h2 className="text-4xl font-black text-[#5c4033] tracking-tighter leading-tight drop-shadow-sm">{selectedSession.title}</h2>
+                                            </div>
+                                        </div>
+                                        <motion.button 
+                                            whileHover={{ scale: 1.05, y: -4 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            onClick={() => openSession(selectedSession.id)} 
+                                            className="px-12 py-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-[2.5rem] text-[15px] font-black uppercase tracking-[0.15em] shadow-[0_24px_48px_-12px_rgba(15,23,42,0.35)] hover:shadow-[0_28px_56px_-12px_rgba(15,23,42,0.45)] active:scale-95 transition-all flex items-center gap-3"
+                                        >
+                                            <Play size={20} fill="currentColor" strokeWidth={0} />
+                                            Enter Magic 🎧
+                                        </motion.button>
+                                    </div>
+
+                                    <div className="grid gap-6 mb-20">
+                                        {selectedSession.sentences.map((sentence, idx: number) => {
+                                            const previewKey = `${selectedSession.id}:${sentence.index}`;
+                                            const isPreviewing = previewSentenceKey === previewKey;
+                                            return (
+                                                <motion.div 
+                                                    key={idx} 
+                                                    initial={{ opacity: 0, y: 30 }}
+                                                    animate={{ opacity: 1, y: 0, transition: { delay: idx * 0.04, type: "spring", stiffness: 120, damping: 15 } }}
+                                                    className={cn(
+                                                        "p-8 sm:p-10 rounded-[3.5rem] border-2 transition-all group relative overflow-hidden",
+                                                        isPreviewing 
+                                                            ? "bg-pink-50/40 border-pink-200 shadow-xl shadow-pink-100/30" 
+                                                            : "bg-white/80 border-white/60 hover:border-pink-100 hover:bg-white shadow-sm"
+                                                    )}
+                                                >
+                                                    {/* Decorative background blobs */}
+                                                    <div className="absolute -top-10 -right-10 w-24 h-24 bg-gradient-to-br from-pink-50 to-orange-50 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                    
+                                                    <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-8 relative z-10">
+                                                        <div className="flex-1 text-center sm:text-left">
+                                                            <div className="flex items-center justify-center sm:justify-start gap-4 mb-6">
+                                                                <span className="w-9 h-9 rounded-2xl bg-slate-50 border-2 border-slate-100 flex items-center justify-center text-[12px] font-black text-slate-400 shadow-sm group-hover:bg-white transition-colors">{idx + 1}</span>
+                                                                <div className="px-3 py-1 bg-gradient-to-r from-orange-50 to-pink-50 border-2 border-orange-100/50 rounded-full">
+                                                                     <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest">{sentence.speaker || "Narrator"}</p>
+                                                                </div>
+                                                            </div>
+                                                            <p className="text-[22px] font-black text-[#5c4033] leading-relaxed tracking-tight italic mb-5 antialiased">
+                                                                {`"${sentence.english}"`}
+                                                            </p>
+                                                            <div className="inline-block px-4 py-2 rounded-2xl bg-slate-50/80 group-hover:bg-pink-50/50 transition-colors">
+                                                                <p className="text-[14px] text-slate-500 leading-relaxed font-black opacity-80">{sentence.chinese}</p>
+                                                            </div>
+                                                        </div>
+                                                        <motion.button 
+                                                            whileHover={{ scale: 1.1, rotate: 15 }}
+                                                            whileTap={{ scale: 0.9 }}
+                                                            onClick={() => handlePreviewSentence(selectedSession, idx)} 
+                                                            className={cn(
+                                                                "w-16 h-16 rounded-[2.2rem] flex items-center justify-center transition-all active:scale-90 shadow-lg shrink-0",
+                                                                isPreviewing 
+                                                                    ? "bg-[#ff8ca0] text-white rotate-12 shadow-[0_12px_24px_-8px_rgba(255,140,160,0.6)]" 
+                                                                    : "bg-white border-2 border-slate-50 text-slate-300 hover:border-pink-200 hover:text-[#ff8ca0] hover:shadow-xl hover:shadow-pink-100"
+                                                            )}
+                                                        >
+                                                            {isPreviewing ? (
+                                                                <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1 }}>
+                                                                    <Play size={22} fill="currentColor" />
+                                                                </motion.div>
+                                                            ) : (
+                                                                <Play size={22} fill="currentColor" />
+                                                            )}
+                                                        </motion.button>
+                                                    </div>
+                                                </motion.div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            )}
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+
+            {/* Phase 25: The Guidance Forge Wizard — Cute Bottom Sheet */}
+            <AnimatePresence>
+                {showWizard && (
+                    <motion.div 
+                        initial={{ opacity: 0 }} 
+                        animate={{ opacity: 1 }} 
+                        exit={{ opacity: 0 }} 
+                        className="fixed inset-0 z-[1000] flex items-end justify-center"
+                    >
+                        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setShowWizard(false)} />
+                        <motion.div 
+                            initial={{ y: "100%" }} 
+                            animate={{ y: 0 }} 
+                            exit={{ y: "100%" }} 
+                            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+                            className="relative w-full max-w-lg rounded-t-[2.5rem] bg-white shadow-[0_-20px_60px_-15px_rgba(0,0,0,0.15)] flex flex-col max-h-[58vh]"
+                        >
+                            {/* Drag Handle */}
+                            <div className="flex justify-center pt-3 pb-1">
+                                <div className="w-10 h-1 rounded-full bg-slate-200" />
+                            </div>
+
+                            {/* Header */}
+                             <div className="px-7 pb-4 pt-2 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-2xl bg-amber-50 flex items-center justify-center shadow-inner">
+                                        <span className="text-xl">🧁</span>
+                                    </div>
+                                    <h2 className="text-[17px] font-black text-[#5c4033] tracking-tight">打造可爱脚本</h2>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <div className="flex gap-1.5 px-3 py-2 bg-slate-50 rounded-full border border-slate-100">
+                                        {[1,2,3,4,5].map(step => (
+                                            <motion.div 
+                                                key={step} 
+                                                animate={{ 
+                                                    width: step === wizardStep ? 18 : 8,
+                                                    backgroundColor: step < wizardStep ? "#ffcc00" : step === wizardStep ? "#ff8ca0" : "#e2e8f0"
+                                                }}
+                                                className="h-2 rounded-full" 
+                                            />
+                                        ))}
+                                    </div>
+                                    <button 
+                                        onClick={() => setShowWizard(false)} 
+                                        className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 hover:bg-red-50 hover:text-red-400 transition-colors text-slate-300"
+                                    >
+                                        <X size={16} strokeWidth={3} />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Scrollable Body */}
+                            <div className="flex-1 overflow-y-auto px-6 pb-6 overscroll-contain">
+                                <AnimatePresence mode="wait">
+                                    {/* Step 1: Mode */}
+                                    {wizardStep === 1 && (
+                                        <motion.div key="s1" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+                                            <div>
+                                                <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">🎭 选择模式</h3>
+                                                <p className="text-xs text-slate-400 mt-1 font-semibold">脚本的基础交互方式</p>
+                                            </div>
+                                            <div className="grid gap-3">
+                                                {LISTENING_CABIN_SCRIPT_MODE_OPTIONS.map(o => (
+                                                    <motion.button 
+                                                        key={o.value} 
+                                                        whileHover={{ scale: 1.02, x: 4 }}
+                                                        whileTap={{ scale: 0.98 }}
+                                                        onClick={() => { setRequest(c => ({ ...c, scriptMode: o.value })); setWizardStep(2); }} 
+                                                        className={cn(
+                                                            "w-full px-6 py-5 text-left rounded-[2rem] border-2 transition-all group flex items-center justify-between",
+                                                            o.value === 'monologue' ? "bg-orange-50/50 border-orange-100 hover:bg-orange-100/50" :
+                                                            o.value === 'podcast' ? "bg-purple-50/50 border-purple-100 hover:bg-purple-100/50" :
+                                                            "bg-blue-50/50 border-blue-100 hover:bg-blue-100/50"
+                                                        )}
+                                                    >
+                                                        <div>
+                                                            <p className="text-[16px] font-black text-slate-700">{o.value === 'monologue' ? '🎙️' : o.value === 'podcast' ? '🎧' : '💬'} {o.label}</p>
+                                                            <p className="text-[11px] text-slate-400 mt-1 font-bold leading-tight">{o.value === 'monologue' ? '单人口音，聚焦语言本身' : o.value === 'podcast' ? '播客模式，多人深度讨论' : '自然场景对话，真实语境'}</p>
+                                                        </div>
+                                                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
+                                                            <ChevronRight className="text-slate-300" size={18} strokeWidth={3} />
+                                                        </div>
+                                                    </motion.button>
+                                                ))}
+                                            </div>
+                                            <div className="space-y-2 pt-2">
+                                                <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">推理模式</p>
+                                                <div className="flex flex-wrap gap-2.5">
+                                                    {LISTENING_CABIN_THINKING_MODE_OPTIONS.map((option) => (
+                                                        <button
+                                                            key={option.value}
+                                                            type="button"
+                                                            onClick={() => setRequest((current) => ({ ...current, thinkingMode: option.value }))}
+                                                            className={cn(
+                                                                "rounded-2xl border-2 px-5 py-2.5 text-[12px] font-black tracking-tight transition-all active:scale-95",
+                                                                request.thinkingMode === option.value
+                                                                    ? "border-pink-300 bg-pink-50 text-pink-600 shadow-[0_4px_12px_rgba(255,140,160,0.15)]"
+                                                                    : "border-slate-100 bg-white text-slate-400 hover:border-pink-100 hover:text-slate-600",
+                                                            )}
+                                                        >
+                                                            {option.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    )}
+
+                                    {/* Step 2: Style */}
+                                    {wizardStep === 2 && (
+                                        <motion.div key="s2" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+                                            <div>
+                                                <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">💫 注入灵魂</h3>
+                                                <p className="text-xs text-slate-400 mt-1 font-semibold">选择稿件的核心文风</p>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2.5">
+                                                {LISTENING_CABIN_SCRIPT_STYLE_OPTIONS.map(o => (
+                                                    <button 
+                                                        key={o.value} 
+                                                        onClick={() => setRequest(c => ({ ...c, style: o.value }))} 
+                                                        className={cn(
+                                                            "px-5 py-3 rounded-2xl border-2 text-[13px] font-black tracking-tight transition-all active:scale-95", 
+                                                            request.style === o.value 
+                                                                ? "border-purple-300 bg-purple-50 text-purple-600 shadow-[0_4px_12px_rgba(167,139,250,0.15)]" 
+                                                                : "border-slate-100 bg-white text-slate-400 hover:border-purple-100 hover:text-slate-600"
+                                                        )}
+                                                    >
+                                                        ✨ {o.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <div className="flex justify-between pt-5 items-center">
+                                                <button onClick={() => setWizardStep(1)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all">
+                                                    <ChevronLeft size={16} strokeWidth={3} /> 返回
+                                                </button>
+                                                <motion.button 
+                                                    whileHover={{ scale: 1.05 }}
+                                                    whileTap={{ scale: 0.95 }}
+                                                    onClick={() => setWizardStep(3)} 
+                                                    className="px-8 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black shadow-[0_12px_24px_-4px_rgba(15,23,42,0.3)] active:scale-95 transition-all uppercase tracking-widest"
+                                                >
+                                                    下一步 🎀
+                                                </motion.button>
+                                            </div>
+                                        </motion.div>
+                                    )}
+
+                                    {/* Step 3: CEFR */}
+                                    {wizardStep === 3 && (
+                                        <motion.div key="s3" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+                                            <div>
+                                                <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">📚 难度等级</h3>
+                                                <p className="text-xs text-slate-400 mt-1 font-semibold">基于 CEFR 标准和词汇密度</p>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-3">
+                                                {LISTENING_CABIN_CEFR_OPTIONS.map(o => (
+                                                    <motion.button 
+                                                        key={o} 
+                                                        whileHover={{ scale: 1.05, y: -4 }}
+                                                        whileTap={{ scale: 0.95 }}
+                                                        onClick={() => setRequest(c => ({ ...c, cefrLevel: o }))} 
+                                                        className={cn(
+                                                            "py-5 rounded-[2rem] border-2 transition-all flex flex-col items-center gap-1 active:scale-95 shadow-sm", 
+                                                            request.cefrLevel === o 
+                                                                ? "border-blue-400 bg-blue-50/50 text-blue-600" 
+                                                                : "border-slate-100 bg-white text-slate-400 hover:border-blue-200"
+                                                        )}
+                                                    >
+                                                        <p className="text-2xl font-black">{o}</p>
+                                                        <span className="text-[9px] font-black uppercase tracking-widest opacity-60">Level</span>
+                                                    </motion.button>
+                                                ))}
+                                            </div>
+                                            <div className="space-y-2">
+                                                <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">词汇密度</p>
+                                                <div className="flex flex-wrap gap-2.5">
+                                                    {LISTENING_CABIN_LEXICAL_DENSITY_OPTIONS.map((option) => (
+                                                        <button
+                                                            key={option.value}
+                                                            type="button"
+                                                            onClick={() => setRequest((current) => ({ ...current, lexicalDensity: option.value }))}
+                                                            className={cn(
+                                                                "rounded-2xl border-2 px-5 py-2.5 text-[12px] font-black transition-all active:scale-95",
+                                                                request.lexicalDensity === option.value
+                                                                    ? "border-indigo-400 bg-indigo-50 text-indigo-600 shadow-[0_4px_12px_rgba(129,140,248,0.15)]"
+                                                                    : "border-slate-100 bg-white text-slate-400 hover:border-indigo-100 hover:text-indigo-600",
+                                                            )}
+                                                        >
+                                                            {option.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-between pt-5 items-center">
+                                                <button onClick={() => setWizardStep(2)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all">
+                                                    <ChevronLeft size={16} strokeWidth={3} /> 返回
+                                                </button>
+                                                <motion.button 
+                                                    whileHover={{ scale: 1.05 }}
+                                                    whileTap={{ scale: 0.95 }}
+                                                    onClick={() => setWizardStep(4)} 
+                                                    className="px-8 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black shadow-[0_12px_24px_-4px_rgba(15,23,42,0.3)] active:scale-95 transition-all uppercase tracking-widest"
+                                                >
+                                                    下一步 🎨
+                                                </motion.button>
+                                            </div>
+                                        </motion.div>
+                                    )}
+
+                                    {/* Step 4: Topic */}
+                                    {wizardStep === 4 && (
+                                        <motion.div key="s4" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+                                            <div>
+                                                <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">🌸 主题灵感</h3>
+                                                <p className="text-xs text-slate-400 mt-1 font-semibold">设置主题来源，并描述你想听的内容</p>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2.5">
+                                                {LISTENING_CABIN_TOPIC_MODE_OPTIONS.map((option) => (
+                                                    <button
+                                                        key={option.value}
+                                                        type="button"
+                                                        onClick={() => setRequest((current) => ({
+                                                            ...current,
+                                                            topicMode: option.value,
+                                                            topicSource: option.value === "manual" ? "manual" : option.value === "random" ? "pool" : current.topicSource,
+                                                        }))}
+                                                        className={cn(
+                                                            "rounded-2xl border-2 px-5 py-2.5 text-[12px] font-black transition-all active:scale-95",
+                                                            request.topicMode === option.value
+                                                                ? "border-amber-400 bg-amber-50 text-amber-700 shadow-[0_4px_12px_rgba(245,158,11,0.15)]"
+                                                                : "border-slate-100 bg-white text-slate-400 hover:border-amber-100 hover:text-amber-600",
+                                                        )}
+                                                    >
+                                                        {option.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            <div className="rounded-[2rem] bg-white border-2 border-slate-100 p-6 shadow-inner focus-within:border-amber-200 transition-all">
+                                                <textarea 
+                                                    value={request.prompt} 
+                                                    onChange={e => setRequest(c => ({ ...c, prompt: e.target.value, topicSource: "manual" }))} 
+                                                    className="w-full h-24 bg-transparent text-sm font-black text-slate-700 outline-none placeholder:text-slate-300 resize-none leading-relaxed" 
+                                                    placeholder="越具体越好，比如：一个关于太空旅行的科幻小故事…" 
+                                                />
+                                            </div>
+                                            <div className="flex gap-3">
+                                                <button onClick={generateAiRandomTopic} disabled={isGeneratingAiTopic} className="flex-1 py-4 bg-purple-50 border-2 border-purple-100 rounded-2xl text-[13px] font-black text-purple-600 flex items-center justify-center gap-2.5 hover:bg-purple-100 transition-all active:scale-95">
+                                                    {isGeneratingAiTopic ? <Loader2 size={15} className="animate-spin" /> : <span>🔮 AI 生成</span>} 
+                                                </button>
+                                                <button
+                                                    onClick={() => {
                                                         randomizeTopicFromPool();
                                                         setTopicNotice("已从本地随机池填入一个主题。");
-                                                    }
-                                                }}
-                                                disabled={!isRandomTopicMode}
-                                                className="ui-pressable rounded-full border border-[#e3d9cd] bg-white px-3 py-1.5 text-[11px] font-medium text-[#51463a] disabled:cursor-not-allowed disabled:opacity-45"
-                                                style={getPressableStyle("rgba(30,20,10,0.08)", 2)}
-                                            >
-                                                再来一个随机主题
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setRandomTopicLocked((current) => !current)}
-                                                disabled={!isRandomTopicMode}
-                                                className={cn(
-                                                    "ui-pressable rounded-full border px-3 py-1.5 text-[11px] font-medium disabled:cursor-not-allowed disabled:opacity-45",
-                                                    randomTopicLocked
-                                                        ? "border-[#cfdcff] bg-[#edf3ff] text-[#355086]"
-                                                        : "border-[#e3d9cd] bg-white text-[#51463a]",
-                                                )}
-                                                style={getPressableStyle("rgba(30,20,10,0.08)", 2)}
-                                            >
-                                                {randomTopicLocked ? "已锁定主题" : "锁定主题"}
-                                            </button>
-                                            {!isRandomTopicMode ? (
-                                                <p className="text-[11px] text-[#9a8f83]">当前是手动主题模式，不使用随机池。</p>
-                                            ) : (
-                                                <p className="text-[11px] text-[#9a8f83]">
-                                                    随机池（当前模式）{getListeningCabinRandomTopicPoolSize(request.scriptMode).toLocaleString("zh-CN")} 主题，默认去重抽取。
-                                                </p>
-                                            )}
-                                        </div>
-
-                                        <p className="mt-3 text-[11px] leading-6 text-[#9a8f83]">
-                                            风格由上方按钮显式控制；AI随机主题会优先生成符合当前模式的生活化口播主题。
-                                        </p>
-                                        {topicNotice ? (
-                                            <p className="mt-1 text-[11px] leading-6 text-[#7d7064]">{topicNotice}</p>
-                                        ) : null}
-                                    </section>
-
-                                    <section className="rounded-[20px] border border-[#e8e0d6] bg-[#fffdfa] px-4 py-4">
-                                        <p className="text-[11px] uppercase tracking-[0.22em] text-[#988b7e]">语言难度</p>
-                                        <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                                            <div className="space-y-2">
-                                                <span className="text-[10px] uppercase tracking-[0.24em] text-[#9a9085]">CEFR</span>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {LISTENING_CABIN_CEFR_OPTIONS.map((option) => (
-                                                        <SoftChip
-                                                            key={option}
-                                                            active={request.cefrLevel === option}
-                                                            onClick={() => setRequest((current) => ({ ...current, cefrLevel: option }))}
-                                                        >
-                                                            {option}
-                                                        </SoftChip>
-                                                    ))}
-                                                </div>
+                                                    }}
+                                                    disabled={!isRandomTopicMode}
+                                                    className="flex-1 py-4 bg-blue-50 border-2 border-blue-100 rounded-2xl text-[13px] font-black text-blue-600 hover:bg-blue-100 transition-all active:scale-95 disabled:opacity-40"
+                                                >
+                                                    🎲 随机发现
+                                                </button>
                                             </div>
-                                            <div className="space-y-2">
-                                                <span className="text-[10px] uppercase tracking-[0.24em] text-[#9a9085]">词汇密度</span>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {LISTENING_CABIN_LEXICAL_DENSITY_OPTIONS.map((option) => (
-                                                        <SoftChip
-                                                            key={option.value}
-                                                            active={request.lexicalDensity === option.value}
-                                                            onClick={() => setRequest((current) => ({ ...current, lexicalDensity: option.value }))}
-                                                        >
-                                                            {option.label}
-                                                        </SoftChip>
-                                                    ))}
-                                                </div>
+                                            <div className="flex justify-between pt-5 items-center">
+                                                <button onClick={() => setWizardStep(3)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all">
+                                                    <ChevronLeft size={16} strokeWidth={3} /> 返回
+                                                </button>
+                                                <motion.button 
+                                                    whileHover={{ scale: 1.05 }}
+                                                    whileTap={{ scale: 0.95 }}
+                                                    onClick={() => setWizardStep(5)} 
+                                                    className="px-8 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black shadow-[0_12px_24px_-4px_rgba(15,23,42,0.3)] active:scale-95 transition-all uppercase tracking-widest"
+                                                >
+                                                    下一步 🎙️
+                                                </motion.button>
                                             </div>
-                                        </div>
-                                    </section>
+                                        </motion.div>
+                                    )}
 
-                                    <section className="rounded-[20px] border border-[#e8e0d6] bg-[#fffdfa] px-4 py-4">
-                                        <p className="text-[11px] uppercase tracking-[0.22em] text-[#988b7e]">节奏控制</p>
-                                        <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                                            <div className="space-y-2">
-                                                <span className="text-[10px] uppercase tracking-[0.24em] text-[#9a9085]">单句长度</span>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {LISTENING_CABIN_SENTENCE_LENGTH_OPTIONS.map((option) => (
-                                                        <SoftChip
-                                                            key={option.value}
-                                                            active={request.sentenceLength === option.value}
-                                                            onClick={() => setRequest((current) => ({ ...current, sentenceLength: option.value }))}
-                                                        >
-                                                            {option.label}
-                                                        </SoftChip>
-                                                    ))}
-                                                </div>
+                                    {/* Step 5: Voice — Multi-Speaker Aware */}
+                                    {wizardStep === 5 && (
+                                        <motion.div key="s5" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+                                            <div>
+                                                <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">
+                                                    🍭 {isMultiSpeaker ? `选择环节 (${request.speakerPlan.assignments.length}人)` : '节奏与声线'} 🍬
+                                                </h3>
                                             </div>
-                                            <div className="space-y-2">
-                                                <span className="text-[10px] uppercase tracking-[0.24em] text-[#9a9085]">篇幅长度</span>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {LISTENING_CABIN_SCRIPT_LENGTH_OPTIONS.map((option) => (
-                                                        <SoftChip
-                                                            key={option.value}
-                                                            active={request.scriptLength === option.value}
-                                                            onClick={() => setRequest((current) => ({ ...current, scriptLength: option.value }))}
-                                                        >
-                                                            {option.label}
-                                                        </SoftChip>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="mt-3 rounded-[14px] border border-[#ece4db] bg-white px-3 py-2 text-[12px] leading-6 text-[#615548]">
-                                            预计 {Math.round(lengthProfile.targetWords)} 词，约 {lengthProfile.estimatedMinutes.toFixed(1)} 分钟，
-                                            句数区间约 {lengthProfile.targetSentenceRange.min}-{lengthProfile.targetSentenceRange.max} 句。
-                                        </div>
-                                    </section>
-
-                                    <section className="rounded-[20px] border border-[#e8e0d6] bg-[#fffdfa] px-4 py-4">
-                                        <p className="text-[11px] uppercase tracking-[0.22em] text-[#988b7e]">声线策略与听力目标</p>
-                                        <div className="mt-3 space-y-3">
-                                            {request.scriptMode === "monologue" ? (
-                                                <>
+                                            <div className="space-y-4 rounded-[2.5rem] bg-slate-50/50 border-2 border-slate-100 p-6">
+                                                <div className="space-y-2.5">
+                                                    <p className="text-[11px] font-black uppercase text-slate-400 tracking-widest">句子长度</p>
                                                     <div className="flex flex-wrap gap-2">
-                                                        {LISTENING_CABIN_SPEAKER_STRATEGY_OPTIONS
-                                                            .filter((option) => option.value !== "mixed_dialogue")
-                                                            .map((option) => (
-                                                                <SoftChip
-                                                                    key={option.value}
-                                                                    active={request.speakerPlan.strategy === option.value}
-                                                                    onClick={() => setRequest((current) => ({
-                                                                        ...current,
-                                                                        speakerPlan: {
-                                                                            ...current.speakerPlan,
-                                                                            strategy: option.value,
-                                                                            assignments: [{ speaker: "Narrator", voice: current.speakerPlan.primaryVoice }],
-                                                                        },
-                                                                    }))}
-                                                                >
-                                                                    {option.label}
-                                                                </SoftChip>
-                                                            ))}
-                                                    </div>
-                                                    {request.speakerPlan.strategy === "fixed" ? (
-                                                        <label className="block">
-                                                            <span className="text-[10px] uppercase tracking-[0.24em] text-[#9a9085]">主声线</span>
-                                                            <div className="mt-2 rounded-[14px] border border-[#e9e1d8] bg-white px-3 py-2">
-                                                                <select
-                                                                    value={request.speakerPlan.primaryVoice}
-                                                                    onChange={(event) => updatePrimaryVoice(event.target.value as (typeof TTS_VOICE_OPTIONS)[number]["voice"])}
-                                                                    className="w-full bg-transparent text-sm text-[#201914] outline-none"
-                                                                >
-                                                                    {voiceOptions.map((option) => (
-                                                                        <option key={option.voice} value={option.voice}>
-                                                                            {option.label}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                        </label>
-                                                    ) : (
-                                                        <p className="text-[12px] text-[#8f8478]">每次生成会随机选择一个英文声线，保持整篇单人口播一致。</p>
-                                                    )}
-                                                </>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <p className="text-[12px] text-[#7d7064]">
-                                                            {request.scriptMode === "podcast" ? "播客模式" : "对话模式"}支持 2-4 人，
-                                                            当前 {multiSpeakerAssignments.length} 人。
-                                                        </p>
-                                                        <div className="flex items-center gap-2">
+                                                        {LISTENING_CABIN_SENTENCE_LENGTH_OPTIONS.map((option) => (
                                                             <button
-                                                                type="button"
-                                                                onClick={randomizeMultiSpeakerVoices}
-                                                                className="ui-pressable rounded-full border border-[#e3d9cd] bg-white px-3 py-1 text-[11px] text-[#51463a]"
-                                                                style={getPressableStyle("rgba(30,20,10,0.08)", 2)}
+                                                                key={option.value}
+                                                                onClick={() => setRequest((current) => ({ ...current, sentenceLength: option.value }))}
+                                                                className={cn(
+                                                                    "rounded-2xl border-2 px-5 py-2.5 text-[12px] font-black transition-all active:scale-95",
+                                                                    request.sentenceLength === option.value
+                                                                        ? "border-amber-300 bg-amber-50 text-amber-700 shadow-sm"
+                                                                        : "border-slate-100 bg-white text-slate-400 hover:border-amber-100 hover:text-slate-700",
+                                                                )}
                                                             >
-                                                                随机分配声线
+                                                                {option.label}
                                                             </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={removeSpeakerAssignment}
-                                                                disabled={multiSpeakerAssignments.length <= LISTENING_CABIN_MULTI_SPEAKER_MIN}
-                                                                className="ui-pressable rounded-full border border-[#e3d9cd] bg-white px-3 py-1 text-[11px] text-[#51463a] disabled:cursor-not-allowed disabled:opacity-40"
-                                                                style={getPressableStyle("rgba(30,20,10,0.08)", 2)}
-                                                            >
-                                                                减少 1 人
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={addSpeakerAssignment}
-                                                                disabled={multiSpeakerAssignments.length >= LISTENING_CABIN_MULTI_SPEAKER_MAX}
-                                                                className="ui-pressable rounded-full border border-[#e3d9cd] bg-white px-3 py-1 text-[11px] text-[#51463a] disabled:cursor-not-allowed disabled:opacity-40"
-                                                                style={getPressableStyle("rgba(30,20,10,0.08)", 2)}
-                                                            >
-                                                                增加 1 人
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                    <p className="text-[11px] text-[#9a8f83]">
-                                                        多人模式下每位发言人必须使用不同声线，已自动禁止重复选择。
-                                                    </p>
-
-                                                    <div className="grid gap-3 sm:grid-cols-2">
-                                                        {multiSpeakerAssignments.map((assignment, speakerIndex) => (
-                                                            <label key={`${assignment.speaker}-${speakerIndex}`} className="block">
-                                                            <span className="text-[10px] uppercase tracking-[0.24em] text-[#9a9085]">
-                                                                {assignment.speaker}
-                                                            </span>
-                                                            <div className="mt-2 rounded-[14px] border border-[#e9e1d8] bg-white px-3 py-2">
-                                                                <select
-                                                                    value={assignment.voice}
-                                                                    onChange={(event) => updateMultiSpeakerVoice(speakerIndex, event.target.value as (typeof TTS_VOICE_OPTIONS)[number]["voice"])}
-                                                                    className="w-full bg-transparent text-sm text-[#201914] outline-none"
-                                                                >
-                                                                    {voiceOptions.map((option) => (
-                                                                        <option
-                                                                            key={option.voice}
-                                                                            value={option.voice}
-                                                                            disabled={multiSpeakerAssignments.some((item, itemIndex) => itemIndex !== speakerIndex && item.voice === option.voice)}
-                                                                        >
-                                                                            {option.label}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                            </label>
                                                         ))}
                                                     </div>
                                                 </div>
-                                            )}
-
-                                            <div className="flex flex-wrap gap-2">
-                                                {LISTENING_CABIN_FOCUS_OPTIONS.map((option) => (
-                                                    <SoftChip
-                                                        key={option.value}
-                                                        active={request.focusTags.includes(option.value)}
-                                                        onClick={() => toggleFocusTag(option.value)}
-                                                        className="pl-3 pr-3.5"
-                                                    >
-                                                        <span className="inline-flex items-center gap-2">
-                                                            <span
+                                                <div className="space-y-2.5">
+                                                    <p className="text-[11px] font-black uppercase text-slate-400 tracking-widest">文章长度</p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {LISTENING_CABIN_SCRIPT_LENGTH_OPTIONS.map((option) => (
+                                                            <button
+                                                                key={option.value}
+                                                                onClick={() => setRequest((current) => ({ ...current, scriptLength: option.value }))}
                                                                 className={cn(
-                                                                    "h-1.5 w-1.5 rounded-full",
-                                                                    request.focusTags.includes(option.value) ? "bg-[#8f5b00]" : "bg-[#cdc3b8]",
+                                                                    "rounded-2xl border-2 px-5 py-2.5 text-[12px] font-black transition-all active:scale-95",
+                                                                    request.scriptLength === option.value
+                                                                        ? "border-pink-300 bg-pink-50 text-[#ff8ca0] shadow-sm"
+                                                                        : "border-slate-100 bg-white text-slate-400 hover:border-pink-100 hover:text-[#ff8ca0]",
                                                                 )}
-                                                            />
-                                                            {option.label}
-                                                        </span>
-                                                    </SoftChip>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </section>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={() => setShowChineseSubtitle((current) => !current)}
-                                    className={cn(
-                                        "mt-5 flex w-full items-center justify-between rounded-[18px] border px-4 py-3 text-left",
-                                        showChineseSubtitle ? "border-[#d8d1ff] bg-[#f6f3ff]" : "border-[#e9e1d8] bg-white",
-                                    )}
-                                >
-                                    <div>
-                                        <p className="text-sm font-medium text-[#201914]">默认显示中文字幕</p>
-                                        <p className="text-[12px] leading-6 text-[#93887c]">仅影响进入沉浸播放器时的默认显示状态。</p>
-                                    </div>
-                                    <div
-                                        className={cn(
-                                            "flex h-7 w-12 items-center rounded-full px-1 transition",
-                                            showChineseSubtitle ? "bg-[#dad4ff]" : "bg-[#ece4d9]",
-                                        )}
-                                    >
-                                        <span
-                                            className={cn(
-                                                "h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
-                                                showChineseSubtitle ? "translate-x-5" : "translate-x-0",
-                                            )}
-                                        />
-                                    </div>
-                                </button>
-
-                                <motion.button
-                                    type="button"
-                                    whileTap={{ scale: 0.985 }}
-                                    onClick={handleGenerate}
-                                    disabled={isGenerating}
-                                    className="ui-pressable mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[linear-gradient(180deg,#ffc538_0%,#ffb300_100%)] text-[14px] font-semibold text-[#21170d] shadow-[0_14px_26px_rgba(255,179,0,0.18)] disabled:cursor-not-allowed disabled:opacity-60"
-                                    style={getPressableStyle("rgba(255,179,0,0.28)", 4)}
-                                >
-                                    {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <WandSparkles className="h-4 w-4" />}
-                                    {isGenerating ? "Generating Script..." : "Generate Script"}
-                                </motion.button>
-
-                                {generateError ? (
-                                    <div className="mt-4 rounded-[18px] border border-[#efc7cf] bg-[#fff4f5] px-4 py-3 text-sm text-[#b4233c]">
-                                        {generateError}
-                                    </div>
-                                ) : null}
-                            </DashboardCard>
-                        </motion.div>
-
-                    </div>
-
-                    <aside className="space-y-5">
-                        <DashboardCard className="p-5">
-                            <div className="flex items-center justify-between gap-3">
-                                <div>
-                                    <p className="text-[13px] font-medium text-[#2a221c]">历史脚本</p>
-                                    <p className="mt-1 text-[12px] leading-6 text-[#91867a]">从这里继续上次的练习，或者重新开始。</p>
-                                </div>
-                            </div>
-
-                            <div className="mt-4 space-y-4">
-                                {sessions.length > 0 ? sessions.slice(0, 5).map((session) => (
-                                    <div key={session.id} className="rounded-[18px] border border-[#ede4db] bg-[#fffdfa] px-4 py-4">
-                                        <button
-                                            type="button"
-                                            onClick={() => setSelectedSessionId(session.id)}
-                                            className="w-full text-left"
-                                        >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="min-w-0">
-                                                    <p className="truncate text-sm font-medium text-[#201914]">{session.title}</p>
-                                                    <p className="mt-1 text-[12px] leading-6 text-[#8c8176]">
-                                                        {formatSessionTime(session.updated_at)}
-                                                    </p>
+                                                            >
+                                                                {option.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
                                                 </div>
-                                                <span className="rounded-full bg-[#f4efe9] px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-[#7f7367]">
-                                                    {session.cefrLevel}
-                                                </span>
+
+                                                <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-white/50 px-5 py-4 text-[12px] font-black leading-relaxed text-[#8f8478]">
+                                                    预计 {Math.round(lengthProfile.targetWords)} 词，约 {lengthProfile.estimatedMinutes.toFixed(1)} 分钟，
+                                                    句数区间约 {lengthProfile.targetSentenceRange.min}-{lengthProfile.targetSentenceRange.max} 句。
+                                                </div>
                                             </div>
-                                        </button>
 
-                                        <div className="mt-3 flex items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => openSession(session.id)}
-                                                className="ui-pressable rounded-full bg-[#f3efe9] px-3 py-1.5 text-[11px] font-medium text-[#211913]"
-                                                style={getPressableStyle("rgba(24,20,17,0.06)", 2)}
-                                            >
-                                                Continue
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => openSession(session.id, true)}
-                                                className="ui-pressable rounded-full bg-[#f3efe9] px-3 py-1.5 text-[11px] font-medium text-[#211913]"
-                                                style={getPressableStyle("rgba(24,20,17,0.06)", 2)}
-                                            >
-                                                Restart
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDeleteSession(session.id)}
-                                                className="ui-pressable ml-auto inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#fff2f4] text-[#c15669]"
-                                                style={getPressableStyle("rgba(193,86,105,0.12)", 2)}
-                                                aria-label={`删除 ${session.title}`}
-                                            >
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                )) : (
-                                    <div className="rounded-[20px] border border-dashed border-[#ddd3c7] bg-[#fffdf9] px-4 py-8 text-center text-sm text-[#95897d]">
-                                        No archive yet. Your generated monologues will appear here.
-                                    </div>
-                                )}
-                            </div>
-                        </DashboardCard>
-
-                        <DashboardCard className="p-5">
-                            <div className="flex items-center gap-2">
-                                <div className="rounded-full bg-[#edf4ff] p-2 text-[#4264ba]">
-                                    <BookAudio className="h-4 w-4" />
-                                </div>
-                                <div>
-                                    <p className="text-[13px] font-medium text-[#2b231d]">脚本展开</p>
-                                    <p className="text-[12px] leading-6 text-[#91867a]">选中历史脚本后可试听单句，或直接进入沉浸模式。</p>
-                                </div>
-                                {selectedSession ? (
-                                    <button
-                                        type="button"
-                                        onClick={() => openSession(selectedSession.id)}
-                                        className="ui-pressable ml-auto inline-flex h-10 items-center justify-center rounded-full bg-[#15110e] px-4 text-[12px] font-medium text-white"
-                                        style={getPressableStyle("rgba(21,17,14,0.14)", 3)}
-                                    >
-                                        进入沉浸听力
-                                    </button>
-                                ) : null}
-                            </div>
-
-                            <div className="mt-5">
-                                {selectedSession ? (
-                                    <div className="space-y-2">
-                                        <div className="rounded-[20px] border border-[#ebe3da] bg-[#fffdf9] px-4 py-4">
-                                            <p className="text-[10px] uppercase tracking-[0.22em] text-[#a09488]">{selectedSession.cefrLevel}</p>
-                                            <h2 className="mt-2 text-xl font-medium tracking-[-0.03em] text-[#201914]">
-                                                {selectedSession.title}
-                                            </h2>
-                                            <p className="mt-2 line-clamp-3 text-[13px] leading-6 text-[#8e8174]">
-                                                {selectedSession.sourcePrompt}
-                                            </p>
-                                        </div>
-
-                                        <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
-                                            {selectedSession.sentences.map((sentence) => {
-                                                const previewKey = `${selectedSession.id}:${sentence.index}`;
-                                                const isPreviewing = previewSentenceKey === previewKey;
-
-                                                return (
-                                                    <div
-                                                        key={previewKey}
-                                                        className="grid gap-3 rounded-[20px] border border-[#ebe3da] bg-[#fffdf9] px-4 py-4 sm:grid-cols-[18px_minmax(0,1fr)_40px]"
-                                                    >
-                                                        <div className="flex items-start justify-center pt-2">
-                                                            <span className="h-1.5 w-1.5 rounded-full bg-[#15110e]" />
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            {sentence.speaker ? (
-                                                                <p className="mb-1 text-[10px] uppercase tracking-[0.2em] text-[#9a9085]">
-                                                                    {sentence.speaker}
-                                                                </p>
-                                                            ) : null}
-                                                            <p className="text-[14px] leading-7 text-[#372f29]">{sentence.english}</p>
-                                                            <p className="mt-1 text-[13px] leading-7 text-[#a09284]">{sentence.chinese}</p>
-                                                        </div>
+                                            {isMultiSpeaker ? (
+                                                /* Multi-Speaker Panel */
+                                                <div className="space-y-3">
+                                                    {/* Controls Row */}
+                                                    <div className="flex items-center gap-2">
                                                         <button
-                                                            type="button"
-                                                            onClick={() => handlePreviewSentence(selectedSession, sentence.index - 1)}
-                                                            className={cn(
-                                                                "ui-pressable inline-flex h-10 w-10 items-center justify-center rounded-full border transition",
-                                                                isPreviewing
-                                                                    ? "border-[#15110e] bg-[#15110e] text-white"
-                                                                    : "border-[#e7dfd6] bg-white text-[#15110e]",
-                                                            )}
-                                                            style={getPressableStyle(isPreviewing ? "rgba(21,17,14,0.18)" : "rgba(21,17,14,0.06)", 2)}
-                                                            aria-label={`试听第 ${sentence.index} 句`}
+                                                            onClick={randomizeMultiSpeakerVoices}
+                                                            className="flex-1 py-2.5 bg-amber-50 border border-amber-100 rounded-xl text-[11px] font-bold text-amber-700 flex items-center justify-center gap-1.5 hover:bg-amber-100 transition-all active:scale-95"
                                                         >
-                                                            <Play className="h-3.5 w-3.5 fill-current" />
+                                                            🎲 随机分配
+                                                        </button>
+                                                        <button
+                                                            onClick={addSpeakerAssignment}
+                                                            disabled={request.speakerPlan.assignments.length >= LISTENING_CABIN_MULTI_SPEAKER_MAX}
+                                                            className="py-2.5 px-3 bg-slate-50 border border-slate-100 rounded-xl text-[11px] font-bold text-slate-600 hover:bg-slate-100 transition-all active:scale-95 disabled:opacity-30"
+                                                        >
+                                                            + 添加
+                                                        </button>
+                                                        <button
+                                                            onClick={removeSpeakerAssignment}
+                                                            disabled={request.speakerPlan.assignments.length <= LISTENING_CABIN_MULTI_SPEAKER_MIN}
+                                                            className="py-2.5 px-3 bg-slate-50 border border-slate-100 rounded-xl text-[11px] font-bold text-slate-600 hover:bg-slate-100 transition-all active:scale-95 disabled:opacity-30"
+                                                        >
+                                                            − 移除
                                                         </button>
                                                     </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="rounded-[22px] border border-dashed border-[#ddd3c7] bg-[#fffdf9] px-6 py-10 text-center text-sm text-[#95897d]">
-                                        Generate your first script and the sentence-by-sentence preview will appear here.
-                                    </div>
-                                )}
+
+                                                    {/* Per-Speaker Voice Selectors */}
+                                                    <div className="space-y-2 max-h-[24vh] overflow-y-auto pr-1 custom-scrollbar">
+                                                        {request.speakerPlan.assignments.map((assignment, idx: number) => (
+                                                            <div key={idx} className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                                                                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">
+                                                                    发言人 {idx + 1}: {assignment.speaker || `Speaker ${idx + 1}`}
+                                                                </p>
+                                                                <select
+                                                                    value={assignment.voice}
+                                                                    onChange={(e) => updateMultiSpeakerVoice(idx, e.target.value)}
+                                                                    className="w-full bg-white border border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-amber-300 transition-colors"
+                                                                >
+                                                                    {voiceOptions.map((v) => (
+                                                                        <option key={v.voice} value={v.voice}>{v.label}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                /* Single Speaker List */
+                                                <div className="space-y-3">
+                                                    <div className="space-y-2">
+                                                        <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">声线策略</p>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {LISTENING_CABIN_SPEAKER_STRATEGY_OPTIONS
+                                                                .filter((option) => option.value !== "mixed_dialogue")
+                                                                .map((option) => (
+                                                                    <button
+                                                                        key={option.value}
+                                                                        type="button"
+                                                                        onClick={() => setRequest((current) => ({
+                                                                            ...current,
+                                                                            speakerPlan: {
+                                                                                ...current.speakerPlan,
+                                                                                strategy: option.value,
+                                                                                assignments: [{ speaker: "Narrator", voice: current.speakerPlan.primaryVoice }],
+                                                                            },
+                                                                        }))}
+                                                                        className={cn(
+                                                                            "rounded-full border px-4 py-2 text-[12px] font-bold transition-all active:scale-95",
+                                                                            request.speakerPlan.strategy === option.value
+                                                                                ? "border-amber-300 bg-amber-50 text-amber-700 shadow-sm"
+                                                                                : "border-slate-100 bg-white text-slate-500 hover:border-amber-200 hover:text-slate-700",
+                                                                        )}
+                                                                    >
+                                                                        {option.label}
+                                                                    </button>
+                                                                ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {request.speakerPlan.strategy === "fixed" ? (
+                                                        <div className="grid gap-1.5 max-h-[18vh] overflow-y-auto pr-1 custom-scrollbar">
+                                                            {voiceOptions.map(v => (
+                                                                <button 
+                                                                    key={v.voice} 
+                                                                    onClick={() => updatePrimaryVoice(v.voice)} 
+                                                                    className={cn(
+                                                                        "px-4 py-3 rounded-xl border transition-all flex items-center gap-3 active:scale-[0.98]", 
+                                                                        request.speakerPlan.primaryVoice === v.voice 
+                                                                            ? "border-amber-300 bg-amber-50/80 shadow-sm" 
+                                                                            : "border-slate-50 bg-white hover:bg-slate-50"
+                                                                    )}
+                                                                >
+                                                                    <div className={cn("w-2.5 h-2.5 rounded-full transition-all shrink-0", request.speakerPlan.primaryVoice === v.voice ? "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]" : "bg-slate-200")} />
+                                                                    <p className="text-sm font-bold text-slate-700 truncate">{v.label}</p>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="rounded-xl border border-slate-100 bg-white px-4 py-3 text-[12px] font-semibold leading-6 text-slate-500">
+                                                            当前为随机单声线。每次生成会随机选择一个英文声线，但整篇保持一致。
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-3">
+                                                <p className="text-[11px] font-black uppercase tracking-widest text-[#8f8478]">听力目标 🎯</p>
+                                                <div className="flex flex-wrap gap-2.5">
+                                                    {LISTENING_CABIN_FOCUS_OPTIONS.map((option) => (
+                                                        <button
+                                                            key={option.value}
+                                                            onClick={() => toggleFocusTag(option.value)}
+                                                            className={cn(
+                                                                "rounded-2xl border-2 px-5 py-2.5 text-[12px] font-black transition-all active:scale-95",
+                                                                request.focusTags.includes(option.value)
+                                                                    ? "border-[#5c4033] bg-[#5c4033] text-white shadow-sm"
+                                                                    : "border-slate-100 bg-white text-slate-400 hover:border-pink-100",
+                                                            )}
+                                                        >
+                                                            {option.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                onClick={() => setShowChineseSubtitle((current) => !current)}
+                                                className={cn(
+                                                    "flex w-full items-center justify-between rounded-[2rem] border-2 px-6 py-5 text-left transition-all",
+                                                    showChineseSubtitle
+                                                        ? "border-pink-200 bg-pink-50/50 shadow-sm"
+                                                        : "border-slate-100 bg-white",
+                                                )}
+                                            >
+                                                <div>
+                                                    <p className="text-[14px] font-black text-[#5c4033]">默认显示中文字幕 📖</p>
+                                                    <p className="text-[11px] font-black text-[#8f8478] mt-1">进入播放器时的默认偏好</p>
+                                                </div>
+                                                <div className={cn(
+                                                    "flex h-8 w-14 items-center rounded-full px-1.5 transition-colors",
+                                                    showChineseSubtitle ? "bg-[#ff8ca0]" : "bg-slate-200",
+                                                )}>
+                                                    <motion.div 
+                                                        animate={{ x: showChineseSubtitle ? 24 : 0 }}
+                                                        className="h-5 w-5 rounded-full bg-white shadow-sm" 
+                                                    />
+                                                </div>
+                                            </button>
+
+                                            <div className="flex justify-between pt-5 items-center border-t border-slate-100/50">
+                                                <button onClick={() => setWizardStep(4)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-slate-400 hover:bg-slate-50 transition-all">
+                                                    <ChevronLeft size={16} strokeWidth={3} /> 返回
+                                                </button>
+                                                <motion.button 
+                                                    whileHover={{ scale: 1.05 }}
+                                                    whileTap={{ scale: 0.95 }}
+                                                    onClick={() => { setShowWizard(false); handleGenerate(); }} 
+                                                    className="px-10 py-4.5 bg-gradient-to-r from-[#ff8ca0] to-[#ff6b95] text-white rounded-3xl text-[14px] font-black shadow-[0_16px_32px_-8px_rgba(255,107,149,0.4)] transition-all flex items-center gap-3 tracking-[0.12em] uppercase"
+                                                >
+                                                    ✨ 开启锻造
+                                                </motion.button>
+                                            </div>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </div>
-                        </DashboardCard>
-                    </aside>
-                </div>
-            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Phase 25: Immersive Forge Loader Overlay */}
+            <AnimatePresence>
+                {isGenerating && (
+                    <motion.div 
+                        initial={{ opacity: 0 }} 
+                        animate={{ opacity: 1 }} 
+                        exit={{ opacity: 0 }} 
+                        className="fixed inset-0 z-[2000] flex items-center justify-center bg-white/90 backdrop-blur-3xl overflow-hidden"
+                    >
+                        <div className="absolute inset-0 bg-gradient-to-br from-pink-50/50 via-yellow-50/50 to-blue-50/50 opacity-40" />
+                        
+                        {/* Decorative Background Circles */}
+                        <motion.div animate={{ scale: [1, 1.2, 1], x: [0, 20, 0] }} transition={{ duration: 8, repeat: Infinity }} className="absolute -top-20 -left-20 w-80 h-80 bg-pink-100 rounded-full blur-[80px]" />
+                        <motion.div animate={{ scale: [1, 1.5, 1], x: [0, -40, 0] }} transition={{ duration: 10, repeat: Infinity }} className="absolute -bottom-40 -right-20 w-96 h-96 bg-blue-100 rounded-full blur-[100px]" />
+
+                        <div className="relative flex flex-col items-center gap-12 z-10">
+                            <div className="relative">
+                                <motion.div 
+                                    animate={{ rotate: 360 }} 
+                                    transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                                    className="w-56 h-56 rounded-full border-[12px] border-white/80 border-t-[#ff8ca0] border-r-[#7dd3fc] shadow-[0_32px_64px_-12px_rgba(255,107,149,0.2)]" 
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center">
+                                    <motion.span 
+                                        animate={{ scale: [1, 1.3, 1], rotate: [0, 10, -10, 0] }}
+                                        transition={{ duration: 2, repeat: Infinity }}
+                                        className="text-7xl"
+                                    >
+                                        🧁
+                                    </motion.span>
+                                </div>
+                            </div>
+                            <div className="text-center">
+                                <h3 className="text-4xl font-black text-[#5c4033] tracking-tighter drop-shadow-sm">Magic in Progress...</h3>
+                                <div className="flex items-center justify-center gap-2 mt-4">
+                                    <p className="text-xs text-[#8f8478] uppercase tracking-[0.4em] font-black">正在调制你的梦想听力...</p>
+                                    <motion.div animate={{ opacity: [0, 1, 0] }} transition={{ duration: 1.5, repeat: Infinity }} className="w-1.5 h-1.5 rounded-full bg-pink-400" />
+                                </div>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <audio ref={previewAudioRef} hidden />
         </main>
     );
 }

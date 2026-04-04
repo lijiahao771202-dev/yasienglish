@@ -149,6 +149,10 @@
   text-wrap: balance;
   line-height: var(--subtitle-line-height);
   letter-spacing: var(--subtitle-letter-spacing);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variant-ligatures: common-ligatures;
+  text-rendering: optimizeLegibility;
 }
 
 .premium-subtitle-focus {
