@@ -82,8 +82,8 @@ const TTS_VOICE_GROUPS: Array<{
     },
     {
         title: "英文发言人",
-        subtitle: "适合英语跟读、慢速讲解和句子拆解。",
-        voices: TTS_VOICE_OPTIONS.filter((option) => option.voice.startsWith("en-US-")),
+        subtitle: "适合英语跟读、慢速讲解和多口音训练。",
+        voices: TTS_VOICE_OPTIONS.filter((option) => option.voice.startsWith("en-")),
     },
 ];
 
@@ -91,12 +91,12 @@ function getVoiceOption(voice: TtsVoice) {
     return TTS_VOICE_OPTIONS.find((option) => option.voice === voice);
 }
 
-type VoiceFilter = "all" | "zh-CN" | "en-US";
+type VoiceFilter = "all" | "zh-CN-" | "en-";
 
 const VOICE_FILTER_OPTIONS: Array<{ value: VoiceFilter; label: string }> = [
     { value: "all", label: "全部" },
-    { value: "en-US", label: "英文" },
-    { value: "zh-CN", label: "中文" },
+    { value: "en-", label: "英文" },
+    { value: "zh-CN-", label: "中文" },
 ];
 
 export function UserAvatarMenu({

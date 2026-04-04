@@ -4,6 +4,11 @@ import { DEFAULT_TTS_VOICE, normalizeTtsVoice } from "./profile-settings";
 export interface TtsPayload {
     audio: string;
     audioDataUrl?: string;
+    segmentTimings?: Array<{
+        index: number;
+        startMs: number;
+        endMs: number;
+    }>;
     marks: Array<{
         time: number;
         type: string;
@@ -11,6 +16,12 @@ export interface TtsPayload {
         end: number;
         value: string;
     }>;
+}
+
+export interface TtsSegmentInput {
+    text: string;
+    voice?: string;
+    rate?: string;
 }
 
 async function resolvePreferredVoice(voice?: string) {
@@ -36,6 +47,64 @@ export async function requestTtsPayload(text: string, voice?: string, rate = "+0
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ text, voice: resolvedVoice, rate }),
+                signal: controller.signal,
+            }).finally(() => {
+                clearTimeout(timeoutId);
+            });
+
+            const data = await response.json().catch(() => null);
+            if (!response.ok || !data?.audio) {
+                const message = data?.details || data?.error || "TTS request failed";
+                throw new Error(message);
+            }
+
+            return data as TtsPayload;
+        } catch (error) {
+            const normalizedError = error instanceof Error ? error : new Error("TTS request failed");
+            lastError = normalizedError;
+
+            const message = normalizedError.message.toLowerCase();
+            const isRetryable = normalizedError.name === "AbortError"
+                || message.includes("timed out")
+                || message.includes("failed to fetch")
+                || message.includes("network")
+                || message.includes("socket");
+
+            if (!isRetryable || attempt === 1) {
+                break;
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+    }
+
+    throw lastError ?? new Error("TTS request failed");
+}
+
+export async function requestTtsSegmentsPayload(segments: TtsSegmentInput[]) {
+    const normalizedSegments = await Promise.all(
+        segments.map(async (segment) => ({
+            text: segment.text,
+            voice: await resolvePreferredVoice(segment.voice),
+            rate: typeof segment.rate === "string" && segment.rate.trim() ? segment.rate.trim() : "+0%",
+        })),
+    );
+
+    const timeoutMs = Math.min(
+        60000,
+        18000 + normalizedSegments.reduce((sum, segment) => sum + Math.max(0, segment.text.length - 100) * 55, 0),
+    );
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+            const response = await fetch("/api/tts", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ segments: normalizedSegments }),
                 signal: controller.signal,
             }).finally(() => {
                 clearTimeout(timeoutId);

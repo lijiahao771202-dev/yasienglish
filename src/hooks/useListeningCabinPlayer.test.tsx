@@ -101,15 +101,29 @@ function buildSession(): ListeningCabinSession {
         ],
         meta: {
             cefrLevel: "B1",
-            targetDurationMinutes: 3,
-            sentenceCount: 3,
+            targetWords: 200,
+            estimatedMinutes: 2.2,
+            scriptMode: "monologue",
+            speakerCount: 1,
             model: "deepseek-chat",
         },
-        style: "workplace",
+        topicMode: "manual",
+        topicSource: "manual",
+        scriptMode: "monologue",
+        thinkingMode: "standard",
+        style: "professional",
         focusTags: ["business_vocabulary"],
         cefrLevel: "B1",
-        targetDurationMinutes: 3,
+        lexicalDensity: "balanced",
+        sentenceLength: "medium",
+        scriptLength: "short",
+        speakerPlan: {
+            strategy: "fixed",
+            primaryVoice: "en-US-AriaNeural",
+            assignments: [{ speaker: "Narrator", voice: "en-US-AriaNeural" }],
+        },
         sentenceCount: 3,
+        topicSeed: null,
         voice: "en-US-AriaNeural",
         playbackRate: 1,
         showChineseSubtitle: true,
@@ -117,6 +131,31 @@ function buildSession(): ListeningCabinSession {
         updated_at: Date.now(),
         lastSentenceIndex: 0,
         lastPlayedAt: null,
+    };
+}
+
+function buildDialogueSession(): ListeningCabinSession {
+    return {
+        ...buildSession(),
+        scriptMode: "dialogue",
+        sentences: [
+            { index: 1, speaker: "Ava", english: "Welcome back everyone.", chinese: "欢迎大家回来。" },
+            { index: 2, speaker: "Brian", english: "Let's review the progress first.", chinese: "我们先回顾进展。" },
+            { index: 3, speaker: "Ava", english: "Great, then we can plan next steps.", chinese: "很好，然后我们来计划下一步。" },
+        ],
+        meta: {
+            ...buildSession().meta,
+            scriptMode: "dialogue",
+            speakerCount: 2,
+        },
+        speakerPlan: {
+            strategy: "mixed_dialogue",
+            primaryVoice: "en-US-AvaNeural",
+            assignments: [
+                { speaker: "Ava", voice: "en-US-AvaNeural" },
+                { speaker: "Brian", voice: "en-US-BrianNeural" },
+            ],
+        },
     };
 }
 
@@ -211,6 +250,42 @@ describe("useListeningCabinPlayer", () => {
 
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
         expect(latestPlayer.currentSubtitleSentences[0]?.index).toBe(2);
+    });
+
+    it("keeps the current subtitle through sentence boundary and switches with a small delay", async () => {
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://narration",
+            marks: [],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={buildSession()}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+
+        await flushMicrotasks();
+
+        if (!latestAudio || !latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        await act(async () => {
+            latestAudio.currentTime = 3.02;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
+
+        await act(async () => {
+            latestAudio.currentTime = 3.08;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
     });
 
     it("does not let initial autoplay override a pause while narration is still loading", async () => {
@@ -322,7 +397,7 @@ describe("useListeningCabinPlayer", () => {
 
         expect(latestPlayer.playerState.isPlaying).toBe(false);
         expect(latestAudio.currentTime).toBeGreaterThanOrEqual(2.88);
-        expect(latestAudio.currentTime).toBeLessThanOrEqual(3.01);
+        expect(latestAudio.currentTime).toBeLessThanOrEqual(3.05);
 
         await act(async () => {
             await latestPlayer?.resumeOrPlay();
@@ -333,7 +408,95 @@ describe("useListeningCabinPlayer", () => {
         expect(latestPlayer.playerState.isPlaying).toBe(true);
     });
 
-    it("applies single-pause mode immediately and does not slip into the next sentence at boundary", async () => {
+    it("keeps playback active when jumping to later sentences in single-pause mode", async () => {
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://dialogue",
+            marks: [],
+            segmentTimings: [
+                { index: 1, startMs: 0, endMs: 1200 },
+                { index: 2, startMs: 1300, endMs: 2500 },
+                { index: 3, startMs: 2600, endMs: 3900 },
+            ],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={buildDialogueSession()}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+        await flushMicrotasks();
+
+        if (!latestAudio || !latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        await act(async () => {
+            latestAudio.duration = 3.9;
+            latestAudio.dispatch("loadedmetadata");
+        });
+
+        await act(async () => {
+            latestPlayer?.setSinglePauseMode();
+            await latestPlayer?.nextSentenceAction();
+        });
+
+        await act(async () => {
+            latestAudio.currentTime = 1.33;
+            latestAudio.dispatch("timeupdate");
+        });
+
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+        expect(latestPlayer.playerState.isPlaying).toBe(true);
+    });
+
+    it("falls back to even timings when segment timings are unreliable in single-pause mode", async () => {
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://dialogue",
+            marks: [],
+            segmentTimings: [
+                { index: 1, startMs: 0, endMs: 120 },
+                { index: 2, startMs: 120, endMs: 240 },
+                { index: 3, startMs: 240, endMs: 360 },
+            ],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={buildDialogueSession()}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+        await flushMicrotasks();
+
+        if (!latestAudio || !latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        await act(async () => {
+            latestAudio.duration = 9;
+            latestAudio.dispatch("loadedmetadata");
+        });
+
+        await act(async () => {
+            latestPlayer?.setSinglePauseMode();
+            await latestPlayer?.nextSentenceAction();
+        });
+
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+        expect(latestAudio.currentTime).toBeGreaterThan(2.5);
+        expect(latestPlayer.playerState.isPlaying).toBe(true);
+    });
+
+    it("applies single-pause mode immediately by replaying the current sentence from start", async () => {
         getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
             audio: "mock://narration",
             marks: [],
@@ -357,15 +520,22 @@ describe("useListeningCabinPlayer", () => {
         }
 
         await act(async () => {
-            latestPlayer?.setSinglePauseMode();
-            latestAudio.currentTime = 3.05;
+            latestAudio.currentTime = 1.45;
             latestAudio.dispatch("timeupdate");
         });
 
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
-        expect(latestPlayer.playerState.isPlaying).toBe(false);
-        expect(latestAudio.currentTime).toBeGreaterThanOrEqual(2.88);
-        expect(latestAudio.currentTime).toBeLessThanOrEqual(3.01);
+        expect(latestPlayer.playerState.isPlaying).toBe(true);
+
+        await act(async () => {
+            latestPlayer?.setSinglePauseMode();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
+        expect(latestPlayer.playerState.isPlaying).toBe(true);
+        expect(latestAudio.currentTime).toBeCloseTo(0, 3);
     });
 
     it("re-initializes playback correctly under StrictMode remounts", async () => {
@@ -402,5 +572,199 @@ describe("useListeningCabinPlayer", () => {
         });
 
         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+    });
+
+    it("uses segmentTimings in dialogue mode to avoid early subtitle switching", async () => {
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://dialogue",
+            marks: [],
+            segmentTimings: [
+                { index: 1, startMs: 0, endMs: 1200 },
+                { index: 2, startMs: 1300, endMs: 2500 },
+                { index: 3, startMs: 2600, endMs: 3900 },
+            ],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={buildDialogueSession()}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+        await flushMicrotasks();
+
+        if (!latestAudio || !latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        await act(async () => {
+            latestAudio.duration = 3.9;
+            latestAudio.dispatch("loadedmetadata");
+        });
+
+        await act(async () => {
+            latestAudio.currentTime = 1.31;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
+
+        await act(async () => {
+            latestAudio.currentTime = 1.33;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+    });
+
+    it("can resume playback after switching between single-pause and repeat modes", async () => {
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://dialogue",
+            marks: [],
+            segmentTimings: [
+                { index: 1, startMs: 0, endMs: 1200 },
+                { index: 2, startMs: 1300, endMs: 2500 },
+                { index: 3, startMs: 2600, endMs: 3900 },
+            ],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={buildDialogueSession()}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+        await flushMicrotasks();
+
+        if (!latestAudio || !latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        await act(async () => {
+            latestAudio.duration = 3.9;
+            latestAudio.dispatch("loadedmetadata");
+        });
+
+        await act(async () => {
+            latestPlayer?.pausePlayback();
+        });
+        expect(latestPlayer.playerState.isPlaying).toBe(false);
+
+        await act(async () => {
+            latestPlayer?.setSinglePauseMode();
+            latestPlayer?.setRepeatCurrentMode();
+        });
+
+        await act(async () => {
+            await latestPlayer?.resumeOrPlay();
+        });
+
+        expect(latestPlayer.playerState.isPlaying).toBe(true);
+        expect(latestAudio.play).toHaveBeenCalled();
+    });
+
+    it("keeps full sentence tail in single-pause mode and only pauses near segment boundary", async () => {
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://dialogue",
+            marks: [],
+            segmentTimings: [
+                { index: 1, startMs: 0, endMs: 1200 },
+                { index: 2, startMs: 1300, endMs: 2500 },
+                { index: 3, startMs: 2600, endMs: 3900 },
+            ],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={buildDialogueSession()}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+        await flushMicrotasks();
+
+        if (!latestAudio || !latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        await act(async () => {
+            latestAudio.duration = 3.9;
+            latestAudio.dispatch("loadedmetadata");
+        });
+
+        await act(async () => {
+            latestPlayer?.setSinglePauseMode();
+        });
+
+        await act(async () => {
+            latestAudio.currentTime = 1.2;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.isPlaying).toBe(true);
+
+        await act(async () => {
+            latestAudio.currentTime = 1.25;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.isPlaying).toBe(false);
+        expect(latestAudio.currentTime).toBeGreaterThanOrEqual(1.24);
+    });
+
+    it("restarts current sentence immediately when switching from auto-all to single-pause", async () => {
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://dialogue",
+            marks: [],
+            segmentTimings: [
+                { index: 1, startMs: 0, endMs: 1200 },
+                { index: 2, startMs: 1300, endMs: 2500 },
+                { index: 3, startMs: 2600, endMs: 3900 },
+            ],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={buildDialogueSession()}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+        await flushMicrotasks();
+
+        if (!latestAudio || !latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        await act(async () => {
+            latestAudio.duration = 3.9;
+            latestAudio.dispatch("loadedmetadata");
+        });
+
+        await act(async () => {
+            latestAudio.currentTime = 1.4;
+            latestAudio.dispatch("timeupdate");
+        });
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+        expect(latestPlayer.playerState.isPlaying).toBe(true);
+
+        await act(async () => {
+            latestPlayer?.setSinglePauseMode();
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(latestAudio.currentTime).toBeCloseTo(1.3, 2);
+        expect(latestPlayer.playerState.isPlaying).toBe(true);
     });
 });

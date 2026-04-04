@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
     buildListeningCabinPlaybackChunks,
+    canonicalizeListeningCabinSentenceSpeakers,
     LISTENING_CABIN_PLAYBACK_RATE_OPTIONS,
     type ListeningCabinPlaybackMode,
     buildListeningCabinSentenceTimings,
@@ -22,6 +23,14 @@ type UseListeningCabinPlayerOptions = {
     restart?: boolean;
 };
 
+const SUBTITLE_SWITCH_DELAY_MS = 18;
+const SUBTITLE_END_HOLD_MS = 24;
+const STOP_BOUNDARY_GUARD_MS = 0;
+const STOP_TAIL_BUFFER_MS = 160;
+const STOP_BLEED_GUARD_MS = 56;
+const STOP_MIN_AUDIBLE_WINDOW_MS = 420;
+const STOP_MIN_VALID_OFFSET_FROM_SEEK_MS = 300;
+
 function clampSentenceIndex(index: number, count: number) {
     if (count <= 0) return 0;
     return Math.min(Math.max(index, 0), count - 1);
@@ -32,12 +41,21 @@ function findSentenceIndexByTime(timings: ListeningCabinSentenceTiming[], curren
         return 0;
     }
 
-    for (let index = 0; index < timings.length; index += 1) {
+    for (let index = 0; index < timings.length - 1; index += 1) {
         const timing = timings[index];
         const nextTiming = timings[index + 1];
-        const upperBound = nextTiming ? Math.max(timing.endMs, nextTiming.startMs) : timing.endMs + 160;
+        if (!nextTiming) {
+            return index;
+        }
 
-        if (currentMs < upperBound) {
+        const currentEndMs = Math.max(timing.startMs, timing.endMs);
+        const nextStartMs = Math.max(nextTiming.startMs, currentEndMs);
+        const switchAtMs = Math.max(
+            nextStartMs + SUBTITLE_SWITCH_DELAY_MS,
+            currentEndMs + SUBTITLE_END_HOLD_MS,
+        );
+
+        if (currentMs < switchAtMs) {
             return index;
         }
     }
@@ -65,12 +83,20 @@ function getChunkEndMs(
     }
 
     const nextTiming = timings[lastSentenceIndex + 1];
+    const naturalEndMs = Math.max(timing.startMs, timing.endMs);
+    const preferredStopMs = naturalEndMs + STOP_TAIL_BUFFER_MS;
+    const minAudibleStopMs = timing.startMs + STOP_MIN_AUDIBLE_WINDOW_MS;
+
     if (!nextTiming) {
-        return timing.endMs;
+        return Math.max(preferredStopMs, minAudibleStopMs);
     }
 
-    // Keep a stronger safety gap before the next sentence to avoid hearing the next word onset.
-    return Math.min(timing.endMs, Math.max(timing.startMs, nextTiming.startMs - 80));
+    const upperStopMs = Math.max(
+        naturalEndMs + 24,
+        nextTiming.startMs - STOP_BLEED_GUARD_MS,
+    );
+    const clampedStopMs = Math.min(preferredStopMs, upperStopMs);
+    return Math.max(clampedStopMs, minAudibleStopMs);
 }
 
 function hasCompleteUsableTimings(timings: ListeningCabinSentenceTiming[], sentenceCount: number) {
@@ -108,14 +134,132 @@ function buildEvenSentenceTimings(sentenceCount: number, durationMs: number) {
     })) satisfies ListeningCabinSentenceTiming[];
 }
 
+function fitSentenceTimingsToDuration(
+    timings: ListeningCabinSentenceTiming[],
+    durationMs: number,
+    options?: { allowExpand?: boolean },
+) {
+    if (timings.length === 0 || durationMs <= 0) {
+        return timings;
+    }
+
+    const allowExpand = options?.allowExpand ?? true;
+    const lastEndMs = Math.max(1, timings[timings.length - 1]?.endMs ?? 1);
+    const roundedDurationMs = Math.max(1, Math.round(durationMs));
+    const delta = roundedDurationMs - lastEndMs;
+
+    if (!allowExpand && delta > 0) {
+        return timings;
+    }
+
+    if (Math.abs(delta) <= 120) {
+        return timings;
+    }
+
+    const ratio = roundedDurationMs / lastEndMs;
+    if (!Number.isFinite(ratio) || ratio <= 0) {
+        return timings;
+    }
+
+    const fitted: ListeningCabinSentenceTiming[] = [];
+    let previousEnd = 0;
+
+    for (let index = 0; index < timings.length; index += 1) {
+        const timing = timings[index];
+        const scaledStart = Math.round(timing.startMs * ratio);
+        const scaledEnd = Math.round(timing.endMs * ratio);
+        const startMs = Math.max(previousEnd, scaledStart);
+        const endMs = Math.max(startMs + 1, scaledEnd);
+        fitted.push({
+            index: timing.index,
+            startMs,
+            endMs,
+        });
+        previousEnd = endMs;
+    }
+
+    const lastIndex = fitted.length - 1;
+    const lastTiming = fitted[lastIndex];
+    if (lastTiming) {
+        lastTiming.endMs = Math.max(lastTiming.startMs + 1, roundedDurationMs);
+    }
+
+    return fitted;
+}
+
+function resolveSegmentTimings(
+    rawTimings: TtsPayload["segmentTimings"],
+    sentenceCount: number,
+): ListeningCabinSentenceTiming[] {
+    if (!Array.isArray(rawTimings) || rawTimings.length !== sentenceCount || sentenceCount === 0) {
+        return [];
+    }
+
+    const normalized: ListeningCabinSentenceTiming[] = [];
+    let previousEnd = 0;
+
+    for (let index = 0; index < sentenceCount; index += 1) {
+        const timing = rawTimings[index];
+        if (!timing || !Number.isFinite(timing.startMs) || !Number.isFinite(timing.endMs)) {
+            return [];
+        }
+
+        const startMs = Math.max(previousEnd, Math.round(timing.startMs));
+        const endMs = Math.max(startMs + 1, Math.round(timing.endMs));
+        normalized.push({
+            index: index + 1,
+            startMs,
+            endMs,
+        });
+        previousEnd = endMs;
+    }
+
+    return normalized;
+}
+
+function isTimingLikelyUnreliable(
+    timings: ListeningCabinSentenceTiming[],
+    sentenceIndex: number,
+    sentenceCount: number,
+) {
+    const timing = timings[sentenceIndex];
+    if (!timing) {
+        return true;
+    }
+
+    const windowMs = timing.endMs - timing.startMs;
+    if (windowMs < 160) {
+        return true;
+    }
+
+    if (sentenceIndex > 0 && sentenceCount >= 3 && timing.startMs < 140) {
+        return true;
+    }
+
+    const previous = sentenceIndex > 0 ? timings[sentenceIndex - 1] : null;
+    if (previous && timing.startMs < previous.endMs) {
+        return true;
+    }
+
+    return false;
+}
+
 export function useListeningCabinPlayer({ session, restart = false }: UseListeningCabinPlayerOptions) {
+    const resolvedSentences = useMemo(
+        () => canonicalizeListeningCabinSentenceSpeakers({
+            scriptMode: session.scriptMode,
+            speakerPlan: session.speakerPlan,
+            sentences: session.sentences,
+        }),
+        [session.scriptMode, session.speakerPlan, session.sentences],
+    );
     const initialSentenceIndex = useMemo(
-        () => clampSentenceIndex(restart ? 0 : session.lastSentenceIndex, session.sentences.length),
-        [restart, session.lastSentenceIndex, session.sentences.length],
+        () => clampSentenceIndex(restart ? 0 : session.lastSentenceIndex, resolvedSentences.length),
+        [resolvedSentences.length, restart, session.lastSentenceIndex],
     );
     const subtitleChunks = useMemo(
-        () => buildListeningCabinPlaybackChunks(session.sentences),
-        [session.sentences],
+        () => buildListeningCabinPlaybackChunks(resolvedSentences),
+        [resolvedSentences],
     );
 
     const [currentSentenceIndex, setCurrentSentenceIndex] = useState(initialSentenceIndex);
@@ -138,6 +282,24 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
     const stopAtMsRef = useRef<number | null>(null);
     const commandTokenRef = useRef(0);
     const stopBoundaryFrameRef = useRef<number | null>(null);
+    const isPlayingRef = useRef(false);
+    const timingsSourceRef = useRef<"segment" | "marks" | "even">("marks");
+
+    const resolveSafeTimingForSentence = useCallback((sentenceIndex: number) => {
+        const audio = audioRef.current;
+        let timings = timingsRef.current;
+        let timing = timings[sentenceIndex];
+        const hasDuration = Boolean(audio?.duration && Number.isFinite(audio.duration) && audio.duration > 0);
+
+        if (isTimingLikelyUnreliable(timings, sentenceIndex, resolvedSentences.length) && hasDuration) {
+            timings = buildEvenSentenceTimings(resolvedSentences.length, (audio?.duration ?? 0) * 1000);
+            timingsRef.current = timings;
+            timingsSourceRef.current = "even";
+            timing = timings[sentenceIndex];
+        }
+
+        return timing ?? null;
+    }, [resolvedSentences.length]);
 
     const computeStopAtMs = useCallback(
         (sentenceIndex: number, mode: ListeningCabinPlaybackMode) => {
@@ -151,9 +313,26 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
         [subtitleChunks],
     );
 
+    const computeSafeStopAtMs = useCallback((sentenceIndex: number, anchorMs: number) => {
+        const chunk = subtitleChunks[findChunkIndexForSentence(subtitleChunks, sentenceIndex)];
+        const computed = getChunkEndMs(chunk, timingsRef.current);
+        if (computed === null) {
+            return null;
+        }
+
+        return Math.max(
+            computed,
+            anchorMs + STOP_MIN_VALID_OFFSET_FROM_SEEK_MS,
+        );
+    }, [subtitleChunks]);
+
     useEffect(() => {
         currentSentenceIndexRef.current = currentSentenceIndex;
     }, [currentSentenceIndex]);
+
+    useEffect(() => {
+        isPlayingRef.current = isPlaying;
+    }, [isPlaying]);
 
     useEffect(() => {
         playbackModeRef.current = playbackMode;
@@ -212,13 +391,23 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
 
             try {
                 const payload = await getListeningCabinNarrationTtsPayload(
-                    session.sentences,
+                    resolvedSentences,
                     session.voice,
                     session.playbackRate,
+                    session.scriptMode,
+                    session.speakerPlan,
                 );
 
                 narrationPayloadRef.current = payload;
-                timingsRef.current = buildListeningCabinSentenceTimings(session.sentences, payload.marks);
+                const segmentTimings = resolveSegmentTimings(payload.segmentTimings, resolvedSentences.length);
+                const markTimings = buildListeningCabinSentenceTimings(resolvedSentences, payload.marks);
+                if (hasCompleteUsableTimings(segmentTimings, resolvedSentences.length)) {
+                    timingsRef.current = segmentTimings;
+                    timingsSourceRef.current = "segment";
+                } else {
+                    timingsRef.current = markTimings;
+                    timingsSourceRef.current = "marks";
+                }
                 audio.src = payload.audio;
                 audio.load();
                 narrationReadyRef.current = true;
@@ -238,7 +427,7 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
         } finally {
             loadingNarrationRef.current = null;
         }
-    }, [session.playbackRate, session.sentences, session.voice]);
+    }, [resolvedSentences, session.playbackRate, session.scriptMode, session.speakerPlan, session.voice]);
 
     const seekToSentence = useCallback(async (sentenceIndex: number, shouldPlay: boolean) => {
         const audio = audioRef.current;
@@ -246,9 +435,10 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             return;
         }
 
-        const nextSentenceIndex = clampSentenceIndex(sentenceIndex, session.sentences.length);
+        const nextSentenceIndex = clampSentenceIndex(sentenceIndex, resolvedSentences.length);
         const commandToken = commandTokenRef.current + 1;
         commandTokenRef.current = commandToken;
+        currentSentenceIndexRef.current = nextSentenceIndex;
 
         setErrorMessage(null);
         setCurrentSentenceIndex(nextSentenceIndex);
@@ -263,14 +453,16 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             return;
         }
 
-        const timing = timingsRef.current[nextSentenceIndex];
+        const timing = resolveSafeTimingForSentence(nextSentenceIndex);
         const targetSeconds = timing ? timing.startMs / 1000 : 0;
-        const chunk = subtitleChunks[findChunkIndexForSentence(subtitleChunks, nextSentenceIndex)];
 
         audio.currentTime = targetSeconds;
         audio.playbackRate = playbackRate;
         setProgressRatio(audio.duration && Number.isFinite(audio.duration) ? audio.currentTime / audio.duration : 0);
-        stopAtMsRef.current = playbackModeRef.current === "auto_all" ? null : getChunkEndMs(chunk, timingsRef.current);
+        const currentMsAfterSeek = audio.currentTime * 1000;
+        stopAtMsRef.current = playbackModeRef.current === "auto_all"
+            ? null
+            : computeSafeStopAtMs(nextSentenceIndex, currentMsAfterSeek);
 
         if (!shouldPlay) {
             audio.pause();
@@ -286,13 +478,23 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             }
             setIsPlaying(true);
         } catch (error) {
+            const message = error instanceof Error ? error.message.toLowerCase() : "";
+            const isInterruptedPlay = message.includes("interrupted")
+                || message.includes("aborterror")
+                || message.includes("play() request was interrupted");
+
+            if (isInterruptedPlay && commandToken === commandTokenRef.current) {
+                setIsPlaying(false);
+                return;
+            }
+
             if (commandToken === commandTokenRef.current) {
                 setIsPlaying(false);
                 setErrorMessage("播放失败了，请点一下重试。");
             }
             throw error;
         }
-    }, [ensureNarrationReady, persistSessionPatch, playbackRate, session.sentences.length, subtitleChunks]);
+    }, [computeSafeStopAtMs, ensureNarrationReady, persistSessionPatch, playbackRate, resolveSafeTimingForSentence, resolvedSentences.length]);
 
     const replayCurrentSentence = useCallback(async () => {
         await seekToSentence(currentSentenceIndexRef.current, true);
@@ -386,7 +588,7 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             }
 
             const currentMs = audio.currentTime * 1000;
-            if (currentMs < stopAtMs - 8) {
+            if (currentMs < stopAtMs - STOP_BOUNDARY_GUARD_MS) {
                 return false;
             }
 
@@ -394,6 +596,11 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             if (mode === "repeat_current") {
                 const currentTiming = timingsRef.current[currentSentenceIndexRef.current];
                 audio.currentTime = (currentTiming?.startMs ?? 0) / 1000;
+                const currentMsAfterSeek = audio.currentTime * 1000;
+                stopAtMsRef.current = computeSafeStopAtMs(
+                    currentSentenceIndexRef.current,
+                    currentMsAfterSeek,
+                );
                 void audio.play().catch(() => undefined);
                 return true;
             }
@@ -441,35 +648,14 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
                 return;
             }
 
-            const nextSentenceIndex = findSentenceIndexByTime(timings, currentMs);
-
             if (playbackModeRef.current !== "auto_all") {
-                const currentChunkIndex = findChunkIndexForSentence(
-                    subtitleChunks,
-                    currentSentenceIndexRef.current,
-                );
-                const nextChunkIndex = findChunkIndexForSentence(subtitleChunks, nextSentenceIndex);
-
-                if (nextChunkIndex !== currentChunkIndex) {
-                    const fallbackStopAtMs = getChunkEndMs(subtitleChunks[currentChunkIndex], timings);
-                    const stopAtBoundary = stopAtMsRef.current ?? fallbackStopAtMs;
-
-                    if (stopAtBoundary !== null) {
-                        audio.pause();
-                        audio.currentTime = stopAtBoundary / 1000;
-                        stopAtMsRef.current = null;
-                        setIsPlaying(false);
-                        setProgressRatio(
-                            audio.duration && Number.isFinite(audio.duration)
-                                ? audio.currentTime / audio.duration
-                                : 0,
-                        );
-                        return;
-                    }
-                }
+                return;
             }
 
+            const nextSentenceIndex = findSentenceIndexByTime(timings, currentMs);
+
             if (nextSentenceIndex !== currentSentenceIndexRef.current) {
+                currentSentenceIndexRef.current = nextSentenceIndex;
                 setCurrentSentenceIndex(nextSentenceIndex);
                 persistSessionPatch({
                     lastSentenceIndex: nextSentenceIndex,
@@ -502,9 +688,25 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
                 return;
             }
 
-            if (!hasCompleteUsableTimings(timingsRef.current, session.sentences.length)) {
-                timingsRef.current = buildEvenSentenceTimings(session.sentences.length, audio.duration * 1000);
+            if (!hasCompleteUsableTimings(timingsRef.current, resolvedSentences.length)) {
+                timingsRef.current = buildEvenSentenceTimings(resolvedSentences.length, audio.duration * 1000);
+                timingsSourceRef.current = "even";
+                return;
             }
+
+            if (timingsSourceRef.current === "segment") {
+                timingsRef.current = fitSentenceTimingsToDuration(
+                    timingsRef.current,
+                    audio.duration * 1000,
+                    { allowExpand: false },
+                );
+                return;
+            }
+
+            timingsRef.current = fitSentenceTimingsToDuration(
+                timingsRef.current,
+                audio.duration * 1000,
+            );
         };
 
         audio.addEventListener("timeupdate", handleTimeUpdate);
@@ -526,7 +728,7 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             }
             audioRef.current = null;
         };
-    }, [persistSessionPatch, session.sentences.length, subtitleChunks]);
+    }, [computeSafeStopAtMs, persistSessionPatch, resolvedSentences.length, subtitleChunks]);
 
     useEffect(() => {
         const audio = audioRef.current;
@@ -554,10 +756,29 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
     const applyPlaybackMode = useCallback(
         (mode: ListeningCabinPlaybackMode) => {
             playbackModeRef.current = mode;
-            stopAtMsRef.current = computeStopAtMs(currentSentenceIndexRef.current, mode);
             setPlaybackMode(mode);
+            setErrorMessage(null);
+            stopAtMsRef.current = computeStopAtMs(currentSentenceIndexRef.current, mode);
+
+            if (mode !== "auto_all") {
+                const audio = audioRef.current;
+                const timing = resolveSafeTimingForSentence(currentSentenceIndexRef.current);
+                if (audio && timing) {
+                    audio.currentTime = timing.startMs / 1000;
+                    stopAtMsRef.current = computeSafeStopAtMs(
+                        currentSentenceIndexRef.current,
+                        audio.currentTime * 1000,
+                    );
+                    setProgressRatio(
+                        audio.duration && Number.isFinite(audio.duration)
+                            ? audio.currentTime / audio.duration
+                            : 0,
+                    );
+                }
+                return;
+            }
         },
-        [computeStopAtMs],
+        [computeSafeStopAtMs, computeStopAtMs, resolveSafeTimingForSentence],
     );
 
     const setSinglePauseMode = useCallback(() => {
@@ -595,9 +816,9 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
         }
 
         return chunk.sentenceIndexes
-            .map((sentenceIndex) => session.sentences[sentenceIndex])
+            .map((sentenceIndex) => resolvedSentences[sentenceIndex])
             .filter(Boolean);
-    }, [session.sentences]);
+    }, [resolvedSentences]);
 
     const playerState: ListeningCabinPlayerState = {
         currentSentenceIndex,
@@ -612,9 +833,9 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
 
     return {
         playerState,
-        currentSentence: session.sentences[currentSentenceIndex] ?? null,
-        previousSentence: currentSentenceIndex > 0 ? session.sentences[currentSentenceIndex - 1] ?? null : null,
-        nextSentencePreview: currentSentenceIndex < session.sentences.length - 1 ? session.sentences[currentSentenceIndex + 1] ?? null : null,
+        currentSentence: resolvedSentences[currentSentenceIndex] ?? null,
+        previousSentence: currentSentenceIndex > 0 ? resolvedSentences[currentSentenceIndex - 1] ?? null : null,
+        nextSentencePreview: currentSentenceIndex < resolvedSentences.length - 1 ? resolvedSentences[currentSentenceIndex + 1] ?? null : null,
         currentSubtitleSentences: resolveChunkSentences(currentSubtitleChunk),
         previousSubtitleSentences: resolveChunkSentences(previousSubtitleChunk),
         nextSubtitleSentences: resolveChunkSentences(nextSubtitleChunk),

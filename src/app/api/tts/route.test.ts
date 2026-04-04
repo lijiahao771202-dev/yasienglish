@@ -172,4 +172,50 @@ describe("tts route", () => {
             }),
         );
     });
+
+    it("returns stable segmentTimings for mixed-segment synthesis and cache reuse", async () => {
+        synthesizeMock.mockResolvedValue(undefined);
+        toBufferMock
+            .mockReturnValueOnce(Buffer.from([1, 2, 3]))
+            .mockReturnValueOnce(Buffer.from([4, 5, 6]));
+        getWordBoundariesMock
+            .mockReturnValueOnce([{ offset: 0, duration: 1000, text: "first" }])
+            .mockReturnValueOnce([{ offset: 0, duration: 1400, text: "second" }]);
+
+        const { POST } = await importRoute();
+        const body = {
+            segments: [
+                { text: "First segment.", voice: "en-US-JennyNeural", rate: "-12%" },
+                { text: "Second segment is slightly longer.", voice: "en-US-AriaNeural", rate: "+10%" },
+            ],
+        };
+
+        const firstResponse = await POST(await buildRequest(body));
+        const firstJson = await firstResponse.json();
+        const secondResponse = await POST(await buildRequest(body));
+        const secondJson = await secondResponse.json();
+
+        expect(firstResponse.status).toBe(200);
+        expect(secondResponse.status).toBe(200);
+        expect(Array.isArray(firstJson.segmentTimings)).toBe(true);
+        expect(firstJson.segmentTimings).toHaveLength(2);
+        expect(firstJson.segmentTimings[0].endMs).toBe(firstJson.segmentTimings[1].startMs);
+        expect(firstJson.segmentTimings[0].startMs).toBe(0);
+        expect(firstJson.segmentTimings[1].endMs).toBeGreaterThan(firstJson.segmentTimings[1].startMs);
+        expect(secondJson.segmentTimings).toEqual(firstJson.segmentTimings);
+        expect(synthesizeMock).toHaveBeenCalledTimes(2);
+        expect(edgeTtsConstructorMock).toHaveBeenCalledTimes(2);
+        expect(synthesizeMock).toHaveBeenNthCalledWith(
+            1,
+            "First segment.",
+            "en-US-JennyNeural",
+            expect.objectContaining({ rate: "-12%" }),
+        );
+        expect(synthesizeMock).toHaveBeenNthCalledWith(
+            2,
+            "Second segment is slightly longer.",
+            "en-US-AriaNeural",
+            expect.objectContaining({ rate: "+10%" }),
+        );
+    });
 });
