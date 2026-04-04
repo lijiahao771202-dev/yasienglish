@@ -1017,6 +1017,83 @@ export class YasiDB extends Dexie {
             sync_meta: '&key, updated_at',
             listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
         });
+
+        // Version 37: backfill listening cabin v2 fields for old local sessions.
+        this.version(37).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+        }).upgrade(async tx => {
+            await tx.table('listening_cabin_sessions').toCollection().modify((item: Record<string, unknown>) => {
+                const voice = typeof item.voice === 'string' ? item.voice : 'en-US-JennyNeural';
+
+                item.topicMode = typeof item.topicMode === 'string' ? item.topicMode : 'manual';
+                item.scriptMode = typeof item.scriptMode === 'string' ? item.scriptMode : 'monologue';
+                item.lexicalDensity = typeof item.lexicalDensity === 'string' ? item.lexicalDensity : 'balanced';
+                item.sentenceLength = typeof item.sentenceLength === 'string' ? item.sentenceLength : 'medium';
+                item.scriptLength = typeof item.scriptLength === 'string' ? item.scriptLength : 'medium';
+                item.speakerPlan = item.speakerPlan || {
+                    strategy: 'fixed',
+                    primaryVoice: voice,
+                    assignments: [{ speaker: 'Narrator', voice }],
+                };
+                item.topicSeed = typeof item.topicSeed === 'string' ? item.topicSeed : null;
+                item.sentenceCount = Number.isFinite(item.sentenceCount)
+                    ? item.sentenceCount
+                    : Array.isArray(item.sentences)
+                        ? item.sentences.length
+                        : 0;
+                item.playbackRate = Number.isFinite(item.playbackRate) ? item.playbackRate : 1;
+            });
+        });
+
+        // Version 38: backfill listening cabin v2.2 fields (thinking mode + sentence emotion/pace).
+        this.version(38).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+        }).upgrade(async tx => {
+            await tx.table('listening_cabin_sessions').toCollection().modify((item: Record<string, unknown>) => {
+                item.thinkingMode = typeof item.thinkingMode === 'string' ? item.thinkingMode : 'standard';
+
+                if (Array.isArray(item.sentences)) {
+                    item.sentences = item.sentences.map((sentence) => {
+                        if (!sentence || typeof sentence !== 'object') {
+                            return sentence;
+                        }
+
+                        const record = sentence as Record<string, unknown>;
+                        return {
+                            ...record,
+                            emotion: typeof record.emotion === 'string' ? record.emotion : 'neutral',
+                            pace: typeof record.pace === 'string' ? record.pace : 'normal',
+                        };
+                    });
+                }
+            });
+        });
     }
 }
 

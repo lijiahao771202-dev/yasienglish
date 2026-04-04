@@ -27,7 +27,7 @@ function renderSentence(sentence: string | undefined) {
         return null;
     }
 
-    return sentence;
+    return sentence.replace(/^\s*[A-Za-z][A-Za-z0-9 .,'()\-&]{0,40}:\s*/u, "");
 }
 
 function getPlaybackModeLabel(mode: ListeningCabinPlaybackMode) {
@@ -83,6 +83,19 @@ function ListeningCabinPlayerView({
         () => currentSubtitleSentences.map((sentence) => sentence.english).join(" "),
         [currentSubtitleSentences],
     );
+    const currentSpeakerTags = useMemo(() => {
+        const ordered: string[] = [];
+        const seen = new Set<string>();
+        currentSubtitleSentences.forEach((sentence) => {
+            const speaker = sentence.speaker?.trim();
+            if (!speaker || seen.has(speaker)) {
+                return;
+            }
+            seen.add(speaker);
+            ordered.push(speaker);
+        });
+        return ordered;
+    }, [currentSubtitleSentences]);
     const subtitleTypographyClass = useMemo(() => {
         if (currentEnglishText.length > 140) {
             return "max-w-[54rem] text-balance text-[2.05rem] font-normal leading-[1.2] tracking-[-0.018em] sm:text-[2.4rem] lg:text-[2.95rem]";
@@ -218,27 +231,60 @@ function ListeningCabinPlayerView({
                         <AnimatePresence mode="wait">
                             <motion.div
                                 key={activeSubtitleKey}
-                                initial={{ opacity: 0, y: 16, filter: "blur(7px)" }}
-                                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                                exit={{ opacity: 0, y: -10, filter: "blur(6px)" }}
-                                transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                                initial={{ opacity: 0, y: 18 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -14 }}
+                                transition={{
+                                    duration: 0.34,
+                                    ease: [0.22, 1, 0.36, 1],
+                                }}
+                                className="w-full"
                             >
-                                <h1
+                                {currentSpeakerTags.length > 0 ? (
+                                    <div className="mb-8 flex flex-wrap items-center justify-center gap-3.5">
+                                        {currentSpeakerTags.map((speaker) => (
+                                            <span
+                                                key={speaker}
+                                                className="inline-flex items-center gap-2.5 rounded-full border border-[#bdd4ef] bg-[linear-gradient(180deg,#f8fbff,#edf5ff)] px-5 py-2.5 text-[15px] font-semibold tracking-[0.01em] text-[#3f648d] shadow-[0_8px_20px_rgba(86,122,166,0.2)]"
+                                            >
+                                                <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#87c1ff] shadow-[0_0_0_4px_rgba(135,193,255,0.24)]" />
+                                                {speaker}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : null}
+                                <motion.h1
                                     className={cn(
                                         "font-newsreader mx-auto text-[#232a31]",
                                         subtitleTypographyClass,
                                     )}
+                                    initial={{ opacity: 0, y: 12 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -8 }}
+                                    transition={{
+                                        duration: 0.3,
+                                        ease: [0.2, 1, 0.36, 1],
+                                        delay: 0.02,
+                                    }}
                                 >
                                     {renderSubtitleBlock(currentSubtitleSentences)}
-                                </h1>
-                                <p
+                                </motion.h1>
+                                <motion.p
                                     className={cn(
                                         "font-welcome-ui mx-auto mt-6 max-w-[54rem] text-[16px] font-normal leading-[1.72] tracking-[0.01em] text-[#5f6770] transition-opacity sm:text-[17px]",
                                         playerState.showChineseSubtitle ? "opacity-100" : "opacity-0",
                                     )}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: -6 }}
+                                    transition={{
+                                        duration: 0.28,
+                                        ease: [0.22, 1, 0.36, 1],
+                                        delay: 0.05,
+                                    }}
                                 >
                                     {joinChineseSubtitle(currentSubtitleSentences)}
-                                </p>
+                                </motion.p>
                             </motion.div>
                         </AnimatePresence>
                         <div className="w-full max-w-[28rem] px-6">

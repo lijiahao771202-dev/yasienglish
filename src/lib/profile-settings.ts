@@ -2,6 +2,34 @@ export type LearningTargetMode = "read" | "battle" | "vocab";
 export type EnglishLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 export type UiThemePreference = "bubblegum_pop" | "starlight_arcade" | "peach_glow";
 export type TtsVoice =
+    | "en-AU-NatashaNeural"
+    | "en-AU-WilliamMultilingualNeural"
+    | "en-CA-ClaraNeural"
+    | "en-CA-LiamNeural"
+    | "en-GB-LibbyNeural"
+    | "en-GB-MaisieNeural"
+    | "en-GB-RyanNeural"
+    | "en-GB-SoniaNeural"
+    | "en-GB-ThomasNeural"
+    | "en-HK-SamNeural"
+    | "en-HK-YanNeural"
+    | "en-IE-ConnorNeural"
+    | "en-IE-EmilyNeural"
+    | "en-IN-NeerjaExpressiveNeural"
+    | "en-IN-NeerjaNeural"
+    | "en-IN-PrabhatNeural"
+    | "en-KE-AsiliaNeural"
+    | "en-KE-ChilembaNeural"
+    | "en-NG-AbeoNeural"
+    | "en-NG-EzinneNeural"
+    | "en-NZ-MitchellNeural"
+    | "en-NZ-MollyNeural"
+    | "en-PH-JamesNeural"
+    | "en-PH-RosaNeural"
+    | "en-SG-LunaNeural"
+    | "en-SG-WayneNeural"
+    | "en-TZ-ElimuNeural"
+    | "en-TZ-ImaniNeural"
     | "en-US-AvaNeural"
     | "en-US-AriaNeural"
     | "en-US-EmmaNeural"
@@ -19,6 +47,8 @@ export type TtsVoice =
     | "en-US-AvaMultilingualNeural"
     | "en-US-BrianMultilingualNeural"
     | "en-US-EmmaMultilingualNeural"
+    | "en-ZA-LeahNeural"
+    | "en-ZA-LukeNeural"
     | "zh-CN-XiaoxiaoNeural"
     | "zh-CN-XiaoyiNeural"
     | "zh-CN-YunjianNeural"
@@ -47,6 +77,146 @@ export const DEFAULT_AVATAR_PRESET = "bubble-bear";
 export const DEFAULT_TTS_VOICE: TtsVoice = "en-US-JennyNeural";
 
 export const TTS_VOICE_OPTIONS: TtsVoiceOption[] = [
+    {
+        voice: "en-AU-NatashaNeural",
+        label: "Natasha (AU)",
+        description: "Australian English voice with a clear, natural rhythm.",
+    },
+    {
+        voice: "en-AU-WilliamMultilingualNeural",
+        label: "William Multilingual (AU)",
+        description: "Australian multilingual male voice for broader accent exposure.",
+    },
+    {
+        voice: "en-CA-ClaraNeural",
+        label: "Clara (CA)",
+        description: "Canadian English female voice with balanced pacing.",
+    },
+    {
+        voice: "en-CA-LiamNeural",
+        label: "Liam (CA)",
+        description: "Canadian English male voice, steady and easy to follow.",
+    },
+    {
+        voice: "en-GB-LibbyNeural",
+        label: "Libby (UK)",
+        description: "British English female voice, crisp and articulate.",
+    },
+    {
+        voice: "en-GB-MaisieNeural",
+        label: "Maisie (UK)",
+        description: "British English female voice with a light, friendly tone.",
+    },
+    {
+        voice: "en-GB-RyanNeural",
+        label: "Ryan (UK)",
+        description: "British English male voice, clear for dialogue practice.",
+    },
+    {
+        voice: "en-GB-SoniaNeural",
+        label: "Sonia (UK)",
+        description: "British English female voice suited to explanatory speech.",
+    },
+    {
+        voice: "en-GB-ThomasNeural",
+        label: "Thomas (UK)",
+        description: "British English male voice with stable cadence.",
+    },
+    {
+        voice: "en-HK-SamNeural",
+        label: "Sam (HK)",
+        description: "Hong Kong English male voice, clean for mixed-accent listening.",
+    },
+    {
+        voice: "en-HK-YanNeural",
+        label: "Yan (HK)",
+        description: "Hong Kong English female voice with calm delivery.",
+    },
+    {
+        voice: "en-IE-ConnorNeural",
+        label: "Connor (IE)",
+        description: "Irish English male voice for accent variety.",
+    },
+    {
+        voice: "en-IE-EmilyNeural",
+        label: "Emily (IE)",
+        description: "Irish English female voice, smooth and clear.",
+    },
+    {
+        voice: "en-IN-NeerjaExpressiveNeural",
+        label: "Neerja Expressive (IN)",
+        description: "Indian English expressive female voice for lively narration.",
+    },
+    {
+        voice: "en-IN-NeerjaNeural",
+        label: "Neerja (IN)",
+        description: "Indian English female voice with neutral pacing.",
+    },
+    {
+        voice: "en-IN-PrabhatNeural",
+        label: "Prabhat (IN)",
+        description: "Indian English male voice, good for practical listening drills.",
+    },
+    {
+        voice: "en-KE-AsiliaNeural",
+        label: "Asilia (KE)",
+        description: "Kenyan English female voice for broader accent exposure.",
+    },
+    {
+        voice: "en-KE-ChilembaNeural",
+        label: "Chilemba (KE)",
+        description: "Kenyan English male voice with clear consonants.",
+    },
+    {
+        voice: "en-NG-AbeoNeural",
+        label: "Abeo (NG)",
+        description: "Nigerian English male voice with natural prosody.",
+    },
+    {
+        voice: "en-NG-EzinneNeural",
+        label: "Ezinne (NG)",
+        description: "Nigerian English female voice for accent adaptation.",
+    },
+    {
+        voice: "en-NZ-MitchellNeural",
+        label: "Mitchell (NZ)",
+        description: "New Zealand English male voice, conversational style.",
+    },
+    {
+        voice: "en-NZ-MollyNeural",
+        label: "Molly (NZ)",
+        description: "New Zealand English female voice, clear and warm.",
+    },
+    {
+        voice: "en-PH-JamesNeural",
+        label: "James (PH)",
+        description: "Philippine English male voice for practical listening diversity.",
+    },
+    {
+        voice: "en-PH-RosaNeural",
+        label: "Rosa (PH)",
+        description: "Philippine English female voice with a gentle pace.",
+    },
+    {
+        voice: "en-SG-LunaNeural",
+        label: "Luna (SG)",
+        description: "Singapore English female voice, useful for regional accent training.",
+    },
+    {
+        voice: "en-SG-WayneNeural",
+        label: "Wayne (SG)",
+        description: "Singapore English male voice with clear rhythm.",
+    },
+    {
+        voice: "en-TZ-ElimuNeural",
+        label: "Elimu (TZ)",
+        description: "Tanzanian English male voice for additional accent exposure.",
+    },
+    {
+        voice: "en-TZ-ImaniNeural",
+        label: "Imani (TZ)",
+        description: "Tanzanian English female voice with smooth pacing.",
+    },
     {
         voice: "en-US-AvaNeural",
         label: "Ava",
@@ -126,6 +296,16 @@ export const TTS_VOICE_OPTIONS: TtsVoiceOption[] = [
         voice: "en-US-EmmaMultilingualNeural",
         label: "Emma Multi",
         description: "Multilingual, gentle, and easy to follow.",
+    },
+    {
+        voice: "en-ZA-LeahNeural",
+        label: "Leah (ZA)",
+        description: "South African English female voice for accent broadening.",
+    },
+    {
+        voice: "en-ZA-LukeNeural",
+        label: "Luke (ZA)",
+        description: "South African English male voice, clear and stable.",
     },
     {
         voice: "en-US-JennyNeural",

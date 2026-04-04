@@ -12,7 +12,7 @@ vi.mock("./db", () => ({
     },
 }));
 
-import { requestTtsPayload } from "./tts-client";
+import { requestTtsPayload, requestTtsSegmentsPayload } from "./tts-client";
 
 describe("tts-client", () => {
     afterEach(() => {
@@ -84,6 +84,51 @@ describe("tts-client", () => {
                 text: "Hello world",
                 voice: "en-US-BrianNeural",
                 rate: "+0%",
+            }),
+        }));
+    });
+
+    it("posts mixed segments with per-segment voices", async () => {
+        firstMock.mockResolvedValue({
+            learning_preferences: {
+                tts_voice: "en-US-AriaNeural",
+            },
+        });
+
+        const fetchMock = vi.fn().mockResolvedValue(
+            new Response(JSON.stringify({
+                audio: "/api/tts?key=test-mixed",
+                marks: [],
+                segmentTimings: [
+                    { index: 1, startMs: 0, endMs: 900 },
+                    { index: 2, startMs: 900, endMs: 1850 },
+                ],
+            }), {
+                status: 200,
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            }),
+        );
+
+        vi.stubGlobal("fetch", fetchMock);
+
+        const payload = await requestTtsSegmentsPayload([
+            { text: "Good morning.", voice: "en-US-AvaNeural" },
+            { text: "Let's begin.", voice: "en-US-BrianNeural" },
+        ]);
+
+        expect(payload.segmentTimings).toEqual([
+            { index: 1, startMs: 0, endMs: 900 },
+            { index: 2, startMs: 900, endMs: 1850 },
+        ]);
+
+        expect(fetchMock).toHaveBeenCalledWith("/api/tts", expect.objectContaining({
+            body: JSON.stringify({
+                segments: [
+                    { text: "Good morning.", voice: "en-US-AvaNeural", rate: "+0%" },
+                    { text: "Let's begin.", voice: "en-US-BrianNeural", rate: "+0%" },
+                ],
             }),
         }));
     });
