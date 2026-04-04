@@ -68,6 +68,38 @@ const FONT_OPTIONS_ZH = [
     { name: "系统黑体 (雅黑)", value: "sans-serif" },
 ];
 
+const SUBTITLE_ADVANCE_OPTIONS = [
+    { label: "0.0s", value: 0 },
+    { label: "0.3s", value: 300 },
+    { label: "0.6s", value: 600 },
+    { label: "1.0s", value: 1000 },
+    { label: "1.2s", value: 1200 },
+] as const;
+
+type TransitionStyle = "radiant" | "mist" | "glide" | "classic" | "typewriter";
+type TypographyStyle = "crystal" | "aurora" | "hollow" | "honey";
+
+type WordDefinition = {
+    phonetic?: string;
+    error?: string;
+    context_meaning?: {
+        definition: string;
+        translation: string;
+    };
+    meaning_groups?: Array<{
+        pos: string;
+        meanings?: string[];
+    }>;
+};
+
+function isTransitionStyle(value: string): value is TransitionStyle {
+    return ["radiant", "mist", "glide", "classic", "typewriter"].includes(value);
+}
+
+function isTypographyStyle(value: string): value is TypographyStyle {
+    return ["crystal", "aurora", "hollow", "honey"].includes(value);
+}
+
 function renderSubtitleBlock(
     sentences: ListeningCabinSentence[], 
     activeIndex: number, 
@@ -244,7 +276,29 @@ const SPEAKER_MIST_THEMES = [
     ["rgba(16,185,129,0.55)", "rgba(45,212,191,0.45)", "rgba(52,114,211,0.30)"], // 6: Vivid Emerald (Bright Green)
     ["rgba(244,63,94,0.60)", "rgba(251,191,36,0.50)", "rgba(251,113,133,0.30)"], // 7: Vivid Rose (Pinkish Red)
     ["rgba(139,92,246,0.60)", "rgba(236,72,153,0.50)", "rgba(244,114,182,0.30)"], // 8: Vivid Violet (Purple)
-    ["rgba(100,116,139,0.60)", "rgba(71,85,105,0.50)", "rgba(31,41,55,0.35)"],    // 9: Cloudy Slate (Neutral Grey)
+    ["rgba(255,182,193,0.65)", "rgba(255,105,180,0.55)", "rgba(255,192,203,0.35)"], // 9: Kawaii Soft Pink (Sweet Heart)
+    ["rgba(135,206,235,0.60)", "rgba(0,191,255,0.50)", "rgba(173,216,230,0.30)"],   // 10: Dreamy Sky (Light Blue)
+    ["rgba(250,250,210,0.65)", "rgba(255,255,224,0.50)", "rgba(240,230,140,0.30)"], // 11: Lemon Cream (Light Yellow)
+    ["rgba(221,160,221,0.60)", "rgba(186,85,211,0.50)", "rgba(238,130,238,0.30)"], // 12: Orchid Dream (Soft Purple)
+    ["rgba(255,127,80,0.60)", "rgba(255,99,71,0.50)", "rgba(255,218,185,0.30)"],    // 13: Coral Sun (Warm Orange)
+    ["rgba(6,182,212,0.60)", "rgba(45,212,191,0.50)", "rgba(20,184,166,0.30)"],    // 14: Tropical Teal
+    ["rgba(249,115,22,0.60)", "rgba(234,88,12,0.50)", "rgba(194,65,12,0.30)"],     // 15: Intense Orange
+    ["rgba(168,85,247,0.60)", "rgba(192,132,252,0.50)", "rgba(126,34,206,0.30)"],   // 16: Electric Purple
+    ["rgba(236,72,153,0.60)", "rgba(244,114,182,0.50)", "rgba(190,24,93,0.30)"],    // 17: Flamingo Pink
+    ["rgba(132,204,22,0.60)", "rgba(101,163,13,0.50)", "rgba(63,98,18,0.30)"],     // 18: Lime Punch
+    ["rgba(59,130,246,0.60)", "rgba(37,99,235,0.50)", "rgba(29,78,216,0.30)"],     // 19: Sapphire Blue
+    ["rgba(14,165,233,0.60)", "rgba(12,74,110,0.40)", "rgba(7,89,133,0.30)"],      // 20: Deep Sea Cyan
+    ["rgba(251,191,36,0.60)", "rgba(252,211,77,0.50)", "rgba(180,83,9,0.30)"],     // 21: Golden Honey
+    ["rgba(20,184,166,0.60)", "rgba(13,148,136,0.50)", "rgba(17,94,89,0.30)"],     // 22: Minty Teal
+    ["rgba(217,70,239,0.60)", "rgba(162,28,175,0.50)", "rgba(112,26,117,0.30)"],    // 23: Fuchsia Flare
+    ["rgba(20,158,202,0.60)", "rgba(15,118,153,0.50)", "rgba(12,74,110,0.35)"],     // 24: Frosty Azure
+    ["rgba(101,163,13,0.60)", "rgba(77,124,15,0.50)", "rgba(54,83,20,0.30)"],      // 25: Moss Green
+    ["rgba(239,68,68,0.60)", "rgba(185,28,28,0.50)", "rgba(127,11,11,0.30)"],       // 26: Vivid Crimson
+    ["rgba(153,102,255,0.60)", "rgba(121,58,235,0.50)", "rgba(91,33,182,0.30)"],    // 27: Royal Lavender
+    ["rgba(255,159,64,0.60)", "rgba(255,94,87,0.50)", "rgba(255,184,108,0.30)"],    // 28: Sunset Peach
+    ["rgba(75,192,192,0.60)", "rgba(56,163,165,0.50)", "rgba(128,237,153,0.30)"],   // 29: Aqua Wave
+    ["rgba(255,99,132,0.60)", "rgba(255,159,64,0.50)", "rgba(255,205,86,0.30)"],    // 30: Fruit Sorbet
+    ["rgba(54,162,235,0.60)", "rgba(153,102,255,0.50)", "rgba(201,203,207,0.30)"],  // 31: Cool Haze
 ];
 
 function ListeningCabinPlayerView({
@@ -255,8 +309,9 @@ function ListeningCabinPlayerView({
     session: ListeningCabinSession;
 }) {
     const router = useRouter();
-    const player = useListeningCabinPlayer({ session, restart });
-    const { playerState, currentSubtitleSentences, audioEnergy } = player;
+    const [subtitleAdvanceMs, setSubtitleAdvanceMs] = useState(1000);
+    const player = useListeningCabinPlayer({ session, restart, subtitleAdvanceMs });
+    const { playerState, currentSubtitleSentences } = player;
     
     // Mercury Physics for Progress
     const springProgress = useSpring(playerState.progressRatio, {
@@ -280,12 +335,12 @@ function ListeningCabinPlayerView({
     const [showSettings, setShowSettings] = useState(false);
     const [fontEn, setFontEn] = useState("var(--font-inter)");
     const [fontZh, setFontZh] = useState("var(--font-zh-sans-modern)");
-    const [transitionStyle, setTransitionStyle] = useState<"radiant" | "mist" | "glide" | "classic" | "typewriter">("radiant");
-    const [typographyStyle, setTypographyStyle] = useState<"crystal" | "aurora" | "hollow" | "honey">("crystal");
+    const [transitionStyle, setTransitionStyle] = useState<TransitionStyle>("radiant");
+    const [typographyStyle, setTypographyStyle] = useState<TypographyStyle>("crystal");
     
     // Word Gloss State:
     const [selectedWord, setSelectedWord] = useState<string | null>(null);
-    const [wordDefinition, setWordDefinition] = useState<any>(null);
+    const [wordDefinition, setWordDefinition] = useState<WordDefinition | null>(null);
     const [isDefining, setIsDefining] = useState(false);
 
     const hideControlsTimerRef = useRef<number | null>(null);
@@ -294,12 +349,15 @@ function ListeningCabinPlayerView({
     useEffect(() => {
         const savedEn = localStorage.getItem("listening_cabin_font_en");
         const savedZh = localStorage.getItem("listening_cabin_font_zh");
-        const savedStyle = localStorage.getItem("listening_cabin_transition_style") as any;
-        const savedTypo = localStorage.getItem("listening_cabin_typography_style") as any;
+        const savedStyle = localStorage.getItem("listening_cabin_transition_style");
+        const savedTypo = localStorage.getItem("listening_cabin_typography_style");
+        const savedAdvanceRaw = localStorage.getItem("listening_cabin_subtitle_advance_ms");
+        const savedAdvance = savedAdvanceRaw === null ? Number.NaN : Number(savedAdvanceRaw);
         if (savedEn) setFontEn(savedEn);
         if (savedZh) setFontZh(savedZh);
-        if (savedStyle) setTransitionStyle(savedStyle);
-        if (savedTypo) setTypographyStyle(savedTypo);
+        if (savedStyle && isTransitionStyle(savedStyle)) setTransitionStyle(savedStyle);
+        if (savedTypo && isTypographyStyle(savedTypo)) setTypographyStyle(savedTypo);
+        if (Number.isFinite(savedAdvance) && savedAdvance >= 0) setSubtitleAdvanceMs(savedAdvance);
     }, []);
 
     // Persistence: Save
@@ -308,17 +366,14 @@ function ListeningCabinPlayerView({
         localStorage.setItem("listening_cabin_font_zh", fontZh);
         localStorage.setItem("listening_cabin_transition_style", transitionStyle);
         localStorage.setItem("listening_cabin_typography_style", typographyStyle);
-    }, [fontEn, fontZh, transitionStyle, typographyStyle]);
+        localStorage.setItem("listening_cabin_subtitle_advance_ms", String(subtitleAdvanceMs));
+    }, [fontEn, fontZh, subtitleAdvanceMs, transitionStyle, typographyStyle]);
 
     const completionLabel = useMemo(() => {
         const current = String(playerState.currentSentenceIndex + 1).padStart(2, "0");
         const total = String(session.sentences.length).padStart(2, "0");
         return `${current} / ${total}`;
     }, [playerState.currentSentenceIndex, session.sentences.length]);
-    const currentEnglishText = useMemo(
-        () => currentSubtitleSentences.map((sentence) => sentence.english).join(" "),
-        [currentSubtitleSentences],
-    );
     const currentSpeakerTags = useMemo(() => {
         const ordered: string[] = [];
         const seen = new Set<string>();
@@ -340,32 +395,41 @@ function ListeningCabinPlayerView({
         
         return `${base} ${fluidFontSize} leading-[1.18] tracking-[-0.028em] text-[#1e293b]`;
     }, []);
-    const currentSpeakerIndex = useMemo(() => {
-        if (currentSpeakerTags.length === 0) return 0;
-        // Use the first speaker currently shown
-        const speaker = currentSpeakerTags[0];
-        // Find their total index in the session's overall speaker plan if possible, 
-        // fallback to a simple hash of the name
-        let hash = 0;
-        for (let i = 0; i < (speaker?.length ?? 0); i++) {
-            hash = (speaker?.charCodeAt(i) ?? 0) + ((hash << 5) - hash);
-        }
-        return Math.abs(hash % SPEAKER_MIST_THEMES.length);
-    }, [currentSpeakerTags]);
-
-    const activeMistTheme = useMemo(
-        () => SPEAKER_MIST_THEMES[currentSpeakerIndex % SPEAKER_MIST_THEMES.length],
-        [currentSpeakerIndex],
-    );
-
-    // Phase 16: The Eternal Ethereal (Breathing & Cross-Fade Architecture)
-    // We remove the manual auroraDuration/isBlooming for background as it's now handled by AnimatePresence
-
-    const activeSubtitleKey = currentSubtitleSentences.map((sentence) => sentence.index).join("-");
     const activeSpeaker = useMemo(() => {
         const sentence = session.sentences[playerState.currentSentenceIndex];
         return sentence?.speaker?.trim() ?? null;
     }, [playerState.currentSentenceIndex, session.sentences]);
+
+    const speakerThemeMapping = useMemo(() => {
+        const uniqueSpeakers = Array.from(new Set(session.sentences.map(s => s.speaker?.trim()).filter(Boolean)));
+        const mapping: Record<string, number> = {};
+        
+        // Shuffle the indices of availability themes for variety
+        const themeIndices = Array.from({ length: SPEAKER_MIST_THEMES.length }, (_, i) => i);
+        for (let i = themeIndices.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [themeIndices[i], themeIndices[j]] = [themeIndices[j], themeIndices[i]];
+        }
+
+        uniqueSpeakers.forEach((speaker, i) => {
+            // Assign a unique random theme index from the shuffled pool
+            mapping[speaker!] = themeIndices[i % themeIndices.length];
+        });
+        return mapping;
+    // We intentionally only depend on session.id or mounts to make it "random every time you enter"
+    }, [session.sentences]);
+
+    const currentSpeakerIndex = useMemo(() => {
+        if (!activeSpeaker) return 0;
+        return speakerThemeMapping[activeSpeaker] ?? 0;
+    }, [activeSpeaker, speakerThemeMapping]);
+
+    const activeMistTheme = useMemo(
+        () => SPEAKER_MIST_THEMES[currentSpeakerIndex],
+        [currentSpeakerIndex],
+    );
+
+    const activeSubtitleKey = currentSubtitleSentences.map((sentence) => sentence.index).join("-");
 
     const cyclePlaybackMode = useCallback(() => {
         if (playerState.playbackMode === "single_pause") {
@@ -718,7 +782,7 @@ function ListeningCabinPlayerView({
                                             ].map((style) => (
                                                 <button
                                                     key={style.id}
-                                                    onClick={() => setTransitionStyle(style.id as any)}
+                                                    onClick={() => setTransitionStyle(style.id)}
                                                     className={cn(
                                                         "px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-left transition-all duration-300 border flex items-center justify-between",
                                                         transitionStyle === style.id 
@@ -727,6 +791,31 @@ function ListeningCabinPlayerView({
                                                     )}
                                                 >
                                                     {style.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-5">
+                                        <div className="mb-2.5 flex items-center justify-between px-1">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Subtitle Timing</label>
+                                            <span className="text-[10px] font-black tracking-[0.16em] text-slate-500 uppercase">
+                                                提前 {(subtitleAdvanceMs / 1000).toFixed(1)}s
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-1.5">
+                                            {SUBTITLE_ADVANCE_OPTIONS.map((option) => (
+                                                <button
+                                                    key={option.value}
+                                                    onClick={() => setSubtitleAdvanceMs(option.value)}
+                                                    className={cn(
+                                                        "px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-center transition-all duration-300 border",
+                                                        subtitleAdvanceMs === option.value
+                                                            ? "bg-emerald-600 text-white border-emerald-600 shadow-[0_4px_12px_rgba(5,150,105,0.2)]"
+                                                            : "bg-slate-50 text-slate-500 border-slate-100 hover:bg-white hover:shadow-md"
+                                                    )}
+                                                >
+                                                    {option.label}
                                                 </button>
                                             ))}
                                         </div>
@@ -744,7 +833,7 @@ function ListeningCabinPlayerView({
                                             ].map((style) => (
                                                 <button
                                                     key={style.id}
-                                                    onClick={() => setTypographyStyle(style.id as any)}
+                                                    onClick={() => setTypographyStyle(style.id)}
                                                     className={cn(
                                                         "px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-left transition-all duration-300 border flex items-center justify-between",
                                                         typographyStyle === style.id 
@@ -1070,19 +1159,19 @@ function ListeningCabinPlayerView({
                                                 {wordDefinition?.context_meaning && (
                                                     <div className="p-5 rounded-[2rem] bg-slate-50 border border-slate-100">
                                                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">In Context</p>
-                                                        <p className="text-sm font-bold text-slate-800 leading-relaxed italic">"{wordDefinition.context_meaning.definition}"</p>
+                                                        <p className="text-sm font-bold text-slate-800 leading-relaxed italic">&ldquo;{wordDefinition.context_meaning.definition}&rdquo;</p>
                                                         <p className="text-xs text-slate-400 mt-2 font-black">— {wordDefinition.context_meaning.translation}</p>
                                                     </div>
                                                 )}
 
                                                 <div className="space-y-4">
-                                                    {wordDefinition?.meaning_groups?.slice(0, 2).map((group: any, idx: number) => (
+                                                    {wordDefinition?.meaning_groups?.slice(0, 2).map((group, idx: number) => (
                                                         <div key={idx} className="px-1">
                                                             <div className="flex items-center gap-2 mb-2">
                                                                 <span className="text-[10px] font-black bg-slate-900 text-white px-2 py-0.5 rounded italic">{group.pos}</span>
                                                             </div>
                                                             <div className="space-y-1.5 pl-1">
-                                                                {group.meanings?.slice(0, 2).map((m: any, midx: number) => (
+                                                                {group.meanings?.slice(0, 2).map((m, midx: number) => (
                                                                     <p key={midx} className="text-[13px] font-bold text-slate-700 leading-relaxed flex gap-2">
                                                                         <span className="text-slate-200 mt-0.5">•</span> {m}
                                                                     </p>

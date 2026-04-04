@@ -881,11 +881,14 @@ export function resolveListeningCabinLengthProfile(
     scriptLength: ListeningCabinScriptLength,
     sentenceLength: ListeningCabinSentenceLength,
 ): ListeningCabinLengthProfile {
-    const scriptLengthTarget: Record<ListeningCabinScriptLength, { minutes: number; words: number }> = {
-        short: { minutes: 2.2, words: 200 },
-        medium: { minutes: 4.5, words: 520 },
-        long: { minutes: 10, words: 1320 },
-        ultra_long: { minutes: 18, words: 2400 },
+    const scriptLengthTarget: Record<ListeningCabinScriptLength, {
+        minutes: number;
+        sentenceRange: { min: number; max: number };
+    }> = {
+        short: { minutes: 2.2, sentenceRange: { min: 8, max: 16 } },
+        medium: { minutes: 4.5, sentenceRange: { min: 18, max: 32 } },
+        long: { minutes: 10, sentenceRange: { min: 40, max: 60 } },
+        ultra_long: { minutes: 18, sentenceRange: { min: 70, max: 100 } },
     };
     const sentenceLengthTarget: Record<ListeningCabinSentenceLength, { min: number; max: number }> = {
         short: { min: 7, max: 13 },
@@ -896,20 +899,18 @@ export function resolveListeningCabinLengthProfile(
     const scriptTarget = scriptLengthTarget[scriptLength];
     const sentenceTarget = sentenceLengthTarget[sentenceLength];
     const averageWords = Math.round((sentenceTarget.min + sentenceTarget.max) / 2);
-    const estimatedSentences = Math.max(3, Math.round(scriptTarget.words / averageWords));
+    const targetSentenceMidpoint = Math.round((scriptTarget.sentenceRange.min + scriptTarget.sentenceRange.max) / 2);
+    const targetWords = Math.max(60, targetSentenceMidpoint * averageWords);
 
     return {
         estimatedMinutes: scriptTarget.minutes,
-        targetWords: scriptTarget.words,
+        targetWords,
         targetWordRange: {
-            min: Math.max(60, Math.round(scriptTarget.words * 0.62)),
-            max: Math.round(scriptTarget.words * 1.45),
+            min: Math.max(60, Math.round(targetWords * 0.72)),
+            max: Math.round(targetWords * 1.3),
         },
         sentenceWordRange: sentenceTarget,
-        targetSentenceRange: {
-            min: Math.max(3, Math.floor(estimatedSentences * 0.72)),
-            max: Math.max(estimatedSentences + 2, Math.ceil(estimatedSentences * 1.32)),
-        },
+        targetSentenceRange: scriptTarget.sentenceRange,
     };
 }
 
@@ -966,9 +967,9 @@ export function buildListeningCabinPrompt(params: {
         profile.sentenceWordRange.min,
         Math.round(profile.targetWords / Math.max(1, profile.targetSentenceRange.min)),
     );
-    const speakerHint = speakerPlan.assignments
-        .map((assignment) => assignment.speaker)
-        .join(", ");
+    const speakerNames = speakerPlan.assignments.map((assignment) => assignment.speaker);
+    const speakerHint = speakerNames.join(", ");
+    const expectedSpeakerCount = speakerNames.length;
 
     return `
 You are writing a HIGH-QUALITY spoken-English listening script for Chinese learners.
@@ -988,7 +989,7 @@ Task setup:
 - Lexical density: ${request.lexicalDensity} (${lexicalDensityInstruction(request.lexicalDensity)})
 - Focus tags: ${focusLabels || "自然口语"}
 - Target words: around ${profile.targetWords} (acceptable ${profile.targetWordRange.min}-${profile.targetWordRange.max})
-- Preferred sentence count: around ${profile.targetSentenceRange.min}-${profile.targetSentenceRange.max}
+- Target sentence count: keep it within ${profile.targetSentenceRange.min}-${profile.targetSentenceRange.max} sentences
 - Preferred sentence length: around ${profile.sentenceWordRange.min}-${profile.sentenceWordRange.max} words
 - Suggested average words per sentence: around ${averageWordsPerSentence}
 
@@ -1008,8 +1009,8 @@ Mode constraints:
 ${request.scriptMode === "monologue"
         ? "- Must be a SINGLE speaker monologue. No back-and-forth and no speaker labels."
         : request.scriptMode === "dialogue"
-            ? `- Must be a DIALOGUE with 2 to 4 speakers.\n- Allowed speaker names: ${speakerHint || "Jenny, Ava"}.\n- Each sentence must include a speaker field.`
-            : `- Must be a PODCAST-style conversation (host + guests) with 2 to 4 speakers.\n- Allowed speaker names: ${speakerHint || "Host Jenny, Emma"}.\n- Each sentence must include a speaker field.`}
+            ? `- Must be a DIALOGUE with ${expectedSpeakerCount} speakers.\n- You MUST use ALL configured speakers at least once.\n- Allowed speaker names: ${speakerHint || "Jenny, Ava"}.\n- Do not collapse multiple people into one voice or omit any configured speaker.\n- Each sentence must include a speaker field.`
+            : `- Must be a PODCAST-style conversation with EXACTLY ${expectedSpeakerCount} speakers.\n- You MUST use ALL configured speakers at least once.\n- Allowed speaker names: ${speakerHint || "Host Jenny, Emma"}.\n- The first listed speaker is the host and should open the episode, guide transitions, and close or summarize near the end.\n- The remaining speakers are distinct guests with different viewpoints or contributions.\n- Do not collapse, merge, rename, or omit any configured speaker.\n- If there are 4 configured speakers, keep all 4 active in the episode instead of drifting into a 2-person conversation.\n- Each sentence must include a speaker field.`}
 
 JSON schema:
 {
@@ -1114,6 +1115,20 @@ export function lintListeningCabinDraft(params: {
             .map((sentence) => normalizeSpeakerName(sentence.speaker, ""))
             .filter(Boolean),
     ));
+    const isUltraLong = request.scriptLength === "ultra_long";
+    const maxSentenceOverflow = isUltraLong ? 22 : 10;
+    const minWordThreshold = isUltraLong
+        ? Math.max(90, Math.round(profile.targetWordRange.min * 0.34))
+        : Math.max(45, Math.round(profile.targetWordRange.min * 0.5));
+    const maxWordThreshold = isUltraLong
+        ? Math.round(profile.targetWordRange.max * 1.95)
+        : Math.round(profile.targetWordRange.max * 1.6);
+    const minAverageWords = isUltraLong
+        ? Math.max(4.5, profile.sentenceWordRange.min - 5)
+        : Math.max(5, profile.sentenceWordRange.min - 3);
+    const maxAverageWords = isUltraLong
+        ? profile.sentenceWordRange.max + 10
+        : profile.sentenceWordRange.max + 6;
 
     if (!title.trim()) {
         issues.push("title is empty");
@@ -1123,23 +1138,27 @@ export function lintListeningCabinDraft(params: {
         issues.push("sentence count is too low for listening flow");
     }
 
-    if (sentences.length > profile.targetSentenceRange.max + 10) {
+    if (sentences.length < profile.targetSentenceRange.min) {
+        issues.push("sentence count is too low for the selected script length");
+    }
+
+    if (sentences.length > profile.targetSentenceRange.max + maxSentenceOverflow) {
         issues.push("sentence count is too high and may cause fragmented subtitles");
     }
 
-    if (totalWords < Math.max(45, Math.round(profile.targetWordRange.min * 0.5))) {
+    if (totalWords < minWordThreshold) {
         issues.push("overall script is too short for the selected script length");
     }
 
-    if (totalWords > Math.round(profile.targetWordRange.max * 1.6)) {
+    if (totalWords > maxWordThreshold) {
         issues.push("overall script is too long for the selected script length");
     }
 
-    if (averageWordsPerSentence < Math.max(5, profile.sentenceWordRange.min - 3)) {
+    if (averageWordsPerSentence < minAverageWords) {
         issues.push("sentence rhythm is too choppy; lines are too short");
     }
 
-    if (averageWordsPerSentence > profile.sentenceWordRange.max + 6) {
+    if (averageWordsPerSentence > maxAverageWords) {
         issues.push("sentence rhythm is too dense; lines are too long");
     }
 

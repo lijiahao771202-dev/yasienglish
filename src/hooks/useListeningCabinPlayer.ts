@@ -21,12 +21,13 @@ import type { TtsPayload } from "@/lib/tts-client";
 type UseListeningCabinPlayerOptions = {
     session: ListeningCabinSession;
     restart?: boolean;
+    subtitleAdvanceMs?: number;
 };
 
 const SUBTITLE_SWITCH_DELAY_MS = 3;
 const SUBTITLE_END_HOLD_MS = 4;
 const SUBTITLE_END_EARLY_ALLOWANCE_MS = 40;
-const SUBTITLE_GLOBAL_ADVANCE_MS = 900;
+const DEFAULT_SUBTITLE_ADVANCE_MS = 0;
 const STOP_BOUNDARY_GUARD_MS = 0;
 const STOP_TAIL_BUFFER_MS = 160;
 const STOP_BLEED_GUARD_MS = 56;
@@ -141,19 +142,24 @@ function buildEvenSentenceTimings(sentenceCount: number, durationMs: number) {
 function fitSentenceTimingsToDuration(
     timings: ListeningCabinSentenceTiming[],
     durationMs: number,
-    options?: { allowExpand?: boolean; progressiveExpand?: boolean },
+    options?: { allowExpand?: boolean; allowShrink?: boolean; progressiveExpand?: boolean },
 ) {
     if (timings.length === 0 || durationMs <= 0) {
         return timings;
     }
 
     const allowExpand = options?.allowExpand ?? true;
+    const allowShrink = options?.allowShrink ?? true;
     const progressiveExpand = options?.progressiveExpand ?? false;
     const lastEndMs = Math.max(1, timings[timings.length - 1]?.endMs ?? 1);
     const roundedDurationMs = Math.max(1, Math.round(durationMs));
     const delta = roundedDurationMs - lastEndMs;
 
     if (!allowExpand && delta > 0) {
+        return timings;
+    }
+
+    if (!allowShrink && delta < 0) {
         return timings;
     }
 
@@ -250,6 +256,14 @@ function resolveSegmentTimings(
     return normalized;
 }
 
+function normalizeSubtitleAdvanceMs(value: number | undefined) {
+    if (!Number.isFinite(value)) {
+        return DEFAULT_SUBTITLE_ADVANCE_MS;
+    }
+
+    return Math.min(1600, Math.max(0, Math.round(value ?? DEFAULT_SUBTITLE_ADVANCE_MS)));
+}
+
 function isTimingLikelyUnreliable(
     timings: ListeningCabinSentenceTiming[],
     sentenceIndex: number,
@@ -277,7 +291,12 @@ function isTimingLikelyUnreliable(
     return false;
 }
 
-export function useListeningCabinPlayer({ session, restart = false }: UseListeningCabinPlayerOptions) {
+export function useListeningCabinPlayer({
+    session,
+    restart = false,
+    subtitleAdvanceMs: rawSubtitleAdvanceMs,
+}: UseListeningCabinPlayerOptions) {
+    const subtitleAdvanceMs = normalizeSubtitleAdvanceMs(rawSubtitleAdvanceMs);
     const resolvedSentences = useMemo(
         () => canonicalizeListeningCabinSentenceSpeakers({
             scriptMode: session.scriptMode,
@@ -781,7 +800,7 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
 
             const nextSentenceIndex = findSentenceIndexByTime(
                 timings,
-                currentMs + SUBTITLE_GLOBAL_ADVANCE_MS,
+                currentMs + subtitleAdvanceMs,
             );
 
             if (nextSentenceIndex !== currentSentenceIndexRef.current) {
@@ -839,7 +858,7 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
                 timingsRef.current = fitSentenceTimingsToDuration(
                     baseTimings,
                     audio.duration * 1000,
-                    { allowExpand: true, progressiveExpand: true },
+                    { allowExpand: true, allowShrink: false, progressiveExpand: true },
                 );
                 return;
             }
@@ -869,7 +888,7 @@ export function useListeningCabinPlayer({ session, restart = false }: UseListeni
             }
             audioRef.current = null;
         };
-    }, [computeSafeStopAtMs, persistSessionPatch, resolvedSentences.length, seekWithinSentence, subtitleChunks]);
+    }, [computeSafeStopAtMs, persistSessionPatch, resolvedSentences.length, seekWithinSentence, subtitleAdvanceMs, subtitleChunks]);
 
     useEffect(() => {
         const audio = audioRef.current;

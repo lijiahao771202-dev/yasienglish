@@ -191,6 +191,57 @@ describe("listening cabin generate route", () => {
         }));
     });
 
+    it("repairs podcast drafts that omit configured speakers in a four-person setup", async () => {
+        createCompletionMock
+            .mockResolvedValueOnce(
+                createCompletionPayload({
+                    title: "Four Voices Podcast",
+                    sentences: [
+                        { speaker: "Host", english: "Welcome back, today we're unpacking how teams protect focus during intense weeks.", chinese: "欢迎回来，今天我们要聊团队如何在高压周保护专注力。" },
+                        { speaker: "Guest 1", english: "For me, the turning point was cutting meeting time in half and preparing decisions before the call.", chinese: "对我来说，转折点是把会议时间砍半，并在开会前先准备好决策。" },
+                        { speaker: "Host", english: "That's a strong start, because fewer meetings usually reveal where the real blockers are hiding.", chinese: "这是个很好的开始，因为更少的会议通常更容易暴露真正的阻塞点。" },
+                    ],
+                }),
+            )
+            .mockResolvedValueOnce(
+                createCompletionPayload({
+                    title: "Four Voices Podcast",
+                    sentences: [
+                        { speaker: "Host", english: "Welcome back, today we're unpacking how teams protect focus during intense weeks.", chinese: "欢迎回来，今天我们要聊团队如何在高压周保护专注力。" },
+                        { speaker: "Guest 1", english: "For me, the turning point was cutting meeting time in half and preparing decisions before the call.", chinese: "对我来说，转折点是把会议时间砍半，并在开会前先准备好决策。" },
+                        { speaker: "Guest 2", english: "I would add that people need visible quiet hours, or urgent pings will keep breaking concentration all afternoon.", chinese: "我想补充一点，团队需要明确的安静时段，不然紧急消息会一下午都在打断专注。" },
+                        { speaker: "Guest 3", english: "And if leaders keep changing priorities midweek, no system will feel stable no matter how efficient it looks on paper.", chinese: "如果管理者总在周中切换优先级，那再高效的制度也不会真正稳定。" },
+                        { speaker: "Host", english: "So the pattern is clear: reduce noise, protect deep work, and make priority changes rare and explicit.", chinese: "所以规律很清楚：减少噪音，保护深度工作，并让优先级变更少而明确。" },
+                    ],
+                }),
+            );
+
+        const response = await POST(buildRequest({
+            ...baseRequest,
+            scriptMode: "podcast",
+            topicMode: "manual",
+            prompt: "做一个四人播客，聊团队如何熬过高压周",
+            speakerPlan: {
+                strategy: "mixed_dialogue",
+                primaryVoice: "en-US-AvaNeural",
+                assignments: [
+                    { speaker: "Host", voice: "en-US-AvaNeural" },
+                    { speaker: "Guest 1", voice: "en-US-BrianNeural" },
+                    { speaker: "Guest 2", voice: "en-US-EmmaNeural" },
+                    { speaker: "Guest 3", voice: "en-US-AndrewNeural" },
+                ],
+            },
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.meta).toEqual(expect.objectContaining({
+            scriptMode: "podcast",
+            speakerCount: 4,
+        }));
+        expect(createCompletionMock).toHaveBeenCalledTimes(2);
+    });
+
     it("runs repair once when draft fails lint and returns repaired output", async () => {
         createCompletionMock
             .mockResolvedValueOnce(createCompletionPayload({
@@ -235,5 +286,24 @@ describe("listening cabin generate route", () => {
         expect(response.status).toBe(502);
         expect(data.error).toBe("AI listening script unavailable");
         expect(Array.isArray(data.issues)).toBe(true);
+    });
+
+    it("returns generation details when model output is invalid JSON", async () => {
+        createCompletionMock.mockResolvedValueOnce({
+            choices: [
+                {
+                    message: {
+                        content: '{"title":"Broken","sentences":[{"english":"hello"',
+                    },
+                },
+            ],
+        });
+
+        const response = await POST(buildRequest(baseRequest));
+        const data = await response.json();
+
+        expect(response.status).toBe(500);
+        expect(data.error).toBe("Failed to generate listening cabin script");
+        expect(data.details).toContain("invalid JSON");
     });
 });

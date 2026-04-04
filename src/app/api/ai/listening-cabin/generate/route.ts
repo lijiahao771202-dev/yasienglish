@@ -46,7 +46,15 @@ async function generateDraftJson(prompt: string, model: string) {
         throw new Error("No content received from listening cabin generation.");
     }
 
-    return JSON.parse(content) as ModelJson;
+    try {
+        return JSON.parse(content) as ModelJson;
+    } catch {
+        const compact = content.replace(/\s+/g, " ").trim();
+        const preview = compact.slice(0, 220);
+        throw new Error(
+            `Listening cabin generation returned invalid JSON${preview ? `: ${preview}${compact.length > 220 ? "..." : ""}` : ""}`,
+        );
+    }
 }
 
 function normalizeDraft(
@@ -76,11 +84,18 @@ function buildModeSpecificIssues(request: ListeningCabinGenerationRequest, sente
     } else if (isListeningCabinMultiSpeakerMode(request.scriptMode)) {
         const speakerSet = new Set(sentences.map((sentence) => sentence.speaker?.trim()).filter(Boolean));
         const modeLabel = request.scriptMode === "podcast" ? "podcast" : "dialogue";
+        const expectedSpeakers = request.speakerPlan.assignments
+            .map((assignment) => assignment.speaker.trim())
+            .filter(Boolean);
+        const missingSpeakers = expectedSpeakers.filter((speaker) => !speakerSet.has(speaker));
         if (speakerSet.size < LISTENING_CABIN_MULTI_SPEAKER_MIN) {
             issues.push(`${modeLabel} mode needs at least two valid speaker turns`);
         }
         if (speakerSet.size > LISTENING_CABIN_MULTI_SPEAKER_MAX) {
             issues.push(`${modeLabel} mode supports at most four speakers`);
+        }
+        if (missingSpeakers.length > 0) {
+            issues.push(`${modeLabel} output is missing configured speakers: ${missingSpeakers.join(", ")}`);
         }
     }
 
@@ -195,8 +210,12 @@ export async function POST(req: Request) {
         });
     } catch (error) {
         console.error("Listening cabin generation error:", error);
+        const details = error instanceof Error ? error.message : "Unknown listening cabin generation error";
         return NextResponse.json(
-            { error: "Failed to generate listening cabin script" },
+            {
+                error: "Failed to generate listening cabin script",
+                details,
+            },
             { status: 500 },
         );
     }
