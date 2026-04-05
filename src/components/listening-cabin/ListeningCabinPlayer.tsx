@@ -352,9 +352,19 @@ function ListeningCabinPlayerView({
     session: ListeningCabinSession;
 }) {
     const router = useRouter();
+    const [isExiting, setIsExiting] = useState(false);
+    const handleExit = () => {
+        if (isExiting) return;
+        setIsExiting(true);
+        setTimeout(() => {
+            router.push("/listening-cabin");
+        }, 400); // Allow time for exit animation
+    };
     const [subtitleAdvanceMs, setSubtitleAdvanceMs] = useState(1000);
     const player = useListeningCabinPlayer({ session, restart, subtitleAdvanceMs });
     const { playerState, currentSubtitleSentences, audioEnergy, vocalHeat, audioRef } = player;
+
+    const [hasInteractedWithPlay, setHasInteractedWithPlay] = useState(false);
 
     // Use a local map for instant UI feedback without re-triggering the player hook
     const [localMasteryMap, setLocalMasteryMap] = useState<Record<number, boolean>>({});
@@ -542,6 +552,27 @@ function ListeningCabinPlayerView({
         // Impact Visuals & Feedback
         setShowMasteryFlash(true);
         playSuccessSound();
+        
+        if (nextMasteredStatus === true) {
+            const btn = document.getElementById("mastery-zap-btn");
+            if (btn) {
+                const rect = btn.getBoundingClientRect();
+                const x = (rect.left + rect.width / 2) / window.innerWidth;
+                const y = (rect.top + rect.height / 2) / window.innerHeight;
+                confetti({
+                    particleCount: 150,
+                    spread: 80,
+                    startVelocity: 35,
+                    origin: { x, y },
+                    colors: ['#f59e0b', '#fbbf24', '#fcd34d', '#ffffff', '#eab308'],
+                    disableForReducedMotion: true,
+                    zIndex: 300,
+                    ticks: 200,
+                    gravity: 1.2,
+                    scalar: 1.2
+                });
+            }
+        }
         
         // Immediate UI Update (Local map only, doesn't touch session object)
         setLocalMasteryMap(prev => ({
@@ -769,21 +800,18 @@ function ListeningCabinPlayerView({
             if (event.key === " " || event.code === "Space") {
                 event.preventDefault();
                 void replayCurrentSentence();
-                revealControls();
                 return;
             }
 
             if (event.key === "ArrowLeft") {
                 event.preventDefault();
                 void previousSentenceAction();
-                revealControls();
                 return;
             }
 
             if (event.key === "ArrowRight") {
                 event.preventDefault();
                 void nextSentenceAction();
-                revealControls();
             }
         };
 
@@ -794,11 +822,19 @@ function ListeningCabinPlayerView({
     }, [nextSentenceAction, previousSentenceAction, replayCurrentSentence, revealControls]);
 
     return (
-        <main
+        <motion.main
+            initial={{ opacity: 0, scale: 0.98, filter: "blur(10px)" }}
+            animate={isExiting ? { opacity: 0, scale: 0.98, filter: "blur(10px)" } : { opacity: 1, scale: 1, filter: "blur(0px)" }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
             className="relative min-h-screen overflow-hidden bg-[#f8f9fa] text-[#202325]"
             onMouseMove={(event) => {
                 const viewportHeight = window.innerHeight || 0;
-                if (event.clientY >= viewportHeight - 180) {
+                const viewportWidth = window.innerWidth || 0;
+                
+                const isBottomArea = event.clientY >= viewportHeight - 180;
+                const isTopRightArea = event.clientY <= 120 && event.clientX >= viewportWidth - 180;
+
+                if (isBottomArea || isTopRightArea) {
                     revealControls();
                 }
             }}
@@ -820,10 +856,10 @@ function ListeningCabinPlayerView({
                         {showMasteryFlash && (
                             <motion.div 
                                 initial={{ opacity: 0 }}
-                                animate={{ opacity: 0.15 }}
+                                animate={{ opacity: 0.35 }}
                                 exit={{ opacity: 0 }}
-                                className="absolute inset-0 z-[50] bg-white pointer-events-none"
-                                transition={{ duration: 0.2 }}
+                                className="absolute inset-0 z-[50] bg-amber-50 pointer-events-none"
+                                transition={{ duration: 0.15 }}
                             />
                         )}
                     </AnimatePresence>
@@ -969,7 +1005,7 @@ function ListeningCabinPlayerView({
 
                     <button
                         type="button"
-                        onClick={() => router.push("/listening-cabin")}
+                        onClick={handleExit}
                         className="ui-pressable inline-flex h-9 w-9 items-center justify-center rounded-full text-[#4c555b] bg-white/40 backdrop-blur-sm shadow-sm"
                         style={getPressableStyle("rgba(67,83,99,0.08)", 2)}
                         aria-label="关闭播放器"
@@ -1472,7 +1508,7 @@ function ListeningCabinPlayerView({
                                                     <motion.button
                                                         whileHover={{ scale: 1.05, y: -4 }}
                                                         whileTap={{ scale: 0.95 }}
-                                                        onClick={() => router.push('/listening-cabin')}
+                                                        onClick={handleExit}
                                                         className="w-full h-18 bg-slate-900 text-white rounded-[2rem] text-[15px] font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-[0_20px_40px_rgba(15,23,42,0.3)] group/home"
                                                     >
                                                         <Home size={18} className="group-hover/home:rotate-12 transition-transform" />
@@ -1563,39 +1599,59 @@ function ListeningCabinPlayerView({
                             </button>
 
                             {/* The Jewel Play Button */}
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (playerState.isPlaying) {
-                                        player.pausePlayback();
-                                        return;
-                                    }
-                                    void player.resumeOrPlay();
-                                }}
-                                className="group relative flex h-[76px] w-[76px] items-center justify-center rounded-full bg-gradient-to-br from-white/90 to-[#cbd5e1]/40 shadow-[0_15px_35px_rgba(0,0,0,0.08),inset_0_2px_8px_rgba(255,255,255,0.8)] transition-all duration-500 overflow-hidden"
-                                style={getPressableStyle("rgba(0,0,0,0.05)", 4)}
-                                aria-label={playerState.isPlaying ? "暂停播放" : "开始播放"}
-                            >
-                                {/* Jewel Core: Audio Reactive Glow */}
-                                <motion.div 
-                                    animate={{ 
-                                        scale: playerState.isPlaying ? [1, 1.05, 1] : 1,
-                                        opacity: playerState.isPlaying ? [0.4, 0.7, 0.4] : 0.2
-                                    }}
-                                    transition={{ duration: 2, repeat: Infinity }}
-                                    style={{ backgroundColor: activeMistTheme[0] }}
-                                    className="absolute inset-0 blur-[12px]"
-                                />
-                                <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.6)_0%,transparent_70%)]" />
+                            <div className="relative">
+                                {/* First Time Play Hint */}
+                                <AnimatePresence>
+                                    {!hasInteractedWithPlay && !playerState.isPlaying && playerState.currentSentenceIndex === 0 && (
+                                        <motion.div
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, scale: 0.9 }}
+                                            transition={{ duration: 0.4 }}
+                                            className="absolute -top-12 left-1/2 -translate-x-1/2 whitespace-nowrap px-3 py-1.5 rounded-full bg-slate-800 text-white text-xs font-medium tracking-wide shadow-lg pointer-events-none after:content-[''] after:absolute after:-bottom-1 after:left-1/2 after:-translate-x-1/2 after:w-2 after:h-2 after:bg-slate-800 after:rotate-45"
+                                        >
+                                            点击开始沉浸
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
 
-                                {playerState.isLoading ? (
-                                    <Loader2 className="relative z-10 h-6 w-6 animate-spin text-[#121417]" />
-                                ) : playerState.isPlaying ? (
-                                    <Pause className="relative z-10 h-7 w-7 fill-[#121417] text-[#121417]" />
-                                ) : (
-                                    <Play className="relative z-10 h-8 w-8 fill-[#121417] text-[#121417] ml-1" />
-                                )}
-                            </button>
+                                <motion.button
+                                    type="button"
+                                    onClick={() => {
+                                        setHasInteractedWithPlay(true);
+                                        if (playerState.isPlaying) {
+                                            player.pausePlayback();
+                                            return;
+                                        }
+                                        void player.resumeOrPlay();
+                                    }}
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.88, y: 3 }}
+                                    transition={{ type: "spring", stiffness: 450, damping: 20 }}
+                                    className="group relative flex h-[76px] w-[76px] items-center justify-center rounded-full bg-gradient-to-br from-white/90 to-slate-200/50 shadow-[0_12px_28px_rgba(0,0,0,0.06),inset_0_2px_8px_rgba(255,255,255,0.8),inset_0_-4px_12px_rgba(0,0,0,0.02)] transition-shadow duration-300 overflow-hidden outline-none hover:shadow-[0_20px_40px_rgba(0,0,0,0.1),inset_0_2px_8px_rgba(255,255,255,1),inset_0_-4px_12px_rgba(0,0,0,0.02)]"
+                                    aria-label={playerState.isPlaying ? "暂停播放" : "开始播放"}
+                                >
+                                    {/* Jewel Core: Audio Reactive Glow */}
+                                    <motion.div 
+                                        animate={{ 
+                                            scale: playerState.isPlaying ? [1, 1.05, 1] : 1,
+                                            opacity: playerState.isPlaying ? [0.4, 0.7, 0.4] : 0.2
+                                        }}
+                                        transition={{ duration: 2, repeat: Infinity }}
+                                        style={{ backgroundColor: activeMistTheme[0] }}
+                                        className="absolute inset-0 blur-[12px]"
+                                    />
+                                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.6)_0%,transparent_70%)]" />
+
+                                    {playerState.isLoading ? (
+                                        <Loader2 className="relative z-10 h-6 w-6 animate-spin text-[#121417]" />
+                                    ) : playerState.isPlaying ? (
+                                        <Pause className="relative z-10 h-7 w-7 fill-[#121417] text-[#121417]" />
+                                    ) : (
+                                        <Play className="relative z-10 h-8 w-8 fill-[#121417] text-[#121417] ml-1" />
+                                    )}
+                                </motion.button>
+                            </div>
 
                             <button
                                 type="button"
@@ -1660,6 +1716,7 @@ function ListeningCabinPlayerView({
                     }}
                 >
                     <motion.button
+                        id="mastery-zap-btn"
                         onClick={handleToggleMastery}
                         whileHover={{ scale: 1.15, rotate: 15 }}
                         whileTap={{ scale: 0.85, rotate: -15 }}
@@ -1747,7 +1804,7 @@ function ListeningCabinPlayerView({
                     )}
                 </AnimatePresence>
             </div>
-        </main>
+        </motion.main>
     );
 }
 

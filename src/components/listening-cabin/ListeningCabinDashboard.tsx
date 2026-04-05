@@ -479,11 +479,21 @@ export default function ListeningCabinDashboard() {
         return randomTopic;
     };
 
+    const getSessionActualDurationMinutes = (session: ListeningCabinSession) => {
+        if (session.audioDurationMs && session.audioDurationMs > 0) {
+            return session.audioDurationMs / 60000;
+        }
+        const totalWords = session.sentences.reduce((sum, s) => {
+            return sum + s.english.split(/[\s,.-]+/).filter(Boolean).length;
+        }, 0);
+        return totalWords / 140;
+    };
+
     const formatDuration = (minutes: number) => {
-        const totalSeconds = Math.round(minutes * 60);
+        const totalSeconds = Math.max(0, Math.round(minutes * 60));
         const mins = Math.floor(totalSeconds / 60);
         const secs = totalSeconds % 60;
-        return `${mins}m ${secs}s`;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
 
     const toggleFocusTag = (tag: ListeningCabinFocusTag) => {
@@ -763,42 +773,42 @@ export default function ListeningCabinDashboard() {
                                     initial={{ opacity: 0, scale: 0.95 }}
                                     animate={{ opacity: 1, scale: 1 }}
                                     transition={{ type: "spring", damping: 20, stiffness: 100 }}
-                                    className="relative group w-full max-w-5xl"
+                                    className="relative group w-full max-w-4xl"
                                 >
-                                    <div className="absolute -inset-4 bg-gradient-to-br from-pink-300 via-amber-200 to-indigo-200 rounded-[4rem] blur-3xl opacity-15 group-hover:opacity-30 transition duration-1000" />
+                                    <div className="absolute -inset-4 bg-gradient-to-br from-pink-300 via-amber-200 to-indigo-200 rounded-[3rem] blur-3xl opacity-15 group-hover:opacity-30 transition duration-1000" />
                                     <button
                                         onClick={() => { setWizardStep(1); setShowWizard(true); }}
-                                        className="relative w-full min-h-[480px] bg-[#fffaf5]/80 backdrop-blur-sm border-[4px] border-white/90 rounded-[4rem] p-12 lg:p-20 flex flex-col items-center justify-center text-center overflow-hidden shadow-[0_48px_80px_-16px_rgba(255,160,122,0.15),inset_0_4px_16px_rgba(255,255,255,1)] group active:scale-[0.98] transition-all"
+                                        className="relative w-full min-h-[320px] bg-[#fffaf5]/80 backdrop-blur-sm border-[3px] border-white/90 rounded-[3rem] p-10 lg:p-14 flex flex-col items-center justify-center text-center overflow-hidden shadow-[0_32px_64px_-16px_rgba(255,160,122,0.15),inset_0_4px_12px_rgba(255,255,255,1)] group active:scale-[0.98] transition-all"
                                     >
                                         {/* Floating Decorative Elements */}
                                         <motion.div 
-                                            animate={{ y: [0, -15, 0], x: [0, 10, 0] }}
+                                            animate={{ y: [0, -10, 0], x: [0, 8, 0] }}
                                             transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-                                            className="absolute top-12 left-12 w-32 h-32 bg-pink-100/40 rounded-full blur-2xl" 
+                                            className="absolute top-8 left-8 w-24 h-24 bg-pink-100/40 rounded-full blur-2xl" 
                                         />
                                         <motion.div 
-                                            animate={{ y: [0, 12, 0], x: [0, -8, 0] }}
+                                            animate={{ y: [0, 10, 0], x: [0, -6, 0] }}
                                             transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-                                            className="absolute bottom-10 right-24 w-40 h-40 bg-blue-100/40 rounded-full blur-3xl" 
+                                            className="absolute bottom-8 right-16 w-32 h-32 bg-blue-100/40 rounded-full blur-3xl" 
                                         />
 
                                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.8)_0%,transparent_80%)]" />
                                         
-                                        <div className="relative z-10 flex flex-col items-center gap-10">
+                                        <div className="relative z-10 flex flex-col items-center gap-8">
                                             <motion.div 
-                                                whileHover={{ rotate: [0, -15, 15, 0], scale: 1.2 }}
+                                                whileHover={{ rotate: [0, -15, 15, 0], scale: 1.15 }}
                                                 transition={{ type: "spring", stiffness: 400, damping: 12 }}
-                                                className="w-32 h-32 rounded-[2.5rem] bg-white flex items-center justify-center shadow-[0_24px_48px_-8px_rgba(255,165,0,0.15)] border-2 border-orange-50 group-hover:border-orange-100 transition-colors"
+                                                className="w-20 h-20 rounded-[1.75rem] bg-white flex items-center justify-center shadow-[0_16px_32px_-8px_rgba(255,165,0,0.15)] border-2 border-orange-50 group-hover:border-orange-100 transition-colors"
                                             >
-                                                <div className="text-7xl">🪄</div>
+                                                <div className="text-4xl">🪄</div>
                                             </motion.div>
                                             <div>
-                                                <h2 className="text-5xl font-black tracking-tighter text-[#4a3a2a] drop-shadow-sm mb-6">开启引导式锻造</h2>
-                                                <p className="text-lg text-[#8f8478] max-w-xl font-black leading-relaxed opacity-80">
+                                                <h2 className="text-3xl sm:text-4xl font-black tracking-tighter text-[#4a3a2a] drop-shadow-sm mb-3">开启引导式锻造</h2>
+                                                <p className="text-[15px] text-[#8f8478] max-w-lg font-bold leading-relaxed opacity-80 mx-auto">
                                                     超级可爱的导览体验，只需几步，即可定制专属于你的梦想英语听力 🌈
                                                 </p>
                                             </div>
-                                            <div className="px-16 py-6 bg-gradient-to-r from-[#ff8ca0] to-[#ff6b95] text-white text-[16px] font-black uppercase tracking-[0.2em] rounded-[2rem] shadow-[0_20px_40px_-8px_rgba(255,107,149,0.35)] group-hover:shadow-[0_24px_48px_-8px_rgba(255,107,149,0.45)] group-hover:translate-y-[-4px] transition-all">
+                                            <div className="px-12 py-4 mt-2 bg-gradient-to-r from-[#ff8ca0] to-[#ff6b95] text-white text-[14px] font-black uppercase tracking-[0.2em] rounded-full shadow-[0_16px_32px_-8px_rgba(255,107,149,0.35)] group-hover:shadow-[0_20px_40px_-8px_rgba(255,107,149,0.45)] group-hover:translate-y-[-2px] transition-all">
                                                 Start Your Magic ✨
                                             </div>
                                         </div>
@@ -834,7 +844,7 @@ export default function ListeningCabinDashboard() {
                                         const progress = session.sentenceCount > 0 
                                             ? Math.min(100, Math.round((masteredCount / session.sentenceCount) * 100))
                                             : 0;
-                                        const duration = formatDuration(session.meta.estimatedMinutes);
+                                        const duration = formatDuration(getSessionActualDurationMinutes(session));
                                         const isCompleted = progress >= 100;
                                         const isMostRecent = mostRecentSessionId === session.id;
 
@@ -843,13 +853,13 @@ export default function ListeningCabinDashboard() {
                                                 key={session.id} 
                                                 whileHover={{ y: -8, scale: 1.02 }}
                                                 animate={isMostRecent && !isAllMastered(session) ? {
-                                                    boxShadow: ["0 0 0px rgba(59,130,246,0)", "0 0 20px rgba(59,130,246,0.5)", "0 0 0px rgba(59,130,246,0)"]
+                                                    boxShadow: ["0 0 0px rgba(59,130,246,0)", "0 0 20px rgba(59,130,246,0.3)", "0 0 0px rgba(59,130,246,0)"]
                                                 } : {}}
                                                 transition={isMostRecent && !isAllMastered(session) ? { duration: 2.5, repeat: Infinity, ease: "easeInOut" } : {}}
                                                 className={cn(
-                                                    "rounded-[3.5rem] border-2 p-8 transition-all duration-500 relative group overflow-hidden h-full flex flex-col justify-between",
+                                                    "rounded-[3.5rem] p-8 transition-all duration-500 relative group overflow-hidden h-full flex flex-col justify-between border",
                                                     isAllMastered(session)
-                                                        ? "border-amber-400/80 bg-gradient-to-br from-amber-50 to-orange-50/50 shadow-[0_24px_64px_-16px_rgba(245,158,11,0.4)] ring-4 ring-amber-100/30"
+                                                        ? "border-white/50 bg-gradient-to-br from-[#fffdf5]/90 to-white/90 shadow-[0_20px_80px_-15px_rgba(245,158,11,0.2)] ring-1 ring-amber-200/50 backdrop-blur-md"
                                                         : isMostRecent
                                                             ? "border-blue-400/70 bg-gradient-to-br from-blue-50/50 to-indigo-50/30 ring-2 ring-blue-100/50"
                                                             : selectedSessionId === session.id 
@@ -864,62 +874,48 @@ export default function ListeningCabinDashboard() {
                                                 {isAllMastered(session) && (
                                                     <div className="absolute inset-0 pointer-events-none opacity-20 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-200 via-transparent to-transparent" />
                                                 )}
-
-                                                <div className="absolute top-4 right-4 z-20 flex gap-2">
-                                                    {isMostRecent && (
-                                                        <div className="px-3 py-1.5 rounded-xl bg-white/60 backdrop-blur-md border border-blue-100 shadow-sm flex items-center gap-1.5">
-                                                            <div className="relative flex h-2 w-2">
-                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                                                            </div>
-                                                            <span className="text-[10px] font-black text-blue-600 tracking-widest uppercase">📍 当前坐标</span>
-                                                        </div>
-                                                    )}
-                                                </div>
                                                 
                                                 <div className="relative z-10" onClick={() => setSelectedSessionId(session.id)}>
-                                                    <div className="flex flex-wrap items-center gap-2.5 mb-6">
+                                                    {/* Unified Tags Area */}
+                                                    <div className="flex flex-wrap items-center gap-2 items-center mb-6">
                                                         <span className={cn(
-                                                            "px-3.5 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest border-2 shadow-sm",
+                                                            "px-3.5 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest border shadow-sm",
                                                             session.cefrLevel.startsWith('A') ? "bg-emerald-50/50 border-emerald-100/50 text-emerald-500" :
                                                             session.cefrLevel.startsWith('B') ? "bg-blue-50/50 border-blue-100/50 text-blue-500" :
                                                             "bg-purple-50/50 border-purple-100/50 text-purple-500"
                                                         )}>
                                                             {session.cefrLevel}
                                                         </span>
-                                                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50/80 rounded-2xl border-2 border-slate-100/50 text-[10px] font-black text-slate-400 tracking-tighter shadow-sm">
+                                                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50/80 rounded-2xl border border-slate-100/50 text-[10px] font-black text-slate-400 tracking-tighter shadow-sm">
                                                             <Clock size={11} strokeWidth={3} />
                                                             {duration}
                                                         </div>
-                                                    </div>
-                                                    
-                                                    <div className="flex flex-wrap items-center gap-3 mb-6">
-                                                        {isAllMastered(session) ? (
+                                                        {isAllMastered(session) && (
                                                             <motion.div 
-                                                                initial={{ opacity: 0, x: 20 }}
-                                                                animate={{ opacity: 1, x: 0 }}
-                                                                className="px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-400 to-orange-400 text-white text-[10px] font-black uppercase tracking-widest shadow-[0_4px_12px_rgba(245,158,11,0.3)] flex items-center gap-1.5"
+                                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                                animate={{ opacity: 1, scale: 1 }}
+                                                                className="px-3.5 py-1.5 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 text-white text-[10px] font-black uppercase tracking-widest shadow-inner flex items-center gap-1.5"
                                                             >
-                                                                <Trophy size={12} fill="white" strokeWidth={0} />
+                                                                <Trophy size={11} fill="white" strokeWidth={0} />
                                                                 完美通关 👑
                                                             </motion.div>
-                                                        ) : (
-                                                            <>
-                                                                {isCompleted && (
-                                                                    <div className="px-4 py-1.5 rounded-full bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200">
-                                                                        Done ✨
-                                                                    </div>
-                                                                )}
-                                                                {session.sentences.some(s => s.isMastered) && (
-                                                                    <div className="px-4 py-1.5 rounded-full bg-amber-100 text-amber-600 text-[10px] font-black uppercase tracking-widest border border-amber-200 flex items-center gap-1.5">
-                                                                        <Check size={12} strokeWidth={4} />
-                                                                        {session.sentences.filter(s => s.isMastered).length}/{session.sentenceCount} Mastered
-                                                                    </div>
-                                                                )}
-                                                            </>
+                                                        )}
+                                                        {isCompleted && !isAllMastered(session) && (
+                                                            <div className="px-3.5 py-1.5 rounded-2xl bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest shadow-sm hover:shadow-md transition-shadow">
+                                                                Done ✨
+                                                            </div>
+                                                        )}
+                                                        {isMostRecent && (
+                                                            <div className="ml-auto mr-1 flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white/80 backdrop-blur-md border border-blue-100 shadow-sm">
+                                                                <div className="relative flex h-2 w-2">
+                                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                                                                </div>
+                                                                <span className="text-[9px] font-black text-blue-600 tracking-widest uppercase">📍 当前坐标</span>
+                                                            </div>
                                                         )}
                                                     </div>
-
+                                                    
                                                     <h4 className="text-[22px] font-black text-[#4a3a2a] leading-[1.25] line-clamp-2 tracking-tight group-hover:text-pink-500/90 transition-colors mb-4">{session.title}</h4>
                                                     
                                                     <div className="flex items-baseline gap-2 text-slate-400 font-bold mb-8">
@@ -932,7 +928,7 @@ export default function ListeningCabinDashboard() {
                                                     <div className="mb-10 space-y-2.5">
                                                         <div className="flex items-center justify-between">
                                                             <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Progress Trace</p>
-                                                            <p className="text-[10px] font-black text-pink-400">{progress}%</p>
+                                                            <p className={cn("text-[10px] font-black", isAllMastered(session) ? "text-amber-500" : "text-pink-400")}>{progress}%</p>
                                                         </div>
                                                         <div className="h-2 w-full bg-slate-50 rounded-full overflow-hidden p-0.5 border border-slate-100/50">
                                                             <motion.div 
@@ -941,6 +937,7 @@ export default function ListeningCabinDashboard() {
                                                                 transition={{ duration: 1, ease: "easeOut" }}
                                                                 className={cn(
                                                                     "h-full rounded-full shadow-sm",
+                                                                    isAllMastered(session) ? "bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500" :
                                                                     isCompleted ? "bg-emerald-300" : "bg-gradient-to-r from-pink-200 to-pink-300"
                                                                 )} 
                                                             />
@@ -948,41 +945,49 @@ export default function ListeningCabinDashboard() {
                                                     </div>
                                                 </div>
 
-                                                <div className="flex flex-col gap-3 relative z-10">
-                                                    {/* Row 1: Primary Actions */}
-                                                    <div className="flex gap-3">
+                                                <div className="flex flex-col gap-2.5 relative z-10 w-full">
+                                                    {/* Row 1: Primary Action */}
+                                                    <button 
+                                                        onClick={() => openSession(session.id)} 
+                                                        className={cn(
+                                                            "w-full h-14 text-white rounded-[1.25rem] flex items-center justify-center gap-2.5 group/btn transition-all active:scale-[0.98] border border-transparent",
+                                                            isAllMastered(session) 
+                                                                ? "bg-gradient-to-r from-amber-400 to-amber-500 shadow-lg shadow-amber-200/40 border-amber-300/30 hover:brightness-105"
+                                                                : "bg-slate-900 hover:bg-slate-800 shadow-xl shadow-slate-300/30 border-white/10"
+                                                        )}
+                                                    >
+                                                        {isAllMastered(session) 
+                                                            ? <Trophy size={16} fill="currentColor" strokeWidth={0} className="group-hover/btn:scale-110 group-hover/btn:rotate-[-5deg] transition-all" /> 
+                                                            : <Play size={16} fill="currentColor" className="group-hover/btn:translate-x-1 transition-transform" />
+                                                        }
+                                                        <span className="text-[11.5px] font-black uppercase tracking-[0.2em] pt-0.5">
+                                                            {isAllMastered(session) ? "Review Mastery" : "Continue"}
+                                                        </span>
+                                                    </button>
+
+                                                    {/* Row 2: Secondary & Critical Actions */}
+                                                    <div className="flex gap-2.5 w-full">
                                                         <button 
-                                                            onClick={() => openSession(session.id)} 
-                                                            className="flex-1 h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-[1.5rem] flex items-center justify-center gap-2.5 group/btn transition-all active:scale-[0.97] shadow-xl shadow-slate-200/50"
+                                                            onClick={() => { setSelectedSessionId(session.id); setActiveView('script'); }} 
+                                                            className="flex-1 h-12 bg-white/60 border border-slate-200/60 hover:border-pink-200 hover:bg-pink-50/80 text-slate-500 hover:text-pink-600 rounded-[1.25rem] flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all active:scale-[0.97] shadow-sm backdrop-blur-md group/script"
                                                         >
-                                                            <Play size={16} fill="currentColor" className="group-hover/btn:translate-x-0.5 transition-transform" />
-                                                            <span className="text-[11px] font-black uppercase tracking-[0.15em]">Continue</span>
+                                                            <span className="group-hover/script:scale-110 transition-transform">📜</span>
+                                                            <span className="opacity-90 pt-0.5">Script</span>
+                                                            <ArrowUpRight size={13} strokeWidth={2.5} className="opacity-0 -ml-2 group-hover/script:opacity-100 transition-all group-hover/script:translate-x-1 group-hover/script:-translate-y-0.5 text-pink-400" />
                                                         </button>
                                                         <button 
                                                             onClick={() => openSession(session.id, true)} 
-                                                            className="w-16 h-14 bg-amber-50 hover:bg-amber-100 text-amber-600 border-2 border-amber-100/50 rounded-[1.5rem] flex items-center justify-center transition-all active:scale-[0.97] shadow-sm group/reset"
+                                                            className="w-12 h-12 bg-white/60 border border-slate-200/60 hover:border-amber-200 hover:bg-amber-50/80 text-slate-400 hover:text-amber-500 rounded-[1.25rem] flex items-center justify-center transition-all active:scale-[0.97] shadow-sm backdrop-blur-md group/reset"
                                                             title="重新播放"
                                                         >
-                                                            <RotateCcw size={18} strokeWidth={3} className="group-hover/reset:rotate-[-45deg] transition-transform" />
-                                                        </button>
-                                                    </div>
-
-                                                    {/* Row 2: Secondary & Critical Actions */}
-                                                    <div className="flex gap-3">
-                                                        <button 
-                                                            onClick={() => { setSelectedSessionId(session.id); setActiveView('script'); }} 
-                                                            className="flex-1 h-14 bg-white/80 border-2 border-slate-100/80 text-slate-500 rounded-[1.5rem] flex items-center justify-center gap-2.5 text-[10px] font-black uppercase tracking-widest hover:border-pink-200 hover:text-pink-500 hover:bg-white transition-all active:scale-[0.97] shadow-sm group/script"
-                                                        >
-                                                            <span className="group-hover/script:scale-110 transition-transform">📜</span>
-                                                            <span className="opacity-80">Script Artifact</span>
-                                                            <ArrowUpRight size={12} className="opacity-0 group-hover/script:opacity-100 transition-all group-hover/script:translate-x-0.5 group-hover/script:-translate-y-0.5" />
+                                                            <RotateCcw size={16} strokeWidth={2.5} className="group-hover/reset:-rotate-180 transition-transform duration-500" />
                                                         </button>
                                                         <button 
                                                             onClick={() => handleDeleteSession(session.id)} 
-                                                            className="w-16 h-14 flex items-center justify-center rounded-[1.5rem] bg-red-50/50 border-2 border-red-50 text-red-300 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all active:scale-[0.97] shadow-sm"
+                                                            className="w-12 h-12 flex items-center justify-center rounded-[1.25rem] bg-white/60 border border-slate-200/60 hover:bg-red-50/80 hover:border-red-200 text-slate-400 hover:text-red-500 transition-all active:scale-[0.97] shadow-sm backdrop-blur-md group/delete"
                                                             title="删除记录"
                                                         >
-                                                            <Trash2 size={18} />
+                                                            <Trash2 size={16} strokeWidth={2.5} className="group-hover/delete:rotate-12 transition-transform duration-300" />
                                                         </button>
                                                     </div>
                                                 </div>
@@ -1019,7 +1024,7 @@ export default function ListeningCabinDashboard() {
                                                     <span className="px-4 py-1.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg shadow-amber-200/50">Adventure Journal 📜</span>
                                                     <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-2xl border border-slate-100 text-[10px] font-black text-slate-400">
                                                         <Clock size={12} strokeWidth={3} />
-                                                        {formatDuration(selectedSession.meta.estimatedMinutes)}
+                                                        {formatDuration(getSessionActualDurationMinutes(selectedSession))}
                                                     </div>
                                                 </div>
                                                 <h2 className="text-4xl sm:text-5xl font-black text-[#4a3a2a] tracking-tighter leading-tight drop-shadow-sm max-w-2xl">{selectedSession.title}</h2>

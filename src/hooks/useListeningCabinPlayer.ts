@@ -317,7 +317,7 @@ export function useListeningCabinPlayer({
     const [currentSentenceIndex, setCurrentSentenceIndex] = useState(initialSentenceIndex);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [playbackMode, setPlaybackMode] = useState<ListeningCabinPlaybackMode>("auto_all");
+    const [playbackMode, setPlaybackMode] = useState<ListeningCabinPlaybackMode>("single_pause");
     const [playbackRate, setPlaybackRate] = useState(session.playbackRate);
     const [showChineseSubtitle, setShowChineseSubtitle] = useState(session.showChineseSubtitle);
     const [progressRatio, setProgressRatio] = useState(0);
@@ -333,7 +333,7 @@ export function useListeningCabinPlayer({
     const analyserRef = useRef<AnalyserNode | null>(null);
     const dataArrayRef = useRef<Uint8Array | null>(null);
     const currentSentenceIndexRef = useRef(initialSentenceIndex);
-    const playbackModeRef = useRef<ListeningCabinPlaybackMode>("auto_all");
+    const playbackModeRef = useRef<ListeningCabinPlaybackMode>("single_pause");
     const initializedAudioRef = useRef<HTMLAudioElement | null>(null);
     const narrationReadyRef = useRef(false);
     const loadingNarrationRef = useRef<Promise<void> | null>(null);
@@ -773,7 +773,7 @@ export function useListeningCabinPlayer({
             let capturedData = false;
 
             if (analyserRef.current && dataArrayRef.current) {
-                analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+                analyserRef.current.getByteFrequencyData(dataArrayRef.current as any);
                 let sum = 0;
                 // Focus on human speech frequencies
                 const voiceRange = dataArrayRef.current.slice(0, Math.floor(dataArrayRef.current.length * 0.6));
@@ -891,6 +891,11 @@ export function useListeningCabinPlayer({
             if (!audio.duration || !Number.isFinite(audio.duration)) {
                 return;
             }
+            
+            const exactDurationMs = Math.round(audio.duration * 1000);
+            if (session.audioDurationMs !== exactDurationMs) {
+                persistSessionPatch({ audioDurationMs: exactDurationMs });
+            }
 
             if (!hasCompleteUsableTimings(timingsRef.current, resolvedSentences.length)) {
                 const evenTimings = buildEvenSentenceTimings(resolvedSentences.length, audio.duration * 1000);
@@ -952,7 +957,7 @@ export function useListeningCabinPlayer({
             lastSentenceIndex: initialSentenceIndex,
             showChineseSubtitle: session.showChineseSubtitle,
         });
-        void seekToSentence(initialSentenceIndex, true).catch(() => undefined);
+        void seekToSentence(initialSentenceIndex, false).catch(() => undefined);
     }, [initialSentenceIndex, persistSessionPatch, seekToSentence, session.showChineseSubtitle]);
 
     const toggleChineseSubtitle = useCallback(() => {
