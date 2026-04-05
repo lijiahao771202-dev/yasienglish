@@ -134,6 +134,7 @@ export interface ListeningCabinSession extends ListeningCabinGenerationResponse 
     showChineseSubtitle: boolean;
     lastSentenceIndex: number;
     lastPlayedAt: number | null;
+    audioDurationMs?: number;
 }
 
 export type ListeningCabinPlaybackMode =
