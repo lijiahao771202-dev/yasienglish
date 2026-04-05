@@ -284,10 +284,10 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                     transition={springTransition}
                                     type="button"
                                     onClick={() => handleNavigateFromHome("cabin")}
-                                    className="flex w-full md:w-auto min-w-[170px] items-center justify-between gap-3 rounded-[2rem] bg-white border-4 border-[#60a5fa] px-6 py-4 shadow-[0_8px_0_0_#60a5fa] text-[#1f2937] group active:shadow-[0_0px_0_0_#60a5fa] active:translate-y-2 transition-all duration-75"
+                                    className="flex w-full md:w-auto min-w-[170px] items-center justify-between gap-3 rounded-[2rem] bg-white border-4 border-[#f472b6] px-6 py-4 shadow-[0_8px_0_0_#f472b6] text-[#1f2937] group active:shadow-[0_0px_0_0_#f472b6] active:translate-y-2 transition-all duration-75"
                                 >
                                     <span className="flex items-center gap-2 text-[16px] font-black">
-                                        <BookAudio className="h-6 w-6 text-[#2563eb]" />听力舱
+                                        <BookAudio className="h-6 w-6 text-[#db2777]" />听力舱
                                     </span>
                                     <ArrowRight className="h-5 w-5 text-[#9ca3af] group-hover:translate-x-1 transition-transform" />
                                 </motion.button>

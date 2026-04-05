@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { useListeningCabinPlayer } from "@/hooks/useListeningCabinPlayer";
+import { WordPopup, type PopupState } from "@/components/reading/WordPopup";
 import { db } from "@/lib/db";
 import type {
     ListeningCabinPlaybackMode,
@@ -48,20 +49,16 @@ const FONT_OPTIONS_EN = [
     { name: "Classic Serif (Lora)", value: "var(--font-en-serif-classic)" },
     { name: "Geometric Sans (Montserrat)", value: "var(--font-en-sans-geometric)" },
     { name: "Soft Sans (Outfit)", value: "var(--font-en-sans-soft)" },
-    { name: "Luxury Serif (Cormorant)", value: "var(--font-en-serif-luxury)" },
-    { name: "Editorial Serif (Newsreader)", value: "var(--font-en-serif-editorial)" },
-    { name: "Traditional Serif (Baskerville)", value: "var(--font-en-serif-trad)" },
-    { name: "Clean Mono (Roboto)", value: "var(--font-roboto-mono)" },
-    { name: "System Serif (Classic)", value: "serif" },
+    { name: "Serif: Merriweather", value: "'Merriweather', serif" },
+    { name: "Serif: Newsreader", value: "'Newsreader', serif" },
+    { name: "Serif: Baskerville", value: "'Libre Baskerville', serif" },
+    { name: "Serif: Lora", value: "'Lora', serif" },
+    { name: "Serif: Cormorant", value: "'Cormorant Garamond', serif" },
+    { name: "Sans: Montserrat", value: "'Montserrat', sans-serif" },
+    { name: "Mono: JetBrains", value: "'JetBrains Mono', monospace" },
 ];
 
 const FONT_OPTIONS_ZH = [
-    { name: "现代黑体 (苹方)", value: "var(--font-zh-sans-modern)" },
-    { name: "优雅宋体 (思源)", value: "var(--font-zh-serif-elegant)" },
-    { name: "灵动手写 (马善政)", value: "var(--font-zh-handwriting)" },
-    { name: "行云隶书 (芷芒星)", value: "var(--font-zh-calligraphy)" },
-    { name: "如风草书 (龙藏)", value: "var(--font-zh-cursive)" },
-    { name: "苍劲狂草 (刘建)", value: "var(--font-zh-bold-calligraphy)" },
     { name: "艺术设计 (黄油)", value: "var(--font-zh-artistic)" },
     { name: "经典楷体 (华文)", value: "var(--font-zh-kaiti)" },
     { name: "高质感黑 (冬青)", value: "var(--font-welcome-display)" },
@@ -76,28 +73,15 @@ const SUBTITLE_ADVANCE_OPTIONS = [
     { label: "1.2s", value: 1200 },
 ] as const;
 
-type TransitionStyle = "radiant" | "mist" | "glide" | "classic" | "typewriter";
-type TypographyStyle = "crystal" | "aurora" | "hollow" | "honey";
-
-type WordDefinition = {
-    phonetic?: string;
-    error?: string;
-    context_meaning?: {
-        definition: string;
-        translation: string;
-    };
-    meaning_groups?: Array<{
-        pos: string;
-        meanings?: string[];
-    }>;
-};
+type TransitionStyle = "radiant" | "mist" | "glide" | "classic" | "typewriter" | "blur" | "stagger" | "elastic" | "neon";
+type TypographyStyle = "crystal" | "aurora" | "hollow" | "honey" | "neon_pulse" | "pearl_glow" | "deep_sea_void";
 
 function isTransitionStyle(value: string): value is TransitionStyle {
-    return ["radiant", "mist", "glide", "classic", "typewriter"].includes(value);
+    return ["radiant", "mist", "glide", "classic", "typewriter", "blur", "stagger", "elastic", "neon"].includes(value);
 }
 
 function isTypographyStyle(value: string): value is TypographyStyle {
-    return ["crystal", "aurora", "hollow", "honey"].includes(value);
+    return ["crystal", "aurora", "hollow", "honey", "neon_pulse", "pearl_glow", "deep_sea_void"].includes(value);
 }
 
 function renderSubtitleBlock(
@@ -107,7 +91,8 @@ function renderSubtitleBlock(
     fontFamily: string,
     transitionStyle: string,
     typographyStyle: string,
-    onWordClick: (word: string, context: string) => void
+    fontSizeEn: number,
+    onWordClick: (word: string, context: string, anchorElement: HTMLElement) => void
 ) {
     if (!sentences) return null;
     return sentences.map((sentence, sIdx) => {
@@ -121,9 +106,11 @@ function renderSubtitleBlock(
             const baseStyle = {
                 color: "#1e293b",
                 fontWeight: 700,
+                fontSize: `${fontSizeEn}em`,
                 // Soft Ambient Light Bleed:
                 textShadow: isActive && themeColor ? `0 0 15px ${themeColor.replace('0.6', '0.12').replace('0.65', '0.12')}` : "none",
-            } as const;
+                transition: "all 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
+            } as any;
 
             switch (typographyStyle) {
                 case "aurora":
@@ -147,6 +134,29 @@ function renderSubtitleBlock(
                         color: "#713f12", 
                         textShadow: isActive && themeColor ? `0 2px 10px ${themeColor.replace('0.6', '0.2')}` : "0.5px 0.5px 1px rgba(0,0,0,0.05)",
                     };
+                case "neon_pulse":
+                    return {
+                        ...baseStyle,
+                        color: "#fff",
+                        textShadow: isActive && themeColor 
+                            ? `0 0 8px ${themeColor}, 0 0 16px ${themeColor}, 0 0 24px ${themeColor}` 
+                            : "0 0 4px rgba(0,0,0,0.1)",
+                        animation: isActive ? "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite" : "none"
+                    };
+                case "pearl_glow":
+                    return {
+                        ...baseStyle,
+                        color: "#f8fafc",
+                        textShadow: isActive ? "0 0 20px rgba(255,255,255,0.8), 0 0 40px rgba(255,255,255,0.4)" : "none",
+                        fontWeight: 600,
+                    };
+                case "deep_sea_void":
+                    return {
+                        ...baseStyle,
+                        color: "rgba(30, 41, 59, 0.85)",
+                        textShadow: "none",
+                        fontWeight: 500,
+                    };
                 default: // crystal
                     return baseStyle;
             }
@@ -162,7 +172,8 @@ function renderSubtitleBlock(
                 transition: {
                     staggerChildren: transitionStyle === "radiant" ? 0.045 : 
                                      transitionStyle === "typewriter" ? 0.08 : 
-                                     transitionStyle === "glide" ? 0.06 : 0,
+                                     transitionStyle === "glide" ? 0.06 : 
+                                     transitionStyle === "stagger" ? 0.1 : 0,
                     delayChildren: 0.05
                 }
             },
@@ -181,13 +192,14 @@ function renderSubtitleBlock(
                 return words.map((word, wIdx) => (
                     <motion.span
                         key={`${sIdx}-${wIdx}`}
+                        data-word-popup-segment={word}
                         variants={{
                             hidden: { opacity: 0 },
                             visible: { opacity: 1, transition: { staggerChildren: 0.008 } },
                             exit: { opacity: 0, transition: { duration: 0.2 } }
                         }}
                         className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer selection:bg-blue-500/10 active:text-blue-600 transition-colors duration-400"
-                        onClick={() => onWordClick(word, rawContent)}
+                        onClick={(event) => onWordClick(word, rawContent, event.currentTarget)}
                         style={styleConfig}
                     >
                         {word.split("").map((char, cIdx) => (
@@ -212,22 +224,38 @@ function renderSubtitleBlock(
 
             return words.map((word, wIdx) => {
                 const wordVar = {
-                    hidden: transitionStyle === "glide" ? { opacity: 0, y: 15 } :
+                    hidden: transitionStyle === "glide" ? { opacity: 0, y: 25, scale: 0.9 } :
                              transitionStyle === "typewriter" ? { opacity: 0, y: 4, filter: "blur(4px)" } :
+                             transitionStyle === "blur" ? { opacity: 0, filter: "blur(12px)", scale: 1.1 } :
+                             transitionStyle === "stagger" ? { opacity: 0, x: -20, rotate: -5 } :
+                             transitionStyle === "elastic" ? { opacity: 0, scale: 0.5, y: 20 } :
+                             transitionStyle === "neon" ? { opacity: 0, textShadow: "0 0 0px transparent" } :
                              { opacity: 0 },
                     visible: { 
-                        opacity: 1, y: 0,
-                        transition: { type: "spring", stiffness: 90, damping: 22 }
+                        opacity: 1, y: 0, x: 0, scale: 1, rotate: 0, filter: "blur(0px)",
+                        textShadow: (transitionStyle === "neon" ? `0 0 20px ${themeColor}` : styleConfig.textShadow) as any,
+                        transition: { 
+                            type: "spring" as const, 
+                            stiffness: transitionStyle === "elastic" ? 260 : 100, 
+                            damping: transitionStyle === "elastic" ? 15 : 22,
+                            duration: 0.6
+                        }
                     },
-                    exit: { opacity: 0, y: -8, transition: { duration: 0.2 } }
+                    exit: { 
+                        opacity: 0, 
+                        y: transitionStyle === "glide" ? -20 : -8, 
+                        filter: transitionStyle === "blur" ? "blur(10px)" : "none",
+                        transition: { duration: 0.25 } 
+                    }
                 };
 
                 return (
                     <motion.span
                         key={`${sIdx}-${wIdx}`}
+                        data-word-popup-segment={word}
                         variants={wordVar}
                         className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer hover:opacity-70 transition-opacity"
-                        onClick={() => onWordClick(word, rawContent)}
+                        onClick={(event) => onWordClick(word, rawContent, event.currentTarget)}
                         style={styleConfig}
                     >
                         {word}
@@ -271,39 +299,40 @@ function joinChineseSubtitle(sentences: ListeningCabinSentence[]) {
     return sentences.map((sentence) => sentence.chinese).join(" ");
 }
 
-const SPEAKER_MIST_THEMES = [
-    ["rgba(99,102,241,0.65)", "rgba(168,85,247,0.50)", "rgba(59,130,246,0.30)"], // 0: Vivid Indigo (Cold Blue)
-    ["rgba(245,158,11,0.60)", "rgba(251,146,60,0.50)", "rgba(254,240,138,0.30)"], // 1: Vivid Amber (Warm Gold)
-    ["rgba(34,197,94,0.60)", "rgba(21,128,61,0.50)", "rgba(20,83,45,0.30)"],     // 2: Forest Mist (Deep Green)
-    ["rgba(225,29,72,0.60)", "rgba(159,18,57,0.50)", "rgba(76,5,25,0.30)"],     // 3: Midnight Cherry (Crimson)
-    ["rgba(14,165,233,0.65)", "rgba(2,132,199,0.50)", "rgba(31,41,55,0.30)"],    // 4: Ocean Depth (Vivid Cyan)
-    ["rgba(202,138,4,0.60)", "rgba(161,98,7,0.50)", "rgba(113,63,18,0.30)"],     // 5: Desert Sand (Tobacco Brown)
-    ["rgba(16,185,129,0.55)", "rgba(45,212,191,0.45)", "rgba(52,114,211,0.30)"], // 6: Vivid Emerald (Bright Green)
-    ["rgba(244,63,94,0.60)", "rgba(251,191,36,0.50)", "rgba(251,113,133,0.30)"], // 7: Vivid Rose (Pinkish Red)
-    ["rgba(139,92,246,0.60)", "rgba(236,72,153,0.50)", "rgba(244,114,182,0.30)"], // 8: Vivid Violet (Purple)
-    ["rgba(255,182,193,0.65)", "rgba(255,105,180,0.55)", "rgba(255,192,203,0.35)"], // 9: Kawaii Soft Pink (Sweet Heart)
-    ["rgba(135,206,235,0.60)", "rgba(0,191,255,0.50)", "rgba(173,216,230,0.30)"],   // 10: Dreamy Sky (Light Blue)
-    ["rgba(250,250,210,0.65)", "rgba(255,255,224,0.50)", "rgba(240,230,140,0.30)"], // 11: Lemon Cream (Light Yellow)
-    ["rgba(221,160,221,0.60)", "rgba(186,85,211,0.50)", "rgba(238,130,238,0.30)"], // 12: Orchid Dream (Soft Purple)
-    ["rgba(255,127,80,0.60)", "rgba(255,99,71,0.50)", "rgba(255,218,185,0.30)"],    // 13: Coral Sun (Warm Orange)
-    ["rgba(6,182,212,0.60)", "rgba(45,212,191,0.50)", "rgba(20,184,166,0.30)"],    // 14: Tropical Teal
-    ["rgba(249,115,22,0.60)", "rgba(234,88,12,0.50)", "rgba(194,65,12,0.30)"],     // 15: Intense Orange
-    ["rgba(168,85,247,0.60)", "rgba(192,132,252,0.50)", "rgba(126,34,206,0.30)"],   // 16: Electric Purple
-    ["rgba(236,72,153,0.60)", "rgba(244,114,182,0.50)", "rgba(190,24,93,0.30)"],    // 17: Flamingo Pink
-    ["rgba(132,204,22,0.60)", "rgba(101,163,13,0.50)", "rgba(63,98,18,0.30)"],     // 18: Lime Punch
-    ["rgba(59,130,246,0.60)", "rgba(37,99,235,0.50)", "rgba(29,78,216,0.30)"],     // 19: Sapphire Blue
-    ["rgba(14,165,233,0.60)", "rgba(12,74,110,0.40)", "rgba(7,89,133,0.30)"],      // 20: Deep Sea Cyan
-    ["rgba(251,191,36,0.60)", "rgba(252,211,77,0.50)", "rgba(180,83,9,0.30)"],     // 21: Golden Honey
-    ["rgba(20,184,166,0.60)", "rgba(13,148,136,0.50)", "rgba(17,94,89,0.30)"],     // 22: Minty Teal
-    ["rgba(217,70,239,0.60)", "rgba(162,28,175,0.50)", "rgba(112,26,117,0.30)"],    // 23: Fuchsia Flare
-    ["rgba(20,158,202,0.60)", "rgba(15,118,153,0.50)", "rgba(12,74,110,0.35)"],     // 24: Frosty Azure
-    ["rgba(101,163,13,0.60)", "rgba(77,124,15,0.50)", "rgba(54,83,20,0.30)"],      // 25: Moss Green
-    ["rgba(239,68,68,0.60)", "rgba(185,28,28,0.50)", "rgba(127,11,11,0.30)"],       // 26: Vivid Crimson
-    ["rgba(153,102,255,0.60)", "rgba(121,58,235,0.50)", "rgba(91,33,182,0.30)"],    // 27: Royal Lavender
-    ["rgba(255,159,64,0.60)", "rgba(255,94,87,0.50)", "rgba(255,184,108,0.30)"],    // 28: Sunset Peach
-    ["rgba(75,192,192,0.60)", "rgba(56,163,165,0.50)", "rgba(128,237,153,0.30)"],   // 29: Aqua Wave
-    ["rgba(255,99,132,0.60)", "rgba(255,159,64,0.50)", "rgba(255,205,86,0.30)"],    // 30: Fruit Sorbet
-    ["rgba(54,162,235,0.60)", "rgba(153,102,255,0.50)", "rgba(201,203,207,0.30)"],  // 31: Cool Haze
+// v12: Analogous Thermal Continuity - Harmonious Tonal Duos
+const SPEAKER_MIST_THEMES: [string, string][] = [
+    ["rgba(99, 102, 241, 0.45)", "rgba(129, 140, 248, 0.35)"], // 0: Indigo -> Light Indigo
+    ["rgba(16, 185, 129, 0.45)", "rgba(52, 211, 153, 0.35)"],  // 1: Emerald -> Mint
+    ["rgba(244, 63, 94, 0.45)", "rgba(251, 113, 133, 0.35)"],   // 2: Rose -> Pink
+    ["rgba(245, 158, 11, 0.45)", "rgba(251, 191, 36, 0.35)"],   // 3: Amber -> Yellow
+    ["rgba(6, 182, 212, 0.45)", "rgba(34, 211, 238, 0.35)"],    // 4: Cyan -> Sky
+    ["rgba(139, 92, 246, 0.45)", "rgba(167, 139, 250, 0.35)"],  // 5: Violet -> Lavender
+    ["rgba(59, 130, 246, 0.45)", "rgba(96, 165, 250, 0.35)"],   // 6: Blue -> Azure
+    ["rgba(236, 72, 153, 0.45)", "rgba(244, 114, 182, 0.35)"],  // 7: Pink -> Fuchsia
+    ["rgba(168, 85, 247, 0.45)", "rgba(192, 132, 252, 0.35)"],  // 8: Purple -> Orchid
+    ["rgba(20, 184, 166, 0.45)", "rgba(45, 212, 191, 0.35)"],   // 9: Teal -> Aquamarine
+    ["rgba(101, 163, 13, 0.45)", "rgba(132, 204, 22, 0.35)"],   // 10: Lime -> Green
+    ["rgba(234, 88, 12, 0.45)", "rgba(249, 115, 22, 0.35)"],    // 11: Orange -> Coral
+    ["rgba(220, 38, 38, 0.45)", "rgba(239, 68, 68, 0.35)"],     // 12: Red -> Scarlet
+    ["rgba(79, 70, 229, 0.45)", "rgba(99, 102, 241, 0.35)"],    // 13: Royal -> Indigo
+    ["rgba(8, 145, 178, 0.45)", "rgba(6, 182, 212, 0.35)"],     // 14: Cyan Dark -> Cyan
+    ["rgba(219, 39, 119, 0.45)", "rgba(236, 72, 153, 0.35)"],   // 15: Pink Deep -> Pink
+    ["rgba(124, 58, 237, 0.45)", "rgba(139, 92, 246, 0.35)"],   // 16: Violet Deep -> Violet
+    ["rgba(13, 148, 136, 0.45)", "rgba(20, 184, 166, 0.35)"],   // 17: Teal Deep -> Teal
+    ["rgba(37, 99, 235, 0.45)", "rgba(59, 130, 246, 0.35)"],    // 18: Blue Deep -> Blue
+    ["rgba(185, 28, 28, 0.45)", "rgba(220, 38, 38, 0.35)"],     // 19: Red Deep -> Red
+    ["rgba(67, 56, 202, 0.45)", "rgba(79, 70, 229, 0.35)"],     // 20: Indigo Intense
+    ["rgba(4, 120, 87, 0.45)", "rgba(5, 150, 105, 0.35)"],      // 21: Emerald Deep
+    ["rgba(190, 18, 60, 0.45)", "rgba(225, 29, 72, 0.35)"],     // 22: Rose Intense
+    ["rgba(180, 83, 9, 0.45)", "rgba(217, 119, 6, 0.35)"],      // 23: Amber Deep
+    ["rgba(14, 116, 144, 0.45)", "rgba(8, 145, 178, 0.35)"],    // 24: Cyan Intense
+    ["rgba(109, 40, 217, 0.45)", "rgba(124, 58, 237, 0.35)"],   // 25: Violet Intense
+    ["rgba(29, 78, 216, 0.45)", "rgba(37, 99, 235, 0.35)"],     // 26: Blue Intense
+    ["rgba(157, 23, 77, 0.45)", "rgba(190, 24, 93, 0.35)"],     // 27: Pink Intense
+    ["rgba(126, 34, 206, 0.45)", "rgba(147, 51, 234, 0.35)"],   // 28: Purple Intense
+    ["rgba(15, 118, 110, 0.45)", "rgba(13, 148, 136, 0.35)"],   // 29: Teal Intense
+    ["rgba(77, 124, 15, 0.45)", "rgba(101, 163, 13, 0.35)"],    // 30: Lime Intense
+    ["rgba(194, 65, 12, 0.45)", "rgba(234, 88, 12, 0.35)"],     // 31: Orange Intense
 ];
 
 function ListeningCabinPlayerView({
@@ -316,7 +345,7 @@ function ListeningCabinPlayerView({
     const router = useRouter();
     const [subtitleAdvanceMs, setSubtitleAdvanceMs] = useState(1000);
     const player = useListeningCabinPlayer({ session, restart, subtitleAdvanceMs });
-    const { playerState, currentSubtitleSentences, audioEnergy } = player;
+    const { playerState, currentSubtitleSentences, audioEnergy, vocalHeat, audioRef } = player;
     
     // Mercury Physics for Progress
     const springProgress = useSpring(playerState.progressRatio, {
@@ -342,13 +371,15 @@ function ListeningCabinPlayerView({
     const [fontZh, setFontZh] = useState("var(--font-zh-sans-modern)");
     const [transitionStyle, setTransitionStyle] = useState<TransitionStyle>("radiant");
     const [typographyStyle, setTypographyStyle] = useState<TypographyStyle>("crystal");
+    const [fontSizeEn, setFontSizeEn] = useState(1.1); // 1.1x default
+    const [fontSizeZh, setFontSizeZh] = useState(1.0); // 1.0x default
+    const [preferencesHydrated, setPreferencesHydrated] = useState(false);
     
-    // Word Gloss State:
-    const [selectedWord, setSelectedWord] = useState<string | null>(null);
-    const [wordDefinition, setWordDefinition] = useState<WordDefinition | null>(null);
-    const [isDefining, setIsDefining] = useState(false);
+    const [wordPopup, setWordPopup] = useState<PopupState | null>(null);
+    const [lastLookupTrigger, setLastLookupTrigger] = useState<{ key: string; at: number }>({ key: "", at: 0 });
 
     const hideControlsTimerRef = useRef<number | null>(null);
+    const subtitleLookupRootRef = useRef<HTMLDivElement | null>(null);
 
     // Persistence: Load
     useEffect(() => {
@@ -356,23 +387,46 @@ function ListeningCabinPlayerView({
         const savedZh = localStorage.getItem("listening_cabin_font_zh");
         const savedStyle = localStorage.getItem("listening_cabin_transition_style");
         const savedTypo = localStorage.getItem("listening_cabin_typography_style");
-        const savedAdvanceRaw = localStorage.getItem("listening_cabin_subtitle_advance_ms");
-        const savedAdvance = savedAdvanceRaw === null ? Number.NaN : Number(savedAdvanceRaw);
+        const savedAdvance =
+            localStorage.getItem("listening_cabin_subtitle_advance")
+            ?? localStorage.getItem("listening_cabin_subtitle_advance_ms");
+        const savedSizeEn = localStorage.getItem("listening_cabin_font_size_en");
+        const savedSizeZh = localStorage.getItem("listening_cabin_font_size_zh");
+
         if (savedEn) setFontEn(savedEn);
         if (savedZh) setFontZh(savedZh);
         if (savedStyle && isTransitionStyle(savedStyle)) setTransitionStyle(savedStyle);
         if (savedTypo && isTypographyStyle(savedTypo)) setTypographyStyle(savedTypo);
-        if (Number.isFinite(savedAdvance) && savedAdvance >= 0) setSubtitleAdvanceMs(savedAdvance);
+        if (savedAdvance) {
+            const val = parseInt(savedAdvance);
+            if (!isNaN(val)) setSubtitleAdvanceMs(val);
+        }
+        if (savedSizeEn) {
+            const val = parseFloat(savedSizeEn);
+            if (!isNaN(val)) setFontSizeEn(val);
+        }
+        if (savedSizeZh) {
+            const val = parseFloat(savedSizeZh);
+            if (!isNaN(val)) setFontSizeZh(val);
+        }
+
+        setPreferencesHydrated(true);
     }, []);
 
     // Persistence: Save
     useEffect(() => {
+        if (!preferencesHydrated) {
+            return;
+        }
+
         localStorage.setItem("listening_cabin_font_en", fontEn);
         localStorage.setItem("listening_cabin_font_zh", fontZh);
         localStorage.setItem("listening_cabin_transition_style", transitionStyle);
         localStorage.setItem("listening_cabin_typography_style", typographyStyle);
-        localStorage.setItem("listening_cabin_subtitle_advance_ms", String(subtitleAdvanceMs));
-    }, [fontEn, fontZh, subtitleAdvanceMs, transitionStyle, typographyStyle]);
+        localStorage.setItem("listening_cabin_subtitle_advance", subtitleAdvanceMs.toString());
+        localStorage.setItem("listening_cabin_font_size_en", fontSizeEn.toString());
+        localStorage.setItem("listening_cabin_font_size_zh", fontSizeZh.toString());
+    }, [fontEn, fontZh, transitionStyle, typographyStyle, subtitleAdvanceMs, fontSizeEn, fontSizeZh, preferencesHydrated]);
 
     const completionLabel = useMemo(() => {
         const current = String(playerState.currentSentenceIndex + 1).padStart(2, "0");
@@ -405,23 +459,20 @@ function ListeningCabinPlayerView({
         return sentence?.speaker?.trim() ?? null;
     }, [playerState.currentSentenceIndex, session.sentences]);
 
+    // [v10] Deterministic Color Artist Mapping (Spectral Identity Hashing)
     const speakerThemeMapping = useMemo(() => {
         const uniqueSpeakers = Array.from(new Set(session.sentences.map(s => s.speaker?.trim()).filter(Boolean)));
         const mapping: Record<string, number> = {};
         
-        // Shuffle the indices of availability themes for variety
-        const themeIndices = Array.from({ length: SPEAKER_MIST_THEMES.length }, (_, i) => i);
-        for (let i = themeIndices.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [themeIndices[i], themeIndices[j]] = [themeIndices[j], themeIndices[i]];
-        }
-
-        uniqueSpeakers.forEach((speaker, i) => {
-            // Assign a unique random theme index from the shuffled pool
-            mapping[speaker!] = themeIndices[i % themeIndices.length];
+        uniqueSpeakers.forEach((speaker) => {
+            // High-Performance Deterministic Hash for color stability
+            let hash = 0;
+            for (let i = 0; i < speaker!.length; i++) {
+                hash = speaker!.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            mapping[speaker!] = Math.abs(hash) % SPEAKER_MIST_THEMES.length;
         });
         return mapping;
-    // We intentionally only depend on session.id or mounts to make it "random every time you enter"
     }, [session.sentences]);
 
     const currentSpeakerIndex = useMemo(() => {
@@ -473,42 +524,141 @@ function ListeningCabinPlayerView({
         scheduleHideControls();
     }, [scheduleHideControls]);
 
-    const handleWordClick = useCallback(async (word: string, context: string) => {
-        const sanitized = word.replace(/[.,!?;:()\[\]{}'"]/g, "").trim();
-        if (!sanitized) return;
+    const subtitleLookupContext = useMemo(() => (
+        currentSubtitleSentences
+            .map((sentence) => renderSentence(sentence.english) ?? "")
+            .join(" ")
+            .trim()
+    ), [currentSubtitleSentences]);
 
-        setSelectedWord(sanitized);
-        setWordDefinition(null);
-        setIsDefining(true);
+    const normalizeLookupText = useCallback((text: string) => (
+        text
+            .replace(/[‘’]/g, "'")
+            .replace(/[^a-zA-Z\s'-]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 80)
+    ), []);
+
+    const extractSelectionPopupText = useCallback((selection: Selection | null) => {
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+            return "";
+        }
+
+        const range = selection.getRangeAt(0);
+        const directText = normalizeLookupText(selection.toString());
+        if (directText.includes(" ")) {
+            return directText.slice(0, 80);
+        }
+
+        const anchorElement = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+            ? range.commonAncestorContainer as Element
+            : range.commonAncestorContainer.parentElement;
+        const root = anchorElement?.closest("[data-word-popup-root='true']");
+        if (!root) {
+            return directText.slice(0, 80);
+        }
+
+        const selectedSegments = Array.from(root.querySelectorAll<HTMLElement>("[data-word-popup-segment]"))
+            .filter((node) => {
+                try {
+                    return range.intersectsNode(node);
+                } catch {
+                    return false;
+                }
+            })
+            .map((node) => node.dataset.wordPopupSegment?.trim() ?? "")
+            .filter(Boolean);
+
+        if (selectedSegments.length < 2) {
+            return directText.slice(0, 80);
+        }
+
+        return normalizeLookupText(selectedSegments.join(" ")).slice(0, 80);
+    }, [normalizeLookupText]);
+
+    const openWordPopupAtPosition = useCallback((lookupText: string, x: number, y: number, contextText?: string) => {
+        const normalizedLookup = normalizeLookupText(lookupText);
+        const alphaLength = normalizedLookup.replace(/[\s'-]/g, "").length;
+        if (!normalizedLookup || alphaLength < 2) {
+            return false;
+        }
+
+        const context = (contextText || subtitleLookupContext || "").trim();
+        const dedupeKey = `${normalizedLookup.toLowerCase()}::${context.slice(0, 120).toLowerCase()}`;
+        const now = Date.now();
+        if (lastLookupTrigger.key === dedupeKey && now - lastLookupTrigger.at < 500) {
+            return true;
+        }
+        setLastLookupTrigger({ key: dedupeKey, at: now });
+
         player.pausePlayback();
         revealControls();
+        setWordPopup({
+            word: normalizedLookup,
+            context,
+            x,
+            y,
+            articleUrl: `listening-cabin://${session.id}`,
+            sourceKind: "listening",
+            sourceLabel: "来自听力舱",
+            sourceSentence: context,
+            sourceNote: session.title,
+        });
+        return true;
+    }, [lastLookupTrigger, normalizeLookupText, player, revealControls, session.id, session.title, subtitleLookupContext]);
 
-        try {
-            const response = await fetch("/api/ai/define", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    word: sanitized,
-                    context,
-                    uiSurface: "listening_cabin_player",
-                }),
-            });
-
-            if (!response.ok) throw new Error("Define failed");
-            const data = await response.json();
-            setWordDefinition(data);
-        } catch (error) {
-            console.error("Word definition failed:", error);
-            setWordDefinition({ error: "无法获取释义，请稍后重试" });
-        } finally {
-            setIsDefining(false);
+    const openWordPopupFromSelection = useCallback((selection: Selection | null, contextText?: string) => {
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+            return false;
         }
-    }, [player, revealControls]);
+
+        const range = selection.getRangeAt(0);
+        const root = subtitleLookupRootRef.current;
+        if (root && !root.contains(range.commonAncestorContainer)) {
+            return false;
+        }
+
+        const rect = range.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) {
+            return false;
+        }
+
+        const opened = openWordPopupAtPosition(
+            extractSelectionPopupText(selection),
+            rect.left + rect.width / 2,
+            rect.bottom + 10,
+            contextText || selection.anchorNode?.textContent || subtitleLookupContext,
+        );
+        return opened;
+    }, [extractSelectionPopupText, openWordPopupAtPosition, subtitleLookupContext]);
+
+    const handleSubtitleTokenClick = useCallback((word: string, context: string, anchorElement: HTMLElement) => {
+        if (!word) {
+            return;
+        }
+
+        if (typeof window !== "undefined") {
+            const selection = window.getSelection();
+            if (selection && !selection.isCollapsed) {
+                return;
+            }
+        }
+        const rect = anchorElement.getBoundingClientRect();
+        openWordPopupAtPosition(word, rect.left + rect.width / 2, rect.bottom + 10, context || subtitleLookupContext);
+    }, [openWordPopupAtPosition, subtitleLookupContext]);
+
+    const handleSubtitleSelectionLookup = useCallback(() => {
+        if (typeof window === "undefined") {
+            return;
+        }
+        openWordPopupFromSelection(window.getSelection(), subtitleLookupContext);
+    }, [openWordPopupFromSelection, subtitleLookupContext]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Escape") {
-                setSelectedWord(null);
+                setWordPopup(null);
                 setShowSettings(false);
                 return;
             }
@@ -712,144 +862,174 @@ function ListeningCabinPlayerView({
                         <X className="h-4 w-4" />
                     </button>
 
-                    {/* Settings Popover (The Typographic Atelier) */}
+                    {/* Settings Popover (The Typographic Atelier v2.0) */}
                     <AnimatePresence>
                         {showSettings && (
                             <motion.div
                                 initial={{ opacity: 0, y: 10, scale: 0.95 }}
                                 animate={{ opacity: 1, y: 0, scale: 1 }}
                                 exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                className="absolute top-20 right-10 w-72 z-[300] glass-panel p-5 rounded-[2.5rem] shadow-2xl border-white/80 overflow-hidden"
+                                className="absolute top-20 right-10 w-80 z-[300] glass-panel p-6 rounded-[3rem] shadow-[0_32px_80px_-16px_rgba(0,0,0,0.3)] border-white/80 overflow-hidden"
                             >
-                                <div className="absolute inset-0 bg-white/30 pointer-events-none" />
+                                <div className="absolute inset-0 bg-white/40 pointer-events-none" />
                                 <div className="relative z-10">
-                                    <div className="flex items-center justify-between mb-5">
-                                        <h3 className="text-[10px] font-black tracking-[0.25em] text-slate-900 uppercase opacity-60">文字工坊</h3>
-                                        <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                                            <X size={14} />
+                                    <div className="flex items-center justify-between mb-6">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-6 h-6 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                                                <span className="text-xs">📐</span>
+                                            </div>
+                                            <h3 className="text-[11px] font-black tracking-[0.2em] text-slate-900 uppercase opacity-80">文字工坊 V2.0</h3>
+                                        </div>
+                                        <button onClick={() => setShowSettings(false)} className="w-6 h-6 flex items-center justify-center rounded-full bg-slate-100/50 text-slate-400 hover:text-slate-600 hover:bg-white transition-all">
+                                            <X size={12} strokeWidth={3} />
                                         </button>
                                     </div>
 
-                                    {/* English Section */}
-                                    <div className="mb-5">
-                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2.5 block px-1">English Font</label>
-                                        <div className="grid grid-cols-1 gap-1.5 max-h-[140px] overflow-y-auto pr-2 custom-scrollbar">
-                                            {FONT_OPTIONS_EN.map((opt) => (
-                                                <button
-                                                    key={opt.value}
-                                                    onClick={() => setFontEn(opt.value)}
-                                                    className={cn(
-                                                        "w-full text-left px-4 py-2 rounded-xl text-xs transition-all duration-200 border border-transparent",
-                                                        fontEn === opt.value 
-                                                            ? "bg-amber-100/60 text-amber-900 font-bold border-amber-200/50 shadow-[0_2px_8px_rgba(245,158,11,0.1)]" 
-                                                            : "hover:bg-black/5 text-slate-600"
-                                                    )}
-                                                    style={{ fontFamily: opt.value }}
-                                                >
-                                                    {opt.name}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
+                                    {/* Typography Section */}
+                                    <div className="space-y-6 max-h-[65vh] overflow-y-auto pr-3 custom-scrollbar -mr-3">
+                                        {/* English Config */}
+                                        <section className="space-y-3">
+                                            <div className="flex items-center justify-between px-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">English Typography</label>
+                                                <div className="flex items-center gap-2 bg-slate-100/50 rounded-full px-2 py-1">
+                                                    <button onClick={() => setFontSizeEn(Math.max(0.8, fontSizeEn - 0.05))} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-white text-slate-400 active:scale-90 transition-all">-</button>
+                                                    <span className="text-[10px] font-black text-slate-600 min-w-[32px] text-center">{Math.round(fontSizeEn * 100)}%</span>
+                                                    <button onClick={() => setFontSizeEn(Math.min(1.6, fontSizeEn + 0.05))} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-white text-slate-400 active:scale-90 transition-all">+</button>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-1.5 max-h-[140px] overflow-y-auto pr-2 custom-scrollbar">
+                                                {FONT_OPTIONS_EN.map((opt) => (
+                                                    <button
+                                                        key={opt.value}
+                                                        onClick={() => setFontEn(opt.value)}
+                                                        className={cn(
+                                                            "w-full text-left px-4 py-2.5 rounded-2xl text-[13px] transition-all duration-300 border border-transparent",
+                                                            fontEn === opt.value 
+                                                                ? "bg-amber-100/80 text-amber-900 font-black border-amber-200/50 shadow-sm" 
+                                                                : "hover:bg-white/60 text-slate-500"
+                                                        )}
+                                                        style={{ fontFamily: opt.value }}
+                                                    >
+                                                        {opt.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </section>
 
-                                    {/* Chinese Section */}
-                                    <div className="mb-5">
-                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2.5 block px-1">Chinese Font</label>
-                                        <div className="grid grid-cols-1 gap-1.5 max-h-[100px] overflow-y-auto pr-2 custom-scrollbar">
-                                            {FONT_OPTIONS_ZH.map((opt) => (
-                                                <button
-                                                    key={opt.value}
-                                                    onClick={() => setFontZh(opt.value)}
-                                                    className={cn(
-                                                        "w-full text-left px-4 py-2 rounded-xl text-xs transition-all duration-200 border border-transparent",
-                                                        fontZh === opt.value 
-                                                            ? "bg-rose-100/60 text-rose-900 font-bold border-rose-200/50 shadow-[0_2px_8px_rgba(244,63,94,0.1)]" 
-                                                            : "hover:bg-black/5 text-slate-600"
-                                                    )}
-                                                    style={{ fontFamily: opt.value }}
-                                                >
-                                                    {opt.name}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
+                                        {/* Chinese Config */}
+                                        <section className="space-y-3">
+                                            <div className="flex items-center justify-between px-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Chinese Typography</label>
+                                                <div className="flex items-center gap-2 bg-slate-100/50 rounded-full px-2 py-1">
+                                                    <button onClick={() => setFontSizeZh(Math.max(0.8, fontSizeZh - 0.05))} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-white text-slate-400 active:scale-90 transition-all">-</button>
+                                                    <span className="text-[10px] font-black text-slate-600 min-w-[32px] text-center">{Math.round(fontSizeZh * 100)}%</span>
+                                                    <button onClick={() => setFontSizeZh(Math.min(1.6, fontSizeZh + 0.05))} className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-white text-slate-400 active:scale-90 transition-all">+</button>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-1.5 max-h-[140px] overflow-y-auto pr-2 custom-scrollbar">
+                                                {FONT_OPTIONS_ZH.map((opt) => (
+                                                    <button
+                                                        key={opt.value}
+                                                        onClick={() => setFontZh(opt.value)}
+                                                        className={cn(
+                                                            "w-full text-left px-4 py-2.5 rounded-2xl text-[13px] transition-all duration-300 border border-transparent",
+                                                            fontZh === opt.value 
+                                                                ? "bg-rose-100/80 text-rose-900 font-black border-rose-200/50 shadow-sm" 
+                                                                : "hover:bg-white/60 text-slate-500"
+                                                        )}
+                                                        style={{ fontFamily: opt.value }}
+                                                    >
+                                                        {opt.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </section>
 
-                                    {/* Motion Style Section */}
-                                    <div className="mb-5">
-                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2.5 block px-1">Motion Style</label>
-                                        <div className="grid grid-cols-2 gap-1.5">
-                                            {[
-                                                { id: "radiant", label: "✨ 流光溢彩" },
-                                                { id: "mist", label: "🌫️ 空灵迷雾" },
-                                                { id: "glide", label: "🕊️ 垂直滑翔" },
-                                                { id: "classic", label: "🎞️ 经典淡入" },
-                                                { id: "typewriter", label: "⌨️ 逐词律动" }
-                                            ].map((style) => (
-                                                <button
-                                                    key={style.id}
-                                                    onClick={() => setTransitionStyle(style.id)}
-                                                    className={cn(
-                                                        "px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-left transition-all duration-300 border flex items-center justify-between",
-                                                        transitionStyle === style.id 
-                                                            ? "bg-blue-600 text-white border-blue-600 shadow-[0_4px_12px_rgba(37,99,235,0.2)]" 
-                                                            : "bg-slate-50 text-slate-500 border-slate-100 hover:bg-white hover:shadow-md"
-                                                    )}
-                                                >
-                                                    {style.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
+                                        {/* Motion System */}
+                                        <section className="space-y-3">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Cinematic Motion</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {[
+                                                    { id: "radiant", label: "✨ 流光溢彩" },
+                                                    { id: "mist", label: "🌫️ 空灵迷雾" },
+                                                    { id: "glide", label: "🕊️ 垂直滑翔" },
+                                                    { id: "blur", label: "🌀 模糊浮现" },
+                                                    { id: "stagger", label: "🌊 级联入场" },
+                                                    { id: "elastic", label: "🎾 回弹跳动" },
+                                                    { id: "neon", label: "🏮 霓虹穿梭" },
+                                                    { id: "classic", label: "🎞️ 经典淡入" },
+                                                    { id: "typewriter", label: "⌨️ 逐词律动" }
+                                                ].map((style) => (
+                                                    <button
+                                                        key={style.id}
+                                                        onClick={() => setTransitionStyle(style.id as TransitionStyle)}
+                                                        className={cn(
+                                                            "px-3 py-3 rounded-2xl text-[10px] font-black uppercase tracking-wider text-left transition-all duration-300 border",
+                                                            transitionStyle === style.id 
+                                                                ? "bg-blue-600 text-white border-blue-600 shadow-[0_8px_20px_-4px_rgba(37,99,235,0.4)]" 
+                                                                : "bg-white/50 text-slate-500 border-slate-100 hover:bg-white hover:shadow-sm"
+                                                        )}
+                                                    >
+                                                        {style.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </section>
 
-                                    <div className="mb-5">
-                                        <div className="mb-2.5 flex items-center justify-between px-1">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Subtitle Timing</label>
-                                            <span className="text-[10px] font-black tracking-[0.16em] text-slate-500 uppercase">
-                                                提前 {(subtitleAdvanceMs / 1000).toFixed(1)}s
-                                            </span>
-                                        </div>
-                                        <div className="grid grid-cols-3 gap-1.5">
-                                            {SUBTITLE_ADVANCE_OPTIONS.map((option) => (
-                                                <button
-                                                    key={option.value}
-                                                    onClick={() => setSubtitleAdvanceMs(option.value)}
-                                                    className={cn(
-                                                        "px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-center transition-all duration-300 border",
-                                                        subtitleAdvanceMs === option.value
-                                                            ? "bg-emerald-600 text-white border-emerald-600 shadow-[0_4px_12px_rgba(5,150,105,0.2)]"
-                                                            : "bg-slate-50 text-slate-500 border-slate-100 hover:bg-white hover:shadow-md"
-                                                    )}
-                                                >
-                                                    {option.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
+                                        {/* Visual Atmosphere */}
+                                        <section className="space-y-3">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Visual Atelier</label>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {[
+                                                    { id: "crystal", label: "💎 晶莹剔透" },
+                                                    { id: "aurora", label: "✨ 极光溢彩" },
+                                                    { id: "hollow", label: "💠 剔透冰晶" },
+                                                    { id: "honey", label: "🍯 琥珀流金" },
+                                                    { id: "neon_pulse", label: "🔮 霓虹脉冲" },
+                                                    { id: "pearl_glow", label: "🐚 珍珠温润" },
+                                                    { id: "deep_sea_void", label: "🌊 深海虚空" }
+                                                ].map((style) => (
+                                                    <button
+                                                        key={style.id}
+                                                        onClick={() => setTypographyStyle(style.id as TypographyStyle)}
+                                                        className={cn(
+                                                            "px-3 py-3 rounded-2xl text-[10px] font-black uppercase tracking-wider text-left transition-all duration-300 border",
+                                                            typographyStyle === style.id 
+                                                                ? "bg-amber-600 text-white border-amber-600 shadow-[0_8px_20px_-4px_rgba(217,119,6,0.4)]" 
+                                                                : "bg-white/50 text-slate-500 border-slate-100 hover:bg-white hover:shadow-sm"
+                                                        )}
+                                                    >
+                                                        {style.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </section>
 
-                                    {/* Typography Style Section */}
-                                    <div>
-                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2.5 block px-1">Text Style</label>
-                                        <div className="grid grid-cols-2 gap-1.5">
-                                            {[
-                                                { id: "crystal", label: "💎 晶莹剔透" },
-                                                { id: "aurora", label: "✨ 极光溢彩" },
-                                                { id: "hollow", label: "💠 剔透冰晶" },
-                                                { id: "honey", label: "🍯 琥珀流金" }
-                                            ].map((style) => (
-                                                <button
-                                                    key={style.id}
-                                                    onClick={() => setTypographyStyle(style.id)}
-                                                    className={cn(
-                                                        "px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-left transition-all duration-300 border flex items-center justify-between",
-                                                        typographyStyle === style.id 
-                                                            ? "bg-amber-600 text-white border-amber-600 shadow-[0_4px_12px_rgba(217,119,6,0.2)]" 
-                                                            : "bg-slate-50 text-slate-500 border-slate-100 hover:bg-white hover:shadow-md"
-                                                    )}
-                                                >
-                                                    {style.label}
-                                                </button>
-                                            ))}
-                                        </div>
+                                        {/* Timing Calibration */}
+                                        <section className="space-y-3 pb-2">
+                                            <div className="flex items-center justify-between px-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Subtitle Timing</label>
+                                                <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                                                    {(subtitleAdvanceMs / 1000).toFixed(1)}s Early
+                                                </span>
+                                            </div>
+                                            <div className="grid grid-cols-5 gap-1.5">
+                                                {SUBTITLE_ADVANCE_OPTIONS.map((option) => (
+                                                    <button
+                                                        key={option.value}
+                                                        onClick={() => setSubtitleAdvanceMs(option.value)}
+                                                        className={cn(
+                                                            "py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-center transition-all duration-300 border",
+                                                            subtitleAdvanceMs === option.value
+                                                                ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                                                                : "bg-white/50 text-slate-400 border-slate-100 hover:bg-white"
+                                                        )}
+                                                    >
+                                                        {option.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </section>
                                     </div>
                                 </div>
                             </motion.div>
@@ -879,54 +1059,97 @@ function ListeningCabinPlayerView({
                                     >
                                         {currentSpeakerTags.map((speaker) => {
                                             const isActive = speaker === activeSpeaker;
+                                            const themeIndex = speakerThemeMapping[speaker] ?? 0;
+                                            const theme = SPEAKER_MIST_THEMES[themeIndex];
                                             
-                                            // Radiant Premium v7: Solid-Luminous + Spring-Smoothed Pulse
+                                            // Living Crystal v13: Ethereal Transparency - Softened Thermal Weights
                                             return (
                                                 <motion.div
                                                     key={speaker}
                                                     initial={false}
                                                     animate={{
-                                                        // Stable, Sharp Definition
                                                         scale: isActive ? 1.02 : 0.96,
                                                         backgroundColor: isActive ? "rgba(255, 255, 255, 1)" : "rgba(255, 255, 255, 0.4)",
+                                                        // [v10] Spectral Gradient Border (Fainter v13)
                                                         borderColor: isActive 
-                                                            ? activeMistTheme[0].replace('0.6', (0.3 + (audioEnergy * 0.5)).toString()) 
-                                                            : "rgba(0, 0, 0, 0.08)",
+                                                            ? theme[0].replace('0.45', '0.2')
+                                                            : "rgba(0, 0, 0, 0.06)",
+                                                        // [v11] Layered Dual-Glow Shadow (Softened v13)
                                                         boxShadow: isActive 
-                                                            ? `0 10px 30px -5px rgba(0,0,0,0.05), 0 0 ${15 + (audioEnergy * 45)}px ${activeMistTheme[0].replace('0.6', (0.15 + (audioEnergy * 0.25)).toString())}` 
-                                                            : "0 2px 4px rgba(0,0,0,0.02)",
+                                                            ? `0 8px 30px -12px rgba(0,0,0,0.04), 0 0 ${15 + (audioEnergy * 20) + (vocalHeat * 15)}px ${theme[0].replace('0.45', (0.08 + (audioEnergy * 0.12) + (vocalHeat * 0.1)).toString())}, 10px 0 ${20 + (audioEnergy * 15) + (vocalHeat * 15)}px ${theme[1].replace('0.35', (0.05 + (audioEnergy * 0.08) + (vocalHeat * 0.08)).toString())}` 
+                                                            : "0 2px 5px rgba(0,0,0,0.01)",
+                                                        opacity: isActive ? 1 : [0.25, 0.4, 0.25],
+                                                        // [v13] Muted Thermal Saturation Filter
+                                                        filter: isActive ? `saturate(${1 + (vocalHeat * 0.25)}) brightness(${1 + (vocalHeat * 0.08)})` : "none"
                                                     }}
-                                                    transition={{ type: "spring", stiffness: 120, damping: 25, mass: 1 }}
-                                                    className="px-5 py-2 rounded-full backdrop-blur-[12px] border-[1px] relative overflow-hidden flex items-center gap-3.5"
+                                                    transition={{ 
+                                                        type: "spring", 
+                                                        stiffness: isActive ? 90 : 120, 
+                                                        damping: 30, 
+                                                        mass: 1.2,
+                                                        borderColor: { stiffness: 150, damping: 25 },
+                                                        boxShadow: { stiffness: 60, damping: 40, mass: 1.5 },
+                                                        opacity: isActive ? { duration: 0.3 } : { duration: 5, repeat: Infinity, ease: "easeInOut" }
+                                                    } as any}
+                                                    className="px-5 py-2 rounded-full backdrop-blur-[12px] border-[1px] relative overflow-hidden flex items-center gap-3.5 group"
                                                 >
-                                                    {/* Internal Subtle Liquid Pulse for Active State */}
+                                                    {/* [v9] Crystalline Micro-Texture Shimmer */}
                                                     {isActive && (
                                                         <motion.div 
                                                             animate={{ 
-                                                                opacity: 0.05 + (audioEnergy * 0.15),
-                                                                scale: 1 + (audioEnergy * 0.3)
+                                                                backgroundPosition: ["0% 0%", "100% 100%"]
                                                             }}
-                                                            style={{ backgroundColor: activeMistTheme[0] }}
-                                                            className="absolute inset-0 z-0 blur-2xl pointer-events-none"
+                                                            transition={{ duration: 15 / (1 + vocalHeat), repeat: Infinity, ease: "linear" }}
+                                                            className="absolute inset-0 z-0 opacity-[0.025] pointer-events-none bg-[radial-gradient(circle,rgba(0,0,0,0.2)_1px,transparent_1px)] bg-[length:4px_4px]"
+                                                        />
+                                                    )}
+
+                                                    {/* [v10] Prismatic Recognition Ripple & Periodic Glass Swipe (Fainter v13) */}
+                                                    <motion.div 
+                                                        key={`swipe-${speaker}-${isActive}`}
+                                                        initial={{ x: "-150%" }}
+                                                        animate={{ x: "250%" }}
+                                                        transition={isActive 
+                                                            ? { duration: 1.5, ease: "circOut" } 
+                                                            : { duration: 15, repeat: Infinity, ease: "linear", delay: 2 }
+                                                        }
+                                                        style={{ 
+                                                            background: isActive 
+                                                                ? `linear-gradient(90deg, transparent, ${theme[0].replace('0.45', '0.1')}, white, ${theme[1].replace('0.35', '0.1')}, transparent)`
+                                                                : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)'
+                                                        }}
+                                                        className="absolute inset-0 skew-x-[-30deg] z-10 pointer-events-none"
+                                                    />
+
+                                                    {/* Internal Atmospheric Bloom (Softened v13) */}
+                                                    {isActive && (
+                                                        <motion.div 
+                                                            animate={{ 
+                                                                opacity: 0.04 + (audioEnergy * 0.08) + (vocalHeat * 0.05),
+                                                                scale: 1 + (audioEnergy * 0.15) + (vocalHeat * 0.08)
+                                                            }}
+                                                            style={{ backgroundColor: theme[0] }}
+                                                            className="absolute inset-0 z-0 blur-3xl opacity-10 pointer-events-none"
                                                         />
                                                     )}
                                                     
-                                                    <div className="relative z-10 flex items-center gap-3.5">
+                                                    <div className="relative z-20 flex items-center gap-3.5">
+                                                        {/* [v10] Gemstone Orb Indicator (Softened v13) */}
                                                         <motion.div 
                                                             animate={{ 
-                                                                scale: 1 + (audioEnergy * 0.6),
-                                                                backgroundColor: activeMistTheme[0],
-                                                                boxShadow: `0 0 ${10 + (audioEnergy * 30)}px ${activeMistTheme[0]}`
+                                                                scale: 1 + (audioEnergy * 0.6) + (vocalHeat * 0.2),
+                                                                background: `linear-gradient(135deg, ${theme[0]}, ${theme[1]})`,
+                                                                boxShadow: `0 0 ${10 + (audioEnergy * 20) + (vocalHeat * 10)}px ${theme[0].replace('0.45', '0.6')}, 6px 0 ${15 + (audioEnergy * 15) + (vocalHeat * 10)}px ${theme[1].replace('0.35', '0.4')}`
                                                             }}
-                                                            transition={{ type: "spring", stiffness: 100, damping: 20 }}
+                                                            transition={{ type: "spring", stiffness: 100, damping: 22 }}
                                                             className={cn(
-                                                                "w-1.5 h-1.5 rounded-full ring-2 ring-white transition-opacity duration-500",
-                                                                isActive ? "opacity-100" : "opacity-20"
+                                                                "w-1.5 h-1.5 rounded-full ring-2 ring-white transition-opacity duration-300",
+                                                                isActive ? "opacity-100" : "opacity-25"
                                                             )}
                                                         />
                                                         <span className={cn(
-                                                            "text-[10px] font-black tracking-[0.45em] uppercase transition-colors duration-500",
-                                                            isActive ? "text-slate-900" : "text-slate-400/40"
+                                                            "text-[10px] font-black tracking-[0.45em] uppercase transition-colors duration-700",
+                                                            isActive ? "text-slate-800" : "text-slate-400"
                                                         )}>
                                                             {speaker}
                                                         </span>
@@ -937,15 +1160,22 @@ function ListeningCabinPlayerView({
                                     </motion.div>
                                 ) : null}
                                 
-                                <div className="relative">
+                                <div
+                                    ref={subtitleLookupRootRef}
+                                    data-word-popup-root="true"
+                                    className="relative"
+                                    onMouseUp={handleSubtitleSelectionLookup}
+                                    onTouchEnd={handleSubtitleSelectionLookup}
+                                >
                                     <h1 
                                         className={subtitleTypographyClass}
                                         style={{
                                             transition: "text-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
-                                            textShadow: `0 0 ${12 + (audioEnergy * 40)}px ${activeMistTheme[0].replace('0.6', (0.2 + (audioEnergy * 0.2)).toString())}`
+                                            textShadow: `0 0 ${12 + (audioEnergy * 40)}px ${activeMistTheme[0].replace('0.6', (0.2 + (audioEnergy * 0.2)).toString())}`,
+                                            fontFamily: fontEn
                                         }}
                                     >
-                                        {renderSubtitleBlock(currentSubtitleSentences, playerState.currentSentenceIndex, activeMistTheme[0], fontEn, transitionStyle, typographyStyle, handleWordClick)}
+                                        {renderSubtitleBlock(currentSubtitleSentences, playerState.currentSentenceIndex, activeMistTheme[0], fontEn, transitionStyle, typographyStyle, fontSizeEn, handleSubtitleTokenClick)}
                                     </h1>
                                     
                                     <motion.div
@@ -965,49 +1195,109 @@ function ListeningCabinPlayerView({
                                         )}
                                         style={{ color: "#1e293b", textRendering: "optimizeLegibility" }}
                                     >
-                                        <span style={{ fontFamily: fontZh }}>
+                                        <span style={{ fontFamily: fontZh, fontSize: `${fontSizeZh}em` }}>
                                             {joinChineseSubtitle(currentSubtitleSentences)}
                                         </span>
                                     </motion.div>
                                 </div>
                             </motion.div>
                         </AnimatePresence>
-                        <div className="w-full max-w-[36rem] px-12">
-                            <div className="relative h-[10px] w-full rounded-full bg-black/[0.03] border border-black/[0.03] shadow-[inset_0_1px_3px_rgba(0,0,0,0.05)] overflow-visible">
-                                {/* Mercury Physics Container */}
-                                <div className="absolute inset-0 overflow-visible" style={{ filter: 'url(#mercury-gooey)' }}>
-                                    {/* Liquid Fill */}
+                        {/* v14: Ethereal Glass Ribbon - Acoustic Progress Tracking */}
+                        <div className="w-full max-w-[36rem] px-12 group/progress">
+                            <div className="relative h-[6px] w-full rounded-full bg-white/12 border border-white/8 backdrop-blur-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)] overflow-visible transition-all duration-500 group-hover/progress:h-[8px]">
+                                
+                                {/* Micro-Milestone Markers (Sentence Boundaries) */}
+                                <div className="absolute inset-0 pointer-events-none z-10">
+                                    {session.sentences.map((s, idx) => {
+                                        const totalDuration = audioRef.current?.duration || 1;
+                                        const pos = (s.startTime / 1000) / totalDuration;
+                                        if (pos <= 0 || pos >= 1) return null;
+                                        return (
+                                            <div 
+                                                key={idx}
+                                                style={{ left: `${pos * 100}%` }}
+                                                className={cn(
+                                                    "absolute top-1/2 -translate-y-1/2 w-[1.5px] h-[3px] rounded-full transition-all duration-700",
+                                                    playerState.currentSentenceIndex >= idx 
+                                                        ? "bg-white/40 scale-y-150" 
+                                                        : "bg-black/10 opacity-20"
+                                                )}
+                                            />
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Flowing Light Column (Thematic Fill) */}
+                                <div className="absolute inset-x-0 inset-y-0 overflow-hidden rounded-full mask-image-linear">
                                     <motion.div
-                                        className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full"
-                                        style={{ width: useTransform(springProgress, p => `${p * 100}%`) }}
+                                        className="absolute inset-y-0 left-0 transition-colors duration-700"
+                                        style={{ 
+                                            width: useTransform(springProgress, p => `${p * 100}%`),
+                                            background: `linear-gradient(90deg, transparent, ${activeMistTheme[0].replace('0.45', '0.2')}, ${activeMistTheme[0]})`,
+                                            boxShadow: `0 0 15px ${activeMistTheme[0].replace('0.45', '0.3')}`
+                                        }}
                                     />
-                                    {/* Mercury Bead */}
+                                    {/* Internal Refraction Swipe */}
                                     <motion.div
-                                        style={{ left: useTransform(springProgress, p => `${p * 100}%`) }}
-                                        className="absolute top-1/2 -translate-y-1/2 -ml-2.5 w-5 h-5 rounded-full bg-white shadow-[0_4px_12px_rgba(0,0,0,0.12),0_0_0_0.5px_rgba(0,0,0,0.05)] flex items-center justify-center overflow-hidden"
+                                        animate={{ x: ["-100%", "400%"] }}
+                                        transition={{ duration: 7, repeat: Infinity, ease: "linear" }}
+                                        className="absolute inset-y-0 w-32 bg-gradient-to-r from-transparent via-white/15 to-transparent skew-x-[-30deg] pointer-events-none"
+                                    />
+                                </div>
+
+                                {/* Floating Satellite Orb (Playhead) */}
+                                <motion.div
+                                    style={{ left: useTransform(springProgress, p => `${p * 100}%`) }}
+                                    className="absolute top-1/2 -translate-y-1/2 -ml-2.5 z-20 pointer-events-none"
+                                >
+                                    {/* Outer Aura */}
+                                    <motion.div 
+                                        animate={{ 
+                                            scale: 1 + (audioEnergy * 0.45) + (vocalHeat * 0.15),
+                                            opacity: 0.4 + (audioEnergy * 0.3)
+                                        }}
+                                        style={{ backgroundColor: activeMistTheme[0] }}
+                                        className="absolute inset-0 rounded-full blur-[10px]"
+                                    />
+                                    
+                                    {/* The Core Satellite */}
+                                    <motion.div 
+                                        animate={{ 
+                                            scale: 1 + (audioEnergy * 0.2),
+                                            backgroundColor: "#ffffff",
+                                            boxShadow: `0 4px 12px rgba(0,0,0,0.08), 0 0 12px ${activeMistTheme[0].replace('0.45', '0.8')}`
+                                        }}
+                                        className="relative w-4 h-4 rounded-full border border-white/50 flex items-center justify-center overflow-hidden"
                                     >
-                                        <div className="absolute inset-0 bg-gradient-to-br from-white via-white to-[#cbd5e1] opacity-40" />
+                                        <div className="absolute inset-0 bg-gradient-to-br from-white via-white to-slate-100" />
                                         <motion.div 
-                                            animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.6, 0.3] }}
-                                            transition={{ duration: 3, repeat: Infinity }}
-                                            className="w-2 h-2 rounded-full bg-blue-500 blur-[2px]" 
+                                            animate={{ opacity: [0.2, 0.5, 0.2], scale: [0.8, 1.2, 0.8] }}
+                                            transition={{ duration: 2.5, repeat: Infinity }}
+                                            style={{ backgroundColor: activeMistTheme[1] }}
+                                            className="w-1.5 h-1.5 rounded-full blur-[0.5px] relative z-10"
                                         />
                                     </motion.div>
-                                </div>
-                                {/* Internal Speculars */}
-                                <motion.div
-                                    animate={{ x: ["-100%", "300%"] }}
-                                    transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
-                                    className="absolute inset-y-0 w-32 bg-gradient-to-r from-transparent via-white/30 to-transparent skew-x-[-25deg] pointer-events-none"
-                                />
+                                </motion.div>
                             </div>
-                            <div className="mt-4 flex items-center justify-between px-2">
+
+                            <div className="mt-5 flex items-center justify-between px-1">
                                 <div className="flex items-center gap-4">
-                                    <span className="text-[10px] font-bold tracking-[0.2em] text-[#94a3b8]/60 uppercase">Vocal Responsive</span>
+                                    <div className="flex items-center gap-2">
+                                        <motion.div 
+                                            animate={{ opacity: [0.3, 0.6, 0.3] }}
+                                            transition={{ duration: 2, repeat: Infinity }}
+                                            className="w-1 h-1 rounded-full bg-slate-400"
+                                        />
+                                        <span className="text-[9px] font-black tracking-[0.3em] text-slate-400/70 uppercase">
+                                            {activeSpeaker ? `Acoustic Trace: ${activeSpeaker}` : "Passive Monitor"}
+                                        </span>
+                                    </div>
                                 </div>
-                                <span className="text-[10px] font-bold tracking-widest text-[#64748b]/90 tabular-nums">
-                                    {completionLabel}
-                                </span>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-[10px] font-black tracking-[0.2em] text-slate-500 tabular-nums bg-white/40 px-2.5 py-0.5 rounded-full border border-white/20">
+                                        {completionLabel}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1141,94 +1431,16 @@ function ListeningCabinPlayerView({
                     </motion.div>
                 </div>
 
-                {/* Phase 26: Word Gloss Cinematic Popup */}
-                <AnimatePresence>
-                    {selectedWord && (
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[500] flex items-center justify-center p-6 bg-slate-900/10 backdrop-blur-sm"
-                            onClick={() => setSelectedWord(null)}
-                        >
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                                transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                                className="w-full max-w-sm glass-panel rounded-[3rem] border-white/60 bg-white/95 p-8 shadow-2xl relative overflow-hidden"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-amber-400 via-rose-400 to-indigo-400" />
-                                
-                                <div className="flex items-start justify-between mb-6">
-                                    <div>
-                                        <p className="text-[10px] font-black tracking-[0.3em] uppercase text-slate-400 mb-1">Vocabulary Echo</p>
-                                        <h2 className="text-3xl font-black text-slate-900 tracking-tight">{selectedWord}</h2>
-                                        {wordDefinition?.phonetic && (
-                                            <p className="text-sm font-bold text-slate-500 mt-1">/ {wordDefinition.phonetic} /</p>
-                                        )}
-                                    </div>
-                                    <button 
-                                        onClick={() => setSelectedWord(null)}
-                                        className="w-10 h-10 flex items-center justify-center rounded-2xl bg-slate-50 text-slate-300 hover:text-slate-900 transition-all hover:bg-slate-100"
-                                    >
-                                        <X size={20} />
-                                    </button>
-                                </div>
-
-                                <div className="space-y-6">
-                                    {isDefining ? (
-                                        <div className="py-12 flex flex-col items-center justify-center gap-4">
-                                            <Loader2 className="w-8 h-8 text-amber-500 animate-spin" />
-                                            <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Generating Insight...</p>
-                                        </div>
-                                    ) : wordDefinition?.error ? (
-                                        <div className="p-4 rounded-[1.5rem] bg-rose-50 border border-rose-100 text-rose-600 text-xs font-bold leading-relaxed">
-                                            {wordDefinition.error}
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div className="space-y-4">
-                                                {wordDefinition?.context_meaning && (
-                                                    <div className="p-5 rounded-[2rem] bg-slate-50 border border-slate-100">
-                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">In Context</p>
-                                                        <p className="text-sm font-bold text-slate-800 leading-relaxed italic">&ldquo;{wordDefinition.context_meaning.definition}&rdquo;</p>
-                                                        <p className="text-xs text-slate-400 mt-2 font-black">— {wordDefinition.context_meaning.translation}</p>
-                                                    </div>
-                                                )}
-
-                                                <div className="space-y-4">
-                                                    {wordDefinition?.meaning_groups?.slice(0, 2).map((group, idx: number) => (
-                                                        <div key={idx} className="px-1">
-                                                            <div className="flex items-center gap-2 mb-2">
-                                                                <span className="text-[10px] font-black bg-slate-900 text-white px-2 py-0.5 rounded italic">{group.pos}</span>
-                                                            </div>
-                                                            <div className="space-y-1.5 pl-1">
-                                                                {group.meanings?.slice(0, 2).map((m, midx: number) => (
-                                                                    <p key={midx} className="text-[13px] font-bold text-slate-700 leading-relaxed flex gap-2">
-                                                                        <span className="text-slate-200 mt-0.5">•</span> {m}
-                                                                    </p>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <button 
-                                                className="w-full py-4 bg-slate-900 text-white rounded-full text-[13px] font-black uppercase tracking-widest shadow-xl shadow-slate-900/20 active:scale-95 transition-transform"
-                                                onClick={() => setSelectedWord(null)}
-                                            >
-                                                Understood
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            </motion.div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                {wordPopup && (
+                    <WordPopup
+                        popup={wordPopup}
+                        onClose={() => setWordPopup(null)}
+                        mode="battle"
+                        appearance="minimal"
+                        showAiDefinitionButton
+                        battleLookupCostHint="听力舱查词不消耗阅读币。"
+                    />
+                )}
             </div>
         </main>
     );
@@ -1238,7 +1450,8 @@ export function ListeningCabinPlayer() {
     const router = useRouter();
     const params = useParams<{ sessionId: string }>();
     const searchParams = useSearchParams();
-    const restart = searchParams.get("restart") === "1";
+    const restartParam = searchParams.get("restart");
+    const restart = restartParam === "1" || restartParam === "true";
     const sessionId = params.sessionId;
     const [session, setSession] = useState<ListeningCabinSession | null | undefined>(undefined);
 

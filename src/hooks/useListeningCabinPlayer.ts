@@ -323,10 +323,13 @@ export function useListeningCabinPlayer({
     const [progressRatio, setProgressRatio] = useState(0);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [audioEnergy, setAudioEnergy] = useState(0);
+    const [vocalHeat, setVocalHeat] = useState(0);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const lastEnergyRef = useRef<number>(0);
+    const vocalHeatRef = useRef(0);
+    const lastSpeakerRef = useRef<string | null>(null);
     const analyserRef = useRef<AnalyserNode | null>(null);
     const dataArrayRef = useRef<Uint8Array | null>(null);
     const currentSentenceIndexRef = useRef(initialSentenceIndex);
@@ -760,7 +763,9 @@ export function useListeningCabinPlayer({
         const monitorRhythm = (timeMs: number = 0) => {
             if (!audioRef.current || audioRef.current.paused) {
                 setAudioEnergy(0);
+                setVocalHeat(0);
                 lastEnergyRef.current = 0;
+                vocalHeatRef.current = 0;
                 return;
             }
 
@@ -795,7 +800,24 @@ export function useListeningCabinPlayer({
             const smoothed = lastEnergyRef.current * 0.7 + Math.min(newEnergy, 1) * 0.3;
             lastEnergyRef.current = smoothed;
 
+            // [v12] Chronothermal Duration Logic - Driven by Active Speaker Tag
+            const currentSpeaker = resolvedSentences[currentSentenceIndexRef.current]?.speaker || null;
+            
+            // Reset on Speaker Transition
+            if (currentSpeaker !== lastSpeakerRef.current) {
+                vocalHeatRef.current = 0;
+                lastSpeakerRef.current = currentSpeaker;
+            }
+
+            // Accumulate while playing, cool down while silent/paused
+            if (!audioRef.current?.paused) {
+                vocalHeatRef.current = Math.min(1, vocalHeatRef.current + (16.6 / 2500)); // 2.5s to reach max Focus
+            } else {
+                vocalHeatRef.current = Math.max(0, vocalHeatRef.current - 0.004); // Natural Dissipation
+            }
+
             setAudioEnergy(smoothed);
+            setVocalHeat(vocalHeatRef.current);
             scheduleFrame(() => monitorRhythm(timeMs + 16.6));
         };
 
@@ -1039,5 +1061,7 @@ export function useListeningCabinPlayer({
         cyclePlaybackRate,
         toggleChineseSubtitle,
         audioEnergy,
+        vocalHeat,
+        audioRef,
     };
 }
