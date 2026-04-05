@@ -1462,7 +1462,7 @@ function ReadingPageContent() {
     return (
         <main
             className={cn(
-                "relative overflow-x-clip text-stone-800 transition-all duration-500 ease-in-out",
+                "relative overflow-hidden text-stone-800 transition-all duration-500 ease-in-out [WebkitTapHighlightColor:transparent]",
                 article
                     ? "min-h-screen bg-[#f7efdc] px-4 pb-8 pt-24 md:px-8 md:pb-10 md:pt-28 xl:px-10"
                     : showStandardSplitQuiz
@@ -1476,17 +1476,17 @@ function ReadingPageContent() {
             {!article && (
                 <>
                     <div className="pointer-events-none fixed inset-0 z-0 bg-[#fefce8]" />
-                    <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(253,224,71,0.24),transparent_34%),radial-gradient(circle_at_90%_10%,rgba(196,181,253,0.28),transparent_28%),radial-gradient(circle_at_50%_28%,rgba(191,219,254,0.4),transparent_32%)]" />
+                    <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(253,224,71,0.24),transparent_34%),radial-gradient(circle_at_90%_10%,rgba(255,183,197,0.15),transparent_28%),radial-gradient(circle_at_50%_28%,rgba(250,230,190,0.22),transparent_32%)]" />
                     <div className="pointer-events-none fixed inset-x-0 top-0 z-0 h-[260px] bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(255,255,255,0))]" />
-                    <div className="pointer-events-none fixed -left-16 top-[28%] z-0 h-48 w-48 rounded-full bg-[#bfdbfe]/50 blur-3xl" />
+                    <div className="pointer-events-none fixed -left-16 top-[28%] z-0 h-48 w-48 rounded-full bg-[#fde68a]/30 blur-3xl" />
                     <div className="pointer-events-none fixed -right-10 top-[16%] z-0 h-56 w-56 rounded-full bg-[#fde68a]/45 blur-3xl" />
-                    <div className="pointer-events-none fixed bottom-[10%] left-[10%] z-0 h-44 w-44 rounded-full bg-[#ddd6fe]/45 blur-3xl" />
+                    <div className="pointer-events-none fixed bottom-[10%] left-[10%] z-0 h-44 w-44 rounded-full bg-[#fae8ff]/45 blur-3xl" />
                 </>
             )}
             {article && (
                 <>
                     <div className="pointer-events-none fixed inset-0 z-0 bg-[#f7efdc]" />
-                    <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(253,230,138,0.34),transparent_26%),radial-gradient(circle_at_top_right,rgba(187,247,208,0.28),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(191,219,254,0.24),transparent_24%)]" />
+                    <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(253,230,138,0.34),transparent_26%),radial-gradient(circle_at_top_right,rgba(187,247,208,0.28),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(250,240,224,0.2),transparent_24%)]" />
                     <div className="pointer-events-none fixed inset-x-0 top-0 z-0 h-[240px] bg-[linear-gradient(180deg,rgba(255,255,255,0.52),rgba(255,255,255,0))]" />
                 </>
             )}
@@ -1522,14 +1522,14 @@ function ReadingPageContent() {
                     >
                         <motion.div
                             className={cn(
-                                "absolute inset-0 backdrop-blur-[8px]",
+                                "absolute inset-0 backdrop-blur-[6px]",
                                 shouldUseGlobalBackgroundLayers
                                     ? backgroundSpec.transitionFilm
-                                    : (activeReadingFilm ?? "bg-[linear-gradient(180deg,rgba(241,245,249,0.5),rgba(203,213,225,0.42))]")
+                                    : (activeReadingFilm ?? "bg-[linear-gradient(180deg,rgba(241,245,249,0.35),rgba(250,245,230,0.32))]")
                             )}
-                            initial={{ scale: 1.08, filter: "blur(22px)" }}
-                            animate={{ scale: 1, filter: "blur(0px)" }}
-                            transition={{ duration: 0.76, ease: [0.18, 1, 0.3, 1] }}
+                            initial={{ scale: 1.05, filter: "blur(12px)", opacity: 0.8 }}
+                            animate={{ scale: 1, filter: "blur(0px)", opacity: 1 }}
+                            transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
                         />
                     </motion.div>
                 )}
@@ -1640,23 +1640,25 @@ function ReadingPageContent() {
             </AnimatePresence>
 
             {/* Floating Navigation Dock */}
-            <motion.nav
-                className={cn(
-                    "fixed top-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-500",
-                    article && !isDockVisible && "pointer-events-none"
-                )}
-                style={{ transformOrigin: "50% 0%" }}
-                initial={navEntryInitial}
+            {!routeExitTarget && (
+                <motion.nav
+                    className={cn(
+                        "fixed top-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-500",
+                        article && !isDockVisible && "pointer-events-none"
+                    )}
+                    style={{ transformOrigin: "50% 0%" }}
+                    initial={navEntryInitial}
                 animate={article
                     ? (isDockVisible
                         ? { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }
                         : { opacity: 0, y: -38, scale: 0.96, filter: "blur(8px)" })
                     : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                exit={{ opacity: 0 }}
                 transition={article
                     ? (isDockVisible
                         ? { type: "spring", stiffness: 320, damping: 32, mass: 0.72 }
                         : { duration: 0.34, ease: [0.4, 0, 1, 1] })
-                    : { duration: hasRouteEntry ? 0.62 : 0.52, ease: pageIntroEase }}
+                    : { duration: 0 }}
                 onMouseEnter={() => {
                     if (!article) return;
                     setIsDockVisible(true);
@@ -1796,6 +1798,7 @@ function ReadingPageContent() {
                     </div>
                 )}
             </motion.nav>
+            )}
 
             <ReadingCoinIsland event={activeReadingCoinFx} />
 

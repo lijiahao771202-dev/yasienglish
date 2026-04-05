@@ -77,6 +77,8 @@ export interface ListeningCabinSentence {
     speaker?: string;
     emotion?: ListeningCabinSentenceEmotion;
     pace?: ListeningCabinSentencePace;
+    isMastered?: boolean;
+    note?: string;
 }
 
 export interface ListeningCabinGenerationRequest {

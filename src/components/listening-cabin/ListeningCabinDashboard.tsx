@@ -6,13 +6,22 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
     ArrowLeft,
     WandSparkles,
+    RotateCcw,
+    Clock,
+    ArrowUpRight,
     Play,
     Loader2,
+    X,
+    Check,
+    PencilLine,
+    Trophy,
+    StickyNote,
+    Star,
+    Sparkles,
     Trash2,
     BookAudio,
     ChevronRight,
     ChevronLeft,
-    X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -49,7 +58,53 @@ import type {
     ListeningCabinGenerationResponse,
     ListeningCabinScriptMode,
     ListeningCabinSession,
+    ListeningCabinSentence,
 } from "@/lib/listening-cabin";
+import { db } from "@/lib/db";
+
+// NEW: Localized Note Input Component to prevent cursor jump on LiveQuery updates
+const SentenceNoteInput = ({ 
+    session, 
+    index, 
+    initialNote, 
+    onSave 
+}: { 
+    session: ListeningCabinSession, 
+    index: number, 
+    initialNote: string, 
+    onSave: (session: ListeningCabinSession, index: number, note: string) => Promise<void> 
+}) => {
+    const [localNote, setLocalNote] = useState(initialNote);
+    const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const newVal = e.target.value;
+        setLocalNote(newVal);
+
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => {
+            void onSave(session, index, newVal);
+        }, 800);
+    };
+
+    return (
+        <div className="p-4 rounded-[1.75rem] bg-[#fcf9ed] border border-amber-100/50 shadow-inner relative group/note mt-2 transition-all">
+            <div className="absolute top-3 right-5 text-[9px] font-black text-amber-200 uppercase tracking-widest">
+                Reflections
+            </div>
+            <textarea 
+                value={localNote}
+                onChange={handleChange}
+                placeholder="写下你对这一句的理解或难点..."
+                className="w-full bg-transparent border-none focus:ring-0 text-[14px] font-bold text-[#5c4033] placeholder:text-amber-200 resize-none min-h-[80px] leading-relaxed p-0"
+            />
+            <div className="mt-3 pt-3 border-t border-amber-100/20 flex items-center gap-1.5 text-[9px] font-black text-amber-300 italic">
+                <Sparkles size={8} />
+                Journal updated.
+            </div>
+        </div>
+    );
+};
 
 // --- Minimal Dashboard Card Component ---
 type MultiSpeakerMode = Exclude<ListeningCabinScriptMode, "monologue">;
@@ -96,12 +151,66 @@ export default function ListeningCabinDashboard() {
     const [showChineseSubtitle, setShowChineseSubtitle] = useState(true);
     const [randomTopicLocked, setRandomTopicLocked] = useState(false);
     const [previewSentenceKey, setPreviewSentenceKey] = useState<string | null>(null);
+    const [editingNoteIndex, setEditingNoteIndex] = useState<number | null>(null);
 
     // Phase 25: Wizard & View Transitions
     const [showWizard, setShowWizard] = useState(false);
     const [wizardStep, setWizardStep] = useState(1);
     const [activeView, setActiveView] = useState<'dashboard' | 'script'>('dashboard');
 
+    const handleToggleMastery = async (session: ListeningCabinSession, index: number) => {
+        const updatedSentences = [...session.sentences];
+        const sentence = updatedSentences[index];
+        if (!sentence) return;
+
+        updatedSentences[index] = {
+            ...sentence,
+            isMastered: !sentence.isMastered
+        };
+
+        const updatedSession = {
+            ...session,
+            sentences: updatedSentences,
+            updated_at: Date.now()
+        };
+
+        try {
+            await db.listening_cabin_sessions.put(updatedSession);
+        } catch (err) {
+            console.error("Failed to update mastery:", err);
+        }
+    };
+
+    const handleUpdateNote = async (session: ListeningCabinSession, index: number, note: string) => {
+        const updatedSentences = [...session.sentences];
+        const sentence = updatedSentences[index];
+        if (!sentence) return;
+
+        updatedSentences[index] = {
+            ...sentence,
+            note
+        };
+
+        const updatedSession = {
+            ...session,
+            sentences: updatedSentences,
+            updated_at: Date.now()
+        };
+
+        try {
+            await db.listening_cabin_sessions.put(updatedSession);
+        } catch (err) {
+            console.error("Failed to update note:", err);
+        }
+    };
+
+
+    const isAllMastered = (session: ListeningCabinSession) => {
+        if (!session.sentences || session.sentences.length === 0) return false;
+        return session.sentences.every(s => s.isMastered);
+    };
+
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const usedRandomTopicsRef = useRef<Set<string>>(new Set());
 
@@ -182,7 +291,7 @@ export default function ListeningCabinDashboard() {
     };
 
     const openSession = (id: string, restart = false) => {
-        router.push(`/listening-cabin/${id}?showChinese=${showChineseSubtitle}${restart ? "&restart=true" : ""}`);
+        router.push(`/listening-cabin/${id}?showChinese=${showChineseSubtitle}${restart ? "&restart=1" : ""}`);
     };
 
     const handlePreviewSentence = async (session: ListeningCabinSession, index: number) => {
@@ -238,6 +347,13 @@ export default function ListeningCabinDashboard() {
             topicSource: "pool",
         }));
         return randomTopic;
+    };
+
+    const formatDuration = (minutes: number) => {
+        const totalSeconds = Math.round(minutes * 60);
+        const mins = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        return `${mins}m ${secs}s`;
     };
 
     const toggleFocusTag = (tag: ListeningCabinFocusTag) => {
@@ -478,9 +594,9 @@ export default function ListeningCabinDashboard() {
     }, [request.scriptMode]);
 
     return (
-        <main className="relative min-h-screen overflow-hidden bg-[linear-gradient(180deg,#f6f2eb_0%,#f2ece3_48%,#f5f0ea_100%)] text-[#1b1611]">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,197,80,0.12),transparent_24%),radial-gradient(circle_at_top_right,rgba(191,207,255,0.3),transparent_30%),radial-gradient(circle_at_bottom_left,rgba(250,240,224,0.9),transparent_26%)]" />
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-[18rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.58),transparent)]" />
+        <main className="relative min-h-screen overflow-x-hidden bg-[#fffdfa] text-[#1b1611] [WebkitTapHighlightColor:transparent]">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,197,80,0.08),transparent_24%),radial-gradient(circle_at_bottom_left,rgba(250,240,224,0.7),transparent_26%)]" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-[18rem] bg-[linear-gradient(180deg,rgba(255,255,255,0.4),transparent)]" />
 
             <div className="relative mx-auto max-w-[1120px] px-4 pb-10 pt-5 sm:px-6 lg:px-8">
                 <header className="mb-8 flex items-center justify-between gap-4">
@@ -505,9 +621,10 @@ export default function ListeningCabinDashboard() {
                     {activeView === 'dashboard' ? (
                         <motion.div 
                             key="dashboard"
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -20 }}
+                            initial={{ opacity: 0, scale: 0.98, y: 15 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.98, y: 15 }}
+                            transition={{ duration: 0.35, ease: "easeOut" }}
                             className="flex flex-col gap-16 max-w-7xl mx-auto w-full"
                         >
                             {/* Top Hero: Guidance Forge */}
@@ -582,58 +699,135 @@ export default function ListeningCabinDashboard() {
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                                    {sessions.length > 0 ? sessions.slice(0, 12).map((session: ListeningCabinSession) => (
-                                        <motion.div 
-                                            key={session.id} 
-                                            whileHover={{ y: -8, scale: 1.02 }}
-                                            className={cn(
-                                                "rounded-[3rem] border-2 p-8 transition-all duration-500 relative group overflow-hidden h-full flex flex-col justify-between",
-                                                selectedSessionId === session.id 
-                                                    ? "border-pink-300 bg-white shadow-[0_32px_64px_-16px_rgba(255,107,149,0.18)]" 
-                                                    : "border-[#ede4db] bg-white/60 hover:bg-white hover:border-pink-200 shadow-[0_16px_32px_-12px_rgba(0,0,0,0.03)] hover:shadow-[0_32px_64px_-16px_rgba(0,0,0,0.08)]"
-                                            )}
-                                        >
-                                            {/* Top corner gloss */}
-                                            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-pink-50/20 to-transparent rounded-full -translate-y-12 translate-x-12 blur-2xl" />
-                                            
-                                            <div className="relative z-10 mb-8" onClick={() => setSelectedSessionId(session.id)}>
-                                                <div className="flex items-center gap-3 mb-4">
-                                                    <span className={cn(
-                                                        "px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider border-2 shadow-sm",
-                                                        session.cefrLevel === 'A1' || session.cefrLevel === 'A2' ? "bg-emerald-50 border-emerald-100 text-emerald-500" :
-                                                        session.cefrLevel === 'B1' || session.cefrLevel === 'B2' ? "bg-blue-50 border-blue-100 text-blue-500" :
-                                                        "bg-purple-50 border-purple-100 text-purple-500"
-                                                    )}>
-                                                        {session.cefrLevel} Level
-                                                    </span>
-                                                    <span className="text-[11px] text-slate-300 font-black">•</span>
-                                                    <p className="text-[11px] text-slate-400 font-black">{formatSessionTime(session.updated_at)}</p>
-                                                </div>
-                                                <h4 className="text-xl font-black text-[#5c4033] leading-tight line-clamp-2 tracking-tight group-hover:text-pink-400 transition-colors">{session.title}</h4>
-                                            </div>
+                                    {sessions.length > 0 ? sessions.slice(0, 12).map((session: ListeningCabinSession) => {
+                                        const progress = Math.min(100, Math.round(((session.lastSentenceIndex + 1) / session.sentenceCount) * 100));
+                                        const duration = formatDuration(session.meta.estimatedMinutes);
+                                        const isCompleted = progress >= 100;
 
-                                            <div className="mt-auto flex items-center gap-3 pt-6 border-t border-slate-50 relative z-10">
-                                                <button 
-                                                    onClick={() => openSession(session.id)} 
-                                                    className="flex-1 px-6 py-3.5 bg-slate-900 text-white rounded-2xl text-[11px] font-black uppercase tracking-[0.1em] hover:scale-105 active:scale-95 transition-all shadow-lg"
-                                                >
-                                                    Continue
-                                                </button>
-                                                <button 
-                                                    onClick={() => { setSelectedSessionId(session.id); setActiveView('script'); }} 
-                                                    className="px-6 py-3.5 bg-white border-2 border-slate-100 text-[#5c4033] rounded-2xl text-[11px] font-black uppercase tracking-[0.1em] hover:border-pink-200 hover:text-pink-400 transition-all active:scale-95 shadow-sm"
-                                                >
-                                                    Script 📜
-                                                </button>
-                                                <button 
-                                                    onClick={() => handleDeleteSession(session.id)} 
-                                                    className="w-12 h-12 flex items-center justify-center rounded-2xl bg-red-50 text-red-300 hover:bg-red-500 hover:text-white transition-all active:scale-95 shadow-sm"
-                                                >
-                                                    <Trash2 size={18} />
-                                                </button>
-                                            </div>
-                                        </motion.div>
-                                    )) : (
+                                        return (
+                                            <motion.div 
+                                                key={session.id} 
+                                                whileHover={{ y: -8, scale: 1.02 }}
+                                                className={cn(
+                                                    "rounded-[3.5rem] border-2 p-8 transition-all duration-500 relative group overflow-hidden h-full flex flex-col justify-between",
+                                                    isAllMastered(session)
+                                                        ? "border-amber-400/60 bg-gradient-to-br from-amber-50/50 to-orange-50/30 shadow-[0_48px_96px_-16px_rgba(251,191,36,0.3)] ring-4 ring-amber-100/20"
+                                                        : selectedSessionId === session.id 
+                                                            ? "border-pink-300 bg-white shadow-[0_48px_80px_-16px_rgba(255,107,149,0.18)]" 
+                                                            : "border-[#ede4db]/60 bg-white/70 hover:bg-white hover:border-pink-200/80 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.04)] hover:shadow-[0_48px_80px_-16px_rgba(0,0,0,0.1)]"
+                                                )}
+                                            >
+                                                {/* Background Decorative Element */}
+                                                <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-pink-100/10 to-transparent rounded-full -translate-y-16 translate-x-16 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                                                
+                                                <div className="relative z-10" onClick={() => setSelectedSessionId(session.id)}>
+                                                    <div className="flex flex-wrap items-center gap-2.5 mb-6">
+                                                        <span className={cn(
+                                                            "px-3.5 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest border-2 shadow-sm",
+                                                            session.cefrLevel.startsWith('A') ? "bg-emerald-50/50 border-emerald-100/50 text-emerald-500" :
+                                                            session.cefrLevel.startsWith('B') ? "bg-blue-50/50 border-blue-100/50 text-blue-500" :
+                                                            "bg-purple-50/50 border-purple-100/50 text-purple-500"
+                                                        )}>
+                                                            {session.cefrLevel}
+                                                        </span>
+                                                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50/80 rounded-2xl border-2 border-slate-100/50 text-[10px] font-black text-slate-400 tracking-tighter shadow-sm">
+                                                            <Clock size={11} strokeWidth={3} />
+                                                            {duration}
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="flex flex-wrap items-center gap-3 mb-6">
+                                                        {isCompleted && (
+                                                            <div className="px-4 py-1.5 rounded-full bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200">
+                                                                Done ✨
+                                                            </div>
+                                                        )}
+                                                        {isAllMastered(session) ? (
+                                                            <motion.div 
+                                                                initial={{ opacity: 0, x: 20 }}
+                                                                animate={{ opacity: 1, x: 0 }}
+                                                                className="px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-amber-200 flex items-center gap-1.5"
+                                                            >
+                                                                <Trophy size={12} fill="white" strokeWidth={0} />
+                                                                Mastered 👑
+                                                            </motion.div>
+                                                        ) : session.sentences.some(s => s.isMastered) && (
+                                                            <div className="px-4 py-1.5 rounded-full bg-amber-100 text-amber-600 text-[10px] font-black uppercase tracking-widest border border-amber-200 flex items-center gap-1.5">
+                                                                <Check size={12} strokeWidth={4} />
+                                                                {session.sentences.filter(s => s.isMastered).length}/{session.sentenceCount} Mastered
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    <h4 className="text-[22px] font-black text-[#4a3a2a] leading-[1.25] line-clamp-2 tracking-tight group-hover:text-pink-500/90 transition-colors mb-4">{session.title}</h4>
+                                                    
+                                                    <div className="flex items-baseline gap-2 text-slate-400 font-bold mb-8">
+                                                        <span className="text-[10px] uppercase tracking-[0.2em]">{formatSessionTime(session.updated_at)}</span>
+                                                        <span className="w-1 h-1 rounded-full bg-slate-200" />
+                                                        <span className="text-[10px] uppercase tracking-[0.2em]">{session.sentenceCount} Sentences</span>
+                                                    </div>
+
+                                                    {/* Progress Indicator */}
+                                                    <div className="mb-10 space-y-2.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Progress Trace</p>
+                                                            <p className="text-[10px] font-black text-pink-400">{progress}%</p>
+                                                        </div>
+                                                        <div className="h-2 w-full bg-slate-50 rounded-full overflow-hidden p-0.5 border border-slate-100/50">
+                                                            <motion.div 
+                                                                initial={{ width: 0 }}
+                                                                animate={{ width: `${progress}%` }}
+                                                                transition={{ duration: 1, ease: "easeOut" }}
+                                                                className={cn(
+                                                                    "h-full rounded-full shadow-sm",
+                                                                    isCompleted ? "bg-emerald-300" : "bg-gradient-to-r from-pink-200 to-pink-300"
+                                                                )} 
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex flex-col gap-3 relative z-10">
+                                                    {/* Row 1: Primary Actions */}
+                                                    <div className="flex gap-3">
+                                                        <button 
+                                                            onClick={() => openSession(session.id)} 
+                                                            className="flex-1 h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-[1.5rem] flex items-center justify-center gap-2.5 group/btn transition-all active:scale-[0.97] shadow-xl shadow-slate-200/50"
+                                                        >
+                                                            <Play size={16} fill="currentColor" className="group-hover/btn:translate-x-0.5 transition-transform" />
+                                                            <span className="text-[11px] font-black uppercase tracking-[0.15em]">Continue</span>
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => openSession(session.id, true)} 
+                                                            className="w-16 h-14 bg-amber-50 hover:bg-amber-100 text-amber-600 border-2 border-amber-100/50 rounded-[1.5rem] flex items-center justify-center transition-all active:scale-[0.97] shadow-sm group/reset"
+                                                            title="重新播放"
+                                                        >
+                                                            <RotateCcw size={18} strokeWidth={3} className="group-hover/reset:rotate-[-45deg] transition-transform" />
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Row 2: Secondary & Critical Actions */}
+                                                    <div className="flex gap-3">
+                                                        <button 
+                                                            onClick={() => { setSelectedSessionId(session.id); setActiveView('script'); }} 
+                                                            className="flex-1 h-14 bg-white/80 border-2 border-slate-100/80 text-slate-500 rounded-[1.5rem] flex items-center justify-center gap-2.5 text-[10px] font-black uppercase tracking-widest hover:border-pink-200 hover:text-pink-500 hover:bg-white transition-all active:scale-[0.97] shadow-sm group/script"
+                                                        >
+                                                            <span className="group-hover/script:scale-110 transition-transform">📜</span>
+                                                            <span className="opacity-80">Script Artifact</span>
+                                                            <ArrowUpRight size={12} className="opacity-0 group-hover/script:opacity-100 transition-all group-hover/script:translate-x-0.5 group-hover/script:-translate-y-0.5" />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleDeleteSession(session.id)} 
+                                                            className="w-16 h-14 flex items-center justify-center rounded-[1.5rem] bg-red-50/50 border-2 border-red-50 text-red-300 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all active:scale-[0.97] shadow-sm"
+                                                            title="删除记录"
+                                                        >
+                                                            <Trash2 size={18} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        );
+                                    }) : (
                                         <div className="lg:col-span-3 py-32 text-center rounded-[3rem] bg-white/40 border-2 border-dashed border-slate-200">
                                             <div className="text-7xl mb-6 opacity-20">🍯</div>
                                             <p className="text-lg font-black text-slate-300 italic">空空如也，快去锻造你的第一段听力吧！</p>
@@ -645,40 +839,53 @@ export default function ListeningCabinDashboard() {
                     ) : (
                         <motion.div 
                             key="script"
-                            initial={{ opacity: 0, x: 30 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -30 }}
+                            initial={{ opacity: 0, scale: 1.02, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 1.02, y: 20 }}
+                            transition={{ duration: 0.35, ease: "easeOut" }}
                             className="flex flex-col gap-8 max-w-5xl mx-auto w-full px-4 lg:px-0"
                         >
                             {selectedSession && (
                                 <>
-                                    <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-4 p-8 rounded-[3rem] bg-white/40 border-2 border-white/60 backdrop-blur-xl">
-                                        <div className="flex items-center gap-8 text-center md:text-left">
+                                    <div className="flex flex-col md:flex-row items-center justify-between gap-8 mb-4 p-10 rounded-[4rem] bg-white shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] border-2 border-slate-50 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-amber-50/40 to-transparent rounded-full -translate-y-32 translate-x-32 blur-3xl" />
+                                        
+                                        <div className="flex items-center gap-10 text-center md:text-left relative z-10">
                                             <motion.button 
-                                                whileHover={{ scale: 1.1, rotate: -10 }}
+                                                whileHover={{ scale: 1.1, x: -5 }}
                                                 whileTap={{ scale: 0.9 }}
                                                 onClick={() => setActiveView('dashboard')}
-                                                className="w-14 h-14 rounded-2xl bg-white border-2 border-slate-100 flex items-center justify-center text-slate-600 hover:border-pink-200 hover:text-pink-400 transition-all shadow-[0_8px_24px_-4px_rgba(0,0,0,0.05)] active:scale-90"
+                                                className="w-16 h-16 rounded-[2rem] bg-white border-2 border-slate-100 flex items-center justify-center text-slate-600 hover:border-pink-200 hover:text-pink-400 transition-all shadow-[0_12px_24px_-4px_rgba(0,0,0,0.06)]"
                                             >
-                                                <ChevronLeft size={24} strokeWidth={3} />
+                                                <ChevronLeft size={28} strokeWidth={3} />
                                             </motion.button>
-                                            <div>
-                                                <div className="flex items-center justify-center md:justify-start gap-3 mb-2">
-                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-pink-400 bg-pink-50 px-3 py-1 rounded-full border border-pink-100 shadow-sm">Script Artifact 💎</span>
-                                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
-                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">{selectedSession.cefrLevel} Level</span>
+                                            
+                                            <div className="space-y-3">
+                                                <div className="flex items-center justify-center md:justify-start gap-4">
+                                                    <span className="px-4 py-1.5 bg-gradient-to-r from-amber-400 to-orange-400 text-white text-[10px] font-black uppercase tracking-[0.2em] rounded-full shadow-lg shadow-amber-200/50">Adventure Journal 📜</span>
+                                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 rounded-2xl border border-slate-100 text-[10px] font-black text-slate-400">
+                                                        <Clock size={12} strokeWidth={3} />
+                                                        {formatDuration(selectedSession.meta.estimatedMinutes)}
+                                                    </div>
                                                 </div>
-                                                <h2 className="text-4xl font-black text-[#5c4033] tracking-tighter leading-tight drop-shadow-sm">{selectedSession.title}</h2>
+                                                <h2 className="text-4xl sm:text-5xl font-black text-[#4a3a2a] tracking-tighter leading-tight drop-shadow-sm max-w-2xl">{selectedSession.title}</h2>
+                                                <div className="flex items-center justify-center md:justify-start gap-3 text-slate-400/80 font-bold">
+                                                    <span className="text-[11px] uppercase tracking-widest">{selectedSession.cefrLevel} Level</span>
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
+                                                    <span className="text-[11px] uppercase tracking-widest">{selectedSession.sentenceCount} Sentences Total</span>
+                                                </div>
                                             </div>
                                         </div>
+
                                         <motion.button 
                                             whileHover={{ scale: 1.05, y: -4 }}
                                             whileTap={{ scale: 0.95 }}
                                             onClick={() => openSession(selectedSession.id)} 
-                                            className="px-12 py-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-[2.5rem] text-[15px] font-black uppercase tracking-[0.15em] shadow-[0_24px_48px_-12px_rgba(15,23,42,0.35)] hover:shadow-[0_28px_56px_-12px_rgba(15,23,42,0.45)] active:scale-95 transition-all flex items-center gap-3"
+                                            className="px-14 py-6 bg-slate-900 text-white rounded-[2.5rem] text-[16px] font-black uppercase tracking-[0.2em] shadow-[0_24px_48px_-8px_rgba(15,23,42,0.35)] hover:shadow-[0_28px_56px_-8px_rgba(15,23,42,0.45)] transition-all flex items-center gap-4 group/play relative z-10 overflow-hidden"
                                         >
-                                            <Play size={20} fill="currentColor" strokeWidth={0} />
-                                            Enter Magic 🎧
+                                            <div className="absolute inset-x-0 bottom-0 h-1 bg-white/20 origin-left scale-x-0 group-hover/play:scale-x-100 transition-transform duration-500" />
+                                            <Play size={20} fill="currentColor" strokeWidth={0} className="group-hover/play:scale-110 transition-transform" />
+                                            Enter Forge ⚡️
                                         </motion.button>
                                     </div>
 
@@ -692,47 +899,115 @@ export default function ListeningCabinDashboard() {
                                                     initial={{ opacity: 0, y: 30 }}
                                                     animate={{ opacity: 1, y: 0, transition: { delay: idx * 0.04, type: "spring", stiffness: 120, damping: 15 } }}
                                                     className={cn(
-                                                        "p-8 sm:p-10 rounded-[3.5rem] border-2 transition-all group relative overflow-hidden",
-                                                        isPreviewing 
-                                                            ? "bg-pink-50/40 border-pink-200 shadow-xl shadow-pink-100/30" 
-                                                            : "bg-white/80 border-white/60 hover:border-pink-100 hover:bg-white shadow-sm"
+                                                        "p-6 sm:p-7 rounded-[2.5rem] border-2 transition-all group relative overflow-hidden",
+                                                        sentence.isMastered 
+                                                            ? "bg-amber-50/30 border-amber-100/50 shadow-md" 
+                                                            : isPreviewing 
+                                                                ? "bg-pink-50/40 border-pink-200 shadow-xl shadow-pink-100/30" 
+                                                                : "bg-white/80 border-white/60 hover:border-pink-100 hover:bg-white shadow-sm"
                                                     )}
                                                 >
                                                     {/* Decorative background blobs */}
-                                                    <div className="absolute -top-10 -right-10 w-24 h-24 bg-gradient-to-br from-pink-50 to-orange-50 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                    
-                                                    <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-8 relative z-10">
-                                                        <div className="flex-1 text-center sm:text-left">
-                                                            <div className="flex items-center justify-center sm:justify-start gap-4 mb-6">
-                                                                <span className="w-9 h-9 rounded-2xl bg-slate-50 border-2 border-slate-100 flex items-center justify-center text-[12px] font-black text-slate-400 shadow-sm group-hover:bg-white transition-colors">{idx + 1}</span>
-                                                                <div className="px-3 py-1 bg-gradient-to-r from-orange-50 to-pink-50 border-2 border-orange-100/50 rounded-full">
-                                                                     <p className="text-[10px] font-black text-orange-400 uppercase tracking-widest">{sentence.speaker || "Narrator"}</p>
-                                                                </div>
+                                                    <div className="absolute -top-10 -right-10 w-24 h-24 bg-gradient-to-br from-amber-50 to-orange-50 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                    {sentence.isMastered && (
+                                                        <div className="absolute top-4 right-4">
+                                                            <div className="w-8 h-8 rounded-full bg-amber-400 flex items-center justify-center shadow-lg shadow-amber-200 text-white">
+                                                                <Trophy size={14} fill="white" />
                                                             </div>
-                                                            <p className="text-[22px] font-black text-[#5c4033] leading-relaxed tracking-tight italic mb-5 antialiased">
+                                                        </div>
+                                                    )}
+                                                    
+                                                    <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 relative z-10">
+                                                        <div className="flex-1 text-center sm:text-left">
+                                                            <div className="flex items-center justify-center sm:justify-start gap-3 mb-4">
+                                                                <span className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-[11px] font-black text-slate-400 shadow-sm group-hover:bg-white transition-colors">{idx + 1}</span>
+                                                                <div className="px-3 py-1 bg-gradient-to-r from-orange-50 to-pink-50 border border-orange-100/40 rounded-full">
+                                                                     <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest">{sentence.speaker || "Narrator"}</p>
+                                                                </div>
+                                                                {sentence.note && (
+                                                                    <div className="flex items-center gap-1 px-2.5 py-1 bg-amber-50 rounded-full border border-amber-100 text-[9px] font-black text-amber-500 shadow-sm">
+                                                                        <StickyNote size={8} />
+                                                                        Note
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            <p className="text-[19px] font-black text-[#5c4033] leading-relaxed tracking-tight italic mb-3.5 antialiased">
                                                                 {`"${sentence.english}"`}
                                                             </p>
-                                                            <div className="inline-block px-4 py-2 rounded-2xl bg-slate-50/80 group-hover:bg-pink-50/50 transition-colors">
-                                                                <p className="text-[14px] text-slate-500 leading-relaxed font-black opacity-80">{sentence.chinese}</p>
+                                                            <div className="inline-block px-3 py-1.5 rounded-xl bg-slate-50/80 group-hover:bg-white transition-colors border border-transparent group-hover:border-slate-100">
+                                                                <p className="text-[13px] text-slate-500 leading-relaxed font-black opacity-80">{sentence.chinese}</p>
+                                                            </div>
+
+                                                            {/* Sentence Actions & Note Input */}
+                                                            <div className="mt-6 flex flex-col gap-3">
+                                                                <div className="flex items-center gap-2.5">
+                                                                    <motion.button 
+                                                                        whileHover={{ scale: 1.05 }}
+                                                                        whileTap={{ scale: 0.95 }}
+                                                                        onClick={() => handleToggleMastery(selectedSession, idx)}
+                                                                        className={cn(
+                                                                            "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+                                                                            sentence.isMastered 
+                                                                                ? "bg-amber-100 text-amber-600 border border-amber-200" 
+                                                                                : "bg-white text-slate-400 border border-slate-100 hover:border-amber-100 hover:text-amber-500 shadow-sm"
+                                                                        )}
+                                                                    >
+                                                                        {sentence.isMastered ? <Check size={12} strokeWidth={4} /> : <div className="w-1 h-1 rounded-full bg-slate-300" />}
+                                                                        {sentence.isMastered ? "Mastered" : "Learn"}
+                                                                    </motion.button>
+                                                                    
+                                                                    <motion.button 
+                                                                        whileHover={{ scale: 1.05 }}
+                                                                        whileTap={{ scale: 0.95 }}
+                                                                        onClick={() => setEditingNoteIndex(editingNoteIndex === idx ? null : idx)}
+                                                                        className={cn(
+                                                                            "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+                                                                            editingNoteIndex === idx || sentence.note
+                                                                                ? "bg-blue-50 text-blue-500 border border-blue-100"
+                                                                                : "bg-white text-slate-400 border border-slate-100 hover:border-blue-100 hover:text-blue-500 shadow-sm"
+                                                                        )}
+                                                                    >
+                                                                        <PencilLine size={12} strokeWidth={3} />
+                                                                        Notes
+                                                                    </motion.button>
+                                                                </div>
+
+                                                                <AnimatePresence>
+                                                                    {(editingNoteIndex === idx || sentence.note) && (
+                                                                        <motion.div 
+                                                                            initial={{ height: 0, opacity: 0 }}
+                                                                            animate={{ height: "auto", opacity: 1 }}
+                                                                            exit={{ height: 0, opacity: 0 }}
+                                                                            className="overflow-hidden"
+                                                                        >
+                                                                            <SentenceNoteInput 
+                                                                                session={selectedSession}
+                                                                                index={idx}
+                                                                                initialNote={sentence.note || ""}
+                                                                                onSave={handleUpdateNote}
+                                                                            />
+                                                                        </motion.div>
+                                                                    )}
+                                                                </AnimatePresence>
                                                             </div>
                                                         </div>
                                                         <motion.button 
-                                                            whileHover={{ scale: 1.1, rotate: 15 }}
+                                                            whileHover={{ scale: 1.1, rotate: 10 }}
                                                             whileTap={{ scale: 0.9 }}
                                                             onClick={() => handlePreviewSentence(selectedSession, idx)} 
                                                             className={cn(
-                                                                "w-16 h-16 rounded-[2.2rem] flex items-center justify-center transition-all active:scale-90 shadow-lg shrink-0",
+                                                                "w-14 h-14 rounded-3xl flex items-center justify-center transition-all active:scale-90 shadow-lg shrink-0 group/preview mt-4 sm:mt-0",
                                                                 isPreviewing 
-                                                                    ? "bg-[#ff8ca0] text-white rotate-12 shadow-[0_12px_24px_-8px_rgba(255,140,160,0.6)]" 
-                                                                    : "bg-white border-2 border-slate-50 text-slate-300 hover:border-pink-200 hover:text-[#ff8ca0] hover:shadow-xl hover:shadow-pink-100"
+                                                                    ? "bg-slate-900 text-white" 
+                                                                    : "bg-white border-2 border-slate-50 text-slate-300 hover:border-pink-200 hover:text-[#ff8ca0]"
                                                             )}
                                                         >
                                                             {isPreviewing ? (
                                                                 <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1 }}>
-                                                                    <Play size={22} fill="currentColor" />
+                                                                    <Play size={20} fill="currentColor" strokeWidth={0} />
                                                                 </motion.div>
                                                             ) : (
-                                                                <Play size={22} fill="currentColor" />
+                                                                <Play size={20} fill="currentColor" strokeWidth={0} className="group-hover/preview:scale-110 transition-transform" />
                                                             )}
                                                         </motion.button>
                                                     </div>
@@ -747,60 +1022,68 @@ export default function ListeningCabinDashboard() {
                 </AnimatePresence>
             </div>
 
-            {/* Phase 25: The Guidance Forge Wizard — Cute Bottom Sheet */}
+            {/* Phase 25: The Guidance Forge Wizard — v3.0 'Crystal Forge' Centered Modal */}
             <AnimatePresence>
                 {showWizard && (
                     <motion.div 
                         initial={{ opacity: 0 }} 
                         animate={{ opacity: 1 }} 
                         exit={{ opacity: 0 }} 
-                        className="fixed inset-0 z-[1000] flex items-end justify-center"
+                        className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6"
                     >
-                        <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" onClick={() => setShowWizard(false)} />
+                        {/* High-Blur Backdrop */}
                         <motion.div 
-                            initial={{ y: "100%" }} 
-                            animate={{ y: 0 }} 
-                            exit={{ y: "100%" }} 
-                            transition={{ type: "spring", damping: 30, stiffness: 300 }}
-                            className="relative w-full max-w-lg rounded-t-[2.5rem] bg-white shadow-[0_-20px_60px_-15px_rgba(0,0,0,0.15)] flex flex-col max-h-[58vh]"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-xl" 
+                            onClick={() => setShowWizard(false)} 
+                        />
+                        
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }} 
+                            animate={{ opacity: 1, scale: 1, y: 0 }} 
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }} 
+                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                            className="relative w-full max-w-xl rounded-[3.5rem] bg-white/95 border border-white shadow-[0_32px_80px_-16px_rgba(0,0,0,0.25)] flex flex-col max-h-[85vh] overflow-hidden"
                         >
-                            {/* Drag Handle */}
-                            <div className="flex justify-center pt-3 pb-1">
-                                <div className="w-10 h-1 rounded-full bg-slate-200" />
-                            </div>
+                            {/* Decorative Head Gloss */}
+                            <div className="absolute top-0 inset-x-0 h-32 bg-gradient-to-b from-amber-50/30 to-transparent pointer-events-none" />
 
-                            {/* Header */}
-                             <div className="px-7 pb-4 pt-2 flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-2xl bg-amber-50 flex items-center justify-center shadow-inner">
-                                        <span className="text-xl">🧁</span>
-                                    </div>
-                                    <h2 className="text-[17px] font-black text-[#5c4033] tracking-tight">打造可爱脚本</h2>
-                                </div>
+                            {/* Header: Refined Navigation */}
+                             <div className="px-10 pb-5 pt-8 flex items-center justify-between relative z-10">
                                 <div className="flex items-center gap-4">
-                                    <div className="flex gap-1.5 px-3 py-2 bg-slate-50 rounded-full border border-slate-100">
-                                        {[1,2,3,4,5].map(step => (
+                                    <div className="w-12 h-12 rounded-[1.25rem] bg-white border border-amber-50 shadow-[0_8px_16px_rgba(255,191,0,0.08)] flex items-center justify-center">
+                                        <span className="text-2xl">🪄</span>
+                                    </div>
+                                    <div>
+                                        <h2 className="text-[19px] font-black text-[#4a3a2a] tracking-tight">打造可爱脚本</h2>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Crystal Forge v3.0</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-5">
+                                    <div className="flex gap-2 px-4 py-2 bg-slate-50/80 rounded-full border border-slate-100 shadow-inner">
+                                        {[1,2,3,4,5,6,7].map(step => (
                                             <motion.div 
                                                 key={step} 
                                                 animate={{ 
-                                                    width: step === wizardStep ? 18 : 8,
+                                                    width: step === wizardStep ? 24 : 8,
                                                     backgroundColor: step < wizardStep ? "#ffcc00" : step === wizardStep ? "#ff8ca0" : "#e2e8f0"
                                                 }}
-                                                className="h-2 rounded-full" 
+                                                className="h-2 rounded-full transition-colors duration-500" 
                                             />
                                         ))}
                                     </div>
                                     <button 
                                         onClick={() => setShowWizard(false)} 
-                                        className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-50 hover:bg-red-50 hover:text-red-400 transition-colors text-slate-300"
+                                        className="w-10 h-10 flex items-center justify-center rounded-full bg-slate-50 hover:bg-white hover:shadow-lg hover:text-red-500 transition-all text-slate-300 active:scale-90"
                                     >
-                                        <X size={16} strokeWidth={3} />
+                                        <X size={20} strokeWidth={3} />
                                     </button>
                                 </div>
                             </div>
 
-                            {/* Scrollable Body */}
-                            <div className="flex-1 overflow-y-auto px-6 pb-6 overscroll-contain">
+                            {/* Scrollable Body: Enhanced Spacing */}
+                            <div className="flex-1 overflow-y-auto px-10 pb-10 overscroll-contain relative z-10 custom-scrollbar">
                                 <AnimatePresence mode="wait">
                                     {/* Step 1: Mode */}
                                     {wizardStep === 1 && (
@@ -809,49 +1092,39 @@ export default function ListeningCabinDashboard() {
                                                 <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">🎭 选择模式</h3>
                                                 <p className="text-xs text-slate-400 mt-1 font-semibold">脚本的基础交互方式</p>
                                             </div>
-                                            <div className="grid gap-3">
+                                            <div className="grid gap-4">
                                                 {LISTENING_CABIN_SCRIPT_MODE_OPTIONS.map(o => (
                                                     <motion.button 
                                                         key={o.value} 
-                                                        whileHover={{ scale: 1.02, x: 4 }}
+                                                        whileHover={{ scale: 1.02, y: -2 }}
                                                         whileTap={{ scale: 0.98 }}
                                                         onClick={() => { setRequest(c => ({ ...c, scriptMode: o.value })); setWizardStep(2); }} 
                                                         className={cn(
-                                                            "w-full px-6 py-5 text-left rounded-[2rem] border-2 transition-all group flex items-center justify-between",
-                                                            o.value === 'monologue' ? "bg-orange-50/50 border-orange-100 hover:bg-orange-100/50" :
-                                                            o.value === 'podcast' ? "bg-purple-50/50 border-purple-100 hover:bg-purple-100/50" :
-                                                            "bg-blue-50/50 border-blue-100 hover:bg-blue-100/50"
+                                                            "w-full px-8 py-6 text-left rounded-[2.2rem] border-2 transition-all group flex items-center justify-between shadow-sm hover:shadow-md",
+                                                            o.value === 'monologue' ? "bg-orange-50/40 border-orange-100/60 hover:bg-orange-100/40" :
+                                                            o.value === 'podcast' ? "bg-purple-50/40 border-purple-100/60 hover:bg-purple-100/40" :
+                                                            "bg-blue-50/40 border-blue-100/60 hover:bg-blue-100/40"
                                                         )}
                                                     >
-                                                        <div>
-                                                            <p className="text-[16px] font-black text-slate-700">{o.value === 'monologue' ? '🎙️' : o.value === 'podcast' ? '🎧' : '💬'} {o.label}</p>
-                                                            <p className="text-[11px] text-slate-400 mt-1 font-bold leading-tight">{o.value === 'monologue' ? '单人口音，聚焦语言本身' : o.value === 'podcast' ? '播客模式，多人深度讨论' : '自然场景对话，真实语境'}</p>
+                                                        <div className="flex items-center gap-5">
+                                                            <div className="w-14 h-14 rounded-2xl bg-white shadow-sm flex items-center justify-center text-3xl group-hover:scale-110 transition-transform duration-500">
+                                                                {o.value === 'monologue' ? '🎙️' : o.value === 'podcast' ? '🎧' : '💬'}
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-[17px] font-black text-slate-800 leading-none">{o.label}</p>
+                                                                <p className="text-[11px] text-slate-500 mt-2 font-bold leading-tight opacity-80">
+                                                                    {o.value === 'monologue' ? '单人口音，聚焦语言本身' : o.value === 'podcast' ? '播客模式，多人深度讨论' : '自然场景对话，真实语境'}
+                                                                </p>
+                                                            </div>
                                                         </div>
-                                                        <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm group-hover:scale-110 transition-transform">
-                                                            <ChevronRight className="text-slate-300" size={18} strokeWidth={3} />
+                                                        <div className="w-10 h-10 rounded-full bg-white/80 flex items-center justify-center shadow-inner group-hover:bg-white transition-colors">
+                                                            <ChevronRight className="text-slate-400" size={20} strokeWidth={3} />
                                                         </div>
                                                     </motion.button>
                                                 ))}
                                             </div>
-                                            <div className="space-y-2 pt-2">
-                                                <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">推理模式</p>
-                                                <div className="flex flex-wrap gap-2.5">
-                                                    {LISTENING_CABIN_THINKING_MODE_OPTIONS.map((option) => (
-                                                        <button
-                                                            key={option.value}
-                                                            type="button"
-                                                            onClick={() => setRequest((current) => ({ ...current, thinkingMode: option.value }))}
-                                                            className={cn(
-                                                                "rounded-2xl border-2 px-5 py-2.5 text-[12px] font-black tracking-tight transition-all active:scale-95",
-                                                                request.thinkingMode === option.value
-                                                                    ? "border-pink-300 bg-pink-50 text-pink-600 shadow-[0_4px_12px_rgba(255,140,160,0.15)]"
-                                                                    : "border-slate-100 bg-white text-slate-400 hover:border-pink-100 hover:text-slate-600",
-                                                            )}
-                                                        >
-                                                            {option.label}
-                                                        </button>
-                                                    ))}
-                                                </div>
+                                            <div className="flex justify-end pt-2">
+                                                <p className="text-[10px] font-black italic text-slate-300">模式决定了脚本的基本骨架与互动深度</p>
                                             </div>
                                         </motion.div>
                                     )}
@@ -884,10 +1157,10 @@ export default function ListeningCabinDashboard() {
                                                     <ChevronLeft size={16} strokeWidth={3} /> 返回
                                                 </button>
                                                 <motion.button 
-                                                    whileHover={{ scale: 1.05 }}
+                                                    whileHover={{ scale: 1.05, y: -2 }}
                                                     whileTap={{ scale: 0.95 }}
                                                     onClick={() => setWizardStep(3)} 
-                                                    className="px-8 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black shadow-[0_12px_24px_-4px_rgba(15,23,42,0.3)] active:scale-95 transition-all uppercase tracking-widest"
+                                                    className="px-10 py-4 bg-slate-900 text-white rounded-[1.5rem] text-[13px] font-black shadow-[0_20px_40px_-8px_rgba(15,23,42,0.3)] active:scale-95 transition-all uppercase tracking-widest flex items-center gap-2"
                                                 >
                                                     下一步 🎀
                                                 </motion.button>
@@ -902,7 +1175,7 @@ export default function ListeningCabinDashboard() {
                                                 <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">📚 难度等级</h3>
                                                 <p className="text-xs text-slate-400 mt-1 font-semibold">基于 CEFR 标准和词汇密度</p>
                                             </div>
-                                            <div className="grid grid-cols-3 gap-3">
+                                            <div className="grid grid-cols-3 gap-4">
                                                 {LISTENING_CABIN_CEFR_OPTIONS.map(o => (
                                                     <motion.button 
                                                         key={o} 
@@ -910,14 +1183,14 @@ export default function ListeningCabinDashboard() {
                                                         whileTap={{ scale: 0.95 }}
                                                         onClick={() => setRequest(c => ({ ...c, cefrLevel: o }))} 
                                                         className={cn(
-                                                            "py-5 rounded-[2rem] border-2 transition-all flex flex-col items-center gap-1 active:scale-95 shadow-sm", 
+                                                            "py-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center gap-1 active:scale-95 shadow-sm", 
                                                             request.cefrLevel === o 
-                                                                ? "border-blue-400 bg-blue-50/50 text-blue-600" 
-                                                                : "border-slate-100 bg-white text-slate-400 hover:border-blue-200"
+                                                                ? "border-blue-400 bg-blue-50/60 text-blue-600 shadow-[0_12px_24px_-4px_rgba(59,130,246,0.1)]" 
+                                                                : "border-slate-100 bg-white/60 text-slate-400 hover:border-blue-200"
                                                         )}
                                                     >
-                                                        <p className="text-2xl font-black">{o}</p>
-                                                        <span className="text-[9px] font-black uppercase tracking-widest opacity-60">Level</span>
+                                                        <p className="text-3xl font-black">{o}</p>
+                                                        <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Level</span>
                                                     </motion.button>
                                                 ))}
                                             </div>
@@ -1024,13 +1297,12 @@ export default function ListeningCabinDashboard() {
                                         </motion.div>
                                     )}
 
-                                    {/* Step 5: Voice — Multi-Speaker Aware */}
+                                    {/* Step 5: Pace & Length */}
                                     {wizardStep === 5 && (
                                         <motion.div key="s5" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
                                             <div>
-                                                <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">
-                                                    🍭 {isMultiSpeaker ? `选择环节 (${request.speakerPlan.assignments.length}人)` : '节奏与声线'} 🍬
-                                                </h3>
+                                                <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">🍭 节奏与篇幅</h3>
+                                                <p className="text-xs text-slate-400 mt-1 font-semibold">控制脚本的句子密度与内容长短</p>
                                             </div>
                                             <div className="space-y-4 rounded-[2.5rem] bg-slate-50/50 border-2 border-slate-100 p-6">
                                                 <div className="space-y-2.5">
@@ -1077,11 +1349,34 @@ export default function ListeningCabinDashboard() {
                                                     句数区间约 {lengthProfile.targetSentenceRange.min}-{lengthProfile.targetSentenceRange.max} 句。
                                                 </div>
                                             </div>
+                                            
+                                            <div className="flex justify-between pt-5 items-center">
+                                                <button onClick={() => setWizardStep(4)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all">
+                                                    <ChevronLeft size={16} strokeWidth={3} /> 返回
+                                                </button>
+                                                <motion.button 
+                                                    whileHover={{ scale: 1.05 }}
+                                                    whileTap={{ scale: 0.95 }}
+                                                    onClick={() => setWizardStep(6)} 
+                                                    className="px-8 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black shadow-[0_12px_24px_-4px_rgba(15,23,42,0.3)] active:scale-95 transition-all uppercase tracking-widest"
+                                                >
+                                                    下一步 🎙️
+                                                </motion.button>
+                                            </div>
+                                        </motion.div>
+                                    )}
+
+
+                                    {/* Step 6: Voices & Listening Target */}
+                                    {wizardStep === 6 && (
+                                        <motion.div key="s6" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+                                            <div>
+                                                <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">🎙️ 声线与目标</h3>
+                                                <p className="text-xs text-slate-400 mt-1 font-semibold">选择理想的语音环境与听力训练重点</p>
+                                            </div>
 
                                             {isMultiSpeaker ? (
-                                                /* Multi-Speaker Panel */
-                                                <div className="space-y-3">
-                                                    {/* Controls Row */}
+                                                <div className="space-y-4">
                                                     <div className="flex items-center gap-2">
                                                         <button
                                                             onClick={randomizeMultiSpeakerVoices}
@@ -1105,17 +1400,21 @@ export default function ListeningCabinDashboard() {
                                                         </button>
                                                     </div>
 
-                                                    {/* Per-Speaker Voice Selectors */}
-                                                    <div className="space-y-2 max-h-[24vh] overflow-y-auto pr-1 custom-scrollbar">
+                                                    <div className="space-y-3 max-h-[30vh] overflow-y-auto pr-2 custom-scrollbar py-1">
                                                         {request.speakerPlan.assignments.map((assignment, idx: number) => (
-                                                            <div key={idx} className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
-                                                                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-2">
-                                                                    发言人 {idx + 1}: {assignment.speaker || `Speaker ${idx + 1}`}
-                                                                </p>
+                                                            <div key={idx} className="rounded-2xl border border-slate-100 bg-white/60 p-4 shadow-sm hover:shadow-md transition-all">
+                                                                <div className="flex items-center justify-between mb-3">
+                                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                                        STUDIO VOICE {idx + 1}
+                                                                    </p>
+                                                                    <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-[9px] font-black rounded-full border border-amber-100 uppercase">
+                                                                        {assignment.speaker || `Speaker ${idx + 1}`}
+                                                                    </span>
+                                                                </div>
                                                                 <select
                                                                     value={assignment.voice}
                                                                     onChange={(e) => updateMultiSpeakerVoice(idx, e.target.value)}
-                                                                    className="w-full bg-white border border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-amber-300 transition-colors"
+                                                                    className="w-full bg-white border border-slate-100 rounded-xl px-4 py-3 text-[13px] font-black text-slate-700 outline-none focus:border-pink-300 focus:ring-4 focus:ring-pink-50 transition-all appearance-none cursor-pointer"
                                                                 >
                                                                     {voiceOptions.map((v) => (
                                                                         <option key={v.voice} value={v.voice}>{v.label}</option>
@@ -1126,10 +1425,9 @@ export default function ListeningCabinDashboard() {
                                                     </div>
                                                 </div>
                                             ) : (
-                                                /* Single Speaker List */
                                                 <div className="space-y-3">
                                                     <div className="space-y-2">
-                                                        <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">声线策略</p>
+                                                        <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400 px-1">声线策略</p>
                                                         <div className="flex flex-wrap gap-2">
                                                             {LISTENING_CABIN_SPEAKER_STRATEGY_OPTIONS
                                                                 .filter((option) => option.value !== "mixed_dialogue")
@@ -1146,7 +1444,7 @@ export default function ListeningCabinDashboard() {
                                                                             },
                                                                         }))}
                                                                         className={cn(
-                                                                            "rounded-full border px-4 py-2 text-[12px] font-bold transition-all active:scale-95",
+                                                                            "rounded-full border px-4 py-2 text-[11px] font-black transition-all active:scale-95",
                                                                             request.speakerPlan.strategy === option.value
                                                                                 ? "border-amber-300 bg-amber-50 text-amber-700 shadow-sm"
                                                                                 : "border-slate-100 bg-white text-slate-500 hover:border-amber-200 hover:text-slate-700",
@@ -1158,8 +1456,8 @@ export default function ListeningCabinDashboard() {
                                                         </div>
                                                     </div>
 
-                                                    {request.speakerPlan.strategy === "fixed" ? (
-                                                        <div className="grid gap-1.5 max-h-[18vh] overflow-y-auto pr-1 custom-scrollbar">
+                                                    {request.speakerPlan.strategy === "fixed" && (
+                                                        <div className="grid gap-2 max-h-[22vh] overflow-y-auto pr-1 custom-scrollbar py-1">
                                                             {voiceOptions.map(v => (
                                                                 <button 
                                                                     key={v.voice} 
@@ -1171,21 +1469,17 @@ export default function ListeningCabinDashboard() {
                                                                             : "border-slate-50 bg-white hover:bg-slate-50"
                                                                     )}
                                                                 >
-                                                                    <div className={cn("w-2.5 h-2.5 rounded-full transition-all shrink-0", request.speakerPlan.primaryVoice === v.voice ? "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]" : "bg-slate-200")} />
-                                                                    <p className="text-sm font-bold text-slate-700 truncate">{v.label}</p>
+                                                                    <div className={cn("w-2.5 h-2.5 rounded-full transition-all shrink-0", request.speakerPlan.primaryVoice === v.voice ? "bg-amber-500 shadow-sm" : "bg-slate-200")} />
+                                                                    <p className="text-[13px] font-black text-slate-700 truncate">{v.label}</p>
                                                                 </button>
                                                             ))}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="rounded-xl border border-slate-100 bg-white px-4 py-3 text-[12px] font-semibold leading-6 text-slate-500">
-                                                            当前为随机单声线。每次生成会随机选择一个英文声线，但整篇保持一致。
                                                         </div>
                                                     )}
                                                 </div>
                                             )}
 
-                                            <div className="space-y-3">
-                                                <p className="text-[11px] font-black uppercase tracking-widest text-[#8f8478]">听力目标 🎯</p>
+                                            <div className="space-y-3 pt-2">
+                                                <p className="text-[11px] font-black uppercase tracking-widest text-slate-400 px-1">听力目标 🎯</p>
                                                 <div className="flex flex-wrap gap-2.5">
                                                     {LISTENING_CABIN_FOCUS_OPTIONS.map((option) => (
                                                         <button
@@ -1194,7 +1488,7 @@ export default function ListeningCabinDashboard() {
                                                             className={cn(
                                                                 "rounded-2xl border-2 px-5 py-2.5 text-[12px] font-black transition-all active:scale-95",
                                                                 request.focusTags.includes(option.value)
-                                                                    ? "border-[#5c4033] bg-[#5c4033] text-white shadow-sm"
+                                                                    ? "border-[#5c4033] bg-[#5c4033] text-white shadow-md shadow-slate-200"
                                                                     : "border-slate-100 bg-white text-slate-400 hover:border-pink-100",
                                                             )}
                                                         >
@@ -1204,39 +1498,85 @@ export default function ListeningCabinDashboard() {
                                                 </div>
                                             </div>
 
-                                            <button
-                                                onClick={() => setShowChineseSubtitle((current) => !current)}
-                                                className={cn(
-                                                    "flex w-full items-center justify-between rounded-[2rem] border-2 px-6 py-5 text-left transition-all",
-                                                    showChineseSubtitle
-                                                        ? "border-pink-200 bg-pink-50/50 shadow-sm"
-                                                        : "border-slate-100 bg-white",
-                                                )}
-                                            >
-                                                <div>
-                                                    <p className="text-[14px] font-black text-[#5c4033]">默认显示中文字幕 📖</p>
-                                                    <p className="text-[11px] font-black text-[#8f8478] mt-1">进入播放器时的默认偏好</p>
-                                                </div>
-                                                <div className={cn(
-                                                    "flex h-8 w-14 items-center rounded-full px-1.5 transition-colors",
-                                                    showChineseSubtitle ? "bg-[#ff8ca0]" : "bg-slate-200",
-                                                )}>
-                                                    <motion.div 
-                                                        animate={{ x: showChineseSubtitle ? 24 : 0 }}
-                                                        className="h-5 w-5 rounded-full bg-white shadow-sm" 
-                                                    />
-                                                </div>
-                                            </button>
-
-                                            <div className="flex justify-between pt-5 items-center border-t border-slate-100/50">
-                                                <button onClick={() => setWizardStep(4)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-slate-400 hover:bg-slate-50 transition-all">
+                                            <div className="flex justify-between pt-5 items-center">
+                                                <button onClick={() => setWizardStep(5)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-slate-400 hover:bg-slate-50 transition-all">
                                                     <ChevronLeft size={16} strokeWidth={3} /> 返回
                                                 </button>
                                                 <motion.button 
                                                     whileHover={{ scale: 1.05 }}
                                                     whileTap={{ scale: 0.95 }}
+                                                    onClick={() => setWizardStep(7)} 
+                                                    className="px-8 py-3 bg-slate-900 text-white rounded-2xl text-xs font-black shadow-[0_12px_24px_-4px_rgba(15,23,42,0.3)] active:scale-95 transition-all uppercase tracking-widest"
+                                                >
+                                                    下一步 ✨
+                                                </motion.button>
+                                            </div>
+                                        </motion.div>
+                                    )}
+
+                                    {/* Step 7: Reasoning Mode & Preference */}
+                                    {wizardStep === 7 && (
+                                        <motion.div key="s7" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-6">
+                                            <div>
+                                                <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">🔮 最后的打磨</h3>
+                                                <p className="text-xs text-slate-400 mt-1 font-semibold">配置推理深度与视听偏好</p>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                <p className="text-[11px] font-black uppercase tracking-widest text-slate-400 px-1">推理深度 (Thinking Mode)</p>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {LISTENING_CABIN_THINKING_MODE_OPTIONS.map((option) => (
+                                                        <button
+                                                            key={option.value}
+                                                            type="button"
+                                                            onClick={() => setRequest((current) => ({ ...current, thinkingMode: option.value }))}
+                                                            className={cn(
+                                                                "h-24 rounded-[2.2rem] border-2 px-6 flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.98]",
+                                                                request.thinkingMode === option.value
+                                                                    ? "border-pink-300 bg-pink-50 text-pink-600 shadow-[0_12px_24px_-4px_rgba(255,140,160,0.15)]"
+                                                                    : "border-slate-100 bg-white text-slate-400 hover:border-pink-100",
+                                                            )}
+                                                        >
+                                                            <p className="text-sm font-black">{option.label}</p>
+                                                            <p className="text-[10px] opacity-70 font-bold">{option.hint}</p>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                onClick={() => setShowChineseSubtitle((current) => !current)}
+                                                className={cn(
+                                                    "flex w-full items-center justify-between rounded-[2.5rem] border-2 px-8 py-6 text-left transition-all",
+                                                    showChineseSubtitle
+                                                        ? "border-pink-200 bg-pink-50/50 shadow-sm"
+                                                        : "border-slate-100 bg-white hover:border-pink-50",
+                                                )}
+                                            >
+                                                <div>
+                                                    <p className="text-[15px] font-black text-[#5c4033]">默认显示中文字幕 📖</p>
+                                                    <p className="text-[11px] font-black text-slate-400 mt-1">进入播放器时的默认视听环境</p>
+                                                </div>
+                                                <div className={cn(
+                                                    "flex h-8 w-14 items-center rounded-full px-1.5 transition-colors duration-500",
+                                                    showChineseSubtitle ? "bg-[#ff8ca0]" : "bg-slate-200",
+                                                )}>
+                                                    <motion.div 
+                                                        animate={{ x: showChineseSubtitle ? 24 : 0 }}
+                                                        className="h-5 w-5 rounded-full bg-white shadow-xl shadow-pink-200" 
+                                                    />
+                                                </div>
+                                            </button>
+
+                                            <div className="flex justify-between pt-4 items-center">
+                                                <button onClick={() => setWizardStep(6)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-slate-400 hover:bg-slate-50 transition-all">
+                                                    <ChevronLeft size={16} strokeWidth={3} /> 返回
+                                                </button>
+                                                <motion.button 
+                                                    whileHover={{ scale: 1.05, y: -4 }}
+                                                    whileTap={{ scale: 0.95 }}
                                                     onClick={() => { setShowWizard(false); handleGenerate(); }} 
-                                                    className="px-10 py-4.5 bg-gradient-to-r from-[#ff8ca0] to-[#ff6b95] text-white rounded-3xl text-[14px] font-black shadow-[0_16px_32px_-8px_rgba(255,107,149,0.4)] transition-all flex items-center gap-3 tracking-[0.12em] uppercase"
+                                                    className="px-12 py-5 bg-gradient-to-r from-[#ff8ca0] to-[#ff6b95] text-white rounded-[2.5rem] text-[15px] font-black shadow-[0_24px_48px_-12px_rgba(255,107,149,0.5)] transition-all flex items-center gap-3 tracking-[0.12em] uppercase"
                                                 >
                                                     ✨ 开启锻造
                                                 </motion.button>

@@ -1,10 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import {
     saveListeningCabinSession,
     deleteListeningCabinSession,
+    pullListeningCabinSessionsFromCloud,
 } from "@/lib/listening-cabin-store";
 import {
     createListeningCabinSession,
@@ -14,9 +16,15 @@ import {
 
 export function useListeningCabin() {
     const sessions = useLiveQuery(
-        () => db.listening_cabin_sessions.orderBy("updated_at").reverse().toArray(),
+        () => db.listening_cabin_sessions.orderBy("created_at").reverse().toArray(),
         []
     );
+
+    useEffect(() => {
+        void pullListeningCabinSessionsFromCloud().catch((error) => {
+            console.warn("Listening cabin cloud pull skipped:", error);
+        });
+    }, []);
 
     const isLoading = sessions === undefined;
 
