@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import confetti from "canvas-confetti";
 import {
     ArrowLeft,
     WandSparkles,
@@ -13,6 +14,7 @@ import {
     Loader2,
     X,
     Check,
+    Pencil,
     PencilLine,
     Trophy,
     StickyNote,
@@ -20,6 +22,7 @@ import {
     Sparkles,
     Trash2,
     BookAudio,
+    Zap,
     ChevronRight,
     ChevronLeft,
 } from "lucide-react";
@@ -52,6 +55,7 @@ import {
 } from "@/lib/listening-cabin";
 import { getListeningCabinTtsPayload } from "@/lib/listening-cabin-audio";
 import { useListeningCabin } from "@/hooks/use-listening-cabin";
+import { useForgeHaptics } from '@/hooks/useForgeHaptics';
 import type {
     ListeningCabinFocusTag,
     ListeningCabinGenerationRequest,
@@ -61,21 +65,62 @@ import type {
     ListeningCabinSentence,
 } from "@/lib/listening-cabin";
 import { db } from "@/lib/db";
+import { updateListeningCabinSession } from "@/lib/listening-cabin-store";
+
+// Audio Feedback Utility
+const playMasterySound = () => {
+    try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        // A pleasant "Ting" sound: starts at high frequency, fades quickly
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.1);
+        
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start();
+        osc.stop(ctx.currentTime + 0.5);
+    } catch (e) {
+        console.warn("Mastery sound failed:", e);
+    }
+};
 
 // NEW: Localized Note Input Component to prevent cursor jump on LiveQuery updates
 const SentenceNoteInput = ({ 
     session, 
     index, 
     initialNote, 
-    onSave 
+    onSave,
+    isForceExpanded
 }: { 
     session: ListeningCabinSession, 
     index: number, 
     initialNote: string, 
-    onSave: (session: ListeningCabinSession, index: number, note: string) => Promise<void> 
+    onSave: (session: ListeningCabinSession, index: number, note: string) => Promise<void>,
+    isForceExpanded: boolean
 }) => {
     const [localNote, setLocalNote] = useState(initialNote);
+    const [isCollapsed, setIsCollapsed] = useState(!isForceExpanded && initialNote.length > 0);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    // Sync transition from editing to viewing
+    useEffect(() => {
+        if (isForceExpanded) {
+            setIsCollapsed(false);
+        } else if (localNote.length > 0) {
+            setIsCollapsed(true);
+        }
+    }, [isForceExpanded]);
 
     const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const newVal = e.target.value;
@@ -87,22 +132,57 @@ const SentenceNoteInput = ({
         }, 800);
     };
 
+    if (isCollapsed && localNote.length > 0) {
+        return (
+            <motion.div 
+                layout
+                onClick={() => setIsCollapsed(false)}
+                className="mt-3 flex items-center justify-between p-3.5 px-5 rounded-2xl bg-amber-50/50 border border-amber-100/40 cursor-pointer hover:bg-amber-50 transition-colors group/mini-note"
+            >
+                <div className="flex items-center gap-2.5 overflow-hidden">
+                    <StickyNote size={14} className="text-amber-400 shrink-0" />
+                    <p className="text-[13px] font-bold text-amber-700/70 truncate flex-1 leading-none pt-0.5">
+                        <span className="text-amber-400/60 font-black mr-1 uppercase text-[10px]">Note:</span>
+                        {localNote}
+                    </p>
+                </div>
+                <div className="flex items-center gap-2 opacity-0 group-hover/mini-note:opacity-100 transition-opacity">
+                    <Pencil size={12} className="text-amber-300" />
+                </div>
+            </motion.div>
+        );
+    }
+
     return (
-        <div className="p-4 rounded-[1.75rem] bg-[#fcf9ed] border border-amber-100/50 shadow-inner relative group/note mt-2 transition-all">
-            <div className="absolute top-3 right-5 text-[9px] font-black text-amber-200 uppercase tracking-widest">
-                Reflections
+        <motion.div 
+            layout
+            className="p-5 rounded-[2rem] bg-[#fcf9ed] border border-amber-100/40 shadow-inner relative group/note mt-3 transition-all"
+        >
+            <div className="flex items-center justify-between mb-2 px-1">
+                <div className="text-[10px] font-black text-amber-300 uppercase tracking-widest flex items-center gap-1.5">
+                    <Sparkles size={10} />
+                    Reflections
+                </div>
+                {localNote.length > 0 && (
+                    <button 
+                        onClick={() => setIsCollapsed(true)}
+                        className="text-[10px] font-black text-amber-400/60 hover:text-amber-500 uppercase tracking-widest flex items-center gap-1"
+                    >
+                        Done <Check size={10} strokeWidth={4} />
+                    </button>
+                )}
             </div>
             <textarea 
                 value={localNote}
                 onChange={handleChange}
+                autoFocus={!isCollapsed}
                 placeholder="写下你对这一句的理解或难点..."
-                className="w-full bg-transparent border-none focus:ring-0 text-[14px] font-bold text-[#5c4033] placeholder:text-amber-200 resize-none min-h-[80px] leading-relaxed p-0"
+                className="w-full bg-transparent border-none focus:ring-0 text-[15px] font-bold text-[#5c4033] placeholder:text-amber-200 resize-none min-h-[100px] leading-relaxed p-0"
             />
-            <div className="mt-3 pt-3 border-t border-amber-100/20 flex items-center gap-1.5 text-[9px] font-black text-amber-300 italic">
-                <Sparkles size={8} />
+            <div className="mt-3 pt-3 border-t border-amber-100/10 flex items-center gap-1.5 text-[9px] font-black text-amber-300 italic opacity-60">
                 Journal updated.
             </div>
-        </div>
+        </motion.div>
     );
 };
 
@@ -153,32 +233,71 @@ export default function ListeningCabinDashboard() {
     const [previewSentenceKey, setPreviewSentenceKey] = useState<string | null>(null);
     const [editingNoteIndex, setEditingNoteIndex] = useState<number | null>(null);
 
+    // Focus Mode states
+    const [isImmersiveMode, setIsImmersiveMode] = useState(false);
+    const [focusedIndex, setFocusedIndex] = useState(0);
+
     // Phase 25: Wizard & View Transitions
     const [showWizard, setShowWizard] = useState(false);
     const [wizardStep, setWizardStep] = useState(1);
     const [activeView, setActiveView] = useState<'dashboard' | 'script'>('dashboard');
+    const [isNoteOverlayOpen, setIsNoteOverlayOpen] = useState(false);
+
+    const { playForgeSound, playSuccessSound } = useForgeHaptics();
+
+    // Keyboard navigation for Focus Mode
+    useEffect(() => {
+        if (!isImmersiveMode || activeView !== 'script') return;
+        
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
+
+            const session = sessions.find(s => s.id === selectedSessionId);
+            if (!session) return;
+
+            if (e.key === "ArrowRight") {
+                setFocusedIndex(prev => Math.min(session.sentenceCount - 1, prev + 1));
+            } else if (e.key === "ArrowLeft") {
+                setFocusedIndex(prev => Math.max(0, prev - 1));
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isImmersiveMode, activeView, sessions, selectedSessionId]);
 
     const handleToggleMastery = async (session: ListeningCabinSession, index: number) => {
         const updatedSentences = [...session.sentences];
         const sentence = updatedSentences[index];
         if (!sentence) return;
 
+        if (!sentence.isMastered) {
+             playMasterySound();
+             confetti({
+                particleCount: 80,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ['#fbbf24', '#f59e0b', '#fb923c', '#fcd34d'],
+                zIndex: 3000,
+             });
+        }
+
         updatedSentences[index] = {
             ...sentence,
             isMastered: !sentence.isMastered
         };
 
-        const updatedSession = {
-            ...session,
-            sentences: updatedSentences,
-            updated_at: Date.now()
-        };
-
-        try {
-            await db.listening_cabin_sessions.put(updatedSession);
-        } catch (err) {
-            console.error("Failed to update mastery:", err);
+        // NEW: Auto-advance in immersive mode if just mastered
+        const sessionLength = session.sentenceCount;
+        if (isImmersiveMode && !sentence.isMastered && index < sessionLength - 1) {
+            setTimeout(() => {
+                setFocusedIndex(prev => prev + 1);
+            }, 800);
         }
+
+        void updateListeningCabinSession(session.id, {
+            sentences: updatedSentences
+        });
     };
 
     const handleUpdateNote = async (session: ListeningCabinSession, index: number, note: string) => {
@@ -191,17 +310,9 @@ export default function ListeningCabinDashboard() {
             note
         };
 
-        const updatedSession = {
-            ...session,
-            sentences: updatedSentences,
-            updated_at: Date.now()
-        };
-
-        try {
-            await db.listening_cabin_sessions.put(updatedSession);
-        } catch (err) {
-            console.error("Failed to update note:", err);
-        }
+        void updateListeningCabinSession(session.id, {
+            sentences: updatedSentences
+        });
     };
 
 
@@ -231,6 +342,15 @@ export default function ListeningCabinDashboard() {
             setSelectedSessionId(sessions[0].id);
         }
     }, [sessions, selectedSessionId]);
+
+    const mostRecentSessionId = useMemo(() => {
+        if (!sessions || sessions.length === 0) return null;
+        return sessions.reduce((latest: ListeningCabinSession, current: ListeningCabinSession) => {
+            const latestTime = latest.lastPlayedAt || latest.created_at;
+            const currentTime = current.lastPlayedAt || current.created_at;
+            return currentTime > latestTime ? current : latest;
+        }).id;
+    }, [sessions]);
 
     const lengthProfile = useMemo(
         () => resolveListeningCabinLengthProfile(request.scriptLength, request.sentenceLength),
@@ -290,7 +410,17 @@ export default function ListeningCabinDashboard() {
         }
     };
 
-    const openSession = (id: string, restart = false) => {
+    const openSession = async (id: string, restart = false) => {
+        if (!restart) {
+            const session = sessions.find(s => s.id === id);
+            if (session) {
+                // Find the latest mastered sentence index
+                const latestMasteredIndex = session.sentences.reduce((max, s, idx) => s.isMastered ? idx : max, 0);
+                
+                // Update the session's lastSentenceIndex before navigating to ensure the player starts there
+                await updateListeningCabinSession(id, { lastSentenceIndex: latestMasteredIndex });
+            }
+        }
         router.push(`/listening-cabin/${id}?showChinese=${showChineseSubtitle}${restart ? "&restart=1" : ""}`);
     };
 
@@ -700,25 +830,52 @@ export default function ListeningCabinDashboard() {
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                     {sessions.length > 0 ? sessions.slice(0, 12).map((session: ListeningCabinSession) => {
-                                        const progress = Math.min(100, Math.round(((session.lastSentenceIndex + 1) / session.sentenceCount) * 100));
+                                        const masteredCount = session.sentences.filter(s => s.isMastered).length;
+                                        const progress = session.sentenceCount > 0 
+                                            ? Math.min(100, Math.round((masteredCount / session.sentenceCount) * 100))
+                                            : 0;
                                         const duration = formatDuration(session.meta.estimatedMinutes);
                                         const isCompleted = progress >= 100;
+                                        const isMostRecent = mostRecentSessionId === session.id;
 
                                         return (
                                             <motion.div 
                                                 key={session.id} 
                                                 whileHover={{ y: -8, scale: 1.02 }}
+                                                animate={isMostRecent && !isAllMastered(session) ? {
+                                                    boxShadow: ["0 0 0px rgba(59,130,246,0)", "0 0 20px rgba(59,130,246,0.5)", "0 0 0px rgba(59,130,246,0)"]
+                                                } : {}}
+                                                transition={isMostRecent && !isAllMastered(session) ? { duration: 2.5, repeat: Infinity, ease: "easeInOut" } : {}}
                                                 className={cn(
                                                     "rounded-[3.5rem] border-2 p-8 transition-all duration-500 relative group overflow-hidden h-full flex flex-col justify-between",
                                                     isAllMastered(session)
-                                                        ? "border-amber-400/60 bg-gradient-to-br from-amber-50/50 to-orange-50/30 shadow-[0_48px_96px_-16px_rgba(251,191,36,0.3)] ring-4 ring-amber-100/20"
-                                                        : selectedSessionId === session.id 
-                                                            ? "border-pink-300 bg-white shadow-[0_48px_80px_-16px_rgba(255,107,149,0.18)]" 
-                                                            : "border-[#ede4db]/60 bg-white/70 hover:bg-white hover:border-pink-200/80 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.04)] hover:shadow-[0_48px_80px_-16px_rgba(0,0,0,0.1)]"
+                                                        ? "border-amber-400/80 bg-gradient-to-br from-amber-50 to-orange-50/50 shadow-[0_24px_64px_-16px_rgba(245,158,11,0.4)] ring-4 ring-amber-100/30"
+                                                        : isMostRecent
+                                                            ? "border-blue-400/70 bg-gradient-to-br from-blue-50/50 to-indigo-50/30 ring-2 ring-blue-100/50"
+                                                            : selectedSessionId === session.id 
+                                                                ? "border-pink-300 bg-white shadow-[0_48px_80px_-16px_rgba(255,107,149,0.18)]" 
+                                                                : "border-[#ede4db]/60 bg-white/70 hover:bg-white hover:border-pink-200/80 shadow-[0_24px_48px_-12px_rgba(0,0,0,0.04)] hover:shadow-[0_48px_80px_-16px_rgba(0,0,0,0.1)]"
                                                 )}
                                             >
                                                 {/* Background Decorative Element */}
                                                 <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-pink-100/10 to-transparent rounded-full -translate-y-16 translate-x-16 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
+                                                
+                                                {/* Crystal Sparkles for Mastered Card */}
+                                                {isAllMastered(session) && (
+                                                    <div className="absolute inset-0 pointer-events-none opacity-20 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-amber-200 via-transparent to-transparent" />
+                                                )}
+
+                                                <div className="absolute top-4 right-4 z-20 flex gap-2">
+                                                    {isMostRecent && (
+                                                        <div className="px-3 py-1.5 rounded-xl bg-white/60 backdrop-blur-md border border-blue-100 shadow-sm flex items-center gap-1.5">
+                                                            <div className="relative flex h-2 w-2">
+                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                                                            </div>
+                                                            <span className="text-[10px] font-black text-blue-600 tracking-widest uppercase">📍 当前坐标</span>
+                                                        </div>
+                                                    )}
+                                                </div>
                                                 
                                                 <div className="relative z-10" onClick={() => setSelectedSessionId(session.id)}>
                                                     <div className="flex flex-wrap items-center gap-2.5 mb-6">
@@ -737,25 +894,29 @@ export default function ListeningCabinDashboard() {
                                                     </div>
                                                     
                                                     <div className="flex flex-wrap items-center gap-3 mb-6">
-                                                        {isCompleted && (
-                                                            <div className="px-4 py-1.5 rounded-full bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200">
-                                                                Done ✨
-                                                            </div>
-                                                        )}
                                                         {isAllMastered(session) ? (
                                                             <motion.div 
                                                                 initial={{ opacity: 0, x: 20 }}
                                                                 animate={{ opacity: 1, x: 0 }}
-                                                                className="px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-amber-200 flex items-center gap-1.5"
+                                                                className="px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-400 to-orange-400 text-white text-[10px] font-black uppercase tracking-widest shadow-[0_4px_12px_rgba(245,158,11,0.3)] flex items-center gap-1.5"
                                                             >
                                                                 <Trophy size={12} fill="white" strokeWidth={0} />
-                                                                Mastered 👑
+                                                                完美通关 👑
                                                             </motion.div>
-                                                        ) : session.sentences.some(s => s.isMastered) && (
-                                                            <div className="px-4 py-1.5 rounded-full bg-amber-100 text-amber-600 text-[10px] font-black uppercase tracking-widest border border-amber-200 flex items-center gap-1.5">
-                                                                <Check size={12} strokeWidth={4} />
-                                                                {session.sentences.filter(s => s.isMastered).length}/{session.sentenceCount} Mastered
-                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                {isCompleted && (
+                                                                    <div className="px-4 py-1.5 rounded-full bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200">
+                                                                        Done ✨
+                                                                    </div>
+                                                                )}
+                                                                {session.sentences.some(s => s.isMastered) && (
+                                                                    <div className="px-4 py-1.5 rounded-full bg-amber-100 text-amber-600 text-[10px] font-black uppercase tracking-widest border border-amber-200 flex items-center gap-1.5">
+                                                                        <Check size={12} strokeWidth={4} />
+                                                                        {session.sentences.filter(s => s.isMastered).length}/{session.sentenceCount} Mastered
+                                                                    </div>
+                                                                )}
+                                                            </>
                                                         )}
                                                     </div>
 
@@ -851,14 +1012,7 @@ export default function ListeningCabinDashboard() {
                                         <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-amber-50/40 to-transparent rounded-full -translate-y-32 translate-x-32 blur-3xl" />
                                         
                                         <div className="flex items-center gap-10 text-center md:text-left relative z-10">
-                                            <motion.button 
-                                                whileHover={{ scale: 1.1, x: -5 }}
-                                                whileTap={{ scale: 0.9 }}
-                                                onClick={() => setActiveView('dashboard')}
-                                                className="w-16 h-16 rounded-[2rem] bg-white border-2 border-slate-100 flex items-center justify-center text-slate-600 hover:border-pink-200 hover:text-pink-400 transition-all shadow-[0_12px_24px_-4px_rgba(0,0,0,0.06)]"
-                                            >
-                                                <ChevronLeft size={28} strokeWidth={3} />
-                                            </motion.button>
+
                                             
                                             <div className="space-y-3">
                                                 <div className="flex items-center justify-center md:justify-start gap-4">
@@ -869,10 +1023,22 @@ export default function ListeningCabinDashboard() {
                                                     </div>
                                                 </div>
                                                 <h2 className="text-4xl sm:text-5xl font-black text-[#4a3a2a] tracking-tighter leading-tight drop-shadow-sm max-w-2xl">{selectedSession.title}</h2>
-                                                <div className="flex items-center justify-center md:justify-start gap-3 text-slate-400/80 font-bold">
-                                                    <span className="text-[11px] uppercase tracking-widest">{selectedSession.cefrLevel} Level</span>
+                                                <div className="flex items-center justify-center md:justify-start gap-3">
+                                                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{selectedSession.cefrLevel} Level</span>
                                                     <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
-                                                    <span className="text-[11px] uppercase tracking-widest">{selectedSession.sentenceCount} Sentences Total</span>
+                                                    <motion.button 
+                                                        whileHover={{ scale: 1.05 }}
+                                                        whileTap={{ scale: 0.95 }}
+                                                        onClick={() => setIsImmersiveMode(!isImmersiveMode)}
+                                                        className={cn(
+                                                            "flex items-center gap-2 px-3.5 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                                                            isImmersiveMode 
+                                                                ? "bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-200" 
+                                                                : "bg-white border-slate-100 text-slate-400 hover:border-pink-200 hover:text-pink-500"
+                                                        )}
+                                                    >
+                                                        {isImmersiveMode ? "Forge Focus Mode 👁️" : "List Artifact View 📜"}
+                                                    </motion.button>
                                                 </div>
                                             </div>
                                         </div>
@@ -889,132 +1055,342 @@ export default function ListeningCabinDashboard() {
                                         </motion.button>
                                     </div>
 
-                                    <div className="grid gap-6 mb-20">
-                                        {selectedSession.sentences.map((sentence, idx: number) => {
-                                            const previewKey = `${selectedSession.id}:${sentence.index}`;
-                                            const isPreviewing = previewSentenceKey === previewKey;
-                                            return (
-                                                <motion.div 
-                                                    key={idx} 
-                                                    initial={{ opacity: 0, y: 30 }}
-                                                    animate={{ opacity: 1, y: 0, transition: { delay: idx * 0.04, type: "spring", stiffness: 120, damping: 15 } }}
-                                                    className={cn(
-                                                        "p-6 sm:p-7 rounded-[2.5rem] border-2 transition-all group relative overflow-hidden",
-                                                        sentence.isMastered 
-                                                            ? "bg-amber-50/30 border-amber-100/50 shadow-md" 
-                                                            : isPreviewing 
-                                                                ? "bg-pink-50/40 border-pink-200 shadow-xl shadow-pink-100/30" 
-                                                                : "bg-white/80 border-white/60 hover:border-pink-100 hover:bg-white shadow-sm"
-                                                    )}
-                                                >
-                                                    {/* Decorative background blobs */}
-                                                    <div className="absolute -top-10 -right-10 w-24 h-24 bg-gradient-to-br from-amber-50 to-orange-50 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                    {sentence.isMastered && (
-                                                        <div className="absolute top-4 right-4">
-                                                            <div className="w-8 h-8 rounded-full bg-amber-400 flex items-center justify-center shadow-lg shadow-amber-200 text-white">
-                                                                <Trophy size={14} fill="white" />
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 relative z-10">
-                                                        <div className="flex-1 text-center sm:text-left">
-                                                            <div className="flex items-center justify-center sm:justify-start gap-3 mb-4">
-                                                                <span className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-[11px] font-black text-slate-400 shadow-sm group-hover:bg-white transition-colors">{idx + 1}</span>
-                                                                <div className="px-3 py-1 bg-gradient-to-r from-orange-50 to-pink-50 border border-orange-100/40 rounded-full">
-                                                                     <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest">{sentence.speaker || "Narrator"}</p>
-                                                                </div>
-                                                                {sentence.note && (
-                                                                    <div className="flex items-center gap-1 px-2.5 py-1 bg-amber-50 rounded-full border border-amber-100 text-[9px] font-black text-amber-500 shadow-sm">
-                                                                        <StickyNote size={8} />
-                                                                        Note
+                                    {/* Normal List View (Persistent background with blur) */}
+                                    <motion.div 
+                                        key="dashboard-list-grid"
+                                        animate={{ 
+                                            opacity: isImmersiveMode ? 0.2 : 1,
+                                            scale: isImmersiveMode ? 0.96 : 1,
+                                            filter: isImmersiveMode ? "blur(24px)" : "blur(0px)"
+                                        }}
+                                        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+                                        className="w-full"
+                                    >
+                                        <div className="grid gap-6 mb-20 px-4 lg:px-0">
+                                            {selectedSession?.sentences?.map((sentence, idx: number) => {
+                                                const previewKey = `${selectedSession.id}:${sentence.index}`;
+                                                const isPreviewing = previewSentenceKey === previewKey;
+                                                return (
+                                                    <motion.div 
+                                                        key={idx} 
+                                                        initial={{ opacity: 0, y: 20 }}
+                                                        animate={{ opacity: 1, y: 0, transition: { delay: idx * 0.04 } }}
+                                                        className={cn(
+                                                            "p-6 sm:p-7 rounded-[2.5rem] border-2 transition-all group relative overflow-hidden",
+                                                            sentence.isMastered 
+                                                                ? "bg-amber-50/30 border-amber-100/50 shadow-md" 
+                                                                : isPreviewing 
+                                                                    ? "bg-pink-50/40 border-pink-200 shadow-xl shadow-pink-100/30" 
+                                                                    : "bg-white/80 border-white/60 hover:border-pink-100 hover:bg-white shadow-sm"
+                                                        )}
+                                                    >
+                                                        {/* Sentence Card Content (List Context) */}
+                                                        <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 relative z-10">
+                                                            <div className="flex-1 text-center sm:text-left">
+                                                                <div className="flex items-center justify-center sm:justify-start gap-3 mb-4">
+                                                                    <span className="w-8 h-8 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-[11px] font-black text-slate-400 shadow-sm group-hover:bg-white transition-colors">{idx + 1}</span>
+                                                                    <div className="px-3 py-1 bg-gradient-to-r from-orange-50 to-pink-50 border border-orange-100/40 rounded-full">
+                                                                         <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest">{sentence.speaker || "Narrator"}</p>
                                                                     </div>
-                                                                )}
-                                                            </div>
-                                                            <p className="text-[19px] font-black text-[#5c4033] leading-relaxed tracking-tight italic mb-3.5 antialiased">
-                                                                {`"${sentence.english}"`}
-                                                            </p>
-                                                            <div className="inline-block px-3 py-1.5 rounded-xl bg-slate-50/80 group-hover:bg-white transition-colors border border-transparent group-hover:border-slate-100">
-                                                                <p className="text-[13px] text-slate-500 leading-relaxed font-black opacity-80">{sentence.chinese}</p>
-                                                            </div>
-
-                                                            {/* Sentence Actions & Note Input */}
-                                                            <div className="mt-6 flex flex-col gap-3">
-                                                                <div className="flex items-center gap-2.5">
-                                                                    <motion.button 
-                                                                        whileHover={{ scale: 1.05 }}
-                                                                        whileTap={{ scale: 0.95 }}
-                                                                        onClick={() => handleToggleMastery(selectedSession, idx)}
-                                                                        className={cn(
-                                                                            "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all",
-                                                                            sentence.isMastered 
-                                                                                ? "bg-amber-100 text-amber-600 border border-amber-200" 
-                                                                                : "bg-white text-slate-400 border border-slate-100 hover:border-amber-100 hover:text-amber-500 shadow-sm"
-                                                                        )}
-                                                                    >
-                                                                        {sentence.isMastered ? <Check size={12} strokeWidth={4} /> : <div className="w-1 h-1 rounded-full bg-slate-300" />}
-                                                                        {sentence.isMastered ? "Mastered" : "Learn"}
-                                                                    </motion.button>
-                                                                    
-                                                                    <motion.button 
-                                                                        whileHover={{ scale: 1.05 }}
-                                                                        whileTap={{ scale: 0.95 }}
-                                                                        onClick={() => setEditingNoteIndex(editingNoteIndex === idx ? null : idx)}
-                                                                        className={cn(
-                                                                            "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all",
-                                                                            editingNoteIndex === idx || sentence.note
-                                                                                ? "bg-blue-50 text-blue-500 border border-blue-100"
-                                                                                : "bg-white text-slate-400 border border-slate-100 hover:border-blue-100 hover:text-blue-500 shadow-sm"
-                                                                        )}
-                                                                    >
-                                                                        <PencilLine size={12} strokeWidth={3} />
-                                                                        Notes
-                                                                    </motion.button>
+                                                                </div>
+                                                                <p className="text-[19px] font-black text-[#5c4033] leading-relaxed tracking-tight italic mb-3.5 antialiased">
+                                                                    {`"${sentence.english}"`}
+                                                                </p>
+                                                                <div className="inline-block px-3 py-1.5 rounded-xl bg-slate-50/80 group-hover:bg-white transition-colors border border-transparent group-hover:border-slate-100">
+                                                                    <p className="text-[13px] text-slate-500 leading-relaxed font-black opacity-80">{sentence.chinese}</p>
                                                                 </div>
 
-                                                                <AnimatePresence>
-                                                                    {(editingNoteIndex === idx || sentence.note) && (
-                                                                        <motion.div 
-                                                                            initial={{ height: 0, opacity: 0 }}
-                                                                            animate={{ height: "auto", opacity: 1 }}
-                                                                            exit={{ height: 0, opacity: 0 }}
-                                                                            className="overflow-hidden"
+                                                                <div className="mt-6 flex flex-col gap-3">
+                                                                    <div className="flex items-center gap-2.5">
+                                                                        <motion.button 
+                                                                            whileHover={{ scale: 1.05 }}
+                                                                            whileTap={{ scale: 0.95 }}
+                                                                            onClick={() => handleToggleMastery(selectedSession, idx)}
+                                                                            className={cn(
+                                                                                "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+                                                                                sentence.isMastered 
+                                                                                    ? "bg-amber-100 text-amber-600 border border-amber-200" 
+                                                                                    : "bg-white text-slate-400 border border-slate-100 hover:border-amber-100 hover:text-amber-500 shadow-sm"
+                                                                            )}
                                                                         >
-                                                                            <SentenceNoteInput 
-                                                                                session={selectedSession}
-                                                                                index={idx}
-                                                                                initialNote={sentence.note || ""}
-                                                                                onSave={handleUpdateNote}
-                                                                            />
-                                                                        </motion.div>
-                                                                    )}
-                                                                </AnimatePresence>
+                                                                            {sentence.isMastered ? <Check size={12} strokeWidth={4} /> : <div className="w-1 h-1 rounded-full bg-slate-300" />}
+                                                                            {sentence.isMastered ? "Mastered" : "Learn"}
+                                                                        </motion.button>
+                                                                        
+                                                                        <motion.button 
+                                                                            whileHover={{ scale: 1.05 }}
+                                                                            whileTap={{ scale: 0.95 }}
+                                                                            onClick={() => setEditingNoteIndex(editingNoteIndex === idx ? null : idx)}
+                                                                            className={cn(
+                                                                                "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all",
+                                                                                editingNoteIndex === idx || sentence.note
+                                                                                    ? "bg-blue-50 text-blue-500 border border-blue-100"
+                                                                                    : "bg-white text-slate-400 border border-slate-100 hover:border-blue-100 hover:text-blue-500 shadow-sm"
+                                                                            )}
+                                                                        >
+                                                                            <Pencil size={12} strokeWidth={3} />
+                                                                            Notes
+                                                                        </motion.button>
+                                                                    </div>
+
+                                                                    <AnimatePresence>
+                                                                        {(editingNoteIndex === idx || sentence.note) && (
+                                                                            <motion.div 
+                                                                                initial={{ height: 0, opacity: 0 }}
+                                                                                animate={{ height: "auto", opacity: 1 }}
+                                                                                exit={{ height: 0, opacity: 0 }}
+                                                                                className="overflow-hidden"
+                                                                            >
+                                                                                <SentenceNoteInput 
+                                                                                    session={selectedSession}
+                                                                                    index={idx}
+                                                                                    initialNote={sentence.note || ""}
+                                                                                    onSave={handleUpdateNote}
+                                                                                    isForceExpanded={editingNoteIndex === idx}
+                                                                                />
+                                                                            </motion.div>
+                                                                        )}
+                                                                    </AnimatePresence>
+                                                                </div>
                                                             </div>
+                                                            <motion.button 
+                                                                whileHover={{ scale: 1.1, rotate: 10 }}
+                                                                whileTap={{ scale: 0.9 }}
+                                                                onClick={() => handlePreviewSentence(selectedSession, idx)} 
+                                                                className={cn(
+                                                                    "w-14 h-14 rounded-3xl flex items-center justify-center transition-all active:scale-90 shadow-lg shrink-0 group/preview mt-4 sm:mt-0",
+                                                                    isPreviewing 
+                                                                        ? "bg-slate-900 text-white" 
+                                                                        : "bg-white border-2 border-slate-50 text-slate-300 hover:border-pink-200 hover:text-[#ff8ca0]"
+                                                                )}
+                                                            >
+                                                                <Play size={20} fill="currentColor" strokeWidth={0} />
+                                                            </motion.button>
                                                         </div>
-                                                        <motion.button 
-                                                            whileHover={{ scale: 1.1, rotate: 10 }}
-                                                            whileTap={{ scale: 0.9 }}
-                                                            onClick={() => handlePreviewSentence(selectedSession, idx)} 
-                                                            className={cn(
-                                                                "w-14 h-14 rounded-3xl flex items-center justify-center transition-all active:scale-90 shadow-lg shrink-0 group/preview mt-4 sm:mt-0",
-                                                                isPreviewing 
-                                                                    ? "bg-slate-900 text-white" 
-                                                                    : "bg-white border-2 border-slate-50 text-slate-300 hover:border-pink-200 hover:text-[#ff8ca0]"
-                                                            )}
-                                                        >
-                                                            {isPreviewing ? (
-                                                                <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1 }}>
-                                                                    <Play size={20} fill="currentColor" strokeWidth={0} />
-                                                                </motion.div>
-                                                            ) : (
-                                                                <Play size={20} fill="currentColor" strokeWidth={0} className="group-hover/preview:scale-110 transition-transform" />
-                                                            )}
-                                                        </motion.button>
+                                                    </motion.div>
+                                                );
+                                            })}
+                                        </div>
+                                    </motion.div>
+
+                                    {/* Immersive Theatre Modal Overlay: Refined & Direct */}
+                                    <AnimatePresence>
+                                        {isImmersiveMode && (
+                                            <motion.div 
+                                                key="theatre-focus-modal"
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                exit={{ opacity: 0 }}
+                                                className="fixed inset-0 z-[1500] flex flex-col items-center justify-center p-6 sm:p-12 overflow-hidden"
+                                            >
+                                                {/* Cinematic Backdrop */}
+                                                <motion.div 
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    exit={{ opacity: 0 }}
+                                                    onClick={() => setIsImmersiveMode(false)}
+                                                    className="absolute inset-0 bg-slate-900/70 backdrop-blur-[60px]"
+                                                />
+                                                
+                                                <motion.div 
+                                                    initial={{ scale: 0.9, y: 40, opacity: 0 }}
+                                                    animate={{ scale: 1, y: 0, opacity: 1 }}
+                                                    exit={{ scale: 0.9, y: 40, opacity: 0 }}
+                                                    transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                                                    className="relative w-full max-w-2xl z-10"
+                                                >
+                                                    {/* Header Strip: Clean & Minimalist */}
+                                                    <div className="flex items-center justify-between mb-10 px-8">
+                                                        <div className="space-y-1 text-left">
+                                                            <p className="text-[10px] font-black text-white/40 uppercase tracking-[0.5em]">Studio Stage</p>
+                                                            <h3 className="text-xl font-black text-white tracking-tight">
+                                                                Sentence {focusedIndex + 1} of {selectedSession?.sentenceCount || 0}
+                                                            </h3>
+                                                        </div>
+                                                        
+                                                        {/* Refined Navigation controls */}
+                                                        <div className="flex items-center gap-6">
+                                                            <div className="flex items-center p-2 rounded-[1.5rem] bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl">
+                                                                <motion.button 
+                                                                    whileHover={{ scale: 1.1, x: -4, backgroundColor: "rgba(255,255,255,0.2)" }}
+                                                                    whileTap={{ scale: 0.9 }}
+                                                                    disabled={focusedIndex === 0}
+                                                                    onClick={() => {
+                                                                        setFocusedIndex(prev => prev - 1);
+                                                                        playForgeSound(true);
+                                                                    }}
+                                                                    className="w-12 h-12 rounded-[1.1rem] flex items-center justify-center text-white/80 hover:text-white disabled:opacity-20 transition-all group/prev"
+                                                                >
+                                                                    <ChevronLeft size={24} strokeWidth={3} className="group-hover/prev:-translate-x-0.5 transition-transform" />
+                                                                </motion.button>
+                                                                <div className="w-[1px] h-6 bg-white/10 mx-1" />
+                                                                <motion.button 
+                                                                    whileHover={{ scale: 1.1, x: 4, backgroundColor: "rgba(255,255,255,0.2)" }}
+                                                                    whileTap={{ scale: 0.9 }}
+                                                                    disabled={focusedIndex === (selectedSession?.sentenceCount || 1) - 1}
+                                                                    onClick={() => {
+                                                                        setFocusedIndex(prev => prev + 1);
+                                                                        playForgeSound(true);
+                                                                    }}
+                                                                    className="w-12 h-12 rounded-[1.1rem] flex items-center justify-center text-white/80 hover:text-white disabled:opacity-20 transition-all group/next"
+                                                                >
+                                                                    <ChevronRight size={24} strokeWidth={3} className="group-hover/next:translate-x-0.5 transition-transform" />
+                                                                </motion.button>
+                                                            </div>
+
+                                                            <motion.button 
+                                                                whileHover={{ scale: 1.1, rotate: 90, backgroundColor: "rgba(239, 68, 68, 0.2)" }}
+                                                                whileTap={{ scale: 0.9 }}
+                                                                onClick={() => setIsImmersiveMode(false)}
+                                                                className="w-14 h-14 rounded-[1.5rem] bg-white/10 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white/40 hover:text-red-400 transition-all shadow-2xl"
+                                                            >
+                                                                <X size={26} strokeWidth={3} />
+                                                            </motion.button>
+                                                        </div>
                                                     </div>
+
+                                                    {selectedSession?.sentences[focusedIndex] && (() => {
+                                                        const sentence = selectedSession.sentences[focusedIndex];
+                                                        const previewKey = `${selectedSession.id}:${sentence.index}`;
+                                                        const isPreviewing = previewSentenceKey === previewKey;
+                                                        
+                                                        return (
+                                                            <div className="relative">
+                                                                <motion.div 
+                                                                    key={focusedIndex}
+                                                                    initial={{ opacity: 0, scale: 0.95, y: 30 }}
+                                                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                                    exit={{ opacity: 0, scale: 1.05, y: -30 }}
+                                                                    transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                                                                    className="p-14 sm:p-16 rounded-[4.5rem] bg-white border border-white/60 shadow-[0_64px_128px_-32px_rgba(0,0,0,0.3)] flex flex-col items-center text-center gap-10 relative overflow-hidden backdrop-blur-md group"
+                                                                >
+                                                                    {/* Ambient Decors */}
+                                                                    <div className="absolute -top-32 -right-32 w-64 h-64 bg-amber-100/40 blur-[100px] rounded-full pointer-events-none" />
+                                                                    <div className="absolute -bottom-32 -left-32 w-64 h-64 bg-pink-100/30 blur-[100px] rounded-full pointer-events-none" />
+                                                                    
+                                                                    <div className="space-y-8 max-w-xl relative z-10">
+                                                                        <p className="text-[32px] sm:text-[38px] font-black text-[#3d2e23] leading-[1.25] tracking-tight italic antialiased px-4">
+                                                                            {`"${sentence.english}"`}
+                                                                        </p>
+                                                                        <div className="h-0.5 w-16 bg-slate-100/80 mx-auto" />
+                                                                        <p className="text-[18px] text-slate-400 font-bold leading-relaxed max-w-md mx-auto">
+                                                                            {sentence.chinese}
+                                                                        </p>
+                                                                    </div>
+
+                                                                    {/* Control Cluster: The Golden Trio Balance */}
+                                                                    <div className="flex items-center gap-6 pt-6 px-10 py-5 rounded-[3rem] bg-slate-900/5 border border-white/40 backdrop-blur-sm shadow-inner relative z-10">
+                                                                        {/* Primary: Forge */}
+                                                                        <motion.button 
+                                                                            whileHover={{ 
+                                                                                scale: 1.05, 
+                                                                                y: -5,
+                                                                                boxShadow: "0 20px 40px -12px rgba(255, 191, 0, 0.5)"
+                                                                            }}
+                                                                            whileTap={{ scale: 0.94, y: 0 }}
+                                                                            onClick={() => {
+                                                                                const wasMastered = sentence.isMastered;
+                                                                                handleToggleMastery(selectedSession, focusedIndex);
+                                                                                playForgeSound(!wasMastered);
+                                                                                if (!wasMastered) playSuccessSound();
+                                                                            }}
+                                                                            className={cn(
+                                                                                "relative h-18 px-10 rounded-[2.25rem] text-[13px] font-[900] uppercase tracking-[0.25em] flex items-center gap-4 transition-all overflow-hidden group/forge shrink-0",
+                                                                                sentence.isMastered 
+                                                                                    ? "bg-amber-100 text-amber-600 border-2 border-amber-200" 
+                                                                                    : "bg-[#0a0a0a] text-white shadow-2xl border-t border-white/20"
+                                                                            )}
+                                                                        >
+                                                                            {!sentence.isMastered && (
+                                                                                <motion.div 
+                                                                                    animate={{ 
+                                                                                        x: ['-100%', '200%'],
+                                                                                        opacity: [0, 0.4, 0]
+                                                                                    }}
+                                                                                    transition={{ repeat: Infinity, duration: 2.2, ease: "linear" }}
+                                                                                    className="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent skew-x-[-20deg] pointer-events-none"
+                                                                                />
+                                                                            )}
+                                                                            <div className="relative z-10 flex items-center gap-3">
+                                                                                {sentence.isMastered ? (
+                                                                                    <Check size={20} strokeWidth={4} />
+                                                                                ) : (
+                                                                                    <Zap size={20} fill="#fbbf24" className="text-amber-400" />
+                                                                                )}
+                                                                                <span>{sentence.isMastered ? "Mastered" : "Forge"}</span>
+                                                                            </div>
+                                                                        </motion.button>
+                                                                        
+                                                                        {/* Secondary: Glass Play */}
+                                                                        <motion.button 
+                                                                            whileHover={{ scale: 1.1, y: -5, backgroundColor: "rgba(255,255,255,0.9)" }}
+                                                                            whileTap={{ scale: 0.9 }}
+                                                                            onClick={() => {
+                                                                                handlePreviewSentence(selectedSession, focusedIndex);
+                                                                                playForgeSound(true);
+                                                                            }}
+                                                                            className={cn(
+                                                                                "w-18 h-18 rounded-[2.25rem] flex items-center justify-center transition-all shadow-xl active:scale-95 shrink-0 border-2",
+                                                                                isPreviewing 
+                                                                                    ? "bg-slate-950 border-slate-900 text-white shadow-slate-900/20" 
+                                                                                    : "bg-white/60 backdrop-blur-md border-white text-slate-400 hover:text-pink-500 shadow-white/10"
+                                                                            )}
+                                                                        >
+                                                                            <Play size={24} fill="currentColor" strokeWidth={0} />
+                                                                        </motion.button>
+
+                                                                        {/* Tertiary: Integrated Inline Note-Taking */}
+                                                                        <motion.button 
+                                                                            whileHover={{ scale: 1.1, y: -5, backgroundColor: "rgba(255,255,255,0.9)" }}
+                                                                            whileTap={{ scale: 0.9 }}
+                                                                            onClick={() => {
+                                                                                setIsNoteOverlayOpen(!isNoteOverlayOpen);
+                                                                                playForgeSound(true);
+                                                                            }}
+                                                                            className={cn(
+                                                                                "w-18 h-18 rounded-[2.25rem] flex items-center justify-center transition-all shadow-xl active:scale-95 shrink-0 border-2",
+                                                                                isNoteOverlayOpen
+                                                                                    ? "bg-amber-100 border-amber-200 text-amber-600"
+                                                                                    : "bg-white/60 backdrop-blur-md border-white text-slate-400 hover:text-amber-600 shadow-white/10"
+                                                                            )}
+                                                                        >
+                                                                            <PencilLine size={24} strokeWidth={2.5} />
+                                                                        </motion.button>
+                                                                    </div>
+
+                                                                    {/* Mini Inline Reflection Drawer: Compact & Discrete */}
+                                                                    <AnimatePresence>
+                                                                        {isNoteOverlayOpen && (
+                                                                            <motion.div 
+                                                                                initial={{ opacity: 0, height: 0 }}
+                                                                                animate={{ opacity: 1, height: 'auto' }}
+                                                                                exit={{ opacity: 0, height: 0 }}
+                                                                                className="w-full mt-3 overflow-hidden relative z-10"
+                                                                            >
+                                                                                <div className="p-5 rounded-[2rem] bg-amber-50/30 border border-amber-100/20 text-left">
+                                                                                    <div className="flex items-center gap-2 mb-3 opacity-60">
+                                                                                        <Pencil size={12} className="text-amber-500" />
+                                                                                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-amber-600">Reflection</span>
+                                                                                    </div>
+                                                                                    <SentenceNoteInput 
+                                                                                        session={selectedSession}
+                                                                                        index={focusedIndex}
+                                                                                        initialNote={sentence.note || ""}
+                                                                                        onSave={handleUpdateNote}
+                                                                                        isForceExpanded={true}
+                                                                                    />
+                                                                                </div>
+                                                                            </motion.div>
+                                                                        )}
+                                                                    </AnimatePresence>
+                                                                </motion.div>
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </motion.div>
-                                            );
-                                        })}
-                                    </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
                                 </>
                             )}
                         </motion.div>

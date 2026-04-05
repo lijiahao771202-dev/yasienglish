@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useSpring, useTransform } from "framer-motion";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import confetti from "canvas-confetti";
 import {
     ChevronLeft,
     ChevronRight,
@@ -10,7 +11,15 @@ import {
     Pause,
     Play,
     X,
+    Zap,
+    Trophy,
+    Home,
+    ArrowRight,
+    CheckCircle2,
+    Flame,
+    Sparkles,
 } from "lucide-react";
+import { useForgeHaptics } from "@/hooks/useForgeHaptics";
 
 import { useListeningCabinPlayer } from "@/hooks/useListeningCabinPlayer";
 import { WordPopup, type PopupState } from "@/components/reading/WordPopup";
@@ -346,11 +355,24 @@ function ListeningCabinPlayerView({
     const [subtitleAdvanceMs, setSubtitleAdvanceMs] = useState(1000);
     const player = useListeningCabinPlayer({ session, restart, subtitleAdvanceMs });
     const { playerState, currentSubtitleSentences, audioEnergy, vocalHeat, audioRef } = player;
-    
-    // Mercury Physics for Progress
+
+    // Use a local map for instant UI feedback without re-triggering the player hook
+    const [localMasteryMap, setLocalMasteryMap] = useState<Record<number, boolean>>({});
+
+    // Mastery-Based Progress
+    const masteredCount = useMemo(() => {
+        // Count mastered sentences by checking local map first, then session
+        return session.sentences.filter((_, idx) => localMasteryMap[idx] ?? session.sentences[idx].isMastered).length;
+    }, [session.sentences, localMasteryMap]);
+
+    const masteryRatio = useMemo(() => {
+        return session.sentenceCount > 0 ? masteredCount / session.sentenceCount : 0;
+    }, [masteredCount, session.sentenceCount]);
+
+    // Mercury Physics for playback progress
     const springProgress = useSpring(playerState.progressRatio, {
-        stiffness: 60,
-        damping: 20,
+        stiffness: 45,
+        damping: 15,
         restDelta: 0.001
     });
 
@@ -374,6 +396,12 @@ function ListeningCabinPlayerView({
     const [fontSizeEn, setFontSizeEn] = useState(1.1); // 1.1x default
     const [fontSizeZh, setFontSizeZh] = useState(1.0); // 1.0x default
     const [preferencesHydrated, setPreferencesHydrated] = useState(false);
+    const [showMasteryFlash, setShowMasteryFlash] = useState(false);
+    const [showEpicMasteryFlash, setShowEpicMasteryFlash] = useState(false);
+    const [isSettlementOpen, setIsSettlementOpen] = useState(false);
+    const isTogglingRef = useRef(false);
+
+    const { playForgeSound, playSuccessSound, playGrandSuccessSound } = useForgeHaptics();
     
     const [wordPopup, setWordPopup] = useState<PopupState | null>(null);
     const [lastLookupTrigger, setLastLookupTrigger] = useState<{ key: string; at: number }>({ key: "", at: 0 });
@@ -500,6 +528,81 @@ function ListeningCabinPlayerView({
 
         player.setSinglePauseMode();
     }, [player, playerState.playbackMode]);
+
+    const handleToggleMastery = useCallback(async () => {
+        if (!session || playerState.currentSentenceIndex < 0 || isTogglingRef.current) return;
+        
+        // Lock the action to prevent rapid-fire clicks
+        isTogglingRef.current = true;
+        
+        // Determine current status (check local map first, then session)
+        const isCurrentlyMastered = localMasteryMap[playerState.currentSentenceIndex] ?? session.sentences[playerState.currentSentenceIndex]?.isMastered;
+        const nextMasteredStatus = !isCurrentlyMastered;
+        
+        // Impact Visuals & Feedback
+        setShowMasteryFlash(true);
+        playSuccessSound();
+        
+        // Immediate UI Update (Local map only, doesn't touch session object)
+        setLocalMasteryMap(prev => ({
+            ...prev,
+            [playerState.currentSentenceIndex]: nextMasteredStatus
+        }));
+        
+        // Sync to DB (Background)
+        const currentSession = await db.listening_cabin_sessions.get(session.id);
+        if (currentSession) {
+            const updatedSentences = currentSession.sentences.map((s, idx) => 
+                idx === playerState.currentSentenceIndex ? { ...s, isMastered: nextMasteredStatus } : s
+            );
+            await db.listening_cabin_sessions.update(session.id, {
+                sentences: updatedSentences
+            });
+        }
+        
+        // Dynamic Auto-Advance & Settlement Detection
+        setTimeout(() => {
+            setShowMasteryFlash(false);
+            
+            // Trigger Settlement if 100% Mastered
+            const totalMastered = session.sentences.filter((_, idx) => 
+                idx === playerState.currentSentenceIndex ? nextMasteredStatus : (localMasteryMap[idx] ?? session.sentences[idx].isMastered)
+            ).length;
+
+            if (totalMastered === session.sentenceCount && nextMasteredStatus === true) {
+                // EPIC Celebration!
+                playGrandSuccessSound();
+                setShowEpicMasteryFlash(true);
+                
+                // Double confetti!
+                confetti({
+                    particleCount: 300,
+                    spread: 120,
+                    origin: { y: 0.6 },
+                    colors: ['#fbbf24', '#f59e0b', '#fffbeb', '#ffffff']
+                });
+                
+                // Keep the celebration going for ~3s before transitioning to the settlement screen
+                setTimeout(() => {
+                    setShowEpicMasteryFlash(false);
+                    setIsSettlementOpen(true);
+                }, 3000);
+                
+                // Note: isTogglingRef stays true while settlement is open to prevent background clicks
+                return;
+            }
+
+            // Only auto-advance if we just marked it as mastered (nextMasteredStatus is true)
+            if (nextMasteredStatus === true && playerState.currentSentenceIndex < session.sentences.length - 1) {
+                nextSentenceAction();
+            }
+
+            // Small extra buffer for the transition animation to complete
+            setTimeout(() => {
+                isTogglingRef.current = false;
+            }, 150);
+        }, 450);
+    }, [session, playerState.currentSentenceIndex, playerState.playbackMode, localMasteryMap, playSuccessSound, nextSentenceAction]);
 
     useEffect(() => {
         return () => {
@@ -712,6 +815,18 @@ function ListeningCabinPlayerView({
                     className="absolute inset-0 opacity-[0.98] contrast-[1.15] overflow-hidden mix-blend-multiply"
                     style={{ filter: 'url(#prism-grain)' }}
                 >
+                    {/* Mastery Flash Feedback Layer */}
+                    <AnimatePresence>
+                        {showMasteryFlash && (
+                            <motion.div 
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 0.15 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 z-[50] bg-white pointer-events-none"
+                                transition={{ duration: 0.2 }}
+                            />
+                        )}
+                    </AnimatePresence>
                     {/* 
                         UNIFIED ATMOSPHERE: 
                         No AnimatePresence here. Light volumes are permanent and morph in-place.
@@ -1299,6 +1414,91 @@ function ListeningCabinPlayerView({
                                     </span>
                                 </div>
                             </div>
+
+                            {/* Phase 30: The Grand Mastery Settlement Ceremony */}
+                            <AnimatePresence>
+                                {isSettlementOpen && (
+                                    <motion.div 
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-3xl"
+                                    >
+                                        <motion.div
+                                            initial={{ scale: 0.8, y: 40, opacity: 0 }}
+                                            animate={{ scale: 1, y: 0, opacity: 1 }}
+                                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                                            className="relative w-full max-w-lg p-12 rounded-[4rem] bg-white border border-white shadow-[0_64px_128px_-32px_rgba(0,0,0,0.4)] flex flex-col items-center text-center gap-10 overflow-hidden"
+                                        >
+                                            {/* Decorative Background Elements */}
+                                            <div className="absolute top-0 inset-x-0 h-48 bg-gradient-to-b from-amber-50 to-transparent pointer-events-none" />
+                                            <motion.div 
+                                                animate={{ 
+                                                    scale: [1, 1.2, 1],
+                                                    opacity: [0.3, 0.6, 0.3]
+                                                }}
+                                                transition={{ duration: 4, repeat: Infinity }}
+                                                className="absolute top-20 w-48 h-48 bg-amber-200 blur-[80px] rounded-full pointer-events-none"
+                                            />
+
+                                            <div className="relative z-10 space-y-6">
+                                                <motion.div 
+                                                    initial={{ rotate: -20, scale: 0.5 }}
+                                                    animate={{ rotate: 0, scale: 1 }}
+                                                    transition={{ delay: 0.2, type: "spring" }}
+                                                    className="w-28 h-28 bg-gradient-to-br from-amber-400 to-orange-500 rounded-[2.5rem] shadow-[0_20px_40px_rgba(245,158,11,0.4)] flex items-center justify-center mx-auto mb-8"
+                                                >
+                                                    <Trophy size={56} className="text-white" strokeWidth={2.5} />
+                                                </motion.div>
+
+                                                <div className="space-y-3">
+                                                    <h2 className="text-4xl font-black text-slate-800 tracking-tighter">金晶熔炼成功!</h2>
+                                                    <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px]">Grand Mastery Attained</p>
+                                                </div>
+
+                                                <div className="flex items-center justify-center gap-8 py-8 border-y border-slate-50">
+                                                    <div className="text-center">
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Score</p>
+                                                        <p className="text-3xl font-black text-slate-800">100%</p>
+                                                    </div>
+                                                    <div className="w-[1px] h-10 bg-slate-100" />
+                                                    <div className="text-center">
+                                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Proficiency</p>
+                                                        <p className="text-3xl font-black text-amber-500">{session.cefrLevel}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-4 pt-4">
+                                                    <motion.button
+                                                        whileHover={{ scale: 1.05, y: -4 }}
+                                                        whileTap={{ scale: 0.95 }}
+                                                        onClick={() => router.push('/listening-cabin')}
+                                                        className="w-full h-18 bg-slate-900 text-white rounded-[2rem] text-[15px] font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-[0_20px_40px_rgba(15,23,42,0.3)] group/home"
+                                                    >
+                                                        <Home size={18} className="group-hover/home:rotate-12 transition-transform" />
+                                                        返回主页
+                                                    </motion.button>
+                                                    
+                                                    <button 
+                                                        onClick={() => {
+                                                            setIsSettlementOpen(false);
+                                                            isTogglingRef.current = false;
+                                                        }}
+                                                        className="text-[11px] font-black text-slate-300 hover:text-slate-500 transition-colors uppercase tracking-[0.2em]"
+                                                    >
+                                                        留在当前页查看
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Micro-sparkles decoration */}
+                                            <div className="absolute bottom-10 right-10 opacity-20">
+                                                <Sparkles size={40} className="text-amber-300" />
+                                            </div>
+                                        </motion.div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </div>
                     </div>
 
@@ -1441,6 +1641,111 @@ function ListeningCabinPlayerView({
                         battleLookupCostHint="听力舱查词不消耗阅读币。"
                     />
                 )}
+
+                {/* Floating Crystal Zap - The Mastery FAB */}
+                <motion.div
+                    key={`mastery-icon-${playerState.currentSentenceIndex}`}
+                    className="fixed bottom-12 right-12 z-[200]"
+                    initial={{ opacity: 0, scale: 0.8, y: 20 }}
+                    animate={{ 
+                        opacity: 1, 
+                        scale: 1,
+                        y: [0, -10, 0]
+                    }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{
+                        y: { duration: 4, repeat: Infinity, ease: "easeInOut" },
+                        opacity: { duration: 0.3 },
+                        scale: { type: "spring", stiffness: 300, damping: 25 }
+                    }}
+                >
+                    <motion.button
+                        onClick={handleToggleMastery}
+                        whileHover={{ scale: 1.15, rotate: 15 }}
+                        whileTap={{ scale: 0.85, rotate: -15 }}
+                        className="group relative w-16 h-16 rounded-full flex items-center justify-center bg-white/40 backdrop-blur-3xl border border-white/60 shadow-[0_20px_50px_rgba(0,0,0,0.15)] overflow-hidden"
+                        style={getPressableStyle("rgba(255,255,255,0.2)", 3)}
+                    >
+                        {/* Inner Glowing Core */}
+                        <motion.div 
+                            animate={{ 
+                                opacity: [0.3, 0.6, 0.3],
+                                scale: [1, 1.2, 1]
+                            }}
+                            transition={{ duration: 3, repeat: Infinity }}
+                            style={{ backgroundColor: activeMistTheme[0] }}
+                            className="absolute inset-0 blur-xl z-0"
+                        />
+                        
+                        <Zap 
+                            className={cn(
+                                "relative z-10 w-7 h-7 transition-colors duration-500",
+                                (localMasteryMap[playerState.currentSentenceIndex] ?? session.sentences[playerState.currentSentenceIndex]?.isMastered)
+                                    ? "fill-amber-400 text-amber-500" 
+                                    : "text-slate-600/80 group-hover:text-amber-500"
+                            )} 
+                            strokeWidth={3} 
+                        />
+                    </motion.button>
+                </motion.div>
+
+                <AnimatePresence>
+                    {showEpicMasteryFlash && (
+                        <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0, transition: { duration: 1 } }}
+                            className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none overflow-hidden"
+                        >
+                            {/* Gold flash background */}
+                            <motion.div 
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: [0, 0.8, 0] }}
+                                transition={{ duration: 1.5, ease: "easeOut" }}
+                                className="absolute inset-0 bg-gradient-to-tr from-amber-400 via-yellow-100 to-amber-200 mix-blend-overlay"
+                            />
+                            
+                            {/* Radiant center blast */}
+                            <motion.div
+                                initial={{ scale: 0, opacity: 1 }}
+                                animate={{ scale: [0, 5, 10], opacity: [1, 0.5, 0] }}
+                                transition={{ duration: 2, ease: "easeOut" }}
+                                className="absolute w-64 h-64 rounded-full bg-white blur-[100px]"
+                            />
+
+                            {/* Text */}
+                            <motion.div 
+                                initial={{ scale: 0.5, opacity: 0, y: 50 }}
+                                animate={{ scale: 1, opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
+                                transition={{ 
+                                    type: "spring", stiffness: 100, damping: 15, mass: 1.5,
+                                    opacity: { duration: 0.5 }
+                                }}
+                                className="relative z-10 flex flex-col items-center"
+                            >
+                                <span className="text-[120px]">👑</span>
+                                <h1 
+                                    className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-200 via-amber-400 to-amber-600 mt-4 text-center leading-tight tracking-[0.05em]"
+                                    style={{
+                                        textShadow: "0 10px 40px rgba(251, 191, 36, 0.5)",
+                                        WebkitTextStroke: "2px rgba(255,255,255,0.8)"
+                                    }}
+                                >
+                                    PERFECT
+                                    <br />
+                                    MASTERY
+                                </h1>
+                                <motion.div 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: "100%" }}
+                                    transition={{ delay: 0.5, duration: 1, ease: "easeInOut" }}
+                                    className="h-1 mt-6 bg-gradient-to-r from-transparent via-amber-200 to-transparent shadow-[0_0_15px_rgba(251,191,36,1)]"
+                                />
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
         </main>
     );

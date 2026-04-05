@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { X, Loader2, Book, Volume2, Check, BookPlus } from "lucide-react";
+import { X, Loader2, Book, Volume2, Check, BookPlus, Sparkles } from "lucide-react";
 import { db, type VocabItem, type VocabSourceKind } from "@/lib/db";
 import { createEmptyCard } from "@/lib/fsrs";
 import { applyServerProfilePatchToLocal, saveVocabulary } from "@/lib/user-repository";
@@ -161,6 +161,7 @@ export function WordPopup({
     const [readingError, setReadingError] = useState<string | null>(null);
     const [isLoadingAi, setIsLoadingAi] = useState(false);
     const [aiError, setAiError] = useState<string | null>(null);
+    const [showAiPanel, setShowAiPanel] = useState(false);
     const popupRef = useRef<HTMLDivElement>(null);
     const dragStateRef = useRef<{ startX: number; startY: number; originLeft: number; originTop: number } | null>(null);
     const isMountedRef = useRef(true);
@@ -292,6 +293,7 @@ export function WordPopup({
         setReadingError(null);
         setIsLoadingAi(false);
         setAiError(null);
+        setShowAiPanel(false);
 
         db.vocabulary.where("word_key").equals(normalizedPopupWord).first().then(item => {
             if (isMounted && item) {
@@ -470,6 +472,7 @@ export function WordPopup({
 
     const handleGenerateAiDefinition = useCallback(async () => {
         if (isLoadingAi) return;
+        setShowAiPanel(true);
         setAiError(null);
         setReadingError(null);
         setIsLoadingAi(true);
@@ -875,6 +878,65 @@ export function WordPopup({
                         </p>
                     )}
                 </div>
+                {(showAiDefinitionButton && showAiPanel) ? (
+                    <div className={cn(
+                        "rounded-[24px] p-3.5",
+                        isMinimal
+                            ? "border border-slate-200 bg-slate-50/60"
+                            : "border border-[#f7ddeb] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,247,251,0.9))] shadow-[0_6px_0_rgba(248,223,236,0.95)]",
+                    )}>
+                        <div className={cn(
+                            "mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em]",
+                            isMinimal ? "text-slate-500" : "text-[#7a58e8]",
+                        )}>
+                            <Sparkles className="h-3.5 w-3.5" />
+                            <span>AI Definition</span>
+                        </div>
+
+                        {isLoadingAi ? (
+                            <div className={cn(
+                                "flex items-center gap-2 rounded-[18px] px-3 py-3",
+                                isMinimal
+                                    ? "border border-slate-200 bg-white text-slate-500"
+                                    : "border border-[#e5ddff] bg-white/72 text-[#8b78c8]",
+                            )}>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span className="text-sm font-semibold">AI 正在生成释义...</span>
+                            </div>
+                        ) : definition?.context_meaning ? (
+                            <div className={cn(
+                                "space-y-2 rounded-[20px] p-3",
+                                isMinimal
+                                    ? "border border-slate-200 bg-white"
+                                    : "border border-[#e9e2ff] bg-white/78 shadow-[0_4px_0_rgba(231,224,255,0.85)]",
+                            )}>
+                                <p className={cn(
+                                    "text-sm font-semibold leading-snug",
+                                    isMinimal ? "text-slate-800" : "text-[#5a4a86]",
+                                )}>
+                                    {definition.context_meaning.definition}
+                                </p>
+                                {definition.context_meaning.translation ? (
+                                    <p className={cn(
+                                        "text-sm",
+                                        isMinimal ? "text-slate-600" : "text-[#7f6bb1]",
+                                    )}>
+                                        {definition.context_meaning.translation}
+                                    </p>
+                                ) : null}
+                            </div>
+                        ) : (
+                            <p className={cn(
+                                "rounded-[18px] px-3 py-3 text-sm",
+                                isMinimal
+                                    ? "border border-slate-200 bg-white text-slate-500"
+                                    : "border border-[#e8ddff] bg-white/70 text-[#8f7bb0]",
+                            )}>
+                                点击上方 <span className="font-semibold">AI</span> 按钮生成场景释义。
+                            </p>
+                        )}
+                    </div>
+                ) : null}
                 {(aiError || saveError || (saveNotice && !saveError) || readingError) ? (
                     <div className="space-y-2">
                         {aiError && (

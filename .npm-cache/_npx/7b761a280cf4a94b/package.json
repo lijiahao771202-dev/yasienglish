@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "bin-version-check-cli": "^3.0.0"
+  }
+}
