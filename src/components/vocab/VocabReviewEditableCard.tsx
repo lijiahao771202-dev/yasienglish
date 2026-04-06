@@ -354,7 +354,7 @@ export function VocabReviewEditableCard({
     return (
         <div data-review-layout="cute-bento" className="relative z-20 flex h-full min-h-0 flex-col bg-white/70 backdrop-blur-xl rounded-[28px] overflow-hidden shadow-inner border border-white/80">
             {/* Header: Controls & Word Input */}
-            <div className="shrink-0 pt-4 px-4 pb-2 z-10 sticky top-0 bg-white/40 border-b border-[#e2e8f0]/60 backdrop-blur-md">
+            <div className="shrink-0 pt-4 px-4 pb-2 z-10 sticky top-0 bg-white/40 border-b border-theme-border/20 backdrop-blur-md">
                 <div className="flex items-center justify-between gap-3 mb-2">
                     <div className="flex items-center gap-2">
                         {isGraduated ? (

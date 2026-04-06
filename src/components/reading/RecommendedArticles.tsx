@@ -641,9 +641,9 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         }
     };
 
-    const shellCardClass = "rounded-[30px] border-4 border-[#d8d3cb] bg-white shadow-[0_12px_0_0_#d8d3cb]";
-    const insetCardClass = "rounded-[24px] border-4 border-[#ebe6de] bg-[#fffdf8]";
-    const utilityButtonClass = "ui-pressable inline-flex h-11 items-center justify-center gap-2 rounded-full border-2 border-[#d8d3cb] bg-white px-4 text-sm font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none";
+    const shellCardClass = "rounded-[30px] border-4 border-theme-border bg-theme-base-bg shadow-[0_12px_0_0_var(--theme-shadow)]";
+    const insetCardClass = "rounded-[24px] border-4 border-theme-border bg-theme-card-bg";
+    const utilityButtonClass = "ui-pressable inline-flex h-11 items-center justify-center gap-2 rounded-full border-2 border-theme-border bg-theme-base-bg px-4 text-sm font-black text-theme-text disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none";
     const tabItems: Array<{ id: FeedCategory; label: string }> = [
         { id: "cat_mode", label: "CAT 成长" },
         { id: "ai_gen", label: "AI 生成" },
@@ -671,7 +671,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
             <motion.div
                 layout
                 transition={{ layout: panelTransition, duration: panelTransition.duration, ease: panelTransition.ease }}
-                className="relative mb-6 overflow-hidden rounded-[34px] border-4 border-[#d8d3cb] bg-[#eaf2ff] px-5 py-5 shadow-[0_12px_0_0_#d8d3cb] md:px-6 md:py-6"
+                className="relative mb-6 overflow-hidden rounded-[34px] border-4 border-[color:var(--mist-read-bd)] bg-[color:var(--mist-read-bg)] px-5 py-5 shadow-[0_12px_0_0_var(--mist-read-sd)] md:px-6 md:py-6"
             >
                 <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[linear-gradient(180deg,rgba(255,255,255,0.48),rgba(255,255,255,0))]" />
                 <div className="pointer-events-none absolute -left-10 top-8 h-24 w-24 rounded-full bg-[#bfdbfe]/55 blur-3xl" />
@@ -688,14 +688,14 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                         className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between"
                     >
                         <div className="max-w-2xl">
-                            <p className="inline-flex items-center gap-2 rounded-full border-2 border-[#d8d3cb] bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-[#2563eb]">
+                            <p className="inline-flex items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-primary-bg px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-theme-primary-text shadow-[0_3px_0_var(--theme-shadow)]">
                                 <Sparkles className="h-3.5 w-3.5" />
                                 Reading Flow
                             </p>
-                            <h3 className="mt-3 font-welcome-display text-[2.3rem] font-black leading-[0.92] tracking-[-0.05em] text-[#111827] md:text-[3rem]">
+                            <h3 className="mt-4 font-welcome-display text-[2.3rem] font-black leading-[0.92] tracking-[-0.05em] text-theme-text md:text-[3rem]">
                                 阅读流
                             </h3>
-                            <p className="mt-2 max-w-xl text-sm font-medium leading-6 text-slate-600">
+                            <p className="mt-3 max-w-xl text-sm font-medium leading-6 text-theme-text-muted">
                                 按新鲜度优先，保持阅读上下文连续。把训练、生成和资讯入口收进一个更可爱的阅读工作台里。
                             </p>
                         </div>
@@ -725,8 +725,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     <button
                                         onClick={handleRefresh}
                                         disabled={isFetching}
-                                        className={cn(utilityButtonClass, "border-[#bfdbfe] text-[#1d4ed8] shadow-[0_4px_0_0_#bfdbfe]")}
-                                        style={getPressableStyle("#bfdbfe", 4)}
+                                        className={cn(utilityButtonClass, "border-[3px] border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_0_var(--theme-shadow)]")}
+                                        style={getPressableStyle("var(--theme-shadow)", 4)}
                                         title={category === "ai_gen" ? "刷新 AI 历史" : `刷新 ${category} 文章`}
                                     >
                                         <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
@@ -739,7 +739,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                                 initial={{ opacity: 0, y: -8, scale: 0.95 }}
                                                 animate={{ opacity: 1, y: 0, scale: 1 }}
                                                 exit={{ opacity: 0, y: -8, scale: 0.95 }}
-                                                className="absolute right-0 top-full z-50 mt-3 rounded-[22px] border-4 border-[#d8d3cb] bg-white p-3 shadow-[0_10px_0_0_#d8d3cb]"
+                                                className="absolute right-0 top-full z-50 mt-3 rounded-[22px] border-4 border-theme-border bg-theme-card-bg p-3 shadow-[0_10px_0_0_var(--theme-shadow)]"
                                             >
                                                 <div className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">抓取数量</div>
                                                 <div className="flex gap-2">
@@ -770,7 +770,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                         </AnimatePresence>
                     </motion.div>
 
-                    <div className="grid gap-3 rounded-[28px] border-4 border-[#d8d3cb] bg-white p-2 md:grid-cols-4">
+                    <div className="grid gap-3 rounded-[28px] border-4 border-theme-border bg-theme-card-bg p-2 shadow-[0_3px_0_var(--theme-shadow)] md:grid-cols-4">
                         {tabItems.map((tab) => (
                             <button
                                 key={tab.id}
@@ -792,15 +792,15 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                 className={cn(
                                     "ui-pressable relative overflow-hidden rounded-full px-4 py-3 text-center text-sm font-black tracking-wide",
                                     category === tab.id
-                                        ? "text-white"
-                                        : "bg-[#fffdf8] text-slate-500 hover:text-slate-700"
+                                        ? "text-theme-active-text"
+                                        : "bg-theme-base-bg text-theme-text-muted hover:text-theme-text"
                                 )}
-                                style={getPressableStyle(category === tab.id ? "#1d4ed8" : "#d8d3cb", 4)}
+                                style={getPressableStyle(category === tab.id ? "var(--theme-shadow)" : "rgba(0,0,0,0.1)", 4)}
                             >
                                 {category === tab.id ? (
                                     <motion.span
                                         layoutId="read-category-pill"
-                                        className="absolute inset-0 rounded-full bg-[#2563eb] shadow-[0_6px_0_0_#1d4ed8]"
+                                        className="absolute inset-0 rounded-full bg-theme-active-bg shadow-[0_6px_0_0_var(--theme-shadow)] border-[3px] border-theme-border"
                                         transition={panelTransition}
                                     />
                                 ) : null}
@@ -820,7 +820,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                 transition={panelTransition}
                                 className="overflow-hidden"
                             >
-                                <div className="grid gap-3 rounded-[28px] border-4 border-[#d8d3cb] bg-white p-2 md:grid-cols-4">
+                                <div className="grid gap-3 rounded-[28px] border-4 border-theme-border bg-theme-card-bg p-2 shadow-[0_3px_0_var(--theme-shadow)] md:grid-cols-4">
                                     {feedViewModel.filterItems.map((filterItem) => {
                                         const Icon = filterItem.icon;
                                         const isActive = activeView === filterItem.id;
@@ -831,15 +831,15 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                                 className={cn(
                                                     "ui-pressable relative flex min-h-[48px] items-center justify-center gap-2 overflow-hidden rounded-full px-3 py-2 text-sm font-black",
                                                     isActive
-                                                        ? "text-white"
-                                                        : "bg-[#fffdf8] text-slate-600 hover:text-slate-800"
+                                                        ? "text-theme-primary-text"
+                                                        : "bg-theme-base-bg text-theme-text-muted hover:text-theme-text"
                                                 )}
-                                                style={getPressableStyle(isActive ? "#374151" : "#d8d3cb", 4)}
+                                                style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.1)", 4)}
                                             >
                                                 {isActive ? (
                                                     <motion.span
                                                         layoutId="read-view-pill"
-                                                        className="absolute inset-0 rounded-full bg-[#111827] shadow-[0_6px_0_0_#374151]"
+                                                        className="absolute inset-0 rounded-full bg-theme-primary-bg shadow-[0_6px_0_0_var(--theme-shadow)] border-[3px] border-theme-border"
                                                         transition={panelTransition}
                                                     />
                                                 ) : null}
@@ -847,8 +847,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                                     <Icon className="h-4 w-4" />
                                                     <span>{filterItem.label}</span>
                                                     <span className={cn(
-                                                        "rounded-full px-2 py-0.5 text-[10px] font-black",
-                                                        isActive ? "bg-white/20 text-white" : "bg-[#eef2ff] text-[#4338ca]"
+                                                        "rounded-full px-2 py-0.5 text-[10px] font-black border-2",
+                                                        isActive ? "bg-theme-card-bg text-theme-primary-text border-theme-border" : "bg-theme-card-bg border-theme-border text-theme-text font-bold"
                                                     )}>
                                                         {filterItem.count}
                                                     </span>
@@ -864,7 +864,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
             </motion.div>
 
             {category === "cat_mode" && catStartError ? (
-                <div className="mb-5 rounded-[24px] border-4 border-[#fecaca] bg-[#fff1f2] px-5 py-3 text-sm font-semibold text-rose-700 shadow-[0_8px_0_0_#fecaca]">
+                <div className="mb-5 rounded-[24px] border-4 border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-rose-700 shadow-[0_8px_0_0_rgba(254,202,202,1)]">
                     {catStartError}
                 </div>
             ) : null}
@@ -882,13 +882,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                     <section className={cn(shellCardClass, "p-5 md:p-6")}>
                         <div className="flex flex-wrap items-start justify-between gap-4">
                             <div>
-                                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#64748b]">AI Studio</p>
-                                <h4 className="mt-2 font-welcome-display text-[2rem] font-black leading-[0.95] tracking-[-0.04em] text-[#111827]">
+                                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-theme-text-muted">AI Studio</p>
+                                <h4 className="mt-2 font-welcome-display text-[2rem] font-black leading-[0.95] tracking-[-0.04em] text-theme-text">
                                     智能写作台
                                 </h4>
-                                <p className="mt-2 text-sm font-medium text-slate-600">把难度、主题和生成合并为一个连续工作流。</p>
+                                <p className="mt-2 text-sm font-medium text-theme-text-muted">把难度、主题和生成合并为一个连续工作流。</p>
                             </div>
-                            <div className="inline-flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#c4b5fd] bg-[#ede9fe] text-[#6d28d9] shadow-[0_4px_0_0_#c4b5fd]">
+                            <div className="inline-flex h-12 w-12 items-center justify-center rounded-full border-2 border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]">
                                 <Sparkles className="h-5 w-5" />
                             </div>
                         </div>
@@ -932,24 +932,24 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             onClick={() => setGenDifficulty(diff.id)}
                                             whileHover={{ y: -2 }}
                                             whileTap={getPressableTap(reducedMotion, 6, 0.985)}
-                                            style={getPressableStyle("#d8d3cb", 6)}
+                                            style={getPressableStyle("var(--theme-shadow)", 6)}
                                             className={cn(
                                                 "ui-pressable group relative overflow-hidden rounded-[24px] border-4 p-4 text-left transition-all duration-350",
                                                 isActive
-                                                    ? cn(diff.activeClass, "border-[#d8d3cb]")
-                                                    : "border-[#d8d3cb] bg-[#fffdf8] text-slate-700"
+                                                    ? cn(diff.activeClass, "border-theme-border")
+                                                    : "border-theme-border bg-theme-card-bg text-theme-text"
                                             )}
                                         >
                                             <div className="relative">
                                                 <div className={cn(
-                                                    "mb-3 inline-flex rounded-[18px] border-2 border-[#d8d3cb] p-2.5 transition-transform duration-300 group-hover:scale-105",
-                                                    isActive ? diff.iconClass : "bg-white text-slate-500"
+                                                    "mb-3 inline-flex rounded-[18px] border-2 border-theme-border p-2.5 transition-transform duration-300 group-hover:scale-105",
+                                                    isActive ? diff.iconClass : "bg-theme-base-bg text-theme-text-muted"
                                                 )}>
                                                     <Icon className="h-4 w-4" />
                                                 </div>
-                                                <p className="text-base font-bold leading-tight">{diff.label}</p>
-                                                <p className="mt-1 text-xs font-medium text-slate-600">{diff.desc}</p>
-                                                <p className="mt-0.5 text-[11px] text-slate-500">{diff.detail}</p>
+                                                <p className="text-base font-bold leading-tight text-theme-text">{diff.label}</p>
+                                                <p className="mt-1 text-xs font-medium text-theme-text-muted">{diff.desc}</p>
+                                                <p className="mt-0.5 text-[11px] text-theme-text-muted opacity-80">{diff.detail}</p>
                                             </div>
                                         </motion.button>
                                     );
@@ -958,7 +958,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
 
                         <div className={cn(insetCardClass, "mt-5 p-4 md:p-5")}>
                                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                                    <h5 className="text-sm font-black text-slate-800">主题选择</h5>
+                                    <h5 className="text-sm font-black text-theme-text">主题选择</h5>
                                     {genTopic.trim() && (
                                         <span className={cn(
                                             "rounded-full border-2 px-2.5 py-1 text-[11px] font-black",
@@ -983,8 +983,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             className={cn(
                                                 "ui-pressable rounded-full border-2 px-3.5 py-1.5 text-xs font-black transition-all duration-250",
                                                 genTopic === topic
-                                                    ? "border-[#111827] bg-[#111827] text-white"
-                                                    : "border-[#d8d3cb] bg-white text-slate-600 hover:text-slate-800"
+                                                    ? "border-theme-border bg-theme-primary-bg text-theme-primary-text"
+                                                    : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text"
                                             )}
                                         >
                                             {topic}
@@ -999,7 +999,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                         onChange={(e) => setGenTopic(e.target.value)}
                                         onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
                                         placeholder="输入主题（留空则随机），例如：Quantum Computing"
-                                        className="w-full rounded-full border-4 border-[#d8d3cb] bg-white px-5 py-3 text-sm font-medium text-slate-800 transition-all placeholder:text-slate-400 focus:border-[#93c5fd] focus:outline-none"
+                                        className="w-full rounded-full border-4 border-theme-border bg-theme-base-bg px-5 py-3 text-sm font-medium text-theme-text transition-all placeholder:text-theme-text-muted/60 focus:border-theme-border focus:ring-4 focus:ring-theme-primary-bg focus:outline-none"
                                     />
                                     <motion.button
                                         type="button"
@@ -1007,12 +1007,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                         disabled={isGenerating}
                                         whileHover={isGenerating ? undefined : { y: -1, scale: 1.01 }}
                                         whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 6, 0.985)}
-                                        style={getPressableStyle(isGenerating ? "#d8d3cb" : "#1d4ed8", 6)}
+                                        style={getPressableStyle(isGenerating ? "rgba(0,0,0,0.1)" : "var(--theme-shadow)", 6)}
                                         className={cn(
                                             "ui-pressable group relative overflow-hidden rounded-full px-5 py-3 text-sm font-black transition-all duration-300 disabled:shadow-none",
                                             isGenerating
-                                                ? "cursor-not-allowed border-4 border-[#d8d3cb] bg-[#f8fafc] text-slate-400"
-                                                : "border-4 border-[#1d4ed8] bg-[#2563eb] text-white"
+                                                ? "cursor-not-allowed border-4 border-theme-border bg-theme-card-bg text-theme-text-muted"
+                                                : "border-4 border-theme-border bg-theme-active-bg text-theme-active-text"
                                         )}
                                     >
                                         <span className="relative flex items-center gap-2">
@@ -1026,12 +1026,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
 
                     <div className="space-y-3">
                         <div className="flex items-center justify-between px-1">
-                            <h4 className="text-sm font-black text-slate-800">历史文章</h4>
-                            <span className="text-xs text-slate-500">{articles.length} 篇</span>
+                            <h4 className="text-sm font-black text-theme-text">历史文章</h4>
+                            <span className="text-xs text-theme-text-muted">{articles.length} 篇</span>
                         </div>
 
                         {articles.length === 0 ? (
-                            <div className={cn(shellCardClass, "p-8 text-center text-sm text-slate-500")}>
+                            <div className={cn(shellCardClass, "p-8 text-center text-sm text-theme-text-muted")}>
                                 暂无历史文章，先生成一篇试试
                             </div>
                         ) : (
@@ -1074,16 +1074,16 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                         <section className={cn(shellCardClass, "p-5 md:p-6")}>
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
-                                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#64748b]">Training Console</p>
-                                    <h4 className="mt-2 font-welcome-display text-[2rem] font-black tracking-[-0.04em] text-slate-900 md:text-[2.2rem]">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-theme-text-muted">Training Console</p>
+                                    <h4 className="mt-2 font-welcome-display text-[2rem] font-black tracking-[-0.04em] text-theme-text md:text-[2.2rem]">
                                         CAT 自适应训练
                                     </h4>
                                     <p className="mt-2 text-sm font-medium text-slate-600">一局一篇，按表现自动调节难度，把入口做成更像首页的可爱训练工作台。</p>
                                 </div>
-                                <div className="inline-flex items-center gap-2 rounded-full border-2 border-[#fdba74] bg-[#ffedd5] px-4 py-2 text-sm font-black text-[#9a3412] shadow-[0_4px_0_0_#fdba74]">
+                                <div className="inline-flex items-center gap-2 rounded-full border-2 border-theme-border bg-theme-active-bg px-4 py-2 text-sm font-black text-theme-active-text shadow-[0_4px_0_0_var(--theme-shadow)]">
                                     <span className="text-base leading-none">{getCatRankIconByTierId(catRank.id)}</span>
                                     <span>{catRank.name}</span>
-                                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-black text-slate-700">{catScore}</span>
+                                    <span className="rounded-full bg-theme-card-bg px-2 py-0.5 text-xs font-black text-theme-text border-2 border-theme-border">{catScore}</span>
                                 </div>
                             </div>
 
@@ -1092,23 +1092,23 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     type="button"
                                     onClick={() => setIsCatRankOverviewOpen((prev) => !prev)}
                                     className={cn("ui-pressable w-full px-4 py-4 text-left", insetCardClass)}
-                                    style={getPressableStyle("#ebe6de", 6)}
+                                    style={getPressableStyle("var(--theme-shadow)", 6)}
                                 >
                                     <div className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3">
-                                        <span className="inline-flex h-12 w-12 items-center justify-center rounded-[18px] border-2 border-[#d8d3cb] bg-white text-xl shadow-[0_4px_0_0_#d8d3cb]">
+                                        <span className="inline-flex h-12 w-12 items-center justify-center rounded-[18px] border-[3px] border-theme-border bg-theme-card-bg text-xl shadow-[0_4px_0_0_var(--theme-shadow)]">
                                             {getCatRankIconByTierId(catRank.id)}
                                         </span>
                                         <div className="min-w-0">
-                                            <p className="truncate text-sm font-black text-slate-900">{catRank.primaryLabel}</p>
-                                            <p className="truncate text-xs font-medium text-slate-500">{catRank.secondaryLabel}</p>
+                                            <p className="truncate text-sm font-black text-theme-text">{catRank.primaryLabel}</p>
+                                            <p className="truncate text-xs font-medium text-theme-text-muted">{catRank.secondaryLabel}</p>
                                         </div>
-                                        <div className="rounded-[18px] border-2 border-[#d8d3cb] bg-white px-3 py-2 text-right">
-                                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">下一段</p>
-                                            <p className="text-sm font-black text-slate-900">
+                                        <div className="rounded-[18px] border-[3px] border-theme-border bg-theme-card-bg px-3 py-2 text-right shadow-[0_3px_0_0_var(--theme-shadow)]">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-theme-text-muted mt-0.5">下一段</p>
+                                            <p className="text-sm font-black text-theme-text">
                                                 {catScoreToNextRank > 0 ? `还差 ${catScoreToNextRank} 分` : "已到顶段"}
                                             </p>
                                         </div>
-                                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#d8d3cb] bg-white text-slate-600">
+                                        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-card-bg text-theme-text-muted">
                                             <ChevronDown
                                                 className={cn(
                                                     "h-4 w-4 transition-transform duration-300",
@@ -1119,8 +1119,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     </div>
                                 </button>
 
-                                <div className={cn(insetCardClass, "p-4")}>
-                                    <p className="px-1 text-xs font-black uppercase tracking-[0.12em] text-slate-600">训练主题（可选）</p>
+                                <div className={cn(insetCardClass, "p-4 border-theme-border bg-theme-card-bg")}>
+                                    <p className="px-1 text-xs font-black uppercase tracking-[0.12em] text-theme-text-muted">训练主题（可选）</p>
                                     <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
                                         <input
                                             type="text"
@@ -1128,14 +1128,14 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                             onChange={(event) => setCatTopic(event.target.value)}
                                             onKeyDown={(event) => event.key === "Enter" && handleStartCatSession()}
                                             placeholder="例如：睡眠与记忆、AI 与教育"
-                                            className="w-full rounded-full border-4 border-[#d8d3cb] bg-white px-4 py-3 text-sm text-slate-800 transition-all placeholder:text-slate-400 focus:border-[#c4b5fd] focus:outline-none"
+                                            className="w-full rounded-full border-[3px] border-theme-border bg-theme-base-bg px-4 py-3 text-sm text-theme-text transition-all placeholder:text-theme-text-muted/60 focus:border-theme-border focus:ring-4 focus:ring-theme-primary-bg focus:outline-none"
                                         />
                                         <button
                                             type="button"
                                             onClick={handleStartCatSession}
                                             disabled={isStartingCat}
-                                            className="ui-pressable inline-flex items-center justify-center gap-2 rounded-full border-4 border-[#1d4ed8] bg-[#2563eb] px-5 py-3 text-sm font-black text-white disabled:opacity-50 disabled:shadow-none"
-                                            style={getPressableStyle("#1d4ed8", 6)}
+                                            className="ui-pressable inline-flex items-center justify-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-active-bg px-5 py-3 text-sm font-black text-theme-active-text disabled:opacity-50 disabled:shadow-none"
+                                            style={getPressableStyle("var(--theme-shadow)", 6)}
                                         >
                                             {isStartingCat ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
                                             {isStartingCat ? "生成中..." : "开始训练"}
@@ -1162,21 +1162,21 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                                         <div
                                                             key={tier.id}
                                                             className={cn(
-                                                                "rounded-[18px] border-2 px-3 py-2.5 transition-all",
+                                                                "rounded-[18px] border-[3px] px-3 py-2.5 transition-all",
                                                                 isActive
-                                                                    ? "border-violet-300/85 bg-violet-100/72 shadow-[0_4px_0_0_rgba(196,181,253,1)]"
-                                                                    : "border-[#e7e1d7] bg-white",
+                                                                    ? "border-theme-border bg-theme-active-bg shadow-[0_4px_0_0_var(--theme-shadow)]"
+                                                                    : "border-theme-border/50 bg-theme-base-bg",
                                                             )}
                                                         >
                                                             <div className="flex items-center gap-2">
                                                                 <span className="text-base leading-none">{getCatRankIconByTierId(tier.id)}</span>
-                                                                <span className="text-xs font-black text-slate-800">{tier.name}</span>
+                                                                <span className="text-xs font-black text-theme-text">{tier.name}</span>
                                                             </div>
-                                                            <p className="mt-1 text-[10px] text-slate-500">
+                                                            <p className="mt-1 text-[10px] text-theme-text-muted">
                                                                 {tier.maxScore === null ? `${tier.minScore}+` : `${tier.minScore}-${tier.maxScore}`}
                                                             </p>
-                                                            <p className="mt-1 text-[11px] font-black text-slate-700">{tier.primaryLabel}</p>
-                                                            <p className="text-[11px] text-slate-500">{tier.secondaryLabel}</p>
+                                                            <p className="mt-1 text-[11px] font-black text-theme-text">{tier.primaryLabel}</p>
+                                                            <p className="text-[11px] text-theme-text-muted">{tier.secondaryLabel}</p>
                                                         </div>
                                                     );
                                                 })}
@@ -1192,12 +1192,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
 
                     <div className="space-y-3">
                         <div className="flex items-center justify-between px-1">
-                            <h4 className="text-sm font-black text-slate-800">训练历史</h4>
-                            <span className="text-xs text-slate-500">{articles.length} 篇</span>
+                            <h4 className="text-sm font-black text-theme-text">训练历史</h4>
+                            <span className="text-xs text-theme-text-muted">{articles.length} 篇</span>
                         </div>
 
                         {articles.length === 0 ? (
-                            <div className={cn(shellCardClass, "p-8 text-center text-sm text-slate-500")}>
+                            <div className={cn(shellCardClass, "p-8 text-center text-sm text-theme-text-muted")}>
                                 暂无 CAT 历史文章，先开始一局训练
                             </div>
                         ) : (
@@ -1237,7 +1237,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                     transition={panelTransition}
                 >
                     {articles.length === 0 && (
-                        <div className={cn(shellCardClass, "py-16 text-center text-sm italic text-slate-500")}>
+                        <div className={cn(shellCardClass, "py-16 text-center text-sm italic text-theme-text-muted")}>
                             点击刷新按钮抓取文章 / Click refresh to fetch articles
                         </div>
                     )}
@@ -1253,7 +1253,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                 transition={panelTransition}
                             >
                                 {feedViewModel.filteredArticles.length === 0 ? (
-                                    <div className={cn(shellCardClass, "p-10 text-center text-sm text-slate-500")}>
+                                    <div className={cn(shellCardClass, "p-10 text-center text-sm text-theme-text-muted")}>
                                         这个分组暂时没有文章
                                     </div>
                                 ) : (
@@ -1324,10 +1324,10 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
     const isRead = status === 'read';
     const difficultyMeta = getDifficultyBadgeMeta(item.difficulty);
     const statusMeta = status === 'new'
-        ? { label: '新到达', className: 'border-amber-200/80 bg-amber-100/80 text-amber-700' }
+        ? { label: '新到达', className: 'border-theme-border bg-theme-primary-bg text-theme-primary-text' }
         : status === 'read'
-            ? { label: '已读', className: 'border-emerald-200/80 bg-emerald-100/80 text-emerald-700' }
-            : { label: '未读', className: 'border-slate-200/80 bg-white/75 text-slate-600' };
+            ? { label: '已读', className: 'border-theme-border bg-theme-active-bg text-theme-active-text' }
+            : { label: '未读', className: 'border-theme-border bg-theme-base-bg text-theme-text-muted' };
     const sourceLabel = category === "ai_gen" ? "AI Studio" : item.source;
     const primaryImageUrl = typeof item.image === "string" && item.image.trim().length > 0 ? item.image.trim() : null;
     const backupImageUrl = `https://picsum.photos/seed/${encodeURIComponent((item.title || item.link).slice(0, 64))}/960/540`;
@@ -1375,12 +1375,12 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
                 handleOpenArticle();
             }}
             className={cn(
-                "ui-pressable group relative flex h-full min-h-[320px] cursor-pointer flex-col overflow-hidden rounded-[28px] border-4 border-[#d8d3cb] bg-white text-left transition-all duration-300",
+                "ui-pressable group relative flex h-full min-h-[320px] cursor-pointer flex-col overflow-hidden rounded-[28px] border-4 border-theme-border bg-theme-card-bg text-left transition-all duration-300",
                 isAnyLoading && !isLoading && "opacity-75"
             )}
-            style={getPressableStyle("#d8d3cb", 8)}
+            style={getPressableStyle("var(--theme-shadow)", 8)}
         >
-            <div className="relative h-40 overflow-hidden border-b-4 border-[#ece7df]">
+            <div className="relative h-40 overflow-hidden border-b-4 border-theme-border">
                 <div className={cn("absolute inset-0 z-0", fallbackGradient)} />
                 {resolvedImageUrl && (
                     <img
@@ -1413,8 +1413,8 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
                             event.stopPropagation();
                             onDelete(item.link);
                         }}
-                        className="ui-pressable flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#fbcfe8] bg-white text-rose-500"
-                        style={getPressableStyle("#fbcfe8", 3)}
+                        className="ui-pressable flex h-7 w-7 items-center justify-center rounded-full border-2 border-theme-border bg-theme-card-bg text-rose-500"
+                        style={getPressableStyle("var(--theme-shadow)", 3)}
                         title="删除文章"
                         aria-label="删除文章"
                     >
@@ -1430,7 +1430,7 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
                             {difficultyMeta.label}
                         </div>
                     ) : null}
-                    <div className="rounded-full border-2 border-white/80 bg-white/90 px-2.5 py-1 text-[10px] font-black text-slate-700">
+                    <div className="rounded-full border-2 border-theme-border bg-theme-card-bg px-2.5 py-1 text-[10px] font-black text-theme-text-muted">
                         {sourceLabel}
                     </div>
                 </div>
@@ -1438,11 +1438,11 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
 
             <div className="flex flex-1 flex-col gap-3 px-4 py-4">
                 <div className="flex items-center justify-between gap-3">
-                    <span className="rounded-full bg-[#eef2ff] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#4338ca]">
+                    <span className="rounded-full bg-theme-base-bg px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-theme-text-muted border-2 border-theme-border">
                         {formatArticleDate(item)}
                     </span>
                     {typeof item.quizScorePercent === "number" ? (
-                        <span className="rounded-full border-2 border-[#bfdbfe] bg-[#eff6ff] px-2.5 py-1 text-[10px] font-black text-[#1d4ed8]">
+                        <span className="rounded-full border-2 border-theme-border bg-theme-active-bg px-2.5 py-1 text-[10px] font-black text-theme-active-text">
                             Score {item.quizScorePercent}%
                         </span>
                     ) : null}
@@ -1450,17 +1450,17 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
 
                 <h4 className={cn(
                     "line-clamp-2 font-welcome-ui text-[1.05rem] font-black leading-[1.2] tracking-[-0.02em] transition-colors md:text-[1.14rem]",
-                    isRead ? "text-slate-700" : "text-slate-900"
+                    isRead ? "text-theme-text-muted" : "text-theme-text"
                 )}>
                     {item.title}
                 </h4>
 
-                <p className="line-clamp-3 text-sm leading-6 text-slate-500">
+                <p className="line-clamp-3 text-sm leading-6 text-theme-text-muted opacity-90">
                     {item.snippet || "打开文章继续训练你的阅读理解与词汇判断。"}
                 </p>
 
                 <div className="mt-auto flex items-end justify-between gap-3 pt-2">
-                    <div className="text-[11px] font-semibold text-slate-400">
+                    <div className="text-[11px] font-semibold text-theme-text-muted">
                         {category === "cat_mode"
                             ? "Adaptive session"
                             : category === "ai_gen"
@@ -1468,12 +1468,12 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
                                 : `${item.source} · 阅读`}
                     </div>
                     <span className={cn(
-                        "inline-flex items-center gap-1 rounded-full border-2 px-3 py-1.5 text-xs font-black transition-all duration-300",
+                        "inline-flex items-center gap-1 rounded-full border-[3px] px-3 py-1.5 text-xs font-black transition-all duration-300",
                         isLoading
-                            ? "border-[#d8d3cb] bg-[#fffdf8] text-slate-700"
+                            ? "border-theme-border bg-theme-base-bg text-theme-text-muted"
                             : isRead
-                                ? "border-[#d8d3cb] bg-[#fffdf8] text-slate-600"
-                                : "border-[#2563eb] bg-[#2563eb] text-white shadow-[0_4px_0_0_#1d4ed8]"
+                                ? "border-theme-border bg-theme-base-bg text-theme-text-muted"
+                                : "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_0_var(--theme-shadow)]"
                     )}>
                         {isLoading ? (
                             <>

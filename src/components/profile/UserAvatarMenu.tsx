@@ -273,10 +273,10 @@ export function UserAvatarMenu({
                 aria-label="Open profile menu"
                 onClick={() => setOpen((current) => !current)}
                 className={isSidebar
-                    ? "relative flex w-full cursor-pointer items-center gap-3 rounded-[1.65rem] border-2 border-white/76 bg-[linear-gradient(145deg,rgba(255,255,255,0.74),rgba(247,243,236,0.5))] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.88),0_18px_30px_-24px_rgba(46,39,33,0.18)] hover:-translate-y-0.5"
+                    ? "relative flex w-full cursor-pointer items-center gap-3 rounded-[1.65rem] border-[3px] border-theme-border bg-theme-base-bg px-3 py-3 shadow-[0_4px_0_0_var(--theme-shadow)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_var(--theme-shadow)] transition-all"
                     : isHeader
-                        ? "relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-2 border-white/78 bg-white/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_20px_32px_-22px_rgba(45,38,31,0.18)] backdrop-blur-xl hover:-translate-y-0.5"
-                        : "relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-2 border-white/70 bg-white/78 shadow-[0_24px_36px_-22px_rgba(79,70,229,0.95)] backdrop-blur-xl hover:-translate-y-0.5"}
+                        ? "relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-base-bg shadow-[0_4px_0_0_var(--theme-shadow)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_var(--theme-shadow)] transition-all"
+                        : "relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-base-bg shadow-[0_4px_0_0_var(--theme-shadow)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_var(--theme-shadow)] transition-all"}
             >
                 <PresetAvatar presetId={avatarPreset} size={isSidebar ? 52 : 44} />
                 {unreadCount > 0 ? (
@@ -284,8 +284,8 @@ export function UserAvatarMenu({
                 ) : null}
                 {isSidebar ? (
                     <div className="min-w-0 flex-1 text-left">
-                        <p className="truncate text-sm font-semibold text-[#1f1b18]">{displayName}</p>
-                        <p className="mt-0.5 truncate text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-[#847b6f]">
+                        <p className="truncate text-sm font-bold text-theme-text">{displayName}</p>
+                        <p className="mt-0.5 truncate text-[0.68rem] font-bold uppercase tracking-[0.22em] text-theme-text-muted">
                             Account center
                         </p>
                     </div>
@@ -300,31 +300,31 @@ export function UserAvatarMenu({
                         exit={{ opacity: 0, scale: 0.95, y: isSidebar ? 10 : -10, filter: "blur(2px)" }}
                         transition={{ type: "spring", stiffness: 450, damping: 25 }}
                         className={isSidebar
-                            ? "absolute bottom-full left-0 mb-2 w-72 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-4rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg ring-1 ring-black/5"
-                            : "absolute right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-4rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg ring-1 ring-black/5"}
+                            ? "absolute bottom-full left-0 mb-2 w-72 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-4rem)] overflow-y-auto rounded-[1.2rem] border-[3px] border-theme-border bg-theme-base-bg p-2 shadow-[0_6px_0_0_var(--theme-shadow)]"
+                            : "absolute right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-4rem)] overflow-y-auto rounded-[1.2rem] border-[3px] border-theme-border bg-theme-base-bg p-2 shadow-[0_6px_0_0_var(--theme-shadow)]"}
                     >
                     {/* Profile Header */}
-                    <div className="rounded-lg p-2 flex items-center gap-3">
+                    <div className="rounded-[1rem] p-2 flex items-center gap-3">
                         <div className="flex-shrink-0"><PresetAvatar presetId={avatarPreset} size={36} /></div>
                         <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-slate-900">{displayName}</p>
-                            <p className="truncate text-xs text-slate-500">{email}</p>
+                            <p className="truncate text-sm font-bold text-theme-text">{displayName}</p>
+                            <p className="truncate text-xs font-semibold text-theme-text-muted">{email}</p>
                         </div>
                     </div>
 
                     {/* Sync status */}
-                    <div className={`mt-2 rounded-md border px-3 py-2.5 ${
+                    <div className={`mt-2 rounded-[0.8rem] border-2 px-3 py-2.5 ${
                         syncLabel === "Synced"
-                            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                            ? "border-theme-border bg-emerald-50 text-emerald-800"
                             : syncLabel === "Sync failed"
-                                ? "border-rose-100 bg-rose-50 text-rose-700"
-                                : "border-indigo-100 bg-indigo-50 text-indigo-700"
+                                ? "border-theme-border bg-rose-50 text-rose-800"
+                                : "border-theme-border bg-indigo-50 text-indigo-800"
                     }`}>
-                        <div className="flex items-center gap-2 text-xs font-medium">
+                        <div className="flex items-center gap-2 text-xs font-bold">
                             <RefreshCw className={`h-3.5 w-3.5 ${manualSyncing ? "animate-spin" : ""}`} />
                             {syncLabel}
                         </div>
-                        <p className="mt-1 text-xs opacity-80">{syncDescription}</p>
+                        <p className="mt-1 text-xs font-medium opacity-80">{syncDescription}</p>
                     </div>
 
                     {speechModel.isDesktopApp ? (
@@ -334,18 +334,18 @@ export function UserAvatarMenu({
                     ) : null}
 
                     {/* Action grid */}
-                    <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    <div className="mt-2 grid grid-cols-2 gap-2">
                         <button
                             type="button"
                             onClick={async () => { setManualSyncing(true); try { await syncNow(); } catch (error) { window.alert(getUserFacingSyncError(error)); } finally { setManualSyncing(false); } }}
-                            className="col-span-2 flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                            className="col-span-2 flex w-full cursor-pointer items-center justify-between rounded-[0.8rem] px-3 py-2 text-sm font-bold text-theme-text hover:bg-theme-card-bg border-2 border-transparent hover:border-theme-border transition-colors"
                         >
                             <span className="flex items-center gap-2.5"><CloudUpload className="h-4 w-4" />{manualSyncing ? "同步中…" : "立即同步云端档案"}</span>
                         </button>
                         <button
                             type="button"
                             onClick={() => { setMailboxOpen(true); setOpen(false); }}
-                            className="flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 text-left"
+                            className="flex cursor-pointer items-center gap-2.5 rounded-[0.8rem] px-3 py-2 text-sm font-bold text-theme-text hover:bg-theme-card-bg border-2 border-transparent hover:border-theme-border transition-colors"
                         >
                             <Mail className="h-4 w-4" />消息
                             {unreadCount > 0 && <span className="ml-auto inline-flex items-center justify-center rounded-full bg-rose-100 px-1.5 text-[10px] font-bold text-rose-600">{unreadCount}</span>}
@@ -353,31 +353,31 @@ export function UserAvatarMenu({
                         <button
                             type="button"
                             onClick={() => { setBackgroundOpen(true); setOpen(false); }}
-                            className="flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 text-left"
+                            className="flex cursor-pointer items-center gap-2.5 rounded-[0.8rem] px-3 py-2 text-sm font-bold text-theme-text hover:bg-theme-card-bg border-2 border-transparent hover:border-theme-border transition-colors text-left"
                         >
                             <ImageIcon className="h-4 w-4" />主题
                         </button>
                     </div>
 
-                    <div className="my-2 h-px bg-slate-100" />
+                    <div className="my-2 h-[3px] bg-theme-border rounded-full" />
                     
                     <button
                         type="button"
                         onClick={() => { setMailboxOpen(false); setBackgroundOpen(false); setTtsVoiceOpen((c) => { const n = !c; if (n) { setVoiceFilter("all"); setVoiceSearch(""); } return n; }); }}
-                        className="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                        className="flex w-full cursor-pointer items-center justify-between rounded-[0.8rem] px-3 py-2 text-sm font-bold text-theme-text hover:bg-theme-card-bg border-2 border-transparent hover:border-theme-border transition-colors"
                     >
                         <span className="flex items-center gap-2.5"><Volume2 className="h-4 w-4" />专属发言人</span>
-                        <span className="flex items-center gap-0.5 text-xs text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md">{selectedVoiceOption.label}<ChevronRight className="h-3 w-3" /></span>
+                        <span className="flex items-center gap-0.5 text-xs text-theme-text bg-theme-card-bg px-2 py-0.5 rounded-[0.4rem] border-2 border-theme-border">{selectedVoiceOption.label}<ChevronRight className="h-3 w-3" /></span>
                     </button>
                     
-                    <div className="mt-1 space-y-1">
-                        <Link href="/profile" prefetch={false} className="flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus:outline-none">
+                    <div className="mt-2 space-y-2">
+                        <Link href="/profile" prefetch={false} className="flex cursor-pointer items-center justify-between rounded-[0.8rem] px-3 py-2 text-sm font-bold text-theme-text hover:bg-theme-card-bg border-2 border-transparent hover:border-theme-border transition-colors">
                             <span className="flex items-center gap-2.5"><Settings2 className="h-4 w-4" />个人资料</span>
                         </Link>
                         <button
                             type="button"
                             onClick={async () => { setLogoutBusy(true); try { const supabase = createBrowserClientSingleton(); await supabase.auth.signOut(); await fetch("/logout", { method: "POST" }).catch(() => undefined); } finally { setLogoutBusy(false); router.replace("/login"); } }}
-                            className="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50"
+                            className="flex w-full cursor-pointer items-center justify-between rounded-[0.8rem] px-3 py-2 text-sm font-bold text-rose-600 hover:bg-rose-50 border-2 border-transparent hover:border-rose-200 transition-colors"
                         >
                             <span className="flex items-center gap-2.5"><LogOut className="h-4 w-4" />{logoutBusy ? "退出中…" : "断开连接"}</span>
                         </button>
@@ -404,35 +404,35 @@ export function UserAvatarMenu({
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 20 }}
                             transition={{ type: "spring", stiffness: 350, damping: 25 }}
-                            className="relative flex w-full max-w-3xl max-h-[85vh] flex-col overflow-hidden rounded-[2rem] border-[3px] border-slate-800 bg-white shadow-[0_12px_0_0_rgba(30,41,59,0.8)]"
+                            className="relative flex w-full max-w-3xl max-h-[85vh] flex-col overflow-hidden rounded-[2rem] border-[3px] border-theme-border bg-theme-base-bg shadow-[0_12px_0_0_var(--theme-shadow)]"
                             onClick={(event) => event.stopPropagation()}
                         >
                             <button
                                 type="button"
                                 onClick={() => setTtsVoiceOpen(false)}
-                                className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border-[3px] border-slate-800 bg-white text-slate-500 shadow-[0_4px_0_0_#1e293b] transition-transform hover:-translate-y-0.5 hover:text-slate-900"
+                                className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-active-bg text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] transition-transform hover:-translate-y-0.5"
                                 aria-label="Close voice picker"
                             >
                                 <X className="h-4 w-4" />
                             </button>
-                            <div className="border-b-[3px] border-slate-800 px-6 pb-5 pt-6 bg-white shrink-0">
-                                <h2 className="pr-12 font-welcome-display text-2xl tracking-tight text-slate-900">选择专属发言人</h2>
-                                <p className="mt-1 pr-12 text-sm font-semibold text-slate-500">更改全局 AI 语音合成的默认声音。</p>
+                            <div className="border-b-[3px] border-theme-border px-6 pb-5 pt-6 bg-theme-card-bg shrink-0">
+                                <h2 className="pr-12 font-welcome-display text-2xl tracking-tight text-theme-text">选择专属发言人</h2>
+                                <p className="mt-1 pr-12 text-sm font-bold text-theme-text-muted">更改全局 AI 语音合成的默认声音。</p>
                                 
-                                <div className="mt-4 flex flex-col gap-3 rounded-2xl border-[3px] border-slate-800 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between shadow-[0_4px_0_0_#1e293b]">
+                                <div className="mt-4 flex flex-col gap-3 rounded-2xl border-[3px] border-theme-border bg-theme-base-bg p-3 sm:flex-row sm:items-center sm:justify-between shadow-[0_4px_0_0_var(--theme-shadow)]">
                                     <div className="min-w-0">
-                                        <p className="truncate text-sm font-bold text-slate-900">
-                                            <span className="text-slate-500 mr-2 font-semibold">当前选择:</span>
+                                        <p className="truncate text-sm font-black text-theme-text">
+                                            <span className="text-theme-text-muted mr-2 font-bold">当前选择:</span>
                                             {selectedVoiceOption.label}
                                         </p>
-                                        <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">{selectedVoiceOption.voice}</p>
+                                        <p className="mt-0.5 truncate text-xs font-bold text-theme-text-muted">{selectedVoiceOption.voice}</p>
                                     </div>
                                     <motion.button
                                         whileTap={{ scale: 0.95 }}
                                         type="button"
                                         onClick={() => void handlePreviewVoice(selectedVoice)}
                                         disabled={ttsVoiceBusy || previewVoice !== null}
-                                        className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[0.8rem] border-[3px] border-slate-800 bg-emerald-100 px-4 text-xs font-bold text-emerald-800 shadow-[0_2px_0_0_#1e293b] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                                        className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[0.8rem] border-[3px] border-theme-border bg-theme-primary-bg px-4 text-xs font-black text-theme-primary-text shadow-[0_2px_0_0_var(--theme-shadow)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
                                     >
                                         {previewVoice === selectedVoice ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                                         当前试听
@@ -447,10 +447,10 @@ export function UserAvatarMenu({
                                                 key={option.value}
                                                 type="button"
                                                 onClick={() => setVoiceFilter(option.value)}
-                                                className={`inline-flex h-9 items-center justify-center rounded-[0.8rem] border-[3px] border-slate-800 px-4 text-xs font-bold transition-transform hover:-translate-y-0.5 shadow-[0_2px_0_0_#1e293b] ${
+                                                className={`inline-flex h-9 items-center justify-center rounded-[0.8rem] border-[3px] border-theme-border px-4 text-xs font-black transition-transform hover:-translate-y-0.5 shadow-[0_2px_0_0_var(--theme-shadow)] ${
                                                     voiceFilter === option.value
-                                                        ? "bg-slate-800 text-white"
-                                                        : "bg-white text-slate-800"
+                                                        ? "bg-theme-active-bg text-theme-active-text"
+                                                        : "bg-theme-card-bg text-theme-text"
                                                 }`}
                                             >
                                                 {option.label}
@@ -458,21 +458,21 @@ export function UserAvatarMenu({
                                         ))}
                                     </div>
                                     <label className="relative flex h-10 items-center w-full sm:w-64 max-w-full">
-                                        <Search className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
+                                        <Search className="pointer-events-none absolute left-3 h-4 w-4 text-theme-text-muted" />
                                         <input
                                             value={voiceSearch}
                                             onChange={(event) => setVoiceSearch(event.target.value)}
                                             placeholder="搜索发言人..."
-                                            className="w-full rounded-[1rem] border-[3px] border-slate-800 bg-white py-1.5 pl-9 pr-3 text-sm font-bold text-slate-900 shadow-[0_2px_0_0_#1e293b] placeholder:text-slate-400 focus:outline-none focus:shadow-[0_4px_0_0_#1e293b] focus:-translate-y-0.5 transition-transform"
+                                            className="w-full rounded-[1rem] border-[3px] border-theme-border bg-theme-base-bg py-1.5 pl-9 pr-3 text-sm font-bold text-theme-text shadow-[0_2px_0_0_var(--theme-shadow)] placeholder:text-theme-text-muted focus:outline-none focus:shadow-[0_4px_0_0_var(--theme-shadow)] focus:-translate-y-0.5 transition-transform"
                                         />
                                     </label>
                                 </div>
                             </div>
-                            <div ref={voiceListRef} className="min-h-0 flex-1 overflow-y-auto w-full bg-slate-50/50">
+                            <div ref={voiceListRef} className="min-h-0 flex-1 overflow-y-auto w-full bg-theme-base-bg/50">
                                 {filteredVoiceGroups.length === 0 ? (
                                     <div className="px-6 py-12 text-center">
-                                        <p className="text-sm font-bold text-slate-800">未找到相关发言人</p>
-                                        <p className="mt-1 text-xs font-semibold text-slate-500">请尝试其他搜索词</p>
+                                        <p className="text-sm font-bold text-theme-text">未找到相关发言人</p>
+                                        <p className="mt-1 text-xs font-semibold text-theme-text-muted">请尝试其他搜索词</p>
                                     </div>
                                 ) : (
                                     <div className="w-full p-6">
@@ -480,7 +480,7 @@ export function UserAvatarMenu({
                                             {filteredVoiceGroups.map((group) => (
                                                 <div key={group.title} className="flex flex-col gap-3">
                                                     <div className="px-1">
-                                                        <span className="inline-flex items-center rounded-full border-[3px] border-slate-800 bg-indigo-100 px-3 py-1 text-xs font-bold tracking-wide text-indigo-800 shadow-[0_2px_0_0_#1e293b]">
+                                                        <span className="inline-flex items-center rounded-full border-[3px] border-theme-border bg-theme-active-bg px-3 py-1 text-xs font-bold tracking-wide text-theme-active-text shadow-[0_2px_0_0_var(--theme-shadow)]">
                                                             {group.title}
                                                         </span>
                                                     </div>
@@ -491,14 +491,14 @@ export function UserAvatarMenu({
                                                                 <div 
                                                                     key={option.voice} 
                                                                     data-voice-card={option.voice} 
-                                                                    className={`flex flex-col justify-between rounded-[1.2rem] border-[3px] border-slate-800 p-4 shadow-[0_4px_0_0_#1e293b] ${selected ? "bg-indigo-50" : "bg-white"}`}
+                                                                    className={`flex flex-col justify-between rounded-[1.2rem] border-[3px] border-theme-border p-4 shadow-[0_4px_0_0_var(--theme-shadow)] ${selected ? "bg-theme-active-bg" : "bg-theme-card-bg"}`}
                                                                 >
                                                                     <div>
                                                                         <div className="flex items-start justify-between">
-                                                                            <span className={`text-[15px] font-bold ${selected ? "text-indigo-800" : "text-slate-900"}`}>{option.label}</span>
-                                                                            <span className="text-[10px] font-semibold text-slate-500">{option.voice}</span>
+                                                                            <span className={`text-[15px] font-bold ${selected ? "text-theme-active-text" : "text-theme-text"}`}>{option.label}</span>
+                                                                            <span className="text-[10px] font-semibold text-theme-text-muted">{option.voice}</span>
                                                                         </div>
-                                                                        <p className="mt-2 text-xs font-medium text-slate-500 line-clamp-2">
+                                                                        <p className="mt-2 text-xs font-medium text-theme-text-muted line-clamp-2">
                                                                             {option.description}
                                                                         </p>
                                                                     </div>
@@ -509,7 +509,7 @@ export function UserAvatarMenu({
                                                                             aria-label={`试听 ${option.label}`}
                                                                             onClick={() => void handlePreviewVoice(option.voice)}
                                                                             disabled={ttsVoiceBusy || previewVoice !== null}
-                                                                            className="inline-flex h-9 w-9 items-center justify-center rounded-[0.8rem] border-[3px] border-slate-800 bg-white text-slate-800 shadow-[0_2px_0_0_#1e293b] transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+                                                                            className="inline-flex h-9 w-9 items-center justify-center rounded-[0.8rem] border-[3px] border-theme-border bg-theme-base-bg text-theme-text shadow-[0_2px_0_0_var(--theme-shadow)] transition-transform hover:-translate-y-0.5 disabled:opacity-50"
                                                                         >
                                                                             {previewVoice === option.voice ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 ml-0.5" />}
                                                                         </motion.button>
@@ -519,10 +519,10 @@ export function UserAvatarMenu({
                                                                             aria-label={`${selected ? "当前" : "选择"} ${option.label}`}
                                                                             onClick={() => void handleSelectVoice(option.voice)}
                                                                             disabled={ttsVoiceBusy || selected}
-                                                                            className={`inline-flex h-9 items-center justify-center rounded-[0.8rem] border-[3px] border-slate-800 px-4 text-xs font-bold shadow-[0_2px_0_0_#1e293b] transition-transform ${
+                                                                            className={`inline-flex h-9 items-center justify-center rounded-[0.8rem] border-[3px] border-theme-border px-4 text-xs font-bold shadow-[0_2px_0_0_var(--theme-shadow)] transition-transform ${
                                                                                 selected 
-                                                                                    ? "bg-slate-800 text-white opacity-100" 
-                                                                                    : "bg-white text-slate-800 hover:-translate-y-0.5"
+                                                                                    ? "bg-theme-text text-theme-card-bg opacity-100" 
+                                                                                    : "bg-theme-card-bg text-theme-text hover:-translate-y-0.5"
                                                                             }`}
                                                                         >
                                                                             {selected ? (
@@ -567,25 +567,44 @@ export function UserAvatarMenu({
                     </div>
                 </div>
             ) : null}
-            {backgroundOpen ? (
-                <div
-                    className={isSidebar
-                        ? "absolute bottom-full left-full z-[180] mb-3 ml-3 w-[min(92vw,42.5rem)]"
-                        : "absolute right-0 top-full z-[180] mt-3 w-[min(92vw,42.5rem)]"}
-                >
-                    <div className="relative rounded-[1.9rem] border border-white/80 bg-white p-3 shadow-[0_36px_100px_-42px_rgba(15,23,42,0.45)]">
-                        <button
-                            type="button"
+            {typeof window !== "undefined" && createPortal(
+                <AnimatePresence>
+                    {backgroundOpen && (
+                        <motion.div
+                            initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+                            animate={{ opacity: 1, backdropFilter: "blur(12px)" }}
+                            exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label="全局主题选择"
+                            className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/40 p-4 sm:p-8 overflow-hidden"
                             onClick={() => setBackgroundOpen(false)}
-                            className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#dfe3ec] bg-white text-[#3f4a5a]"
-                            aria-label="Close background picker"
                         >
-                            <X className="h-4 w-4" />
-                        </button>
-                        <BackgroundThemePicker userId={userId} />
-                    </div>
-                </div>
-            ) : null}
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                                className="relative flex w-full max-w-4xl max-h-[90vh] flex-col overflow-hidden rounded-[2rem] border-4 border-theme-border bg-theme-base-bg shadow-[0_12px_0_0_var(--theme-shadow)]"
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => setBackgroundOpen(false)}
+                                    className="absolute right-4 top-4 z-[999] flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-active-bg text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] transition-transform hover:-translate-y-0.5 active:translate-y-0 active:shadow-[0_2px_0_0_var(--theme-shadow)]"
+                                    aria-label="Close background picker"
+                                >
+                                    <X className="h-5 w-5" />
+                                </button>
+                                <div className="flex-1 overflow-y-auto">
+                                    <BackgroundThemePicker userId={userId} />
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
         </div>
     );
 }

@@ -9,6 +9,7 @@ import { APP_HOME_PATH, isGuestOnlyAuthPath, isPublicAuthPath } from "@/lib/auth
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 import { useSyncStatusStore } from "@/lib/sync-status";
 import { bootstrapUserSession, scheduleBackgroundSync } from "@/lib/user-repository";
+import { applyBackgroundThemeToDocument, getSavedBackgroundTheme } from "@/lib/background-preferences";
 
 interface AuthSyncProviderProps {
     initialUser: SessionUserSummary | null;
@@ -166,10 +167,12 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
                     id: session.user.id,
                     email: session.user.email ?? null,
                 });
+                applyBackgroundThemeToDocument(getSavedBackgroundTheme(session.user.id));
                 return;
             }
 
             setSessionUser(null);
+            applyBackgroundThemeToDocument(getSavedBackgroundTheme(null));
         };
 
         const watchdogId = window.setTimeout(() => {
@@ -206,11 +209,13 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
                     id: session.user.id,
                     email: session.user.email ?? null,
                 });
+                applyBackgroundThemeToDocument(getSavedBackgroundTheme(session.user.id));
                 return;
             }
 
             if (!isPublicAuthPath(pathnameRef.current || "")) {
                 setSessionUser(null);
+                applyBackgroundThemeToDocument(getSavedBackgroundTheme(null));
                 bootstrappedUserIdRef.current = null;
                 reset();
                 router.replace("/login");

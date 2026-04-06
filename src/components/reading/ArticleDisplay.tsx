@@ -447,19 +447,19 @@ export function ArticleDisplay({
             animate={{ opacity: 1, y: 0 }}
             className="relative mx-auto w-full pb-28"
         >
-            <div className="relative mb-24 overflow-hidden rounded-[2rem] border-[3px] border-[#17120d] bg-[#fffdf8] p-6 shadow-[0_10px_0_rgba(23,18,13,0.14)] transition-all duration-500 md:p-10 xl:p-12">
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-[linear-gradient(180deg,rgba(255,249,235,0.95),rgba(255,249,235,0))]" />
+            <div className="relative mb-24 overflow-hidden rounded-[2rem] border-4 border-theme-border bg-theme-base-bg p-6 shadow-[0_10px_0_var(--theme-shadow)] transition-all duration-500 md:p-10 xl:p-12">
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-theme-base-bg/95 to-transparent" />
                 {topActionNode ? (
                     <div className="absolute right-6 top-6 z-20 md:right-10 md:top-10 xl:right-12 xl:top-10">
                         {topActionNode}
                     </div>
                 ) : null}
-                <header className="relative mb-12 border-b-2 border-[#e9decb] pb-8 pt-1 text-left md:pr-60 xl:pr-72">
+                <header className="relative mb-12 border-b-2 border-theme-border/50 pb-8 pt-1 text-left md:pr-60 xl:pr-72">
                     <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex rounded-full border-[3px] border-[#17120d] bg-white px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#5f5448] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+                        <span className="inline-flex rounded-full border-[3px] border-theme-border bg-theme-card-bg px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-theme-text shadow-[0_4px_0_var(--theme-shadow)]">
                             {articleSourceLabel}
                         </span>
-                        <span className="inline-flex rounded-full border-[3px] border-[#17120d] bg-[#dbeafe] px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#1d4ed8] shadow-[0_4px_0_rgba(23,18,13,0.08)]">
+                        <span className="inline-flex rounded-full border-[3px] border-theme-border bg-theme-active-bg px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]">
                             {estimatedReadMinutes} min read
                         </span>
                         {canOpenOriginalArticle && (
@@ -467,7 +467,7 @@ export function ArticleDisplay({
                                 href={articleUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 rounded-full border-[3px] border-[#17120d] bg-[#fff7d8] px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-[#5f5448] shadow-[0_4px_0_rgba(23,18,13,0.08)] transition hover:-translate-y-0.5"
+                                className="inline-flex items-center gap-1.5 rounded-full border-[3px] border-theme-border bg-theme-primary-bg px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)] transition hover:-translate-y-0.5"
                             >
                                 原文
                                 <ExternalLink className="h-3.5 w-3.5" />
@@ -476,18 +476,18 @@ export function ArticleDisplay({
                     </div>
 
                     <div className="mt-7">
-                        <h1 className="max-w-[15ch] font-newsreader text-[2.8rem] font-medium leading-[0.95] tracking-tight text-[#17120d] md:text-[3.6rem] xl:text-[4.1rem]">
+                        <h1 className="max-w-[15ch] font-newsreader text-[2.8rem] font-medium leading-[0.95] tracking-tight text-theme-text md:text-[3.6rem] xl:text-[4.1rem]">
                             {title}
                         </h1>
                     </div>
 
-                    <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-[#7d6e61]">
+                    <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-theme-text-muted">
                         {byline ? (
-                            <p className="font-newsreader text-xl italic text-[#4b3f34]">
+                            <p className="font-newsreader text-xl italic text-theme-text-muted">
                                 By {byline}
                             </p>
                         ) : null}
-                        <span className="inline-flex items-center gap-2 rounded-full border border-[#ddd1bd] bg-[#fcf6ea] px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-[#8a7c6b]">
+                        <span className="inline-flex items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-card-bg px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-theme-text-muted">
                             Editorial Reading Sheet
                         </span>
                     </div>
@@ -495,7 +495,7 @@ export function ArticleDisplay({
 
                 {/* TED Video Player */}
                 {isTED && videoUrl && (
-                    <div className="mb-12 overflow-hidden rounded-[1.5rem] border-[3px] border-[#17120d] shadow-[0_8px_0_rgba(23,18,13,0.12)]">
+                    <div className="mb-12 overflow-hidden rounded-[1.5rem] border-4 border-theme-border shadow-[0_8px_0_var(--theme-shadow)]">
                         <TEDVideoPlayer
                             ref={videoPlayerRef}
                             videoUrl={videoUrl}
@@ -503,7 +503,7 @@ export function ArticleDisplay({
                     </div>
                 )}
 
-                <div ref={contentRef} className={cn("group/article space-y-5 text-[#2f251d] leading-loose", fontClass)}>
+                <div ref={contentRef} className={cn("group/article space-y-5 text-theme-text leading-loose", fontClass)}>
                     {activeBlocks && activeBlocks.length > 0 ? (
                         (() => {
                             let paragraphOrder = 0;
@@ -519,11 +519,11 @@ export function ArticleDisplay({
                                         data-article-paragraph={currentParagraphOrder}
                                         className={cn(
                                             "relative scroll-mt-8 rounded-[1.2rem] px-1 py-1 transition-all duration-500 md:scroll-mt-12",
-                                            useParagraphFallbackHighlight && "bg-[#fff0b8]/70 ring-2 ring-[#f59e0b]/35"
+                                            useParagraphFallbackHighlight && "bg-theme-active-bg/30 ring-2 ring-theme-active-bg"
                                         )}
                                     >
                                         {isLocatedParagraph && highlightedQuestionNumber && highlightedQuestionNumber > 0 && (
-                                            <div className="pointer-events-none absolute -right-2 -top-2 z-20 rounded-full border-[3px] border-[#17120d] bg-[#ffe08a] px-2.5 py-1 text-[10px] font-black text-[#17120d] shadow-[0_4px_0_rgba(23,18,13,0.12)]">
+                                            <div className="pointer-events-none absolute -right-2 -top-2 z-20 rounded-full border-[3px] border-theme-border bg-theme-active-bg px-2.5 py-1 text-[10px] font-black text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]">
                                                 第{highlightedQuestionNumber}题
                                             </div>
                                         )}
@@ -556,23 +556,23 @@ export function ArticleDisplay({
                                 );
                             } else if (block.type === 'header') {
                                 const HeaderTag = (block.tag || 'h2') as React.ElementType;
-                                return <HeaderTag key={index} className="mt-10 mb-4 font-newsreader text-3xl font-medium text-[#17120d]">{block.content}</HeaderTag>;
+                                return <HeaderTag key={index} className="mt-10 mb-4 font-newsreader text-3xl font-medium text-theme-text">{block.content}</HeaderTag>;
                             } else if (block.type === 'list' && block.items) {
                                 const ListTag = (block.tag || 'ul') as React.ElementType;
                                 return (
-                                    <ListTag key={index} className="list-disc list-inside space-y-2 pl-4 text-[#4f4336]">
+                                    <ListTag key={index} className="list-disc list-inside space-y-2 pl-4 text-theme-text">
                                         {block.items.map((item, i) => <li key={i}>{item}</li>)}
                                     </ListTag>
                                 );
                             } else if (block.type === 'image' && block.src) {
                                 return (
-                                    <div key={index} className="my-8 overflow-hidden rounded-[1.6rem] border-[3px] border-[#17120d] shadow-[0_8px_0_rgba(23,18,13,0.12)]">
-                                        <img src={block.src} alt={block.alt || ''} className="w-full h-auto" />
+                                    <div key={index} className="my-8 overflow-hidden rounded-[1.6rem] border-4 border-theme-border shadow-[0_8px_0_var(--theme-shadow)]">
+                                        <img src={block.src} alt={block.alt || ''} className="w-full h-auto object-cover" />
                                     </div>
                                 );
                             } else if (block.type === 'blockquote' && block.content) {
                                 return (
-                                    <blockquote key={index} className="my-8 rounded-[1.4rem] border-[3px] border-[#17120d] bg-[#fff4d7] px-5 py-4 text-[#5b4c3e] italic shadow-[0_6px_0_rgba(23,18,13,0.08)]">
+                                    <blockquote key={index} className="my-8 rounded-[1.4rem] border-4 border-theme-border bg-theme-primary-bg/20 px-5 py-4 text-theme-text italic shadow-[0_6px_0_var(--theme-shadow)]">
                                         {block.content}
                                     </blockquote>
                                 );
