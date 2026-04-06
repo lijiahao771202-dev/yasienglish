@@ -190,21 +190,21 @@ Elo 是 **每个模式的实力分**，不是总分。
 };
 
 const GUIDE_MARKDOWN_COMPONENTS: Components = {
-    h1: ({ children }) => <h1 className="mt-1 text-2xl font-black tracking-tight text-stone-900">{children}</h1>,
-    h2: ({ children }) => <h2 className="mt-6 border-l-4 border-purple-300 pl-3 text-xl font-bold text-stone-900">{children}</h2>,
-    h3: ({ children }) => <h3 className="mt-5 text-base font-bold text-purple-700">{children}</h3>,
-    p: ({ children }) => <p className="my-3 text-[15px] leading-7 text-stone-700">{children}</p>,
-    ul: ({ children }) => <ul className="my-3 list-disc space-y-1.5 pl-5 text-stone-700">{children}</ul>,
-    ol: ({ children }) => <ol className="my-3 list-decimal space-y-1.5 pl-5 text-stone-700">{children}</ol>,
-    li: ({ children }) => <li className="text-[15px] leading-7 marker:text-purple-500">{children}</li>,
-    table: ({ children }) => <div className="my-4 overflow-x-auto rounded-xl border border-stone-200 bg-white/70"><table className="min-w-full text-sm">{children}</table></div>,
-    thead: ({ children }) => <thead className="bg-stone-100/90 text-stone-700">{children}</thead>,
-    th: ({ children }) => <th className="border-b border-stone-200 px-3 py-2 text-left font-semibold">{children}</th>,
-    td: ({ children }) => <td className="border-b border-stone-200 px-3 py-2 align-top text-stone-700">{children}</td>,
-    blockquote: ({ children }) => <blockquote className="my-4 rounded-xl border-l-4 border-purple-300 bg-purple-50/80 px-4 py-3 text-sm text-purple-900">{children}</blockquote>,
-    strong: ({ children }) => <strong className="font-bold text-stone-900">{children}</strong>,
+    h1: ({ children }) => <h1 className="mt-1 text-2xl font-black tracking-tight text-theme-text">{children}</h1>,
+    h2: ({ children }) => <h2 className="mt-6 border-l-4 border-theme-border pl-3 text-xl font-bold text-theme-text">{children}</h2>,
+    h3: ({ children }) => <h3 className="mt-5 text-base font-bold text-theme-text">{children}</h3>,
+    p: ({ children }) => <p className="my-3 text-[15px] leading-7 text-theme-text opacity-90">{children}</p>,
+    ul: ({ children }) => <ul className="my-3 list-disc space-y-1.5 pl-5 text-theme-text opacity-90">{children}</ul>,
+    ol: ({ children }) => <ol className="my-3 list-decimal space-y-1.5 pl-5 text-theme-text opacity-90">{children}</ol>,
+    li: ({ children }) => <li className="text-[15px] leading-7 marker:text-theme-text-muted">{children}</li>,
+    table: ({ children }) => <div className="my-4 overflow-x-auto rounded-xl border border-theme-border bg-theme-base-bg/70"><table className="min-w-full text-sm">{children}</table></div>,
+    thead: ({ children }) => <thead className="bg-theme-card-bg/90 text-theme-text">{children}</thead>,
+    th: ({ children }) => <th className="border-b border-theme-border px-3 py-2 text-left font-semibold">{children}</th>,
+    td: ({ children }) => <td className="border-b border-theme-border px-3 py-2 align-top text-theme-text opacity-90">{children}</td>,
+    blockquote: ({ children }) => <blockquote className="my-4 rounded-xl border-l-4 border-theme-border bg-theme-primary-bg/20 px-4 py-3 text-sm text-theme-text">{children}</blockquote>,
+    strong: ({ children }) => <strong className="font-bold text-theme-text">{children}</strong>,
     code: ({ children, className }) => (
-        <code className={cn("rounded-md bg-purple-100/90 px-1.5 py-0.5 font-mono text-[13px] text-purple-800", className)}>
+        <code className={cn("rounded-md bg-theme-card-bg px-1.5 py-0.5 font-mono text-[13px] text-theme-text border-[1px] border-theme-border/50", className)}>
             {children}
         </code>
     ),
@@ -430,133 +430,35 @@ function BattlePageContent() {
     ];
     const activeBattleModeIndex = battleModeTabs.findIndex((item) => item.key === battleMode);
     const modeOpacity = (targetMode: BattleMode) => (battleMode === targetMode ? 1 : 0);
-    const glassToneByMode: Record<BattleMode, {
-        soft: string;
-        pill: string;
-        active: string;
-        hero: string;
-        badge: string;
-        icon: string;
-        marker: string;
-        chevron: string;
-        textTag: string;
-    }> = {
-        listening: {
-            soft: "border-white/45 shadow-[0_20px_42px_-28px_rgba(32,103,229,0.8),inset_0_1px_0_rgba(255,255,255,0.72)] hover:shadow-[0_24px_48px_-26px_rgba(37,99,235,0.95),inset_0_1px_0_rgba(255,255,255,0.78)]",
-            pill: "border-white/45 shadow-[0_16px_38px_-24px_rgba(30,108,235,0.72),inset_0_1px_0_rgba(255,255,255,0.74)]",
-            active: "bg-[linear-gradient(135deg,rgba(240,248,255,0.8),rgba(190,221,255,0.46))] shadow-[0_14px_28px_-20px_rgba(37,99,235,0.9),inset_0_1px_0_rgba(255,255,255,0.75)]",
-            hero: "shadow-[0_28px_55px_-32px_rgba(37,99,235,0.85),inset_0_1px_0_rgba(255,255,255,0.78)] hover:shadow-[0_34px_70px_-30px_rgba(37,99,235,0.98),inset_0_1px_0_rgba(255,255,255,0.85)]",
-            badge: "bg-blue-100/65 text-blue-700",
-            icon: "bg-[linear-gradient(140deg,rgba(248,252,255,0.9),rgba(197,225,255,0.55))] text-blue-700 shadow-[0_12px_26px_-16px_rgba(37,99,235,0.9)]",
-            marker: "bg-blue-500",
-            chevron: "text-blue-600",
-            textTag: "text-blue-700 bg-blue-50/80 border-blue-200/70",
-        },
-        rebuild: {
-            soft: "border-white/45 shadow-[0_20px_42px_-28px_rgba(13,148,136,0.78),inset_0_1px_0_rgba(255,255,255,0.72)] hover:shadow-[0_24px_48px_-26px_rgba(13,148,136,0.92),inset_0_1px_0_rgba(255,255,255,0.8)]",
-            pill: "border-white/45 shadow-[0_16px_38px_-24px_rgba(13,148,136,0.72),inset_0_1px_0_rgba(255,255,255,0.74)]",
-            active: "bg-[linear-gradient(135deg,rgba(240,253,250,0.84),rgba(167,243,208,0.5))] shadow-[0_14px_28px_-20px_rgba(13,148,136,0.84),inset_0_1px_0_rgba(255,255,255,0.78)]",
-            hero: "shadow-[0_28px_55px_-32px_rgba(13,148,136,0.82),inset_0_1px_0_rgba(255,255,255,0.78)] hover:shadow-[0_34px_70px_-30px_rgba(13,148,136,0.96),inset_0_1px_0_rgba(255,255,255,0.86)]",
-            badge: "bg-teal-100/65 text-teal-700",
-            icon: "bg-[linear-gradient(140deg,rgba(245,255,252,0.92),rgba(153,246,228,0.58))] text-teal-700 shadow-[0_12px_26px_-16px_rgba(13,148,136,0.85)]",
-            marker: "bg-teal-500",
-            chevron: "text-teal-600",
-            textTag: "text-teal-700 bg-teal-50/80 border-teal-200/70",
-        },
-        dictation: {
-            soft: "border-white/45 shadow-[0_20px_42px_-28px_rgba(147,51,234,0.78),inset_0_1px_0_rgba(255,255,255,0.72)] hover:shadow-[0_24px_48px_-26px_rgba(126,34,206,0.92),inset_0_1px_0_rgba(255,255,255,0.8)]",
-            pill: "border-white/45 shadow-[0_16px_38px_-24px_rgba(147,51,234,0.72),inset_0_1px_0_rgba(255,255,255,0.74)]",
-            active: "bg-[linear-gradient(135deg,rgba(250,245,255,0.88),rgba(233,213,255,0.52))] shadow-[0_14px_28px_-20px_rgba(147,51,234,0.86),inset_0_1px_0_rgba(255,255,255,0.78)]",
-            hero: "shadow-[0_28px_55px_-32px_rgba(147,51,234,0.82),inset_0_1px_0_rgba(255,255,255,0.78)] hover:shadow-[0_34px_70px_-30px_rgba(126,34,206,0.96),inset_0_1px_0_rgba(255,255,255,0.86)]",
-            badge: "bg-purple-100/65 text-purple-700",
-            icon: "bg-[linear-gradient(140deg,rgba(252,247,255,0.92),rgba(221,214,254,0.58))] text-purple-700 shadow-[0_12px_26px_-16px_rgba(147,51,234,0.85)]",
-            marker: "bg-purple-500",
-            chevron: "text-purple-600",
-            textTag: "text-purple-700 bg-purple-50/80 border-purple-200/70",
-        },
-        translation: {
-            soft: "border-white/45 shadow-[0_20px_42px_-28px_rgba(234,120,24,0.78),inset_0_1px_0_rgba(255,255,255,0.72)] hover:shadow-[0_24px_48px_-26px_rgba(234,120,24,0.95),inset_0_1px_0_rgba(255,255,255,0.8)]",
-            pill: "border-white/45 shadow-[0_16px_38px_-24px_rgba(234,120,24,0.72),inset_0_1px_0_rgba(255,255,255,0.74)]",
-            active: "bg-[linear-gradient(135deg,rgba(255,249,240,0.84),rgba(255,213,163,0.5))] shadow-[0_14px_28px_-20px_rgba(234,120,24,0.88),inset_0_1px_0_rgba(255,255,255,0.78)]",
-            hero: "shadow-[0_28px_55px_-32px_rgba(234,120,24,0.86),inset_0_1px_0_rgba(255,255,255,0.78)] hover:shadow-[0_34px_70px_-30px_rgba(234,120,24,0.98),inset_0_1px_0_rgba(255,255,255,0.86)]",
-            badge: "bg-amber-100/65 text-amber-700",
-            icon: "bg-[linear-gradient(140deg,rgba(255,252,247,0.9),rgba(255,219,175,0.55))] text-amber-700 shadow-[0_12px_26px_-16px_rgba(234,120,24,0.9)]",
-            marker: "bg-amber-500",
-            chevron: "text-amber-600",
-            textTag: "text-amber-700 bg-amber-50/80 border-amber-200/70",
-        },
+    const glassTone = {
+        soft: "",
+        pill: "",
+        active: "",
+        hero: "",
+        badge: "",
+        icon: "",
+        marker: "",
+        chevron: "text-theme-text",
+        textTag: "",
     };
-    const glassTone = glassToneByMode[battleMode];
-    const chunkySurface = "rounded-[2rem] border-4 border-[#d3c8b8] bg-white shadow-[0_20px_45px_rgba(199,183,152,0.18),8px_8px_0_rgba(236,229,215,0.95)]";
-    const chunkySurfaceSoft = "rounded-[1.7rem] border-4 border-[#d3c8b8] bg-white shadow-[0_16px_32px_rgba(199,183,152,0.16),6px_6px_0_rgba(238,232,220,0.95)]";
-    const segmentedShell = "rounded-[1.8rem] border-4 border-[#d3c8b8] bg-white p-2 shadow-[0_16px_32px_rgba(199,183,152,0.14),6px_6px_0_rgba(238,232,220,0.95)]";
-    const cuteToneByMode: Record<BattleMode, {
-        cardTint: string;
-        softTint: string;
-        badge: string;
-        button: string;
-        buttonSecondary: string;
-        iconWrap: string;
-        activeTab: string;
-        inactiveTab: string;
-        miniChip: string;
-        marker: string;
-        heroGlow: string;
-    }> = {
-        listening: {
-            cardTint: "bg-[linear-gradient(135deg,#eef5ff,rgba(255,255,255,0.98)_54%,#dfeaff)]",
-            softTint: "bg-[#eff5ff]",
-            badge: "border-[#b8ccff] bg-[#e9f1ff] text-[#2254d1]",
-            button: "border-[#295ce8] bg-[#2f66ff] text-white hover:bg-[#1f55e5]",
-            buttonSecondary: "border-[#b8ccff] bg-[#edf4ff] text-[#204ebd] hover:bg-[#e1edff]",
-            iconWrap: "border-[#b8ccff] bg-[#edf4ff] text-[#2254d1]",
-            activeTab: "border-[#adc4ff] bg-[#edf4ff] text-[#1e4cc0]",
-            inactiveTab: "text-[#64748b] hover:bg-[#f5f7ff] hover:text-[#1e293b]",
-            miniChip: "border-[#b8ccff] bg-[#edf4ff] text-[#2254d1]",
-            marker: "bg-[#2f66ff]",
-            heroGlow: "bg-[radial-gradient(circle_at_top_right,rgba(89,136,255,0.18),transparent_44%)]",
-        },
-        rebuild: {
-            cardTint: "bg-[linear-gradient(135deg,#ecfff7,rgba(255,255,255,0.98)_52%,#d7fbec)]",
-            softTint: "bg-[#ecfff7]",
-            badge: "border-[#9be4c5] bg-[#e6fff4] text-[#0f8a69]",
-            button: "border-[#159b76] bg-[#17b585] text-white hover:bg-[#13956e]",
-            buttonSecondary: "border-[#9be4c5] bg-[#e8fff6] text-[#0c7e60] hover:bg-[#daf8ee]",
-            iconWrap: "border-[#9be4c5] bg-[#e8fff6] text-[#0f8a69]",
-            activeTab: "border-[#9be4c5] bg-[#e8fff6] text-[#0c7e60]",
-            inactiveTab: "text-[#64748b] hover:bg-[#f3fffa] hover:text-[#1e293b]",
-            miniChip: "border-[#9be4c5] bg-[#e8fff6] text-[#0f8a69]",
-            marker: "bg-[#17b585]",
-            heroGlow: "bg-[radial-gradient(circle_at_top_right,rgba(22,181,133,0.18),transparent_44%)]",
-        },
-        dictation: {
-            cardTint: "bg-[linear-gradient(135deg,#f5eeff,rgba(255,255,255,0.98)_52%,#efe4ff)]",
-            softTint: "bg-[#f7f1ff]",
-            badge: "border-[#d9b5ff] bg-[#f4eaff] text-[#7c3aed]",
-            button: "border-[#8b5cf6] bg-[#9062ff] text-white hover:bg-[#7b4ef2]",
-            buttonSecondary: "border-[#d9b5ff] bg-[#f5ecff] text-[#7c3aed] hover:bg-[#efddff]",
-            iconWrap: "border-[#d9b5ff] bg-[#f5ecff] text-[#7c3aed]",
-            activeTab: "border-[#d9b5ff] bg-[#f5ecff] text-[#7c3aed]",
-            inactiveTab: "text-[#64748b] hover:bg-[#fbf6ff] hover:text-[#1e293b]",
-            miniChip: "border-[#d9b5ff] bg-[#f5ecff] text-[#7c3aed]",
-            marker: "bg-[#9062ff]",
-            heroGlow: "bg-[radial-gradient(circle_at_top_right,rgba(168,85,247,0.18),transparent_44%)]",
-        },
-        translation: {
-            cardTint: "bg-[linear-gradient(135deg,#fff4e8,rgba(255,255,255,0.98)_52%,#ffe8c8)]",
-            softTint: "bg-[#fff6ea]",
-            badge: "border-[#ffcf95] bg-[#fff1dd] text-[#dd7a09]",
-            button: "border-[#f08a18] bg-[#ff9c1a] text-white hover:bg-[#f08a18]",
-            buttonSecondary: "border-[#ffcf95] bg-[#fff3e2] text-[#d97706] hover:bg-[#ffecd1]",
-            iconWrap: "border-[#ffcf95] bg-[#fff3e2] text-[#d97706]",
-            activeTab: "border-[#ffcf95] bg-[#fff3e2] text-[#d97706]",
-            inactiveTab: "text-[#64748b] hover:bg-[#fff9f1] hover:text-[#1e293b]",
-            miniChip: "border-[#ffcf95] bg-[#fff3e2] text-[#d97706]",
-            marker: "bg-[#ff9c1a]",
-            heroGlow: "bg-[radial-gradient(circle_at_top_right,rgba(255,156,26,0.18),transparent_44%)]",
-        },
+
+    const cuteTone = {
+        cardTint: "bg-theme-card-bg",
+        softTint: "bg-theme-base-bg",
+        badge: "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]",
+        button: "border-theme-border bg-theme-primary-bg text-theme-primary-text hover:bg-theme-active-bg transition-colors shadow-[0_4px_0_var(--theme-shadow)]",
+        buttonSecondary: "border-theme-border bg-theme-base-bg text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text transition-colors",
+        iconWrap: "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]",
+        activeTab: "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]",
+        inactiveTab: "text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text",
+        miniChip: "border-theme-border bg-theme-base-bg text-theme-text-muted",
+        marker: "bg-theme-text",
+        heroGlow: "",
     };
-    const cuteTone = cuteToneByMode[battleMode];
+
+    const chunkySurface = "rounded-[2rem] border-4 border-theme-border bg-theme-card-bg shadow-[0_8px_0_var(--theme-shadow)]";
+    const chunkySurfaceSoft = "rounded-[1.7rem] border-4 border-theme-border bg-theme-card-bg shadow-[0_6px_0_var(--theme-shadow)]";
+    const segmentedShell = "rounded-[1.8rem] border-4 border-theme-border bg-theme-card-bg p-2 shadow-[0_6px_0_var(--theme-shadow)]";
     const activeModeLabel = battleMode === "listening"
         ? "Shadowing"
         : battleMode === "rebuild"
@@ -566,31 +468,31 @@ function BattlePageContent() {
                 : "Translation";
 
     return (
-        <div className="min-h-screen bg-[#fff9eb] font-sans selection:bg-indigo-100 selection:text-indigo-900 pb-20">
-            <div className="fixed inset-0 z-0 pointer-events-none bg-[#fff9eb]" />
+        <div className="min-h-screen bg-theme-base-bg text-theme-text font-sans selection:bg-theme-active-bg selection:text-theme-active-text pb-20">
+            <div className="fixed inset-0 z-0 pointer-events-none bg-theme-base-bg" />
             <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,211,127,0.24),transparent_32%),radial-gradient(circle_at_top_right,rgba(140,176,255,0.18),transparent_28%),linear-gradient(180deg,#fff9eb_0%,#fff7ea_100%)]" />
-                <div className="absolute left-[-8%] top-24 h-64 w-64 rounded-full bg-[#ffe3b9]/60 blur-3xl" />
-                <div className="absolute right-[-6%] top-32 h-72 w-72 rounded-full bg-[#dfe9ff]/70 blur-3xl" />
-                <div className="absolute bottom-[-8%] left-[22%] h-72 w-72 rounded-full bg-[#f0e6ff]/60 blur-3xl" />
-                <div className="absolute bottom-10 right-[18%] h-52 w-52 rounded-full bg-[#dff7eb]/60 blur-3xl" />
+                <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-theme-base-bg to-transparent opacity-90" />
+                <div className="absolute left-[-8%] top-24 h-64 w-64 rounded-full bg-theme-base-bg blur-3xl opacity-50" />
+                <div className="absolute right-[-6%] top-32 h-72 w-72 rounded-full bg-theme-base-bg blur-3xl opacity-50" />
+                <div className="absolute bottom-[-8%] left-[22%] h-72 w-72 rounded-full bg-theme-base-bg blur-3xl opacity-50" />
+                <div className="absolute bottom-10 right-[18%] h-52 w-52 rounded-full bg-theme-base-bg blur-3xl opacity-50" />
                 <motion.div
-                    className="absolute inset-0 bg-[radial-gradient(90%_70%_at_15%_0%,rgba(126,181,255,0.18),rgba(64,139,255,0.05)_42%,transparent_72%)]"
+                    className="absolute inset-0 bg-[radial-gradient(90%_70%_at_15%_0%,rgba(126,181,255,0.12),rgba(64,139,255,0.03)_42%,transparent_72%)]"
                     animate={{ opacity: modeOpacity("listening") }}
                     transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
                 />
                 <motion.div
-                    className="absolute inset-0 bg-[radial-gradient(90%_72%_at_50%_0%,rgba(45,212,191,0.18),rgba(20,184,166,0.06)_42%,transparent_74%)]"
+                    className="absolute inset-0 bg-[radial-gradient(90%_72%_at_50%_0%,rgba(45,212,191,0.12),rgba(20,184,166,0.04)_42%,transparent_74%)]"
                     animate={{ opacity: modeOpacity("rebuild") }}
                     transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
                 />
                 <motion.div
-                    className="absolute inset-0 bg-[radial-gradient(85%_66%_at_50%_0%,rgba(196,181,253,0.18),rgba(168,85,247,0.06)_44%,transparent_74%)]"
+                    className="absolute inset-0 bg-[radial-gradient(85%_66%_at_50%_0%,rgba(196,181,253,0.12),rgba(168,85,247,0.04)_44%,transparent_74%)]"
                     animate={{ opacity: modeOpacity("dictation") }}
                     transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
                 />
                 <motion.div
-                    className="absolute inset-0 bg-[radial-gradient(90%_70%_at_85%_0%,rgba(255,190,116,0.18),rgba(255,138,37,0.05)_42%,transparent_72%)]"
+                    className="absolute inset-0 bg-[radial-gradient(90%_70%_at_85%_0%,rgba(255,190,116,0.12),rgba(255,138,37,0.03)_42%,transparent_72%)]"
                     animate={{ opacity: modeOpacity("translation") }}
                     transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
                 />
@@ -606,7 +508,7 @@ function BattlePageContent() {
                         transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
                     >
                         <motion.div
-                            className="absolute inset-0 bg-[rgba(255,249,235,0.82)] backdrop-blur-[10px]"
+                            className="absolute inset-0 bg-theme-base-bg/80 backdrop-blur-[10px]"
                             initial={{ scale: 1.08, filter: "blur(22px)" }}
                             animate={{ scale: 1, filter: "blur(0px)" }}
                             transition={{ duration: 0.76, ease: [0.18, 1, 0.3, 1] }}
@@ -637,23 +539,23 @@ function BattlePageContent() {
                             animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
                             transition={{ delay: 0.02, duration: 0.86, ease: [0.16, 1, 0.3, 1] }}
                             onClick={() => handleNavigateWithCard("home")}
-                            className="ui-pressable inline-flex h-14 w-14 items-center justify-center rounded-[1.35rem] border-4 border-[#b8ccff] bg-[#edf4ff] text-[#2254d1] hover:bg-[#e3edff]"
-                            style={getPressableStyle("rgba(223,233,255,0.95)", 6)}
+                            className="ui-pressable inline-flex h-14 w-14 items-center justify-center rounded-[1.35rem] border-4 border-theme-border bg-theme-primary-bg text-theme-primary-text hover:bg-theme-active-bg hover:text-theme-active-text"
+                            style={getPressableStyle("var(--theme-shadow)", 6)}
                             whileTap={getPressableTap(Boolean(prefersReducedMotion), 6, 0.96)}
                             aria-label="返回欢迎页"
                         >
                             <House className="h-6 w-6" />
                         </motion.button>
-                        <div className="rounded-[1.45rem] border-4 border-[#d7d2c7] bg-[#fffaf0] px-5 py-3 text-center shadow-[0_8px_0_rgba(238,232,220,0.95)]">
-                            <p className="font-newsreader text-[1.55rem] italic leading-none text-stone-900 md:text-[1.75rem]">Battle Arena</p>
+                        <div className="rounded-[1.45rem] border-4 border-theme-border bg-theme-card-bg px-5 py-3 text-center shadow-[0_6px_0_var(--theme-shadow)]">
+                            <p className="font-newsreader text-[1.55rem] italic leading-none text-theme-text md:text-[1.75rem]">Battle Arena</p>
                         </div>
                         <button
                             type="button"
                             onClick={() => handleNavigateWithCard("read")}
-                            className={cn("ui-pressable inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 px-4 py-2.5 text-sm font-bold", cuteTone.buttonSecondary)}
-                            style={getPressableStyle("rgba(232,255,246,0.95)", 6)}
+                            className="ui-pressable inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 border-theme-border bg-theme-card-bg px-4 py-2.5 text-sm font-bold text-theme-text transition hover:bg-theme-active-bg"
+                            style={getPressableStyle("var(--theme-shadow)", 6)}
                         >
-                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-current/20 bg-white/70">
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-theme-border/20 bg-theme-base-bg/70">
                                 <ChevronRight className="h-4 w-4" />
                             </span>
                             阅读页
@@ -664,16 +566,16 @@ function BattlePageContent() {
                                 setActiveGuideSection(sectionByMode[battleMode]);
                                 setShowGuide(true);
                             }}
-                            className="ui-pressable inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 border-[#dcc4ff] bg-[#f5edff] px-4 py-2.5 text-sm font-bold text-[#7c3aed] hover:bg-[#efe2ff]"
-                            style={getPressableStyle("rgba(243,233,255,0.95)", 6)}
+                            className="ui-pressable inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 border-theme-border bg-theme-card-bg px-4 py-2.5 text-sm font-bold text-theme-text transition hover:bg-theme-active-bg"
+                            style={getPressableStyle("var(--theme-shadow)", 6)}
                         >
-                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-current/20 bg-white/70">
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-theme-border/20 bg-theme-base-bg/70">
                                 <CircleHelp className="h-4 w-4" />
                             </span>
                             玩法说明
                         </button>
-                        <div className={cn("inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 px-4 py-2.5 text-sm font-black shadow-[0_6px_0_rgba(232,255,246,0.95)]", cuteTone.badge)}>
-                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-current/20 bg-white/70">
+                        <div className="inline-flex min-h-14 items-center gap-2 rounded-[1.35rem] border-4 border-theme-border px-4 py-2.5 text-sm font-black shadow-[0_6px_0_var(--theme-shadow)] bg-theme-primary-bg text-theme-primary-text">
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-theme-border/20 bg-theme-base-bg/70">
                                 <Sword className="h-4 w-4" />
                             </span>
                             {activeModeLabel}
@@ -712,11 +614,11 @@ function BattlePageContent() {
                                 ))}
                             </div>
 
-                            <div className="rounded-[1.6rem] border-4 border-[#e5decd] bg-white p-5">
+                            <div className="rounded-[1.6rem] border-4 border-theme-border bg-theme-card-bg p-5 shadow-[0_4px_0_var(--theme-shadow)]">
                                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                     <div>
-                                        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-stone-500">Drill Source</p>
-                                        <p className="mt-1 text-sm leading-7 text-stone-600">
+                                        <p className="text-[11px] font-black uppercase tracking-[0.22em] text-theme-text-muted">Drill Source</p>
+                                        <p className="mt-1 text-sm leading-7 text-theme-text opacity-90">
                                             {battleMode === "listening"
                                                 ? "Listening 现在可以切换 AI 出题和题库题。"
                                                 : battleMode === "rebuild"
@@ -727,17 +629,17 @@ function BattlePageContent() {
                                         </p>
                                     </div>
                                     {battleMode === "listening" ? (
-                                        <div className="inline-flex items-center gap-2 rounded-full border-4 border-[#d3c8b8] bg-[#fffaf0] p-1.5">
+                                        <div className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-base-bg p-1.5 shadow-[0_4px_0_var(--theme-shadow)]">
                                             <button
                                                 type="button"
                                                 onClick={() => setListeningSourceMode("ai")}
                                                 className={cn(
-                                                    "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black",
+                                                    "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition-colors",
                                                     listeningSourceMode === "ai"
-                                                        ? cuteTone.button
-                                                        : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
+                                                        ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                        : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text"
                                                 )}
-                                                style={getPressableStyle("rgba(238,232,220,0.95)", 4)}
+                                                style={listeningSourceMode === "ai" ? getPressableStyle("var(--theme-shadow)", 4) : undefined}
                                             >
                                                 AI 出题
                                             </button>
@@ -745,41 +647,41 @@ function BattlePageContent() {
                                                 type="button"
                                                 onClick={() => setListeningSourceMode("bank")}
                                                 className={cn(
-                                                    "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black",
+                                                    "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition-colors",
                                                     listeningSourceMode === "bank"
-                                                        ? cuteTone.button
-                                                        : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
+                                                        ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                        : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text"
                                                 )}
-                                                style={getPressableStyle("rgba(238,232,220,0.95)", 4)}
+                                                style={listeningSourceMode === "bank" ? getPressableStyle("var(--theme-shadow)", 4) : undefined}
                                             >
                                                 题库题
                                             </button>
                                         </div>
                                     ) : (
-                                        <div className={cn("inline-flex items-center gap-2 rounded-full border-4 px-4 py-2 text-sm font-black", cuteTone.badge)}>
+                                        <div className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-base-bg px-4 py-2 text-sm font-black text-theme-text-muted shadow-[0_4px_0_var(--theme-shadow)]">
                                             <Blocks className="h-4 w-4" />
                                             AI Only
                                         </div>
                                     )}
                                 </div>
                                 {battleMode === "rebuild" ? (
-                                    <div className="mt-4 space-y-4 border-t-2 border-[#efe7d8] pt-4">
+                                    <div className="mt-4 space-y-4 border-t-2 border-theme-border/30 pt-4">
                                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                             <div>
-                                                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-stone-500">Rebuild Branch</p>
-                                                <p className="mt-1 text-sm leading-7 text-stone-600">单句保留隐藏练习难度，短文分段使用正式 Elo 和历史曲线。</p>
+                                                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-theme-text-muted">Rebuild Branch</p>
+                                                <p className="mt-1 text-sm leading-7 text-theme-text opacity-90">单句保留隐藏练习难度，短文分段使用正式 Elo 和历史曲线。</p>
                                             </div>
-                                            <div className="inline-flex items-center gap-2 rounded-full border-4 border-[#d3c8b8] bg-[#fffaf0] p-1.5">
+                                            <div className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-base-bg p-1.5 shadow-[0_4px_0_var(--theme-shadow)]">
                                                 <button
                                                     type="button"
                                                     onClick={() => setRebuildVariant("sentence")}
                                                     className={cn(
-                                                        "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                        "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition-colors",
                                                         rebuildVariant === "sentence"
-                                                            ? cuteTone.button
-                                                            : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
+                                                            ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                            : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text"
                                                     )}
-                                                    style={getPressableStyle("rgba(238,232,220,0.95)", 4)}
+                                                    style={rebuildVariant === "sentence" ? getPressableStyle("var(--theme-shadow)", 4) : undefined}
                                                 >
                                                     单句
                                                 </button>
@@ -787,12 +689,12 @@ function BattlePageContent() {
                                                     type="button"
                                                     onClick={() => setRebuildVariant("passage")}
                                                     className={cn(
-                                                        "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                        "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition-colors",
                                                         rebuildVariant === "passage"
-                                                            ? cuteTone.button
-                                                            : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
+                                                            ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                            : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text"
                                                     )}
-                                                    style={getPressableStyle("rgba(238,232,220,0.95)", 4)}
+                                                    style={rebuildVariant === "passage" ? getPressableStyle("var(--theme-shadow)", 4) : undefined}
                                                 >
                                                     短文分段
                                                 </button>
@@ -801,22 +703,22 @@ function BattlePageContent() {
                                         {rebuildVariant === "passage" ? (
                                             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                                 <div>
-                                                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-stone-500">Segments</p>
-                                                    <p className="mt-1 text-sm leading-7 text-stone-600">一篇短文先按自然语义切段，再逐段完成词块重建。</p>
+                                                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-theme-text-muted">Segments</p>
+                                                    <p className="mt-1 text-sm leading-7 text-theme-text opacity-90">一篇短文先按自然语义切段，再逐段完成词块重建。</p>
                                                 </div>
-                                                <div className="inline-flex items-center gap-2 rounded-full border-4 border-[#d3c8b8] bg-[#fffaf0] p-1.5">
+                                                <div className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-base-bg p-1.5 shadow-[0_4px_0_var(--theme-shadow)]">
                                                     {([2, 3, 5] as const).map((count) => (
                                                         <button
                                                             key={count}
                                                             type="button"
                                                             onClick={() => setRebuildSegmentCount(count)}
                                                             className={cn(
-                                                                "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition",
+                                                                "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition-colors",
                                                                 rebuildSegmentCount === count
-                                                                    ? cuteTone.button
-                                                                    : "border-transparent bg-transparent text-stone-500 hover:bg-white hover:text-stone-900"
+                                                                    ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                                    : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text"
                                                             )}
-                                                            style={getPressableStyle("rgba(238,232,220,0.95)", 4)}
+                                                            style={rebuildSegmentCount === count ? getPressableStyle("var(--theme-shadow)", 4) : undefined}
                                                         >
                                                             {count} 段
                                                         </button>
@@ -830,8 +732,8 @@ function BattlePageContent() {
 
                             <button
                                 onClick={() => setActiveDrill(buildBattleSelection(RANDOM_SCENARIO_TOPIC))}
-                                className={cn("ui-pressable group relative w-full overflow-hidden rounded-[1.6rem] border-4 border-[#e5decd] p-6 text-left transition-all md:p-8", cuteTone.cardTint)}
-                                style={getPressableStyle("rgba(238,232,220,0.95)", 6)}
+                                className={cn("ui-pressable group relative w-full overflow-hidden rounded-[1.6rem] border-4 border-theme-border p-6 text-left transition-all md:p-8", cuteTone.cardTint)}
+                                style={getPressableStyle("var(--theme-shadow)", 6)}
                             >
                                 <div className={cn("absolute inset-0", cuteTone.heroGlow)} />
                                 <div className="relative z-10 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
@@ -844,7 +746,7 @@ function BattlePageContent() {
                                         <p className="max-w-2xl text-base leading-8 text-stone-600 md:text-lg">直接进入一局贴合你当前 Elo 的真实场景训练，打开就能开始练。</p>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <div className="rounded-full border-4 border-[#ffd39e] bg-[#fff1dc] px-4 py-2 text-sm font-black text-[#d97706]">随机场景</div>
+                                        <div className="rounded-full border-4 border-theme-border bg-theme-base-bg px-4 py-2 text-sm font-black text-theme-text shadow-[0_4px_0_var(--theme-shadow)]">随机场景</div>
                                         <div className={cn("flex h-20 w-20 items-center justify-center rounded-[2rem] border-4 transition-transform group-hover:scale-110 group-hover:rotate-6", cuteTone.iconWrap)}>
                                             <Sword className="h-10 w-10" />
                                         </div>
@@ -870,17 +772,17 @@ function BattlePageContent() {
                                     <div className={cn("relative overflow-hidden p-6 md:p-7", chunkySurface, cuteTone.cardTint)}>
                                         <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                             <div>
-                                                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#0f8a69]">Rebuild Passage Battle</p>
-                                                <h3 className="mt-2 text-2xl font-black text-stone-900">短文分段正式 Elo</h3>
-                                                <p className="mt-2 max-w-2xl text-sm leading-7 text-stone-600">整篇短文只结算一次正式 Rebuild Elo。每段保留词块重建和自评，最后自动合成为整场 battle 结算。</p>
+                                                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-theme-text-muted">Rebuild Passage Battle</p>
+                                                <h3 className="mt-2 text-2xl font-black text-theme-text">短文分段正式 Elo</h3>
+                                                <p className="mt-2 max-w-2xl text-sm leading-7 text-theme-text opacity-90">整篇短文只结算一次正式 Rebuild Elo。每段保留词块重建和自评，最后自动合成为整场 battle 结算。</p>
                                             </div>
-                                            <div className="rounded-[1.5rem] border-4 border-[#9be4c5] bg-[#eafff5] px-5 py-4 shadow-[0_10px_0_rgba(238,232,220,0.95)]">
-                                                <div className="text-xs font-black uppercase tracking-[0.18em] text-[#0f8a69]">Rebuild Elo</div>
+                                            <div className="rounded-[1.5rem] border-4 border-theme-border bg-theme-primary-bg/20 px-5 py-4 shadow-[0_6px_0_var(--theme-shadow)]">
+                                                <div className="text-xs font-black uppercase tracking-[0.18em] text-theme-text-muted">Rebuild Elo</div>
                                                 <div className="mt-2 flex items-center gap-2">
-                                                    <span className="text-3xl font-black text-stone-900">{rebuildBattleElo}</span>
-                                                    <span className="rounded-full border-4 border-[#9be4c5] bg-white px-3 py-1 text-sm font-black text-[#0f8a69]">{rebuildBattleRank.title}</span>
+                                                    <span className="text-3xl font-black text-theme-text">{rebuildBattleElo}</span>
+                                                    <span className="rounded-full border-[3px] border-theme-border bg-theme-card-bg px-3 py-1 text-sm font-black text-theme-text">{rebuildBattleRank.title}</span>
                                                 </div>
-                                                <div className="mt-2 text-xs font-bold text-[#0f8a69]">当前连胜 {rebuildBattleStreak}</div>
+                                                <div className="mt-2 text-xs font-bold text-theme-text-muted">当前连胜 {rebuildBattleStreak}</div>
                                             </div>
                                         </div>
                                         <div className="relative z-10 mt-6">
@@ -891,15 +793,15 @@ function BattlePageContent() {
                                     <div className={cn("relative overflow-hidden p-6 md:p-7", chunkySurface, cuteTone.cardTint)}>
                                         <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                             <div>
-                                                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#0f8a69]">Rebuild Practice</p>
-                                                <h3 className="mt-2 text-2xl font-black text-stone-900">当前练习层：{rebuildTier.label}</h3>
-                                                <p className="mt-2 max-w-2xl text-sm leading-7 text-stone-600">单句 Rebuild 不改正式 Elo。系统会根据你的自评、重播次数、提示使用和拼句表现，轻微上调或下调下一题难度。</p>
+                                                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-theme-text-muted">Rebuild Practice</p>
+                                                <h3 className="mt-2 text-2xl font-black text-theme-text">当前练习层：{rebuildTier.label}</h3>
+                                                <p className="mt-2 max-w-2xl text-sm leading-7 text-theme-text opacity-90">单句 Rebuild 不改正式 Elo。系统会根据你的自评、重播次数、提示使用和拼句表现，轻微上调或下调下一题难度。</p>
                                             </div>
-                                            <div className="rounded-[1.5rem] border-4 border-[#9be4c5] bg-[#eafff5] px-5 py-4 shadow-[0_10px_0_rgba(238,232,220,0.95)]">
-                                                <div className="text-xs font-black uppercase tracking-[0.18em] text-[#0f8a69]">Practice Tier</div>
+                                            <div className="rounded-[1.5rem] border-4 border-theme-border bg-theme-primary-bg/20 px-5 py-4 shadow-[0_6px_0_var(--theme-shadow)]">
+                                                <div className="text-xs font-black uppercase tracking-[0.18em] text-theme-text-muted">Practice Tier</div>
                                                 <div className="mt-2 flex items-center gap-2">
-                                                    <span className="text-3xl font-black text-stone-900">{rebuildTier.cefr}</span>
-                                                    <span className="rounded-full border-4 border-[#9be4c5] bg-white px-3 py-1 text-sm font-black text-[#0f8a69]">{rebuildTier.bandPosition}</span>
+                                                    <span className="text-3xl font-black text-theme-text">{rebuildTier.cefr}</span>
+                                                    <span className="rounded-full border-[3px] border-theme-border bg-theme-card-bg px-3 py-1 text-sm font-black text-theme-text">{rebuildTier.bandPosition}</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -956,10 +858,10 @@ function BattlePageContent() {
                                         className={cn(
                                             "ui-pressable group relative h-full w-full overflow-hidden rounded-[1.8rem] border-4 p-6 text-left transition-all duration-300 disabled:shadow-none",
                                             isLocked
-                                                ? "cursor-not-allowed border-[#ddd5c9] bg-[#f8f4ec] opacity-75"
-                                                : cn("border-[#d3c8b8] bg-white", cuteTone.softTint)
+                                                ? "cursor-not-allowed border-theme-border/50 bg-theme-base-bg opacity-75"
+                                                : cn("border-theme-border bg-theme-card-bg", cuteTone.softTint)
                                         )}
-                                        style={getPressableStyle("rgba(238,232,220,0.95)", 6)}
+                                        style={getPressableStyle("var(--theme-shadow)", 6)}
                                     >
                                         {!isLocked ? <div className={cn("absolute inset-0 opacity-60", cuteTone.heroGlow)} /> : null}
                                         <div className={cn("relative z-10 mb-4 inline-flex rounded-[1.25rem] border-4 border-white p-3 shadow-[0_8px_18px_rgba(0,0,0,0.1)] transition-transform group-hover:scale-110", topic.color)}>
@@ -970,7 +872,7 @@ function BattlePageContent() {
                                         <p className="relative z-10 mb-4 text-sm font-medium leading-7 text-stone-600">{topic.description}</p>
 
                                         {isLocked ? (
-                                            <div className="relative z-10 inline-flex items-center gap-2 rounded-full border-4 border-[#ddd5c9] bg-white px-3 py-1.5 text-xs font-black text-stone-500">
+                                            <div className="relative z-10 inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-base-bg px-3 py-1.5 text-xs font-black text-theme-text-muted">
                                                 <Lock className="w-3 h-3" /> Requires {topic.minElo} Elo
                                             </div>
                                         ) : (
@@ -992,7 +894,7 @@ function BattlePageContent() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[85] bg-[rgba(80,66,41,0.22)] backdrop-blur-sm p-3 md:p-8"
+                        className="fixed inset-0 z-[85] bg-black/30 backdrop-blur-sm p-3 md:p-8"
                         onClick={() => setShowGuide(false)}
                     >
                         <motion.div
@@ -1001,16 +903,16 @@ function BattlePageContent() {
                             exit={{ y: 12, scale: 0.985, opacity: 0 }}
                             transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
                             onClick={(event) => event.stopPropagation()}
-                            className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] border-4 border-[#d3c8b8] bg-[linear-gradient(165deg,#fffdf7,rgba(248,243,255,0.96))] shadow-[0_35px_100px_rgba(15,23,42,0.18),10px_10px_0_rgba(238,232,220,0.96)]"
+                            className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] border-4 border-theme-border bg-theme-base-bg shadow-[0_35px_100px_rgba(15,23,42,0.18),10px_10px_0_var(--theme-shadow)]"
                         >
-                            <div className="flex items-center justify-between border-b-2 border-[#efe7d8] px-5 py-4 md:px-7">
+                            <div className="flex items-center justify-between border-b-2 border-theme-border/30 px-5 py-4 md:px-7">
                                 <div>
                                     <p className="text-[11px] font-black uppercase tracking-[0.22em] text-purple-600">Battle Guide</p>
                                     <h2 className="mt-1 text-xl font-black text-stone-900">三模式详细玩法</h2>
                                 </div>
-                                <button
+                                    <button
                                     onClick={() => setShowGuide(false)}
-                                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border-4 border-[#dcc4ff] bg-white text-purple-700 transition hover:bg-purple-50"
+                                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border-4 border-theme-border bg-theme-card-bg text-theme-text transition hover:bg-theme-active-bg"
                                     aria-label="关闭玩法说明"
                                 >
                                     <X className="h-4 w-4" />
@@ -1019,8 +921,8 @@ function BattlePageContent() {
 
                             <div className="custom-scrollbar overflow-y-auto px-5 py-5 md:px-7 md:py-6">
                                 <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
-                                    <aside className="h-fit rounded-[1.6rem] border-4 border-[#d3c8b8] bg-white p-3 shadow-[0_10px_0_rgba(238,232,220,0.95)]">
-                                        <p className="mb-2 px-2 text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">目录</p>
+                                    <aside className="h-fit rounded-[1.6rem] border-4 border-theme-border bg-theme-card-bg p-3 shadow-[0_6px_0_var(--theme-shadow)]">
+                                        <p className="mb-2 px-2 text-[11px] font-black uppercase tracking-[0.18em] text-theme-text-muted">目录</p>
                                         <div className="space-y-1.5">
                                             {GUIDE_SECTIONS.map((section) => {
                                                 const Icon = section.icon;
@@ -1032,8 +934,8 @@ function BattlePageContent() {
                                                         className={cn(
                                                             "w-full rounded-[1rem] border-4 px-2.5 py-2 text-left transition-all",
                                                             isActive
-                                                                ? cn("shadow-[0_10px_0_rgba(238,232,220,0.95)]", section.tone)
-                                                                : "border-transparent bg-[#fffaf0] text-stone-600 hover:border-[#e5decd] hover:bg-white"
+                                                                ? cn("shadow-[0_6px_0_var(--theme-shadow)]", section.tone)
+                                                                : "border-transparent bg-theme-base-bg text-theme-text-muted hover:border-theme-border hover:bg-theme-active-bg"
                                                         )}
                                                     >
                                                         <div className="flex items-start gap-2">
@@ -1289,13 +1191,13 @@ function BattlePageContent() {
                                                     </table>
                                                 </div>
 
-                                                <p className="rounded-xl border border-rose-200/80 bg-rose-50/70 px-3 py-2 text-xs leading-6 text-rose-900">
+                                                <p className="rounded-xl border border-theme-border/80 bg-theme-primary-bg/20 px-3 py-2 text-xs leading-6 text-theme-text-muted">
                                                     抽卡事件目前仅在 Translation 触发。Listening 与 Dictation 仍有完整金币结算、暴击、隐藏赏金和开题掉落，只是没有抽卡池。
                                                 </p>
                                             </div>
                                         )}
 
-                                        <div className="rounded-[1.6rem] border-4 border-[#d3c8b8] bg-white px-4 py-4 shadow-[0_10px_0_rgba(238,232,220,0.95)] md:px-5">
+                                        <div className="rounded-[1.6rem] border-4 border-theme-border bg-theme-card-bg px-4 py-4 shadow-[0_6px_0_var(--theme-shadow)] md:px-5">
                                             <ReactMarkdown
                                                 remarkPlugins={[remarkGfm]}
                                                 components={GUIDE_MARKDOWN_COMPONENTS}

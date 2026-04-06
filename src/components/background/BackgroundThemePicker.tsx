@@ -23,11 +23,11 @@ export function BackgroundThemePicker({ userId }: BackgroundThemePickerProps) {
     const selectedSpec = useMemo(() => getBackgroundThemeSpec(selected), [selected]);
 
     return (
-        <section className="rounded-[1.2rem] border border-[#e9edf5] bg-white p-3">
-            <div className="mb-3 flex items-center justify-between gap-2">
+        <section className="h-full flex flex-col p-6">
+            <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-[#97a0b2]">Background</p>
-                    <p className="text-sm font-semibold text-[#111827]">主题背景</p>
+                    <p className="text-xs uppercase tracking-[0.2em] text-theme-text-muted font-black border-b-[3px] border-theme-border inline-block pb-1 mb-2">Global Appearance</p>
+                    <h2 className="text-3xl font-welcome-display tracking-tight text-theme-text">全局主题</h2>
                 </div>
                 <button
                     type="button"
@@ -35,25 +35,32 @@ export function BackgroundThemePicker({ userId }: BackgroundThemePickerProps) {
                         setSavedBackgroundTheme(DEFAULT_BACKGROUND_THEME, userId);
                         setSelected(DEFAULT_BACKGROUND_THEME);
                     }}
-                    className="rounded-full border border-[#dce3ef] bg-[#f8fbff] px-3 py-1 text-xs font-semibold text-[#425466]"
+                    className="rounded-xl border-[3px] border-theme-border bg-theme-active-bg px-5 py-2 text-sm font-black text-theme-active-text transition hover:-translate-y-1 shadow-[0_4px_0_0_var(--theme-shadow)] active:translate-y-0 active:shadow-[0_2px_0_0_var(--theme-shadow)]"
                 >
                     默认
                 </button>
             </div>
 
-            <div className="mb-3 rounded-xl border border-[#e8edf5] bg-[#f8fbff] p-2">
-                <div className="relative h-20 overflow-hidden rounded-lg">
+            <div 
+                className="mb-6 rounded-[1.5rem] border-[3px] border-theme-border bg-theme-base-bg p-4 shadow-[0_6px_0_0_var(--theme-shadow)]"
+                data-bg-theme={selectedSpec.id}
+            >
+                <div className="relative h-28 overflow-hidden rounded-[1rem] border-[3px] border-theme-border shadow-[inset_0_4px_12px_rgba(0,0,0,0.05)] bg-theme-base-bg">
                     <div className={`absolute inset-0 ${selectedSpec.baseLayer}`} />
-                    <div className={`absolute inset-0 ${selectedSpec.glassLayer}`} />
-                    <div className={`absolute inset-0 ${selectedSpec.glowLayer}`} />
-                    <div className={`absolute inset-x-0 bottom-0 h-[42%] ${selectedSpec.bottomLayer}`} />
-                    <div className={`absolute inset-0 ${selectedSpec.vignetteLayer}`} />
+                    {selectedSpec.coverGradient && <div className="absolute inset-0 opacity-80" style={{ backgroundImage: selectedSpec.coverGradient }} />}
+                    {selectedSpec.glassLayer && <div className={`absolute inset-0 ${selectedSpec.glassLayer}`} />}
+                    {selectedSpec.glowLayer && <div className={`absolute inset-0 ${selectedSpec.glowLayer}`} />}
+                    {selectedSpec.bottomLayer && <div className={`absolute inset-x-0 bottom-0 h-[42%] ${selectedSpec.bottomLayer}`} />}
+                    {selectedSpec.vignetteLayer && <div className={`absolute inset-0 ${selectedSpec.vignetteLayer}`} />}
+                    {/* UI Tokens Preview */}
+                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[0.4rem] border-2 border-theme-border bg-theme-primary-bg px-4 py-1.5 shadow-[0_3px_0_0_var(--theme-shadow)] text-[10px] font-black text-theme-primary-text">
+                        Color
+                    </div>
                 </div>
-                <p className="mt-2 text-xs font-semibold text-[#1f2937]">{selectedSpec.name}</p>
-                <p className="text-[11px] text-[#64748b]">{selectedSpec.description}</p>
+                <p className="mt-4 flex items-center justify-between"><span className="text-[15px] font-black text-theme-text">{selectedSpec.name}</span><span className="text-xs font-bold text-theme-text-muted">{selectedSpec.description}</span></p>
             </div>
 
-            <div className="grid max-h-[44vh] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
+            <div className="grid flex-1 grid-cols-2 gap-4 overflow-y-auto pr-2 sm:grid-cols-3 md:grid-cols-4 pb-4">
                 {BACKGROUND_THEMES.map((theme) => {
                     const active = selected === theme.id;
                     return (
@@ -64,18 +71,23 @@ export function BackgroundThemePicker({ userId }: BackgroundThemePickerProps) {
                                 setSavedBackgroundTheme(theme.id, userId);
                                 setSelected(theme.id);
                             }}
-                            className={`group overflow-hidden rounded-xl border text-left transition ${active ? "border-[#3b82f6] ring-2 ring-[#bfdbfe]" : "border-[#e5e9f1]"}`}
+                            className={`group overflow-hidden rounded-[1.2rem] border-[3px] text-left transition hover:-translate-y-1 ${active ? "border-theme-primary-bg ring-[4px] ring-theme-primary-bg/40 shadow-[0_6px_0_0_var(--theme-shadow)]" : "border-theme-border shadow-[0_4px_0_0_var(--theme-shadow)] hover:shadow-[0_8px_0_0_var(--theme-shadow)]"}`}
+                            data-bg-theme={theme.id}
                         >
-                            <div className="relative aspect-[4/3] w-full">
+                            <div className="relative aspect-[4/3] w-full border-b-[3px] border-theme-border overflow-hidden bg-theme-base-bg">
                                 <div className={`absolute inset-0 ${theme.baseLayer}`} />
-                                <div className={`absolute inset-0 ${theme.glassLayer}`} />
-                                <div className={`absolute inset-0 ${theme.glowLayer}`} />
-                                <div className={`absolute inset-x-0 bottom-0 h-[40%] ${theme.bottomLayer}`} />
-                                <div className={`absolute inset-0 ${theme.vignetteLayer}`} />
+                                {theme.coverGradient && <div className="absolute inset-0 opacity-80 backdrop-blur-md" style={{ backgroundImage: theme.coverGradient }} />}
+                                {theme.glassLayer && <div className={`absolute inset-0 ${theme.glassLayer}`} />}
+                                {theme.glowLayer && <div className={`absolute inset-0 ${theme.glowLayer}`} />}
+                                {theme.bottomLayer && <div className={`absolute inset-x-0 bottom-0 h-[40%] ${theme.bottomLayer}`} />}
+                                {theme.vignetteLayer && <div className={`absolute inset-0 ${theme.vignetteLayer}`} />}
+                                
+                                <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1 w-full scale-90">
+                                    <div className="h-4 w-12 rounded-[0.3rem] border-[2px] border-theme-border bg-theme-primary-bg shadow-[0_2px_0_0_var(--theme-shadow)]" />
+                                </div>
                             </div>
-                            <div className="bg-white px-2 py-1.5">
-                                <p className="truncate text-[11px] font-semibold text-[#334155]">{theme.name}</p>
-                                <p className="truncate text-[10px] text-[#94a3b8]">{theme.description}</p>
+                            <div className="bg-theme-card-bg px-3 py-2.5 flex flex-col items-center justify-center">
+                                <p className="w-full text-center truncate text-[11px] font-black text-theme-text">{theme.name}</p>
                             </div>
                         </button>
                     );

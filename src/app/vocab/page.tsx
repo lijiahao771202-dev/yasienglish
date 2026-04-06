@@ -114,39 +114,39 @@ function getStateMeta(item: VocabItem) {
     if (item.due <= Date.now()) {
         return {
             label: "REVIEW",
-            badgeClassName: "border-[#46aaf6] bg-[#eef8ff] text-[#1180d9]",
-            stickerClassName: "bg-[#fff176]",
+            badgeClassName: "border-blue-400 bg-blue-50 text-blue-600",
+            stickerClassName: "bg-yellow-300",
         };
     }
 
     if (isCardGraduated(item)) {
         return {
             label: "MASTER",
-            badgeClassName: "border-[#99d96c] bg-[#f1fbe5] text-[#4a8a19]",
-            stickerClassName: "bg-[#ffc4de]",
+            badgeClassName: "border-green-400 bg-green-50 text-green-700",
+            stickerClassName: "bg-pink-300",
         };
     }
 
     if (item.state === State.New) {
         return {
             label: "NEW",
-            badgeClassName: "border-[#ff91bd] bg-[#fff0f7] text-[#d94884]",
-            stickerClassName: "bg-[#aee8ff]",
+            badgeClassName: "border-pink-400 bg-pink-50 text-pink-600",
+            stickerClassName: "bg-sky-300",
         };
     }
 
     if (item.state === State.Learning || item.state === State.Relearning) {
         return {
             label: "LEARN",
-            badgeClassName: "border-[#ffcb77] bg-[#fff6de] text-[#be7a08]",
-            stickerClassName: "bg-[#ffd986]",
+            badgeClassName: "border-yellow-400 bg-yellow-50 text-yellow-700",
+            stickerClassName: "bg-amber-300",
         };
     }
 
     return {
         label: "CARD",
-        badgeClassName: "border-[#d3b6ff] bg-[#f6f0ff] text-[#7b45e7]",
-        stickerClassName: "bg-[#ffc4de]",
+        badgeClassName: "border-purple-300 bg-purple-50 text-purple-700",
+        stickerClassName: "bg-pink-300",
     };
 }
 
@@ -185,8 +185,8 @@ function VocabWordCard({
             {...getCardEnterProps(reducedMotion, index)}
             whileHover={reducedMotion ? undefined : { y: -5, rotate: 0, scale: 1.01 }}
             className={cn(
-                "group relative flex min-h-[300px] flex-col rounded-[1.7rem] border-[3px] border-[#17120d] bg-[#fffdf7] p-4 shadow-[0_6px_0_rgba(23,18,13,0.14)] transition-all duration-200",
-                "hover:shadow-[0_10px_0_rgba(23,18,13,0.16)]",
+                "group relative flex min-h-[300px] flex-col rounded-[1.7rem] border-[3px] border-theme-border bg-theme-base-bg p-4 shadow-[0_6px_0_var(--theme-shadow)] transition-all duration-200",
+                "hover:shadow-[0_10px_0_var(--theme-shadow)]",
                 getTiltClass(index),
             )}
         >
@@ -201,7 +201,7 @@ function VocabWordCard({
                         {stateMeta.label}
                     </span>
                     {item.phonetic ? (
-                        <span className="text-[10px] font-semibold tracking-[0.16em] text-[#8a7f72]">
+                        <span className="text-[10px] font-semibold tracking-[0.16em] text-theme-text-muted">
                             /{item.phonetic}/
                         </span>
                     ) : null}
@@ -210,16 +210,16 @@ function VocabWordCard({
                 <div className="flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                     <button
                         onClick={() => onEdit(item)}
-                        className="ui-pressable inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#17120d] bg-white text-[#17120d] hover:bg-[#f3efe6]"
-                        style={getPressableStyle("rgba(23,18,13,0.16)", 2)}
+                        className="ui-pressable inline-flex h-8 w-8 items-center justify-center rounded-full border-[2px] border-theme-border bg-theme-card-bg text-theme-text hover:bg-theme-base-bg"
+                        style={getPressableStyle("var(--theme-shadow)", 2)}
                         title="编辑"
                     >
                         <PencilLine className="h-3.5 w-3.5" />
                     </button>
                     <button
                         onClick={() => onDelete(item.word)}
-                        className="ui-pressable inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#17120d] bg-[#fff0f3] text-[#ca3c69] hover:bg-[#ffd6df]"
-                        style={getPressableStyle("rgba(23,18,13,0.16)", 2)}
+                        className="ui-pressable inline-flex h-8 w-8 items-center justify-center rounded-full border-[2px] border-rose-300 bg-rose-50 text-rose-600 hover:bg-rose-100"
+                        style={getPressableStyle("var(--theme-shadow)", 2)}
                         title="删除"
                     >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -230,16 +230,16 @@ function VocabWordCard({
             <div className="mt-4 flex flex-1 flex-col">
                 <div className="flex items-start justify-between gap-3">
                     <div>
-                        <h3 className="font-newsreader text-[2.35rem] leading-none tracking-tight text-[#17120d]">
+                        <h3 className="font-newsreader text-[2.35rem] leading-none tracking-tight text-theme-text">
                             {item.word}
                         </h3>
                         {item.translation ? (
-                            <p className="mt-2 text-[14px] font-bold text-[#bf3a5a]">{item.translation}</p>
+                            <p className="mt-2 text-[14px] font-bold text-rose-600">{item.translation}</p>
                         ) : null}
                     </div>
                     <span
                         className={cn(
-                            "mt-1 inline-flex h-6 min-w-6 items-center justify-center rounded-[0.6rem] border-2 border-[#17120d] px-1.5 text-[11px] font-black text-[#17120d]",
+                            "mt-1 inline-flex h-6 min-w-6 items-center justify-center rounded-[0.6rem] border-2 border-theme-border px-1.5 text-[11px] font-black text-theme-text",
                             stateMeta.stickerClassName,
                         )}
                     >
@@ -248,18 +248,18 @@ function VocabWordCard({
                 </div>
 
                 {item.definition ? (
-                    <p className="mt-3 line-clamp-3 text-[13px] leading-6 text-[#4f4336]">{item.definition}</p>
+                    <p className="mt-3 line-clamp-3 text-[13px] leading-6 text-theme-text-muted">{item.definition}</p>
                 ) : null}
 
-                <div className="mt-4 rounded-[1rem] border-2 border-dashed border-[#d4c5b0] bg-[#f7f1e6] px-3 py-3">
-                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#7f7367]">{sourceLabel}</p>
-                    <p className="mt-2 line-clamp-3 text-[13px] italic leading-6 text-[#5e5042]">
+                <div className="mt-4 rounded-[1rem] border-2 border-dashed border-theme-border/50 bg-theme-card-bg px-3 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-theme-text-muted">{sourceLabel}</p>
+                    <p className="mt-2 line-clamp-3 text-[13px] italic leading-6 text-theme-text-muted">
                         {item.source_sentence ? `“${item.source_sentence}”` : "还没有例句，等你在阅读里继续把它养大。"}
                     </p>
                 </div>
             </div>
 
-            <div className="mt-5 flex items-center justify-between text-[11px] font-black uppercase tracking-[0.16em] text-[#7d6e61]">
+            <div className="mt-5 flex items-center justify-between text-[11px] font-black uppercase tracking-[0.16em] text-theme-text-muted">
                 <span className="inline-flex items-center gap-1.5">
                     <Clock className="h-3.5 w-3.5" />
                     {dueLabel}
@@ -422,7 +422,7 @@ function VocabDashboardContent() {
             </AnimatePresence>
 
             <motion.main
-                className="min-h-screen bg-[#f6efdf] pb-20 text-[#17120d]"
+                className="min-h-screen bg-theme-base-bg pb-20 text-theme-text selection:bg-theme-active-bg selection:text-theme-active-text"
                 initial={reducedMotion
                     ? false
                     : {
@@ -446,25 +446,25 @@ function VocabDashboardContent() {
                     }}
                 transition={{ duration: reducedMotion ? 0.18 : 0.56, ease: VOCAB_PAGE_EASE }}
             >
-            <div className="border-b-2 border-[#17120d] bg-[#fbf5e8]">
+            <div className="border-b-[3px] border-theme-border bg-theme-card-bg shadow-[0_4px_0_var(--theme-shadow)]">
                 <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
                     <div className="flex items-center gap-3">
                         <button
                             type="button"
                             onClick={() => handleRouteExit("home")}
-                            className="ui-pressable inline-flex h-8 w-8 items-center justify-center rounded-[0.7rem] border-2 border-[#17120d] bg-white"
-                            style={getPressableStyle("rgba(23,18,13,0.16)", 2)}
+                            className="ui-pressable inline-flex h-8 w-8 items-center justify-center rounded-[0.7rem] border-[3px] border-theme-border bg-theme-base-bg text-theme-text"
+                            style={getPressableStyle("var(--theme-shadow)", 2)}
                             aria-label="返回首页"
                         >
                             <ArrowLeft className="h-4 w-4" />
                         </button>
-                        <span className="inline-flex rounded-full border-2 border-[#17120d] bg-[#c53f82] px-3 py-1 text-[11px] font-black tracking-[0.14em] text-white">
+                        <span className="inline-flex rounded-full border-[3px] border-theme-border bg-theme-primary-bg px-3 py-1 text-[11px] font-black tracking-[0.14em] text-theme-primary-text">
                             生词卡册
                         </span>
                     </div>
-                    <div className="flex items-center gap-2 text-[12px] font-bold text-[#17120d]">
+                    <div className="flex items-center gap-2 text-[12px] font-bold text-theme-text">
                         <span>温柔复习</span>
-                        <span className="h-7 w-7 rounded-full border-2 border-[#17120d] bg-[#17120d]" />
+                        <span className="h-7 w-7 rounded-full border-[3px] border-theme-border bg-theme-text" />
                     </div>
                 </div>
             </div>
@@ -475,18 +475,18 @@ function VocabDashboardContent() {
                 <div className="relative mx-auto max-w-7xl px-4 pt-8 sm:px-6 sm:pt-10">
                     <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
                         <motion.div {...getBlockEnterProps(reducedMotion, 0.06)}>
-                            <h1 className="text-[2.8rem] font-black tracking-tight text-[#17120d] sm:text-[3.6rem]">生词本</h1>
+                            <h1 className="text-[2.8rem] font-black tracking-tight text-theme-text sm:text-[3.6rem]">生词本</h1>
                             <div className="mt-4 flex flex-wrap items-center gap-3">
-                                <span className="inline-flex items-center gap-2 rounded-full border-2 border-[#17120d] bg-white px-3 py-1.5 text-[12px] font-black text-[#17120d] shadow-[0_2px_0_rgba(23,18,13,0.12)]">
-                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#ff8cbb] text-[10px] text-white">□</span>
+                                <span className="inline-flex items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-card-bg px-3 py-1.5 text-[12px] font-black text-theme-text shadow-[0_2px_0_var(--theme-shadow)]">
+                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-theme-active-bg text-[10px] text-theme-active-text">□</span>
                                     已收录 {totalWords}
                                 </span>
-                                <span className="inline-flex items-center gap-2 rounded-full border-2 border-[#17120d] bg-white px-3 py-1.5 text-[12px] font-black text-[#17120d] shadow-[0_2px_0_rgba(23,18,13,0.12)]">
-                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#b7f0d4] text-[10px] text-[#17120d]">⟳</span>
+                                <span className="inline-flex items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-card-bg px-3 py-1.5 text-[12px] font-black text-theme-text shadow-[0_2px_0_var(--theme-shadow)]">
+                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-theme-active-bg text-[10px] text-theme-active-text">⟳</span>
                                     待复习 {dueWords}
                                 </span>
-                                <span className="inline-flex items-center gap-2 rounded-full border-2 border-[#17120d] bg-white px-3 py-1.5 text-[12px] font-black text-[#17120d] shadow-[0_2px_0_rgba(23,18,13,0.12)]">
-                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-[#ffe289] text-[10px] text-[#17120d]">★</span>
+                                <span className="inline-flex items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-card-bg px-3 py-1.5 text-[12px] font-black text-theme-text shadow-[0_2px_0_var(--theme-shadow)]">
+                                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-theme-active-bg text-[10px] text-theme-active-text">★</span>
                                     已掌握 {masteredWords}
                                 </span>
                             </div>
@@ -497,12 +497,12 @@ function VocabDashboardContent() {
                             {...getBlockEnterProps(reducedMotion, 0.14)}
                             whileTap={getPressableTap(reducedMotion, 4, 0.98)}
                             className={cn(
-                                "ui-pressable inline-flex h-14 items-center justify-center gap-2 rounded-[1.1rem] border-[3px] border-[#17120d] px-8 text-[16px] font-black",
+                                "ui-pressable inline-flex h-14 items-center justify-center gap-2 rounded-[1.1rem] border-[3px] border-theme-border px-8 text-[16px] font-black transition-colors",
                                 dueWords > 0
-                                    ? "bg-[#ffcd2e] text-[#17120d]"
-                                    : "cursor-not-allowed bg-[#efe5c8] text-[#8e806d] shadow-none",
+                                    ? "bg-theme-primary-bg text-theme-primary-text hover:bg-theme-active-bg"
+                                    : "cursor-not-allowed bg-theme-base-bg text-theme-text-muted shadow-none opacity-50 border-theme-border/50",
                             )}
-                            style={getPressableStyle("rgba(23,18,13,0.2)", 4)}
+                            style={getPressableStyle("var(--theme-shadow)", 4)}
                             onClick={() => handleRouteExit("review")}
                             disabled={dueWords === 0 || Boolean(routeExitTarget)}
                         >
@@ -513,17 +513,17 @@ function VocabDashboardContent() {
 
                     <motion.section
                         {...getBlockEnterProps(reducedMotion, 0.2)}
-                        className="mt-8 rounded-[1.8rem] border-[3px] border-[#17120d] bg-[#fffaf0] p-4 shadow-[0_8px_0_rgba(23,18,13,0.1)] sm:p-5"
+                        className="mt-8 rounded-[1.8rem] border-[3px] border-theme-border bg-theme-card-bg p-4 shadow-[0_8px_0_var(--theme-shadow)] sm:p-5"
                     >
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
                             <label className="relative block flex-1">
-                                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#675846]" />
+                                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-theme-text-muted" />
                                 <input
                                     type="text"
                                     placeholder="搜索我的单词卡..."
                                     value={search}
                                     onChange={(e) => setSearch(e.target.value)}
-                                    className="h-14 w-full rounded-[1.2rem] border-[3px] border-[#17120d] bg-white pl-12 pr-4 text-[15px] font-semibold text-[#17120d] outline-none placeholder:text-[#9d8e7c] focus:bg-[#fffdf8]"
+                                    className="h-14 w-full rounded-[1.2rem] border-[3px] border-theme-border bg-theme-base-bg pl-12 pr-4 text-[15px] font-semibold text-theme-text outline-none placeholder:text-theme-text-muted focus:bg-theme-card-bg transition-colors"
                                 />
                             </label>
 
@@ -531,22 +531,22 @@ function VocabDashboardContent() {
                                 onSubmit={handleManualAddWord}
                                 className="flex items-center gap-3 lg:w-[360px]"
                             >
-                                <div className="flex h-14 flex-1 items-center gap-2 rounded-[1.2rem] border-[3px] border-[#17120d] bg-white px-4">
-                                    <GraduationCap className="h-4 w-4 text-[#675846]" />
+                                <div className="flex h-14 flex-1 items-center gap-2 rounded-[1.2rem] border-[3px] border-theme-border bg-theme-base-bg px-4 transition-colors focus-within:bg-theme-card-bg">
+                                    <GraduationCap className="h-4 w-4 text-theme-text-muted" />
                                     <input
                                         ref={manualInputRef}
                                         type="text"
                                         value={manualWord}
                                         onChange={(e) => setManualWord(e.target.value)}
                                         placeholder="手动添加生词"
-                                        className="h-full flex-1 bg-transparent text-[15px] font-semibold text-[#17120d] outline-none placeholder:text-[#9d8e7c]"
+                                        className="h-full flex-1 bg-transparent text-[15px] font-semibold text-theme-text outline-none placeholder:text-theme-text-muted"
                                     />
                                 </div>
                                 <button
                                     type="submit"
                                     disabled={isAddingWord || !manualWord.trim()}
-                                    className="ui-pressable inline-flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-[#17120d] bg-[#f36ba8] text-[#17120d] disabled:cursor-not-allowed disabled:bg-[#f6c6d9] disabled:text-[#8e806d] disabled:shadow-none"
-                                    style={getPressableStyle("rgba(23,18,13,0.2)", 4)}
+                                    className="ui-pressable inline-flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-primary-bg text-theme-primary-text hover:bg-theme-active-bg transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
+                                    style={getPressableStyle("var(--theme-shadow)", 4)}
                                 >
                                     {isAddingWord ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
                                 </button>
@@ -564,22 +564,22 @@ function VocabDashboardContent() {
                                         type="button"
                                         onClick={() => setActiveFilter(filter.key)}
                                         className={cn(
-                                            "ui-pressable inline-flex items-center gap-2 rounded-full border-[3px] px-4 py-2 text-[13px] font-black",
+                                            "ui-pressable inline-flex items-center gap-2 rounded-full border-[3px] px-4 py-2 text-[13px] font-black transition-colors",
                                             isActive
-                                                ? "border-[#17120d] bg-[#fffdf7] text-[#17120d]"
-                                                : "border-[#17120d] bg-[#f4ead4] text-[#5f5448]",
+                                                ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_2px_0_var(--theme-shadow)]"
+                                                : "border-theme-border/60 bg-theme-base-bg text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text",
                                         )}
-                                        style={getPressableStyle("rgba(23,18,13,0.15)", 3)}
+                                        style={isActive ? getPressableStyle("var(--theme-shadow)", 2) : {}}
                                     >
                                         <span
                                             className={cn(
                                                 "h-2.5 w-2.5 rounded-full",
-                                                isActive ? "bg-[#78ddd0]" : "bg-[#d3cdc3]",
+                                                isActive ? "bg-theme-active-bg" : "bg-theme-text/20",
                                             )}
                                         />
                                         {filter.label}
                                         {count > 0 ? (
-                                            <span className="inline-flex min-w-5 items-center justify-center rounded-full border-2 border-[#17120d] bg-white px-1.5 text-[10px] leading-4 text-[#d33b63]">
+                                            <span className="inline-flex min-w-5 items-center justify-center rounded-full border-[2px] border-theme-border/50 bg-theme-card-bg px-1.5 text-[10px] leading-4 text-theme-text">
                                                 {count}
                                             </span>
                                         ) : null}
@@ -593,10 +593,10 @@ function VocabDashboardContent() {
                                 initial={{ opacity: 0, y: -8 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 className={cn(
-                                    "mt-4 inline-flex rounded-full border-[3px] px-4 py-2 text-[12px] font-black shadow-[0_3px_0_rgba(23,18,13,0.14)]",
+                                    "mt-4 inline-flex rounded-full border-[3px] border-theme-border px-4 py-2 text-[12px] font-black shadow-[0_3px_0_var(--theme-shadow)]",
                                     addWordFeedback.type === "success"
-                                        ? "border-[#17120d] bg-[#baf0cf] text-[#17120d]"
-                                        : "border-[#17120d] bg-[#ffd4df] text-[#17120d]",
+                                        ? "bg-theme-active-bg text-theme-active-text"
+                                        : "bg-theme-card-bg text-theme-text",
                                 )}
                             >
                                 {addWordFeedback.text}
@@ -606,18 +606,18 @@ function VocabDashboardContent() {
 
                     <motion.section
                         {...getBlockEnterProps(reducedMotion, 0.28)}
-                        className="mt-8 rounded-[2rem] border-[3px] border-[#17120d] bg-[#fbf7ec] p-4 shadow-[0_8px_0_rgba(23,18,13,0.1)] sm:p-6"
+                        className="mt-8 rounded-[2rem] border-[3px] border-theme-border bg-theme-card-bg p-4 shadow-[0_8px_0_var(--theme-shadow)] sm:p-6"
                     >
                         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                             <div>
-                                <p className="text-[12px] font-black uppercase tracking-[0.24em] text-[#6a5c4e]">
+                                <p className="text-[12px] font-black uppercase tracking-[0.24em] text-theme-text-muted">
                                     {searchQuery ? "Search Result" : "Card Album"}
                                 </p>
-                                <h2 className="mt-2 text-2xl font-black text-[#17120d]">
+                                <h2 className="mt-2 text-2xl font-black text-theme-text">
                                     {searchQuery ? `找到 ${filteredVocab.length} 张相关词卡` : activeFilterMeta.label}
                                 </h2>
                             </div>
-                            <p className="max-w-xl text-sm leading-6 text-[#756858]">
+                            <p className="max-w-xl text-sm leading-6 text-theme-text-muted">
                                 {searchQuery
                                     ? "可以直接搜索英文单词、中文释义，或者定义里的关键词。"
                                     : activeFilterMeta.emptyHint}
@@ -646,13 +646,13 @@ function VocabDashboardContent() {
                                             type="button"
                                             {...getCardEnterProps(Boolean(prefersReducedMotion), filteredVocab.length)}
                                             onClick={() => manualInputRef.current?.focus()}
-                                            className="flex min-h-[300px] flex-col items-center justify-center rounded-[1.7rem] border-[3px] border-dashed border-[#b8aa97] bg-[#f8f1e4] px-6 py-8 text-center shadow-[inset_0_0_0_2px_rgba(255,255,255,0.5)] transition hover:border-[#17120d] hover:bg-[#fff7ea]"
+                                            className="flex min-h-[300px] flex-col items-center justify-center rounded-[1.7rem] border-[3px] border-dashed border-theme-border/50 bg-theme-base-bg px-6 py-8 text-center transition hover:border-theme-border hover:bg-theme-card-bg"
                                         >
-                                            <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-[#17120d] bg-white text-[#17120d]">
+                                            <span className="inline-flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-card-bg text-theme-text shadow-[0_3px_0_var(--theme-shadow)]">
                                                 <Plus className="h-6 w-6" />
                                             </span>
-                                            <p className="mt-5 text-xl font-black text-[#17120d]">再添一张新卡</p>
-                                            <p className="mt-2 max-w-[16rem] text-sm leading-6 text-[#7d6e61]">
+                                            <p className="mt-5 text-xl font-black text-theme-text">再添一张新卡</p>
+                                            <p className="mt-2 max-w-[16rem] text-sm leading-6 text-theme-text-muted">
                                                 点这里直接跳到添加输入框，把今天遇到的新词继续收进卡册里。
                                             </p>
                                         </motion.button>
@@ -660,21 +660,21 @@ function VocabDashboardContent() {
                                 </AnimatePresence>
                             </motion.div>
                         ) : (
-                            <div className="rounded-[1.7rem] border-[3px] border-dashed border-[#b8aa97] bg-[#fffaf2] px-6 py-14 text-center">
-                                <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-full border-[3px] border-[#17120d] bg-white">
-                                    <Search className="h-7 w-7 text-[#17120d]" />
+                            <div className="rounded-[1.7rem] border-[3px] border-dashed border-theme-border/50 bg-theme-base-bg px-6 py-14 text-center">
+                                <div className="mx-auto inline-flex h-16 w-16 items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-card-bg shadow-[0_3px_0_var(--theme-shadow)]">
+                                    <Search className="h-7 w-7 text-theme-text" />
                                 </div>
-                                <h3 className="mt-5 text-2xl font-black text-[#17120d]">
+                                <h3 className="mt-5 text-2xl font-black text-theme-text">
                                     {searchQuery ? "没有找到匹配的词卡" : activeFilterMeta.emptyTitle}
                                 </h3>
-                                <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-[#7d6e61]">
+                                <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-theme-text-muted">
                                     {searchQuery ? "换一个关键词试试，或者手动把这个词加进来。" : activeFilterMeta.emptyHint}
                                 </p>
                                 {!searchQuery ? (
                                     <button
                                         type="button"
                                         onClick={() => manualInputRef.current?.focus()}
-                                        className="mt-6 inline-flex h-12 items-center justify-center gap-2 rounded-full border-[3px] border-[#17120d] bg-[#ffd873] px-5 text-sm font-black text-[#17120d] shadow-[0_4px_0_rgba(23,18,13,0.18)]"
+                                        className="mt-6 inline-flex h-12 items-center justify-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-primary-bg px-5 text-sm font-black text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)] hover:bg-theme-active-bg transition-colors"
                                     >
                                         <Plus className="h-4 w-4" />
                                         添加第一张词卡

@@ -134,14 +134,11 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
     }, [dueWordCount, reviewReminderDismissed, routeTransitionTarget, showReviewReminder]);
 
     return (
-        <main className="font-welcome-ui relative h-screen w-screen overflow-hidden px-4 py-4 sm:px-6 sm:py-6 lg:px-8 flex flex-col items-center justify-center bg-[#fefce8]">
-            {/* Global cute background (no liquid glass) */}
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,#fffbeb,#fefce8)]" />
-            
+        <main className="font-welcome-ui relative min-h-screen w-full overflow-hidden px-4 py-4 sm:px-6 sm:py-6 lg:px-8 flex flex-col items-center justify-center bg-transparent transition-colors">
             <AnimatePresence>
                 {routeTransitionTarget && (
                     <motion.div
-                        className="pointer-events-none fixed inset-0 z-[70] bg-[#fefce8]"
+                        className="pointer-events-none fixed inset-0 z-[70] bg-theme-base-bg"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -274,14 +271,14 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                     transition={{ duration: fromBattle ? 0.92 : 0.72, ease: [0.22, 1, 0.36, 1] }}
                     className="flex-shrink-0"
                 >
-                    <div className="bg-white rounded-[2.5rem] p-6 lg:p-8 flex flex-col justify-between border-4 border-[#e5e7eb] shadow-[0_12px_0_0_#e5e7eb]">
+                    <div className="bg-theme-card-bg backdrop-blur-xl rounded-[2.5rem] p-6 lg:p-8 flex flex-col justify-between border-4 border-theme-border shadow-[0_12px_0_0_var(--theme-shadow)]">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                             <div className="space-y-4">
-                                <p className="inline-flex items-center gap-2 rounded-full border-2 border-[#1f2937] bg-white px-4 py-1.5 text-xs font-black uppercase tracking-[0.2em] text-[#1f2937] shadow-[0_4px_0_0_#1f2937]">
+                                <p className="inline-flex items-center gap-2 rounded-full border-2 border-theme-border bg-theme-base-bg px-4 py-1.5 text-xs font-black uppercase tracking-[0.2em] text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)]">
                                     <Sparkles className="h-4 w-4" />
                                     WELCOME
                                 </p>
-                                <h1 className="font-welcome-display text-[2.8rem] leading-[1] tracking-tight text-[#111827] sm:text-[3.5rem]">
+                                <h1 className="font-welcome-display text-[2.8rem] leading-[1] tracking-tight text-theme-text sm:text-[3.5rem]">
                                     欢迎回来
                                 </h1>
                             </div>
@@ -292,12 +289,12 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                     transition={springTransition}
                                     type="button"
                                     onClick={() => handleNavigateFromHome("cabin")}
-                                    className="flex w-full md:w-auto min-w-[170px] items-center justify-between gap-3 rounded-[2rem] bg-white border-4 border-[#f472b6] px-6 py-4 shadow-[0_8px_0_0_#f472b6] text-[#1f2937] group active:shadow-[0_0px_0_0_#f472b6] active:translate-y-2 transition-all duration-75"
+                                    className="flex w-full md:w-auto min-w-[170px] items-center justify-between gap-3 rounded-[2rem] bg-[color:var(--module-listen-bg)] border-4 border-[color:var(--module-listen-bd)] px-6 py-4 shadow-[0_8px_0_0_var(--module-listen-bd)] text-theme-text group active:shadow-[0_0px_0_0_var(--module-listen-bd)] active:translate-y-2 transition-all duration-75"
                                 >
                                     <span className="flex items-center gap-2 text-[16px] font-black">
-                                        <BookAudio className="h-6 w-6 text-[#db2777]" />听力舱
+                                        <BookAudio className="h-6 w-6 text-[color:var(--module-listen-bd)]" />听力舱
                                     </span>
-                                    <ArrowRight className="h-5 w-5 text-[#9ca3af] group-hover:translate-x-1 transition-transform" />
+                                    <ArrowRight className="h-5 w-5 text-theme-text-muted group-hover:translate-x-1 transition-transform" />
                                 </motion.button>
                                 <motion.button
                                     whileHover={{ scale: 1.04, y: -2 }}
@@ -305,12 +302,12 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                     transition={springTransition}
                                     type="button"
                                     onClick={() => handleNavigateFromHome("read")}
-                                    className="flex w-full md:w-auto min-w-[150px] items-center justify-between gap-3 rounded-[2rem] bg-white border-4 border-[#3b82f6] px-6 py-4 shadow-[0_8px_0_0_#3b82f6] text-[#1f2937] group active:shadow-[0_0px_0_0_#3b82f6] active:translate-y-2 transition-all duration-75"
+                                    className="flex w-full md:w-auto min-w-[150px] items-center justify-between gap-3 rounded-[2rem] bg-[color:var(--module-read-bg)] border-4 border-[color:var(--module-read-bd)] px-6 py-4 shadow-[0_8px_0_0_var(--module-read-bd)] text-theme-text group active:shadow-[0_0px_0_0_var(--module-read-bd)] active:translate-y-2 transition-all duration-75"
                                 >
                                     <span className="flex items-center gap-2 text-[16px] font-black">
-                                        <BookOpenText className="h-6 w-6 text-[#3b82f6]" />阅读
+                                        <BookOpenText className="h-6 w-6 text-[color:var(--module-read-bd)]" />阅读
                                     </span>
-                                    <ArrowRight className="h-5 w-5 text-[#9ca3af] group-hover:translate-x-1 transition-transform" />
+                                    <ArrowRight className="h-5 w-5 text-theme-text-muted group-hover:translate-x-1 transition-transform" />
                                 </motion.button>
                                 <motion.button
                                     whileHover={{ scale: 1.04, y: -2 }}
@@ -318,12 +315,12 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                     transition={springTransition}
                                     type="button"
                                     onClick={() => handleNavigateFromHome("battle")}
-                                    className="flex w-full md:w-auto min-w-[150px] items-center justify-between gap-3 rounded-[2rem] bg-white border-4 border-[#f59e0b] px-6 py-4 shadow-[0_8px_0_0_#f59e0b] text-[#1f2937] group active:shadow-[0_0px_0_0_#f59e0b] active:translate-y-2 transition-all duration-75"
+                                    className="flex w-full md:w-auto min-w-[150px] items-center justify-between gap-3 rounded-[2rem] bg-[color:var(--module-battle-bg)] border-4 border-[color:var(--module-battle-bd)] px-6 py-4 shadow-[0_8px_0_0_var(--module-battle-bd)] text-theme-text group active:shadow-[0_0px_0_0_var(--module-battle-bd)] active:translate-y-2 transition-all duration-75"
                                 >
                                     <span className="flex items-center gap-2 text-[16px] font-black">
-                                        <Swords className="h-6 w-6 text-[#f59e0b]" />对战
+                                        <Swords className="h-6 w-6 text-[color:var(--module-battle-bd)]" />对战
                                     </span>
-                                    <ArrowRight className="h-5 w-5 text-[#9ca3af] group-hover:translate-x-1 transition-transform" />
+                                    <ArrowRight className="h-5 w-5 text-theme-text-muted group-hover:translate-x-1 transition-transform" />
                                 </motion.button>
                                 <motion.button
                                     whileHover={{ scale: 1.04, y: -2 }}
@@ -331,12 +328,12 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                     transition={springTransition}
                                     type="button"
                                     onClick={() => handleNavigateFromHome("vocab")}
-                                    className="flex w-full md:w-auto min-w-[150px] items-center justify-between gap-3 rounded-[2rem] bg-white border-4 border-[#8b5cf6] px-6 py-4 shadow-[0_8px_0_0_#8b5cf6] text-[#1f2937] group active:shadow-[0_0px_0_0_#8b5cf6] active:translate-y-2 transition-all duration-75"
+                                    className="flex w-full md:w-auto min-w-[150px] items-center justify-between gap-3 rounded-[2rem] bg-[color:var(--module-vocab-bg)] border-4 border-[color:var(--module-vocab-bd)] px-6 py-4 shadow-[0_8px_0_0_var(--module-vocab-bd)] text-theme-text group active:shadow-[0_0px_0_0_var(--module-vocab-bd)] active:translate-y-2 transition-all duration-75"
                                 >
                                     <span className="flex items-center gap-2 text-[16px] font-black">
-                                        <BrainCircuit className="h-6 w-6 text-[#8b5cf6]" />生词本
+                                        <BrainCircuit className="h-6 w-6 text-[color:var(--module-vocab-bd)]" />生词本
                                     </span>
-                                    <ArrowRight className="h-5 w-5 text-[#9ca3af] group-hover:translate-x-1 transition-transform" />
+                                    <ArrowRight className="h-5 w-5 text-theme-text-muted group-hover:translate-x-1 transition-transform" />
                                 </motion.button>
                             </div>
                         </div>
@@ -350,7 +347,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                     animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
                     transition={{ delay: fromBattle ? 0.1 : 0.08, duration: fromBattle ? 1.02 : 0.78, ease: [0.22, 1, 0.36, 1] }}
                 >
-                    <div className="h-full w-full rounded-[2.75rem] p-5 lg:p-7 bg-white border-4 border-[#e5e7eb] shadow-[0_12px_0_0_#e5e7eb] overflow-y-auto overflow-x-hidden __hide-scrollbars">
+                    <div className="h-full w-full rounded-[2.75rem] p-5 lg:p-7 bg-theme-card-bg backdrop-blur-xl border-4 border-theme-border shadow-[0_12px_0_0_var(--theme-shadow)] overflow-y-auto overflow-x-hidden __hide-scrollbars">
                         <HomeDashboardPanels_v2
                             model={model}
                             eloHistory={eloHistory ?? []}

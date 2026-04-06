@@ -1464,45 +1464,27 @@ function ReadingPageContent() {
             className={cn(
                 "relative overflow-hidden text-stone-800 transition-all duration-500 ease-in-out [WebkitTapHighlightColor:transparent]",
                 article
-                    ? "min-h-screen bg-[#f7efdc] px-4 pb-8 pt-24 md:px-8 md:pb-10 md:pt-28 xl:px-10"
+                    ? "min-h-screen bg-theme-base-bg px-4 pb-8 pt-24 md:px-8 md:pb-10 md:pt-28 xl:px-10"
                     : showStandardSplitQuiz
                         ? "min-h-screen px-6 pb-6 pt-24 md:px-12 md:pb-8 md:pt-28"
                         : "min-h-screen p-6 md:p-12",
-                !article && "bg-[#fefce8]",
+                !article && "bg-theme-base-bg",
                 !article ? READING_THEMES.find(t => t.id === theme)?.class : undefined,
                 fontClass
             )}
         >
-            {!article && (
-                <>
-                    <div className="pointer-events-none fixed inset-0 z-0 bg-[#fefce8]" />
-                    <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(253,224,71,0.24),transparent_34%),radial-gradient(circle_at_90%_10%,rgba(255,183,197,0.15),transparent_28%),radial-gradient(circle_at_50%_28%,rgba(250,230,190,0.22),transparent_32%)]" />
-                    <div className="pointer-events-none fixed inset-x-0 top-0 z-0 h-[260px] bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(255,255,255,0))]" />
-                    <div className="pointer-events-none fixed -left-16 top-[28%] z-0 h-48 w-48 rounded-full bg-[#fde68a]/30 blur-3xl" />
-                    <div className="pointer-events-none fixed -right-10 top-[16%] z-0 h-56 w-56 rounded-full bg-[#fde68a]/45 blur-3xl" />
-                    <div className="pointer-events-none fixed bottom-[10%] left-[10%] z-0 h-44 w-44 rounded-full bg-[#fae8ff]/45 blur-3xl" />
-                </>
-            )}
-            {article && (
-                <>
-                    <div className="pointer-events-none fixed inset-0 z-0 bg-[#f7efdc]" />
-                    <div className="pointer-events-none fixed inset-0 z-0 bg-[radial-gradient(circle_at_top_left,rgba(253,230,138,0.34),transparent_26%),radial-gradient(circle_at_top_right,rgba(187,247,208,0.28),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(250,240,224,0.2),transparent_24%)]" />
-                    <div className="pointer-events-none fixed inset-x-0 top-0 z-0 h-[240px] bg-[linear-gradient(180deg,rgba(255,255,255,0.52),rgba(255,255,255,0))]" />
-                </>
-            )}
-            {!article && shouldUseGlobalBackgroundLayers && (
-                <>
-                    <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.baseLayer}`} />
-                    <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.glassLayer}`} />
-                    <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.glowLayer}`} />
-                    <div className={`pointer-events-none fixed inset-x-0 bottom-0 z-0 h-[34%] ${backgroundSpec.bottomLayer}`} />
-                    <div className={`pointer-events-none fixed inset-0 z-0 ${backgroundSpec.vignetteLayer}`} />
-                </>
-            )}
-            {!article && theme !== "welcome" && activeReadingFilm && (
+            <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+                <div className={`absolute inset-0 ${backgroundSpec.baseLayer}`} />
+                {backgroundSpec.coverGradient && <div className="absolute inset-0 opacity-[0.25]" style={{ backgroundImage: backgroundSpec.coverGradient, mixBlendMode: 'overlay' }} />}
+                {backgroundSpec.glassLayer && <div className={`absolute inset-0 ${backgroundSpec.glassLayer}`} />}
+                {backgroundSpec.glowLayer && <div className={`absolute inset-0 ${backgroundSpec.glowLayer}`} />}
+                {backgroundSpec.bottomLayer && <div className={`absolute inset-x-0 bottom-0 h-1/2 ${backgroundSpec.bottomLayer}`} />}
+                {backgroundSpec.vignetteLayer && <div className={`absolute inset-0 ${backgroundSpec.vignetteLayer}`} />}
+            </div>
+            {article && activeReadingFilm && theme !== "welcome" && (
                 <motion.div
                     key={`reading-theme-${theme}`}
-                    className={cn("pointer-events-none fixed inset-0 z-0", activeReadingFilm)}
+                    className={cn("pointer-events-none fixed inset-0 z-[1]", activeReadingFilm)}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -1672,7 +1654,7 @@ function ReadingPageContent() {
                 }}
             >
                 {article ? (
-                    <div className="relative flex w-full max-w-[1400px] flex-nowrap items-center gap-2 overflow-x-auto rounded-[1.5rem] border-[3px] border-[#17120d] bg-[#fffaf0] px-3 py-3 shadow-[0_8px_0_rgba(23,18,13,0.14)]">
+                    <div className="relative flex w-full max-w-[1400px] flex-nowrap items-center gap-2 overflow-x-auto rounded-[1.5rem] border-[3px] border-[color:var(--mist-read-bd)] bg-[color:var(--mist-read-bg)] px-3 py-3 shadow-[0_8px_0_var(--mist-read-sd)]">
                         <button
                             onClick={() => {
                                 setArticle(null);
@@ -1682,8 +1664,8 @@ function ReadingPageContent() {
                                 setIsQuizMode(false);
                                 setIsPretestOverlayOpen(false);
                             }}
-                            className="ui-pressable group inline-flex h-10 items-center justify-center gap-2 rounded-full border-[3px] border-[#17120d] bg-[#fff7d8] px-4 text-sm font-black text-[#17120d]"
-                            style={getPressableStyle("rgba(23,18,13,0.1)", 4)}
+                            className="ui-pressable group inline-flex h-10 items-center justify-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-primary-bg px-4 text-sm font-black text-theme-primary-text"
+                            style={getPressableStyle("var(--theme-shadow)", 4)}
                             title="返回文章列表"
                         >
                             <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
@@ -1694,12 +1676,12 @@ function ReadingPageContent() {
                             <button
                                 onClick={toggleFocusMode}
                                 className={cn(
-                                    "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all duration-300",
+                                    "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-theme-border transition-all duration-300",
                                     isFocusMode
-                                        ? "bg-[#17120d] text-[#fde68a]"
-                                        : "bg-white text-[#5f5448] hover:text-[#17120d]"
+                                        ? "bg-theme-active-text text-theme-base-bg"
+                                        : "bg-theme-card-bg text-theme-text-muted hover:text-theme-text"
                                 )}
-                                style={getPressableStyle("rgba(23,18,13,0.1)", 4)}
+                                style={getPressableStyle("var(--theme-shadow)", 4)}
                                 title="专注模式"
                             >
                                 <Flashlight className={cn("h-4 w-4", isFocusMode && "fill-current")} />
@@ -1708,12 +1690,12 @@ function ReadingPageContent() {
                             <button
                                 onClick={toggleBionicMode}
                                 className={cn(
-                                    "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all duration-300",
+                                    "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-theme-border transition-all duration-300",
                                     isBionicMode
-                                        ? "bg-[#17120d] text-[#93c5fd]"
-                                        : "bg-white text-[#5f5448] hover:text-[#17120d]"
+                                        ? "bg-theme-active-text text-theme-base-bg"
+                                        : "bg-theme-card-bg text-theme-text-muted hover:text-theme-text"
                                 )}
-                                style={getPressableStyle("rgba(23,18,13,0.1)", 4)}
+                                style={getPressableStyle("var(--theme-shadow)", 4)}
                                 title="仿生阅读"
                             >
                                 <Eye className={cn("h-4 w-4", isBionicMode && "fill-current")} />
@@ -1723,10 +1705,10 @@ function ReadingPageContent() {
                                 <button
                                     onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
                                     className={cn(
-                                        "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all",
-                                        isThemeMenuOpen ? "bg-[#ede9fe] text-[#4338ca]" : "bg-white text-[#5f5448] hover:text-[#17120d]"
+                                        "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-theme-border transition-all",
+                                        isThemeMenuOpen ? "bg-theme-primary-bg text-theme-primary-text" : "bg-theme-card-bg text-theme-text-muted hover:text-theme-text"
                                     )}
-                                    style={getPressableStyle("rgba(23,18,13,0.1)", 4)}
+                                    style={getPressableStyle("var(--theme-shadow)", 4)}
                                     title="外观"
                                 >
                                     <Palette className="h-5 w-5" />
@@ -1740,38 +1722,38 @@ function ReadingPageContent() {
                             <button
                                 onClick={() => setIsEditMode(!isEditMode)}
                                 className={cn(
-                                    "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-[#17120d] transition-all",
-                                    isEditMode ? "bg-[#ffe7aa] text-[#9a6700]" : "bg-white text-[#5f5448] hover:text-[#17120d]"
+                                    "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-theme-border transition-all",
+                                    isEditMode ? "bg-theme-active-bg text-theme-active-text" : "bg-theme-card-bg text-theme-text-muted hover:text-theme-text"
                                 )}
-                                style={getPressableStyle("rgba(23,18,13,0.1)", 4)}
+                                style={getPressableStyle("var(--theme-shadow)", 4)}
                                 title="编辑文本"
                             >
                                 <Edit3 className="h-4 w-4" />
                             </button>
                         </div>
 
-                        <div className="hidden items-center gap-2 rounded-full border-[3px] border-[#17120d] bg-[#fff7d8] px-3 py-2 text-sm font-black text-[#9a6700] shadow-[0_4px_0_rgba(23,18,13,0.1)] md:flex">
+                        <div className="hidden items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-primary-bg px-3 py-2 text-sm font-black text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)] md:flex">
                             已读 {Math.round(scrollProgress * 100)}%
                         </div>
 
-                        <div className="hidden items-center gap-2 rounded-full border-[3px] border-[#17120d] bg-[#ffedd5] px-3 py-2 text-sm font-black text-[#9a3412] shadow-[0_4px_0_rgba(23,18,13,0.1)] md:flex">
+                        <div className="hidden items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-active-bg px-3 py-2 text-sm font-black text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] md:flex">
                             <span>阅读币</span>
-                            <span className="rounded-full border-2 border-[#17120d] bg-white px-2 py-0.5 text-[#b45309]">{profile?.reading_coins ?? 0}</span>
+                            <span className="rounded-full border-2 border-theme-border bg-theme-card-bg px-2 py-0.5 text-theme-text">{profile?.reading_coins ?? 0}</span>
                         </div>
                     </div>
                 ) : (
-                    <div className="flex items-center gap-2 rounded-full border-4 border-[#d8d3cb] bg-white px-3 py-2 shadow-[0_8px_0_0_#d8d3cb]">
+                    <div className="flex items-center gap-2 rounded-full border-4 border-[color:var(--mist-read-bd)] bg-[color:var(--mist-read-bg)] px-3 py-2 shadow-[0_8px_0_0_var(--mist-read-sd)]">
                         <button
                             type="button"
                             onClick={() => handleRouteExit("home")}
-                            className="ui-pressable flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#2563eb] bg-[#2563eb] text-white"
-                            style={getPressableStyle("#1d4ed8", 4)}
+                            className="ui-pressable flex h-11 w-11 items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-primary-bg text-theme-primary-text"
+                            style={getPressableStyle("var(--theme-shadow)", 4)}
                             title="Back to Welcome"
                         >
                             <House className="h-5 w-5" />
                         </button>
                         <div className="px-3">
-                            <p className="font-welcome-display text-lg font-black tracking-[-0.03em] text-[#111827]">
+                            <p className="font-welcome-display text-lg font-black tracking-[-0.03em] text-theme-text">
                                 DeepSeek IELTS
                             </p>
                         </div>
@@ -1779,10 +1761,10 @@ function ReadingPageContent() {
                             <button
                                 onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
                                 className={cn(
-                                    "ui-pressable flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#d8d3cb] bg-[#fffdf8] text-slate-600 hover:text-slate-900",
-                                    isThemeMenuOpen && "bg-[#ede9fe] text-[#4338ca]"
+                                    "ui-pressable flex h-11 w-11 items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                    isThemeMenuOpen && "bg-theme-active-bg text-theme-active-text"
                                 )}
-                                style={getPressableStyle("#d8d3cb", 4)}
+                                style={getPressableStyle("var(--theme-shadow)", 4)}
                                 title="Appearance"
                             >
                                 <Palette className="h-5 w-5" />
@@ -1791,9 +1773,9 @@ function ReadingPageContent() {
                                 <AppearanceMenu onClose={() => setIsThemeMenuOpen(false)} />
                             )}
                         </div>
-                        <div className="ml-1 hidden items-center gap-2 rounded-full border-2 border-[#f59e0b] bg-[#ffedd5] px-3 py-2 text-sm font-black text-[#9a3412] shadow-[0_4px_0_0_#fdba74] md:flex">
+                        <div className="ml-1 hidden items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-active-bg px-3 py-2 text-sm font-black text-theme-active-text shadow-[0_4px_0_0_var(--theme-shadow)] md:flex">
                             <span>阅读币</span>
-                            <span className="rounded-full bg-white px-2 py-0.5 text-[#b45309]">{profile?.reading_coins ?? 0}</span>
+                            <span className="rounded-full bg-theme-card-bg border-2 border-theme-border px-2 py-0.5 text-theme-text">{profile?.reading_coins ?? 0}</span>
                         </div>
                     </div>
                 )}
