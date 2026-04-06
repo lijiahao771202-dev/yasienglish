@@ -140,6 +140,18 @@ export interface CachedArticle {
 
 export type ReadingMarkType = 'highlight' | 'underline' | 'note' | 'ask';
 
+export interface DailyPlanItem {
+    id: string;
+    text: string;
+    completed: boolean;
+}
+
+export interface DailyPlanRecord {
+    date: string; // 'YYYY-MM-DD'
+    items: DailyPlanItem[];
+    updated_at: number;
+}
+
 export interface ReadingNoteItem {
     id?: number;
     article_key: string;
@@ -283,6 +295,7 @@ export class YasiDB extends Dexie {
     sync_outbox!: Table<SyncOutboxItem, number>;
     sync_meta!: Table<SyncMetaItem, string>;
     listening_cabin_sessions!: Table<ListeningCabinSession, string>;
+    daily_plans!: Table<DailyPlanRecord, string>;
 
     constructor() {
         super('YasiDB');
@@ -1093,6 +1106,25 @@ export class YasiDB extends Dexie {
                     });
                 }
             });
+        });
+
+        // Version 39: Add daily plans table
+        this.version(39).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+            daily_plans: '&date, updated_at',
         });
     }
 }

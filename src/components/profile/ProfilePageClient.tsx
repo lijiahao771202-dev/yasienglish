@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ArrowLeft, Cloud, RefreshCw, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
 
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { ProfileSettingsPanel } from "@/components/profile/ProfileSettingsPanel";
@@ -28,47 +29,53 @@ export function ProfilePageClient() {
 
     if (!profile) {
         return (
-            <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(251,207,232,0.72),transparent_28%),linear-gradient(180deg,#fdf2f8_0%,#eef2ff_100%)] px-4 py-16 sm:px-6">
-                <div className="mx-auto max-w-5xl rounded-[2.4rem] border border-white/65 bg-white/78 p-10 shadow-[0_40px_100px_-48px_rgba(79,70,229,0.85)] backdrop-blur-2xl">
-                    <p className="text-sm text-slate-600">正在准备你的资料镜像…</p>
-                </div>
+            <main className="font-welcome-ui min-h-screen bg-[#fefce8] px-4 py-16 sm:px-6 flex items-center justify-center">
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="rounded-[2rem] border-4 border-[#111827] bg-[#fffaf0] p-10 shadow-[0_8px_0_0_#111827]">
+                    <p className="font-welcome-display text-2xl text-[#111827]">正在进入奇妙控制台…</p>
+                </motion.div>
             </main>
         );
     }
 
     return (
-        <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(251,207,232,0.72),transparent_28%),linear-gradient(180deg,#fdf2f8_0%,#eef2ff_100%)] px-4 py-12 sm:px-6 lg:px-8">
-            <div className="mx-auto max-w-6xl space-y-8">
+        <main className="font-welcome-ui min-h-screen bg-[#fefce8] px-4 py-12 sm:px-6 lg:px-8 overflow-hidden relative">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,#fffbeb,#fefce8)] pointer-events-none" />
+            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 300, damping: 25 }} className="mx-auto max-w-5xl space-y-8 relative z-10">
                 <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="space-y-3">
-                        <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/78 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700 shadow-[0_18px_28px_-22px_rgba(99,102,241,1)]">
-                            <Sparkles className="h-3.5 w-3.5" />
+                    <div className="space-y-2">
+                        <motion.div whileHover={{ scale: 1.05 }} className="inline-flex items-center gap-2 rounded-full border-4 border-[#111827] bg-[#fde68a] px-4 py-1.5 text-xs font-black uppercase tracking-wider text-[#92400e] shadow-[0_4px_0_0_#111827] cursor-default">
+                            <Sparkles className="h-4 w-4" />
                             Account Studio
-                        </div>
-                        <h1 className="font-comic text-5xl font-bold tracking-[-0.05em] text-slate-900">
-                            你的角色资料页。
+                        </motion.div>
+                        <h1 className="font-welcome-display text-5xl tracking-[-0.05em] text-[#111827]">
+                            你的资料空间
                         </h1>
-                        <p className="max-w-2xl text-sm leading-6 text-slate-600">
-                            这里负责用户名、预设头像、学习偏好和密码。同步状态会直接跟着本地镜像一起更新，右上角菜单也会实时反映。
+                        <p className="max-w-2xl text-[15px] font-bold leading-6 text-[#6b7280]">
+                            管理用户名、神奇头像、学习偏好和通行密码。同步状态实时更新中！
                         </p>
                     </div>
-                    <Link
-                        href="/"
-                        className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-white/70 bg-white/82 px-4 py-2 text-sm font-semibold text-slate-700 shadow-[0_18px_28px_-22px_rgba(99,102,241,1)] transition hover:text-slate-950"
-                    >
-                        <ArrowLeft className="h-4 w-4" />
-                        返回首页
+                    <Link href="/" passHref>
+                        <motion.button
+                            whileTap={{ scale: 0.9 }}
+                            whileHover={{ scale: 1.05, y: -2 }}
+                            className="inline-flex items-center gap-2 rounded-[1.2rem] border-4 border-[#111827] bg-white px-5 py-3 text-sm font-black text-[#111827] shadow-[0_4px_0_0_#111827] transition-all hover:bg-slate-50 hover:shadow-[0_6px_0_0_#111827]"
+                        >
+                            <ArrowLeft className="h-4 w-4" />
+                            返回主页
+                        </motion.button>
                     </Link>
                 </div>
 
-                <div className="rounded-[2.4rem] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.85),rgba(250,245,255,0.76))] p-4 shadow-[0_40px_100px_-48px_rgba(79,70,229,0.85)] backdrop-blur-2xl sm:p-6">
-                    <div className="mb-6 flex items-center gap-3 rounded-[1.4rem] border border-indigo-100 bg-indigo-50/90 px-4 py-3 text-sm text-indigo-800">
-                        <Cloud className="h-4 w-4" />
+                <div className="rounded-[3rem] border-4 border-[#111827] bg-[#f8fafc] p-8 shadow-[0_12px_0_0_#111827]">
+                    <div className="mb-8 flex flex-wrap items-center gap-3 rounded-[1.5rem] border-4 border-[#111827] bg-[#dcfce7] px-5 py-3 text-sm font-black text-[#166534] shadow-[0_4px_0_0_#111827]">
+                        <Cloud className="h-5 w-5" />
                         <span>
-                            当前同步：{phase} · 最近同步：
-                            {typeof lastSynced?.value === "number" ? new Date(lastSynced.value).toLocaleString() : " 尚未完成"}
+                            当前同步：<span className="text-[#15803d] font-welcome-display text-lg tracking-wider">{phase}</span> · 最近：
+                            <span className="text-slate-600 ml-1">{typeof lastSynced?.value === "number" ? new Date(lastSynced.value).toLocaleString() : "尚未完成"}</span>
                         </span>
-                        <button
+                        <motion.button
+                            whileTap={{ scale: 0.9 }}
+                            whileHover={{ y: -2 }}
                             type="button"
                             onClick={async () => {
                                 try {
@@ -77,15 +84,15 @@ export function ProfilePageClient() {
                                     window.alert(getUserFacingSyncError(error));
                                 }
                             }}
-                            className="ml-auto inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-white/90 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition hover:text-indigo-900"
+                            className="ml-auto flex items-center justify-center gap-1.5 rounded-full border-4 border-[#111827] bg-white px-4 py-2 text-xs font-black text-[#111827] shadow-[0_2px_0_0_#111827] transition-all hover:bg-slate-50 hover:shadow-[0_4px_0_0_#111827]"
                         >
-                            <RefreshCw className={`h-3.5 w-3.5 ${phase === "syncing" ? "animate-spin" : ""}`} />
-                            立即同步
-                        </button>
+                            <RefreshCw className={`h-4 w-4 ${phase === "syncing" ? "animate-spin" : ""}`} />
+                            立即拉取
+                        </motion.button>
                     </div>
 
                     {speechModel.isDesktopApp ? (
-                        <div className="mb-6">
+                        <div className="mb-8">
                             <SpeechModelStatusPanel
                                 progress={speechModel.progress}
                                 onDownload={speechModel.downloadModel}
@@ -112,7 +119,7 @@ export function ProfilePageClient() {
                         }}
                     />
                 </div>
-            </div>
+            </motion.div>
         </main>
     );
 }

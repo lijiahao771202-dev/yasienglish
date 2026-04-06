@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { Mail, ShieldCheck, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
 
 import { PresetAvatar } from "@/components/profile/PresetAvatar";
 import { PretextTextarea } from "@/components/ui/PretextTextarea";
@@ -100,35 +101,35 @@ export function ProfileSettingsPanel({
 
     return (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_360px]">
-            <form data-form="profile" onSubmit={handleSave} className="space-y-6 rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-[0_34px_80px_-44px_rgba(79,70,229,0.8)] backdrop-blur-xl">
+            <form data-form="profile" onSubmit={handleSave} className="space-y-6 rounded-[2rem] border-4 border-[#111827] bg-[#fffaf0] p-6 shadow-[0_8px_0_0_#111827]">
                 <div className="space-y-2">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-indigo-700">
-                        <Sparkles className="h-3.5 w-3.5" />
-                        Profile
-                    </div>
-                    <h2 className="font-comic text-4xl font-bold tracking-[-0.04em] text-slate-900">
-                        把你的学习角色捏完整。
+                    <motion.div whileHover={{ scale: 1.05 }} className="inline-flex items-center gap-2 rounded-full border-4 border-[#111827] bg-[#dcfce7] px-4 py-1.5 text-xs font-black uppercase tracking-wider text-[#166534] shadow-[0_4px_0_0_#111827] cursor-default">
+                        <Sparkles className="h-4 w-4" />
+                        Profile Settings
+                    </motion.div>
+                    <h2 className="text-3xl font-black tracking-tight text-[#111827]">
+                        基本设置偏好
                     </h2>
-                    <p className="text-sm leading-6 text-slate-600">
-                        用户名可以重复。这里的资料会写入本地镜像，再同步到 Supabase，右上角头像菜单也会立即跟着更新。
+                    <p className="mt-2 text-sm font-bold leading-6 text-slate-500">
+                        管理您的个人资料和学习偏好。头像也会同步更新。
                     </p>
                 </div>
 
                 <div className="grid gap-5 md:grid-cols-2">
                     <div className="space-y-2 md:col-span-2">
-                        <label htmlFor="username" className="text-sm font-medium text-slate-700">
+                        <label htmlFor="username" className="text-sm font-black text-slate-700 ml-1">
                             用户名
                         </label>
                         <input
                             id="username"
                             value={username}
                             onChange={(event) => setUsername(event.target.value)}
-                            className="h-12 w-full rounded-[1.2rem] border border-indigo-100 bg-white px-4 text-sm text-slate-900 shadow-[0_20px_25px_-22px_rgba(99,102,241,0.95)] outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                            className="block w-full rounded-[1rem] border-4 border-[#111827] bg-white px-4 py-3 font-semibold text-slate-900 shadow-[0_4px_0_0_#111827] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_#111827]"
                         />
                     </div>
 
                     <div className="space-y-2 md:col-span-2">
-                        <label htmlFor="bio" className="text-sm font-medium text-slate-700">
+                        <label htmlFor="bio" className="text-sm font-black text-slate-700 ml-1">
                             个人简介
                         </label>
                         <PretextTextarea
@@ -138,12 +139,12 @@ export function ProfileSettingsPanel({
                             rows={4}
                             minRows={4}
                             maxRows={10}
-                            className="w-full rounded-[1.2rem] border border-indigo-100 bg-white px-4 py-3 text-sm text-slate-900 shadow-[0_20px_25px_-22px_rgba(99,102,241,0.95)] outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                            className="block w-full rounded-[1rem] border-4 border-[#111827] bg-white px-4 py-3 font-semibold text-slate-900 shadow-[0_4px_0_0_#111827] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_#111827]"
                         />
                     </div>
 
                     <div className="space-y-2 md:col-span-2">
-                        <label htmlFor="deepseek-api-key" className="text-sm font-medium text-slate-700">
+                        <label htmlFor="deepseek-api-key" className="text-sm font-black text-slate-700 ml-1">
                             DeepSeek API Key
                         </label>
                         <input
@@ -154,22 +155,22 @@ export function ProfileSettingsPanel({
                             value={deepSeekApiKey}
                             onChange={(event) => setDeepSeekApiKey(event.target.value)}
                             placeholder="sk-..."
-                            className="h-12 w-full rounded-[1.2rem] border border-indigo-100 bg-white px-4 text-sm text-slate-900 shadow-[0_20px_25px_-22px_rgba(99,102,241,0.95)] outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                            className="block w-full rounded-[1rem] border-4 border-[#111827] bg-white px-4 py-3 font-semibold text-slate-900 shadow-[0_4px_0_0_#111827] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_#111827]"
                         />
-                        <p className="text-xs leading-5 text-slate-500">
+                        <p className="mt-2 text-xs font-bold text-slate-500 ml-1">
                             填你自己的 DeepSeek key 后，AI 讲解和评分会优先走你的额度。留空则继续使用系统默认配置。
                         </p>
                     </div>
 
                     <div className="space-y-2">
-                        <label htmlFor="target-mode" className="text-sm font-medium text-slate-700">
+                        <label htmlFor="target-mode" className="text-sm font-black text-slate-700 ml-1">
                             目标模式
                         </label>
                         <select
                             id="target-mode"
                             value={targetMode}
                             onChange={(event) => setTargetMode(event.target.value as LearningPreferences["target_mode"])}
-                            className="h-12 w-full rounded-[1.2rem] border border-indigo-100 bg-white px-4 text-sm text-slate-900 shadow-[0_20px_25px_-22px_rgba(99,102,241,0.95)] outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                            className="block w-full rounded-[1rem] border-4 border-[#111827] bg-white px-4 py-3 font-semibold text-slate-900 shadow-[0_4px_0_0_#111827] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_#111827]"
                         >
                             <option value="read">阅读</option>
                             <option value="battle">Battle</option>
@@ -178,14 +179,14 @@ export function ProfileSettingsPanel({
                     </div>
 
                     <div className="space-y-2">
-                        <label htmlFor="english-level" className="text-sm font-medium text-slate-700">
+                        <label htmlFor="english-level" className="text-sm font-black text-slate-700 ml-1">
                             当前水平
                         </label>
                         <select
                             id="english-level"
                             value={englishLevel}
                             onChange={(event) => setEnglishLevel(event.target.value as LearningPreferences["english_level"])}
-                            className="h-12 w-full rounded-[1.2rem] border border-indigo-100 bg-white px-4 text-sm text-slate-900 shadow-[0_20px_25px_-22px_rgba(99,102,241,0.95)] outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                            className="block w-full rounded-[1rem] border-4 border-[#111827] bg-white px-4 py-3 font-semibold text-slate-900 shadow-[0_4px_0_0_#111827] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_#111827]"
                         >
                             {["A1", "A2", "B1", "B2", "C1", "C2"].map((level) => (
                                 <option key={level} value={level}>{level}</option>
@@ -194,7 +195,7 @@ export function ProfileSettingsPanel({
                     </div>
 
                     <div className="space-y-2">
-                        <label htmlFor="daily-goal" className="text-sm font-medium text-slate-700">
+                        <label htmlFor="daily-goal" className="text-sm font-black text-slate-700 ml-1">
                             每日目标分钟
                         </label>
                         <input
@@ -204,19 +205,19 @@ export function ProfileSettingsPanel({
                             max={180}
                             value={dailyGoal}
                             onChange={(event) => setDailyGoal(event.target.value)}
-                            className="h-12 w-full rounded-[1.2rem] border border-indigo-100 bg-white px-4 text-sm text-slate-900 shadow-[0_20px_25px_-22px_rgba(99,102,241,0.95)] outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                            className="block w-full rounded-[1rem] border-4 border-[#111827] bg-white px-4 py-3 font-semibold text-slate-900 shadow-[0_4px_0_0_#111827] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_#111827]"
                         />
                     </div>
 
                     <div className="space-y-2">
-                        <label htmlFor="ui-theme" className="text-sm font-medium text-slate-700">
+                        <label htmlFor="ui-theme" className="text-sm font-black text-slate-700 ml-1">
                             UI 偏好
                         </label>
                         <select
                             id="ui-theme"
                             value={uiTheme}
                             onChange={(event) => setUiTheme(event.target.value as LearningPreferences["ui_theme_preference"])}
-                            className="h-12 w-full rounded-[1.2rem] border border-indigo-100 bg-white px-4 text-sm text-slate-900 shadow-[0_20px_25px_-22px_rgba(99,102,241,0.95)] outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                            className="block w-full rounded-[1rem] border-4 border-[#111827] bg-white px-4 py-3 font-semibold text-slate-900 shadow-[0_4px_0_0_#111827] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_#111827]"
                         >
                             <option value="bubblegum_pop">Bubblegum Pop</option>
                             <option value="starlight_arcade">Starlight Arcade</option>
@@ -226,68 +227,79 @@ export function ProfileSettingsPanel({
                 </div>
 
                 <div className="space-y-3">
-                    <p className="text-sm font-medium text-slate-700">预设头像</p>
-                    <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+                    <p className="text-sm font-black text-slate-700 ml-1">专属卡通头套</p>
+                    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6 rounded-[1.5rem] border-4 border-[#111827] p-3 bg-white">
                         {AVATAR_PRESETS.map((preset) => {
                             const selected = avatarPreset === preset.id;
                             return (
-                                <button
+                                <motion.button
+                                    whileTap={{ scale: 0.85 }}
+                                    whileHover={{ scale: 1.05, y: -2 }}
                                     key={preset.id}
                                     type="button"
                                     data-avatar-id={preset.id}
                                     onClick={() => setAvatarPreset(preset.id)}
-                                    className={`flex min-h-[44px] cursor-pointer flex-col items-center gap-2 rounded-[1.4rem] border p-3 text-xs font-medium transition ${selected ? "border-indigo-300 bg-indigo-50 text-indigo-800" : "border-slate-200 bg-white text-slate-600 hover:border-indigo-200"}`}
+                                    className={`relative flex flex-col items-center gap-3 rounded-[1rem] p-3 text-[11px] font-black transition-colors ${
+                                        selected 
+                                            ? "bg-[#fef08a] border-top-4 border-[#111827]" 
+                                            : "hover:bg-slate-50 border-transparent"
+                                    }`}
                                 >
-                                    <PresetAvatar presetId={preset.id} size={58} />
-                                    <span>{preset.name}</span>
-                                </button>
+                                    {selected && (
+                                        <div className="absolute inset-0 rounded-[1rem] border-4 border-[#111827] shadow-[0_4px_0_0_#111827] pointer-events-none" />
+                                    )}
+                                    <PresetAvatar presetId={preset.id} size={54} />
+                                    <span className={selected ? "text-[#92400e]" : "text-slate-600"}>{preset.name}</span>
+                                </motion.button>
                             );
                         })}
                     </div>
                 </div>
 
-                <button
+                <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    whileHover={{ y: -2 }}
                     type="submit"
                     disabled={profileBusy}
-                    className="inline-flex h-12 w-full cursor-pointer items-center justify-center rounded-[1.3rem] bg-[linear-gradient(135deg,#4f46e5,#db2777)] text-sm font-semibold text-white shadow-[0_24px_38px_-22px_rgba(99,102,241,1)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="flex h-14 w-full cursor-pointer items-center justify-center rounded-[1.4rem] border-4 border-[#111827] bg-[#fde68a] text-[15px] font-black text-[#92400e] shadow-[0_6px_0_0_#111827] transition-all hover:bg-[#fef08a] hover:shadow-[0_8px_0_0_#111827] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                     {profileBusy ? "Saving..." : "保存资料"}
-                </button>
+                </motion.button>
                 {profileMessage ? (
-                    <p className={`text-sm ${profileMessage.includes("失败") ? "text-rose-600" : "text-emerald-600"}`}>
+                    <p className={`text-sm font-bold ${profileMessage.includes("失败") ? "text-[#ef4444]" : "text-[#10b981]"}`}>
                         {profileMessage}
                     </p>
                 ) : null}
             </form>
 
             <div className="space-y-6">
-                <div className="rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-[0_34px_80px_-44px_rgba(79,70,229,0.8)] backdrop-blur-xl">
-                    <div className="flex items-center gap-3">
-                        <PresetAvatar presetId={avatarPreset} size={72} />
-                        <div>
-                            <p className="text-lg font-semibold text-slate-900">{username}</p>
-                            <p className="text-sm text-slate-500">{email}</p>
+                <div className="rounded-[2rem] border-4 border-[#111827] bg-[#fffaf0] p-6 shadow-[0_8px_0_0_#111827]">
+                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
+                        <PresetAvatar presetId={avatarPreset} size={80} />
+                        <div className="mt-2 sm:mt-0">
+                            <p className="font-welcome-display text-4xl text-[#111827]">{username}</p>
+                            <p className="text-sm font-bold text-slate-500 mt-1.5">{email}</p>
                         </div>
                     </div>
-                    <div className="mt-4 rounded-[1.2rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                        <div className="flex items-center gap-2 font-medium text-slate-800">
-                            <Mail className="h-4 w-4" />
+                    <div className="mt-6 rounded-[1.2rem] border-4 border-[#111827] bg-[#dcfce7] px-5 py-4 text-sm font-bold text-[#166534] shadow-[0_4px_0_0_#111827]">
+                        <div className="flex items-center justify-center sm:justify-start gap-2 text-[#166534]">
+                            <Mail className="h-5 w-5" />
                             登录邮箱
                         </div>
-                        <p className="mt-1 break-all">{email}</p>
+                        <p className="mt-2 text-base break-all text-center sm:text-left">{email}</p>
                     </div>
                 </div>
 
-                <form data-form="password" onSubmit={handlePasswordChange} className="space-y-4 rounded-[2rem] border border-white/60 bg-white/80 p-6 shadow-[0_34px_80px_-44px_rgba(79,70,229,0.8)] backdrop-blur-xl">
+                <form data-form="password" onSubmit={handlePasswordChange} className="space-y-5 rounded-[2rem] border-4 border-[#111827] bg-[#fffaf0] p-6 shadow-[0_8px_0_0_#111827]">
                     <div>
-                        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">
-                            <ShieldCheck className="h-3.5 w-3.5" />
-                            Security
-                        </div>
-                        <h3 className="mt-3 text-xl font-semibold text-slate-900">修改密码</h3>
+                        <motion.div whileHover={{ scale: 1.05 }} className="inline-flex items-center gap-2 rounded-full border-4 border-[#111827] bg-[#fde68a] px-4 py-1.5 text-xs font-black uppercase tracking-wider text-[#92400e] shadow-[0_4px_0_0_#111827] cursor-default">
+                            <ShieldCheck className="h-4 w-4" />
+                            Security Password
+                        </motion.div>
+                        <h3 className="mt-4 text-xl font-black text-[#111827]">修改密码</h3>
                     </div>
                     <div className="space-y-2">
-                        <label htmlFor="password" className="text-sm font-medium text-slate-700">
+                        <label htmlFor="password" className="text-sm font-black text-slate-700 ml-1">
                             新密码
                         </label>
                         <input
@@ -295,11 +307,11 @@ export function ProfileSettingsPanel({
                             type="password"
                             value={password}
                             onChange={(event) => setPassword(event.target.value)}
-                            className="h-12 w-full rounded-[1.2rem] border border-indigo-100 bg-white px-4 text-sm text-slate-900 shadow-[0_20px_25px_-22px_rgba(99,102,241,0.95)] outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                            className="block w-full rounded-[1rem] border-4 border-[#111827] bg-white px-4 py-3 font-semibold text-slate-900 shadow-[0_4px_0_0_#111827] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_#111827]"
                         />
                     </div>
                     <div className="space-y-2">
-                        <label htmlFor="confirm-password" className="text-sm font-medium text-slate-700">
+                        <label htmlFor="confirm-password" className="text-sm font-black text-slate-700 ml-1">
                             确认新密码
                         </label>
                         <input
@@ -307,18 +319,20 @@ export function ProfileSettingsPanel({
                             type="password"
                             value={confirmPassword}
                             onChange={(event) => setConfirmPassword(event.target.value)}
-                            className="h-12 w-full rounded-[1.2rem] border border-indigo-100 bg-white px-4 text-sm text-slate-900 shadow-[0_20px_25px_-22px_rgba(99,102,241,0.95)] outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                            className="block w-full rounded-[1rem] border-4 border-[#111827] bg-white px-4 py-3 font-semibold text-slate-900 shadow-[0_4px_0_0_#111827] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_#111827]"
                         />
                     </div>
-                    <button
+                    <motion.button
+                        whileTap={{ scale: 0.95 }}
+                        whileHover={{ y: -2 }}
                         type="submit"
                         disabled={passwordBusy}
-                        className="inline-flex h-12 w-full cursor-pointer items-center justify-center rounded-[1.3rem] bg-slate-900 text-sm font-semibold text-white shadow-[0_24px_38px_-22px_rgba(15,23,42,0.9)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="mt-3 flex h-14 w-full cursor-pointer items-center justify-center rounded-[1.4rem] border-4 border-[#111827] bg-[#fde68a] text-[15px] font-black text-[#92400e] shadow-[0_6px_0_0_#111827] transition-all hover:bg-[#fef08a] hover:shadow-[0_8px_0_0_#111827] disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         {passwordBusy ? "Updating..." : "更新密码"}
-                    </button>
+                    </motion.button>
                     {passwordMessage ? (
-                        <p className={`text-sm ${passwordMessage.includes("失败") || passwordMessage.includes("不一致") ? "text-rose-600" : "text-emerald-600"}`}>
+                        <p className={`text-sm font-bold ${passwordMessage.includes("失败") || passwordMessage.includes("不一致") ? "text-[#ef4444]" : "text-[#10b981]"}`}>
                             {passwordMessage}
                         </p>
                     ) : null}

@@ -2,10 +2,13 @@
 
 import { useMemo, useEffect, useState, useRef } from "react";
 import { motion } from "framer-motion";
-import { Sparkles, Flame, BrainCircuit, BookOpenText, Swords } from "lucide-react";
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Sparkles, Flame, BrainCircuit, BookOpenText, Target, CalendarDays, ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, ListTodo, Waves, Headphones, BellRing, Play, Database } from "lucide-react";
+import { Area, AreaChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
+import { useDailyPlans } from "@/hooks/useDailyPlans";
+import { useRouter } from "next/navigation";
 
 import type { HomeDashboardViewModel } from "@/components/home/home-data";
+import { HOME_WEEKDAY_LABELS } from "@/components/home/home-data";
 import { ConnectedUserAvatarMenu } from "@/components/profile/UserAvatarMenu";
 import type { EloHistoryItem } from "@/lib/db";
 
@@ -16,27 +19,7 @@ interface HomeDashboardPanelsProps {
     passwordUpdated?: boolean;
 }
 
-interface EloPoint {
-    label: string;
-    elo: number;
-    change: number;
-}
 
-const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
-
-function buildEloPoints(eloHistory: EloHistoryItem[]): EloPoint[] {
-    const translationHistory = eloHistory
-        .filter((item) => item.mode === "translation")
-        .sort((a, b) => a.timestamp - b.timestamp);
-    const sourceHistory = translationHistory.length
-        ? translationHistory
-        : [...eloHistory].sort((a, b) => a.timestamp - b.timestamp);
-    return sourceHistory.slice(-14).map((item) => ({
-        label: SHORT_DATE_FORMATTER.format(new Date(item.timestamp)),
-        elo: item.elo,
-        change: item.change,
-    }));
-}
 
 function easeOutExpo(t: number) {
     return t === 1 ? 1 : 1 - Math.pow(2, -10 * t);
@@ -83,23 +66,170 @@ function AnimatedNumber({
     return <span className={className}>{textValue}</span>;
 }
 
-interface EloTooltipProps {
-    active?: boolean;
-    payload?: Array<{ payload: EloPoint }>;
-}
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 
-function EloTooltip({ active, payload }: EloTooltipProps) {
-    if (!active || !payload?.length) return null;
-    const pt = payload[0].payload;
-    const isUp = pt.change >= 0;
+function DailyPlanBento() {
+    const [viewDate, setViewDate] = useState(new Date());
+    const { planRecord, addPlanItem, togglePlanItem, removePlanItem } = useDailyPlans(viewDate);
+    const [inputValue, setInputValue] = useState("");
+
+    const isToday = viewDate.toDateString() === new Date().toDateString();
+
+    const handlePrevDay = () => {
+        const next = new Date(viewDate);
+        next.setDate(next.getDate() - 1);
+        setViewDate(next);
+    };
+
+    const handleNextDay = () => {
+        const next = new Date(viewDate);
+        next.setDate(next.getDate() + 1);
+        setViewDate(next);
+    };
+
+    const handleAdd = () => {
+        if (!inputValue.trim()) return;
+        addPlanItem(inputValue);
+        setInputValue("");
+    };
+
+    const items = planRecord?.items || [];
+    const completedCount = items.filter(i => i.completed).length;
+    const progress = items.length === 0 ? 0 : Math.round((completedCount / items.length) * 100);
+
     return (
-        <div className="rounded-2xl border-4 border-[#fbbf24] bg-[#fffbeb] px-4 py-3 text-sm font-bold shadow-[0_4px_0_0_#fbbf24]">
-            <p className="font-black text-[#1f2937]">{pt.label}</p>
-            <p className="text-[#d97706]">Elo {pt.elo}</p>
-            <p className={isUp ? "text-[#10b981]" : "text-[#ef4444]"}>
-                {isUp ? "▲" : "▼"} {Math.abs(pt.change)}
-            </p>
-        </div>
+        <motion.div
+            className="flex flex-col h-full rounded-[2.5rem] border-4 border-[#3b82f6] bg-[#eff6ff] shadow-[0_8px_0_0_#3b82f6] overflow-hidden"
+            whileHover={{ scale: 1.01, y: -2 }}
+            whileTap={{ scale: 0.98, y: 2 }}
+            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+        >
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 pb-3 border-b-2 border-[#bfdbfe]">
+                <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border-4 border-[#3b82f6] bg-white shadow-[0_4px_0_0_#3b82f6]">
+                        <Target className="w-6 h-6 text-[#2563eb]" />
+                    </div>
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-widest text-[#2563eb]">每日计划</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                            <span className="font-welcome-display text-2xl font-black text-[#1e3a8a]">
+                                {SHORT_DATE_FORMATTER.format(viewDate)}
+                            </span>
+                            {!isToday && (
+                                <span className="rounded-full px-2 py-0.5 text-[10px] font-black border-2 border-[#93c5fd] bg-[#dbeafe] text-[#1d4ed8]">
+                                    回顾
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <button onClick={handlePrevDay} className="ui-pressable p-2 rounded-xl bg-white border-2 border-[#bfdbfe] text-[#2563eb] hover:bg-[#dbeafe] shadow-sm">
+                        <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button onClick={handleNextDay} className="ui-pressable p-2 rounded-xl bg-white border-2 border-[#bfdbfe] text-[#2563eb] hover:bg-[#dbeafe] shadow-sm">
+                        <ChevronRight className="w-5 h-5" />
+                    </button>
+                </div>
+            </div>
+
+            {/* List Body */}
+            <div className="flex-1 flex flex-col p-5 gap-3 min-h-[14rem] overflow-y-auto">
+                {items.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center gap-3 text-[#60a5fa] pb-4">
+                        <ListTodo className="w-12 h-12 opacity-50" />
+                        <div className="space-y-1">
+                            <p className="font-black text-lg text-[#3b82f6]">暂无安排</p>
+                            <p className="text-sm font-bold opacity-80">
+                                {isToday ? "写下你今天的探索目标吧！" : "这一天没有留下计划呢"}
+                            </p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between px-1 mb-1">
+                            <p className="text-xs font-black uppercase tracking-wider text-[#60a5fa] gap-1.5 flex items-center">
+                                <CalendarDays className="w-4 h-4" />
+                                {completedCount} / {items.length} 完成
+                            </p>
+                            <span className="text-xs font-black text-[#2563eb]">{progress}%</span>
+                        </div>
+                        <div className="h-2 w-full bg-[#dbeafe] rounded-full overflow-hidden shadow-inner border border-[#bfdbfe]/50 mb-1">
+                            <div className="h-full bg-[#3b82f6] transition-all duration-500 ease-out" style={{ width: `${progress}%` }} />
+                        </div>
+                        {items.map(item => (
+                            <motion.div
+                                key={item.id}
+                                layout
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                whileHover={{ scale: 1.02, y: -2 }}
+                                whileTap={{ scale: 0.95, y: 0 }}
+                                transition={{ type: "spring", stiffness: 450, damping: 25 }}
+                                onClick={() => togglePlanItem(item.id)}
+                                className={`group cursor-pointer flex items-start gap-3 p-3.5 rounded-2xl border-2 transition-colors duration-200 ${
+                                    item.completed 
+                                        ? "bg-white/40 border-[#bfdbfe]/50 text-[#93c5fd]" 
+                                        : "bg-white border-[#3b82f6]/40 text-[#1e3a8a] shadow-sm hover:border-[#3b82f6] hover:shadow-[#bfdbfe]/50 hover:shadow-lg"
+                                }`}
+                            >
+                                <div className="mt-0.5 flex-shrink-0 relative">
+                                    {item.completed ? (
+                                        <motion.div
+                                            initial={{ scale: 0.5, rotate: -45 }}
+                                            animate={{ scale: 1, rotate: 0 }}
+                                            transition={{ type: "spring", stiffness: 500, damping: 20 }}
+                                        >
+                                            <CheckCircle2 className="w-6 h-6 text-[#10b981]" />
+                                        </motion.div>
+                                    ) : (
+                                        <Circle className="w-6 h-6 text-[#93c5fd] group-hover:text-[#60a5fa] transition-colors" />
+                                    )}
+                                </div>
+                                <span className={`flex-1 text-sm font-bold my-auto leading-relaxed transition-all duration-300 ${item.completed ? "line-through opacity-70" : ""}`}>
+                                    {item.text}
+                                </span>
+                                <button 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        removePlanItem(item.id);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-[#ef4444] hover:bg-[#fef2f2] rounded-lg disabled:opacity-0 focus:outline-none"
+                                    disabled={!isToday}
+                                >
+                                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                </button>
+                            </motion.div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Input area - only for today (or future) */}
+            {isToday && (
+                <div className="p-4 bg-white/60 border-t-2 border-[#bfdbfe] flex items-center gap-2">
+                    <input 
+                        type="text"
+                        value={inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+                        placeholder="添加新计划..."
+                        className="flex-1 bg-white border-2 border-[#bfdbfe] placeholder-[#93c5fd] rounded-xl px-4 py-2.5 text-sm font-bold text-[#1e3a8a] outline-none focus:border-[#3b82f6] shadow-inner transition-colors"
+                    />
+                    <motion.button 
+                        whileHover={inputValue.trim() ? { scale: 1.05 } : {}}
+                        whileTap={inputValue.trim() ? { scale: 0.85, y: 4, transition: { type: "spring", stiffness: 600, damping: 15 } } : {}}
+                        onClick={handleAdd}
+                        disabled={!inputValue.trim()}
+                        className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-xl bg-[#3b82f6] text-white shadow-[0_4px_0_0_#2563eb] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        <Plus className="w-5 h-5 stroke-[3]" />
+                    </motion.button>
+                </div>
+            )}
+        </motion.div>
     );
 }
 
@@ -109,15 +239,13 @@ export function HomeDashboardPanels_v2({
     accountEmail,
     passwordUpdated = false,
 }: HomeDashboardPanelsProps) {
-    const streakMetric = model.glowMetrics.find((m) => m.id === "streak")?.value ?? "0";
-    const wordsMetric = model.glowMetrics.find((m) => m.id === "words")?.value ?? "0";
-    const readsMetric = model.glowMetrics.find((m) => m.id === "reads")?.value ?? "0";
-
-    const eloPoints = useMemo(() => buildEloPoints(eloHistory), [eloHistory]);
-    const currentElo = eloPoints.at(-1)?.elo ?? model.growth.eloRating;
-    const firstElo = eloPoints[0]?.elo ?? currentElo;
-    const eloDelta = currentElo - firstElo;
-    const hasCurve = eloPoints.length > 1;
+    const router = useRouter();
+    const { vitalSigns } = model;
+    
+    const immersionRatio = Math.min(1, vitalSigns.todayImmersionSeconds / Math.max(1, vitalSigns.targetImmersionSeconds));
+    const immersionProgressStr = `${Math.max(8, immersionRatio * 100)}%`;
+    const rawMinutes = Math.floor(vitalSigns.todayImmersionSeconds / 60);
+    const targetMinutes = Math.floor(vitalSigns.targetImmersionSeconds / 60);
 
     const springTransition = { type: "spring" as const, stiffness: 300, damping: 20 };
 
@@ -149,178 +277,132 @@ export function HomeDashboardPanels_v2({
             {/* Cute Bento Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-5 flex-1 min-h-0">
 
-                {/* ─── ELO CHART (replaces Goal card) ─── */}
+                {/* ─── DAILY PLAN WIDGET ─── */}
+                <div className="col-span-2 row-span-2 relative min-h-0">
+                    <div className="absolute inset-0">
+                        <DailyPlanBento />
+                    </div>
+                </div>
+
+                {/* 1. IMMERSION ECHO */}
                 <motion.div
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
+                    whileHover={{ scale: 1.02, rotate: 0.5 }}
+                    whileTap={{ scale: 0.98 }}
                     transition={springTransition}
-                    className="col-span-2 row-span-2 relative overflow-hidden rounded-[2.5rem] border-4 border-[#fbbf24] bg-[#fffbeb] p-5 shadow-[0_8px_0_0_#fbbf24] flex flex-col"
+                    className="col-span-2 relative overflow-hidden rounded-[2.5rem] border-4 border-[#bae6fd] bg-[#f0f9ff] p-6 shadow-[0_8px_0_0_#bae6fd] flex flex-col justify-center cursor-default group"
                 >
-                    {/* Header */}
-                    <div className="flex items-center justify-between mb-3 flex-shrink-0">
-                        <div className="flex items-center gap-3">
-                            {/* Cat mascot via emoji-free SVG path: Lucide Swords icon with cat-flair label */}
-                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border-4 border-[#fbbf24] bg-white shadow-[0_4px_0_0_#fbbf24]">
-                                <Swords className="w-6 h-6 text-[#f59e0b]" />
-                            </div>
-                            <div>
-                                <p className="text-xs font-black uppercase tracking-widest text-[#d97706]">BATTLE ELO</p>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="font-welcome-display text-3xl font-black text-[#1f2937]">
-                                        <AnimatedNumber value={currentElo} />
-                                    </span>
-                                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-black border-2 ${eloDelta >= 0 ? "border-[#6ee7b7] bg-[#ecfdf5] text-[#059669]" : "border-[#fca5a5] bg-[#fef2f2] text-[#dc2626]"}`}>
-                                        {eloDelta >= 0 ? "▲" : "▼"} {Math.abs(eloDelta)}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        {/* cat face deco — SVG-only, no emoji */}
-                        <div className="select-none text-[3.5rem] leading-none opacity-40 pointer-events-none">
-                            {/* Simple SVG cat face as inline art */}
-                            <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-                                <path d="M8 40 C8 20 16 8 28 8 C40 8 48 20 48 40" fill="#fcd34d" stroke="#fbbf24" strokeWidth="3"/>
-                                <polygon points="8,24 4,8 16,18" fill="#fcd34d" stroke="#fbbf24" strokeWidth="2.5" strokeLinejoin="round"/>
-                                <polygon points="48,24 52,8 40,18" fill="#fcd34d" stroke="#fbbf24" strokeWidth="2.5" strokeLinejoin="round"/>
-                                <ellipse cx="20" cy="32" rx="4" ry="5" fill="#1f2937"/>
-                                <ellipse cx="36" cy="32" rx="4" ry="5" fill="#1f2937"/>
-                                <ellipse cx="21.5" cy="30.5" rx="1.5" ry="2" fill="white"/>
-                                <ellipse cx="37.5" cy="30.5" rx="1.5" ry="2" fill="white"/>
-                                <path d="M24 40 Q28 44 32 40" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-                                <circle cx="28" cy="39" r="2.5" fill="#fca5a5"/>
-                                {/* whiskers */}
-                                <line x1="28" y1="39" x2="10" y2="36" stroke="#374151" strokeWidth="1.5" strokeLinecap="round"/>
-                                <line x1="28" y1="39" x2="10" y2="39" stroke="#374151" strokeWidth="1.5" strokeLinecap="round"/>
-                                <line x1="28" y1="39" x2="46" y2="36" stroke="#374151" strokeWidth="1.5" strokeLinecap="round"/>
-                                <line x1="28" y1="39" x2="46" y2="39" stroke="#374151" strokeWidth="1.5" strokeLinecap="round"/>
-                            </svg>
+                    <div className="absolute top-0 right-0 p-4 opacity-50 group-hover:scale-110 group-hover:rotate-12 transition-transform duration-700">
+                        <Waves className="w-24 h-24 text-[#e0f2fe]" />
+                    </div>
+                    <div className="relative z-10 flex items-center justify-between mb-5">
+                        <p className="text-sm font-black uppercase tracking-widest text-[#0ea5e9] flex items-center gap-1.5">
+                            <Headphones className="w-4 h-4" /> 沉浸回声
+                        </p>
+                        <div className="border-2 border-[#e0f2fe] bg-white rounded-full px-4 py-1.5 text-sm font-black text-[#0284c7] shadow-sm">
+                            {rawMinutes}
+                            <span className="text-[10px] text-[#38bdf8] ml-1">MINS</span>
                         </div>
                     </div>
-
-                    {/* Chart */}
-                    <div className="flex-1 min-h-0">
-                        {hasCurve ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={eloPoints} margin={{ top: 8, right: 4, bottom: 0, left: -28 }}>
-                                    <defs>
-                                        <linearGradient id="cute-elo-fill" x1="0" x2="0" y1="0" y2="1">
-                                            <stop offset="0%" stopColor="#fbbf24" stopOpacity={0.5} />
-                                            <stop offset="100%" stopColor="#fbbf24" stopOpacity={0.05} />
-                                        </linearGradient>
-                                    </defs>
-                                    <XAxis
-                                        dataKey="label"
-                                        tickLine={false}
-                                        axisLine={false}
-                                        tick={{ fill: "#d97706", fontSize: 11, fontWeight: 700 }}
-                                        dy={6}
-                                    />
-                                    <YAxis hide domain={["dataMin - 20", "dataMax + 20"]} />
-                                    <Tooltip cursor={{ stroke: "#fbbf24", strokeWidth: 2, strokeDasharray: "6 3" }} content={<EloTooltip />} />
-                                    <Area
-                                        type="monotone"
-                                        dataKey="elo"
-                                        stroke="#f59e0b"
-                                        strokeWidth={4}
-                                        strokeLinecap="round"
-                                        fill="url(#cute-elo-fill)"
-                                        dot={{ r: 5, fill: "#fbbf24", stroke: "#fff", strokeWidth: 3 }}
-                                        activeDot={{ r: 7, fill: "#f59e0b", stroke: "#fff", strokeWidth: 3 }}
-                                        animationDuration={1200}
-                                        animationEasing="ease-out"
-                                    />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="flex h-full flex-col items-center justify-center rounded-[1.6rem] border-4 border-dashed border-[#fcd34d] bg-white/60 gap-3 text-center p-6">
-                                <svg width="48" height="48" viewBox="0 0 56 56" fill="none">
-                                    <path d="M8 40 C8 20 16 8 28 8 C40 8 48 20 48 40" fill="#fcd34d" stroke="#fbbf24" strokeWidth="3"/>
-                                    <polygon points="8,24 4,8 16,18" fill="#fcd34d" stroke="#fbbf24" strokeWidth="2.5" strokeLinejoin="round"/>
-                                    <polygon points="48,24 52,8 40,18" fill="#fcd34d" stroke="#fbbf24" strokeWidth="2.5" strokeLinejoin="round"/>
-                                    <ellipse cx="20" cy="32" rx="4" ry="5" fill="#1f2937"/>
-                                    <ellipse cx="36" cy="32" rx="4" ry="5" fill="#1f2937"/>
-                                    <ellipse cx="21.5" cy="30.5" rx="1.5" ry="2" fill="white"/>
-                                    <ellipse cx="37.5" cy="30.5" rx="1.5" ry="2" fill="white"/>
-                                    <path d="M24 40 Q28 44 32 40" stroke="#f87171" strokeWidth="2.5" strokeLinecap="round" fill="none"/>
-                                    <circle cx="28" cy="39" r="2.5" fill="#fca5a5"/>
-                                    <line x1="28" y1="39" x2="10" y2="36" stroke="#374151" strokeWidth="1.5" strokeLinecap="round"/>
-                                    <line x1="28" y1="39" x2="10" y2="39" stroke="#374151" strokeWidth="1.5" strokeLinecap="round"/>
-                                    <line x1="28" y1="39" x2="46" y2="36" stroke="#374151" strokeWidth="1.5" strokeLinecap="round"/>
-                                    <line x1="28" y1="39" x2="46" y2="39" stroke="#374151" strokeWidth="1.5" strokeLinecap="round"/>
-                                </svg>
-                                <p className="font-welcome-display text-xl font-black text-[#d97706]">先打一场 Battle</p>
-                                <p className="text-sm font-bold text-[#92400e]">这里会出现你的 Elo 曲线</p>
-                            </div>
-                        )}
+                    <div className="relative z-10 h-6 overflow-hidden rounded-full bg-[#e0f2fe] border-2 border-white shadow-inner">
+                        <div
+                            className="h-full rounded-full bg-[#0ea5e9] transition-all duration-1000 ease-out flex items-center justify-end px-2"
+                            style={{ width: immersionProgressStr }}
+                        >
+                            {immersionRatio >= 1 && <Sparkles className="w-3 h-3 text-white" />}
+                        </div>
+                    </div>
+                    <div className="relative z-10 mt-3 flex justify-between text-[13px] font-black text-[#7dd3fc]">
+                        <span>TODAY</span>
+                        <span>TARGET {targetMinutes}M</span>
                     </div>
                 </motion.div>
 
-                {/* Progress / Elo bar BENTO */}
+                {/* 2. HABIT PULSE */}
                 <motion.div
-                    whileHover={{ scale: 1.03, rotate: 1 }}
+                    whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.97 }}
                     transition={springTransition}
-                    className="col-span-2 relative overflow-hidden rounded-[2.5rem] border-4 border-[#c4b5fd] bg-[#f5f3ff] p-6 shadow-[0_8px_0_0_#c4b5fd] flex flex-col justify-center"
+                    className="col-span-1 relative overflow-hidden rounded-[2rem] border-4 border-[#fcd34d] bg-[#fffbeb] px-3 py-5 shadow-[0_8px_0_0_#fcd34d] flex flex-col items-center justify-between text-center"
                 >
-                    <div className="flex items-center justify-between mb-5">
-                        <p className="text-sm font-black uppercase tracking-widest text-[#8b5cf6]">Progress</p>
-                        <div className="border-2 border-[#ede9fe] bg-white rounded-full px-4 py-1.5 text-sm font-black text-[#7c3aed] shadow-sm">
-                            Elo <AnimatedNumber value={model.growth.eloRating} />
-                        </div>
-                    </div>
-                    <div className="h-6 overflow-hidden rounded-full bg-[#ede9fe] border-2 border-white shadow-inner">
-                        <div
-                            className="h-full rounded-full bg-[#8b5cf6] transition-all duration-1000 ease-out"
-                            style={{ width: `${Math.max(10, model.growth.progressRatio * 100)}%` }}
-                        />
-                    </div>
-                    <div className="mt-3 flex justify-between text-[13px] font-black text-[#a78bfa]">
-                        <span>START</span>
-                        <span>PEAK {model.growth.maxElo}</span>
+                    <span className="text-xs font-black uppercase tracking-wider text-[#d97706] mb-2 flex flex-col items-center gap-1">
+                        <Flame className="w-6 h-6 text-[#f59e0b]" /> 
+                        本周脉搏
+                    </span>
+                    <div className="flex gap-1.5 px-1 pb-1">
+                        {vitalSigns.weeklyHeatmap.map((day, ix) => (
+                            <div key={day.dateKey} className="flex flex-col items-center gap-1.5">
+                                <span className={`text-[9px] font-black ${day.isToday ? 'text-[#ea580c] scale-110' : 'text-[#fbbf24]'}`}>
+                                    {HOME_WEEKDAY_LABELS[ix]}
+                                </span>
+                                <div className={`w-3.5 h-3.5 rounded-full border-2 transition-colors duration-300 ${
+                                    day.hasActivity 
+                                        ? 'bg-[#f59e0b] border-[#d97706] shadow-[0_2px_0_0_#d97706]' 
+                                        : (day.dateKey > vitalSigns.weeklyHeatmap.find(d => d.isToday)?.dateKey! 
+                                            ? 'bg-[#fef3c7] border-[#fde68a]' 
+                                            : 'bg-[#e5e7eb] border-[#d1d5db]')
+                                }`} />
+                            </div>
+                        ))}
                     </div>
                 </motion.div>
 
-                {/* Streak BENTO */}
-                <motion.div
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    transition={springTransition}
-                    className="col-span-1 relative overflow-hidden rounded-[2rem] border-4 border-[#fcd34d] bg-[#fffbeb] p-5 shadow-[0_8px_0_0_#fcd34d] flex flex-col items-center justify-center text-center"
-                >
-                    <Flame className="w-10 h-10 text-[#f59e0b] mb-2" />
-                    <span className="font-welcome-display text-4xl font-black text-[#d97706]">{streakMetric}</span>
-                    <span className="text-xs font-black uppercase tracking-wider text-[#ea580c] mt-2">Day Streak</span>
-                </motion.div>
-
-                {/* Words / Reads BENTO (stacked) */}
+                {/* 3 & 4. MEMORY VAULT & QUICK LAUNCH */}
                 <div className="col-span-1 flex flex-col gap-4">
+                    {/* MEMORY VAULT */}
                     <motion.div
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         transition={springTransition}
-                        className="flex-1 rounded-[1.8rem] border-4 border-[#6ee7b7] bg-[#ecfdf5] p-4 shadow-[0_6px_0_0_#6ee7b7] flex items-center gap-4"
+                        onClick={() => router.push('/vocab/review')}
+                        role="button"
+                        className="flex-1 rounded-[1.8rem] border-4 border-[#fca5a5] bg-[#fef2f2] p-4 shadow-[0_6px_0_0_#fca5a5] flex items-center justify-between gap-2 overflow-hidden relative group"
                     >
-                        <div className="bg-white border-2 border-[#a7f3d0] text-[#10b981] p-3 rounded-full flex-shrink-0 shadow-sm">
-                            <BrainCircuit className="w-6 h-6" />
+                        <div className="flex flex-col z-10">
+                            <span className="text-[10px] items-center gap-1 font-black uppercase text-[#ef4444] tracking-widest flex">
+                                <BrainCircuit className="w-3 h-3" /> 金库
+                            </span>
+                            <span className="font-welcome-display text-2xl font-black text-[#b91c1c] leading-none mt-1">
+                                {vitalSigns.totalVocabCount}
+                            </span>
                         </div>
-                        <div className="flex flex-col">
-                            <span className="font-welcome-display text-2xl font-black text-[#059669]">{wordsMetric}</span>
-                            <span className="text-[10px] font-black uppercase text-[#34d399]">Words</span>
+                        {vitalSigns.fadingVocabCount > 0 && (
+                            <div className="z-10 flex flex-col items-center animate-pulse">
+                                <div className="bg-[#b91c1c] text-white rounded-full w-8 h-8 flex items-center justify-center font-black text-xs border-2 border-[#7f1d1d] shadow-[0_2px_0_0_#7f1d1d]">
+                                    {vitalSigns.fadingVocabCount}
+                                </div>
+                                <span className="text-[8px] font-black text-[#dc2626] mt-1.5 uppercase tracking-wider">由于</span>
+                            </div>
+                        )}
+                        {!vitalSigns.fadingVocabCount && (
+                             <div className="z-10 text-[#fca5a5] opacity-50 pr-2">
+                                <CheckCircle2 className="w-6 h-6" />
+                             </div>
+                        )}
+                        {/* decorative */}
+                        <div className="absolute right-[-10px] top-[-10px] text-[#fecaca] opacity-30 group-hover:scale-110 transition-transform">
+                            <Database className="w-20 h-20" />
                         </div>
                     </motion.div>
 
+                    {/* QUICK LAUNCH */}
                     <motion.div
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         transition={springTransition}
-                        className="flex-1 rounded-[1.8rem] border-4 border-[#93c5fd] bg-[#eff6ff] p-4 shadow-[0_6px_0_0_#93c5fd] flex items-center gap-4"
+                        onClick={() => router.push(vitalSigns.lastArticleHref)}
+                        role="button"
+                        className="flex-1 rounded-[1.8rem] border-4 border-[#34d399] bg-[#ecfdf5] p-3 shadow-[0_6px_0_0_#34d399] flex items-center gap-3 relative group overflow-hidden"
                     >
-                        <div className="bg-white border-2 border-[#bfdbfe] text-[#3b82f6] p-3 rounded-full flex-shrink-0 shadow-sm">
-                            <BookOpenText className="w-6 h-6" />
+                        <div className="w-10 h-10 shrink-0 bg-[#10b981] border-2 border-[#047857] shadow-[0_3px_0_0_#047857] rounded-full flex items-center justify-center text-white group-active:translate-y-1 group-active:shadow-[0_0px_0_0_#047857] transition-all">
+                            <Play className="w-5 h-5 fill-current ml-0.5" />
                         </div>
-                        <div className="flex flex-col">
-                            <span className="font-welcome-display text-2xl font-black text-[#2563eb]">{readsMetric}</span>
-                            <span className="text-[10px] font-black uppercase text-[#60a5fa]">Articles</span>
+                        <div className="flex flex-col items-start min-w-0 z-10">
+                            <span className="text-[10px] font-black uppercase text-[#059669] tracking-wider mb-0.5">
+                                一键启航
+                            </span>
+                            <span className="text-xs font-bold text-[#065f46] truncate w-full text-left">
+                                {vitalSigns.lastArticleTitle}
+                            </span>
                         </div>
                     </motion.div>
                 </div>

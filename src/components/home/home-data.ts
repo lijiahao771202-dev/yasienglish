@@ -1,4 +1,5 @@
 import type { EloHistoryItem, LocalUserProfile, ReadArticleItem, VocabItem, WritingEntry } from "@/lib/db";
+import type { ListeningCabinSession } from "@/lib/listening-cabin";
 import { DEFAULT_LEARNING_PREFERENCES, DEFAULT_PROFILE_USERNAME } from "@/lib/profile-settings";
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "long" });
@@ -42,6 +43,16 @@ export interface HomeLearningLane {
     progressRatio: number;
 }
 
+export interface HomeVitalSigns {
+    todayImmersionSeconds: number;
+    targetImmersionSeconds: number;
+    weeklyHeatmap: { dateKey: string; hasActivity: boolean; isToday: boolean; date: number }[];
+    fadingVocabCount: number;
+    totalVocabCount: number;
+    lastArticleTitle: string;
+    lastArticleHref: string;
+}
+
 export interface HomeDashboardViewModel {
     displayName: string;
     headline: string;
@@ -51,6 +62,7 @@ export interface HomeDashboardViewModel {
     calendarDays: HomeCalendarDay[];
     goal: HomeGoalSummary;
     growth: HomeGrowthSummary;
+    vitalSigns: HomeVitalSigns;
     learningLanes: HomeLearningLane[];
 }
 
@@ -64,6 +76,8 @@ interface BuildHomeDashboardModelArgs {
     vocabulary?: VocabItem[];
     writingEntries?: WritingEntry[];
     eloHistory?: EloHistoryItem[];
+    listeningSessions?: ListeningCabinSession[];
+    fadingVocabCount?: number;
     now?: Date;
 }
 
@@ -208,6 +222,8 @@ export function buildHomeDashboardModel({
     vocabulary = [],
     writingEntries = [],
     eloHistory = [],
+    listeningSessions = [],
+    fadingVocabCount = 0,
     now = new Date(),
 }: BuildHomeDashboardModelArgs): HomeDashboardViewModel {
     const displayName = profile?.username || email?.split("@")[0] || DEFAULT_PROFILE_USERNAME;
@@ -224,6 +240,58 @@ export function buildHomeDashboardModel({
     const eloRating = profile?.elo_rating ?? 400;
     const maxElo = Math.max(profile?.max_elo ?? 400, eloRating, 400);
     const recentBattleCount = eloHistory.length;
+
+    const todayStart = startOfDay(now).getTime();
+    let todayImmersionSeconds = 0;
+    for (const session of listeningSessions) {
+        if ((session.lastPlayedAt && session.lastPlayedAt >= todayStart) || (session.updated_at && session.updated_at >= todayStart)) {
+            if (session.audioDurationMs) {
+                todayImmersionSeconds += Math.floor(session.audioDurationMs / 1000);
+            } else if (session.sentenceCount) {
+                todayImmersionSeconds += session.sentenceCount * 6;
+            }
+        }
+    }
+
+    const currentDayOfWeek = now.getDay();
+    const mondayOffset = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+    const thisMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset);
+    
+    const weeklyHeatmap = Array.from({ length: 7 }).map((_, i) => {
+        const d = new Date(thisMonday.getFullYear(), thisMonday.getMonth(), thisMonday.getDate() + i);
+        const dk = formatDateKey(d);
+        return {
+            dateKey: dk,
+            date: d.getDate(),
+            hasActivity: activityDateKeys.has(dk),
+            isToday: dk === formatDateKey(now)
+        };
+    });
+
+    let lastArticleTitle = "Discover Magic";
+    let lastArticleHref = "/listening-cabin";
+    if (listeningSessions.length > 0) {
+        const lastSession = [...listeningSessions].sort((a, b) => b.updated_at - a.updated_at)[0];
+        if (lastSession) {
+            lastArticleTitle = lastSession.topicSeed 
+                ? lastSession.topicSeed 
+                : "Random Story";
+            lastArticleHref = "/listening-cabin";
+        }
+    } else if (readArticles.length > 0) {
+        lastArticleTitle = "Continue Reading";
+        lastArticleHref = "/read";
+    }
+
+    const vitalSigns: HomeVitalSigns = {
+        todayImmersionSeconds,
+        targetImmersionSeconds: preferences.daily_goal_minutes * 60,
+        weeklyHeatmap,
+        fadingVocabCount,
+        totalVocabCount: resolvedVocabularyCount,
+        lastArticleTitle,
+        lastArticleHref
+    };
 
     return {
         displayName,
@@ -247,6 +315,7 @@ export function buildHomeDashboardModel({
             maxElo,
             progressRatio: clampRatio(eloRating / maxElo),
         },
+        vitalSigns,
         learningLanes: [
             {
                 id: "read",
