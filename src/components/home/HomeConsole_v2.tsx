@@ -52,6 +52,10 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
         () => db.elo_history.orderBy("timestamp").reverse().limit(36).toArray(),
         [],
     );
+    const recentListeningSessions = useLiveQuery(
+        () => db.listening_cabin_sessions.where("created_at").aboveOrEqual(activityCutoff).toArray(),
+        [activityCutoff],
+    );
     const resolvedPasswordUpdated = passwordUpdated || searchParams.get("password") === "updated";
     const fromBattle = searchParams.get("from") === "battle";
     const [routeTransitionTarget, setRouteTransitionTarget] = useState<"read" | "battle" | "vocab" | "review" | "cabin" | null>(null);
@@ -68,6 +72,8 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
         vocabulary: recentVocabulary ?? [],
         writingEntries: recentWritingEntries ?? [],
         eloHistory: eloHistory ?? [],
+        listeningSessions: recentListeningSessions ?? [],
+        fadingVocabCount: dueVocabularyCount ?? 0,
     }), [
         eloHistory,
         profile,
@@ -78,6 +84,8 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
         sessionUser?.email,
         vocabularyCount,
         writingCount,
+        recentListeningSessions,
+        dueVocabularyCount,
     ]);
 
     const handleNavigateFromHome = (target: "read" | "battle" | "vocab" | "review" | "cabin") => {

@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, Fragment } from "react";
+import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import { BadgeCheck, Check, ChevronRight, CloudUpload, Image as ImageIcon, Loader2, LogOut, Mail, Play, RefreshCw, Search, Settings2, Volume2, X } from "lucide-react";
 
 import { PresetAvatar } from "@/components/profile/PresetAvatar";
@@ -122,6 +124,7 @@ export function UserAvatarMenu({
     const [voiceSearch, setVoiceSearch] = useState("");
     const [selectedVoice, setSelectedVoice] = useState<TtsVoice>(normalizeTtsVoice(learningPreferences.tts_voice));
     const containerRef = useRef<HTMLDivElement | null>(null);
+    const voiceModalRef = useRef<HTMLDivElement | null>(null);
     const voiceListRef = useRef<HTMLDivElement | null>(null);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const router = useRouter();
@@ -151,7 +154,10 @@ export function UserAvatarMenu({
 
     useEffect(() => {
         const handlePointerDown = (event: MouseEvent) => {
-            if (!containerRef.current?.contains(event.target as Node)) {
+            if (
+                !containerRef.current?.contains(event.target as Node) &&
+                !voiceModalRef.current?.contains(event.target as Node)
+            ) {
                 setOpen(false);
                 setMailboxOpen(false);
                 setBackgroundOpen(false);
@@ -260,15 +266,17 @@ export function UserAvatarMenu({
             data-avatar-menu-placement={placement}
             className={isSidebar ? "relative z-[130] w-full" : isHeader ? "relative z-[130]" : "fixed right-4 top-4 z-[130]"}
         >
-            <button
+            <motion.button
                 type="button"
+                whileTap={{ scale: 0.93 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 aria-label="Open profile menu"
                 onClick={() => setOpen((current) => !current)}
                 className={isSidebar
-                    ? "relative flex w-full cursor-pointer items-center gap-3 rounded-[1.65rem] border border-white/76 bg-[linear-gradient(145deg,rgba(255,255,255,0.74),rgba(247,243,236,0.5))] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.88),0_18px_30px_-24px_rgba(46,39,33,0.18)] transition hover:-translate-y-0.5"
+                    ? "relative flex w-full cursor-pointer items-center gap-3 rounded-[1.65rem] border-2 border-white/76 bg-[linear-gradient(145deg,rgba(255,255,255,0.74),rgba(247,243,236,0.5))] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.88),0_18px_30px_-24px_rgba(46,39,33,0.18)] hover:-translate-y-0.5"
                     : isHeader
-                        ? "relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border border-white/78 bg-white/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_20px_32px_-22px_rgba(45,38,31,0.18)] backdrop-blur-xl transition hover:-translate-y-0.5"
-                        : "relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border border-white/70 bg-white/78 shadow-[0_24px_36px_-22px_rgba(79,70,229,0.95)] backdrop-blur-xl transition hover:-translate-y-0.5"}
+                        ? "relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-2 border-white/78 bg-white/72 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_20px_32px_-22px_rgba(45,38,31,0.18)] backdrop-blur-xl hover:-translate-y-0.5"
+                        : "relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-2 border-white/70 bg-white/78 shadow-[0_24px_36px_-22px_rgba(79,70,229,0.95)] backdrop-blur-xl hover:-translate-y-0.5"}
             >
                 <PresetAvatar presetId={avatarPreset} size={isSidebar ? 52 : 44} />
                 {unreadCount > 0 ? (
@@ -282,36 +290,41 @@ export function UserAvatarMenu({
                         </p>
                     </div>
                 ) : null}
-            </button>
+            </motion.button>
 
-            {open ? (
-                <div
-                    className={isSidebar
-                        ? "absolute bottom-full left-0 mb-3 w-[19rem] max-w-[calc(100vw-2rem)] max-h-[min(82vh,36rem)] overflow-y-auto rounded-[1.8rem] border-3 border-[#e5e7eb] bg-[#fffbeb] p-3 shadow-[0_6px_0_0_#e5e7eb] __cute-hide-scrollbars"
-                        : "absolute right-0 mt-3 w-[19rem] max-w-[calc(100vw-2rem)] max-h-[min(82vh,36rem)] overflow-y-auto rounded-[1.8rem] border-3 border-[#e5e7eb] bg-[#fffbeb] p-3 shadow-[0_6px_0_0_#e5e7eb] __cute-hide-scrollbars"}
-                >
+            <AnimatePresence>
+                {open ? (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9, y: isSidebar ? 15 : -15, filter: "blur(4px)" }}
+                        animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
+                        exit={{ opacity: 0, scale: 0.95, y: isSidebar ? 10 : -10, filter: "blur(2px)" }}
+                        transition={{ type: "spring", stiffness: 450, damping: 25 }}
+                        className={isSidebar
+                            ? "absolute bottom-full left-0 mb-2 w-72 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-4rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg ring-1 ring-black/5"
+                            : "absolute right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-4rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg ring-1 ring-black/5"}
+                    >
                     {/* Profile Header */}
-                    <div className="rounded-[1.2rem] border-3 border-[#fbbf24] bg-white p-2.5 shadow-[0_4px_0_0_#fbbf24] flex items-center gap-2.5">
-                        <div className="flex-shrink-0"><PresetAvatar presetId={avatarPreset} size={38} /></div>
+                    <div className="rounded-lg p-2 flex items-center gap-3">
+                        <div className="flex-shrink-0"><PresetAvatar presetId={avatarPreset} size={36} /></div>
                         <div className="min-w-0">
-                            <p className="truncate text-sm font-black text-[#1f2937]">{displayName}</p>
-                            <p className="truncate text-[11px] font-bold text-[#9ca3af]">{email}</p>
+                            <p className="truncate text-sm font-semibold text-slate-900">{displayName}</p>
+                            <p className="truncate text-xs text-slate-500">{email}</p>
                         </div>
                     </div>
 
                     {/* Sync status */}
-                    <div className={`mt-2 rounded-[1rem] border-3 px-3 py-2 ${
+                    <div className={`mt-2 rounded-md border px-3 py-2.5 ${
                         syncLabel === "Synced"
-                            ? "border-[#6ee7b7] bg-[#ecfdf5] text-[#065f46]"
+                            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
                             : syncLabel === "Sync failed"
-                                ? "border-[#fca5a5] bg-[#fef2f2] text-[#991b1b]"
-                                : "border-[#93c5fd] bg-[#eff6ff] text-[#1e40af]"
-                    } shadow-[0_3px_0_0_currentColor/20]`}>
-                        <div className="flex items-center gap-1.5 text-xs font-black">
-                            <RefreshCw className="h-3.5 w-3.5" />
+                                ? "border-rose-100 bg-rose-50 text-rose-700"
+                                : "border-indigo-100 bg-indigo-50 text-indigo-700"
+                    }`}>
+                        <div className="flex items-center gap-2 text-xs font-medium">
+                            <RefreshCw className={`h-3.5 w-3.5 ${manualSyncing ? "animate-spin" : ""}`} />
                             {syncLabel}
                         </div>
-                        <p className="mt-0.5 text-[11px] font-bold leading-4 opacity-80 line-clamp-2">{syncDescription}</p>
+                        <p className="mt-1 text-xs opacity-80">{syncDescription}</p>
                     </div>
 
                     {speechModel.isDesktopApp ? (
@@ -321,208 +334,218 @@ export function UserAvatarMenu({
                     ) : null}
 
                     {/* Action grid */}
-                    <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div className="mt-2 grid grid-cols-2 gap-1.5">
                         <button
                             type="button"
                             onClick={async () => { setManualSyncing(true); try { await syncNow(); } catch (error) { window.alert(getUserFacingSyncError(error)); } finally { setManualSyncing(false); } }}
-                            className="col-span-2 flex w-full cursor-pointer items-center justify-between rounded-[1rem] border-3 border-[#93c5fd] bg-white px-3 py-2 font-black text-xs text-[#1d4ed8] shadow-[0_4px_0_0_#93c5fd] transition active:shadow-none active:translate-y-0.5"
+                            className="col-span-2 flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
                         >
-                            <span className="flex items-center gap-1.5"><CloudUpload className="h-3.5 w-3.5" />{manualSyncing ? "同步中…" : "立即同步"}</span>
-                            <RefreshCw className={`h-3.5 w-3.5 text-[#3b82f6] ${manualSyncing ? "animate-spin" : ""}`} />
+                            <span className="flex items-center gap-2.5"><CloudUpload className="h-4 w-4" />{manualSyncing ? "同步中…" : "立即同步云端档案"}</span>
                         </button>
                         <button
                             type="button"
                             onClick={() => { setMailboxOpen(true); setOpen(false); }}
-                            className="flex min-h-[52px] cursor-pointer flex-col items-start justify-between rounded-[1rem] border-3 border-[#fca5a5] bg-white px-3 py-2 text-left font-black text-xs text-[#991b1b] shadow-[0_4px_0_0_#fca5a5] transition active:shadow-none active:translate-y-0.5"
+                            className="flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 text-left"
                         >
-                            <span className="flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" />邮箱</span>
-                            {unreadCount > 0 ? (
-                                <span className="rounded-full border-2 border-[#fca5a5] bg-[#fef2f2] px-1.5 py-0.5 text-[10px] font-black text-[#dc2626]">{unreadCount} 封未读</span>
-                            ) : (
-                                <span className="text-[10px] font-bold text-[#9ca3af]">无新消息</span>
-                            )}
+                            <Mail className="h-4 w-4" />消息
+                            {unreadCount > 0 && <span className="ml-auto inline-flex items-center justify-center rounded-full bg-rose-100 px-1.5 text-[10px] font-bold text-rose-600">{unreadCount}</span>}
                         </button>
                         <button
                             type="button"
                             onClick={() => { setBackgroundOpen(true); setOpen(false); }}
-                            className="flex min-h-[52px] cursor-pointer flex-col items-start justify-between rounded-[1rem] border-3 border-[#c4b5fd] bg-white px-3 py-2 text-left font-black text-xs text-[#5b21b6] shadow-[0_4px_0_0_#c4b5fd] transition active:shadow-none active:translate-y-0.5"
+                            className="flex cursor-pointer items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 text-left"
                         >
-                            <span className="flex items-center gap-1.5"><ImageIcon className="h-3.5 w-3.5" />背景</span>
-                            <span className="text-[10px] font-bold text-[#9ca3af]">主题可切换</span>
+                            <ImageIcon className="h-4 w-4" />主题
                         </button>
                     </div>
 
+                    <div className="my-2 h-px bg-slate-100" />
+                    
                     <button
                         type="button"
                         onClick={() => { setMailboxOpen(false); setBackgroundOpen(false); setTtsVoiceOpen((c) => { const n = !c; if (n) { setVoiceFilter("all"); setVoiceSearch(""); } return n; }); }}
-                        className="mt-2 flex w-full cursor-pointer items-center justify-between rounded-[1rem] border-3 border-[#6ee7b7] bg-white px-3 py-2 font-black text-xs text-[#065f46] shadow-[0_4px_0_0_#6ee7b7] transition active:shadow-none active:translate-y-0.5"
+                        className="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
                     >
-                        <span className="flex items-center gap-1.5"><Volume2 className="h-3.5 w-3.5" />发言人</span>
-                        <span className="flex items-center gap-1 text-[11px] font-black text-[#6b7280]">{selectedVoiceOption.label}<ChevronRight className="h-3 w-3" /></span>
+                        <span className="flex items-center gap-2.5"><Volume2 className="h-4 w-4" />专属发言人</span>
+                        <span className="flex items-center gap-0.5 text-xs text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-md">{selectedVoiceOption.label}<ChevronRight className="h-3 w-3" /></span>
                     </button>
-                    <div className="mt-2 space-y-2">
-                        <Link href="/profile" prefetch={false} className="flex cursor-pointer items-center justify-between rounded-[1rem] border-3 border-[#a5b4fc] bg-white px-3 py-2 font-black text-xs text-[#3730a3] shadow-[0_4px_0_0_#a5b4fc] transition active:shadow-none active:translate-y-0.5">
-                            <span className="flex items-center gap-1.5"><Settings2 className="h-3.5 w-3.5" />个人资料与密码</span>
-                            <BadgeCheck className="h-3.5 w-3.5 text-[#6366f1]" />
+                    
+                    <div className="mt-1 space-y-1">
+                        <Link href="/profile" prefetch={false} className="flex cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus:outline-none">
+                            <span className="flex items-center gap-2.5"><Settings2 className="h-4 w-4" />个人资料</span>
                         </Link>
                         <button
                             type="button"
                             onClick={async () => { setLogoutBusy(true); try { const supabase = createBrowserClientSingleton(); await supabase.auth.signOut(); await fetch("/logout", { method: "POST" }).catch(() => undefined); } finally { setLogoutBusy(false); router.replace("/login"); } }}
-                            className="flex w-full cursor-pointer items-center justify-between rounded-[1rem] border-3 border-[#fca5a5] bg-white px-3 py-2 font-black text-xs text-[#dc2626] shadow-[0_4px_0_0_#fca5a5] transition active:shadow-none active:translate-y-0.5"
+                            className="flex w-full cursor-pointer items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50"
                         >
-                            <span className="flex items-center gap-1.5"><LogOut className="h-3.5 w-3.5" />{logoutBusy ? "退出中…" : "退出登录"}</span>
+                            <span className="flex items-center gap-2.5"><LogOut className="h-4 w-4" />{logoutBusy ? "退出中…" : "断开连接"}</span>
                         </button>
                     </div>
-                    <style dangerouslySetInnerHTML={{ __html: `.__cute-hide-scrollbars::-webkit-scrollbar{display:none}.__cute-hide-scrollbars{-ms-overflow-style:none;scrollbar-width:none}` }} />
-                </div>
-            ) : null}
-            {ttsVoiceOpen ? (
-                <div
-                    role="dialog"
-                    aria-modal="true"
-                    aria-label="发言人选择"
-                    className="fixed inset-0 z-[180] flex items-center justify-center bg-[#1f2937]/40 px-4 py-6"
-                    onClick={() => setTtsVoiceOpen(false)}
-                >
-                    <div
-                        className="relative flex w-[min(94vw,48rem)] max-h-[min(82vh,38rem)] flex-col overflow-hidden rounded-[2rem] border-3 border-[#e5e7eb] bg-[#fffbeb] shadow-[0_8px_0_0_#e5e7eb]"
-                        onClick={(event) => event.stopPropagation()}
-                    >
-                        <button
-                            type="button"
+                    </motion.div>
+                ) : null}
+            </AnimatePresence>
+            {typeof window !== "undefined" && createPortal(
+                <AnimatePresence>
+                    {ttsVoiceOpen && (
+                        <motion.div
+                            initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
+                            animate={{ opacity: 1, backdropFilter: "blur(12px)" }}
+                            exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label="发言人选择"
+                            className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/30 p-4 sm:p-8 overflow-hidden"
                             onClick={() => setTtsVoiceOpen(false)}
-                            className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border-3 border-[#fca5a5] bg-white text-[#dc2626] font-black shadow-[0_3px_0_0_#fca5a5] transition active:shadow-none active:translate-y-0.5"
-                            aria-label="Close voice picker"
                         >
-                            <X className="h-3.5 w-3.5" />
-                        </button>
-                        <div className="border-b-3 border-[#e5e7eb] bg-white px-4 pb-3 pt-3 sm:px-5">
-                            <p className="pr-10 text-[10px] font-black uppercase tracking-widest text-[#d97706]">发言人列表</p>
-                            <p className="mt-0.5 pr-10 text-base font-black text-[#1f2937]">选择一个声音</p>
-                            <p className="mt-0.5 pr-10 text-[11px] font-bold text-[#6b7280]">切换后，后续合成会跟着这个发言人走。</p>
-                            <div className="mt-2 flex flex-col gap-2 rounded-[1rem] border-3 border-[#fbbf24] bg-[#fffbeb] p-2.5 shadow-[0_3px_0_0_#fbbf24] sm:flex-row sm:items-center sm:justify-between">
-                                <div className="min-w-0">
-                                    <p className="truncate text-xs font-black text-[#1f2937]">当前：{selectedVoiceOption.label}</p>
-                                    <p className="truncate text-[10px] font-bold text-[#9ca3af]">{selectedVoiceOption.voice}</p>
-                                    <p className="mt-0.5 text-[11px] font-bold text-[#6b7280]">{selectedVoiceOption.description}</p>
+                        <motion.div
+                            ref={voiceModalRef}
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                            className="relative flex w-full max-w-3xl max-h-[85vh] flex-col overflow-hidden rounded-[2rem] border-[3px] border-slate-800 bg-white shadow-[0_12px_0_0_rgba(30,41,59,0.8)]"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <button
+                                type="button"
+                                onClick={() => setTtsVoiceOpen(false)}
+                                className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border-[3px] border-slate-800 bg-white text-slate-500 shadow-[0_4px_0_0_#1e293b] transition-transform hover:-translate-y-0.5 hover:text-slate-900"
+                                aria-label="Close voice picker"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                            <div className="border-b-[3px] border-slate-800 px-6 pb-5 pt-6 bg-white shrink-0">
+                                <h2 className="pr-12 font-welcome-display text-2xl tracking-tight text-slate-900">选择专属发言人</h2>
+                                <p className="mt-1 pr-12 text-sm font-semibold text-slate-500">更改全局 AI 语音合成的默认声音。</p>
+                                
+                                <div className="mt-4 flex flex-col gap-3 rounded-2xl border-[3px] border-slate-800 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between shadow-[0_4px_0_0_#1e293b]">
+                                    <div className="min-w-0">
+                                        <p className="truncate text-sm font-bold text-slate-900">
+                                            <span className="text-slate-500 mr-2 font-semibold">当前选择:</span>
+                                            {selectedVoiceOption.label}
+                                        </p>
+                                        <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">{selectedVoiceOption.voice}</p>
+                                    </div>
+                                    <motion.button
+                                        whileTap={{ scale: 0.95 }}
+                                        type="button"
+                                        onClick={() => void handlePreviewVoice(selectedVoice)}
+                                        disabled={ttsVoiceBusy || previewVoice !== null}
+                                        className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-[0.8rem] border-[3px] border-slate-800 bg-emerald-100 px-4 text-xs font-bold text-emerald-800 shadow-[0_2px_0_0_#1e293b] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {previewVoice === selectedVoice ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                                        当前试听
+                                    </motion.button>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => void handlePreviewVoice(selectedVoice)}
-                                    disabled={ttsVoiceBusy || previewVoice !== null}
-                                    className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-full border-3 border-[#93c5fd] bg-white px-3 text-[11px] font-black text-[#1d4ed8] shadow-[0_3px_0_0_#93c5fd] transition active:shadow-none active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {previewVoice === selectedVoice ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                                    试听当前
-                                </button>
+                                
+                                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {VOICE_FILTER_OPTIONS.map((option) => (
+                                            <motion.button
+                                                whileTap={{ scale: 0.95 }}
+                                                key={option.value}
+                                                type="button"
+                                                onClick={() => setVoiceFilter(option.value)}
+                                                className={`inline-flex h-9 items-center justify-center rounded-[0.8rem] border-[3px] border-slate-800 px-4 text-xs font-bold transition-transform hover:-translate-y-0.5 shadow-[0_2px_0_0_#1e293b] ${
+                                                    voiceFilter === option.value
+                                                        ? "bg-slate-800 text-white"
+                                                        : "bg-white text-slate-800"
+                                                }`}
+                                            >
+                                                {option.label}
+                                            </motion.button>
+                                        ))}
+                                    </div>
+                                    <label className="relative flex h-10 items-center w-full sm:w-64 max-w-full">
+                                        <Search className="pointer-events-none absolute left-3 h-4 w-4 text-slate-400" />
+                                        <input
+                                            value={voiceSearch}
+                                            onChange={(event) => setVoiceSearch(event.target.value)}
+                                            placeholder="搜索发言人..."
+                                            className="w-full rounded-[1rem] border-[3px] border-slate-800 bg-white py-1.5 pl-9 pr-3 text-sm font-bold text-slate-900 shadow-[0_2px_0_0_#1e293b] placeholder:text-slate-400 focus:outline-none focus:shadow-[0_4px_0_0_#1e293b] focus:-translate-y-0.5 transition-transform"
+                                        />
+                                    </label>
+                                </div>
                             </div>
-                            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                    {VOICE_FILTER_OPTIONS.map((option) => (
-                                        <button
-                                            key={option.value}
-                                            type="button"
-                                            onClick={() => setVoiceFilter(option.value)}
-                                            className={`inline-flex h-7 items-center justify-center rounded-full px-3 text-[11px] font-black transition ${
-                                                voiceFilter === option.value
-                                                    ? "border-3 border-[#1f2937] bg-[#1f2937] text-white shadow-[0_3px_0_0_#111827]"
-                                                    : "border-3 border-[#e5e7eb] bg-white text-[#374151] shadow-[0_3px_0_0_#e5e7eb] active:shadow-none active:translate-y-0.5"
-                                            }`}
-                                        >
-                                            {option.label}
-                                        </button>
-                                    ))}
-                                </div>
-                                <label className="flex h-7 w-full items-center gap-1.5 rounded-full border-3 border-[#e5e7eb] bg-white px-2.5 text-[11px] text-[#6b7280] shadow-[0_3px_0_0_#e5e7eb] sm:w-[13rem]">
-                                    <Search className="h-3 w-3 shrink-0" />
-                                    <input
-                                        value={voiceSearch}
-                                        onChange={(event) => setVoiceSearch(event.target.value)}
-                                        placeholder="搜索发言人"
-                                        aria-label="搜索发言人"
-                                        className="w-full border-0 bg-transparent p-0 text-[11px] font-bold text-[#1f2937] outline-none placeholder:text-[#9ca3af]"
-                                    />
-                                </label>
+                            <div ref={voiceListRef} className="min-h-0 flex-1 overflow-y-auto w-full bg-slate-50/50">
+                                {filteredVoiceGroups.length === 0 ? (
+                                    <div className="px-6 py-12 text-center">
+                                        <p className="text-sm font-bold text-slate-800">未找到相关发言人</p>
+                                        <p className="mt-1 text-xs font-semibold text-slate-500">请尝试其他搜索词</p>
+                                    </div>
+                                ) : (
+                                    <div className="w-full p-6">
+                                        <div className="flex flex-col gap-8">
+                                            {filteredVoiceGroups.map((group) => (
+                                                <div key={group.title} className="flex flex-col gap-3">
+                                                    <div className="px-1">
+                                                        <span className="inline-flex items-center rounded-full border-[3px] border-slate-800 bg-indigo-100 px-3 py-1 text-xs font-bold tracking-wide text-indigo-800 shadow-[0_2px_0_0_#1e293b]">
+                                                            {group.title}
+                                                        </span>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                        {group.voices.map((option) => {
+                                                            const selected = option.voice === selectedVoice;
+                                                            return (
+                                                                <div 
+                                                                    key={option.voice} 
+                                                                    data-voice-card={option.voice} 
+                                                                    className={`flex flex-col justify-between rounded-[1.2rem] border-[3px] border-slate-800 p-4 shadow-[0_4px_0_0_#1e293b] ${selected ? "bg-indigo-50" : "bg-white"}`}
+                                                                >
+                                                                    <div>
+                                                                        <div className="flex items-start justify-between">
+                                                                            <span className={`text-[15px] font-bold ${selected ? "text-indigo-800" : "text-slate-900"}`}>{option.label}</span>
+                                                                            <span className="text-[10px] font-semibold text-slate-500">{option.voice}</span>
+                                                                        </div>
+                                                                        <p className="mt-2 text-xs font-medium text-slate-500 line-clamp-2">
+                                                                            {option.description}
+                                                                        </p>
+                                                                    </div>
+                                                                    <div className="mt-4 flex items-center justify-end gap-2">
+                                                                        <motion.button
+                                                                            whileTap={{ scale: 0.95 }}
+                                                                            type="button"
+                                                                            aria-label={`试听 ${option.label}`}
+                                                                            onClick={() => void handlePreviewVoice(option.voice)}
+                                                                            disabled={ttsVoiceBusy || previewVoice !== null}
+                                                                            className="inline-flex h-9 w-9 items-center justify-center rounded-[0.8rem] border-[3px] border-slate-800 bg-white text-slate-800 shadow-[0_2px_0_0_#1e293b] transition-transform hover:-translate-y-0.5 disabled:opacity-50"
+                                                                        >
+                                                                            {previewVoice === option.voice ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 ml-0.5" />}
+                                                                        </motion.button>
+                                                                        <motion.button
+                                                                            whileTap={!selected ? { scale: 0.95 } : undefined}
+                                                                            type="button"
+                                                                            aria-label={`${selected ? "当前" : "选择"} ${option.label}`}
+                                                                            onClick={() => void handleSelectVoice(option.voice)}
+                                                                            disabled={ttsVoiceBusy || selected}
+                                                                            className={`inline-flex h-9 items-center justify-center rounded-[0.8rem] border-[3px] border-slate-800 px-4 text-xs font-bold shadow-[0_2px_0_0_#1e293b] transition-transform ${
+                                                                                selected 
+                                                                                    ? "bg-slate-800 text-white opacity-100" 
+                                                                                    : "bg-white text-slate-800 hover:-translate-y-0.5"
+                                                                            }`}
+                                                                        >
+                                                                            {selected ? (
+                                                                                <span className="inline-flex items-center gap-1.5"><Check className="h-3.5 w-3.5" />已选</span>
+                                                                            ) : "选择"}
+                                                                        </motion.button>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                        <div ref={voiceListRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-4 pt-3 sm:px-5">
-                            {filteredVoiceGroups.length === 0 ? (
-                                <div className="rounded-[1rem] border-3 border-dashed border-[#fcd34d] bg-white px-4 py-5 text-center shadow-[0_3px_0_0_#fcd34d]">
-                                    <p className="text-xs font-black text-[#d97706]">没有找到匹配的发言人</p>
-                                    <p className="mt-0.5 text-[11px] font-bold text-[#9ca3af]">试试改个关键词</p>
-                                </div>
-                            ) : (
-                                filteredVoiceGroups.map((group) => (
-                                    <section key={group.title} className="space-y-2">
-                                        <div className="flex items-start justify-between gap-2">
-                                            <div>
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-[#d97706]">{group.title}</p>
-                                                <p className="mt-0.5 text-[10px] font-bold text-[#9ca3af]">{group.subtitle}</p>
-                                            </div>
-                                            <span className="inline-flex h-5 items-center rounded-full border-2 border-[#fbbf24] bg-[#fffbeb] px-2 text-[10px] font-black text-[#d97706]">
-                                                {group.voices.length} 个
-                                            </span>
-                                        </div>
-                                        <div className="grid gap-2 sm:grid-cols-2">
-                                            {group.voices.map((option) => {
-                                                const selected = option.voice === selectedVoice;
-                                                return (
-                                                    <article
-                                                        key={option.voice}
-                                                        data-voice-card={option.voice}
-                                                        className={`rounded-[1rem] border-3 p-2.5 transition ${
-                                                            selected
-                                                                ? "border-[#a5b4fc] bg-[#eef2ff] shadow-[0_4px_0_0_#a5b4fc]"
-                                                                : "border-[#e5e7eb] bg-white shadow-[0_3px_0_0_#e5e7eb] hover:border-[#c4b5fd]"
-                                                        }`}
-                                                    >
-                                                        <div className="flex items-start gap-2">
-                                                            <span className={`mt-0.5 inline-flex h-2.5 w-2.5 shrink-0 rounded-full border-2 ${selected ? "border-[#6366f1] bg-[#6366f1]" : "border-[#d1d5db] bg-white"}`} />
-                                                            <div className="min-w-0 flex-1">
-                                                                <p className="truncate text-xs font-black text-[#1f2937]">{option.label}</p>
-                                                                <p className="truncate text-[10px] font-bold text-[#9ca3af]">{option.voice}</p>
-                                                                <p className="mt-0.5 text-[10px] font-bold leading-4 text-[#6b7280]">{option.description}</p>
-                                                            </div>
-                                                        </div>
-                                                        <div className="mt-2 flex items-center gap-1.5">
-                                                            <button
-                                                                type="button"
-                                                                aria-label={`试听 ${option.label}`}
-                                                                onClick={() => void handlePreviewVoice(option.voice)}
-                                                                disabled={ttsVoiceBusy || previewVoice !== null}
-                                                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-[#e5e7eb] bg-white text-[#6b7280] shadow-[0_2px_0_0_#e5e7eb] transition active:shadow-none active:translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
-                                                            >
-                                                                {previewVoice === option.voice ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                aria-label={`${selected ? "当前" : "选择"} ${option.label}`}
-                                                                onClick={() => void handleSelectVoice(option.voice)}
-                                                                disabled={ttsVoiceBusy}
-                                                                className={`inline-flex h-7 flex-1 items-center justify-center rounded-full px-3 text-[10px] font-black transition disabled:cursor-not-allowed disabled:opacity-70 ${
-                                                                    selected
-                                                                        ? "border-2 border-[#a5b4fc] bg-[#eef2ff] text-[#4f46e5]"
-                                                                        : "border-2 border-[#e5e7eb] bg-white text-[#374151] shadow-[0_2px_0_0_#e5e7eb] active:shadow-none active:translate-y-0.5"
-                                                                }`}
-                                                            >
-                                                                {selected ? (
-                                                                    <span className="inline-flex items-center gap-1"><Check className="h-3 w-3" />当前</span>
-                                                                ) : (
-                                                                    "选择"
-                                                                )}
-                                                            </button>
-                                                        </div>
-                                                    </article>
-                                                );
-                                            })}
-                                        </div>
-                                    </section>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
-            ) : null}
+                        </motion.div>
+                    </motion.div>
+                )}
+                </AnimatePresence>,
+                document.body
+            )}
 
 
             {mailboxOpen ? (
