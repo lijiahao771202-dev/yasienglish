@@ -176,15 +176,29 @@ export function WordPopup({
     const mintPressStyle = getPressableStyle("rgba(186, 239, 219, 0.96)", 4);
     const lavenderPressStyle = getPressableStyle("rgba(220, 212, 255, 0.96)", 4);
 
-    const clampPopupPosition = useCallback((left: number, top: number) => {
+    const clampPopupPosition = useCallback((left: number, top: number, flipYOriginBottom?: number, isResizeOrDrag = false) => {
         if (typeof window === "undefined") return { left, top };
-        const width = popupRef.current?.offsetWidth ?? 336;
-        const height = popupRef.current?.offsetHeight ?? 420;
+        const width = popupRef.current?.offsetWidth ?? 280;
+        // during initial render height might be 0, so guess 300
+        const height = popupRef.current?.offsetHeight || 300;
+        
         const maxLeft = Math.max(POPUP_EDGE_PADDING, window.innerWidth - width - POPUP_EDGE_PADDING);
+        
+        // Smart flip logic: if we are given an origin and doing initial placement, check if we'll exceed the window height
+        let finalTop = top;
+        if (!isResizeOrDrag && flipYOriginBottom !== undefined && finalTop + height > window.innerHeight - POPUP_EDGE_PADDING) {
+            // Flip it above the word. Assume word text is height ~24px -> top of word = flipYOriginBottom - 24
+            const flippedTop = flipYOriginBottom - 24 - height - 8;
+            if (flippedTop >= POPUP_EDGE_PADDING) {
+                finalTop = flippedTop;
+            }
+        }
+        
         const maxTop = Math.max(POPUP_EDGE_PADDING, window.innerHeight - height - POPUP_EDGE_PADDING);
+        
         return {
             left: Math.min(maxLeft, Math.max(POPUP_EDGE_PADDING, left)),
-            top: Math.min(maxTop, Math.max(POPUP_EDGE_PADDING, top)),
+            top: Math.min(maxTop, Math.max(POPUP_EDGE_PADDING, finalTop)),
         };
     }, []);
     const syncReadingBalance = useCallback(async (
@@ -240,7 +254,8 @@ export function WordPopup({
 
     useEffect(() => {
         if (typeof window === "undefined") return;
-        const next = clampPopupPosition(popup.x - 160, popup.y + 8);
+        // On [word] or [x,y] change, recalculate and possibly flip
+        const next = clampPopupPosition(popup.x - 140, popup.y + 8, popup.y);
         setPosition(next);
     }, [popup.x, popup.y, popup.word, clampPopupPosition]);
 
@@ -253,6 +268,8 @@ export function WordPopup({
             const next = clampPopupPosition(
                 dragState.originLeft + (event.clientX - dragState.startX),
                 dragState.originTop + (event.clientY - dragState.startY),
+                undefined,
+                true
             );
             setPosition(next);
         };
@@ -275,7 +292,7 @@ export function WordPopup({
         if (typeof window === "undefined") return;
         const handleResize = () => {
             const current = positionRef.current;
-            setPosition(clampPopupPosition(current.left, current.top));
+            setPosition(clampPopupPosition(current.left, current.top, undefined, true));
         };
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
@@ -660,57 +677,45 @@ export function WordPopup({
                 top: position.top,
             }}
             className={cn(
-                "z-[9999] w-[336px] overflow-hidden text-left backdrop-blur-2xl",
+                "z-[2147483647] flex flex-col w-[280px] sm:w-[316px] max-h-[calc(100vh-32px)] sm:max-h-[min(85vh,600px)] overflow-hidden text-left",
                 isMinimal
                     ? "rounded-2xl border border-slate-200/80 bg-white/98 shadow-[0_20px_45px_rgba(15,23,42,0.14)]"
-                    : "rounded-[30px] border border-[#ffd9ec]/90 bg-[linear-gradient(180deg,rgba(255,250,253,0.97),rgba(248,245,255,0.95))] shadow-[0_22px_50px_rgba(221,113,183,0.22),0_10px_0_rgba(245,218,236,0.92)]"
+                    : "rounded-[1.25rem] border border-theme-border/30 bg-theme-base-bg shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
             )}
         >
             <div
                 onMouseDown={handleDragStart}
                 className={cn(
-                    "relative select-none px-4 pb-4 pt-3.5",
+                    "relative shrink-0 select-none px-4 pb-3 pt-3",
                     isMinimal
                         ? "border-b border-slate-200/80 bg-white"
-                        : "border-b border-[#f8d9ea]/90 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(255,244,249,0.95)_58%,rgba(244,244,255,0.92))]",
+                        : "border-b border-theme-border/20 bg-theme-card-bg",
                     isDragging ? "cursor-grabbing" : "cursor-grab",
                 )}
             >
                 {!isMinimal ? (
-                    <div className="pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[28px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.92),rgba(255,255,255,0))]" />
+                    <div className="pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[28px] opacity-20" />
                 ) : null}
                 <div className="flex justify-between items-start">
-                    <div className="min-w-0">
-                        <p className={cn(
-                            "text-[10px] font-black uppercase tracking-[0.24em]",
-                            isMinimal ? "text-slate-500" : "text-[#d27cb0]",
-                        )}>
-                            Word Lookup
-                        </p>
+                    <div className="min-w-0 flex flex-col justify-center min-h-[36px]">
                         <h3 className={cn(
-                            "mt-1 text-[30px] font-serif font-bold tracking-tight flex items-center gap-2 break-words",
-                            isMinimal ? "text-slate-900" : "text-[#6f3f60]",
+                            "text-[1.6rem] font-serif font-bold tracking-tight flex items-center gap-2 break-words leading-none",
+                            isMinimal ? "text-slate-900" : "text-theme-text",
                         )}>
                             {popup.word}
                         </h3>
                         {definition?.phonetic && (
-                            <div className="mt-2 flex items-center gap-2">
+                            <div className="mt-2.5 flex items-center gap-2">
                                 <span className={cn(
-                                    "rounded-full px-2.5 py-1 text-xs font-semibold tracking-[0.08em]",
+                                    "rounded-[8px] px-2 py-0.5 text-[11px] font-black tracking-[0.08em] border",
                                     isMinimal
-                                        ? "border border-slate-200 bg-slate-50 text-slate-600"
-                                        : "border border-[#eadcf6] bg-white/85 text-[#8f7bb0] shadow-[0_3px_0_rgba(238,228,248,0.9)]",
+                                        ? "border-slate-200 bg-slate-50 text-slate-600"
+                                        : "border-theme-border/50 bg-theme-base-bg text-theme-text shadow-sm",
                                 )}>
                                     {definition.phonetic}
                                 </span>
                             </div>
                         )}
-                        <p className={cn(
-                            "mt-3 text-[11px] leading-5",
-                            isMinimal ? "text-slate-500" : "text-[#9c85a8]",
-                        )}>
-                            {isReadingMode ? "首次查词 -1 阅读币。" : battleLookupCostHint}
-                        </p>
                     </div>
                     <div className="ml-3 flex shrink-0 gap-1.5">
                         <motion.button
@@ -719,32 +724,30 @@ export function WordPopup({
                                 playPronunciation(popup.word, true);
                             }}
                             whileTap={candyTap}
-                            style={mintPressStyle}
                             className={cn(
-                                "ui-pressable rounded-full p-2 transition-colors",
+                                "flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] transition active:scale-95 shadow-sm",
                                 isMinimal
-                                    ? "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                                    : "border border-[#bcefd9] bg-[linear-gradient(180deg,#f4fff9,#dcfff0)] text-[#2a9f78] hover:bg-[#ecfff6]",
+                                    ? "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                    : "border-theme-border bg-theme-primary-bg text-theme-primary-text hover:bg-theme-primary-hover",
                             )}
                             title="Play Pronunciation"
                         >
-                            <Volume2 className="w-4 h-4" />
+                            <Volume2 className="w-3.5 h-3.5" />
                         </motion.button>
                         {showAiDefinitionButton ? (
                             <motion.button
                                 onClick={handleGenerateAiDefinition}
                                 disabled={isLoadingAi}
                                 whileTap={candyTap}
-                                style={lavenderPressStyle}
                                 className={cn(
-                                    "ui-pressable rounded-full px-2.5 py-2 text-[11px] font-bold tracking-[0.08em] transition-colors disabled:cursor-not-allowed",
+                                    "flex h-8 px-2.5 items-center justify-center rounded-[10px] border-[2px] text-[11.5px] font-black tracking-[0.08em] transition active:scale-95 shadow-sm disabled:cursor-not-allowed",
                                     isMinimal
-                                        ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:text-slate-400"
-                                        : "border border-[#d9ccff] bg-[linear-gradient(180deg,#fbf8ff,#eee7ff)] text-[#7a58e8] hover:bg-[#f6f1ff] disabled:text-[#b7a8ea]",
+                                        ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:text-slate-400"
+                                        : "border-theme-border bg-theme-active-bg text-theme-active-text hover:bg-theme-active-hover disabled:opacity-50",
                                 )}
                                 title="AI 生成释义"
                             >
-                                {isLoadingAi ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "AI"}
+                                {isLoadingAi ? <Loader2 className="h-3 w-3 animate-spin" /> : "AI"}
                             </motion.button>
                         ) : null}
                         <div className="relative">
@@ -752,19 +755,18 @@ export function WordPopup({
                                 onClick={handleAddToVocab}
                                 disabled={isSaving && !isSaved}
                                 whileTap={isSaved ? undefined : candyTap}
-                                style={isSaved ? undefined : lavenderPressStyle}
                                 className={cn(
-                                    "relative rounded-full p-2 transition-colors disabled:cursor-default",
+                                    "relative flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] transition shadow-sm",
                                     isSaved
                                         ? (isMinimal
-                                            ? "cursor-default rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700"
-                                            : "cursor-default rounded-full border border-[#bfead7] bg-[linear-gradient(180deg,#effff6,#ddfaec)] text-[#2c9b74] shadow-[0_4px_0_rgba(186,239,219,0.96)]")
+                                            ? "cursor-default border-emerald-200 bg-emerald-50 text-emerald-700"
+                                            : "cursor-default border-theme-border bg-emerald-500 text-white")
                                         : (isMinimal
-                                            ? "ui-pressable border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                                            : "ui-pressable border border-[#d9ccff] bg-[linear-gradient(180deg,#fbf8ff,#eee7ff)] text-[#7a58e8] hover:bg-[#f6f1ff]")
+                                            ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:scale-95"
+                                            : "border-theme-border bg-theme-card-bg text-theme-text hover:bg-theme-base-bg active:scale-95")
                                 )}
                                 title={isSaved ? "已加入生词本" : isSaving ? "正在加入生词本" : "加入生词本"}
-                                animate={showSaveFeedback ? { scale: [1, 1.18, 1], boxShadow: ["0 1px 2px rgba(0,0,0,0.08)", "0 0 0 8px rgba(16,185,129,0.14)", "0 1px 2px rgba(0,0,0,0.08)"] } : undefined}
+                                animate={showSaveFeedback ? { scale: [1, 1.18, 1], boxShadow: ["0 1px 2px rgba(0,0,0,0.08)", "0 0 0 6px rgba(16,185,129,0.14)", "0 1px 2px rgba(0,0,0,0.08)"] } : undefined}
                                 transition={{ duration: 0.42, ease: "easeOut" }}
                             >
                                 {isSaved ? (
@@ -775,12 +777,12 @@ export function WordPopup({
                                         transition={{ duration: 0.28, ease: "easeOut" }}
                                         className="block"
                                     >
-                                        <Check className="w-4 h-4" />
+                                        <Check className="w-3.5 h-3.5" />
                                     </motion.span>
                                 ) : isSaving ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                 ) : (
-                                    <BookPlus className="w-4 h-4" />
+                                    <BookPlus className="w-3.5 h-3.5" />
                                 )}
                             </motion.button>
                             <AnimatePresence>
@@ -801,67 +803,58 @@ export function WordPopup({
                         <motion.button
                             onClick={onClose}
                             whileTap={candyTap}
-                            style={candyPressStyle}
                             className={cn(
-                                "ui-pressable rounded-full p-2 transition-colors",
+                                "flex h-8 w-8 items-center justify-center rounded-[10px] border-[2px] transition shadow-sm active:scale-95",
                                 isMinimal
-                                    ? "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700"
-                                    : "border border-[#f5d8e9] bg-white/92 text-[#c489ae] hover:bg-[#fff0f8] hover:text-[#a95a8d]",
+                                    ? "border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                    : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:bg-theme-base-bg hover:text-theme-text",
                             )}
                         >
-                            <X className="w-4 h-4" />
+                            <X className="w-3.5 h-3.5" />
                         </motion.button>
                     </div>
                 </div>
             </div>
 
             <div className={cn(
-                "space-y-3 p-4",
+                "space-y-3 p-3 overflow-y-auto flex-1 pretty-scroll",
                 isMinimal
                     ? "bg-white"
-                    : "bg-[linear-gradient(180deg,rgba(255,251,253,0.96),rgba(245,244,255,0.92))]",
+                    : "bg-theme-card-bg",
             )}>
                 <div className={cn(
-                    "rounded-[24px] p-3.5",
+                    "rounded-[1rem] p-3",
                     isMinimal
                         ? "border border-slate-200 bg-slate-50/60"
-                        : "border border-[#f7ddeb] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,247,251,0.9))] shadow-[0_6px_0_rgba(248,223,236,0.95)]",
+                        : "border border-theme-border/20 bg-theme-base-bg",
                 )}>
-                    <div className={cn(
-                        "mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em]",
-                        isMinimal ? "text-slate-500" : "text-[#cb7bab]",
-                    )}>
-                        <Book className="h-3.5 w-3.5" />
-                        <span>Dictionary</span>
-                    </div>
-
                     {isLoadingDict ? (
                         <div className={cn(
-                            "flex items-center gap-2 rounded-[18px] px-3 py-3",
+                            "flex items-center gap-1.5 rounded-[12px] px-2.5 py-2.5",
                             isMinimal
-                                ? "border border-slate-200 bg-white text-slate-500"
-                                : "border border-[#f1e3ee] bg-white/72 text-[#b28ea8]",
+                                ? "text-slate-500"
+                                : "text-theme-text",
                         )}>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span className="text-sm font-semibold">Searching...</span>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span className="text-[12px] font-black">Searching...</span>
                         </div>
                     ) : definition?.dictionary_meaning ? (
                         <div className={cn(
-                            "space-y-2 rounded-[20px] p-3",
+                            "space-y-1.5 rounded-[10px] p-2",
                             isMinimal
-                                ? "border border-slate-200 bg-white"
-                                : "border border-[#efe3ee] bg-white/78 shadow-[0_4px_0_rgba(243,230,240,0.85)]",
+                                ? "bg-white"
+                                : "bg-transparent",
                         )}>
                             <p className={cn(
-                                "text-sm font-semibold leading-snug",
-                                isMinimal ? "text-slate-800" : "text-[#5e4c62]",
+                                "text-[13px] font-bold leading-snug",
+                                isMinimal ? "text-slate-800" : "text-theme-text",
                             )}>
                                 {definition.dictionary_meaning.definition}
                             </p>
                             {definition.dictionary_meaning.translation && (
                                 <p className={cn(
-                                    "text-sm",
-                                    isMinimal ? "text-slate-600" : "text-[#9a6f8a]",
+                                    "text-[12px] font-bold",
+                                    isMinimal ? "text-slate-600" : "text-theme-text opacity-70",
                                 )}>
                                     {definition.dictionary_meaning.translation}
                                 </p>
@@ -869,10 +862,10 @@ export function WordPopup({
                         </div>
                     ) : (
                         <p className={cn(
-                            "rounded-[18px] px-3 py-3 text-sm italic",
+                            "px-2.5 py-1 text-[12px] italic font-bold",
                             isMinimal
-                                ? "border border-slate-200 bg-white text-slate-500"
-                                : "border border-[#efe5f0] bg-white/70 text-[#b296af]",
+                                ? "text-slate-500"
+                                : "text-theme-text-muted",
                         )}>
                             No definition found.
                         </p>
@@ -880,46 +873,38 @@ export function WordPopup({
                 </div>
                 {(showAiDefinitionButton && showAiPanel) ? (
                     <div className={cn(
-                        "rounded-[24px] p-3.5",
+                        "rounded-[1rem] p-3",
                         isMinimal
                             ? "border border-slate-200 bg-slate-50/60"
-                            : "border border-[#f7ddeb] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,247,251,0.9))] shadow-[0_6px_0_rgba(248,223,236,0.95)]",
+                            : "border border-theme-border/20 bg-theme-base-bg shrink-0",
                     )}>
-                        <div className={cn(
-                            "mb-2 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.2em]",
-                            isMinimal ? "text-slate-500" : "text-[#7a58e8]",
-                        )}>
-                            <Sparkles className="h-3.5 w-3.5" />
-                            <span>AI Definition</span>
-                        </div>
-
                         {isLoadingAi ? (
                             <div className={cn(
-                                "flex items-center gap-2 rounded-[18px] px-3 py-3",
+                                "flex items-center gap-1.5 rounded-[12px] px-2.5 py-2",
                                 isMinimal
-                                    ? "border border-slate-200 bg-white text-slate-500"
-                                    : "border border-[#e5ddff] bg-white/72 text-[#8b78c8]",
+                                    ? "text-slate-500"
+                                    : "text-theme-primary-bg",
                             )}>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                <span className="text-sm font-semibold">AI 正在生成释义...</span>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span className="text-[12px] font-black">AI 正在生成释义...</span>
                             </div>
                         ) : definition?.context_meaning ? (
                             <div className={cn(
-                                "space-y-2 rounded-[20px] p-3",
+                                "space-y-1.5 rounded-[10px] p-2",
                                 isMinimal
-                                    ? "border border-slate-200 bg-white"
-                                    : "border border-[#e9e2ff] bg-white/78 shadow-[0_4px_0_rgba(231,224,255,0.85)]",
+                                    ? "bg-white"
+                                    : "bg-transparent",
                             )}>
                                 <p className={cn(
-                                    "text-sm font-semibold leading-snug",
-                                    isMinimal ? "text-slate-800" : "text-[#5a4a86]",
+                                    "text-[13px] font-bold leading-snug",
+                                    isMinimal ? "text-slate-800" : "text-theme-text",
                                 )}>
                                     {definition.context_meaning.definition}
                                 </p>
                                 {definition.context_meaning.translation ? (
                                     <p className={cn(
-                                        "text-sm",
-                                        isMinimal ? "text-slate-600" : "text-[#7f6bb1]",
+                                        "text-[12px] font-bold",
+                                        isMinimal ? "text-slate-600" : "text-theme-text opacity-70",
                                     )}>
                                         {definition.context_meaning.translation}
                                     </p>
@@ -927,12 +912,12 @@ export function WordPopup({
                             </div>
                         ) : (
                             <p className={cn(
-                                "rounded-[18px] px-3 py-3 text-sm",
+                                "px-2.5 py-1 text-[12px] font-black",
                                 isMinimal
-                                    ? "border border-slate-200 bg-white text-slate-500"
-                                    : "border border-[#e8ddff] bg-white/70 text-[#8f7bb0]",
+                                    ? "text-slate-500"
+                                    : "text-theme-text-muted",
                             )}>
-                                点击上方 <span className="font-semibold">AI</span> 按钮生成场景释义。
+                                点击上方 <span className="font-bold text-theme-primary-bg">AI</span> 生成。
                             </p>
                         )}
                     </div>

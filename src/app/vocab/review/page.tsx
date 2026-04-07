@@ -12,6 +12,8 @@ import { saveVocabulary, updateVocabularyEntry } from '@/lib/user-repository';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { VocabReviewEditableCard } from '@/components/vocab/VocabReviewEditableCard';
 import { pickPreferredMeaningGroups } from '@/lib/vocab-meanings';
+import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
+import { applyBackgroundThemeToDocument, BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
 
 type PosGroup = {
     pos: string;
@@ -149,6 +151,23 @@ export default function ReviewPage() {
     const [dictionaryPosMap, setDictionaryPosMap] = useState<Record<string, PosGroup[]>>({});
     const [expandedPosGroups, setExpandedPosGroups] = useState<Record<string, boolean>>({});
     const [ghostInput, setGhostInput] = useState("");
+    
+    const sessionUser = useAuthSessionUser();
+    const backgroundTheme = getSavedBackgroundTheme(sessionUser?.id);
+    const backgroundSpec = getBackgroundThemeSpec(backgroundTheme);
+    const [, forceBackgroundRefresh] = useState(0);
+
+    useEffect(() => {
+        applyBackgroundThemeToDocument(backgroundTheme);
+    }, [backgroundTheme]);
+
+    useEffect(() => {
+        const onBackgroundChange = (event: Event) => {
+            forceBackgroundRefresh((value) => value + 1);
+        };
+        window.addEventListener(BACKGROUND_CHANGED_EVENT, onBackgroundChange);
+        return () => window.removeEventListener(BACKGROUND_CHANGED_EVENT, onBackgroundChange);
+    }, [sessionUser?.id]);
 
     const ghostMatchedPrevRef = useRef(false);
     const ghostCompletionAudioPlayedRef = useRef(false);
@@ -354,11 +373,15 @@ export default function ReviewPage() {
 
     if (isLoading) {
         return (
-            <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#fafaf9]">
-                <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(circle_at_50%_0%,#fdf4ff_0%,transparent_50%),radial-gradient(circle_at_80%_100%,#e0f2fe_0%,transparent_50%)]" />
-                <div className="relative z-10 flex w-[300px] flex-col items-center gap-4 rounded-[32px] bg-white p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
-                    <Loader2 className="h-10 w-10 animate-spin text-pink-400" />
-                    <p className="text-sm font-black tracking-wide text-slate-500">正在准备生词本...</p>
+            <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-theme-base-bg">
+                <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+                    <div className={`absolute inset-0 ${backgroundSpec.baseLayer}`} />
+                    {backgroundSpec.coverGradient && <div className="absolute inset-0 opacity-[0.25]" style={{ backgroundImage: backgroundSpec.coverGradient, mixBlendMode: 'overlay' }} />}
+                    {backgroundSpec.glassLayer && <div className={`absolute inset-0 ${backgroundSpec.glassLayer}`} />}
+                </div>
+                <div className="relative z-10 flex w-[300px] flex-col items-center gap-4 rounded-[1.5rem] bg-theme-card-bg border-[3px] border-theme-border p-8 shadow-[0_8px_0_var(--theme-shadow)]">
+                    <Loader2 className="h-10 w-10 animate-spin text-theme-primary-bg" />
+                    <p className="text-sm font-black tracking-wide text-theme-text-muted">正在准备生词本...</p>
                 </div>
             </main>
         );
@@ -366,21 +389,25 @@ export default function ReviewPage() {
 
     if (queue.length === 0 || isFinished) {
         return (
-            <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#fafaf9] px-6">
-                <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(circle_at_50%_0%,#fdf4ff_0%,transparent_50%),radial-gradient(circle_at_80%_100%,#e0f2fe_0%,transparent_50%)]" />
+            <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-theme-base-bg px-6">
+                <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+                    <div className={`absolute inset-0 ${backgroundSpec.baseLayer}`} />
+                    {backgroundSpec.coverGradient && <div className="absolute inset-0 opacity-[0.25]" style={{ backgroundImage: backgroundSpec.coverGradient, mixBlendMode: 'overlay' }} />}
+                    {backgroundSpec.glassLayer && <div className={`absolute inset-0 ${backgroundSpec.glassLayer}`} />}
+                </div>
                 
                 <motion.div initial={{ scale: 0.9, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} className="relative z-10 w-full max-w-sm">
-                    <div className="rounded-[36px] bg-white px-8 py-10 text-center shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-pink-50/50">
-                        <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-pink-100 text-pink-500 shadow-inner overflow-hidden">
+                    <div className="rounded-[1.5rem] bg-theme-card-bg border-[3px] border-theme-border px-8 py-10 text-center shadow-[0_8px_0_var(--theme-shadow)]">
+                        <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-2xl bg-theme-primary-bg border-[3px] border-theme-border text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)] overflow-hidden">
                             <span className="text-5xl border-transparent">🎉</span>
                         </div>
-                        <h2 className="font-newsreader text-[2.4rem] font-bold text-slate-800 tracking-tight">今日已搞定!</h2>
-                        <p className="mt-2 text-sm font-medium leading-relaxed text-slate-500">
+                        <h2 className="font-newsreader text-[2.4rem] font-bold text-theme-text tracking-tight">今日已搞定!</h2>
+                        <p className="mt-2 text-sm font-black leading-relaxed text-theme-text-muted">
                             复习队列空空如也，真棒！
                         </p>
                         <Link
                             href="/vocab"
-                            className="mt-8 flex items-center justify-center rounded-2xl bg-slate-800 px-6 py-4 text-[15px] font-black tracking-wider text-white shadow-[0_8px_20px_rgb(0,0,0,0.12)] transition hover:bg-slate-700 hover:scale-[1.02] active:scale-95"
+                            className="mt-8 flex items-center justify-center rounded-2xl border-[3px] border-theme-border bg-theme-active-bg px-6 py-4 text-[15px] font-black tracking-wider text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] transition hover:bg-theme-active-hover active:scale-95"
                         >
                             返回生词本
                         </Link>
@@ -393,30 +420,35 @@ export default function ReviewPage() {
     const progress = (currentIndex / queue.length) * 100;
 
     return (
-        <main className="relative min-h-screen bg-[#fafaf9] px-4 pb-12 pt-6 md:px-6 md:pb-12 md:pt-8 font-sans">
-            {/* Cute Pastel Background */}
-            <div className="fixed inset-0 pointer-events-none z-0">
-                <div className="absolute inset-0 opacity-[0.35] bg-[radial-gradient(circle_at_20%_20%,#fbcfe8_0%,transparent_40%),radial-gradient(circle_at_80%_80%,#bae6fd_0%,transparent_40%)]" />
+        <main className="relative min-h-screen bg-theme-base-bg px-4 pb-12 pt-6 md:px-6 md:pb-12 md:pt-8 font-sans">
+            {/* Background Theme Render */}
+            <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+                <div className={`absolute inset-0 ${backgroundSpec.baseLayer}`} />
+                {backgroundSpec.coverGradient && <div className="absolute inset-0 opacity-[0.25]" style={{ backgroundImage: backgroundSpec.coverGradient, mixBlendMode: 'overlay' }} />}
+                {backgroundSpec.glassLayer && <div className={`absolute inset-0 ${backgroundSpec.glassLayer}`} />}
+                {backgroundSpec.glowLayer && <div className={`absolute inset-0 ${backgroundSpec.glowLayer}`} />}
+                {backgroundSpec.bottomLayer && <div className={`absolute inset-x-0 bottom-0 h-1/2 ${backgroundSpec.bottomLayer}`} />}
+                {backgroundSpec.vignetteLayer && <div className={`absolute inset-0 ${backgroundSpec.vignetteLayer}`} />}
             </div>
 
             <div className="relative z-10 flex w-full flex-col h-[calc(100vh-48px)] overflow-hidden">
                 <div className="shrink-0 w-full max-w-[500px] mx-auto mb-4">
-                    <div className="flex items-center gap-3 rounded-full bg-white/70 backdrop-blur-md p-2 pl-3 shadow-[0_4px_20px_rgb(0,0,0,0.03)] border border-white/80">
+                    <div className="flex items-center gap-3 rounded-full bg-theme-base-bg border-[3px] border-theme-border p-2 pl-3 shadow-[0_4px_0_var(--theme-shadow)]">
                         <Link
                             href="/vocab"
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-100/80 text-slate-500 transition hover:bg-slate-200 hover:scale-105 active:scale-95"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-theme-primary-bg border-[2px] border-theme-border text-theme-primary-text shadow-sm transition hover:bg-theme-primary-hover active:scale-95"
                         >
                             <ArrowLeft className="h-4 w-4" />
                         </Link>
                         <div className="min-w-0 flex-1">
-                            <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 shadow-inner">
+                            <div className="h-3 overflow-hidden rounded-full bg-theme-card-bg border-[2px] border-theme-border shadow-inner">
                                 <div
-                                    className="h-full rounded-full bg-emerald-400 transition-all duration-300"
+                                    className="h-full rounded-full bg-theme-active-bg transition-all duration-300 border-r-[2px] border-theme-border"
                                     style={{ width: `${progress}%` }}
                                 />
                             </div>
                         </div>
-                        <span className="shrink-0 rounded-full bg-white px-3 py-1.5 text-[11px] font-black text-slate-500 shadow-sm border border-slate-100">
+                        <span className="shrink-0 rounded-full bg-theme-card-bg border-[2px] border-theme-border px-3 py-1 text-[11px] font-black text-theme-text shadow-sm">
                             {currentIndex + 1} / {queue.length}
                         </span>
                     </div>
@@ -434,8 +466,8 @@ export default function ReviewPage() {
                                     transition={{ duration: 0.25, ease: "easeOut" }}
                                     className="w-full flex-shrink-0"
                                 >
-                                    <div className="flex h-[38vh] min-h-[300px] flex-col items-center justify-center rounded-[36px] bg-white p-8 text-center shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-white/80">
-                                        <div className="flex flex-wrap items-center justify-center text-[3.8rem] md:text-[4.5rem] font-newsreader font-bold tracking-tight drop-shadow-sm leading-none relative">
+                                    <div className="flex h-[38vh] min-h-[300px] flex-col items-center justify-center rounded-[2.5rem] border-[3px] border-theme-border bg-theme-card-bg px-8 text-center shadow-[0_8px_0_var(--theme-shadow)]">
+                                        <div className="flex flex-wrap items-center justify-center text-[3.8rem] md:text-[4.5rem] font-newsreader font-bold text-theme-text tracking-tight drop-shadow-sm leading-none relative">
                                             {(() => {
                                                 let inputCursorTracker = 0;
                                                 const chars = currentCard.word.split("");
@@ -460,10 +492,10 @@ export default function ReviewPage() {
 
                                                             return (
                                                                 <span key={idx} className="relative inline-block transition-colors duration-150">
-                                                                    <span className={cn(
-                                                                        status === "correct" && "text-slate-800",
-                                                                        status === "wrong" && "text-rose-500",
-                                                                        status === "pending" && "text-slate-200"
+                                                                <span className={cn(
+                                                                        status === "correct" && "text-theme-text",
+                                                                        status === "wrong" && "text-red-500",
+                                                                        status === "pending" && "text-theme-text-muted opacity-30"
                                                                     )}>
                                                                         {char}
                                                                     </span>
@@ -482,7 +514,7 @@ export default function ReviewPage() {
                                                                 <motion.span 
                                                                     animate={{ opacity: [1, 0, 1] }} 
                                                                     transition={{ repeat: Infinity, duration: 0.8 }} 
-                                                                    className="absolute -left-[2px] top-[15%] h-[70%] w-[3px] rounded-full bg-emerald-400" 
+                                                                    className="absolute -left-[2px] top-[15%] h-[70%] w-[4px] rounded-full bg-theme-active-bg border-[1px] border-theme-border" 
                                                                 />
                                                             </span>
                                                         )}
@@ -491,10 +523,10 @@ export default function ReviewPage() {
                                             })()}
                                         </div>
                                     </div>
-                                    <div className="mt-6 flex justify-center">
+                                    <div className="mt-8 flex justify-center">
                                         <button
                                             onClick={() => setIsRevealed(true)}
-                                            className="h-16 w-full max-w-[320px] rounded-[24px] bg-slate-800 text-[16px] font-black tracking-wide text-white shadow-[0_8px_20px_rgba(30,41,59,0.2)] transition active:scale-[0.98] hover:-translate-y-1 hover:shadow-[0_12px_24px_rgba(30,41,59,0.25)] hover:bg-slate-700"
+                                            className="h-16 w-full max-w-[320px] rounded-[1.5rem] border-[4px] border-theme-border bg-theme-primary-bg text-[16px] font-black tracking-wide text-theme-primary-text shadow-[0_6px_0_var(--theme-shadow)] transition hover:bg-theme-primary-hover active:translate-y-2 active:shadow-none"
                                         >
                                             🙌 看看答案
                                         </button>
@@ -507,9 +539,9 @@ export default function ReviewPage() {
                                     animate={{ y: 0, opacity: 1 }}
                                     exit={{ y: -20, opacity: 0 }}
                                     transition={{ duration: 0.25, ease: "easeOut" }}
-                                    className="flex flex-col gap-4 w-full"
+                                    className="flex flex-col gap-5 w-full"
                                 >
-                                    <div className="min-h-[460px] rounded-[36px] bg-white shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-white/80 overflow-hidden relative">
+                                    <div className="min-h-[460px] rounded-[2rem] border-[3px] border-theme-border bg-theme-card-bg shadow-[0_8px_0_var(--theme-shadow)] overflow-hidden relative">
                                         <VocabReviewEditableCard
                                             item={currentCard}
                                             posGroups={displayPosGroups}
@@ -526,31 +558,31 @@ export default function ReviewPage() {
                                         />
                                     </div>
 
-                                    <div className="rounded-[32px] bg-white p-2 sm:p-3 shadow-[0_8px_30px_rgb(0,0,0,0.05)] border border-white/80 shrink-0">
+                                    <div className="rounded-[1.5rem] border-[3px] border-theme-border bg-theme-base-bg p-2 sm:p-3 shadow-[0_4px_0_var(--theme-shadow)] shrink-0">
                                         <div className="grid grid-cols-4 gap-2">
                                             <RatingButton
                                                 label="重来"
                                                 eta="1m"
                                                 onClick={() => handleRating(Rating.Again)}
-                                                className="border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:border-rose-300"
+                                                className="border-red-600 bg-red-100 text-red-600 hover:bg-red-200"
                                             />
                                             <RatingButton
                                                 label="困难"
                                                 eta="5m"
                                                 onClick={() => handleRating(Rating.Hard)}
-                                                className="border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 hover:border-amber-300"
+                                                className="border-amber-600 bg-amber-100 text-amber-700 hover:bg-amber-200"
                                             />
                                             <RatingButton
                                                 label="熟悉"
                                                 eta="1d"
                                                 onClick={() => handleRating(Rating.Good)}
-                                                className="border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100 hover:border-blue-300"
+                                                className="border-blue-600 bg-blue-100 text-blue-700 hover:bg-blue-200"
                                             />
                                             <RatingButton
                                                 label="简单"
                                                 eta="3d"
                                                 onClick={() => handleRating(Rating.Easy)}
-                                                className="border-emerald-500 bg-emerald-400 text-white hover:bg-emerald-500 hover:border-emerald-600 shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
+                                                className="border-emerald-600 bg-[#34d399] text-white hover:bg-emerald-500"
                                             />
                                         </div>
                                     </div>

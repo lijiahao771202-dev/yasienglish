@@ -1283,6 +1283,8 @@ function ReadingPageContent() {
                                     quizScorePercent: scorePercent,
                                     timestamp: Date.now(),
                                 });
+                                // Notify daily plan tracker that a reading quiz was completed
+                                window.dispatchEvent(new CustomEvent('yasi:sync_smart_goals'));
                             } catch (error) {
                                 console.error("Failed to persist quiz score:", error);
                             }

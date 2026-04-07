@@ -346,6 +346,11 @@ export function useListeningCabinPlayer({
     const stopBoundaryFrameRef = useRef<number | null>(null);
     const isPlayingRef = useRef(false);
     const timingsSourceRef = useRef<"segment" | "marks" | "even">("marks");
+    const playbackRateRef = useRef(playbackRate);
+    const subtitleAdvanceMsRef = useRef(subtitleAdvanceMs);
+
+    playbackRateRef.current = playbackRate;
+    subtitleAdvanceMsRef.current = subtitleAdvanceMs;
 
     const resolveSafeTimingForSentence = useCallback((sentenceIndex: number) => {
         const audio = audioRef.current;
@@ -397,7 +402,7 @@ export function useListeningCabinPlayer({
         const timing = resolveSafeTimingForSentence(sentenceIndex);
         const targetMs = timing?.startMs ?? 0;
         audio.currentTime = targetMs / 1000;
-        audio.playbackRate = playbackRate;
+        audio.playbackRate = playbackRateRef.current;
 
         const actualStartMs = audio.currentTime * 1000;
         const backwardDriftMs = Math.max(0, targetMs - actualStartMs - SEEK_BACKTRACK_TOLERANCE_MS);
@@ -421,7 +426,7 @@ export function useListeningCabinPlayer({
             targetMs,
             actualStartMs,
         };
-    }, [computeSafeStopAtMs, playbackRate, resolveSafeTimingForSentence]);
+    }, [computeSafeStopAtMs, resolveSafeTimingForSentence]);
 
     useEffect(() => {
         currentSentenceIndexRef.current = currentSentenceIndex;
@@ -850,7 +855,7 @@ export function useListeningCabinPlayer({
 
             const nextSentenceIndex = findSentenceIndexByTime(
                 timings,
-                currentMs + subtitleAdvanceMs,
+                currentMs + subtitleAdvanceMsRef.current,
             );
 
             if (nextSentenceIndex !== currentSentenceIndexRef.current) {
@@ -943,7 +948,7 @@ export function useListeningCabinPlayer({
             }
             audioRef.current = null;
         };
-    }, [computeSafeStopAtMs, persistSessionPatch, resolvedSentences.length, seekWithinSentence, subtitleAdvanceMs, subtitleChunks]);
+    }, [computeSafeStopAtMs, persistSessionPatch, resolvedSentences.length, seekWithinSentence, subtitleChunks]);
 
     useEffect(() => {
         const audio = audioRef.current;

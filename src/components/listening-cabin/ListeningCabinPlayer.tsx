@@ -1570,7 +1570,9 @@ function ListeningCabinPlayerView({
                             <span className="text-[8px] font-black tracking-[0.25em] text-[#94a3b8]/60 uppercase ml-0.5">Mode</span>
                             <button
                                 type="button"
-                                onClick={() => {
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                     cyclePlaybackMode();
                                     revealControls();
                                 }}
@@ -1586,7 +1588,9 @@ function ListeningCabinPlayerView({
                         <div className="flex items-center gap-8">
                             <button
                                 type="button"
-                                onClick={() => {
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                     void previousSentenceAction();
                                     revealControls();
                                 }}
@@ -1617,7 +1621,9 @@ function ListeningCabinPlayerView({
 
                                 <motion.button
                                     type="button"
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
                                         setHasInteractedWithPlay(true);
                                         if (playerState.isPlaying) {
                                             player.pausePlayback();
@@ -1655,7 +1661,9 @@ function ListeningCabinPlayerView({
 
                             <button
                                 type="button"
-                                onClick={() => {
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                     void nextSentenceAction();
                                     revealControls();
                                 }}
@@ -1673,7 +1681,9 @@ function ListeningCabinPlayerView({
                             <span className="text-[8px] font-black tracking-[0.25em] text-[#94a3b8]/60 uppercase ml-0.5">Speed</span>
                             <button
                                 type="button"
-                                onClick={() => {
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
                                     cyclePlaybackRate();
                                     revealControls();
                                 }}

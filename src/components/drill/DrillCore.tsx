@@ -2,7 +2,7 @@
 
 import { memo, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Sparkles, RefreshCw, Send, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock, Shuffle, SkipForward, CheckCircle2, Target } from "lucide-react";
+import { Sparkles, RefreshCw, Send, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, TrendingDown, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock, Shuffle, SkipForward, CheckCircle2, Target } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as Diff from 'diff';
@@ -112,7 +112,7 @@ import {
     shouldTriggerGacha,
     type GachaCard,
 } from "./gacha";
-import sphereSplitterAnimation from "@/assets/lottie/sphere-splitter.json";
+
 import { loadLocalProfile, saveProfilePatch, saveWritingHistory, settleBattle } from "@/lib/user-repository";
 import type { PronunciationWordResult } from "@/lib/pronunciation-scoring";
 import {
@@ -3374,6 +3374,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         hasRecordedDailyDrillRef.current = true;
         const next = incrementStoredDailyDrillProgress();
         setDailyDrillProgress(next);
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent('yasi:sync_smart_goals'));
+        }
     }, []);
 
     useEffect(() => {
@@ -9612,7 +9615,30 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             ].map((metric) => (
                                 <div key={metric.label} className={rebuildSummaryMetricCardClass}>
                                     <div className={cn("text-[10px] font-bold uppercase tracking-[0.18em]", activeCosmeticTheme.mutedClass)}>{metric.label}</div>
-                                    <div className={cn("mt-2 text-xl font-bold", activeCosmeticTheme.textClass)}>{metric.value}</div>
+                                    <div className={cn("mt-2 text-xl font-bold", activeCosmeticTheme.textClass)}>
+                                        {metric.label === "Elo 变化" ? (
+                                            <div className="flex items-center gap-1.5">
+                                                <motion.span
+                                                    initial={{ opacity: 0, y: 15, scale: 0.5 }}
+                                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                    transition={{ duration: 0.8, type: "spring", stiffness: 300, delay: 0.2 }}
+                                                    className={rebuildPassageSummary.change > 0 ? "text-emerald-500 font-extrabold drop-shadow-sm" : rebuildPassageSummary.change < 0 ? "text-rose-500 font-extrabold drop-shadow-sm" : ""}
+                                                >
+                                                    {metric.value}
+                                                </motion.span>
+                                                {rebuildPassageSummary.change > 0 && (
+                                                    <motion.div initial={{ opacity: 0, scale: 0, rotate: -45 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} transition={{ duration: 0.5, delay: 0.5, type: "spring" }}>
+                                                        <TrendingUp className="w-5 h-5 text-emerald-500 drop-shadow-sm" />
+                                                    </motion.div>
+                                                )}
+                                                {rebuildPassageSummary.change < 0 && (
+                                                    <motion.div initial={{ opacity: 0, scale: 0, rotate: 45 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} transition={{ duration: 0.5, delay: 0.5, type: "spring" }}>
+                                                        <TrendingDown className="w-5 h-5 text-rose-500 drop-shadow-sm" />
+                                                    </motion.div>
+                                                )}
+                                            </div>
+                                        ) : metric.value}
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -9721,83 +9747,100 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         };
 
         return (
-            <div className="max-w-4xl mx-auto w-full space-y-4">
+            <div className="max-w-4xl mx-auto w-full space-y-4 md:space-y-6">
                 <motion.div
-                    key={`rebuild-result-head-${rebuildFeedback.resolvedAt}`}
+                    key={`rebuild-reference-head-${rebuildFeedback.resolvedAt}`}
                     initial={prefersReducedMotion ? false : { opacity: 0, y: 22, scale: 0.98 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ duration: prefersReducedMotion ? 0.18 : 0.42, ease: "easeOut" }}
-                    className={cn(
-                        "relative overflow-hidden rounded-[2rem] border p-6 shadow-[0_18px_40px_rgba(20,184,166,0.1)]",
-                        rebuildTone === "success"
-                            ? "border-emerald-200/80 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(255,255,255,0.95))]"
-                            : rebuildTone === "miss"
-                                ? "border-stone-200/80 bg-[linear-gradient(180deg,rgba(250,250,249,0.98),rgba(255,255,255,0.95))]"
-                                : "border-amber-200/80 bg-[linear-gradient(180deg,rgba(255,251,235,0.98),rgba(255,255,255,0.95))]"
-                    )}
+                    className="overflow-hidden rounded-[2rem] border border-stone-200/60 bg-white p-6 md:p-8 shadow-[0_8px_30px_rgba(20,20,20,0.04)]"
                 >
-                    {rebuildTone === "success" && !prefersReducedMotion ? (
-                        <>
-                            <motion.div
-                                className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(16,185,129,0.22),transparent_60%)]"
-                                initial={{ opacity: 0.2, scale: 0.95 }}
-                                animate={{ opacity: [0.25, 0.58, 0.28], scale: [0.96, 1.03, 1] }}
-                                transition={{ duration: 1.05, ease: "easeOut" }}
-                            />
-                            <motion.div
-                                className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.8),transparent)] blur-md"
-                                initial={{ x: "-20%" }}
-                                animate={{ x: "440%" }}
-                                transition={{ duration: 0.95, ease: "easeOut" }}
-                            />
-                        </>
-                    ) : null}
-                    <div className="relative flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
-                        <motion.div
-                            initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: prefersReducedMotion ? 0.16 : 0.32, delay: prefersReducedMotion ? 0 : 0.08 }}
-                            className="min-w-0 flex-1"
+                    <div className="flex flex-wrap items-center gap-2 mb-4 md:mb-5">
+                        <span className="inline-flex items-center rounded-full border border-stone-200 bg-stone-50 px-3 py-1 text-[11px] font-semibold text-stone-500 tracking-wide">
+                            {practiceTier.label}
+                        </span>
+                        {segmentLabel ? (
+                            <span className="inline-flex items-center rounded-full border border-[#e5d5a8] bg-[#fdf9ef] px-3 py-1 text-[11px] font-semibold text-[#8a6b22] tracking-wide">
+                                {segmentLabel}
+                            </span>
+                        ) : null}
+                        <span className={cn(
+                            "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-bold tracking-[0.08em] shadow-sm",
+                            rebuildTone === "success"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : rebuildTone === "partial"
+                                    ? "border-amber-200 bg-amber-50 text-amber-700"
+                                    : "border-rose-200 bg-rose-50 text-rose-700"
+                        )}>
+                            {rebuildFeedback.systemAssessmentLabel}
+                        </span>
+                        {(!isRebuildPassage && rebuildFeedback) ? (
+                            <motion.span
+                                initial={{ opacity: 0, x: -10, scale: 0.8 }}
+                                animate={{ opacity: 1, x: 0, scale: 1 }}
+                                transition={{ type: "spring", stiffness: 350, delay: 0.2 }}
+                                className={cn(
+                                    "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[11px] font-bold tracking-wide shadow-sm",
+                                    rebuildFeedback.systemDelta >= 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-rose-200 bg-rose-50 text-rose-700"
+                                )}
+                            >
+                                Elo {rebuildFeedback.systemDelta >= 0 ? "+" : ""}{rebuildFeedback.systemDelta}
+                                {rebuildFeedback.systemDelta >= 0 ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                            </motion.span>
+                        ) : null}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 border-b border-stone-100 pb-4 md:pb-5">
+                        <h3 className="text-[17px] font-bold text-slate-800 tracking-tight md:text-[18px]">
+                            {rebuildPassageSummary
+                                ? "这篇短文已经结算"
+                                : isCorrectRebuild
+                                    ? "太棒了，这句你拼出来了！"
+                                    : isSkippedRebuild
+                                        ? "这题直接跳过，先看标准表达"
+                                        : "你的作答与准表达有差异"}
+                        </h3>
+                        <button
+                            type="button"
+                            onClick={(e) => openRebuildTutorPopup(e)}
+                            className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-full border border-stone-200/80 bg-stone-50 px-3 py-1.5 text-[11px] font-semibold text-stone-600 transition-all hover:bg-stone-100 hover:border-stone-300"
+                            title="打开英语老师"
                         >
-                            <div className="flex flex-wrap items-center gap-2">
-                                <span className="inline-flex items-center rounded-full border border-stone-200 bg-white/80 px-3 py-1 text-[11px] font-semibold text-stone-500">
-                                    {practiceTier.label}
-                                </span>
-                                {segmentLabel ? (
-                                    <span className="inline-flex items-center rounded-full border border-[#d6c38e] bg-[#fff8e7] px-3 py-1 text-[11px] font-semibold text-[#7a5b16]">
-                                        {segmentLabel}
-                                    </span>
-                                ) : null}
-                                <span className={cn(
-                                    "inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-bold tracking-[0.08em] shadow-sm",
-                                    rebuildTone === "success"
-                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                        : rebuildTone === "partial"
-                                            ? "border-amber-200 bg-amber-50 text-amber-700"
-                                            : "border-rose-200 bg-rose-50 text-rose-700"
-                                )}>
-                                    {rebuildFeedback.systemAssessmentLabel}
-                                </span>
-                            </div>
-                            <h3 className="mt-3 text-3xl font-bold text-slate-900">
-                                {rebuildPassageSummary
-                                    ? "这篇短文已经结算"
-                                    : isCorrectRebuild
-                                        ? "这句你拼出来了"
-                                        : isSkippedRebuild
-                                            ? "这题先跳过"
-                                            : "先看标准表达"}
-                            </h3>
-                            <p className="mt-2 max-w-2xl text-base leading-7 text-stone-600">
-                                {rebuildPassageSummary
-                                    ? "各段自评已经自动合成为总自评，下面可以直接看本场 shadowing 结果和 Elo 结算。"
-                                    : isCorrectRebuild
-                                        ? "过一遍标准句，确认表达已经进脑子。"
-                                        : isSkippedRebuild
-                                            ? "偏难，先听一遍标准句，把意思和表达带过去。"
-                                            : "先记标准句，再看这次错位和漏词。"}
-                            </p>
-                        </motion.div>
+                            <HelpCircle className="h-3.5 w-3.5" />
+                            向 AI 提问
+                        </button>
+                    </div>
+
+                    <div className="mt-6 flex items-start justify-between gap-5 md:mt-7">
+                        <div className="flex-1 font-newsreader text-[1.4rem] leading-[2.1rem] text-stone-900 md:text-[1.65rem] md:leading-[2.5rem]">
+                            {renderInteractiveText(drillData.reference_english)}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => { void playAudio(); }}
+                            disabled={isAudioLoading}
+                            className={cn(
+                                "shrink-0 inline-flex h-11 w-11 items-center justify-center rounded-full border transition-all hover:-translate-y-0.5",
+                                isAudioLoading
+                                    ? "cursor-wait border-stone-200 bg-stone-50 text-stone-400"
+                                    : "border-stone-200 bg-white text-stone-500 shadow-sm hover:border-stone-300 hover:bg-stone-50"
+                            )}
+                            title="重播英文原句"
+                        >
+                            {loadingAudioKeys.has(getSentenceAudioCacheKey(drillData.reference_english)) ? (
+                                <RefreshCw className="h-4 w-4 animate-spin text-stone-300" />
+                            ) : (
+                                <Volume2 className="h-4 w-4" />
+                            )}
+                        </button>
+                    </div>
+
+                    <div className="mt-3 font-mono text-[13px] tracking-wide text-stone-400/80 md:mt-4 md:text-[14px]">
+                        {sentenceIpa || (isIpaReady ? "暂未加载音标" : "正在加载音标词典...")}
+                    </div>
+
+                    <div className="mt-6 pt-5 border-t border-stone-100 border-dashed md:mt-7 md:pt-6">
+                        <p className="text-[15px] leading-8 text-stone-500 md:text-base md:leading-8">{drillData.chinese}</p>
                     </div>
                 </motion.div>
 
@@ -9863,64 +9906,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         </div>
                     </motion.div>
                 ) : null}
-
-                <motion.div
-                    key={`rebuild-reference-${rebuildFeedback.resolvedAt}`}
-                    initial={prefersReducedMotion ? false : { opacity: 0, y: 18 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: prefersReducedMotion ? 0.16 : 0.34, delay: prefersReducedMotion ? 0 : 0.12 }}
-                    className="rounded-[1.9rem] border border-stone-100 bg-white/94 p-5 shadow-[0_18px_34px_rgba(15,23,42,0.05)]"
-                >
-                    <div className="min-w-0">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">标准表达</p>
-                            <button
-                                type="button"
-                                onClick={(e) => openRebuildTutorPopup(e)}
-                                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-full border border-stone-200 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 transition-all hover:-translate-y-0.5 hover:border-stone-300"
-                                title="打开英语问答"
-                            >
-                                <HelpCircle className="h-4 w-4" />
-                                英语老师
-                            </button>
-                        </div>
-                        <div className="mt-4 rounded-[1.45rem] border border-stone-200/80 bg-stone-50/70 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-                            <div className="flex items-start gap-3">
-                                <div className="min-w-0 flex-1 text-[1.2rem] leading-9 text-stone-800 font-newsreader md:text-[1.35rem]">
-                                    {renderInteractiveText(drillData.reference_english)}
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => { void playAudio(); }}
-                                    disabled={isAudioLoading}
-                                    className={cn(
-                                        "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border transition-all",
-                                        isAudioLoading
-                                            ? "cursor-wait border-stone-200 bg-stone-100/80 text-stone-400"
-                                            : "border-indigo-200/80 bg-white text-indigo-600 hover:-translate-y-0.5 hover:bg-indigo-50"
-                                    )}
-                                    title="重播英文原句"
-                                >
-                                    {loadingAudioKeys.has(getSentenceAudioCacheKey(drillData.reference_english)) ? (
-                                        <RefreshCw className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                        <Volume2 className="h-4 w-4" />
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-                        <div className="mt-3 rounded-[1.2rem] border border-sky-100/80 bg-sky-50/55 px-4 py-3">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-700">整句音标（连读近似）</p>
-                            <p className="mt-2 font-mono text-[13px] leading-7 text-sky-900 md:text-[14px]">
-                                {sentenceIpa || (isIpaReady ? "暂未命中完整音标词典，可先对照原句和音频。" : "正在加载音标词典...")}
-                            </p>
-                        </div>
-                        <div className="mt-4 rounded-[1.35rem] border border-amber-100/80 bg-[linear-gradient(180deg,rgba(255,250,235,0.92),rgba(255,255,255,0.92))] px-4 py-3">
-                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-amber-700">中文意思</p>
-                            <p className="mt-2 text-base leading-8 text-stone-700 md:text-[1.05rem]">{drillData.chinese}</p>
-                        </div>
-                    </div>
-                </motion.div>
 
                 {!isSkippedRebuild && !isCorrectRebuild ? (
                     <motion.div
@@ -10216,214 +10201,80 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             ? {
                 mode: variant === "dictation" ? "Dictation Mode" : "Listening Mode",
                 icon: variant === "dictation" ? BookOpen : Headphones,
-                auraPrimary: variant === "dictation" ? "from-fuchsia-200/45 via-purple-200/35 to-transparent" : "from-cyan-200/45 via-sky-200/35 to-transparent",
-                auraSecondary: variant === "dictation" ? "from-violet-200/35 via-purple-100/30 to-transparent" : "from-blue-200/35 via-cyan-100/30 to-transparent",
-                badgeClass: variant === "dictation" ? "border-purple-200/80 bg-purple-50/85 text-purple-700" : "border-cyan-200/80 bg-cyan-50/85 text-cyan-700",
-                progressGradient: variant === "dictation" ? "from-fuchsia-400 via-purple-500 to-violet-500" : "from-cyan-400 via-sky-500 to-cyan-500",
-                beamGradient: variant === "dictation" ? "from-transparent via-purple-400/85 to-transparent" : "from-transparent via-cyan-400/85 to-transparent",
-                bounceGradients: variant === "dictation"
-                    ? [
-                        "linear-gradient(180deg, rgba(250,245,255,0.99) 0%, rgba(233,213,255,0.95) 44%, rgba(216,180,254,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(248,244,255,0.99) 0%, rgba(221,214,254,0.95) 46%, rgba(192,132,252,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(246,240,255,0.99) 0%, rgba(216,180,254,0.95) 46%, rgba(168,85,247,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(248,246,255,0.99) 0%, rgba(196,181,253,0.95) 48%, rgba(139,92,246,0.92) 100%)",
-                    ]
-                    : [
-                        "linear-gradient(180deg, rgba(239,252,255,0.99) 0%, rgba(174,239,255,0.95) 44%, rgba(86,210,255,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(238,252,255,0.99) 0%, rgba(150,231,255,0.95) 46%, rgba(59,130,246,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(241,249,255,0.99) 0%, rgba(186,230,253,0.95) 46%, rgba(14,165,233,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(247,254,255,0.99) 0%, rgba(125,211,252,0.95) 48%, rgba(37,99,235,0.92) 100%)",
-                    ],
-                bounceGlow: variant === "dictation" ? "radial-gradient(circle, rgba(196,181,253,0.34) 0%, rgba(216,180,254,0.12) 52%, transparent 74%)" : "radial-gradient(circle, rgba(125,211,252,0.34) 0%, rgba(186,230,253,0.12) 52%, transparent 74%)",
-                loaderShell: variant === "dictation" ? "linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(250,245,255,0.72) 100%)" : "linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(240,249,255,0.72) 100%)",
-                loaderBase: variant === "dictation" ? "linear-gradient(90deg, rgba(237,233,254,0.2) 0%, rgba(196,181,253,0.48) 48%, rgba(168,85,247,0.22) 100%)" : "linear-gradient(90deg, rgba(207,250,254,0.2) 0%, rgba(125,211,252,0.48) 48%, rgba(59,130,246,0.22) 100%)",
-                sparkleClass: variant === "dictation" ? "bg-purple-200/90" : "bg-cyan-200/90",
-                attackGradient: variant === "dictation" ? "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(216,180,254,0.92) 45%, rgba(168,85,247,0.9) 100%)" : "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(125,211,252,0.92) 45%, rgba(59,130,246,0.9) 100%)",
-                attackStroke: variant === "dictation" ? "rgba(196,181,253,0.95)" : "rgba(103,232,249,0.95)",
                 stages: variant === "dictation" ? ["语义取样", "音频校准", "听写就绪"] : ["声纹预热", "降噪校准", "播放就绪"],
                 comfortCopy: variant === "dictation" ? "正在准备听音写中文的题目流程" : "正在为你生成更清晰、稳定的听力挑战",
-                accentText: variant === "dictation" ? "text-purple-700" : "text-cyan-700",
             }
             : variant === "translation"
                 ? {
                     mode: "Translate Mode",
                     icon: Globe,
-                    auraPrimary: "from-amber-200/45 via-orange-200/35 to-transparent",
-                    auraSecondary: "from-rose-200/35 via-orange-100/28 to-transparent",
-                    badgeClass: "border-amber-200/80 bg-amber-50/85 text-amber-700",
-                    progressGradient: "from-amber-400 via-orange-500 to-amber-500",
-                    beamGradient: "from-transparent via-orange-400/85 to-transparent",
-                    bounceGradients: [
-                        "linear-gradient(180deg, rgba(255,251,245,0.99) 0%, rgba(255,227,210,0.95) 42%, rgba(255,179,151,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(255,249,243,0.99) 0%, rgba(255,220,196,0.95) 44%, rgba(255,151,138,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(255,252,245,0.99) 0%, rgba(255,233,204,0.95) 46%, rgba(255,188,136,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(255,248,242,0.99) 0%, rgba(255,214,202,0.95) 44%, rgba(251,146,60,0.92) 100%)",
-                    ],
-                    bounceGlow: "radial-gradient(circle, rgba(255,205,171,0.4) 0%, rgba(255,225,205,0.18) 44%, transparent 76%)",
-                    loaderShell: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,247,241,0.78) 100%)",
-                    loaderBase: "linear-gradient(90deg, rgba(255,220,203,0.22) 0%, rgba(255,196,162,0.5) 50%, rgba(255,210,184,0.24) 100%)",
-                    sparkleClass: "bg-rose-200/90",
-                    attackGradient: "linear-gradient(180deg, rgba(255,255,255,0.97) 0%, rgba(255,220,203,0.94) 38%, rgba(251,146,60,0.92) 100%)",
-                    attackStroke: "rgba(255,214,188,0.95)",
                     stages: ["语义草拟", "语法校准", "句式润色"],
                     comfortCopy: "正在为你打磨更自然、地道的表达难度",
-                    accentText: "text-amber-700",
                 }
                 : {
                     mode: "Rebuild Mode",
                     icon: BookOpen,
-                    auraPrimary: "from-sky-200/45 via-cyan-200/32 to-transparent",
-                    auraSecondary: "from-teal-200/32 via-slate-100/24 to-transparent",
-                    badgeClass: "border-sky-200/80 bg-sky-50/85 text-sky-700",
-                    progressGradient: "from-sky-400 via-cyan-500 to-teal-500",
-                    beamGradient: "from-transparent via-sky-400/85 to-transparent",
-                    bounceGradients: [
-                        "linear-gradient(180deg, rgba(248,252,255,0.99) 0%, rgba(224,242,254,0.95) 42%, rgba(125,211,252,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(246,251,255,0.99) 0%, rgba(207,250,254,0.95) 44%, rgba(45,212,191,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(248,252,255,0.99) 0%, rgba(224,242,254,0.95) 46%, rgba(56,189,248,0.92) 100%)",
-                        "linear-gradient(180deg, rgba(246,252,252,0.99) 0%, rgba(204,251,241,0.95) 44%, rgba(20,184,166,0.92) 100%)",
-                    ],
-                    bounceGlow: "radial-gradient(circle, rgba(125,211,252,0.34) 0%, rgba(153,246,228,0.14) 44%, transparent 76%)",
-                    loaderShell: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(240,249,255,0.8) 100%)",
-                    loaderBase: "linear-gradient(90deg, rgba(224,242,254,0.22) 0%, rgba(125,211,252,0.48) 50%, rgba(153,246,228,0.24) 100%)",
-                    sparkleClass: "bg-sky-200/90",
-                    attackGradient: "linear-gradient(180deg, rgba(255,255,255,0.97) 0%, rgba(224,242,254,0.94) 38%, rgba(20,184,166,0.92) 100%)",
-                    attackStroke: "rgba(125,211,252,0.95)",
                     stages: ["语义构稿", "词块切分", "短文就绪"],
-                    comfortCopy: "正在按你的 Rebuild Elo 生成更自然的短文段落",
-                    accentText: "text-sky-700",
+                    comfortCopy: "正在按你的 Rebuild Elo 生成更自然的体验",
                 };
 
         const ModeIcon = variantUi.icon;
         const stageIndex = Math.min(variantUi.stages.length - 1, Math.floor(loaderTick / 4));
         const pseudoProgress = Math.round(18 + (1 - Math.exp(-loaderTick / 6)) * 74);
-        const isPassageLoading = variant === "rebuild" && isRebuildPassage;
-
-        if (isPassageLoading) {
-            return (
-                <div className="flex h-full items-center justify-center px-4 py-8 md:px-8">
-                    <div className="relative w-full max-w-[720px] overflow-hidden rounded-[2.25rem] border border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] px-6 py-8 shadow-[0_28px_80px_rgba(15,23,42,0.08)] backdrop-blur-[18px] md:px-10 md:py-10">
-                        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(125,211,252,0.16),transparent_72%)]" />
-                        <div className="relative text-center">
-                            <p className="text-[11px] font-black uppercase tracking-[0.22em] text-sky-700">Passage Rebuild</p>
-                            <h3 className="mt-4 font-source-serif text-[2rem] leading-tight tracking-[-0.03em] text-stone-900 md:text-[2.35rem]">
-                                {title}
-                            </h3>
-                            <p className="mx-auto mt-3 max-w-[32rem] text-sm leading-7 text-stone-500 md:text-[15px]">
-                                {variantUi.comfortCopy}
-                            </p>
-                        </div>
-
-                        <div className="relative mt-10 rounded-[1.5rem] border border-stone-200/80 bg-white/82 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:px-5">
-                            <div className="flex items-center justify-between gap-3 text-[11px] font-semibold tracking-[0.06em] text-stone-500">
-                                <span>短文分段 · {rebuildSegmentCount} 段</span>
-                                <motion.span
-                                    key={variantUi.stages[stageIndex]}
-                                    initial={prefersReducedMotion ? false : { opacity: 0, y: 3 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.35, ease: "easeOut" }}
-                                    className="text-sky-700"
-                                >
-                                    {variantUi.stages[stageIndex]}
-                                </motion.span>
-                            </div>
-                            <div className="relative mt-3 h-1.5 overflow-hidden rounded-full bg-stone-100">
-                                <div
-                                    className={cn("absolute left-0 top-0 h-full rounded-full bg-gradient-to-r transition-[width] duration-700 ease-out", variantUi.progressGradient)}
-                                    style={{ width: `${pseudoProgress}%` }}
-                                />
-                                <motion.div
-                                    className={cn("absolute left-0 top-0 h-full w-20 bg-gradient-to-r", variantUi.beamGradient)}
-                                    animate={prefersReducedMotion ? { x: 180 } : { x: [-95, 470] }}
-                                    transition={{ duration: 2.6, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
-                                />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
 
         return (
             <div className="h-full flex flex-col items-center justify-center relative overflow-hidden px-4">
                 <div className={cn("absolute inset-0", backgroundClass)} />
-                <div className="absolute inset-0 bg-[linear-gradient(rgba(148,163,184,0.07)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.07)_1px,transparent_1px)] bg-[size:46px_46px] opacity-30" />
-
-                <div className="pointer-events-none absolute inset-0 overflow-hidden">
-                    <motion.div
-                        className={cn("absolute -left-16 top-10 h-64 w-64 rounded-full bg-gradient-to-br blur-3xl", variantUi.auraPrimary)}
-                        animate={prefersReducedMotion ? { opacity: 0.32 } : { x: [0, 28, 0], y: [0, -16, 0], opacity: [0.28, 0.46, 0.28] }}
-                        transition={{ duration: 11, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
-                    />
-                    <motion.div
-                        className={cn("absolute -right-14 bottom-8 h-60 w-60 rounded-full bg-gradient-to-br blur-3xl", variantUi.auraSecondary)}
-                        animate={prefersReducedMotion ? { opacity: 0.3 } : { x: [0, -26, 0], y: [0, 20, 0], opacity: [0.26, 0.42, 0.26] }}
-                        transition={{ duration: 12, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
-                    />
-                </div>
-
-                <div className="relative z-10 w-full max-w-[560px] overflow-hidden rounded-[32px] border border-white/75 bg-white/74 p-7 shadow-[0_26px_80px_rgba(15,23,42,0.11)] backdrop-blur-[22px] md:p-9">
-                    <motion.div
-                        className="absolute inset-y-0 -left-24 w-24 bg-gradient-to-r from-transparent via-white/55 to-transparent"
-                        animate={prefersReducedMotion ? { x: 240 } : { x: [-120, 640] }}
-                        transition={{ duration: 4.4, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
-                    />
-
-                    <div className="relative mb-5 flex items-center justify-center">
-                        <span className={cn("inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold tracking-wide", variantUi.badgeClass)}>
-                            <ModeIcon className="h-3.5 w-3.5" />
-                            {variantUi.mode}
-                        </span>
-                    </div>
-
-                    <div className="relative mx-auto mb-7 flex h-44 w-full max-w-[320px] items-end justify-center">
-                        <motion.div
-                            className="absolute inset-x-8 bottom-1 h-24 rounded-full blur-3xl"
-                            style={{ background: variantUi.bounceGlow }}
-                            animate={prefersReducedMotion ? { opacity: 0.55 } : { opacity: [0.34, 0.7, 0.34], scale: [0.94, 1.08, 0.94] }}
-                            transition={{ duration: 2.6, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
-                        />
-                        <div
-                            className="absolute inset-x-2 bottom-2 h-28 rounded-[34px] border border-white/80 shadow-[0_24px_60px_rgba(255,214,188,0.18),inset_0_1px_0_rgba(255,255,255,0.95)] backdrop-blur-xl"
-                            style={{ backgroundImage: variantUi.loaderShell }}
-                        />
-                        <div className="absolute inset-x-4 -top-2 -bottom-4 overflow-visible">
-                            <LottieJsonPlayer
-                                animationData={sphereSplitterAnimation}
-                                speed={1}
-                                className="h-full w-full scale-[1.12]"
+                <div className="relative z-10 w-full max-w-[520px] overflow-hidden rounded-[2.5rem] border border-[rgba(200,200,200,0.4)] bg-[rgba(255,255,255,0.95)] p-10 shadow-[0_20px_60px_rgba(20,20,20,0.08)] backdrop-blur-[24px] md:p-14">
+                    
+                    <div className="relative mx-auto mb-12 flex h-24 w-24 items-center justify-center">
+                        {/* Soft shadow core */}
+                        <div className="absolute inset-3 rounded-full bg-stone-50/80 shadow-[inset_0_1px_4px_rgba(0,0,0,0.04)]" />
+                        
+                        {/* Premium SVG Caterpillar Scanner */}
+                        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="48" stroke="currentColor" strokeWidth="0.5" fill="none" className="text-stone-200/60" />
+                            <motion.circle
+                                cx="50" cy="50" r="48"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                fill="none"
+                                strokeLinecap="round"
+                                className="text-stone-800"
+                                animate={prefersReducedMotion ? { strokeDasharray: "300 300" } : { 
+                                    strokeDasharray: ["0 302", "150 152", "0 302"], 
+                                    strokeDashoffset: [0, -150, -302] 
+                                }}
+                                transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
                             />
-                        </div>
+                        </svg>
+
+                        <ModeIcon className="relative z-10 w-8 h-8 text-stone-800" strokeWidth={1.25} />
                     </div>
 
-                    <div className="relative text-center space-y-2">
-                        <p className="font-newsreader text-[30px] leading-none font-semibold tracking-tight text-stone-800">{title}</p>
-                        <p className="text-sm tracking-wide text-stone-500">{subtitle}</p>
-                        <p className="text-[11px] text-stone-400">{variantUi.comfortCopy}</p>
+                    <div className="text-center space-y-3">
+                        <h3 className="font-newsreader text-[2rem] font-medium leading-none tracking-tight text-stone-900 md:text-[2.4rem]">{title}</h3>
+                        <p className="text-[14px] font-medium tracking-wide text-stone-500">{subtitle}</p>
+                        <p className="pt-2 text-[12px] text-stone-400">{variantUi.comfortCopy}</p>
                     </div>
 
-                    <div className="mt-5 flex items-center justify-between text-[11px] font-medium tracking-wide text-stone-500">
+                    <div className="mt-12 flex items-center justify-between text-[11px] font-bold tracking-[0.2em] uppercase text-stone-400">
                         <motion.span
                             key={variantUi.stages[stageIndex]}
-                            initial={prefersReducedMotion ? false : { opacity: 0, y: 3 }}
+                            initial={prefersReducedMotion ? false : { opacity: 0, y: 4 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.35, ease: "easeOut" }}
-                            className={variantUi.accentText}
+                            transition={{ duration: 0.4, ease: "easeOut" }}
+                            className="text-stone-800"
                         >
                             {variantUi.stages[stageIndex]}
                         </motion.span>
-                        <span className="tabular-nums text-stone-400">{pseudoProgress}%</span>
+                        <span className="tabular-nums font-mono tracking-wider">{pseudoProgress}%</span>
                     </div>
 
-                    <div className="relative mx-auto mt-6 h-2.5 w-full max-w-[430px] overflow-hidden rounded-full bg-white/70 ring-1 ring-black/5">
+                    <div className="relative mx-auto mt-4 h-[2px] w-full overflow-hidden rounded-full bg-stone-100">
                         <div
-                            className={cn("absolute left-0 top-0 h-2.5 rounded-full bg-gradient-to-r transition-[width] duration-700 ease-out", variantUi.progressGradient)}
+                            className="absolute left-0 top-0 h-full rounded-full transition-[width] duration-700 ease-out bg-stone-800"
                             style={{ width: `${pseudoProgress}%` }}
-                        />
-                        <motion.div
-                            className={cn("absolute left-0 top-0 h-2.5 w-20 bg-gradient-to-r", variantUi.beamGradient)}
-                            animate={prefersReducedMotion ? { x: 210 } : { x: [-95, 470] }}
-                            transition={{ duration: 2.8, repeat: prefersReducedMotion ? 0 : Infinity, ease: "easeInOut" }}
                         />
                     </div>
                 </div>
@@ -11006,145 +10857,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
                         {/* Right Side Actions & Ledger */}
                         <div className="flex items-center gap-2">
-                            <div ref={dailyDrillProgressRef} className="relative shrink-0">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        if (isDailyDrillProgressOpen) {
-                                            setIsDailyDrillProgressOpen(false);
-                                            return;
-                                        }
-                                        const next = refreshDailyDrillProgress();
-                                        setDailyDrillGoalDraft(next.goal ? String(next.goal) : "");
-                                        setIsDailyDrillProgressOpen(true);
-                                    }}
-                                    className={cn(
-                                        "flex h-[38px] items-center gap-2 rounded-full border px-3.5 text-[11px] font-bold backdrop-blur-xl transition-all duration-200 sm:text-[12px]",
-                                        dailyDrillGoalReached
-                                            ? "border-emerald-300/80 bg-[linear-gradient(180deg,rgba(236,253,245,0.95),rgba(209,250,229,0.88))] text-emerald-800 shadow-[0_10px_24px_rgba(16,185,129,0.14)]"
-                                            : "border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(247,250,252,0.82))] text-stone-700 shadow-[0_10px_24px_rgba(15,23,42,0.08)] hover:bg-white/90",
-                                        isDailyDrillProgressOpen && "border-sky-300/80 text-sky-800 shadow-[0_14px_28px_rgba(14,165,233,0.14)]"
-                                    )}
-                                    aria-expanded={isDailyDrillProgressOpen}
-                                    aria-haspopup="dialog"
-                                >
-                                    <Target className="h-3.5 w-3.5 shrink-0" />
-                                    <span className="font-mono tabular-nums whitespace-nowrap">{dailyDrillProgressLabel}</span>
-                                </button>
-
-                                <AnimatePresence>
-                                    {isDailyDrillProgressOpen && (
-                                        <motion.div
-                                            initial={prefersReducedMotion ? false : { opacity: 0, y: -8, scale: 0.98 }}
-                                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                                            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -6, scale: 0.98 }}
-                                            transition={{ duration: prefersReducedMotion ? 0.12 : 0.2, ease: "easeOut" }}
-                                            className="absolute right-0 top-[calc(100%+0.7rem)] z-[90] w-[min(21rem,calc(100vw-1.75rem))] rounded-[1.5rem] border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(244,248,251,0.94))] p-4 shadow-[0_22px_50px_rgba(15,23,42,0.16)] backdrop-blur-[24px]"
-                                            role="dialog"
-                                            aria-label="今日做题目标"
-                                        >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div>
-                                                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-400">Daily Drill</p>
-                                                    <h4 className="mt-2 text-lg font-bold tracking-tight text-stone-900">今日做题记录</h4>
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsDailyDrillProgressOpen(false)}
-                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-stone-200/80 bg-white/80 text-stone-500 transition hover:text-stone-700"
-                                                    aria-label="关闭今日做题记录"
-                                                >
-                                                    <X className="h-4 w-4" />
-                                                </button>
-                                            </div>
-
-                                            <div className="mt-4 rounded-[1.2rem] border border-stone-200/80 bg-white/70 px-4 py-3">
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <span className="text-sm font-medium text-stone-500">今天已完成</span>
-                                                    <span className="font-mono text-lg font-bold tabular-nums text-stone-900">
-                                                        {dailyDrillProgress.completed}
-                                                        {dailyDrillProgress.goal !== null ? ` / ${dailyDrillProgress.goal}` : ""}
-                                                    </span>
-                                                </div>
-                                                <p className={cn(
-                                                    "mt-2 text-xs leading-6",
-                                                    dailyDrillGoalReached ? "text-emerald-700" : "text-stone-500"
-                                                )}>
-                                                    {dailyDrillGoalReached
-                                                        ? "今天的目标已经达成了，继续做会继续累计。"
-                                                        : dailyDrillProgress.goal !== null
-                                                            ? `距离目标还差 ${Math.max(dailyDrillProgress.goal - dailyDrillProgress.completed, 0)} 题。`
-                                                            : "还没设置今日目标，也会继续累计今日做题数。"}
-                                                </p>
-                                            </div>
-
-                                            <div className="mt-4">
-                                                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-stone-400">Quick Set</p>
-                                                <div className="mt-2 grid grid-cols-4 gap-2">
-                                                    {DAILY_DRILL_GOAL_OPTIONS.map((goalOption) => (
-                                                        <button
-                                                            key={goalOption}
-                                                            type="button"
-                                                            onClick={() => applyDailyDrillGoal(goalOption)}
-                                                            className={cn(
-                                                                "rounded-full border px-3 py-2 text-sm font-bold transition hover:-translate-y-0.5",
-                                                                dailyDrillProgress.goal === goalOption
-                                                                    ? "border-sky-300 bg-sky-50 text-sky-700 shadow-[0_10px_24px_rgba(14,165,233,0.12)]"
-                                                                    : "border-stone-200/80 bg-white/80 text-stone-600 hover:border-stone-300"
-                                                            )}
-                                                        >
-                                                            {goalOption}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            <div className="mt-4 flex items-center gap-2">
-                                                <input
-                                                    type="number"
-                                                    inputMode="numeric"
-                                                    min={1}
-                                                    max={999}
-                                                    value={dailyDrillGoalDraft}
-                                                    onChange={(event) => setDailyDrillGoalDraft(event.target.value)}
-                                                    onKeyDown={(event) => {
-                                                        if (event.key === "Enter") {
-                                                            const nextGoal = Number(dailyDrillGoalDraft);
-                                                            if (!Number.isFinite(nextGoal) || nextGoal < 1) return;
-                                                            applyDailyDrillGoal(nextGoal);
-                                                        }
-                                                    }}
-                                                    className="h-11 flex-1 rounded-full border border-stone-200/80 bg-white/85 px-4 text-sm font-medium text-stone-700 outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-100"
-                                                    placeholder="自定义今天做几题"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        const nextGoal = Number(dailyDrillGoalDraft);
-                                                        if (!Number.isFinite(nextGoal) || nextGoal < 1) return;
-                                                        applyDailyDrillGoal(nextGoal);
-                                                    }}
-                                                    className="inline-flex h-11 items-center justify-center rounded-full border border-sky-300/80 bg-sky-50 px-4 text-sm font-bold text-sky-700 transition hover:-translate-y-0.5"
-                                                >
-                                                    保存
-                                                </button>
-                                            </div>
-
-                                            <div className="mt-3 flex items-center justify-between gap-3">
-                                                <p className="text-xs leading-6 text-stone-500">目标按今天生效，过了零点会自动重置。</p>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => applyDailyDrillGoal(null)}
-                                                    className="text-xs font-bold text-stone-500 transition hover:text-stone-700"
-                                                >
-                                                    清除目标
-                                                </button>
-                                            </div>
-                                        </motion.div>
-                                    )}
-                                </AnimatePresence>
-                            </div>
-
                             {/* Mobile/Desktop Status Bar - Unified (Collapsible) */}
                             {canUseModeShop && (
                                 <div className={cn(
@@ -12537,7 +12249,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
                                     exit={{ opacity: 0 }}
-                                    className="absolute inset-0 z-[60] overflow-y-auto custom-scrollbar bg-[rgba(248,250,252,0.78)] p-4 md:p-6 pb-28 backdrop-blur-[10px]"
+                                    className="absolute inset-0 z-[60] overflow-y-auto custom-scrollbar bg-[rgba(248,250,252,0.78)] p-4 md:p-6 pb-48 backdrop-blur-[10px]"
                                     >
                                         <motion.div
                                         initial={prefersReducedMotion ? false : { opacity: 0, y: 22, scale: 0.98 }}
@@ -12586,7 +12298,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
                                     exit={{ opacity: 0 }}
-                                    className="absolute inset-0 z-[60] overflow-y-auto custom-scrollbar bg-[radial-gradient(circle_at_top,rgba(255,245,251,0.88),rgba(240,249,255,0.82),rgba(248,250,252,0.88))] p-4 md:p-6 pb-28 backdrop-blur-[12px]"
+                                    className="absolute inset-0 z-[60] overflow-y-auto custom-scrollbar bg-[radial-gradient(circle_at_top,rgba(255,245,251,0.88),rgba(240,249,255,0.82),rgba(248,250,252,0.88))] p-4 md:p-6 pb-48 backdrop-blur-[12px]"
                                 >
                                     <motion.div
                                         initial={prefersReducedMotion ? false : { opacity: 0, y: 34, scale: 0.96 }}
@@ -12707,23 +12419,23 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 exit={{ y: 40, opacity: 0 }}
                                 className="absolute bottom-6 left-1/2 z-[70] w-[calc(100%-2rem)] max-w-[520px] -translate-x-1/2 pointer-events-none md:bottom-8"
                             >
-                                <div className="pointer-events-auto rounded-full border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(247,250,252,0.92))] p-2 shadow-[0_20px_50px_rgba(15,23,42,0.18)] backdrop-blur-[24px]">
+                                <div className="pointer-events-auto rounded-[1.4rem] border border-stone-200/80 bg-white/95 p-2 shadow-[0_12px_40px_rgba(20,20,20,0.06)] backdrop-blur-xl">
                                     <div className="grid grid-cols-3 gap-2">
                                         {([
                                             {
                                                 value: "easy",
                                                 label: "简单",
-                                                className: "border-emerald-200/90 bg-[linear-gradient(180deg,rgba(236,253,245,0.98),rgba(209,250,229,0.92))] text-emerald-700 shadow-[0_10px_24px_rgba(16,185,129,0.12)] hover:border-emerald-300 hover:text-emerald-800 hover:shadow-[0_14px_28px_rgba(16,185,129,0.18)]",
+                                                className: "border-emerald-200 bg-emerald-50 text-emerald-800 shadow-[0_3px_0_theme(colors.emerald.200)] hover:bg-emerald-100 hover:shadow-[0_4px_0_theme(colors.emerald.300)] active:translate-y-[3px] active:shadow-[0_0px_0_theme(colors.emerald.300)]",
                                             },
                                             {
                                                 value: "just_right",
                                                 label: "刚好",
-                                                className: "border-sky-200/90 bg-[linear-gradient(180deg,rgba(240,249,255,0.98),rgba(224,242,254,0.92))] text-sky-700 shadow-[0_10px_24px_rgba(14,165,233,0.12)] hover:border-sky-300 hover:text-sky-800 hover:shadow-[0_14px_28px_rgba(14,165,233,0.18)]",
+                                                className: "border-sky-200 bg-sky-50 text-sky-800 shadow-[0_3px_0_theme(colors.sky.200)] hover:bg-sky-100 hover:shadow-[0_4px_0_theme(colors.sky.300)] active:translate-y-[3px] active:shadow-[0_0px_0_theme(colors.sky.300)]",
                                             },
                                             {
                                                 value: "hard",
                                                 label: "难",
-                                                className: "border-amber-200/90 bg-[linear-gradient(180deg,rgba(255,251,235,0.98),rgba(254,243,199,0.92))] text-amber-700 shadow-[0_10px_24px_rgba(245,158,11,0.12)] hover:border-amber-300 hover:text-amber-800 hover:shadow-[0_14px_28px_rgba(245,158,11,0.18)]",
+                                                className: "border-amber-200 bg-amber-50 text-amber-800 shadow-[0_3px_0_theme(colors.amber.200)] hover:bg-amber-100 hover:shadow-[0_4px_0_theme(colors.amber.300)] active:translate-y-[3px] active:shadow-[0_0px_0_theme(colors.amber.300)]",
                                             },
                                         ] as const).map((option) => (
                                             <button
@@ -12732,7 +12444,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                 onClick={() => handleRebuildSelfEvaluate(option.value)}
                                                 disabled={Boolean(rebuildFeedback.selfEvaluation)}
                                                 className={cn(
-                                                    "inline-flex h-12 items-center justify-center rounded-full border px-4 text-sm font-bold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0",
+                                                    "inline-flex h-12 items-center justify-center rounded-[1rem] border px-4 text-[15px] font-bold tracking-wide transition-all disabled:cursor-not-allowed disabled:opacity-55 disabled:active:translate-y-0",
                                                     option.className
                                                 )}
                                             >

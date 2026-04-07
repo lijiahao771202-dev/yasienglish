@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { AuthSyncProvider } from "@/components/auth/AuthSyncProvider";
+import { GlobalSmartTracker } from "@/components/home/GlobalSmartTracker";
 import { inter, merriweather, lora, roboto_mono, libre_baskerville, source_serif_4, work_sans, comic_neue, newsreader } from "@/lib/fonts";
 import "./globals.css";
 
@@ -33,6 +34,7 @@ export default function RootLayout({
         </Script>
         <AuthSyncProvider initialUser={null}>
           {children}
+          <GlobalSmartTracker />
         </AuthSyncProvider>
       </body>
     </html>
