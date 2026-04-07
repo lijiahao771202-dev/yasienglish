@@ -55,6 +55,7 @@ function buildRequest(
         action: string;
         uiSurface: string;
         intent: string;
+        answerMode: string;
         focusSpan: string;
         userAttempt: string;
         improvedVersion: string;
@@ -79,6 +80,7 @@ function buildRequest(
             action: "ask",
             uiSurface: "battle",
             intent: "lexical",
+            answerMode: "adaptive",
             focusSpan: "ignite",
             userAttempt: "When I won the lottery, love started.",
             improvedVersion: "When I won the lottery, a romantic spark ignited between us.",
@@ -412,5 +414,92 @@ describe("ask_tutor route", () => {
         expect(prompt).toContain("example_sentences");
         expect(prompt).toContain("sentence_en_tokens");
         expect(prompt).not.toContain('Surface: "score"');
+    });
+
+    it("uses adaptive simple profile by default for short rebuild questions", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletion(
+                JSON.stringify({
+                    coach_markdown: "**turn off** 就是“关掉”。",
+                    answer_revealed: false,
+                    teaching_point: "动词短语",
+                    error_tags: ["collocation"],
+                }),
+            ),
+        );
+
+        await POST(buildRequest({
+            uiSurface: "rebuild_floating_teacher",
+            intent: "rebuild",
+            query: "turn off什么意思？",
+            answerMode: "adaptive",
+            focusSpan: "turn off",
+        }));
+
+        const requestPayload = createCompletionMock.mock.calls[0]?.[0] ?? {};
+        const prompt = requestPayload.messages?.[1]?.content ?? "";
+        expect(prompt).toContain('Answer Length Mode: "adaptive"');
+        expect(prompt).toContain('Detected Complexity: "simple"');
+        expect(prompt).toContain('Response Profile: "adaptive_simple"');
+        expect(requestPayload.max_tokens).toBe(520);
+    });
+
+    it("uses forced short profile when rebuild answer mode is simple", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletion(
+                JSON.stringify({
+                    coach_markdown: "**ignite** 在这里强调“被点燃”。",
+                    answer_revealed: false,
+                    teaching_point: "词义",
+                    error_tags: ["word_choice"],
+                }),
+            ),
+        );
+
+        await POST(buildRequest({
+            uiSurface: "rebuild_floating_teacher",
+            intent: "rebuild",
+            query: "这里为什么用 ignite？",
+            answerMode: "simple",
+            focusSpan: "ignite",
+        }));
+
+        const requestPayload = createCompletionMock.mock.calls[0]?.[0] ?? {};
+        const prompt = requestPayload.messages?.[1]?.content ?? "";
+        expect(prompt).toContain('Answer Length Mode: "simple"');
+        expect(prompt).toContain('Response Profile: "forced_short"');
+        expect(requestPayload.max_tokens).toBe(520);
+    });
+
+    it("uses forced detailed profile for rebuild score tutor when requested", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletion(
+                JSON.stringify({
+                    coach_markdown: "**watch others read** 这里不是逐词拼，而是一个完整动作画面。",
+                    answer_revealed: false,
+                    teaching_point: "句意展开",
+                    error_tags: ["grammar"],
+                }),
+            ),
+        );
+
+        await POST(buildRequest({
+            uiSurface: "score",
+            intent: "rebuild",
+            query: "详细讲讲为什么这里用 watches others read，而不是别的写法？",
+            answerMode: "detailed",
+            focusSpan: "watches others read",
+            improvedVersion: "He has no money for books, so he watches others read.",
+            drillContext: {
+                chinese: "他没钱买书，所以只能看别人阅读。",
+                reference_english: "He has no money for books, so he watches others read.",
+            },
+        }));
+
+        const requestPayload = createCompletionMock.mock.calls[0]?.[0] ?? {};
+        const prompt = requestPayload.messages?.[1]?.content ?? "";
+        expect(prompt).toContain('Answer Length Mode: "detailed"');
+        expect(prompt).toContain('Response Profile: "forced_detailed"');
+        expect(requestPayload.max_tokens).toBe(1200);
     });
 });

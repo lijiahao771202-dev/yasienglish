@@ -31,6 +31,7 @@ interface RebuildTutorPopupProps {
     fallbackAnswer?: string | null;
     isAsking: boolean;
     thinkingMode: "chat" | "deep";
+    answerMode: "adaptive" | "simple" | "detailed";
     mutedTextClass?: string;
     panelClass: string;
     inputClass: string;
@@ -40,6 +41,7 @@ interface RebuildTutorPopupProps {
     onPlayCardAudio: (text: string) => void;
     onQueryChange: (value: string) => void;
     onThinkingModeChange: (value: "chat" | "deep") => void;
+    onAnswerModeChange: (value: "adaptive" | "simple" | "detailed") => void;
     onSubmit: () => void;
 }
 
@@ -52,6 +54,7 @@ export function RebuildTutorPopup({
     fallbackAnswer,
     isAsking,
     thinkingMode,
+    answerMode,
     mutedTextClass,
     panelClass,
     inputClass,
@@ -61,6 +64,7 @@ export function RebuildTutorPopup({
     onPlayCardAudio,
     onQueryChange,
     onThinkingModeChange,
+    onAnswerModeChange,
     onSubmit,
 }: RebuildTutorPopupProps) {
     const popupRef = useRef<HTMLDivElement>(null);
@@ -210,36 +214,61 @@ export function RebuildTutorPopup({
                         <p className={cn("mt-1.5 text-xs leading-5", mutedTextClass || "text-stone-500")}>
                             {popup.focusSpan ? `围绕「${popup.focusSpan}」直接提问。` : "直接问这个句子的词义、短语或语法。"}
                         </p>
-                        <div className="mt-3 inline-flex items-center gap-1 rounded-full border border-black/5 bg-white/55 p-1 shadow-sm backdrop-blur-md">
-                            <button
-                                type="button"
-                                disabled={isAsking}
-                                onClick={() => onThinkingModeChange("chat")}
-                                className={cn(
-                                    "rounded-full px-3 py-1 text-[11px] font-semibold transition",
-                                    thinkingMode === "chat"
-                                        ? "bg-emerald-500 text-white shadow-sm"
-                                        : "text-stone-500 hover:bg-white/70 hover:text-stone-800",
-                                    isAsking && "cursor-default opacity-60"
-                                )}
-                            >
-                                快答
-                            </button>
-                            <button
-                                type="button"
-                                disabled={isAsking}
-                                onClick={() => onThinkingModeChange("deep")}
-                                className={cn(
-                                    "inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold transition",
-                                    thinkingMode === "deep"
-                                        ? "bg-sky-500 text-white shadow-sm"
-                                        : "text-stone-500 hover:bg-white/70 hover:text-stone-800",
-                                    isAsking && "cursor-default opacity-60"
-                                )}
-                            >
-                                <Sparkles className="h-3 w-3" />
-                                深度思考
-                            </button>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <div className="inline-flex items-center gap-1 rounded-full border border-black/5 bg-white/55 p-1 shadow-sm backdrop-blur-md">
+                                <button
+                                    type="button"
+                                    disabled={isAsking}
+                                    onClick={() => onThinkingModeChange("chat")}
+                                    className={cn(
+                                        "rounded-full px-3 py-1 text-[11px] font-semibold transition",
+                                        thinkingMode === "chat"
+                                            ? "bg-emerald-500 text-white shadow-sm"
+                                            : "text-stone-500 hover:bg-white/70 hover:text-stone-800",
+                                        isAsking && "cursor-default opacity-60"
+                                    )}
+                                >
+                                    快答
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={isAsking}
+                                    onClick={() => onThinkingModeChange("deep")}
+                                    className={cn(
+                                        "inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold transition",
+                                        thinkingMode === "deep"
+                                            ? "bg-sky-500 text-white shadow-sm"
+                                            : "text-stone-500 hover:bg-white/70 hover:text-stone-800",
+                                        isAsking && "cursor-default opacity-60"
+                                    )}
+                                >
+                                    <Sparkles className="h-3 w-3" />
+                                    深度思考
+                                </button>
+                            </div>
+                            <div className="inline-flex items-center gap-1 rounded-full border border-black/5 bg-white/55 p-1 shadow-sm backdrop-blur-md">
+                                {[
+                                    { value: "simple", label: "简单" },
+                                    { value: "adaptive", label: "自适应" },
+                                    { value: "detailed", label: "详细" },
+                                ].map((option) => (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        disabled={isAsking}
+                                        onClick={() => onAnswerModeChange(option.value as "adaptive" | "simple" | "detailed")}
+                                        className={cn(
+                                            "rounded-full px-3 py-1 text-[11px] font-semibold transition",
+                                            answerMode === option.value
+                                                ? "bg-fuchsia-500 text-white shadow-sm"
+                                                : "text-stone-500 hover:bg-white/70 hover:text-stone-800",
+                                            isAsking && "cursor-default opacity-60"
+                                        )}
+                                    >
+                                        {option.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
                     <button
