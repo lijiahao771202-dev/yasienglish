@@ -190,152 +190,137 @@ export function RebuildTutorPopup({
                 bottom: position.bottom,
             }}
             className={cn(
-                "z-[9998] flex flex-col w-[min(92vw,400px)] overflow-hidden rounded-[1.6rem] bg-stone-50/70 shadow-[0_32px_80px_rgba(20,40,40,0.18)] ring-1 ring-black/5 backdrop-blur-3xl border border-white/60",
+                "z-[9998] flex flex-col w-[min(92vw,400px)] overflow-hidden rounded-[1.4rem] bg-stone-50/90 shadow-[0_24px_60px_rgba(20,40,40,0.15)] ring-1 ring-black/5 backdrop-blur-3xl border border-white/60",
                 panelClass,
             )}
         >
+            {/* Minimal Header */}
             <div
                 onMouseDown={handleDragStart}
                 className={cn(
-                    "border-b border-white/50 bg-white/40 px-5 py-4 select-none shrink-0",
+                    "flex items-center justify-between border-b border-black/5 bg-white/50 px-4 py-2.5 select-none shrink-0",
                     isDragging ? "cursor-grabbing" : "cursor-grab",
                 )}
             >
-                <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 text-[15px] font-semibold text-stone-800">
-                            <MessageCircle className="h-4 w-4 text-emerald-600" />
-                            英语老师
-                            <span className="inline-flex items-center gap-1 rounded-full border border-black/5 bg-white/60 px-2 py-0.5 text-[10px] font-medium text-stone-500 shadow-sm backdrop-blur-md">
-                                <Grip className="h-3 w-3" />
-                                可拖动
-                            </span>
-                        </div>
-                        <p className={cn("mt-1.5 text-xs leading-5", mutedTextClass || "text-stone-500")}>
-                            {popup.focusSpan ? `围绕「${popup.focusSpan}」直接提问。` : "直接问这个句子的词义、短语或语法。"}
-                        </p>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                            <div className="inline-flex items-center gap-1 rounded-full border border-black/5 bg-white/55 p-1 shadow-sm backdrop-blur-md">
-                                <button
-                                    type="button"
-                                    disabled={isAsking}
-                                    onClick={() => onThinkingModeChange("chat")}
-                                    className={cn(
-                                        "rounded-full px-3 py-1 text-[11px] font-semibold transition",
-                                        thinkingMode === "chat"
-                                            ? "bg-emerald-500 text-white shadow-sm"
-                                            : "text-stone-500 hover:bg-white/70 hover:text-stone-800",
-                                        isAsking && "cursor-default opacity-60"
-                                    )}
-                                >
-                                    快答
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={isAsking}
-                                    onClick={() => onThinkingModeChange("deep")}
-                                    className={cn(
-                                        "inline-flex items-center gap-1 rounded-full px-3 py-1 text-[11px] font-semibold transition",
-                                        thinkingMode === "deep"
-                                            ? "bg-sky-500 text-white shadow-sm"
-                                            : "text-stone-500 hover:bg-white/70 hover:text-stone-800",
-                                        isAsking && "cursor-default opacity-60"
-                                    )}
-                                >
-                                    <Sparkles className="h-3 w-3" />
-                                    深度思考
-                                </button>
-                            </div>
-                            <div className="inline-flex items-center gap-1 rounded-full border border-black/5 bg-white/55 p-1 shadow-sm backdrop-blur-md">
-                                {[
-                                    { value: "simple", label: "简单" },
-                                    { value: "adaptive", label: "自适应" },
-                                    { value: "detailed", label: "详细" },
-                                ].map((option) => (
-                                    <button
-                                        key={option.value}
-                                        type="button"
-                                        disabled={isAsking}
-                                        onClick={() => onAnswerModeChange(option.value as "adaptive" | "simple" | "detailed")}
-                                        className={cn(
-                                            "rounded-full px-3 py-1 text-[11px] font-semibold transition",
-                                            answerMode === option.value
-                                                ? "bg-fuchsia-500 text-white shadow-sm"
-                                                : "text-stone-500 hover:bg-white/70 hover:text-stone-800",
-                                            isAsking && "cursor-default opacity-60"
-                                        )}
-                                    >
-                                        {option.label}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="rounded-full border border-black/5 bg-white/60 p-2 text-stone-500 shadow-sm backdrop-blur-md transition hover:bg-white hover:text-stone-700 hover:scale-105 active:scale-95"
-                    >
-                        <X className="h-4 w-4" />
-                    </button>
+                <div className="flex items-center gap-1.5 text-xs font-bold text-stone-700">
+                    <MessageCircle className="h-4 w-4 text-emerald-500" />
+                    <span>讲题老师</span>
+                    <span className="opacity-40 font-normal">|</span>
+                    <span className="text-[10px] text-stone-400 font-medium">拖拽移动</span>
                 </div>
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-full p-1 text-stone-400 hover:bg-stone-200/50 hover:text-stone-700 transition"
+                >
+                    <X className="h-4 w-4" />
+                </button>
             </div>
 
-            <div className="px-5 py-4 flex-1 overflow-hidden flex flex-col">
-                <div className="flex flex-1 flex-col overflow-hidden rounded-[1.45rem] border border-pink-100/80 bg-[linear-gradient(180deg,rgba(255,249,252,0.98),rgba(255,246,250,0.94))] shadow-[0_18px_44px_rgba(244,114,182,0.09)] ring-1 ring-white/75">
-                    <div
-                        ref={conversationRef}
-                        className="max-h-[min(52vh,460px)] flex-1 overflow-y-auto px-4 pt-4 pr-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-pink-200 hover:scrollbar-thumb-pink-300"
-                    >
-                        {turns.length || pendingQuestion || fallbackAnswer ? (
-                            <AiTeacherConversation
-                                turns={turns}
-                                pendingQuestion={pendingQuestion}
-                                pendingAnswer={pendingQuestion ? pendingAnswer : null}
-                                fallbackAnswer={!turns.length ? fallbackAnswer : null}
-                                onPlayCardAudio={onPlayCardAudio}
-                                variant="compact"
-                            />
-                        ) : (
-                            <div className="rounded-2xl border border-pink-100/80 bg-white/70 px-5 py-4 text-[14px] leading-6 text-stone-600 shadow-sm">
-                                <div className="flex items-center gap-2 text-[12px] font-semibold text-fuchsia-700 uppercase tracking-wider">
-                                    <Sparkles className="h-3.5 w-3.5 text-fuchsia-500" />
-                                    AI 即问即答
-                                </div>
-                                <p className="mt-2.5">第一次提问会聪明地带上本题上下文，后面你可以直接追问细节。</p>
-                            </div>
-                        )}
+            {/* Dynamic Conversation Area */}
+            {(turns.length > 0 || pendingQuestion || fallbackAnswer) && (
+                <div
+                    ref={conversationRef}
+                    className="max-h-[min(50vh,420px)] flex-1 overflow-y-auto px-4 py-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-stone-200"
+                >
+                    <AiTeacherConversation
+                        turns={turns}
+                        pendingQuestion={pendingQuestion}
+                        pendingAnswer={pendingQuestion ? pendingAnswer : null}
+                        fallbackAnswer={!turns.length ? fallbackAnswer : null}
+                        onPlayCardAudio={onPlayCardAudio}
+                        variant="compact"
+                    />
+                </div>
+            )}
+
+            {/* Input & Controls Area */}
+            <div className={cn(
+                "p-3 bg-white",
+                !turns.length && !pendingQuestion && !fallbackAnswer && "pt-4"
+            )}>
+                {/* Compact Mode Controls */}
+                <div className="flex items-center justify-between mb-3 px-1">
+                    <div className="flex items-center gap-0.5 bg-stone-100 p-0.5 rounded-lg border border-black/5">
+                        <button
+                            type="button"
+                            disabled={isAsking}
+                            onClick={() => onThinkingModeChange("chat")}
+                            className={cn(
+                                "rounded-md px-2.5 py-1 text-[10px] font-bold transition flex items-center gap-1",
+                                thinkingMode === "chat"
+                                    ? "bg-white text-emerald-600 shadow-sm"
+                                    : "text-stone-500 hover:text-stone-700"
+                            )}
+                        >
+                            快答
+                        </button>
+                        <button
+                            type="button"
+                            disabled={isAsking}
+                            onClick={() => onThinkingModeChange("deep")}
+                            className={cn(
+                                "rounded-md px-2.5 py-1 text-[10px] font-bold transition flex items-center gap-1",
+                                thinkingMode === "deep"
+                                    ? "bg-white text-sky-600 shadow-sm"
+                                    : "text-stone-500 hover:text-stone-700"
+                            )}
+                        >
+                            <Sparkles className="h-2.5 w-2.5" />
+                            深度
+                        </button>
                     </div>
 
-                    <form
-                        className="px-3 pb-3 pt-2"
-                        onSubmit={(event) => {
-                            event.preventDefault();
-                            onSubmit();
-                        }}
-                    >
-                        <div className="flex items-center gap-2 rounded-[1.25rem] border border-pink-100/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,248,252,0.96))] p-1.5 shadow-[0_10px_24px_rgba(244,114,182,0.06)] ring-1 ring-white/80">
-                            <input
-                                type="text"
-                                value={query}
-                                onChange={(event) => onQueryChange(event.target.value)}
-                                placeholder={popup.focusSpan ? `围绕「${popup.focusSpan}」提问...` : "问这个词、短语或语法点..."}
-                                className={cn("h-11 flex-1 rounded-xl bg-transparent px-3 text-[15px] font-medium text-stone-800 placeholder:text-rose-300 focus:outline-none", inputClass)}
-                            />
+                    <div className="flex items-center gap-0.5 bg-stone-100 p-0.5 rounded-lg border border-black/5">
+                        {[
+                            { value: "simple", label: "简单" },
+                            { value: "adaptive", label: "自适应" },
+                            { value: "detailed", label: "详细" },
+                        ].map((option) => (
                             <button
-                                type="submit"
-                                disabled={isAsking || !query.trim()}
+                                key={option.value}
+                                type="button"
+                                disabled={isAsking}
+                                onClick={() => onAnswerModeChange(option.value as "adaptive" | "simple" | "detailed")}
                                 className={cn(
-                                    "inline-flex h-10 min-w-[96px] shrink-0 items-center justify-center gap-1.5 rounded-[0.9rem] bg-[linear-gradient(135deg,#f472b6,#ec4899)] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(236,72,153,0.24)] transition-all hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none active:scale-95",
-                                    sendButtonClass,
+                                    "rounded-md px-2.5 py-1 text-[10px] font-bold transition",
+                                    answerMode === option.value
+                                        ? "bg-white text-fuchsia-600 shadow-sm"
+                                        : "text-stone-500 hover:text-stone-700"
                                 )}
                             >
-                                {isAsking ? <Sparkles className="h-4 w-4 animate-spin text-pink-50" /> : <MessageCircle className="h-4 w-4" />}
-                                {isAsking ? "思考中" : "提问"}
+                                {option.label}
                             </button>
-                        </div>
-                    </form>
+                        ))}
+                    </div>
                 </div>
+
+                <form
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        onSubmit();
+                    }}
+                >
+                    <div className="flex items-center gap-1.5 rounded-xl border border-stone-200/80 bg-stone-50/50 p-1.5 shadow-sm focus-within:border-emerald-300 focus-within:ring-1 focus-within:ring-emerald-300 transition-all">
+                        <input
+                            type="text"
+                            value={query}
+                            onChange={(event) => onQueryChange(event.target.value)}
+                            placeholder={popup.focusSpan ? `围绕「${popup.focusSpan}」提问...` : "问词意、短语或语法..."}
+                            className={cn("h-9 flex-1 bg-transparent px-2.5 text-[13px] font-medium text-stone-800 placeholder:text-stone-400 focus:outline-none", inputClass)}
+                        />
+                        <button
+                            type="submit"
+                            disabled={isAsking || !query.trim()}
+                            className={cn(
+                                "flex h-9 items-center justify-center rounded-[0.65rem] bg-[linear-gradient(135deg,#10b981,#059669)] px-4 text-[13px] font-bold text-white shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 active:scale-95",
+                                sendButtonClass,
+                            )}
+                        >
+                            {isAsking ? <Sparkles className="h-4 w-4 animate-spin text-emerald-100" /> : "发送"}
+                        </button>
+                    </div>
+                </form>
             </div>
         </motion.div>,
         document.body,
@@ -450,12 +435,13 @@ export function RebuildTutorLauncher({ onOpen }: RebuildTutorLauncherProps) {
                     });
                 }}
                 className={cn(
-                    "inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/75 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(247,250,252,0.92))] px-4 text-sm font-semibold text-stone-700 shadow-[0_16px_40px_rgba(15,23,42,0.14)] backdrop-blur-[20px] select-none",
-                    isDragging ? "cursor-grabbing" : "cursor-grab",
+                    "inline-flex h-[46px] items-center justify-center gap-2.5 rounded-full border border-stone-200/80 bg-white/95 px-5 text-[14px] font-bold text-stone-700 shadow-[0_10px_30px_rgba(20,40,40,0.1)] backdrop-blur-xl select-none",
+                    "transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(20,40,40,0.15)] active:scale-95 active:shadow-[0_4px_16px_rgba(20,40,40,0.1)]",
+                    isDragging ? "cursor-grabbing scale-95 shadow-sm" : "cursor-grab",
                 )}
             >
-                <MessageCircle className="h-4 w-4 text-emerald-600" />
-                英语老师
+                <MessageCircle className="h-4 w-4 text-emerald-500" />
+                讲题老师
             </button>
         </motion.div>,
         document.body,

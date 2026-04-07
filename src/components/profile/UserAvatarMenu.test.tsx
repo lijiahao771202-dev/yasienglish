@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_LEARNING_PREFERENCES } from "@/lib/profile-settings";
+import { DEFAULT_LEARNING_PREFERENCES, RANDOM_ENGLISH_TTS_VOICE } from "@/lib/profile-settings";
 
 const { replaceMock } = vi.hoisted(() => ({
     replaceMock: vi.fn(),
@@ -80,7 +80,7 @@ describe("UserAvatarMenu", () => {
         expect(container.textContent).toContain("Last sync 2 minutes ago");
         expect(container.querySelector('a[href="/profile"]')).toBeTruthy();
         expect(container.textContent).toContain("发言人");
-        expect(container.textContent).toContain("退出登录");
+        expect(container.textContent).toContain("断开连接");
 
         await act(async () => {
             root.unmount();
@@ -176,16 +176,17 @@ describe("UserAvatarMenu", () => {
             voiceToggle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        expect(container.textContent).toContain("发言人列表");
-        expect(container.textContent).toContain("选择一个声音");
-        expect(container.textContent).toContain("中文发言人");
-        expect(container.textContent).toContain("英文发言人");
-        expect(container.textContent).toContain("当前：");
-        expect(container.textContent).toContain("全部");
-        expect(container.textContent).toContain("英文");
-        expect(container.textContent).toContain("中文");
+        expect(document.body.textContent).toContain("发言人列表");
+        expect(document.body.textContent).toContain("选择一个声音");
+        expect(document.body.textContent).toContain("中文发言人");
+        expect(document.body.textContent).toContain("英文发言人");
+        expect(document.body.textContent).toContain("当前：");
+        expect(document.body.textContent).toContain("全部");
+        expect(document.body.textContent).toContain("英文");
+        expect(document.body.textContent).toContain("中文");
+        expect(document.body.textContent).toContain("随机英文");
 
-        const xiaoxiaoPreview = container.querySelector<HTMLButtonElement>('button[aria-label="试听 晓晓"]');
+        const xiaoxiaoPreview = document.body.querySelector<HTMLButtonElement>('button[aria-label="试听 晓晓"]');
         if (!xiaoxiaoPreview) {
             throw new Error("Missing Xiaoxiao preview button");
         }
@@ -200,7 +201,7 @@ describe("UserAvatarMenu", () => {
         );
         expect(audioPlayMock).toHaveBeenCalledTimes(1);
 
-        const emmaButton = container.querySelector<HTMLButtonElement>('button[aria-label="选择 Emma"]');
+        const emmaButton = document.body.querySelector<HTMLButtonElement>('button[aria-label="选择 Emma"]');
         if (!emmaButton) {
             throw new Error("Missing Emma option");
         }
@@ -212,6 +213,34 @@ describe("UserAvatarMenu", () => {
         expect(saveProfilePatchMock).toHaveBeenCalledWith({
             learning_preferences: expect.objectContaining({
                 tts_voice: "en-US-EmmaNeural",
+            }),
+        });
+
+        await act(async () => {
+            trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const voiceToggleAgain = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("发言人"));
+        if (!(voiceToggleAgain instanceof HTMLButtonElement)) {
+            throw new Error("Missing voice toggle on second open");
+        }
+
+        await act(async () => {
+            voiceToggleAgain.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const randomVoiceButton = document.body.querySelector<HTMLButtonElement>('button[aria-label="选择 随机英文"]');
+        if (!randomVoiceButton) {
+            throw new Error("Missing random english option");
+        }
+
+        await act(async () => {
+            randomVoiceButton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(saveProfilePatchMock).toHaveBeenLastCalledWith({
+            learning_preferences: expect.objectContaining({
+                tts_voice: RANDOM_ENGLISH_TTS_VOICE,
             }),
         });
 

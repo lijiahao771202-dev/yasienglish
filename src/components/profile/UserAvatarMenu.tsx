@@ -11,7 +11,18 @@ import { Check, ChevronRight, CloudUpload, Image as ImageIcon, Loader2, LogOut, 
 import { PresetAvatar } from "@/components/profile/PresetAvatar";
 import { db } from "@/lib/db";
 import { getUserFacingSyncError, saveProfilePatch, syncNow } from "@/lib/user-repository";
-import { DEFAULT_AVATAR_PRESET, DEFAULT_PROFILE_USERNAME, TTS_VOICE_OPTIONS, normalizeLearningPreferences, normalizeTtsVoice, type LearningPreferences, type TtsVoice, type TtsVoiceOption } from "@/lib/profile-settings";
+import {
+    DEFAULT_AVATAR_PRESET,
+    DEFAULT_PROFILE_USERNAME,
+    RANDOM_ENGLISH_TTS_VOICE,
+    TTS_VOICE_OPTIONS,
+    normalizeLearningPreferences,
+    normalizeLearningPreferenceTtsVoice,
+    type LearningPreferenceTtsVoice,
+    type LearningPreferences,
+    type TtsVoice,
+    type TtsVoiceOption,
+} from "@/lib/profile-settings";
 import { requestTtsPayload } from "@/lib/tts-client";
 import { useSyncStatusStore } from "@/lib/sync-status";
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
@@ -75,8 +86,24 @@ const TTS_VOICE_GROUPS: Array<{
     },
 ];
 
+const RANDOM_ENGLISH_VOICE_OPTION = {
+    voice: RANDOM_ENGLISH_TTS_VOICE,
+    label: "随机英文",
+    description: "每次生成音频都随机选择一个英文发言人，自动排除中文和 en-IN 发言人。",
+} as const;
+
+type VoicePickerOption = TtsVoiceOption | typeof RANDOM_ENGLISH_VOICE_OPTION;
+
 function getVoiceOption(voice: TtsVoice) {
     return TTS_VOICE_OPTIONS.find((option) => option.voice === voice);
+}
+
+function getVoicePickerOption(voice: LearningPreferenceTtsVoice): VoicePickerOption {
+    if (voice === RANDOM_ENGLISH_TTS_VOICE) {
+        return RANDOM_ENGLISH_VOICE_OPTION;
+    }
+
+    return getVoiceOption(voice) ?? TTS_VOICE_OPTIONS[0];
 }
 
 type VoiceFilter = "all" | "zh-CN-" | "en-";
@@ -105,10 +132,10 @@ export function UserAvatarMenu({
     const [backgroundOpen, setBackgroundOpen] = useState(false);
     const [ttsVoiceOpen, setTtsVoiceOpen] = useState(false);
     const [ttsVoiceBusy, setTtsVoiceBusy] = useState(false);
-    const [previewVoice, setPreviewVoice] = useState<TtsVoice | null>(null);
+    const [previewVoice, setPreviewVoice] = useState<LearningPreferenceTtsVoice | null>(null);
     const [voiceFilter, setVoiceFilter] = useState<VoiceFilter>("all");
     const [voiceSearch, setVoiceSearch] = useState("");
-    const [selectedVoice, setSelectedVoice] = useState<TtsVoice>(normalizeTtsVoice(learningPreferences.tts_voice));
+    const [selectedVoice, setSelectedVoice] = useState<LearningPreferenceTtsVoice>(normalizeLearningPreferenceTtsVoice(learningPreferences.tts_voice));
     const containerRef = useRef<HTMLDivElement | null>(null);
     const voiceModalRef = useRef<HTMLDivElement | null>(null);
     const voiceListRef = useRef<HTMLDivElement | null>(null);
@@ -116,17 +143,19 @@ export function UserAvatarMenu({
     const router = useRouter();
     const isSidebar = placement === "sidebar";
     const isHeader = placement === "header";
-    const selectedVoiceOption = useMemo(
-        () => getVoiceOption(selectedVoice) ?? TTS_VOICE_OPTIONS[0],
-        [selectedVoice],
-    );
+    const selectedVoiceOption = useMemo(() => getVoicePickerOption(selectedVoice), [selectedVoice]);
     const normalizedVoiceSearch = voiceSearch.trim().toLowerCase();
     const filteredVoiceGroups = useMemo(() => (
         TTS_VOICE_GROUPS
             .map((group) => ({
                 ...group,
-                voices: group.voices.filter((option) => {
-                    const matchesFilter = voiceFilter === "all" || option.voice.startsWith(voiceFilter);
+                voices: [
+                    ...(group.title === "英文发言人" ? [RANDOM_ENGLISH_VOICE_OPTION] : []),
+                    ...group.voices,
+                ].filter((option) => {
+                    const matchesFilter = voiceFilter === "all"
+                        || option.voice.startsWith(voiceFilter)
+                        || (voiceFilter === "en-" && option.voice === RANDOM_ENGLISH_TTS_VOICE);
                     if (!matchesFilter) return false;
 
                     if (!normalizedVoiceSearch) return true;
@@ -170,7 +199,7 @@ export function UserAvatarMenu({
     }, [backgroundOpen, mailboxOpen, ttsVoiceOpen]);
 
     useEffect(() => {
-        setSelectedVoice(normalizeTtsVoice(learningPreferences.tts_voice));
+        setSelectedVoice(normalizeLearningPreferenceTtsVoice(learningPreferences.tts_voice));
     }, [learningPreferences.tts_voice]);
 
     useEffect(() => {
@@ -200,7 +229,7 @@ export function UserAvatarMenu({
         return () => window.clearTimeout(timer);
     }, [selectedVoice, ttsVoiceOpen]);
 
-    const handleSelectVoice = async (nextVoice: TtsVoice) => {
+    const handleSelectVoice = async (nextVoice: LearningPreferenceTtsVoice) => {
         if (nextVoice === selectedVoice) {
             setTtsVoiceOpen(false);
             return;
@@ -223,7 +252,7 @@ export function UserAvatarMenu({
         }
     };
 
-    const handlePreviewVoice = async (voice: TtsVoice) => {
+    const handlePreviewVoice = async (voice: LearningPreferenceTtsVoice) => {
         setPreviewVoice(voice);
         try {
             previewAudioRef.current?.pause();
@@ -395,16 +424,18 @@ export function UserAvatarMenu({
                                 <X className="h-4 w-4" />
                             </button>
                             <div className="border-b-[3px] border-theme-border px-6 pb-5 pt-6 bg-theme-card-bg shrink-0">
-                                <h2 className="pr-12 font-welcome-display text-2xl tracking-tight text-theme-text">选择专属发言人</h2>
-                                <p className="mt-1 pr-12 text-sm font-bold text-theme-text-muted">更改全局 AI 语音合成的默认声音。</p>
+                                <h2 className="pr-12 font-welcome-display text-2xl tracking-tight text-theme-text">发言人列表</h2>
+                                <p className="mt-1 pr-12 text-sm font-bold text-theme-text-muted">选择一个声音，作为全局 AI 语音合成的默认发言人。</p>
                                 
                                 <div className="mt-4 flex flex-col gap-3 rounded-2xl border-[3px] border-theme-border bg-theme-base-bg p-3 sm:flex-row sm:items-center sm:justify-between shadow-[0_4px_0_0_var(--theme-shadow)]">
                                     <div className="min-w-0">
                                         <p className="truncate text-sm font-black text-theme-text">
-                                            <span className="text-theme-text-muted mr-2 font-bold">当前选择:</span>
+                                            <span className="text-theme-text-muted mr-2 font-bold">当前：</span>
                                             {selectedVoiceOption.label}
                                         </p>
-                                        <p className="mt-0.5 truncate text-xs font-bold text-theme-text-muted">{selectedVoiceOption.voice}</p>
+                                        <p className="mt-0.5 truncate text-xs font-bold text-theme-text-muted">
+                                            {selectedVoice === RANDOM_ENGLISH_TTS_VOICE ? "English only · excludes en-IN" : selectedVoiceOption.voice}
+                                        </p>
                                     </div>
                                     <motion.button
                                         whileTap={{ scale: 0.95 }}
@@ -475,7 +506,9 @@ export function UserAvatarMenu({
                                                                     <div>
                                                                         <div className="flex items-start justify-between">
                                                                             <span className={`text-[15px] font-bold ${selected ? "text-theme-active-text" : "text-theme-text"}`}>{option.label}</span>
-                                                                            <span className="text-[10px] font-semibold text-theme-text-muted">{option.voice}</span>
+                                                                            <span className="text-[10px] font-semibold text-theme-text-muted">
+                                                                                {option.voice === RANDOM_ENGLISH_TTS_VOICE ? "dynamic" : option.voice}
+                                                                            </span>
                                                                         </div>
                                                                         <p className="mt-2 text-xs font-medium text-theme-text-muted line-clamp-2">
                                                                             {option.description}

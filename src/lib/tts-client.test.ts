@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RANDOM_ENGLISH_TTS_VOICE } from "./profile-settings";
 
 const firstMock = vi.fn();
 
@@ -128,6 +129,76 @@ describe("tts-client", () => {
                 segments: [
                     { text: "Good morning.", voice: "en-US-AvaNeural", rate: "+0%" },
                     { text: "Let's begin.", voice: "en-US-BrianNeural", rate: "+0%" },
+                ],
+            }),
+        }));
+    });
+
+    it("resolves the saved random english voice preference to a concrete non-IN english voice", async () => {
+        firstMock.mockResolvedValue({
+            learning_preferences: {
+                tts_voice: RANDOM_ENGLISH_TTS_VOICE,
+            },
+        });
+
+        const fetchMock = vi.fn().mockResolvedValue(
+            new Response(JSON.stringify({
+                audio: "/api/tts?key=test-random",
+                marks: [],
+            }), {
+                status: 200,
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            }),
+        );
+
+        vi.stubGlobal("fetch", fetchMock);
+        vi.spyOn(Math, "random").mockReturnValue(0);
+
+        await requestTtsPayload("Hello world");
+
+        expect(fetchMock).toHaveBeenCalledWith("/api/tts", expect.objectContaining({
+            body: JSON.stringify({
+                text: "Hello world",
+                voice: "en-AU-NatashaNeural",
+                rate: "+0%",
+            }),
+        }));
+    });
+
+    it("uses one resolved random english fallback for all segments in the same payload", async () => {
+        firstMock.mockResolvedValue({
+            learning_preferences: {
+                tts_voice: RANDOM_ENGLISH_TTS_VOICE,
+            },
+        });
+
+        const fetchMock = vi.fn().mockResolvedValue(
+            new Response(JSON.stringify({
+                audio: "/api/tts?key=test-segment-random",
+                marks: [],
+            }), {
+                status: 200,
+                headers: {
+                    "Content-Type": "application/json",
+                },
+            }),
+        );
+
+        vi.stubGlobal("fetch", fetchMock);
+        vi.spyOn(Math, "random").mockReturnValue(0);
+
+        await requestTtsSegmentsPayload([
+            { text: "First line." },
+            { text: "Second line." },
+        ]);
+
+        expect(fetchMock).toHaveBeenCalledWith("/api/tts", expect.objectContaining({
+            body: JSON.stringify({
+                segments: [
+                    { text: "First line.", voice: "en-AU-NatashaNeural", rate: "+0%" },
+                    { text: "Second line.", voice: "en-AU-NatashaNeural", rate: "+0%" },
                 ],
             }),
         }));

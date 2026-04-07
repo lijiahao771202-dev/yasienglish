@@ -388,6 +388,9 @@ async function ensureRemoteProfile(userId: string) {
             cat_points: localProfile.cat_points ?? DEFAULT_CAT_POINTS,
             cat_current_band: localProfile.cat_current_band ?? DEFAULT_CAT_BAND,
             cat_updated_at: localProfile.cat_updated_at ?? nowIso(),
+            exam_date: localProfile.exam_date ?? null,
+            exam_type: localProfile.exam_type ?? null,
+            exam_goal_score: localProfile.exam_goal_score ?? null,
             last_practice_at: new Date(localProfile.last_practice).toISOString(),
             updated_at: localProfile.updated_at || nowIso(),
         }
@@ -425,6 +428,9 @@ async function ensureRemoteProfile(userId: string) {
             cat_points: DEFAULT_CAT_POINTS,
             cat_current_band: DEFAULT_CAT_BAND,
             cat_updated_at: nowIso(),
+            exam_date: null,
+            exam_type: null,
+            exam_goal_score: null,
             last_practice_at: nowIso(),
             updated_at: nowIso(),
         };
@@ -485,6 +491,9 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
                 cat_points: localProfile.cat_points ?? DEFAULT_CAT_POINTS,
                 cat_current_band: localProfile.cat_current_band ?? DEFAULT_CAT_BAND,
                 cat_updated_at: localProfile.cat_updated_at ?? nowIso(),
+                exam_date: localProfile.exam_date ?? null,
+                exam_type: localProfile.exam_type ?? null,
+                exam_goal_score: localProfile.exam_goal_score ?? null,
                 last_practice_at: new Date(localProfile.last_practice).toISOString(),
                 updated_at: localProfile.updated_at || nowIso(),
             };
