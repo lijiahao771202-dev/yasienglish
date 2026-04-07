@@ -111,6 +111,14 @@ function DailyPlanBento() {
     const completedCount = items.filter(i => i.completed).length;
     const progress = items.length === 0 ? 0 : Math.round((completedCount / items.length) * 100);
 
+    const sortedItems = useMemo(() => {
+        return [...items].sort((a, b) => {
+            if (a.completed && !b.completed) return 1;
+            if (!a.completed && b.completed) return -1;
+            return 0;
+        });
+    }, [items]);
+
     return (
         <>
             <SmartPlannerWizard 
@@ -182,7 +190,7 @@ function DailyPlanBento() {
                         <div className="h-3 w-full bg-theme-base-bg rounded-full overflow-hidden border-[3px] border-theme-border mb-1 shadow-inner">
                             <div className="h-full bg-theme-active-bg transition-all duration-500 ease-out border-r-[3px] border-theme-border" style={{ width: `${progress}%` }} />
                         </div>
-                        {items.map(item => {
+                        {sortedItems.map(item => {
                             const handleItemClick = () => {
                                 if (item.completed) return;
                                 if (item.type === 'rebuild') router.push('/battle');

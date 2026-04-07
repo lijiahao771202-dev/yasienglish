@@ -42,6 +42,9 @@ export function ProfileSettingsPanel({
     const [englishLevel, setEnglishLevel] = useState(initialProfile.learning_preferences.english_level);
     const [dailyGoal, setDailyGoal] = useState(String(initialProfile.learning_preferences.daily_goal_minutes));
     const [uiTheme, setUiTheme] = useState(initialProfile.learning_preferences.ui_theme_preference);
+    const [rebuildShadowingAutoOpen, setRebuildShadowingAutoOpen] = useState(
+        initialProfile.learning_preferences.rebuild_auto_open_shadowing_prompt ?? true,
+    );
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
     const [profileMessage, setProfileMessage] = useState<string | null>(null);
@@ -66,6 +69,7 @@ export function ProfileSettingsPanel({
                     english_level: englishLevel,
                     daily_goal_minutes: Number(dailyGoal),
                     ui_theme_preference: uiTheme,
+                    rebuild_auto_open_shadowing_prompt: rebuildShadowingAutoOpen,
                 },
             });
             setProfileMessage("资料已保存到本地镜像，并正在同步云端。");
@@ -223,6 +227,29 @@ export function ProfileSettingsPanel({
                             <option value="starlight_arcade">Starlight Arcade</option>
                             <option value="peach_glow">Peach Glow</option>
                         </select>
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                        <label
+                            htmlFor="rebuild-shadowing-auto-open"
+                            className="flex cursor-pointer items-start gap-3 rounded-[1rem] border-4 border-theme-border bg-theme-base-bg px-4 py-3 shadow-[0_4px_0_0_var(--theme-shadow)] transition-transform hover:-translate-y-0.5"
+                        >
+                            <input
+                                id="rebuild-shadowing-auto-open"
+                                type="checkbox"
+                                checked={rebuildShadowingAutoOpen}
+                                onChange={(event) => setRebuildShadowingAutoOpen(event.target.checked)}
+                                className="mt-1 h-4 w-4 rounded border-2 border-theme-border"
+                            />
+                            <span className="space-y-1">
+                                <span className="block text-sm font-black text-theme-text transition-colors">
+                                    Rebuild 提交后自动弹出 Shadowing 引导
+                                </span>
+                                <span className="block text-xs font-bold leading-5 text-theme-text-muted transition-colors">
+                                    关闭后，提交单句 Rebuild 会直接进入评分页；需要时再手动开始 Shadowing。
+                                </span>
+                            </span>
+                        </label>
                     </div>
                 </div>
 
