@@ -1,5 +1,11 @@
 import { db } from "./db";
-import { DEFAULT_TTS_VOICE, normalizeTtsVoice } from "./profile-settings";
+import {
+    DEFAULT_TTS_VOICE,
+    normalizeLearningPreferenceTtsVoice,
+    normalizeTtsVoice,
+    resolveLearningPreferenceTtsVoice,
+    type LearningPreferenceTtsVoice,
+} from "./profile-settings";
 
 export interface TtsPayload {
     audio: string;
@@ -26,11 +32,11 @@ export interface TtsSegmentInput {
 
 async function resolvePreferredVoice(voice?: string) {
     if (voice?.trim()) {
-        return normalizeTtsVoice(voice);
+        return resolveLearningPreferenceTtsVoice(voice);
     }
 
     const profile = await db.user_profile.orderBy("id").first();
-    return normalizeTtsVoice(profile?.learning_preferences?.tts_voice || DEFAULT_TTS_VOICE);
+    return resolveLearningPreferenceTtsVoice(profile?.learning_preferences?.tts_voice || DEFAULT_TTS_VOICE);
 }
 
 export async function requestTtsPayload(text: string, voice?: string, rate = "+0%") {
@@ -84,10 +90,17 @@ export async function requestTtsPayload(text: string, voice?: string, rate = "+0
 }
 
 export async function requestTtsSegmentsPayload(segments: TtsSegmentInput[]) {
+    const profile = await db.user_profile.orderBy("id").first();
+    const fallbackVoicePreference: LearningPreferenceTtsVoice = normalizeLearningPreferenceTtsVoice(
+        profile?.learning_preferences?.tts_voice || DEFAULT_TTS_VOICE,
+    );
+    const resolvedFallbackVoice = resolveLearningPreferenceTtsVoice(fallbackVoicePreference);
     const normalizedSegments = await Promise.all(
         segments.map(async (segment) => ({
             text: segment.text,
-            voice: await resolvePreferredVoice(segment.voice),
+            voice: segment.voice?.trim()
+                ? normalizeTtsVoice(segment.voice)
+                : resolvedFallbackVoice,
             rate: typeof segment.rate === "string" && segment.rate.trim() ? segment.rate.trim() : "+0%",
         })),
     );

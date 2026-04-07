@@ -1,6 +1,7 @@
 export type LearningTargetMode = "read" | "battle" | "vocab";
 export type EnglishLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 export type UiThemePreference = "bubblegum_pop" | "starlight_arcade" | "peach_glow";
+export const RANDOM_ENGLISH_TTS_VOICE = "random-en-voice-excluding-in" as const;
 export type TtsVoice =
     | "en-AU-NatashaNeural"
     | "en-AU-WilliamMultilingualNeural"
@@ -57,6 +58,7 @@ export type TtsVoice =
     | "zh-CN-YunyangNeural"
     | "zh-CN-XiaobeiNeural"
     | "zh-CN-XiaoniNeural";
+export type LearningPreferenceTtsVoice = TtsVoice | typeof RANDOM_ENGLISH_TTS_VOICE;
 
 export interface TtsVoiceOption {
     voice: TtsVoice;
@@ -69,7 +71,7 @@ export interface LearningPreferences {
     english_level: EnglishLevel;
     daily_goal_minutes: number;
     ui_theme_preference: UiThemePreference;
-    tts_voice: TtsVoice;
+    tts_voice: LearningPreferenceTtsVoice;
     rebuild_auto_open_shadowing_prompt?: boolean;
 }
 
@@ -356,6 +358,9 @@ export const TTS_VOICE_OPTIONS: TtsVoiceOption[] = [
 ];
 
 const TTS_VOICE_SET = new Set<TtsVoice>(TTS_VOICE_OPTIONS.map((option) => option.voice));
+const RANDOMIZED_ENGLISH_TTS_VOICE_OPTIONS = TTS_VOICE_OPTIONS.filter((option) => (
+    option.voice.startsWith("en-") && !option.voice.startsWith("en-IN-")
+));
 
 export const DEFAULT_LEARNING_PREFERENCES: LearningPreferences = {
     target_mode: "read",
@@ -395,6 +400,42 @@ export function normalizeTtsVoice(voice?: string | null): TtsVoice {
         : DEFAULT_TTS_VOICE;
 }
 
+export function isRandomEnglishTtsVoicePreference(voice?: string | null): voice is typeof RANDOM_ENGLISH_TTS_VOICE {
+    return voice?.trim() === RANDOM_ENGLISH_TTS_VOICE;
+}
+
+export function normalizeLearningPreferenceTtsVoice(voice?: string | null): LearningPreferenceTtsVoice {
+    if (isRandomEnglishTtsVoicePreference(voice)) {
+        return RANDOM_ENGLISH_TTS_VOICE;
+    }
+
+    return normalizeTtsVoice(voice);
+}
+
+export function resolveRandomEnglishTtsVoice(randomValue = Math.random()): TtsVoice {
+    const safePool = RANDOMIZED_ENGLISH_TTS_VOICE_OPTIONS.length > 0
+        ? RANDOMIZED_ENGLISH_TTS_VOICE_OPTIONS
+        : TTS_VOICE_OPTIONS.filter((option) => option.voice.startsWith("en-"));
+
+    const normalizedRandom = Number.isFinite(randomValue)
+        ? Math.min(0.999999, Math.max(0, randomValue))
+        : 0;
+    const index = Math.floor(normalizedRandom * safePool.length);
+    return safePool[index]?.voice ?? DEFAULT_TTS_VOICE;
+}
+
+export function resolveLearningPreferenceTtsVoice(
+    voice?: string | null,
+    randomValue = Math.random(),
+): TtsVoice {
+    const normalized = normalizeLearningPreferenceTtsVoice(voice);
+    if (normalized === RANDOM_ENGLISH_TTS_VOICE) {
+        return resolveRandomEnglishTtsVoice(randomValue);
+    }
+
+    return normalized;
+}
+
 export function normalizeLearningPreferences(
     preferences?: Partial<LearningPreferences> | null,
 ): LearningPreferences {
@@ -413,7 +454,7 @@ export function normalizeLearningPreferences(
         ui_theme_preference: UI_THEME_PREFERENCES.has(preferences?.ui_theme_preference as UiThemePreference)
             ? preferences?.ui_theme_preference as UiThemePreference
             : DEFAULT_LEARNING_PREFERENCES.ui_theme_preference,
-        tts_voice: normalizeTtsVoice(preferences?.tts_voice),
+        tts_voice: normalizeLearningPreferenceTtsVoice(preferences?.tts_voice),
         rebuild_auto_open_shadowing_prompt: typeof preferences?.rebuild_auto_open_shadowing_prompt === "boolean"
             ? preferences.rebuild_auto_open_shadowing_prompt
             : DEFAULT_LEARNING_PREFERENCES.rebuild_auto_open_shadowing_prompt,

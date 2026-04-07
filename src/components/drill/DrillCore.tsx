@@ -317,6 +317,7 @@ const PlaybackWaveBars = memo(function PlaybackWaveBars({
         let frameId = 0;
         let cancelled = false;
 
+        // 4-band equalizer config
         const updateLevels = () => {
             if (cancelled) return;
             analyser.getByteFrequencyData(data);
@@ -328,31 +329,31 @@ const PlaybackWaveBars = memo(function PlaybackWaveBars({
                 return sum / (e - s);
             };
 
-            const bassRaw = getBand(0, 3);
-            const midRaw = getBand(3, 10);
-            const trebRaw = getBand(10, 32);
+            const bandsRaw = [
+                getBand(0, 3),   // Sub-bass
+                getBand(3, 8),   // Mid-bass
+                getBand(8, 16),  // Mid
+                getBand(16, 32)  // Treble
+            ];
 
-            const calculate = (raw: number, idx: number, prev: number) => {
-                const normalized = Math.pow(raw / 255, 1.3);
-                const pulse = (Math.sin(now * (3.0 + idx * 0.5) + idx * 1.2) + 1) / 2;
-                const idle = prefersReducedMotion ? 0 : pulse * 0.1;
+            const next = bandsRaw.map((raw, idx) => {
+                const prev = levelBufferRef.current[idx] || 0.1;
+                const normalized = Math.pow(raw / 255, 1.4); // slightly steeper curve for punchiness
+                
+                // Idle floating animation
+                const pulse = (Math.sin(now * (3.5 + idx * 0.8) + idx * 1.5) + 1) / 2;
+                const idle = prefersReducedMotion ? 0 : pulse * 0.15;
                 const target = Math.max(normalized, idle);
 
-                // Very snappy attack for punchiness, slower release for fluid movement
-                const attack = idx === 0 ? 0.35 : idx === 1 ? 0.45 : 0.55;
-                const release = idx === 0 ? 0.92 : idx === 1 ? 0.88 : 0.82;
+                // Very snappy attack, crisp release
+                const attack = [0.45, 0.5, 0.6, 0.7][idx];
+                const release = [0.85, 0.82, 0.78, 0.75][idx];
 
                 const isRising = target > prev;
                 return isRising
                     ? prev * (1 - attack) + target * attack
                     : prev * release + target * (1 - release);
-            };
-
-            const next = [
-                calculate(bassRaw, 0, levelBufferRef.current[0] || 0.1),
-                calculate(midRaw, 1, levelBufferRef.current[1] || 0.1),
-                calculate(trebRaw, 2, levelBufferRef.current[2] || 0.1),
-            ];
+            });
 
             levelBufferRef.current = next;
             setLevels(next);
@@ -371,30 +372,31 @@ const PlaybackWaveBars = memo(function PlaybackWaveBars({
         };
     }, [audioElement, isPlaying, prefersReducedMotion]);
 
-    const [bass, mid, treb] = levels;
+    const [b0, b1, b2, b3] = levels;
 
-    // Map frequency data to height with elastic bounce feel
+    // Neo-Brutalist energetic mapping
     const heights = [
-        6 + bass * 28,  // Bass: moves more
-        10 + mid * 24,  // Mid: stable voice
-        8 + treb * 18   // Treble: quick flicks
+        8 + (b0 || 0) * 32,
+        12 + (b1 || 0) * 28,
+        14 + (b2 || 0) * 24,
+        10 + (b3 || 0) * 20
     ];
 
     return (
-        <div className="relative flex items-center justify-center h-10 w-12 gap-1.5">
+        <div className="relative flex items-center justify-center h-12 w-16 gap-[3px]">
             {heights.map((h, i) => (
                 <div
                     key={i}
                     className={cn(
-                        "w-1.5 rounded-full will-change-[height,transform,opacity]",
-                        "bg-gradient-to-t from-theme-primary-bg to-theme-primary-bg/60 shadow-sm"
+                        "w-[5px] will-change-[height,opacity]",
+                        "bg-theme-primary-bg rounded-[3px]",
+                        "shadow-[0_2px_0_var(--theme-shadow)] border border-theme-border/20",
+                        isPlaying && "animate-[pulse-glow_2s_ease-in-out_infinite]"
                     )}
                     style={{
                         height: `${h}px`,
-                        opacity: 0.8 + (h / 60),
-                        // Squash & Stretch effect based on height delta
-                        transform: `scaleX(${1 - (h - 10) / 100})`,
-                        transition: isPlaying ? "none" : "height 300ms cubic-bezier(0.2, 1, 0.3, 1), transform 300ms ease-out, opacity 300ms ease-out"
+                        opacity: isPlaying ? 1 : 0.6 + (h / 80),
+                        transition: isPlaying ? "none" : "height 400ms cubic-bezier(0.34, 1.56, 0.64, 1), opacity 400ms ease-out"
                     }}
                 />
             ))}
@@ -3838,21 +3840,29 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     }, [playRebuildSfx, prefersReducedMotion]);
 
     useEffect(() => {
+        if (!eloSplash) return;
+        const timer = setTimeout(() => setEloSplash(null), 2200);
+        return () => clearTimeout(timer);
+    }, [eloSplash?.uid]);
+
+    useEffect(() => {
         if (!isRebuildMode) return;
         
-        let objToTrack: any = null;
+        let identifier: any = null;
         let delta = 0;
 
         if (isRebuildPassage && rebuildPassageSummary) {
-            objToTrack = rebuildPassageSummary;
+            identifier = rebuildPassageSummary;
             delta = rebuildPassageSummary.change;
-        } else if (!isRebuildPassage && rebuildFeedback) {
-            objToTrack = rebuildFeedback;
-            delta = rebuildFeedback.systemDelta;
+        } else if (!isRebuildPassage && rebuildFeedback?.selfEvaluation) {
+            identifier = `${rebuildFeedback.resolvedAt}:${rebuildFeedback.selfEvaluation}`;
+            delta = clampRebuildDifficultyDelta(
+                rebuildFeedback.systemDelta + getRebuildSelfEvaluationDelta(rebuildFeedback.selfEvaluation),
+            );
         }
 
-        if (objToTrack && objToTrack !== lastEloSplashObjRef.current) {
-            lastEloSplashObjRef.current = objToTrack;
+        if (identifier && identifier !== lastEloSplashObjRef.current) {
+            lastEloSplashObjRef.current = identifier;
             if (typeof delta === 'number') {
                 setEloSplash({ uid: Math.random().toString(), delta });
                 
@@ -3860,34 +3870,66 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
                     if (AudioContext) {
                         const ctx = new AudioContext();
-                        const osc = ctx.createOscillator();
-                        const gain = ctx.createGain();
-                        osc.connect(gain);
-                        gain.connect(ctx.destination);
+                        const now = ctx.currentTime;
                         
                         if (delta > 0) {
-                            osc.type = 'sine';
-                            osc.frequency.setValueAtTime(400, ctx.currentTime);
-                            osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.3);
-                            gain.gain.setValueAtTime(0.3, ctx.currentTime);
-                            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+                            // Premium Chime for +Elo
+                            const playNote = (freq: number, startTime: number) => {
+                                const osc = ctx.createOscillator();
+                                const gain = ctx.createGain();
+                                osc.connect(gain);
+                                gain.connect(ctx.destination);
+                                
+                                osc.type = 'sine';
+                                osc.frequency.value = freq;
+                                
+                                gain.gain.setValueAtTime(0, startTime);
+                                gain.gain.linearRampToValueAtTime(0.2, startTime + 0.05);
+                                gain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.4);
+                                
+                                osc.start(startTime);
+                                osc.stop(startTime + 0.5);
+                            };
+                            
+                            playNote(523.25, now);       // C5
+                            playNote(659.25, now + 0.08); // E5
+                            playNote(783.99, now + 0.16); // G5
+                            playNote(1046.50, now + 0.24); // C6
                         } else {
-                            osc.type = 'triangle';
-                            osc.frequency.setValueAtTime(300, ctx.currentTime);
-                            osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.4);
-                            gain.gain.setValueAtTime(0.3, ctx.currentTime);
-                            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6);
+                            // Heavy Glitch Dive for -Elo
+                            const osc = ctx.createOscillator();
+                            const osc2 = ctx.createOscillator();
+                            const gain = ctx.createGain();
+                            const filter = ctx.createBiquadFilter();
+                            
+                            osc.connect(gain);
+                            osc2.connect(gain);
+                            gain.connect(filter);
+                            filter.connect(ctx.destination);
+                            
+                            osc.type = 'sawtooth';
+                            osc2.type = 'square';
+                            
+                            osc.frequency.setValueAtTime(150, now);
+                            osc.frequency.exponentialRampToValueAtTime(40, now + 0.3);
+                            osc2.frequency.setValueAtTime(140, now);
+                            osc2.frequency.exponentialRampToValueAtTime(35, now + 0.3);
+                            
+                            filter.type = 'lowpass';
+                            filter.frequency.setValueAtTime(2000, now);
+                            filter.frequency.exponentialRampToValueAtTime(100, now + 0.4);
+                            
+                            gain.gain.setValueAtTime(0.4, now);
+                            gain.gain.linearRampToValueAtTime(0.4, now + 0.1);
+                            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+                            
+                            osc.start(now);
+                            osc2.start(now);
+                            osc.stop(now + 0.6);
+                            osc2.stop(now + 0.6);
                         }
-                        
-                        osc.start(ctx.currentTime);
-                        osc.stop(ctx.currentTime + 0.6);
                     }
                 } catch(e) {}
-
-                const timer = setTimeout(() => {
-                    setEloSplash(null);
-                }, 2200);
-                return () => clearTimeout(timer);
             }
         }
     }, [isRebuildMode, isRebuildPassage, rebuildPassageSummary, rebuildFeedback]);
@@ -6174,11 +6216,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             clearRebuildPassageShadowingPromptTimer();
             setRebuildPassageShadowingSegmentIndex(submittedSegmentIndex);
             setRebuildPassageShadowingFlow("idle");
-            rebuildPassageShadowingPromptTimerRef.current = window.setTimeout(() => {
-                setRebuildPassageShadowingSegmentIndex(submittedSegmentIndex);
-                setRebuildPassageShadowingFlow("prompt");
-                rebuildPassageShadowingPromptTimerRef.current = null;
-            }, REBUILD_PASSAGE_SHADOWING_PROMPT_DELAY_MS);
+            if (rebuildShadowingAutoOpen) {
+                rebuildPassageShadowingPromptTimerRef.current = window.setTimeout(() => {
+                    setRebuildPassageShadowingSegmentIndex(submittedSegmentIndex);
+                    setRebuildPassageShadowingFlow("prompt");
+                    rebuildPassageShadowingPromptTimerRef.current = null;
+                }, REBUILD_PASSAGE_SHADOWING_PROMPT_DELAY_MS);
+            }
         } else {
             clearRebuildSentenceShadowingPromptTimer();
             setPendingRebuildSentenceFeedback(null);
@@ -9126,7 +9170,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             ? "border-emerald-200/80 bg-white/92 text-emerald-700 shadow-[0_4px_12px_rgba(2,44,34,0.08)] hover:bg-emerald-50/80 hover:border-emerald-300"
             : activeCosmeticUi.iconButtonClass;
         const themedNextButtonStyle = {
-            backgroundImage: activeCosmeticUi.nextButtonGradient,
+            background: activeCosmeticUi.nextButtonGradient,
             boxShadow: activeCosmeticUi.nextButtonShadow,
         } as const;
 
@@ -9569,7 +9613,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 >
                                     <motion.div
                                         className="h-full rounded-full"
-                                        style={{ backgroundImage: activeCosmeticUi.nextButtonGradient }}
+                                        style={{ background: activeCosmeticUi.nextButtonGradient }}
                                         initial={false}
                                         animate={{ width: `${stageProgressPercent}%` }}
                                         transition={{ duration: prefersReducedMotion ? 0.12 : 0.32, ease: "easeOut" }}
@@ -12588,7 +12632,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                         onClick={() => void handleGenerateDrill(undefined, undefined, true)}
                                         className="group relative flex w-full items-center justify-center gap-3 rounded-full px-8 py-3.5 text-sm font-bold tracking-wide text-white transition-all hover:scale-105 active:scale-95 md:text-base"
                                         style={{
-                                            backgroundImage: activeCosmeticUi.nextButtonGradient,
+                                            background: activeCosmeticUi.nextButtonGradient,
                                             boxShadow: activeCosmeticUi.nextButtonShadow,
                                         }}
                                     >
@@ -12612,7 +12656,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                         disabled={isRebuildMode && !rebuildFeedback?.selfEvaluation}
                                         className="group relative flex items-center gap-3 px-8 py-3.5 text-white rounded-full font-bold hover:scale-105 active:scale-95 transition-all text-sm md:text-base tracking-wide overflow-hidden disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:scale-100"
                                         style={{
-                                            backgroundImage: streakTier > 0 ? streakVisual.nextGradient : activeCosmeticUi.nextButtonGradient,
+                                            background: streakTier > 0 ? streakVisual.nextGradient : activeCosmeticUi.nextButtonGradient,
                                             boxShadow: streakTier > 0 ? streakVisual.nextShadow : activeCosmeticUi.nextButtonShadow,
                                         }}
                                     >
@@ -13145,34 +13189,65 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         <motion.div
                             key={eloSplash.uid}
                             initial={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-                            animate={{ backdropFilter: "blur(8px)", backgroundColor: "rgba(0,0,0,0.4)" }}
+                            animate={{ backdropFilter: "blur(12px)", backgroundColor: "rgba(0,0,0,0.6)" }}
                             exit={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)", opacity: 0 }}
-                            className="fixed inset-0 z-[99999] flex flex-col items-center justify-center pointer-events-none"
+                            className="fixed inset-0 z-[99999] flex items-center justify-center pointer-events-none"
                         >
-                            <motion.div
-                                initial={{ scale: 0, opacity: 0, rotate: eloSplash.delta > 0 ? -15 : 15, y: 150 }}
-                                animate={{ scale: [1.3, 1], opacity: 1, rotate: 0, y: 0 }}
-                                exit={{ scale: 0.8, y: eloSplash.delta > 0 ? -100 : 100, opacity: 0 }}
-                                transition={{ type: "spring", stiffness: 350, damping: 20, duration: 0.6 }}
-                                className="flex flex-col items-center justify-center gap-1"
-                            >
-                                <motion.span 
-                                    className={cn(
-                                        "text-[9rem] md:text-[12rem] font-black tracking-tighter drop-shadow-[0_20px_50px_rgba(0,0,0,0.6)] leading-none",
-                                        eloSplash.delta > 0 ? "text-emerald-400" : (eloSplash.delta === 0 ? "text-amber-400" : "text-rose-500")
-                                    )}
+                            {eloSplash.delta > 0 ? (
+                                <motion.div
+                                    initial={{ scale: 0.5, opacity: 0, y: 40, rotateX: 45 }}
+                                    animate={{ scale: [1.2, 1], opacity: 1, y: 0, rotateX: 0 }}
+                                    exit={{ scale: 1.1, opacity: 0, filter: "blur(10px)" }}
+                                    transition={{ type: "spring", stiffness: 400, damping: 25, duration: 0.6 }}
+                                    className="relative flex flex-col items-center justify-center p-12 rounded-[3.5rem] bg-gradient-to-b from-white/10 to-white/5 border border-white/20 shadow-[0_0_80px_rgba(16,185,129,0.3)] backdrop-blur-xl isolate overflow-hidden"
                                 >
-                                    {eloSplash.delta > 0 ? "+" : ""}{eloSplash.delta}
-                                </motion.span>
-                                <motion.span 
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: 0.3, type: "spring" }}
-                                    className="text-3xl md:text-5xl font-black text-white/90 uppercase tracking-[0.2em] drop-shadow-md"
+                                    <div className="absolute inset-0 rounded-[3.5rem] mix-blend-overlay opacity-50 z-[-1]">
+                                        <div className="absolute inset-0 bg-gradient-to-tr from-emerald-400/30 via-transparent to-teal-300/30" />
+                                        <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] animate-[spin_4s_linear_infinite] bg-[conic-gradient(from_90deg_at_50%_50%,rgba(16,185,129,0)_0%,rgba(16,185,129,0.3)_50%,rgba(16,185,129,0)_100%)]" />
+                                    </div>
+                                    <motion.span 
+                                        className="relative text-[8rem] md:text-[11.5rem] font-black tracking-tighter text-emerald-400 drop-shadow-[0_0_30px_rgba(52,211,153,0.8)] leading-none"
+                                    >
+                                        +{eloSplash.delta}
+                                    </motion.span>
+                                    <motion.span 
+                                        initial={{ opacity: 0, letterSpacing: "0em" }}
+                                        animate={{ opacity: 1, letterSpacing: "0.2em" }}
+                                        transition={{ delay: 0.2, duration: 0.5 }}
+                                        className="relative mt-2 text-2xl md:text-3xl font-black text-white/95 uppercase drop-shadow-md"
+                                    >
+                                        Elo Gained
+                                    </motion.span>
+                                </motion.div>
+                            ) : (
+                                <motion.div
+                                    initial={{ scale: 1.5, opacity: 0, skewX: -20, filter: "brightness(2) contrast(2)" }}
+                                    animate={{ 
+                                        scale: 1, 
+                                        opacity: 1, 
+                                        skewX: [20, -10, 8, -4, 0],
+                                        x: [-15, 15, -8, 8, 0],
+                                        filter: "brightness(1) contrast(1)"
+                                    }}
+                                    exit={{ scale: 0.9, opacity: 0, y: 50, filter: "grayscale(1)" }}
+                                    transition={{ duration: 0.5, ease: "easeOut" }}
+                                    className="flex flex-col items-center justify-center p-12 rounded-3xl bg-red-950/60 border-y-4 border-red-600/60 shadow-[0_0_120px_rgba(220,38,38,0.5)] backdrop-blur-md mix-blend-screen"
                                 >
-                                    {eloSplash.delta > 0 ? "Elo Gained" : (eloSplash.delta === 0 ? "No Elo Gained" : "Elo Lost")}
-                                </motion.span>
-                            </motion.div>
+                                    <motion.span 
+                                        className="text-[9.5rem] md:text-[13rem] font-black tracking-widest text-red-500 leading-none"
+                                        style={{ textShadow: "6px 0 0 rgba(255,0,0,0.8), -6px 0 0 rgba(0,255,255,0.4)" }}
+                                    >
+                                        {eloSplash.delta}
+                                    </motion.span>
+                                    <motion.span 
+                                        animate={{ opacity: [1, 0.4, 1, 0.1, 1], x: [0, -2, 2, 0] }}
+                                        transition={{ duration: 0.4, repeat: 2 }}
+                                        className="mt-4 text-3xl md:text-5xl font-black text-red-300 uppercase tracking-[0.35em]"
+                                    >
+                                        Elo Deducted
+                                    </motion.span>
+                                </motion.div>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
