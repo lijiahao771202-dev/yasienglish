@@ -10416,8 +10416,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     };
 
     return (
-        <div
-            className={cn(
+        <>
+            <div
+                className={cn(
                 "fixed inset-0 z-50 transition-colors duration-1000 bg-theme-base-bg",
                     isRebuildPassage
                         ? "flex items-start justify-center p-0 md:px-6 md:pb-6 md:pt-2"
@@ -13176,7 +13177,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     )}
                 </AnimatePresence>
 
-            </motion.div>
+            </div>
 
             {/* ROULETTE OVERLAY */}
             <AnimatePresence key="roulette-overlay">
@@ -13308,6 +13309,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+        </>
     );
 }
