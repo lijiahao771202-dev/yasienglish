@@ -70,6 +70,7 @@ export interface LearningPreferences {
     daily_goal_minutes: number;
     ui_theme_preference: UiThemePreference;
     tts_voice: TtsVoice;
+    rebuild_auto_open_shadowing_prompt?: boolean;
 }
 
 export const DEFAULT_PROFILE_USERNAME = "Yasi Learner";
@@ -362,6 +363,7 @@ export const DEFAULT_LEARNING_PREFERENCES: LearningPreferences = {
     daily_goal_minutes: 20,
     ui_theme_preference: "bubblegum_pop",
     tts_voice: DEFAULT_TTS_VOICE,
+    rebuild_auto_open_shadowing_prompt: true,
 };
 
 const TARGET_MODES = new Set<LearningTargetMode>(["read", "battle", "vocab"]);
@@ -412,5 +414,8 @@ export function normalizeLearningPreferences(
             ? preferences?.ui_theme_preference as UiThemePreference
             : DEFAULT_LEARNING_PREFERENCES.ui_theme_preference,
         tts_voice: normalizeTtsVoice(preferences?.tts_voice),
+        rebuild_auto_open_shadowing_prompt: typeof preferences?.rebuild_auto_open_shadowing_prompt === "boolean"
+            ? preferences.rebuild_auto_open_shadowing_prompt
+            : DEFAULT_LEARNING_PREFERENCES.rebuild_auto_open_shadowing_prompt,
     };
 }

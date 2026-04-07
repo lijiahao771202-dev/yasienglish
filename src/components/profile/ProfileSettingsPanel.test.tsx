@@ -42,6 +42,7 @@ describe("ProfileSettingsPanel", () => {
                             daily_goal_minutes: 20,
                             ui_theme_preference: "bubblegum_pop",
                             tts_voice: "en-US-EmmaNeural",
+                            rebuild_auto_open_shadowing_prompt: true,
                         },
                     }}
                     onSave={onSave}
@@ -50,18 +51,30 @@ describe("ProfileSettingsPanel", () => {
             );
         });
 
-        const username = container.querySelector<HTMLInputElement>("#username");
-        const bio = container.querySelector<HTMLTextAreaElement>("#bio");
-        const deepSeekApiKey = container.querySelector<HTMLInputElement>("#deepseek-api-key");
-        const targetMode = container.querySelector<HTMLSelectElement>("#target-mode");
-        const englishLevel = container.querySelector<HTMLSelectElement>("#english-level");
-        const dailyGoal = container.querySelector<HTMLInputElement>("#daily-goal");
-        const uiTheme = container.querySelector<HTMLSelectElement>("#ui-theme");
-        const avatar = container.querySelector<HTMLButtonElement>('button[data-avatar-id="mint-orbit"]');
+        const username = container.querySelector<HTMLInputElement>("input#username");
+        const bio = container.querySelector<HTMLTextAreaElement>("textarea#bio");
+        const deepSeekApiKey = container.querySelector<HTMLInputElement>("input#deepseek-api-key");
+        const targetMode = container.querySelector<HTMLSelectElement>("select#target-mode");
+        const englishLevel = container.querySelector<HTMLSelectElement>("select#english-level");
+        const dailyGoal = container.querySelector<HTMLInputElement>("input#daily-goal");
+        const uiTheme = container.querySelector<HTMLSelectElement>("select#ui-theme");
+        const rebuildShadowingAutoOpen = container.querySelector<HTMLInputElement>("input#rebuild-shadowing-auto-open");
+        const avatar = container.querySelector<HTMLButtonElement>('button[data-avatar-id="mint-frog"]');
         const profileForm = container.querySelector<HTMLFormElement>('form[data-form="profile"]');
 
-        if (!username || !bio || !deepSeekApiKey || !targetMode || !englishLevel || !dailyGoal || !uiTheme || !avatar || !profileForm) {
-            throw new Error("Missing profile inputs");
+        expect(username).toBeTruthy();
+        expect(bio).toBeTruthy();
+        expect(deepSeekApiKey).toBeTruthy();
+        expect(targetMode).toBeTruthy();
+        expect(englishLevel).toBeTruthy();
+        expect(dailyGoal).toBeTruthy();
+        expect(uiTheme).toBeTruthy();
+        expect(rebuildShadowingAutoOpen).toBeTruthy();
+        expect(avatar).toBeTruthy();
+        expect(profileForm).toBeTruthy();
+
+        if (!username || !bio || !deepSeekApiKey || !targetMode || !englishLevel || !dailyGoal || !uiTheme || !rebuildShadowingAutoOpen || !avatar || !profileForm) {
+            throw new Error("Missing profile inputs after render");
         }
 
         await act(async () => {
@@ -72,6 +85,7 @@ describe("ProfileSettingsPanel", () => {
             setInputValue(englishLevel, "C1");
             setInputValue(dailyGoal, "45");
             setInputValue(uiTheme, "starlight_arcade");
+            rebuildShadowingAutoOpen.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             avatar.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
@@ -81,7 +95,7 @@ describe("ProfileSettingsPanel", () => {
 
         expect(onSave).toHaveBeenCalledWith({
             username: "Nova",
-            avatar_preset: "mint-orbit",
+            avatar_preset: "mint-frog",
             bio: "A sweeter dashboard helps me stay with it.",
             deepseek_api_key: "sk-user-123",
             learning_preferences: {
@@ -90,6 +104,7 @@ describe("ProfileSettingsPanel", () => {
                 daily_goal_minutes: 45,
                 ui_theme_preference: "starlight_arcade",
                 tts_voice: "en-US-EmmaNeural",
+                rebuild_auto_open_shadowing_prompt: false,
             },
         });
 

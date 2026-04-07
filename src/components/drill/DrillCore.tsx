@@ -64,6 +64,7 @@ import {
     shouldTriggerSentenceRebuildGacha,
 } from "@/lib/rebuild-rewards";
 import { playRebuildSfx } from "@/lib/rebuild-sfx";
+import { normalizeLearningPreferences } from "@/lib/profile-settings";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 import { buildTranslationHighlights, normalizeTranslationForComparison } from "@/lib/translation-diff";
 import { requestTtsPayload, resolveTtsAudioBlob } from "@/lib/tts-client";
@@ -1556,6 +1557,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [isReportingTooHard, setIsReportingTooHard] = useState(false);
     const [drillFeedback, setDrillFeedback] = useState<DrillFeedback | null>(null);
     const [rebuildFeedback, setRebuildFeedback] = useState<RebuildFeedbackState | null>(null);
+    const [eloSplash, setEloSplash] = useState<{ uid: string, delta: number } | null>(null);
+    const lastEloSplashObjRef = useRef<any>(null);
     const { isReady: isIpaReady, getIPA } = useIPA(isRebuildMode);
     const [hasRatedDrill, setHasRatedDrill] = useState(false);
     const [analysisRequested, setAnalysisRequested] = useState(false);
@@ -1685,6 +1688,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [rebuildTypingBuffer, setRebuildTypingBuffer] = useState("");
     const [rebuildAutocorrect, setRebuildAutocorrect] = useState(true);
     const [rebuildHideTokens, setRebuildHideTokens] = useState(false);
+    const [rebuildShadowingAutoOpen, setRebuildShadowingAutoOpen] = useState(true);
     const [isEloLoaded, setIsEloLoaded] = useState(false); // Track if Elo has been loaded from DB
     const eloRatingRef = useRef(DEFAULT_BASE_ELO);
     const listeningEloRef = useRef(DEFAULT_BASE_ELO);
@@ -3280,6 +3284,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             const activeUserMeta = await db.sync_meta.get("active_user_id");
             rebuildMetaNamespaceRef.current = typeof activeUserMeta?.value === "string" ? activeUserMeta.value : "local";
             if (profile) {
+                const learningPreferences = normalizeLearningPreferences(profile.learning_preferences);
                 setEloRating(profile.elo_rating);
                 setStreakCount(profile.streak_count);
 
@@ -3312,6 +3317,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     ? profile.active_theme as CosmeticThemeId
                     : DEFAULT_FREE_THEME;
                 setCosmeticTheme(loadedActive);
+                setRebuildShadowingAutoOpen(learningPreferences.rebuild_auto_open_shadowing_prompt ?? true);
                 const hiddenMeta = await db.sync_meta.get(buildRebuildMetaKey("hidden_elo"));
                 const syncedRebuildElo = typeof profile.rebuild_hidden_elo === "number"
                     ? profile.rebuild_hidden_elo
@@ -3333,6 +3339,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 setDictationStreak(0);
                 setRebuildBattleElo(DEFAULT_BASE_ELO);
                 setRebuildBattleStreak(0);
+                setRebuildShadowingAutoOpen(true);
                 eloRatingRef.current = DEFAULT_BASE_ELO;
                 listeningEloRef.current = DEFAULT_BASE_ELO;
                 dictationEloRef.current = DEFAULT_BASE_ELO;
@@ -3801,6 +3808,61 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             });
         }, 220);
     }, [playRebuildSfx, prefersReducedMotion]);
+
+    useEffect(() => {
+        if (!isRebuildMode) return;
+        
+        let objToTrack: any = null;
+        let delta = 0;
+
+        if (isRebuildPassage && rebuildPassageSummary) {
+            objToTrack = rebuildPassageSummary;
+            delta = rebuildPassageSummary.change;
+        } else if (!isRebuildPassage && rebuildFeedback) {
+            objToTrack = rebuildFeedback;
+            delta = rebuildFeedback.systemDelta;
+        }
+
+        if (objToTrack && objToTrack !== lastEloSplashObjRef.current) {
+            lastEloSplashObjRef.current = objToTrack;
+            if (typeof delta === 'number') {
+                setEloSplash({ uid: Math.random().toString(), delta });
+                
+                try {
+                    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+                    if (AudioContext) {
+                        const ctx = new AudioContext();
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        
+                        if (delta > 0) {
+                            osc.type = 'sine';
+                            osc.frequency.setValueAtTime(400, ctx.currentTime);
+                            osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.3);
+                            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+                        } else {
+                            osc.type = 'triangle';
+                            osc.frequency.setValueAtTime(300, ctx.currentTime);
+                            osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.4);
+                            gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.6);
+                        }
+                        
+                        osc.start(ctx.currentTime);
+                        osc.stop(ctx.currentTime + 0.6);
+                    }
+                } catch(e) {}
+
+                const timer = setTimeout(() => {
+                    setEloSplash(null);
+                }, 2200);
+                return () => clearTimeout(timer);
+            }
+        }
+    }, [isRebuildMode, isRebuildPassage, rebuildPassageSummary, rebuildFeedback]);
 
     useEffect(() => {
         if (isRebuildPassage) return;
@@ -6091,10 +6153,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             setPendingRebuildSentenceFeedback(null);
             setRebuildFeedback(nextFeedback);
             setRebuildSentenceShadowingFlow("feedback");
-            rebuildSentenceShadowingPromptTimerRef.current = window.setTimeout(() => {
-                setRebuildSentenceShadowingFlow("prompt");
-                rebuildSentenceShadowingPromptTimerRef.current = null;
-            }, REBUILD_PASSAGE_SHADOWING_PROMPT_DELAY_MS);
+            if (rebuildShadowingAutoOpen) {
+                rebuildSentenceShadowingPromptTimerRef.current = window.setTimeout(() => {
+                    setRebuildSentenceShadowingFlow("prompt");
+                    rebuildSentenceShadowingPromptTimerRef.current = null;
+                }, REBUILD_PASSAGE_SHADOWING_PROMPT_DELAY_MS);
+            }
         }
         setAnalysisRequested(false);
         setAnalysisDetailsOpen(false);
@@ -6114,6 +6178,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         rebuildEditCount,
         rebuildReplayCount,
         rebuildStartedAt,
+        rebuildShadowingAutoOpen,
         launchRebuildSuccessCelebration,
         playRebuildSfx,
     ]);
@@ -9815,24 +9880,35 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         <div className="flex-1 font-newsreader text-[1.4rem] leading-[2.1rem] text-stone-900 md:text-[1.65rem] md:leading-[2.5rem]">
                             {renderInteractiveText(drillData.reference_english)}
                         </div>
-                        <button
-                            type="button"
-                            onClick={() => { void playAudio(); }}
-                            disabled={isAudioLoading}
-                            className={cn(
-                                "shrink-0 inline-flex h-11 w-11 items-center justify-center rounded-full border transition-all hover:-translate-y-0.5",
-                                isAudioLoading
-                                    ? "cursor-wait border-stone-200 bg-stone-50 text-stone-400"
-                                    : "border-stone-200 bg-white text-stone-500 shadow-sm hover:border-stone-300 hover:bg-stone-50"
-                            )}
-                            title="重播英文原句"
-                        >
-                            {loadingAudioKeys.has(getSentenceAudioCacheKey(drillData.reference_english)) ? (
-                                <RefreshCw className="h-4 w-4 animate-spin text-stone-300" />
-                            ) : (
-                                <Volume2 className="h-4 w-4" />
-                            )}
-                        </button>
+                        <div className="flex shrink-0 items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => { void playAudio(); }}
+                                disabled={isAudioLoading}
+                                className={cn(
+                                    "inline-flex h-11 w-11 items-center justify-center rounded-full border transition-all hover:-translate-y-0.5",
+                                    isAudioLoading
+                                        ? "cursor-wait border-stone-200 bg-stone-50 text-stone-400"
+                                        : "border-stone-200 bg-white text-stone-500 shadow-sm hover:border-stone-300 hover:bg-stone-50"
+                                )}
+                                title="重播英文原句"
+                            >
+                                {loadingAudioKeys.has(getSentenceAudioCacheKey(drillData.reference_english)) ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin text-stone-300" />
+                                ) : (
+                                    <Volume2 className="h-4 w-4" />
+                                )}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setRebuildSentenceShadowingFlow("shadowing")}
+                                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-100"
+                                title="手动开始 Shadowing 训练"
+                            >
+                                <Mic className="h-4 w-4" />
+                                Shadowing
+                            </button>
+                        </div>
                     </div>
 
                     <div className="mt-3 font-mono text-[13px] tracking-wide text-stone-400/80 md:mt-4 md:text-[14px]">
@@ -13019,6 +13095,43 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     )}
                 </AnimatePresence>
 
+                <AnimatePresence>
+                    {eloSplash && (
+                        <motion.div
+                            key={eloSplash.uid}
+                            initial={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
+                            animate={{ backdropFilter: "blur(8px)", backgroundColor: "rgba(0,0,0,0.4)" }}
+                            exit={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)", opacity: 0 }}
+                            className="fixed inset-0 z-[99999] flex flex-col items-center justify-center pointer-events-none"
+                        >
+                            <motion.div
+                                initial={{ scale: 0, opacity: 0, rotate: eloSplash.delta > 0 ? -15 : 15, y: 150 }}
+                                animate={{ scale: [1.3, 1], opacity: 1, rotate: 0, y: 0 }}
+                                exit={{ scale: 0.8, y: eloSplash.delta > 0 ? -100 : 100, opacity: 0 }}
+                                transition={{ type: "spring", stiffness: 350, damping: 20, duration: 0.6 }}
+                                className="flex flex-col items-center justify-center gap-1"
+                            >
+                                <motion.span 
+                                    className={cn(
+                                        "text-[9rem] md:text-[12rem] font-black tracking-tighter drop-shadow-[0_20px_50px_rgba(0,0,0,0.6)] leading-none",
+                                        eloSplash.delta > 0 ? "text-emerald-400" : (eloSplash.delta === 0 ? "text-amber-400" : "text-rose-500")
+                                    )}
+                                >
+                                    {eloSplash.delta > 0 ? "+" : ""}{eloSplash.delta}
+                                </motion.span>
+                                <motion.span 
+                                    initial={{ opacity: 0, y: 20 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.3, type: "spring" }}
+                                    className="text-3xl md:text-5xl font-black text-white/90 uppercase tracking-[0.2em] drop-shadow-md"
+                                >
+                                    {eloSplash.delta > 0 ? "Elo Gained" : (eloSplash.delta === 0 ? "No Elo Gained" : "Elo Lost")}
+                                </motion.span>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
             </motion.div>
 
             {/* ROULETTE OVERLAY */}
@@ -13270,7 +13383,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     </motion.div>
                 )}
             </AnimatePresence>
-
-        </AnimatePresence >
+        </AnimatePresence>
     );
 }

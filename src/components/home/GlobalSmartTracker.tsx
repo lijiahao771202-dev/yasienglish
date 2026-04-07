@@ -4,7 +4,8 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { usePathname } from 'next/navigation';
 import { useDailyPlans } from '@/hooks/useDailyPlans';
-import { Sparkles, Trophy, ChevronRight, X, Loader2 } from 'lucide-react';
+import { Sparkles, Trophy, ChevronRight, X, Loader2, Blocks } from 'lucide-react';
+import confetti from 'canvas-confetti';
 import type { DailyPlanItem } from '@/lib/db';
 
 const playIncrementSound = () => {
@@ -83,7 +84,7 @@ export function GlobalSmartTracker() {
     const [showAbsolute, setShowAbsolute] = useState(false);
 
     useEffect(() => {
-        if (pathname === '/' || pathname === '/home') return;
+        if (pathname === '/' || pathname === '/home' || pathname.startsWith('/profile') || pathname.startsWith('/vocab')) return;
 
         setRevealChunks(false);
         setIsHeroOverlay(true);
@@ -145,31 +146,113 @@ export function GlobalSmartTracker() {
 
     }, [smartItems]); // Removed isExpanded from deps to avoid resetting timer manually
 
+    // Check if there are any completed/exceeded tasks meant for the current route directly
+    const isRouteOverExceeded = useMemo(() => {
+        return smartItems.some(item => {
+            if ((item.current || 0) < (item.target || 1) && !item.completed) return false;
+            if (pathname === '/' || pathname === '/home') return true;
+            if (pathname.startsWith('/battle') && item.type !== 'rebuild') return false;
+            if (pathname.startsWith('/listening-cabin') && item.type !== 'listening') return false;
+            if ((pathname.startsWith('/read') || pathname.startsWith('/cat')) && item.type !== 'reading' && item.type !== 'cat') return false;
+            if (pathname.startsWith('/vocab') && item.type !== 'vocab') return false;
+            return true;
+        });
+    }, [smartItems, pathname]);
+
+    // Blast extreme confetti on over-completion
+    useEffect(() => {
+        if (isHeroOverlay && isRouteOverExceeded) {
+            const colors = ['#f59e0b', '#fbbf24', '#fcd34d', '#ffffff', '#fb923c'];
+
+            const fireBlast = (x: number, y: number, multiplier = 1) => {
+                const count = 150 * multiplier;
+                const defaults = { origin: { x, y }, colors, zIndex: 10000 };
+                
+                confetti({ ...defaults, particleCount: Math.floor(count * 0.25), spread: 26, startVelocity: 55 });
+                confetti({ ...defaults, particleCount: Math.floor(count * 0.2), spread: 60 });
+                confetti({ ...defaults, particleCount: Math.floor(count * 0.35), spread: 100, decay: 0.91, scalar: 0.8 });
+                confetti({ ...defaults, particleCount: Math.floor(count * 0.1), spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 });
+                confetti({ ...defaults, particleCount: Math.floor(count * 0.1), spread: 120, startVelocity: 45 });
+            };
+
+            // 1. Initial massive central super-blast
+            fireBlast(0.5, 0.6, 1.5);
+
+            // 2. Continuous fireworks popping across screen for 2s
+            const duration = 2000;
+            const end = Date.now() + duration;
+
+            const interval = setInterval(function() {
+                if (Date.now() > end) {
+                    return clearInterval(interval);
+                }
+                confetti({
+                    particleCount: 20,
+                    startVelocity: 30,
+                    spread: 360,
+                    ticks: 60,
+                    zIndex: 10000,
+                    origin: { x: Math.random(), y: Math.random() - 0.2 },
+                    colors: colors
+                });
+            }, 200);
+
+            // 3. Two side blasts right at the climax
+            const finalPop = setTimeout(() => {
+                fireBlast(0.2, 0.7, 1);
+                fireBlast(0.8, 0.7, 1);
+            }, 800);
+
+            return () => {
+                clearInterval(interval);
+                clearTimeout(finalPop);
+            };
+        }
+    }, [isHeroOverlay, isRouteOverExceeded]);
+
+    // Filter to only show uncompleted items or recently completed ones, AND match the current route!
+    const activeItems = useMemo(() => {
+        return smartItems.filter(item => {
+            if (item.id === celebrateGoalId) return true;
+            if ((item.current || 0) >= (item.target || 1) || item.completed) return false;
+
+            // Contextual route filtering to prevent distraction
+            if (pathname === '/' || pathname === '/home') return true;
+            
+            // Only show relevant tasks on specific pages
+            if (pathname.startsWith('/battle') && item.type !== 'rebuild') return false;
+            if (pathname.startsWith('/listening-cabin') && item.type !== 'listening') return false;
+            if ((pathname.startsWith('/read') || pathname.startsWith('/cat')) && item.type !== 'reading' && item.type !== 'cat') return false;
+            if (pathname.startsWith('/vocab') && item.type !== 'vocab') return false;
+
+            return true;
+        });
+    }, [smartItems, celebrateGoalId, pathname]);
+
+    // We do not early return null anymore so AnimatePresence can track unmounting!
+    const shouldShowTracker = activeItems.length > 0 || celebrateGoalId || isHeroOverlay;
+
+    // Calculate if we actually have chunkable stuff
+    const hasChunkableItems = useMemo(() => {
+        return activeItems.some(i => i.chunk_size && (i.target || 1) > i.chunk_size);
+    }, [activeItems]);
+
+    const totalChunks = useMemo(() => {
+        return activeItems.reduce((acc, i) => {
+            if (i.chunk_size && (i.target || 1) > i.chunk_size) {
+                return acc + Math.ceil((i.target || 1) / i.chunk_size);
+            }
+            return acc + 1; // Unchunked items count as 1 chunk logically
+        }, 0);
+    }, [activeItems]);
+
     // Exclude if dismissed or no items
     if (isFullyDismissed || smartItems.length === 0) return null;
 
-    // Do not show the floating tracker on the home page (DailyPlanBento takes care of it)
-    if (pathname === '/' || pathname === '/home') return null;
+    // Do not show the floating tracker on non-study pages like home/profile/vocab-notebook
+    if (pathname === '/' || pathname === '/home' || pathname.startsWith('/profile') || pathname.startsWith('/vocab')) return null;
 
-    // Filter to only show uncompleted items or recently completed ones, AND match the current route!
-    const activeItems = smartItems.filter(item => {
-        if (item.id === celebrateGoalId) return true;
-        if ((item.current || 0) >= (item.target || 1) || item.completed) return false;
 
-        // Contextual route filtering to prevent distraction
-        if (pathname === '/' || pathname === '/home') return true;
-        
-        // Only show relevant tasks on specific pages
-        if (pathname.startsWith('/battle') && item.type !== 'rebuild') return false;
-        if (pathname.startsWith('/listening-cabin') && item.type !== 'listening') return false;
-        if ((pathname.startsWith('/read') || pathname.startsWith('/cat')) && item.type !== 'reading' && item.type !== 'cat') return false;
-        if (pathname.startsWith('/vocab') && item.type !== 'vocab') return false;
-
-        return true;
-    });
-
-    // If everything is done and nothing is celebrating, we can hide
-    if (activeItems.length === 0 && !celebrateGoalId && !isHeroOverlay) return null;
 
     // Drag constraints: just let it float freely with some bouncy bounds
     return (
@@ -186,36 +269,188 @@ export function GlobalSmartTracker() {
                 )}
             </AnimatePresence>
 
-            <motion.div 
-                layout="position"
-                transition={{ layout: { type: "spring", stiffness: 120, damping: 25, duration: 1.5 } }}
-                className={isHeroOverlay
-                    ? "fixed inset-0 z-[9999] pointer-events-auto flex flex-col items-center justify-center gap-8"
-                    : "fixed bottom-6 right-6 z-[999] pointer-events-auto flex flex-col items-end gap-3"
-                }
-                drag={!isHeroOverlay}
-                dragMomentum={false}
-                whileDrag={!isHeroOverlay ? { scale: 1.05, cursor: 'grabbing' } : undefined}
-            >
-                <AnimatePresence mode="popLayout">
-                    {isHeroOverlay && (
-                        <motion.div
-                            layout
-                            initial={{ opacity: 0, y: -30, scale: 0.9 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.8 }}
-                            transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-                            className="flex flex-col items-center gap-3 text-white mb-2"
-                        >
-                            <motion.div animate={!revealChunks ? { rotate: 360 } : {}} transition={{ repeat: !revealChunks ? Infinity : 0, duration: 2, ease: "linear" }}>
-                                <Sparkles className={`w-10 h-10 ${!revealChunks ? 'text-theme-text-muted opacity-80' : 'text-theme-active-bg drop-shadow-[0_0_15px_var(--theme-active-bg)]'} transition-colors duration-1000`} />
-                            </motion.div>
-                            <h2 className="font-black text-2xl tracking-[0.2em] drop-shadow-2xl">
-                                {!revealChunks ? "AI 分析任务负荷..." : "已为您切换至[切片模式]"}
-                            </h2>
+            <AnimatePresence>
+                {isHeroOverlay && shouldShowTracker && (
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
+                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                        className="fixed inset-0 z-[9999] pointer-events-auto flex flex-col items-center justify-center gap-8"
+                    >
+                        <AnimatePresence mode="wait">
+                            {isRouteOverExceeded ? (
+                                <motion.div key="overexceeded" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="flex flex-col items-center gap-6">
+                                    <motion.div animate={{ scale: [1, 1.1, 1], rotate: [0, -5, 5, 0] }} transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}>
+                                        <div className="w-24 h-24 bg-amber-400 border-4 border-theme-border rounded-[2.5rem] flex items-center justify-center shadow-[6px_6px_0_0_var(--theme-shadow)] relative overflow-hidden">
+                                            <Trophy className="w-12 h-12 text-white relative z-10" />
+                                            <motion.div 
+                                                className="absolute inset-x-0 bottom-0 bg-white/30"
+                                                animate={{ height: ['0%', '100%'] }}
+                                                transition={{ repeat: Infinity, duration: 3, ease: "linear" }}
+                                            />
+                                        </div>
+                                    </motion.div>
+                                    <h2 className="font-black text-2xl md:text-3xl tracking-[0.2em] text-amber-400 drop-shadow-md text-center flex flex-col gap-2">
+                                        {!revealChunks ? "检测到极限超载..." : "🌟 极速超载模式开启！"}
+                                    </h2>
+                                </motion.div>
+                            ) : (
+                                <motion.div key="routine" className="flex flex-col items-center">
+                                    <AnimatePresence mode="wait">
+                                        {!revealChunks ? (
+                                            <motion.div
+                                                key="analyzing"
+                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                exit={{ opacity: 0, scale: 1.1 }}
+                                                transition={{ duration: 0.3 }}
+                                                className="flex flex-col items-center gap-4"
+                                            >
+                                                <div className="w-16 h-16 bg-theme-base-bg border-4 border-theme-border rounded-[2rem] flex items-center justify-center shadow-[4px_4px_0_0_var(--theme-shadow)]">
+                                                    <Loader2 className="w-8 h-8 text-theme-text animate-spin" />
+                                                </div>
+                                                <h2 className="font-black text-2xl tracking-widest text-white mt-2">
+                                                    感知任务负荷...
+                                                </h2>
+                                            </motion.div>
+                                        ) : (
+                                            <motion.div
+                                                key="chunked"
+                                                initial={{ opacity: 0, scale: 0.5, y: 20 }}
+                                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                transition={{ type: "spring", stiffness: 450, damping: 25 }}
+                                                className="flex flex-col items-center gap-4"
+                                            >
+                                                <div className={`w-20 h-20 border-4 border-theme-border rounded-[2rem] flex items-center justify-center shadow-[6px_6px_0_0_var(--theme-shadow)] relative overflow-hidden ${
+                                                    hasChunkableItems ? 'bg-theme-active-bg' : 'bg-emerald-400'
+                                                }`}>
+                                                    {hasChunkableItems ? (
+                                                        <Blocks className="w-10 h-10 text-theme-active-text z-10" />
+                                                    ) : (
+                                                        <Loader2 className="w-10 h-10 text-white z-10" /> // Using a generic success ring or check logic 
+                                                    )}
+                                                    <motion.div 
+                                                        className="absolute inset-x-0 bottom-0 bg-white/20"
+                                                        initial={{ height: 0 }}
+                                                        animate={{ height: "100%" }}
+                                                        transition={{ delay: 0.2, duration: 0.6 }}
+                                                    />
+                                                </div>
+                                                <div className="flex flex-col items-center">
+                                                    <h2 className="font-black text-3xl tracking-widest text-white mt-2 drop-shadow-md">
+                                                        {hasChunkableItems ? "智能切片开启" : "轨道路由并网"}
+                                                    </h2>
+                                                    {hasChunkableItems ? (
+                                                        <span className="text-white/80 font-bold tracking-widest mt-1 text-sm bg-black/20 px-3 py-1 rounded-full">
+                                                            已划分为 {totalChunks} 个子任务碎块
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-white/80 font-bold tracking-widest mt-1 text-sm bg-black/20 px-3 py-1 rounded-full">
+                                                            负荷极低 · 畅快执行阶段
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                        
+                        {/* Only show items centrally during hero overlay if we need to */}
+                        <motion.div layout className="flex flex-col items-center gap-3">
+                            <AnimatePresence mode="popLayout">
+                                {activeItems.map(item => {
+                                    const absoluteTarget = item.target || 1;
+                                    const absoluteCurrent = item.current || 0;
+                                    const isFullyCompleted = absoluteCurrent >= absoluteTarget;
+
+                                    let relativeCurrent = absoluteCurrent;
+                                    let relativeTarget = absoluteTarget;
+                                    let remaining = absoluteTarget - absoluteCurrent;
+                                    let isChunked = false;
+
+                                    if (!isFullyCompleted && revealChunks && item.chunk_size && absoluteTarget > item.chunk_size) {
+                                        const activeChunkIndex = Math.floor(absoluteCurrent / item.chunk_size);
+                                        const chunkBase = activeChunkIndex * item.chunk_size;
+                                        relativeCurrent = absoluteCurrent - chunkBase;
+                                        
+                                        const currentChunkUpperLimit = Math.min(absoluteTarget, (activeChunkIndex + 1) * item.chunk_size);
+                                        relativeTarget = currentChunkUpperLimit - chunkBase;
+                                        remaining = relativeTarget - relativeCurrent;
+                                        isChunked = true;
+                                    }
+
+                                    const prog = Math.min(100, relativeTarget > 0 ? Math.round((relativeCurrent / relativeTarget) * 100) : 0);
+                                    
+                                    return (
+                                        <motion.div 
+                                            layout
+                                            key={`hero-${item.id}`}
+                                            initial={{ opacity: 0, scale: 0.8, x: 50 }}
+                                            animate={{ opacity: 1, scale: 1, x: 0 }}
+                                            exit={{ opacity: 0, scale: 0.8, x: 50 }}
+                                            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                            className="flex items-center rounded-[3rem] border-[5px] w-[400px] p-4 gap-5 shadow-2xl scale-105 bg-theme-base-bg border-theme-border text-theme-text"
+                                        >
+                                            <div className="shrink-0 rounded-full flex items-center justify-center border-[3px] w-16 h-16 bg-theme-active-bg border-theme-border text-theme-active-text">
+                                                {isFullyCompleted ? <Trophy className="w-6 h-6 animate-bounce" /> : <Loader2 className="w-6 h-6 animate-spin-slow" />}
+                                            </div>
+                                            <div className="flex-1 flex flex-col justify-center min-w-0 z-10">
+                                                <div className="flex justify-between items-end mb-1">
+                                                    <div className="flex items-center gap-1.5 min-w-0 pr-2">
+                                                        <span className="font-black truncate transition-all duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] text-base text-theme-text">
+                                                            {item.text}
+                                                        </span>
+                                                        <AnimatePresence>
+                                                            {isChunked && (
+                                                                <motion.span
+                                                                    initial={{ opacity: 0, scale: 0, x: -20 }}
+                                                                    animate={{ opacity: 1, scale: 1, x: 0 }}
+                                                                    className="px-1.5 py-0.5 rounded border overflow-hidden font-black uppercase tracking-wider shrink-0 shadow-sm transition-all duration-1000 text-[10px] bg-theme-active-bg/15 text-[color:var(--theme-active-bg)] border-[color:var(--theme-active-bg)]/30"
+                                                                >
+                                                                    智能切片
+                                                                </motion.span>
+                                                            )}
+                                                        </AnimatePresence>
+                                                    </div>
+                                                    <span className="font-black tracking-wider text-sm text-theme-text-light shrink-0">
+                                                        {isFullyCompleted 
+                                                            ? `✓ ${absoluteCurrent}` 
+                                                            : (isChunked ? `剩 ${Math.max(0, remaining)}` : `${absoluteCurrent}/${absoluteTarget}`)}
+                                                    </span>
+                                                </div>
+                                                <div className="rounded-full overflow-hidden border-[2px] relative transition-all duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] h-3.5 border-theme-border bg-theme-card-bg">
+                                                    <motion.div 
+                                                        className="absolute left-0 top-0 bottom-0 bg-theme-text overflow-hidden transition-all duration-1000"
+                                                        style={{ width: `${prog}%` }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    );
+                                })}
+                            </AnimatePresence>
                         </motion.div>
-                    )}
-                </AnimatePresence>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* FLOATING TRACKER (DRAGGABLE) */}
+            <AnimatePresence>
+                {!isHeroOverlay && shouldShowTracker && (
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.8, y: 50 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.8, y: 50 }}
+                        transition={{ duration: 0.5, type: "spring", stiffness: 300, damping: 25 }}
+                        className="fixed bottom-6 right-6 z-[999] pointer-events-auto"
+                        drag
+                        dragMomentum={false}
+                        whileDrag={{ scale: 1.05, cursor: 'grabbing' }}
+                    >
+                        <motion.div layout className="flex flex-col items-end gap-3 relative">
 
                 {/* Celebration Confetti Overlay (local to widget but overflows) */}
             <AnimatePresence>
@@ -260,8 +495,9 @@ export function GlobalSmartTracker() {
 
                         const isCeleb = item.id === celebrateGoalId;
                         const isInc = item.id === incrementGoalId;
+                        const isFullyCompleted = absoluteCurrent >= absoluteTarget;
 
-                        if (revealChunks && item.chunk_size && absoluteTarget > item.chunk_size) {
+                        if (!isFullyCompleted && revealChunks && item.chunk_size && absoluteTarget > item.chunk_size) {
                             // If celebrating a chunk completion, freeze the UI at the chunk limit so the bar fills 100%. Otherwise roll over.
                             const refValue = isCeleb ? Math.max(0, absoluteCurrent - 1) : absoluteCurrent;
                             const activeChunkIndex = Math.floor(refValue / item.chunk_size);
@@ -360,18 +596,35 @@ export function GlobalSmartTracker() {
                                         <span className={`font-black tracking-wider transition-all duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                                             isHeroOverlay ? 'text-sm' : 'text-[10px] min-w-[32px] text-right'
                                         } ${isInc ? 'text-white' : 'text-theme-text-light'}`}>
-                                            {showAbsolute 
-                                                ? `${absoluteCurrent}/${absoluteTarget}` 
-                                                : (isChunked ? `剩 ${Math.max(0, remaining)}` : `${absoluteCurrent}/${absoluteTarget}`)}
+                                            {isFullyCompleted 
+                                                ? `✓ ${absoluteCurrent}`
+                                                : (showAbsolute 
+                                                    ? `${absoluteCurrent}/${absoluteTarget}` 
+                                                    : (isChunked ? `剩 ${Math.max(0, remaining)}` : `${absoluteCurrent}/${absoluteTarget}`)
+                                                )}
                                         </span>
                                     </div>
                                     <div className={`rounded-full overflow-hidden border-[2px] relative transition-all duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                                         isHeroOverlay ? 'h-3.5' : 'h-2.5'
-                                    } ${isInc || isCeleb ? 'border-white/30 bg-black/10' : 'border-theme-border bg-theme-card-bg'}`}>
+                                    } ${
+                                        isFullyCompleted ? 'border-amber-400 bg-amber-500/10 shadow-[0_0_15px_rgba(251,191,36,0.3)]' :
+                                        (isInc || isCeleb ? 'border-white/30 bg-black/10' : 'border-theme-border bg-theme-card-bg')
+                                    }`}>
                                         <motion.div 
-                                            className={`absolute left-0 top-0 bottom-0 transition-all duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] ${isCeleb ? 'bg-yellow-500' : isInc ? 'bg-white' : 'bg-theme-text'}`}
+                                            className={`absolute left-0 top-0 bottom-0 transition-all duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                                isFullyCompleted ? 'bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 shadow-[inset_0_0_8px_rgba(255,255,255,0.5)]' :
+                                                (isCeleb ? 'bg-yellow-500' : isInc ? 'bg-white' : 'bg-theme-text')
+                                            } overflow-hidden`}
                                             style={{ width: `${prog}%` }}
-                                        />
+                                        >
+                                            {isFullyCompleted && (
+                                                <motion.div 
+                                                    className="absolute inset-0 w-[50%] h-full bg-gradient-to-r from-transparent via-white/60 to-transparent skew-x-12"
+                                                    animate={{ x: ['-200%', '300%'] }}
+                                                    transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                                                />
+                                            )}
+                                        </motion.div>
                                     </div>
                                 </div>
 
@@ -402,7 +655,10 @@ export function GlobalSmartTracker() {
                     })
                 )}
             </AnimatePresence>
-        </motion.div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </>
     );
 }
