@@ -11,7 +11,6 @@ import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { requestTtsPayload } from '@/lib/tts-client';
 import * as Diff from 'diff';
 import { WordPopup, PopupState } from '@/components/reading/WordPopup';
-import { SpeechModelStatusPanel } from '@/components/speech/SpeechModelStatusPanel';
 import { PretextTextarea } from '@/components/ui/PretextTextarea';
 import { PretextBubble } from '@/components/ui/PretextBubble';
 
@@ -147,19 +146,15 @@ function OralPractice({ text, onComplete }: { text: string, onComplete: () => vo
     const lastAnalyzedTranscriptRef = useRef<string | null>(null);
     const {
         canRecord,
-        isAvailable,
         isRecording,
         isProcessing,
         result,
         audioBlob,
         audioLevel,
         error,
-        modelProgress,
         startRecognition,
         stopRecognition,
         playRecording,
-        resetResult,
-        downloadModel,
     } = useSpeechInput();
 
     // Load TTS Audio
@@ -371,10 +366,6 @@ function OralPractice({ text, onComplete }: { text: string, onComplete: () => vo
             </div>
 
             {/* Controls */}
-            {!canRecord && isAvailable ? (
-                <SpeechModelStatusPanel progress={modelProgress} onDownload={downloadModel} />
-            ) : null}
-
             {error ? <p className="text-sm text-rose-500">{error}</p> : null}
 
             <div className="flex justify-center gap-8 items-center pt-2">

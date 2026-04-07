@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useEffect, useCallback, type ComponentType } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { DrillCore } from "@/components/drill/DrillCore";
-import { Zap, ChevronRight, Lock, House, Sword, CircleHelp, X, Headphones, BookOpen, Feather, Gauge, Coins, Gift, Blocks } from "lucide-react";
+import { Zap, ChevronRight, Lock, House, Sword, CircleHelp, X, BookOpen, Feather, Gauge, Coins, Gift, Blocks } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getRank } from "@/lib/rankUtils";
 import { db } from "@/lib/db";
@@ -18,7 +18,7 @@ import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getRebuildPracticeTier } from "@/lib/rebuild-mode";
 
-type GuideSectionId = "overview" | "elo" | "listening" | "dictation" | "translation" | "items" | "drops";
+type GuideSectionId = "overview" | "elo" | "dictation" | "translation" | "items" | "drops";
 
 const GUIDE_SECTIONS: Array<{
     id: GuideSectionId;
@@ -29,7 +29,6 @@ const GUIDE_SECTIONS: Array<{
 }> = [
     { id: "overview", title: "总览", subtitle: "Battle 怎么玩", icon: Zap, tone: "text-indigo-700 bg-indigo-50 border-indigo-200" },
     { id: "elo", title: "Elo 规则", subtitle: "分数如何涨跌", icon: Gauge, tone: "text-emerald-700 bg-emerald-50 border-emerald-200" },
-    { id: "listening", title: "Shadowing", subtitle: "跟读发音", icon: Headphones, tone: "text-sky-700 bg-sky-50 border-sky-200" },
     { id: "dictation", title: "Dictation", subtitle: "听写中文", icon: BookOpen, tone: "text-purple-700 bg-purple-50 border-purple-200" },
     { id: "translation", title: "Translation", subtitle: "中译英", icon: Feather, tone: "text-amber-700 bg-amber-50 border-amber-200" },
     { id: "items", title: "道具图鉴", subtitle: "道具作用与用法", icon: Gift, tone: "text-fuchsia-700 bg-fuchsia-50 border-fuchsia-200" },
@@ -42,14 +41,13 @@ const GUIDE_MARKDOWN: Record<GuideSectionId, string> = {
 
 Battle 是一个 **输入 -> 理解 -> 输出** 的闭环训练系统：
 
-1. **Shadowing**：先把英语声音吃进去，再跟着说出来  
-2. **Rebuild**：只听音频，用词块把整句拼回去  
-3. **Dictation**：把听到的意思重建成中文  
-4. **Translation**：再把中文转回自然英文
+1. **Rebuild**：只听音频，用词块把整句拼回去  
+2. **Dictation**：把听到的意思重建成中文  
+3. **Translation**：再把中文转回自然英文
 
 ### 推荐节奏
 
-- 先做 3-5 题 Shadowing 热身
+- 先做 3-5 题 Rebuild 热身
 - 切 Dictation 校验“你是否真的听懂”
 - 最后用 Translation 把表达打磨成输出能力
 
@@ -60,7 +58,7 @@ Battle 是一个 **输入 -> 理解 -> 输出** 的闭环训练系统：
 
 Elo 是 **每个模式的实力分**，不是总分。
 
-- Listening / Dictation / Translation 各有独立 Elo
+- Dictation / Translation 各有独立 Elo
 - Rebuild 分成两条线：
 - \`sentence\` 只维护本地练习难度
 - \`passage\` 使用独立正式 Elo
@@ -78,34 +76,6 @@ Elo 是 **每个模式的实力分**，不是总分。
 | 学习态 | 学习态不结算 Elo / 连胜 / 金币 |
 
 > 直观理解：高质量发挥会稳定涨分；低于预期会掉分；越接近高水平，涨分越看重稳定性。
-`,
-    listening: `
-## Shadowing（跟读发音）
-
-### 目标
-
-听英文后，用麦克风跟读，训练“听到就说”的发音稳定度。
-
-### 玩法步骤
-
-1. 点击播放原音
-2. 点击录音并复述
-3. 提交获得评分与 Elo 变化
-
-### 评分重点
-
-- 发音清晰度
-- 句子覆盖率
-- 语流流畅性
-
-### 适合人群
-
-想优先提升口语反应速度、语音稳定度的人。
-
-### 奖励与掉落
-
-- Listening 有正常金币结算
-- 存在随机掉落/暴击奖励/隐藏赏金事件
 `,
     dictation: `
 ## Dictation（听写中文）
@@ -128,14 +98,14 @@ Elo 是 **每个模式的实力分**，不是总分。
 
 ### 特殊规则
 
-- Dictation Elo 与 Listening Elo **完全独立**
+- Dictation Elo 与其它模式 **完全独立**
 - \`VISIBLE\` 每题首次开启消耗 \`1\` 个 \`hint_ticket\`
 - 同题内重复开关不重复扣费；新题会重新计算首次开启
 
 ### 奖励与掉落
 
 - Dictation 也有金币结算与掉落事件
-- 结算逻辑独立记入 Dictation Elo，不混入 Listening
+- 结算逻辑独立记入 Dictation Elo，不混入其它模式
 `,
     translation: `
 ## Translation（中译英）
@@ -176,11 +146,11 @@ Elo 是 **每个模式的实力分**，不是总分。
     drops: `
 ## 掉落与奖励机制总览
 
-### 先回答你的核心问题
+### 当前 Battle 模式
 
-- **Listening：有掉落和奖励**
+- **Rebuild：有掉落和奖励**
 - **Dictation：有掉落和奖励**
-- Translation 也有，并且额外有抽卡事件
+- **Translation：有掉落和奖励**，并且额外有抽卡事件
 
 ### 奖励逻辑
 
@@ -295,7 +265,7 @@ const ITEM_ATLAS = [
         effect: "刷新当前题，不结算该题",
         consume: "点击刷新按钮时消耗 1 张",
         refund: "无自动返还",
-        modes: "Listening + Dictation + Translation",
+        modes: "Rebuild + Dictation + Translation",
     },
 ] as const;
 
@@ -319,25 +289,17 @@ const GACHA_POOL_TABLE = [
 ] as const;
 
 function BattlePageContent() {
-    type BattleMode = "listening" | "rebuild" | "dictation" | "translation";
-    type ListeningSourceMode = "ai" | "bank";
-    const resolveInitialListeningSourceMode = (): ListeningSourceMode => {
-        if (typeof window === "undefined") return "ai";
-        const saved = window.localStorage.getItem("battle-listening-source-mode");
-        return saved === "bank" ? "bank" : "ai";
-    };
+    type BattleMode = "rebuild" | "dictation" | "translation";
     const router = useRouter();
     const searchParams = useSearchParams();
     const prefersReducedMotion = useReducedMotion();
     const [activeDrill, setActiveDrill] = useState<BattleDrillSelection | null>(null);
     const [eloRating, setEloRating] = useState(400); // Translation
-    const [listeningElo, setListeningElo] = useState(400); // Listening
     const [dictationElo, setDictationElo] = useState(400); // Dictation
     const [rebuildPracticeElo, setRebuildPracticeElo] = useState(400);
     const [rebuildBattleElo, setRebuildBattleElo] = useState(400);
     const [rebuildBattleStreak, setRebuildBattleStreak] = useState(0);
     const [battleMode, setBattleMode] = useState<BattleMode>('rebuild');
-    const [listeningSourceMode, setListeningSourceMode] = useState<ListeningSourceMode>(resolveInitialListeningSourceMode);
     const [rebuildVariant, setRebuildVariant] = useState<"sentence" | "passage">("sentence");
     const [rebuildSegmentCount, setRebuildSegmentCount] = useState<2 | 3 | 5>(3);
     const [showGuide, setShowGuide] = useState(false);
@@ -349,7 +311,6 @@ function BattlePageContent() {
         db.user_profile.orderBy('id').first().then(async (profile) => {
             if (profile) {
                 setEloRating(profile.elo_rating || 400);
-                setListeningElo(profile.listening_elo || 400);
                 setDictationElo(profile.dictation_elo ?? profile.listening_elo ?? 400);
                 setRebuildBattleElo(profile.rebuild_elo ?? profile.rebuild_hidden_elo ?? profile.listening_elo ?? 400);
                 setRebuildBattleStreak(profile.rebuild_streak ?? 0);
@@ -368,11 +329,6 @@ function BattlePageContent() {
     useEffect(() => {
         loadProfile();
     }, [loadProfile]);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        window.localStorage.setItem("battle-listening-source-mode", listeningSourceMode);
-    }, [listeningSourceMode]);
 
     const handleCloseDrill = () => {
         if (shouldRefreshBattleChart(activeDrill, null)) {
@@ -399,9 +355,7 @@ function BattlePageContent() {
         ? eloRating
         : battleMode === "dictation"
             ? dictationElo
-            : battleMode === "rebuild"
-                ? (rebuildVariant === "passage" ? rebuildBattleElo : rebuildPracticeElo)
-                : listeningElo;
+            : (rebuildVariant === "passage" ? rebuildBattleElo : rebuildPracticeElo);
     const buildBattleSelection = useCallback((topic: string): BattleDrillSelection => (
         battleMode === "rebuild"
             ? {
@@ -416,7 +370,6 @@ function BattlePageContent() {
             }
     ), [battleMode, rebuildSegmentCount, rebuildVariant]);
     const sectionByMode: Record<BattleMode, GuideSectionId> = {
-        listening: "listening",
         rebuild: "overview",
         dictation: "dictation",
         translation: "translation",
@@ -426,7 +379,6 @@ function BattlePageContent() {
         { key: "rebuild", label: "Rebuild", dotClass: "bg-teal-500" },
         { key: "dictation", label: "Dictation", dotClass: "bg-purple-500" },
         { key: "translation", label: "Translation", dotClass: "bg-indigo-500" },
-        { key: "listening", label: "Listening", dotClass: "bg-emerald-500" },
     ];
     const activeBattleModeIndex = battleModeTabs.findIndex((item) => item.key === battleMode);
     const modeOpacity = (targetMode: BattleMode) => (battleMode === targetMode ? 1 : 0);
@@ -459,13 +411,11 @@ function BattlePageContent() {
     const chunkySurface = "rounded-[2rem] border-4 border-theme-border bg-theme-card-bg shadow-[0_8px_0_var(--theme-shadow)]";
     const chunkySurfaceSoft = "rounded-[1.7rem] border-4 border-theme-border bg-theme-card-bg shadow-[0_6px_0_var(--theme-shadow)]";
     const segmentedShell = "rounded-[1.8rem] border-4 border-theme-border bg-theme-card-bg p-2 shadow-[0_6px_0_var(--theme-shadow)]";
-    const activeModeLabel = battleMode === "listening"
-        ? "Shadowing"
-        : battleMode === "rebuild"
-            ? "Rebuild"
-            : battleMode === "dictation"
-                ? "Dictation"
-                : "Translation";
+    const activeModeLabel = battleMode === "rebuild"
+        ? "Rebuild"
+        : battleMode === "dictation"
+            ? "Dictation"
+            : "Translation";
 
     return (
         <div className="min-h-screen bg-theme-base-bg text-theme-text font-sans selection:bg-theme-active-bg selection:text-theme-active-text pb-20">
@@ -476,11 +426,6 @@ function BattlePageContent() {
                 <div className="absolute right-[-6%] top-32 h-72 w-72 rounded-full bg-theme-base-bg blur-3xl opacity-50" />
                 <div className="absolute bottom-[-8%] left-[22%] h-72 w-72 rounded-full bg-theme-base-bg blur-3xl opacity-50" />
                 <div className="absolute bottom-10 right-[18%] h-52 w-52 rounded-full bg-theme-base-bg blur-3xl opacity-50" />
-                <motion.div
-                    className="absolute inset-0 bg-[radial-gradient(90%_70%_at_15%_0%,rgba(126,181,255,0.12),rgba(64,139,255,0.03)_42%,transparent_72%)]"
-                    animate={{ opacity: modeOpacity("listening") }}
-                    transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
-                />
                 <motion.div
                     className="absolute inset-0 bg-[radial-gradient(90%_72%_at_50%_0%,rgba(45,212,191,0.12),rgba(20,184,166,0.04)_42%,transparent_74%)]"
                     animate={{ opacity: modeOpacity("rebuild") }}
@@ -518,7 +463,7 @@ function BattlePageContent() {
             </AnimatePresence>
 
             <motion.div
-                className="relative z-10 mx-auto max-w-6xl px-5 py-10 md:px-6 md:py-16"
+                className={cn("relative z-10 mx-auto max-w-6xl px-5 py-10 md:px-6 md:py-16", activeDrill && "hidden")}
                 initial={prefersReducedMotion
                     ? false
                     : {
@@ -591,8 +536,8 @@ function BattlePageContent() {
                                     className={cn("absolute top-2 h-[calc(100%-16px)] rounded-[1.15rem] border-4", cuteTone.activeTab)}
                                     initial={false}
                                     animate={{
-                                        left: `calc(${activeBattleModeIndex} * ((100% - 16px) / 4) + 8px)`,
-                                        width: "calc((100% - 16px) / 4)",
+                                        left: `calc(${activeBattleModeIndex} * ((100% - 16px) / 3) + 8px)`,
+                                        width: "calc((100% - 16px) / 3)",
                                     }}
                                     transition={{ type: "spring", stiffness: 210, damping: 24, mass: 0.84 }}
                                 />
@@ -619,50 +564,17 @@ function BattlePageContent() {
                                     <div>
                                         <p className="text-[11px] font-black uppercase tracking-[0.22em] text-theme-text-muted">Drill Source</p>
                                         <p className="mt-1 text-sm leading-7 text-theme-text opacity-90">
-                                            {battleMode === "listening"
-                                                ? "Listening 现在可以切换 AI 出题和题库题。"
-                                                : battleMode === "rebuild"
-                                                    ? rebuildVariant === "passage"
-                                                        ? "短文分段当前只开放 AI 出题，并在整篇结束后统一结算正式 Rebuild Elo。"
-                                                        : "单句 Rebuild 维持 AI 练习模式，只调整隐藏练习难度。"
-                                                    : "题库模式当前只开放给 Listening / Rebuild；其它模式继续走 AI 生成。"}
+                                            {battleMode === "rebuild"
+                                                ? rebuildVariant === "passage"
+                                                    ? "短文分段当前只开放 AI 出题，并在整篇结束后统一结算正式 Rebuild Elo。"
+                                                    : "单句 Rebuild 维持 AI 练习模式，只调整隐藏练习难度。"
+                                                : "当前模式继续走 AI 生成。"}
                                         </p>
                                     </div>
-                                    {battleMode === "listening" ? (
-                                        <div className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-base-bg p-1.5 shadow-[0_4px_0_var(--theme-shadow)]">
-                                            <button
-                                                type="button"
-                                                onClick={() => setListeningSourceMode("ai")}
-                                                className={cn(
-                                                    "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition-colors",
-                                                    listeningSourceMode === "ai"
-                                                        ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
-                                                        : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text"
-                                                )}
-                                                style={listeningSourceMode === "ai" ? getPressableStyle("var(--theme-shadow)", 4) : undefined}
-                                            >
-                                                AI 出题
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => setListeningSourceMode("bank")}
-                                                className={cn(
-                                                    "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition-colors",
-                                                    listeningSourceMode === "bank"
-                                                        ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
-                                                        : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text"
-                                                )}
-                                                style={listeningSourceMode === "bank" ? getPressableStyle("var(--theme-shadow)", 4) : undefined}
-                                            >
-                                                题库题
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-base-bg px-4 py-2 text-sm font-black text-theme-text-muted shadow-[0_4px_0_var(--theme-shadow)]">
-                                            <Blocks className="h-4 w-4" />
-                                            AI Only
-                                        </div>
-                                    )}
+                                    <div className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-base-bg px-4 py-2 text-sm font-black text-theme-text-muted shadow-[0_4px_0_var(--theme-shadow)]">
+                                        <Blocks className="h-4 w-4" />
+                                        AI Only
+                                    </div>
                                 </div>
                                 {battleMode === "rebuild" ? (
                                     <div className="mt-4 space-y-4 border-t-2 border-theme-border/30 pt-4">
@@ -1004,13 +916,13 @@ function BattlePageContent() {
                                             </div>
                                         )}
 
-                                        {(activeGuideSection === "listening" || activeGuideSection === "dictation" || activeGuideSection === "elo" || activeGuideSection === "overview") && (
+                                        {(activeGuideSection === "dictation" || activeGuideSection === "elo" || activeGuideSection === "overview") && (
                                             <div className="rounded-2xl border border-sky-200/80 bg-[linear-gradient(165deg,rgba(224,242,254,0.7),rgba(255,255,255,0.95))] p-4 shadow-[0_14px_28px_rgba(2,132,199,0.12)]">
                                                 <div className="mb-3 flex items-center gap-2">
                                                     <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-sky-500 text-white">
-                                                        <Headphones className="h-4 w-4" />
+                                                        <BookOpen className="h-4 w-4" />
                                                     </span>
-                                                    <p className="text-sm font-black tracking-[0.14em] uppercase text-sky-700">Listening / Dictation 难度细表（词量与长度）</p>
+                                                    <p className="text-sm font-black tracking-[0.14em] uppercase text-sky-700">Dictation 难度细表（词量与长度）</p>
                                                 </div>
                                                 <div className="overflow-x-auto rounded-xl border border-sky-100 bg-white/90">
                                                     <table className="min-w-full text-sm">
@@ -1039,7 +951,7 @@ function BattlePageContent() {
                                                     </table>
                                                 </div>
                                                 <p className="mt-3 rounded-xl border border-sky-200/80 bg-sky-50/70 px-3 py-2 text-xs leading-6 text-sky-900">
-                                                    Dictation 与 Listening 共用听力难度梯度，但评分目标不同：Listening 看英语复述质量，Dictation 看中文语义重建完整度。
+                                                    Dictation 会沿用同一条听力难度梯度，但评分目标只看中文语义重建是否完整。
                                                 </p>
                                             </div>
                                         )}
@@ -1120,7 +1032,7 @@ function BattlePageContent() {
                                                         <Coins className="h-4 w-4" />
                                                     </span>
                                                     <p className="text-sm font-black tracking-[0.14em] uppercase text-rose-700">奖励与掉落机制</p>
-                                                    <span className="ml-auto rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">Listening: 有奖励/掉落</span>
+                                                    <span className="ml-auto rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">Rebuild: 有奖励/掉落</span>
                                                     <span className="rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-[11px] font-bold text-purple-700">Dictation: 有奖励/掉落</span>
                                                 </div>
 
@@ -1192,7 +1104,7 @@ function BattlePageContent() {
                                                 </div>
 
                                                 <p className="rounded-xl border border-theme-border/80 bg-theme-primary-bg/20 px-3 py-2 text-xs leading-6 text-theme-text-muted">
-                                                    抽卡事件目前仅在 Translation 触发。Listening 与 Dictation 仍有完整金币结算、暴击、隐藏赏金和开题掉落，只是没有抽卡池。
+                                                    抽卡事件目前仅在 Translation 触发。Rebuild 与 Dictation 仍有完整金币结算、暴击、隐藏赏金和开题掉落，只是没有抽卡池。
                                                 </p>
                                             </div>
                                         )}
@@ -1221,7 +1133,6 @@ function BattlePageContent() {
                         context={activeDrill}
                         onClose={handleCloseDrill}
                         initialMode={battleMode}
-                        listeningSourceMode={listeningSourceMode}
                     />
                 )}
             </AnimatePresence>

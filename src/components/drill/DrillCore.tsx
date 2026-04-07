@@ -30,7 +30,6 @@ import { RebuildTutorLauncher, RebuildTutorPopup, type RebuildTutorPopupState } 
 import { GhostTextarea } from "../vocab/GhostTextarea";
 import { InlineGrammarHighlights } from "../shared/InlineGrammarHighlights";
 import { LottieJsonPlayer } from "../shared/LottieJsonPlayer";
-import { SpeechModelStatusPanel } from "../speech/SpeechModelStatusPanel";
 import { PretextTextarea } from "../ui/PretextTextarea";
 import { resolveBattleScenarioTopic } from "@/lib/battle-quickmatch-topics";
 import { getBattleInteractiveWordClassName } from "@/lib/drill-interactive-word";
@@ -388,9 +387,7 @@ const PlaybackWaveBars = memo(function PlaybackWaveBars({
                     key={i}
                     className={cn(
                         "w-1.5 rounded-full will-change-[height,transform,opacity]",
-                        isDictationMode
-                            ? "bg-gradient-to-t from-fuchsia-600 to-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.4)]"
-                            : "bg-gradient-to-t from-indigo-600 to-blue-400 shadow-[0_0_8px_rgba(79,70,229,0.4)]"
+                        "bg-gradient-to-t from-theme-primary-bg to-theme-primary-bg/60 shadow-sm"
                     )}
                     style={{
                         height: `${h}px`,
@@ -1602,20 +1599,17 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const {
         isAvailable: speechInputAvailable,
         canRecord: speechInputReady,
-        unavailableReason: speechInputUnavailableReason,
         isRecording: whisperRecording,
         isProcessing: whisperProcessing,
         result: whisperResult,
         audioLevel: speechInputLevel,
         error: speechInputError,
-        modelProgress: speechModelProgress,
         wavBlob,
         setContext,
         startRecognition,
         stopRecognition,
         playRecording,
         resetResult,
-        downloadModel: downloadSpeechModel,
     } = useSpeechInput();
 
     // Ask Tutor State
@@ -1762,25 +1756,25 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const activeCosmeticUi = {
         ledgerClass: "bg-theme-card-bg border-[3px] border-theme-border shadow-[0_4px_0_var(--theme-shadow)]",
         toolbarClass: "border-[3px] border-theme-border bg-theme-primary-bg shadow-[0_4px_0_var(--theme-shadow)]",
-        inputShellClass: "border-[3px] border-theme-border bg-theme-base-bg shadow-[inset_0_4px_0_rgba(0,0,0,0.06)] focus-within:border-theme-border focus-within:ring-[4px] focus-within:ring-theme-active-bg/30 text-theme-text",
+        inputShellClass: "bg-black/[0.04] shadow-[inset_0_4px_12px_rgba(0,0,0,0.06),inset_0_1px_3px_rgba(0,0,0,0.04)] focus-within:ring-[3px] focus-within:ring-theme-border/20 text-theme-text transition-all",
         textareaClass: "bg-transparent text-theme-text placeholder:text-theme-text-muted",
-        audioLockedClass: "border-[3px] border-theme-border bg-theme-card-bg text-theme-text shadow-[0_4px_0_var(--theme-shadow)] hover:bg-theme-active-bg hover:text-theme-active-text transition-colors",
-        audioUnlockedClass: "border-[3px] border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] transition-colors",
+        audioLockedClass: "border-[3px] border-theme-border bg-theme-card-bg text-theme-text shadow-[0_4px_0_var(--theme-shadow)] hover:bg-theme-active-bg hover:text-theme-active-text hover:-translate-y-0.5 hover:shadow-[0_6px_0_var(--theme-shadow)] active:translate-y-1 active:shadow-[0_0_0_var(--theme-shadow)] transition-all",
+        audioUnlockedClass: "border-[3px] border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_var(--theme-shadow)] active:translate-y-1 active:shadow-[0_0_0_var(--theme-shadow)] transition-all",
         speedShellClass: "border-[3px] border-theme-border bg-theme-base-bg",
         speedActiveClass: "bg-theme-text text-theme-base-bg shadow-[inset_0_2px_0_rgba(0,0,0,0.2)]",
         speedIdleClass: "text-theme-text-muted hover:bg-theme-active-bg hover:text-theme-active-text transition-colors",
-        vocabButtonClass: "border-[3px] border-theme-border bg-theme-card-bg text-theme-text hover:bg-theme-active-bg hover:text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] transition-colors",
-        keywordChipClass: "bg-theme-base-bg border-[2px] border-theme-border text-theme-text hover:bg-theme-active-bg hover:text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] transition-colors font-bold",
-        wordBadgeActiveClass: "border-[2px] border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_2px_0_var(--theme-shadow)] font-bold",
+        vocabButtonClass: "border-[3px] border-theme-border bg-theme-card-bg text-theme-text hover:bg-theme-active-bg hover:text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_var(--theme-shadow)] active:translate-y-1 active:shadow-[0_0_0_var(--theme-shadow)] transition-all",
+        keywordChipClass: "bg-theme-base-bg border-[3px] border-theme-border text-theme-text hover:bg-theme-active-bg hover:text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_var(--theme-shadow)] active:translate-y-1 active:shadow-[0_0_0_var(--theme-shadow)] transition-all font-bold cursor-pointer",
+        wordBadgeActiveClass: "border-[3px] border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_3px_0_var(--theme-shadow)] font-bold",
         wordBadgeIdleClass: "bg-transparent text-theme-text-muted font-medium",
-        hintButtonClass: "border-[3px] border-theme-border bg-theme-card-bg text-theme-text shadow-[0_4px_0_var(--theme-shadow)] hover:bg-theme-active-bg hover:text-theme-active-text transition-colors",
-        iconButtonClass: "border-[3px] border-theme-border bg-theme-card-bg text-theme-text shadow-[0_4px_0_var(--theme-shadow)] hover:bg-theme-active-bg hover:text-theme-active-text transition-colors",
-        checkButtonClass: "border-[4px] border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_6px_0_var(--theme-shadow)] active:shadow-[0_2px_0_var(--theme-shadow)] active:translate-y-1 transition-all text-xl md:text-2xl font-black rounded-2xl md:rounded-[1.25rem]",
-        tutorPanelClass: "bg-theme-card-bg border-[4px] border-theme-border shadow-[0_8px_0_0_var(--theme-shadow)] rounded-[1.5rem]",
-        tutorAnswerClass: "bg-theme-base-bg text-theme-text border-[3px] border-theme-border font-bold",
-        tutorInputClass: "bg-theme-base-bg border-[4px] border-theme-border text-theme-text font-bold focus:ring-[4px] focus:ring-theme-active-bg/50",
-        tutorSendClass: "text-theme-text hover:bg-theme-active-bg border-[3px] border-transparent hover:border-theme-border rounded-[1rem] transition-colors",
-        analysisButtonClass: "bg-theme-text text-theme-base-bg hover:opacity-90 shadow-[0_4px_0_var(--theme-shadow)] font-black border-[3px] border-transparent text-lg",
+        hintButtonClass: "border-[3px] border-theme-border bg-theme-card-bg text-theme-text shadow-[0_4px_0_var(--theme-shadow)] hover:bg-theme-active-bg hover:text-theme-active-text hover:-translate-y-0.5 hover:shadow-[0_6px_0_var(--theme-shadow)] active:translate-y-1 active:shadow-[0_0_0_var(--theme-shadow)] transition-all",
+        iconButtonClass: "border-[3px] border-theme-border bg-theme-card-bg text-theme-text shadow-[0_4px_0_var(--theme-shadow)] hover:bg-theme-active-bg hover:text-theme-active-text hover:-translate-y-0.5 hover:shadow-[0_6px_0_var(--theme-shadow)] active:translate-y-1 active:shadow-[0_0_0_var(--theme-shadow)] transition-all",
+        checkButtonClass: "bg-theme-primary-bg text-theme-primary-text border-[4px] border-theme-border shadow-[0_6px_0_var(--theme-shadow)] hover:-translate-y-1 hover:shadow-[0_10px_0_var(--theme-shadow)] active:translate-y-1.5 active:shadow-[0_0_0_var(--theme-shadow)] transition-all text-xl md:text-2xl font-black rounded-2xl md:rounded-[1.25rem]",
+        tutorPanelClass: "bg-theme-card-bg border-[3px] border-theme-border shadow-[0_8px_0_0_var(--theme-shadow)] rounded-[1.5rem]",
+        tutorAnswerClass: "bg-theme-base-bg text-theme-text border-[3px] border-theme-border font-bold shadow-[0_4px_0_0_var(--theme-shadow)]",
+        tutorInputClass: "bg-theme-base-bg border-[3px] border-theme-border text-theme-text font-bold focus:ring-[4px] focus:ring-theme-active-bg/50 shadow-[inset_0_4px_0_rgba(0,0,0,0.04)]",
+        tutorSendClass: "text-theme-text hover:bg-theme-active-bg border-[3px] border-transparent hover:border-theme-border rounded-[1rem] transition-all hover:-translate-y-0.5 hover:shadow-[0_4px_0_0_var(--theme-shadow)] active:translate-y-0.5 active:shadow-[0_0_0_rgba(0,0,0,0)] cursor-pointer",
+        analysisButtonClass: "bg-theme-text text-theme-base-bg hover:opacity-90 shadow-[0_4px_0_var(--theme-shadow)] font-black border-[3px] border-theme-border text-lg hover:-translate-y-0.5 hover:shadow-[0_6px_0_var(--theme-shadow)] active:translate-y-1 active:shadow-[0_0_0_var(--theme-shadow)] transition-all cursor-pointer",
         nextButtonGradient: "var(--theme-active-bg)",
         nextButtonShadow: "0 8px 0 var(--theme-shadow)",
         nextButtonGlow: "rgba(0,0,0,0)",
@@ -4916,6 +4910,21 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             });
             return;
         }
+        if (isListeningMode) {
+            setDrillFeedback({
+                score: -1,
+                judge_reasoning: "Shadowing battle 已下线，本地发音评分链也已移除。",
+                feedback: {
+                    listening_tips: ["改用 Rebuild 或 Dictation 继续训练。"],
+                    encouragement: "当前版本不再提供 battle Shadowing 发音评分。",
+                },
+                summary_cn: "Shadowing battle 已下线，本地发音评分链也已移除。",
+                tips_cn: ["改用 Rebuild 或 Dictation 继续训练。"],
+                word_results: [],
+                _error: true,
+            });
+            return;
+        }
         if (shouldBypassBattleRewards({ learningSession: learningSessionActive, guidedModeStatus })) {
             return;
         }
@@ -4924,37 +4933,24 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
         try {
             // Use correct Elo based on mode
-            const activeElo = isDictationMode ? dictationElo : isListeningMode ? listeningElo : eloRating;
-            const scoreMode: "translation" | "listening" | "dictation" = isDictationMode
+            const activeElo = isDictationMode ? dictationElo : eloRating;
+            const scoreMode: "translation" | "dictation" = isDictationMode
                 ? "dictation"
-                : isListeningMode
-                    ? "listening"
-                    : "translation";
+                : "translation";
             const scoringInputSource = isListeningFamilyMode && !isDictationMode ? "voice" : "keyboard";
-            const response = isListeningMode
-                ? await (async () => {
-                    const formData = new FormData();
-                    formData.append("audio", wavBlob!, "shadowing.wav");
-                    formData.append("reference_english", drillData.reference_english);
-                    formData.append("current_elo", String(activeElo || DEFAULT_BASE_ELO));
-                    return fetch("/api/ai/pronunciation/score", {
-                        method: "POST",
-                        body: formData,
-                    });
-                })()
-                : await fetch("/api/ai/score_translation", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        user_translation: translationToScore,
-                        reference_english: drillData.reference_english,
-                        original_chinese: drillData.chinese,
-                        current_elo: activeElo || DEFAULT_BASE_ELO,
-                        mode: scoreMode,
-                        input_source: scoringInputSource,
-                        teaching_mode: teachingMode,
-                    }),
-                });
+            const response = await fetch("/api/ai/score_translation", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    user_translation: translationToScore,
+                    reference_english: drillData.reference_english,
+                    original_chinese: drillData.chinese,
+                    current_elo: activeElo || DEFAULT_BASE_ELO,
+                    mode: scoreMode,
+                    input_source: scoringInputSource,
+                    teaching_mode: teachingMode,
+                }),
+            });
             const data = await response.json();
 
             // Guard: If API returned an error (no score), show error feedback
@@ -9295,15 +9291,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                             whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
                                             onClick={() => handleRebuildRemoveToken(token.id)}
                                             className={cn(
-                                                "inline-flex min-h-[38px] min-w-0 max-w-full items-start gap-1.5 rounded-full px-4 py-1.5 text-left text-[14px] font-semibold whitespace-normal break-all transition-all hover:-translate-y-0.5",
-                                                activeCosmeticUi.wordBadgeActiveClass
+                                                "inline-flex min-h-[38px] min-w-0 max-w-full items-start gap-1.5 rounded-full px-4 py-1.5 text-left text-[14px] font-semibold whitespace-normal break-all transition-all cursor-pointer",
+                                                "bg-theme-base-bg text-theme-text font-bold ring-1 ring-theme-border/20 shadow-[0_4px_0_rgba(0,0,0,0.08)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_rgba(0,0,0,0.08)] active:translate-y-1 active:shadow-[0_0_0_rgba(0,0,0,0.08)]"
                                             )}
                                         >
                                             <span className="block min-w-0 max-w-full break-all">{token.text}</span>
                                             {(token.repeatTotal ?? 1) > 1 && (
                                                 <span className={cn(
                                                     "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 pt-[1px] text-[10px] font-black",
-                                                    activeCosmeticTheme.mutedClass
+                                                    activeCosmeticUi.wordBadgeActiveClass
                                                 )}>
                                                     {token.repeatIndex}
                                                 </span>
@@ -9329,27 +9325,23 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 </div>
                             </AnimatePresence>
                         ) : (
-                            <motion.div
-                                className={cn(
-                                    "flex h-full min-h-[56px] items-center justify-center text-center text-sm font-semibold",
-                                    activeCosmeticTheme.mutedClass
-                                )}
-                                animate={{ opacity: [0.5, 0.9, 0.5] }}
-                                transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
-                            >
-                                {rebuildHideTokens
-                                    ? (rebuildAutocorrect ? "纯打字模式 · 智能纠正已开" : "纯打字模式")
-                                    : (rebuildAutocorrect ? "点击词块或直接输入（支持大小写智能匹配）" : "点击词块开始拼句")}
-                            </motion.div>
+                            <span className={cn("select-none text-[14px] font-semibold leading-relaxed tracking-wide", activeCosmeticTheme.mutedClass)}>
+                                点击词块或直接输入（支持大小写智能匹配）
+                            </span>
                         )}
                     </div>
-
-                    {!rebuildHideTokens && (
-                        <div className={rebuildTokenDividerClass}>
-                            <div className="mb-2 flex items-center justify-between gap-3">
-                                <p className={cn("text-[11px] font-medium tracking-[0.02em]", activeCosmeticTheme.mutedClass)}>
-                                    快捷键：空格选词 · Backspace 撤回 · Enter 提交
-                                </p>
+                    {/* Token Pool */}
+                    {!readOnlyAfterSubmit && (
+                        <div className={cn(
+                            "transition-all duration-500 ease-in-out",
+                            rebuildHideTokens ? "pointer-events-none mt-0 h-0 max-h-0 opacity-0 overflow-hidden" : "mt-5 max-h-[500px] opacity-100"
+                        )}>
+                            <div className={cn(
+                                "mb-3 flex items-center gap-4 text-[11px] font-semibold",
+                                activeCosmeticTheme.mutedClass,
+                                rebuildTokenDividerClass
+                            )}>
+                                快捷键：空格选词 · Backspace 撤回 · Enter 提交
                             </div>
                             <div className="w-full min-w-0 max-h-[140px] overflow-x-hidden overflow-y-auto py-1 pr-1">
                                 <AnimatePresence mode="sync" initial={false}>
@@ -9391,7 +9383,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 </div>
 
                 {readOnlyAfterSubmit ? (
-                    <div className="mt-5 space-y-3 px-1">
+                    <div className="mt-8 space-y-3 px-1">
                         <div className="flex items-center justify-between gap-3">
                             <div className="flex min-h-6 items-center gap-2">
                             {isCurrentSegmentSolved ? (
@@ -9461,7 +9453,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             className={cn(
                                 "group inline-flex h-12 flex-[1.4] items-center justify-center gap-2 rounded-full px-6 text-[15px] font-black tracking-wide transition-all duration-300",
                                 rebuildAnswerTokens.length === 0
-                                    ? "cursor-not-allowed border border-stone-200/80 bg-white/80 text-stone-300 shadow-[inset_0_1px_0_rgba(255,255,255,1)]"
+                                    ? "cursor-not-allowed border-[4px] border-theme-border/30 bg-theme-base-bg text-theme-text-muted shadow-none opacity-60"
                                     : compact
                                         ? activeCosmeticUi.checkButtonClass
                                         : activeCosmeticUi.checkButtonClass
@@ -10424,18 +10416,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     };
 
     return (
-        <AnimatePresence>
-            <motion.div
-                key="drill-core"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className={cn(
-                    "fixed inset-0 z-50 transition-colors duration-1000",
+        <div
+            className={cn(
+                "fixed inset-0 z-50 transition-colors duration-1000 bg-theme-base-bg",
                     isRebuildPassage
                         ? "flex items-start justify-center p-0 md:px-6 md:pb-6 md:pt-2"
                         : "flex items-center justify-center p-4 md:p-8",
-                    theme === 'default' ? "bg-black/40 backdrop-blur-sm" : "bg-transparent",
                     shake && "animate-shake"
                 )}
             >
@@ -11252,7 +11238,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                 disabled={isPlaying || isAudioLoading || (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)}
                                                                 className={cn(
                                                                     "group relative flex items-center justify-center transition-all duration-500",
-                                                                    isRebuildMode ? "w-20 h-20 mb-3 mt-0" : isDictationMode ? "w-20 h-20 mb-4 mt-2" : "w-24 h-24 mb-8 mt-4",
+                                                                    isRebuildMode ? "w-[4.5rem] h-[4.5rem] mb-2 mt-0" : isDictationMode ? "w-20 h-20 mb-4 mt-2" : "w-24 h-24 mb-8 mt-4",
                                                                     (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)
                                                                         ? "grayscale opacity-50 cursor-not-allowed scale-95"
                                                                         : "hover:scale-105 active:scale-95 disabled:opacity-80 disabled:scale-100"
@@ -11261,19 +11247,20 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                 <div
                                                                     className={cn(
                                                                         "absolute inset-0 rounded-full bg-gradient-to-br blur-2xl transition-all duration-500",
-                                                                        isDictationMode ? "from-fuchsia-500/25 to-purple-500/25" : "from-indigo-500/20 to-purple-500/20",
+                                                                        "from-theme-primary-bg/25 to-theme-primary-bg/10",
                                                                         isPlaying ? "scale-125 opacity-100" : "scale-100 opacity-0 group-hover:opacity-100"
                                                                     )}
                                                                 />
                                                                 <div className={cn(
                                                                     "absolute inset-0 rounded-full bg-white/60 dark:bg-white/10 backdrop-blur-2xl border border-white/50 dark:border-white/20 shadow-2xl transition-all duration-300 group-hover:bg-white/80 group-hover:border-white",
-                                                                    isDictationMode ? "shadow-purple-500/15" : "shadow-indigo-500/10"
+                                                                    "shadow-theme-primary-bg/15",
+                                                                    isRebuildMode ? "border-[3px] border-theme-border/5" : ""
                                                                 )} />
-                                                                <div className={cn("relative z-10 drop-shadow-sm flex items-center justify-center", isDictationMode ? "text-purple-600 dark:text-purple-300" : "text-indigo-600 dark:text-indigo-300")}>
+                                                                <div className={cn("relative z-10 drop-shadow-sm flex items-center justify-center text-theme-primary-bg")}>
                                                                     {(isPrefetching || isAudioLoading) ? (
                                                                         <div className={cn(
                                                                             "w-10 h-10 border-4 rounded-full animate-spin",
-                                                                            isDictationMode ? "border-purple-200 border-t-purple-600" : "border-indigo-200 border-t-indigo-600"
+                                                                            "border-theme-primary-bg/20 border-t-theme-primary-bg"
                                                                         )} />
                                                                     ) : isPlaying ? (
                                                                         <PlaybackWaveBars
@@ -11281,7 +11268,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                             isDictationMode={isDictationMode}
                                                                             isPlaying={isPlaying}
                                                                         />
-                                                                    ) : <Play className={cn("w-10 h-10 ml-1.5", isDictationMode ? "fill-purple-600 text-purple-600" : "fill-indigo-600 text-indigo-600")} />}
+                                                                    ) : <Play className={cn("ml-1.5 fill-theme-primary-bg text-theme-primary-bg", isRebuildMode ? "w-8 h-8" : "w-10 h-10")} />}
                                                                 </div>
                                                             </button>
 
@@ -11289,7 +11276,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                             {/* Composite Control Bar */}
                                                             <div className={cn(
                                                                 "flex items-center justify-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150",
-                                                                isRebuildMode ? "mb-3" : isDictationMode ? "mb-4" : "mb-8",
+                                                                isRebuildMode ? "mb-10 mt-[-0.25rem]" : isDictationMode ? "mb-4" : "mb-8",
                                                             )}>
                                                                 <div className="flex items-center bg-stone-200/50 backdrop-blur-md p-1.5 rounded-full shadow-inner border border-stone-100/20">
                                                                     {/* Blind Toggle */}
@@ -11715,14 +11702,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                             {isSubmittingDrill ? "..." : "Submit"}
                                                                         </button>
                                                                     </div>
-                                                                </div>
-                                                            ) : !speechInputReady && speechInputAvailable ? (
-                                                                <div className="w-full max-w-md">
-                                                                    <SpeechModelStatusPanel
-                                                                        progress={speechModelProgress}
-                                                                        onDownload={downloadSpeechModel}
-                                                                        compact
-                                                                    />
                                                                 </div>
                                                             ) : (
                                                                 /* Idle State - Smaller mic button */
@@ -13329,6 +13308,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     </motion.div>
                 )}
             </AnimatePresence>
-        </AnimatePresence>
+        </div>
     );
 }

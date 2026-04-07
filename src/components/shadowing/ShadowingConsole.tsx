@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Mic, Play, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { useSpeechInput } from '@/hooks/useSpeechInput';
-import { SpeechModelStatusPanel } from '@/components/speech/SpeechModelStatusPanel';
 import { cn } from '@/lib/utils';
 
 interface ShadowingConsoleProps {
@@ -100,11 +99,9 @@ export function ShadowingConsole({ text, onClose, articleTitle }: ShadowingConso
         audioBlob,
         error,
         audioLevel,
-        modelProgress,
         startRecognition,
         stopRecognition,
         playRecording,
-        downloadModel,
     } = useSpeechInput();
 
     const targetWords = useMemo(() => text.split(/\s+/), [text]);
@@ -231,12 +228,6 @@ export function ShadowingConsole({ text, onClose, articleTitle }: ShadowingConso
                         )}
                     </div>
                 </div>
-
-                {!canRecord && isAvailable ? (
-                    <div className="px-6 pb-3">
-                        <SpeechModelStatusPanel progress={modelProgress} onDownload={downloadModel} compact />
-                    </div>
-                ) : null}
 
                 {error ? (
                     <div className="px-6 pb-3 text-center text-sm text-rose-400">

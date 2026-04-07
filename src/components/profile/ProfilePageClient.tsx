@@ -7,8 +7,6 @@ import { motion } from "framer-motion";
 
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { ProfileSettingsPanel } from "@/components/profile/ProfileSettingsPanel";
-import { SpeechModelStatusPanel } from "@/components/speech/SpeechModelStatusPanel";
-import { useDesktopSpeechModel } from "@/hooks/useDesktopSpeechModel";
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 import { db } from "@/lib/db";
 import { useSyncStatusStore } from "@/lib/sync-status";
@@ -21,7 +19,6 @@ export function ProfilePageClient() {
     const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
     const lastSynced = useLiveQuery(() => db.sync_meta.get("last_successful_sync_at"), []);
     const { phase } = useSyncStatusStore();
-    const speechModel = useDesktopSpeechModel();
 
     if (!sessionUser?.email) {
         return null;
@@ -90,16 +87,6 @@ export function ProfilePageClient() {
                             立即拉取
                         </motion.button>
                     </div>
-
-                    {speechModel.isDesktopApp ? (
-                        <div className="mb-8">
-                            <SpeechModelStatusPanel
-                                progress={speechModel.progress}
-                                onDownload={speechModel.downloadModel}
-                            />
-                        </div>
-                    ) : null}
-
                     <ProfileSettingsPanel
                         email={sessionUser.email}
                         initialProfile={{

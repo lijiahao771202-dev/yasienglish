@@ -2,18 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { encodeWavFromChunks, mergeChannels, encodeWavPcm16, resampleLinear } from "@/lib/speech-audio";
 import { createAudioMediaRecorder, ensureMicrophoneAccess, getMicrophoneErrorMessage } from "@/lib/desktop-media";
-import { useDesktopSpeechModel } from "@/hooks/useDesktopSpeechModel";
 import {
     type SpeechInputResult,
     LOCAL_SPEECH_DESKTOP_ONLY_MESSAGE,
-    LOCAL_SPEECH_MODEL_FAILED_MESSAGE,
-    formatSpeechModelStatusMessage,
 } from "@/lib/speech-input";
 
 const EMPTY_RESULT: SpeechInputResult = { text: "", isEndpoint: false, isFinal: false };
+const LOCAL_SPEECH_RECORDING_FAILED_MESSAGE = "录音处理失败，请重试一次。";
 
 export function useSpeechInput() {
-    const { progress, isDesktopApp, isReady, downloadModel } = useDesktopSpeechModel();
+    const isDesktopApp = typeof window !== "undefined" && Boolean(window.yasiDesktop?.isDesktopApp);
     const [result, setResult] = useState<SpeechInputResult>(EMPTY_RESULT);
     const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
     const [wavBlob, setWavBlob] = useState<Blob | null>(null);
@@ -160,19 +158,6 @@ export function useSpeechInput() {
             return;
         }
 
-        if (progress.status !== "ready") {
-            if (progress.status === "missing" || progress.status === "failed") {
-                try {
-                    await downloadModel();
-                } catch (downloadError) {
-                    setError(downloadError instanceof Error ? downloadError.message : LOCAL_SPEECH_MODEL_FAILED_MESSAGE);
-                }
-            } else {
-                window.alert(formatSpeechModelStatusMessage(progress));
-            }
-            return;
-        }
-
         try {
             const access = await ensureMicrophoneAccess();
             if (!access.granted) {
@@ -224,7 +209,7 @@ export function useSpeechInput() {
                     });
                     setError(null);
                 } catch (processingError) {
-                    setError(processingError instanceof Error ? processingError.message : LOCAL_SPEECH_MODEL_FAILED_MESSAGE);
+                    setError(processingError instanceof Error ? processingError.message : LOCAL_SPEECH_RECORDING_FAILED_MESSAGE);
                     setResult(EMPTY_RESULT);
                 } finally {
                     setIsProcessing(false);
@@ -241,7 +226,7 @@ export function useSpeechInput() {
             setError(message);
             window.alert(message);
         }
-    }, [buildCapturedWavBlob, clearAudioMeter, downloadModel, isDesktopApp, normalizeRecordingBlob, progress, resetResult, watchAudioLevel]);
+    }, [buildCapturedWavBlob, clearAudioMeter, isDesktopApp, normalizeRecordingBlob, resetResult, watchAudioLevel]);
 
     const stopRecognition = useCallback(() => {
         const recorder = recorderRef.current;
@@ -255,8 +240,8 @@ export function useSpeechInput() {
 
     return {
         isAvailable: isDesktopApp,
-        canRecord: isDesktopApp && isReady,
-        unavailableReason: isDesktopApp ? formatSpeechModelStatusMessage(progress) : LOCAL_SPEECH_DESKTOP_ONLY_MESSAGE,
+        canRecord: isDesktopApp,
+        unavailableReason: isDesktopApp ? null : LOCAL_SPEECH_DESKTOP_ONLY_MESSAGE,
         isRecording,
         isProcessing,
         result,
@@ -264,13 +249,10 @@ export function useSpeechInput() {
         wavBlob,
         audioLevel,
         error,
-        modelStatus: progress.status,
-        modelProgress: progress,
         setContext,
         startRecognition,
         stopRecognition,
         playRecording,
         resetResult,
-        downloadModel,
     };
 }
