@@ -1128,12 +1128,20 @@ function BattlePageContent() {
             {/* Drill Modal */}
             <AnimatePresence>
                 {activeDrill && (
-                    <DrillCore
-                        key={`${battleMode}-${activeDrill.type}-${activeDrill.topic || "drill"}-${activeDrill.rebuildVariant || "sentence"}-${activeDrill.segmentCount || 3}`}
-                        context={activeDrill}
-                        onClose={handleCloseDrill}
-                        initialMode={battleMode}
-                    />
+                    <motion.div
+                        key={`drill-modal-${battleMode}-${activeDrill.type}-${activeDrill.topic || "drill"}-${activeDrill.rebuildVariant || "sentence"}-${activeDrill.segmentCount || 3}`}
+                        initial={{ opacity: 0, y: 16, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 16, scale: 0.98 }}
+                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                        className="fixed inset-0 z-[100] isolate pointer-events-auto"
+                    >
+                        <DrillCore
+                            context={activeDrill}
+                            onClose={handleCloseDrill}
+                            initialMode={battleMode}
+                        />
+                    </motion.div>
                 )}
             </AnimatePresence>
         </div>
