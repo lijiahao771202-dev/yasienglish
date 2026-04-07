@@ -727,6 +727,7 @@ type TutorIntent = "translate" | "grammar" | "lexical" | "rebuild";
 type TutorAction = "ask";
 type TutorUiSurface = "battle" | "score" | "rebuild_floating_teacher";
 type TutorThinkingMode = "chat" | "deep";
+type TutorAnswerMode = "adaptive" | "simple" | "detailed";
 
 interface DictionaryData {
     word: string;
@@ -1627,6 +1628,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [isAskingTutor, setIsAskingTutor] = useState(false);
     const [tutorRecentMastery, setTutorRecentMastery] = useState<string[]>([]);
     const [tutorThinkingMode, setTutorThinkingMode] = useState<TutorThinkingMode>("chat");
+    const [tutorAnswerMode, setTutorAnswerMode] = useState<TutorAnswerMode>("adaptive");
     const tutorConversationRef = useRef<HTMLDivElement | null>(null);
     const [rebuildTutorSession, setRebuildTutorSession] = useState<RebuildTutorSessionState | null>(null);
 
@@ -1749,8 +1751,40 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const lastScoreCelebrationRef = useRef<string>("");
     const rebuildTokenOrderRef = useRef<Map<string, number>>(new Map());
     const prefersReducedMotion = useReducedMotion();
-    const activeCosmeticTheme = COSMETIC_THEMES[cosmeticTheme] || COSMETIC_THEMES[DEFAULT_FREE_THEME];
-    const activeCosmeticUi = COSMETIC_THEME_UI[cosmeticTheme] || COSMETIC_THEME_UI.morning_coffee;
+    const activeCosmeticTheme = {
+        bgClass: 'bg-theme-base-bg font-sans',
+        cardClass: 'bg-theme-card-bg border-[4px] border-theme-border shadow-[0_8px_0_0_var(--theme-shadow)] ring-1 ring-theme-border/10',
+        textClass: 'text-theme-text',
+        mutedClass: 'text-theme-text-muted',
+        headerBg: 'bg-theme-base-bg',
+        isDark: false,
+    };
+    const activeCosmeticUi = {
+        ledgerClass: "bg-theme-card-bg border-[3px] border-theme-border shadow-[0_4px_0_var(--theme-shadow)]",
+        toolbarClass: "border-[3px] border-theme-border bg-theme-primary-bg shadow-[0_4px_0_var(--theme-shadow)]",
+        inputShellClass: "border-[3px] border-theme-border bg-theme-base-bg shadow-[inset_0_4px_0_rgba(0,0,0,0.06)] focus-within:border-theme-border focus-within:ring-[4px] focus-within:ring-theme-active-bg/30 text-theme-text",
+        textareaClass: "bg-transparent text-theme-text placeholder:text-theme-text-muted",
+        audioLockedClass: "border-[3px] border-theme-border bg-theme-card-bg text-theme-text shadow-[0_4px_0_var(--theme-shadow)] hover:bg-theme-active-bg hover:text-theme-active-text transition-colors",
+        audioUnlockedClass: "border-[3px] border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] transition-colors",
+        speedShellClass: "border-[3px] border-theme-border bg-theme-base-bg",
+        speedActiveClass: "bg-theme-text text-theme-base-bg shadow-[inset_0_2px_0_rgba(0,0,0,0.2)]",
+        speedIdleClass: "text-theme-text-muted hover:bg-theme-active-bg hover:text-theme-active-text transition-colors",
+        vocabButtonClass: "border-[3px] border-theme-border bg-theme-card-bg text-theme-text hover:bg-theme-active-bg hover:text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] transition-colors",
+        keywordChipClass: "bg-theme-base-bg border-[2px] border-theme-border text-theme-text hover:bg-theme-active-bg hover:text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] transition-colors font-bold",
+        wordBadgeActiveClass: "border-[2px] border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_2px_0_var(--theme-shadow)] font-bold",
+        wordBadgeIdleClass: "bg-transparent text-theme-text-muted font-medium",
+        hintButtonClass: "border-[3px] border-theme-border bg-theme-card-bg text-theme-text shadow-[0_4px_0_var(--theme-shadow)] hover:bg-theme-active-bg hover:text-theme-active-text transition-colors",
+        iconButtonClass: "border-[3px] border-theme-border bg-theme-card-bg text-theme-text shadow-[0_4px_0_var(--theme-shadow)] hover:bg-theme-active-bg hover:text-theme-active-text transition-colors",
+        checkButtonClass: "border-[4px] border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_6px_0_var(--theme-shadow)] active:shadow-[0_2px_0_var(--theme-shadow)] active:translate-y-1 transition-all text-xl md:text-2xl font-black rounded-2xl md:rounded-[1.25rem]",
+        tutorPanelClass: "bg-theme-card-bg border-[4px] border-theme-border shadow-[0_8px_0_0_var(--theme-shadow)] rounded-[1.5rem]",
+        tutorAnswerClass: "bg-theme-base-bg text-theme-text border-[3px] border-theme-border font-bold",
+        tutorInputClass: "bg-theme-base-bg border-[4px] border-theme-border text-theme-text font-bold focus:ring-[4px] focus:ring-theme-active-bg/50",
+        tutorSendClass: "text-theme-text hover:bg-theme-active-bg border-[3px] border-transparent hover:border-theme-border rounded-[1rem] transition-colors",
+        analysisButtonClass: "bg-theme-text text-theme-base-bg hover:opacity-90 shadow-[0_4px_0_var(--theme-shadow)] font-black border-[3px] border-transparent text-lg",
+        nextButtonGradient: "var(--theme-active-bg)",
+        nextButtonShadow: "0 8px 0 var(--theme-shadow)",
+        nextButtonGlow: "rgba(0,0,0,0)",
+    };
     const isShopInventoryExpanded = shouldExpandShopInventoryDock({
         hasHoverSupport: shopDockHasHoverSupport,
         isShopHovered: isShopDockHovered,
@@ -1762,7 +1796,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const rebuildVariant = context.rebuildVariant ?? "sentence";
     const rebuildSegmentCount = context.segmentCount ?? 3;
     const isRebuildPassage = isRebuildMode && rebuildVariant === "passage";
-    const isVerdantRebuild = cosmeticTheme === "verdant_atelier" && isRebuildMode;
+    const isVerdantRebuild = false;
     const passageSession = isRebuildPassage ? (drillData?._rebuildMeta?.passageSession ?? null) : null;
     const activePassageResult = isRebuildPassage
         ? (rebuildPassageResults.find((item) => item.segmentIndex === activePassageSegmentIndex) ?? null)
@@ -5710,6 +5744,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     articleTitle: drillData._topicMeta?.topic || context.articleTitle || context.topic,
                     sessionBootstrapped: shouldCompactRebuildContext,
                     thinkingMode: tutorThinkingMode,
+                    answerMode: tutorAnswerMode,
                     stream: true,
                 }),
             });
@@ -8765,6 +8800,34 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         ))}
                     </div>
 
+                    {isRebuildTutorSurface && (
+                        <div className="mt-3 flex items-center justify-between gap-3">
+                            <span className="text-[11px] font-semibold text-stone-500">回答长度</span>
+                            <div className="inline-flex items-center rounded-full border border-stone-200 bg-white/85 p-0.5">
+                                {[
+                                    { value: "simple", label: "简单" },
+                                    { value: "adaptive", label: "自适应" },
+                                    { value: "detailed", label: "详细" },
+                                ].map((option) => (
+                                    <button
+                                        key={`rebuild-tutor-answer-mode-${option.value}`}
+                                        type="button"
+                                        onClick={() => setTutorAnswerMode(option.value as TutorAnswerMode)}
+                                        disabled={isAskingTutor}
+                                        className={cn(
+                                            "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                                            tutorAnswerMode === option.value
+                                                ? "bg-fuchsia-600 text-white shadow-sm"
+                                                : "text-stone-500 hover:bg-stone-100 hover:text-stone-700",
+                                        )}
+                                    >
+                                        {option.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <div ref={tutorConversationRef} className="mt-4 max-h-[calc(min(84vh,760px)-13rem)] overflow-y-auto pr-1">
                         {tutorThread.length || tutorPendingQuestion || tutorAnswer ? (
                             <AiTeacherConversation
@@ -8837,6 +8900,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 fallbackAnswer={!tutorThread.length ? tutorAnswer : null}
                 isAsking={isAskingTutor}
                 thinkingMode={tutorThinkingMode}
+                answerMode={tutorAnswerMode}
                 mutedTextClass={activeCosmeticTheme.mutedClass}
                 panelClass={activeCosmeticUi.tutorPanelClass}
                 inputClass={activeCosmeticUi.tutorInputClass}
@@ -8846,6 +8910,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 onPlayCardAudio={handlePlayTutorCardAudio}
                 onQueryChange={setTutorQuery}
                 onThinkingModeChange={setTutorThinkingMode}
+                onAnswerModeChange={setTutorAnswerMode}
                 onSubmit={() => { void handleAskTutor({ questionType: "follow_up" }); }}
             />
         );
@@ -10443,7 +10508,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 <div className="absolute inset-0 border-[20px] border-amber-900/10" />
                             </motion.div>
                         )}
-                        {theme === 'default' && (
+                        {false && (
                             <motion.div
                                 key={`theme-cosmetic-${cosmeticTheme}`}
                                 initial={{ opacity: 0 }}
@@ -13244,125 +13309,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                         </div>
                                     );
                                 })}
-                            </div>
-
-                            {/* THEME GALLERY */}
-                            <div className="px-4 pb-2 pt-1">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <div className={cn("h-px flex-1 opacity-70", activeCosmeticTheme.headerBg)} />
-                                    <p className={cn("text-[10px] font-black tracking-[0.25em] uppercase", activeCosmeticTheme.mutedClass)}>主题皮肤</p>
-                                    <div className={cn("h-px flex-1 opacity-70", activeCosmeticTheme.headerBg)} />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-                                    {ALL_THEME_IDS.map((themeId) => {
-                                        const t = COSMETIC_THEMES[themeId];
-                                        const previewUi = COSMETIC_THEME_UI[themeId];
-                                        const isOwned = ownedThemes.includes(themeId);
-                                        const isActive = cosmeticTheme === themeId;
-                                        const canAfford = coins >= t.price;
-
-                                        return (
-                                            <div
-                                                key={themeId}
-                                                className={cn(
-                                                    "relative rounded-2xl p-3 flex flex-col gap-2 transition-all cursor-pointer overflow-hidden border",
-                                                    previewUi.tutorPanelClass,
-                                                    isActive
-                                                        ? "ring-2 ring-white/80 shadow-[0_0_28px_rgba(255,255,255,0.4),0_18px_34px_rgba(15,23,42,0.12)]"
-                                                        : isOwned
-                                                            ? "hover:-translate-y-0.5 hover:shadow-xl"
-                                                            : "opacity-80 saturate-75"
-                                                )}
-                                                onClick={() => {
-                                                    if (isActive) return;
-                                                    if (isOwned) handleSwitchTheme(themeId);
-                                                }}
-                                            >
-                                                {/* Theme preview strip */}
-                                                <div className={cn(
-                                                    "h-14 rounded-xl overflow-hidden relative p-2.5",
-                                                    t.bgClass
-                                                )}>
-                                                    <div className={cn(
-                                                        "absolute inset-2 rounded-xl border px-2 py-1.5 flex items-center justify-between gap-2",
-                                                        previewUi.toolbarClass
-                                                    )}>
-                                                        <div className="flex items-center gap-1.5">
-                                                            <span className={cn(
-                                                                "inline-flex min-w-[28px] items-center justify-center rounded-full px-2 py-1 text-[8px] font-black tracking-[0.18em] uppercase",
-                                                                previewUi.wordBadgeActiveClass
-                                                            )}>
-                                                                {t.icon}
-                                                            </span>
-                                                            <div className={cn(
-                                                                "hidden sm:flex h-4 w-8 items-center justify-center rounded-full text-[7px] font-bold",
-                                                                previewUi.iconButtonClass
-                                                            )}>
-                                                                UI
-                                                            </div>
-                                                        </div>
-                                                        <div className={cn(
-                                                            "inline-flex h-5 min-w-[42px] items-center justify-center rounded-full px-2 text-[8px] font-black",
-                                                            previewUi.checkButtonClass
-                                                        )}>
-                                                            Check
-                                                        </div>
-                                                    </div>
-                                                    {isActive && (
-                                                        <div className="absolute inset-0 flex items-center justify-center">
-                                                            <span className={cn(
-                                                                "text-[10px] font-black px-2 py-0.5 rounded-full backdrop-blur-sm border",
-                                                                previewUi.wordBadgeActiveClass
-                                                            )}>使用中</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="space-y-1">
-                                                    <p className={cn("text-xs font-bold truncate", t.textClass)}>{t.name}</p>
-                                                    <p className={cn("text-[10px] leading-tight", t.mutedClass)}>{t.preview}</p>
-                                                </div>
-
-                                                {/* Action */}
-                                                {isActive ? (
-                                                    <div className={cn("text-[10px] font-bold text-center", previewUi.tutorSendClass)}>✓ 当前主题</div>
-                                                ) : isOwned ? (
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); handleSwitchTheme(themeId); }}
-                                                        className={cn(
-                                                            "w-full rounded-lg border py-1.5 text-[10px] font-bold transition-all",
-                                                            previewUi.iconButtonClass
-                                                        )}
-                                                    >
-                                                        切换使用
-                                                    </button>
-                                                ) : t.price === 0 ? (
-                                                    <div className={cn("text-[10px] font-bold text-center", previewUi.tutorSendClass)}>免费</div>
-                                                ) : (
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            const success = handleBuyTheme(themeId);
-                                                            if (success) {
-                                                                setLootDrop({ type: 'theme', amount: 0, rarity: 'legendary', message: `🎨 解锁主题：${t.name}` });
-                                                            }
-                                                        }}
-                                                        disabled={!canAfford}
-                                                        className={cn(
-                                                            "w-full rounded-lg border py-1.5 text-[10px] font-bold transition-all",
-                                                            canAfford
-                                                                ? previewUi.checkButtonClass
-                                                                : "bg-stone-100 text-stone-400 border-stone-200 cursor-not-allowed"
-                                                        )}
-                                                    >
-                                                        {t.price} ✨ 解锁
-                                                    </button>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
                             </div>
 
                             <div className="px-5 pb-4 flex justify-end">
