@@ -1,17 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, Fragment } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { BadgeCheck, Check, ChevronRight, CloudUpload, Image as ImageIcon, Loader2, LogOut, Mail, Play, RefreshCw, Search, Settings2, Volume2, X } from "lucide-react";
+import { Check, ChevronRight, CloudUpload, Image as ImageIcon, Loader2, LogOut, Mail, Play, RefreshCw, Search, Settings2, Volume2, X } from "lucide-react";
 
 import { PresetAvatar } from "@/components/profile/PresetAvatar";
-import { SpeechModelStatusPanel } from "@/components/speech/SpeechModelStatusPanel";
 import { db } from "@/lib/db";
-import { useDesktopSpeechModel } from "@/hooks/useDesktopSpeechModel";
 import { getUserFacingSyncError, saveProfilePatch, syncNow } from "@/lib/user-repository";
 import { DEFAULT_AVATAR_PRESET, DEFAULT_PROFILE_USERNAME, TTS_VOICE_OPTIONS, normalizeLearningPreferences, normalizeTtsVoice, type LearningPreferences, type TtsVoice, type TtsVoiceOption } from "@/lib/profile-settings";
 import { requestTtsPayload } from "@/lib/tts-client";
@@ -31,18 +29,6 @@ interface UserAvatarMenuProps {
     syncDescription: string;
     unreadCount?: number;
     placement?: "floating" | "sidebar" | "header";
-}
-
-function getSyncTone(syncLabel: string) {
-    if (syncLabel === "Synced") {
-        return "border-emerald-200 bg-emerald-50 text-emerald-700";
-    }
-
-    if (syncLabel === "Sync failed") {
-        return "border-rose-200 bg-rose-50 text-rose-700";
-    }
-
-    return "border-indigo-200 bg-indigo-50 text-indigo-700";
 }
 
 function formatSyncLabel(phase: ReturnType<typeof useSyncStatusStore.getState>["phase"]) {
@@ -128,7 +114,6 @@ export function UserAvatarMenu({
     const voiceListRef = useRef<HTMLDivElement | null>(null);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const router = useRouter();
-    const speechModel = useDesktopSpeechModel();
     const isSidebar = placement === "sidebar";
     const isHeader = placement === "header";
     const selectedVoiceOption = useMemo(
@@ -326,12 +311,6 @@ export function UserAvatarMenu({
                         </div>
                         <p className="mt-1 text-xs font-medium opacity-80">{syncDescription}</p>
                     </div>
-
-                    {speechModel.isDesktopApp ? (
-                        <div className="mt-2">
-                            <SpeechModelStatusPanel progress={speechModel.progress} onDownload={speechModel.downloadModel} compact />
-                        </div>
-                    ) : null}
 
                     {/* Action grid */}
                     <div className="mt-2 grid grid-cols-2 gap-2">

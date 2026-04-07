@@ -15,7 +15,6 @@
     "stitch:projects": "node scripts/stitch-projects.mjs",
     "stitch:generate": "node scripts/stitch-generate.mjs",
     "stitch:mcp": "node scripts/stitch-mcp.mjs",
-    "speech:model:download": "node scripts/download-sherpa-model.mjs",
     "test:unit": "vitest run"
   },
   "dependencies": {
@@ -51,8 +50,6 @@
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
     "rss-parser": "^3.13.0",
-    "sherpa-onnx": "^1.12.29",
-    "sherpa-onnx-node": "^1.12.29",
     "socks-proxy-agent": "^9.0.0",
     "string-similarity": "^4.0.4",
     "tailwind-merge": "^3.4.0",

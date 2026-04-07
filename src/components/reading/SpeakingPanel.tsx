@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, Play, RotateCcw, Volume2, Loader2, X, Eye, EyeOff, CheckCircle2, AlertCircle, Sparkles, Lightbulb, Repeat, List } from 'lucide-react';
 import { useSpeechInput } from '@/hooks/useSpeechInput';
 import { cn } from '@/lib/utils';
-import { SpeechModelStatusPanel } from '@/components/speech/SpeechModelStatusPanel';
 
 interface SpeakingPanelProps {
     text: string;
@@ -40,7 +39,6 @@ export function SpeakingPanel({
     const reviewAudioRef = useRef<HTMLAudioElement | null>(null);
     const reviewAudioUrlRef = useRef<string | null>(null);
     const {
-        isAvailable,
         canRecord,
         isRecording,
         isProcessing,
@@ -48,12 +46,10 @@ export function SpeakingPanel({
         audioBlob,
         audioLevel,
         error,
-        modelProgress,
         startRecognition,
         stopRecognition,
         playRecording,
         resetResult,
-        downloadModel,
     } = useSpeechInput();
 
     // Cleanup on unmount
@@ -412,12 +408,6 @@ export function SpeakingPanel({
                             ) : null}
                             {error ? (
                                 <p className="text-sm text-rose-500">{error}</p>
-                            ) : null}
-                            {!canRecord && isAvailable ? (
-                                <SpeechModelStatusPanel
-                                    progress={modelProgress}
-                                    onDownload={downloadModel}
-                                />
                             ) : null}
                         </div>
                     )}
