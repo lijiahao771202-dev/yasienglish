@@ -13,8 +13,58 @@ import {
 } from "@/lib/rebuild-passage";
 import { countWords } from "@/lib/translationDifficulty";
 
+const REBUILD_UPSTREAM_MAX_ATTEMPTS = 3;
+
 function sanitizeTextValue(value: unknown) {
     return typeof value === "string" ? value.trim() : "";
+}
+
+function isRetryableRebuildUpstreamError(error: unknown) {
+    if (!(error instanceof Error)) return false;
+
+    const cause = error.cause;
+    const causeCode = cause && typeof cause === "object" && "code" in cause
+        ? String((cause as { code?: unknown }).code ?? "")
+        : "";
+    const message = error.message.toLowerCase();
+
+    return (
+        causeCode === "UND_ERR_SOCKET"
+        || causeCode === "ECONNRESET"
+        || causeCode === "ETIMEDOUT"
+        || causeCode === "ECONNABORTED"
+        || causeCode === "EAI_AGAIN"
+        || message.includes("terminated")
+        || message.includes("socket")
+        || message.includes("timeout")
+        || message.includes("network")
+        || message.includes("fetch failed")
+    );
+}
+
+async function createRebuildCompletionWithRetry(
+    request: Parameters<typeof deepseek.chat.completions.create>[0],
+    label: "sentence" | "passage",
+) {
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= REBUILD_UPSTREAM_MAX_ATTEMPTS; attempt += 1) {
+        try {
+            return await deepseek.chat.completions.create(request);
+        } catch (error) {
+            lastError = error;
+            if (!isRetryableRebuildUpstreamError(error) || attempt === REBUILD_UPSTREAM_MAX_ATTEMPTS) {
+                throw error;
+            }
+
+            console.warn(
+                `[Rebuild AI] Retrying ${label} generation after upstream failure (${attempt}/${REBUILD_UPSTREAM_MAX_ATTEMPTS}).`,
+                error,
+            );
+        }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error("Rebuild upstream request failed.");
 }
 
 function sanitizeSegmentPayload(value: unknown) {
@@ -123,7 +173,7 @@ Return valid JSON only:
 }
 `.trim();
 
-    const completion = await deepseek.chat.completions.create({
+    const completion = await createRebuildCompletionWithRetry({
         messages: [
             {
                 role: "system",
@@ -134,7 +184,7 @@ Return valid JSON only:
         model: "deepseek-chat",
         response_format: { type: "json_object" },
         temperature: 0.85,
-    });
+    }, "sentence");
 
     const rawContent = completion.choices[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(rawContent) as Record<string, unknown>;
@@ -210,7 +260,7 @@ Return valid JSON only:
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= 3; attempt += 1) {
         try {
-            const completion = await deepseek.chat.completions.create({
+            const completion = await createRebuildCompletionWithRetry({
                 messages: [
                     {
                         role: "system",
@@ -221,7 +271,7 @@ Return valid JSON only:
                 model: "deepseek-chat",
                 response_format: { type: "json_object" },
                 temperature: 0.8,
-            });
+            }, "passage");
 
             const rawContent = completion.choices[0]?.message?.content ?? "{}";
             const parsed = JSON.parse(rawContent) as Record<string, unknown>;
@@ -324,6 +374,9 @@ Return valid JSON only:
                 },
             };
         } catch (error) {
+            if (isRetryableRebuildUpstreamError(error)) {
+                throw error;
+            }
             lastError = error;
         }
     }

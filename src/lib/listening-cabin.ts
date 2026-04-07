@@ -265,7 +265,7 @@ export const LISTENING_CABIN_FOCUS_OPTIONS: Array<Option<ListeningCabinFocusTag>
 ];
 
 export const LISTENING_CABIN_CEFR_OPTIONS: EnglishLevel[] = ["A1", "A2", "B1", "B2", "C1", "C2"];
-export const LISTENING_CABIN_PLAYBACK_RATE_OPTIONS = [0.85, 0.95, 1, 1.1, 1.2];
+export const LISTENING_CABIN_PLAYBACK_RATE_OPTIONS = [0.5, 0.75, 0.85, 1, 1.25];
 export const LISTENING_CABIN_MULTI_SPEAKER_MIN = 2;
 export const LISTENING_CABIN_MULTI_SPEAKER_MAX = 4;
 export const LISTENING_CABIN_RANDOM_TOPIC_POOL_SIZE_PER_MODE = 2500;

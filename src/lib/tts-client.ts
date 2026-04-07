@@ -68,6 +68,8 @@ export async function requestTtsPayload(text: string, voice?: string, rate = "+0
                 || message.includes("timed out")
                 || message.includes("failed to fetch")
                 || message.includes("network")
+                || message.includes("no audio data")
+                || message.includes("empty")
                 || message.includes("socket");
 
             if (!isRetryable || attempt === 1) {
@@ -126,6 +128,8 @@ export async function requestTtsSegmentsPayload(segments: TtsSegmentInput[]) {
                 || message.includes("timed out")
                 || message.includes("failed to fetch")
                 || message.includes("network")
+                || message.includes("no audio data")
+                || message.includes("empty")
                 || message.includes("socket");
 
             if (!isRetryable || attempt === 1) {

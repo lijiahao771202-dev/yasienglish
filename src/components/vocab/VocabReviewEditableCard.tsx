@@ -352,18 +352,18 @@ export function VocabReviewEditableCard({
     };
 
     return (
-        <div data-review-layout="cute-bento" className="relative z-20 flex h-full min-h-0 flex-col bg-white/70 backdrop-blur-xl rounded-[28px] overflow-hidden shadow-inner border border-white/80">
+        <div data-review-layout="cute-bento" className="relative z-20 flex h-full min-h-0 flex-col bg-theme-base-bg overflow-hidden shadow-inner border-[3px] border-theme-border rounded-[1.5rem]">
             {/* Header: Controls & Word Input */}
-            <div className="shrink-0 pt-4 px-4 pb-2 z-10 sticky top-0 bg-white/40 border-b border-theme-border/20 backdrop-blur-md">
+            <div className="shrink-0 pt-4 px-4 pb-2 z-10 sticky top-0 bg-theme-base-bg border-b-[3px] border-theme-border">
                 <div className="flex items-center justify-between gap-3 mb-2">
                     <div className="flex items-center gap-2">
                         {isGraduated ? (
-                            <span className="flex items-center justify-center rounded-full bg-amber-100 text-amber-700 px-3 py-1 text-[11px] font-bold shadow-sm shadow-amber-200/50 outline outline-1 outline-amber-200/50">
+                            <span className="flex items-center justify-center rounded-full bg-amber-100 text-amber-700 px-3 py-1 text-[11px] font-bold border-2 border-amber-300">
                                 🌟 已熟记
                             </span>
                         ) : null}
-                        <p className={cn("text-[11px] font-bold text-slate-400 transition-opacity whitespace-nowrap", isSaving && "opacity-60")}>
-                            {error ? <span className="text-rose-500">{error}</span> : (isSaving ? "正在保存..." : "自动保存")}
+                        <p className={cn("text-[11px] font-bold text-theme-text-muted transition-opacity whitespace-nowrap", isSaving && "opacity-60")}>
+                            {error ? <span className="text-red-500">{error}</span> : (isSaving ? "正在保存..." : "自动保存")}
                         </p>
                     </div>
 
@@ -373,7 +373,7 @@ export function VocabReviewEditableCard({
                                 type="button"
                                 onClick={handleGraduate}
                                 disabled={isSaving || isGraduating}
-                                className="flex h-8 items-center gap-1.5 rounded-full bg-slate-100 text-slate-700 px-3 text-[12px] font-bold shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-60 disabled:scale-100"
+                                className="flex h-8 items-center gap-1.5 rounded-full bg-theme-primary-bg border-2 border-theme-border text-theme-primary-text px-3 text-[12px] font-bold shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-60 disabled:scale-100"
                             >
                                 {isGraduating ? <Loader2 className="h-3 w-3 animate-spin" /> : "⚡"} 熟记
                             </button>
@@ -381,7 +381,7 @@ export function VocabReviewEditableCard({
                         <button
                             type="button"
                             onClick={() => onPlayAudio(draft.word)}
-                            className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-sm transition-transform hover:scale-110 hover:bg-emerald-200 active:scale-95"
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 border-2 border-emerald-300 transition-transform hover:scale-110 active:scale-95"
                         >
                             <Volume2 className="h-4 w-4" />
                         </button>
@@ -421,9 +421,9 @@ export function VocabReviewEditableCard({
                                             return (
                                                 <span key={idx} className="relative inline-block transition-colors duration-150">
                                                     <span className={cn(
-                                                        status === "correct" && "text-slate-800",
-                                                        status === "wrong" && "text-rose-500",
-                                                        status === "pending" && "text-slate-200"
+                                                        status === "correct" && "text-theme-text",
+                                                        status === "wrong" && "text-red-500",
+                                                        status === "pending" && "text-theme-text-muted opacity-30"
                                                     )}>
                                                         {char}
                                                     </span>
@@ -442,7 +442,7 @@ export function VocabReviewEditableCard({
                                                 <motion.span 
                                                     animate={{ opacity: [1, 0, 1] }} 
                                                     transition={{ repeat: Infinity, duration: 0.8 }} 
-                                                    className="absolute -left-[2px] top-[15%] h-[70%] w-[3px] rounded-full bg-emerald-400" 
+                                                    className="absolute -left-[2px] top-[15%] h-[70%] w-[4px] rounded-full bg-theme-active-bg border-[1px] border-theme-border" 
                                                 />
                                             </span>
                                         )}
@@ -461,8 +461,8 @@ export function VocabReviewEditableCard({
                             handleAutoSave();
                         }}
                         className={cn(
-                            "w-full text-center bg-transparent border-none outline-none font-newsreader text-[3.2rem] sm:text-[4rem] font-bold tracking-tight transition-all placeholder:text-slate-300 focus:scale-105 hover:bg-white/40 focus:bg-white/60 focus:rounded-[20px] relative z-10",
-                            isWordInputFocused ? "text-slate-800" : "text-transparent caret-transparent"
+                            "w-full text-center bg-transparent border-none outline-none font-newsreader text-[3.2rem] sm:text-[4rem] font-bold tracking-tight transition-all placeholder:text-theme-text-muted opacity-70 focus:scale-105 hover:bg-theme-card-bg focus:bg-theme-card-bg focus:rounded-[20px] relative z-10",
+                            isWordInputFocused ? "text-theme-text opacity-100" : "text-transparent caret-transparent"
                         )}
                     />
                     <input
@@ -474,14 +474,14 @@ export function VocabReviewEditableCard({
                         }}
                         onBlur={handleAutoSave}
                         placeholder="音标待补"
-                        className="mt-1 w-auto min-w-[120px] max-w-[260px] text-center rounded-full bg-slate-100/80 px-4 py-1 text-[13px] font-medium text-slate-500 shadow-inner outline-none transition-all placeholder:text-slate-300 focus:bg-white focus:ring-2 focus:ring-emerald-200"
+                        className="mt-1 w-auto min-w-[120px] max-w-[260px] text-center rounded-full bg-theme-card-bg border-[2px] border-theme-border px-4 py-1 text-[13px] font-black text-theme-text shadow-inner outline-none transition-all placeholder:text-theme-text-muted focus:ring-2 focus:ring-theme-active-bg"
                     />
                 </div>
             </div>
 
             {/* Smart Segmented Control for Tabbing */}
-            <div className="flex-none px-4 pt-3 pb-1 flex justify-center z-10 sticky top-[138px]">
-                <div className="flex bg-slate-100/80 p-1.5 rounded-[20px] shadow-inner gap-1">
+            <div className="flex-none px-4 pt-3 pb-1 flex justify-center z-10 sticky top-[138px] bg-theme-base-bg">
+                <div className="flex bg-theme-card-bg border-[3px] border-theme-border p-1.5 rounded-[20px] shadow-inner gap-1">
                     {[
                         { id: "meanings", label: "释义", icon: BookOpen },
                         { id: "examples", label: "例句", icon: Sparkles },
@@ -492,10 +492,10 @@ export function VocabReviewEditableCard({
                             type="button"
                             onClick={() => setActiveTab(tab.id as TabKey)}
                             className={cn(
-                                "flex items-center gap-1.5 px-4 py-1.5 rounded-2xl text-[13px] font-bold transition-all whitespace-nowrap outline-none select-none",
+                                "flex items-center gap-1.5 px-4 py-1.5 rounded-2xl text-[13px] font-black transition-all whitespace-nowrap outline-none select-none",
                                 activeTab === tab.id 
-                                    ? "bg-white text-slate-800 shadow-[0_2px_10px_rgba(0,0,0,0.06)]" 
-                                    : "text-slate-400 hover:text-slate-600 hover:bg-white/40"
+                                    ? "bg-theme-active-bg border-[2px] border-theme-border text-theme-active-text shadow-[0_2px_0_var(--theme-shadow)]" 
+                                    : "text-theme-text-muted hover:text-theme-text hover:bg-theme-card-bg border-[2px] border-transparent"
                             )}
                         >
                             <tab.icon className="h-3.5 w-3.5" />
@@ -524,10 +524,10 @@ export function VocabReviewEditableCard({
                                     const visibleMeanings = isExpanded ? group.meanings : group.meanings.slice(0, 3);
                                     
                                     return (
-                                        <div key={groupKey} className="bg-white/50 border border-slate-100/50 rounded-[24px] p-2 sm:p-3 transition-colors shadow-sm">
+                                        <div key={groupKey} className="bg-theme-card-bg border-[3px] border-theme-border rounded-[24px] p-2 sm:p-3 transition-colors shadow-[0_4px_0_var(--theme-shadow)]">
                                             <div className="flex flex-col sm:flex-row items-start gap-2 sm:gap-3">
                                                 <div className="pt-2 sm:min-w-[40px] flex sm:justify-center px-2">
-                                                    <div className="flex h-7 items-center justify-center rounded-full bg-emerald-100/60 px-2.5 text-[11px] sm:text-[12px] font-black uppercase tracking-wider text-emerald-600 outline outline-1 outline-emerald-200/50">
+                                                    <div className="flex h-7 items-center justify-center rounded-[10px] bg-theme-primary-bg border-2 border-theme-border px-2.5 text-[11px] sm:text-[12px] font-black uppercase tracking-wider text-theme-primary-text">
                                                         {group.pos.replace('.', '')}.
                                                     </div>
                                                 </div>
@@ -548,11 +548,11 @@ export function VocabReviewEditableCard({
                                                                     key={meaningObj.id}
                                                                     value={meaningObj}
                                                                     className={cn(
-                                                                        "group flex items-center gap-1 sm:gap-2 rounded-[16px] px-2 sm:px-3 py-1.5 transition-all shadow-[0_2px_8px_rgba(0,0,0,0.01)] outline outline-1",
-                                                                        isHighlighted ? "bg-amber-50/80 outline-amber-200/50" : "bg-white/80 outline-slate-100/80 hover:bg-white"
+                                                                        "group flex items-center gap-1 sm:gap-2 rounded-[16px] border-2 px-2 sm:px-3 py-1.5 transition-all shadow-[0_2px_0_var(--theme-shadow)]",
+                                                                        isHighlighted ? "bg-amber-100 border-amber-300" : "bg-theme-base-bg border-theme-border hover:bg-theme-card-bg"
                                                                     )}
                                                                 >
-                                                                    <GripVertical className="h-4 w-4 shrink-0 text-slate-300 opacity-0 group-hover:opacity-100 hover:text-slate-500 cursor-grab active:cursor-grabbing transition-opacity" />
+                                                                    <GripVertical className="h-4 w-4 shrink-0 text-theme-text-muted opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity" />
                                                                     
                                                                     <div className="min-w-0 flex-1">
                                                                         <PretextTextarea
@@ -564,8 +564,8 @@ export function VocabReviewEditableCard({
                                                                             minRows={1}
                                                                             maxRows={2}
                                                                             className={cn(
-                                                                                "w-full resize-none border-none bg-transparent p-0 text-[13.5px] leading-snug font-bold outline-none transition placeholder:text-slate-300 m-0",
-                                                                                isHighlighted ? "text-amber-900" : "text-slate-700 focus:text-slate-900"
+                                                                                "w-full resize-none border-none bg-transparent p-0 text-[13.5px] leading-snug font-bold outline-none transition placeholder:text-theme-text-muted m-0",
+                                                                                isHighlighted ? "text-amber-900" : "text-theme-text"
                                                                             )}
                                                                         />
                                                                     </div>
@@ -574,8 +574,8 @@ export function VocabReviewEditableCard({
                                                                             type="button"
                                                                             onClick={() => handleHighlightToggle(meaningObj.text)}
                                                                             className={cn(
-                                                                                "flex h-7 w-7 items-center justify-center rounded-full transition active:scale-95 shadow-sm outline outline-1",
-                                                                                isHighlighted ? "bg-amber-100 text-amber-500 hover:bg-amber-200 outline-amber-200" : "bg-slate-50 text-slate-400 hover:text-amber-500 hover:bg-amber-50 outline-slate-200/60"
+                                                                                "flex h-7 w-7 items-center justify-center rounded-[10px] border-2 transition active:scale-95 shadow-sm",
+                                                                                isHighlighted ? "bg-amber-100 text-amber-600 border-amber-300 hover:bg-amber-200" : "bg-theme-card-bg text-theme-text-muted border-theme-border hover:text-theme-text"
                                                                             )}
                                                                         >
                                                                             <Star className="h-3.5 w-3.5" fill={isHighlighted ? "currentColor" : "none"} />
@@ -583,7 +583,7 @@ export function VocabReviewEditableCard({
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => handleMeaningRemove(groupIndex, meaningObj.id)}
-                                                                            className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-50 text-rose-300 shadow-sm transition hover:bg-rose-50 hover:text-rose-500 active:scale-95 outline outline-1 outline-slate-200/60"
+                                                                            className="flex h-7 w-7 items-center justify-center rounded-[10px] bg-theme-card-bg border-2 border-theme-border text-red-400 shadow-sm transition hover:bg-red-50 hover:text-red-500 hover:border-red-200 active:scale-95"
                                                                         >
                                                                             <Trash2 className="h-3.5 w-3.5" />
                                                                         </button>
@@ -597,7 +597,7 @@ export function VocabReviewEditableCard({
                                             {group.meanings.length > 3 && (
                                                 <button
                                                     onClick={() => onExpandedPosGroupsChange({ ...expandedPosGroups, [groupKey]: !isExpanded })}
-                                                    className="mt-2 w-full rounded-xl bg-slate-100/50 py-1.5 text-[11px] font-bold tracking-wider text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
+                                                    className="mt-2 w-full rounded-xl border-2 border-theme-border bg-theme-base-bg py-1.5 text-[11px] font-black tracking-wider text-theme-text-muted shadow-sm hover:bg-theme-card-bg hover:text-theme-text transition"
                                                 >
                                                     {isExpanded ? "收起" : `展开其余 ${group.meanings.length - 3} 个释义`}
                                                 </button>
@@ -606,7 +606,7 @@ export function VocabReviewEditableCard({
                                     )
                                 })
                             ) : (
-                                <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-sm font-medium text-slate-400">
+                                <div className="rounded-[20px] border-[3px] border-dashed border-theme-border bg-theme-base-bg p-6 text-center text-sm font-black text-theme-text-muted">
                                     暂无释义
                                 </div>
                             )}
@@ -625,13 +625,13 @@ export function VocabReviewEditableCard({
                             {(draft.source_sentence || draft.example) ? (
                                 <>
                                     {draft.source_sentence && (
-                                        <div className="bg-sky-50/50 border border-sky-100 rounded-[20px] p-4 shadow-sm">
+                                        <div className="bg-theme-card-bg border-[3px] border-theme-border rounded-[20px] p-4 shadow-[0_4px_0_var(--theme-shadow)]">
                                             <div className="flex items-center gap-2 mb-2">
-                                                <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-600 uppercase tracking-wider">
+                                                <span className="inline-flex rounded-md bg-cyan-100 border-2 border-cyan-300 px-2 py-0.5 text-[10px] font-black text-cyan-700 uppercase tracking-wider">
                                                     来源
                                                 </span>
                                                 {item.source_label && (
-                                                    <span className="text-[10px] font-black text-sky-800/40 uppercase tracking-widest">{item.source_label}</span>
+                                                    <span className="text-[10px] font-black text-theme-text-muted uppercase tracking-widest">{item.source_label}</span>
                                                 )}
                                             </div>
                                             <PretextTextarea
@@ -641,14 +641,14 @@ export function VocabReviewEditableCard({
                                                 rows={getTextareaRows(draft.source_sentence, 2, 6)}
                                                 minRows={2}
                                                 maxRows={6}
-                                                className="w-full resize-none border-none bg-transparent p-0 font-newsreader text-[1.1rem] italic leading-relaxed text-sky-900 outline-none"
+                                                className="w-full resize-none border-none bg-transparent p-0 font-newsreader text-[1.1rem] italic leading-relaxed text-theme-text outline-none"
                                             />
                                         </div>
                                     )}
 
                                     {draft.example && (
-                                        <div className="bg-emerald-50/60 border border-emerald-100 rounded-[20px] p-4 shadow-sm">
-                                            <div className="mb-2 inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
+                                        <div className="bg-theme-card-bg border-[3px] border-theme-border rounded-[20px] p-4 shadow-[0_4px_0_var(--theme-shadow)]">
+                                            <div className="mb-2 inline-flex rounded-md bg-emerald-100 border-2 border-emerald-300 px-2 py-0.5 text-[10px] font-black text-emerald-700 uppercase tracking-wider">
                                                 AI 造句
                                             </div>
                                             <PretextTextarea
@@ -658,13 +658,13 @@ export function VocabReviewEditableCard({
                                                 rows={getTextareaRows(draft.example, 2, 6)}
                                                 minRows={2}
                                                 maxRows={6}
-                                                className="w-full resize-none border-none bg-transparent p-0 font-newsreader text-[1.1rem] italic leading-relaxed text-emerald-900 outline-none"
+                                                className="w-full resize-none border-none bg-transparent p-0 font-newsreader text-[1.1rem] italic leading-relaxed text-theme-text outline-none"
                                             />
                                         </div>
                                     )}
                                 </>
                             ) : (
-                                <div className="rounded-[20px] border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-sm font-medium text-slate-400">
+                                <div className="rounded-[20px] border-[3px] border-dashed border-theme-border bg-theme-base-bg p-6 text-center text-sm font-black text-theme-text-muted">
                                     暂无例句
                                 </div>
                             )}
@@ -680,14 +680,14 @@ export function VocabReviewEditableCard({
                             transition={{ duration: 0.15, ease: "easeOut" }}
                             className="flex flex-col gap-3"
                         >
-                            <div className="bg-indigo-50/50 border border-indigo-100 rounded-[20px] p-4 shadow-sm">
-                                <div className="mb-3 inline-flex rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                            <div className="bg-theme-card-bg border-[3px] border-theme-border rounded-[20px] p-4 shadow-[0_4px_0_var(--theme-shadow)]">
+                                <div className="mb-3 inline-flex rounded-md bg-indigo-100 border-2 border-indigo-300 px-2 py-0.5 text-[10px] font-bold text-indigo-700 uppercase tracking-wider">
                                     词根词缀剖析
                                 </div>
                                 {wordBreakdown.length > 0 && (
                                     <div className="mb-3 flex flex-wrap gap-2">
                                         {wordBreakdown.map((part) => (
-                                            <span key={part} className="rounded-[10px] bg-white text-indigo-700 px-3 py-1 text-[13px] font-bold shadow-sm border border-indigo-100/50">
+                                            <span key={part} className="rounded-[10px] bg-theme-base-bg text-theme-text px-3 py-1 text-[13px] font-black border-2 border-theme-border shadow-sm">
                                                 {part}
                                             </span>
                                         ))}
@@ -696,7 +696,7 @@ export function VocabReviewEditableCard({
                                 {morphologyNotes.length > 0 && (
                                     <div className="flex flex-col gap-1.5">
                                         {morphologyNotes.map((note) => (
-                                            <p key={note} className="text-[13px] leading-relaxed font-medium text-slate-600">
+                                            <p key={note} className="text-[13px] leading-relaxed font-bold text-theme-text">
                                                 • {note}
                                             </p>
                                         ))}

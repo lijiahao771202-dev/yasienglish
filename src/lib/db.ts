@@ -140,10 +140,16 @@ export interface CachedArticle {
 
 export type ReadingMarkType = 'highlight' | 'underline' | 'note' | 'ask';
 
+export type SmartPlanTaskType = 'custom' | 'rebuild' | 'cat' | 'listening' | 'dictation' | 'vocab' | 'writing' | 'reading';
+
 export interface DailyPlanItem {
     id: string;
     text: string;
     completed: boolean;
+    type?: SmartPlanTaskType;
+    target?: number;
+    current?: number;
+    chunk_size?: number; // Size of each micro-step (e.g. 15 for a target of 100)
 }
 
 export interface DailyPlanRecord {
@@ -259,6 +265,9 @@ export interface LocalUserProfile extends SyncTracked {
     cat_points?: number;
     cat_current_band?: number;
     cat_updated_at?: string;
+    exam_date?: string;
+    exam_type?: 'cet4' | 'cet6' | 'postgrad' | 'ielts';
+    exam_goal_score?: number;
 }
 
 export interface SyncOutboxItem {

@@ -137,6 +137,27 @@ describe("drill next route", () => {
         expect(data._rebuildMeta.theme).toBe("Battle Test Topic");
     });
 
+    it("retries sentence rebuild generation after a transient upstream socket failure", async () => {
+        createCompletionMock
+            .mockRejectedValueOnce(Object.assign(new TypeError("terminated"), {
+                cause: { code: "UND_ERR_SOCKET" },
+            }))
+            .mockResolvedValueOnce(
+                createCompletionPayload({
+                    chinese: "下课后在前门等我。",
+                    reference_english: "Meet me by the front gate after class.",
+                    _scenario_topic: "课后碰面",
+                }),
+            );
+
+        const response = await POST(buildRequest({ sourceMode: "ai", mode: "rebuild", eloRating: 830 }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(createCompletionMock).toHaveBeenCalledTimes(2);
+        expect(data.reference_english).toBe("Meet me by the front gate after class.");
+    });
+
     it("returns a passage rebuild session with natural segment metadata", async () => {
         createCompletionMock.mockResolvedValue(
             createCompletionPayload({
@@ -175,6 +196,45 @@ describe("drill next route", () => {
             .toBeGreaterThan(data._rebuildMeta.passageSession.segments[0].answerTokens.length);
         expect(data.reference_english).toBe("Wait for me near the arrivals gate first.");
         expect(data._topicMeta.subTopic).toBe("机场接人");
+    });
+
+    it("retries passage rebuild generation after a transient upstream socket failure", async () => {
+        createCompletionMock
+            .mockRejectedValueOnce(Object.assign(new TypeError("terminated"), {
+                cause: { code: "UND_ERR_SOCKET" },
+            }))
+            .mockResolvedValueOnce(
+                createCompletionPayload({
+                    _scenario_topic: "机场接人",
+                    segments: [
+                        {
+                            chinese: "先在到达口旁边等我。",
+                            reference_english: "Wait for me near the arrivals gate first.",
+                        },
+                        {
+                            chinese: "如果行李出来晚了，就给司机发消息。",
+                            reference_english: "If the bags are late, text the driver right away.",
+                        },
+                        {
+                            chinese: "确认车牌以后，再带大家去短停区。",
+                            reference_english: "After you confirm the plate, lead everyone to short stay parking.",
+                        },
+                    ],
+                }),
+            );
+
+        const response = await POST(buildRequest({
+            sourceMode: "ai",
+            mode: "rebuild",
+            rebuildVariant: "passage",
+            segmentCount: 3,
+            eloRating: 830,
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(createCompletionMock).toHaveBeenCalledTimes(2);
+        expect(data._rebuildMeta.variant).toBe("passage");
     });
 
     it("delegates to ai generation when ai mode is requested", async () => {

@@ -74,6 +74,9 @@ export interface RemoteProfileRow {
     cat_points?: number;
     cat_current_band?: number;
     cat_updated_at?: string | null;
+    exam_date?: string | null;
+    exam_type?: string | null;
+    exam_goal_score?: number | null;
     updated_at: string;
     last_practice_at: string;
 }
@@ -263,6 +266,9 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
         cat_points: DEFAULT_CAT_POINTS,
         cat_current_band: DEFAULT_CAT_BAND,
         cat_updated_at: new Date(now).toISOString(),
+        exam_date: undefined,
+        exam_type: undefined,
+        exam_goal_score: undefined,
         updated_at: new Date(now).toISOString(),
         sync_status: "pending",
     };
@@ -318,6 +324,9 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
         cat_points: typeof remote.cat_points === "number" ? remote.cat_points : DEFAULT_CAT_POINTS,
         cat_current_band: typeof remote.cat_current_band === "number" ? remote.cat_current_band : DEFAULT_CAT_BAND,
         cat_updated_at: remote.cat_updated_at || remote.updated_at,
+        exam_date: remote.exam_date || undefined,
+        exam_type: (remote.exam_type as any) || undefined,
+        exam_goal_score: typeof remote.exam_goal_score === "number" ? remote.exam_goal_score : undefined,
         updated_at: remote.updated_at,
         sync_status: "synced",
     };
@@ -371,6 +380,9 @@ export function buildProfilePatch(
     if (patch.rebuild_elo !== undefined) nextPatch.rebuild_elo = patch.rebuild_elo;
     if (patch.rebuild_streak !== undefined) nextPatch.rebuild_streak = patch.rebuild_streak;
     if (patch.rebuild_max_elo !== undefined) nextPatch.rebuild_max_elo = patch.rebuild_max_elo;
+    if ((patch as any).exam_date !== undefined) nextPatch.exam_date = (patch as any).exam_date || null;
+    if ((patch as any).exam_type !== undefined) nextPatch.exam_type = (patch as any).exam_type || null;
+    if ((patch as any).exam_goal_score !== undefined) nextPatch.exam_goal_score = (patch as any).exam_goal_score ?? null;
     if (patch.last_practice_at !== undefined && patch.last_practice_at !== null) {
         nextPatch.last_practice_at = new Date(patch.last_practice_at).toISOString();
     }

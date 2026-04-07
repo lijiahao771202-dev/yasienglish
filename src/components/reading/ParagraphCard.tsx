@@ -1,7 +1,7 @@
 import React, { useLayoutEffect, useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket } from "lucide-react";
+import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
@@ -1178,12 +1178,10 @@ export function ParagraphCard({
                                 "rounded-[3px] px-[1px] transition-colors",
                                 showHighlightVisual && "ring-1 ring-black/5",
                                 hasUnderlineVisible && "underline decoration-fuchsia-500 decoration-2 underline-offset-[3px]",
-                                showNoteVisual && "inline-block cursor-text select-text rounded-[11px] border border-sky-400/45 bg-[linear-gradient(160deg,rgba(241,250,255,0.98),rgba(206,232,255,0.95))] px-[4px] text-slate-900 ring-1 ring-white/72 shadow-[0_2px_0_rgba(125,182,255,0.24),0_10px_22px_-12px_rgba(37,99,235,0.42),inset_0_1px_0_rgba(255,255,255,0.98)] transition-all duration-220 transform-gpu will-change-transform",
-                                showNoteVisual && isNoteHovered && "z-[2] -translate-y-[4px] scale-[1.03] border-sky-500/70 bg-[linear-gradient(160deg,rgba(244,251,255,1),rgba(205,232,255,0.98))] ring-sky-100 shadow-[0_5px_0_rgba(59,130,246,0.36),0_22px_38px_-14px_rgba(37,99,235,0.76),inset_0_1px_0_rgba(255,255,255,1)]",
-                                showAskVisual && "inline-block cursor-text select-text rounded-[11px] border border-[#c6bcff]/70 bg-[linear-gradient(165deg,rgba(249,242,255,0.99),rgba(236,232,255,0.96))] px-[4px] text-[#5a43b7] ring-1 ring-white/80 shadow-[0_2px_0_rgba(178,162,255,0.28),0_8px_18px_-10px_rgba(120,94,240,0.34),inset_0_1px_0_rgba(255,255,255,0.98)] transition-all duration-220",
-                                showAskVisual && isAskHovered && "z-[2] -translate-y-[2px] border-indigo-500/70 shadow-[0_2px_0_rgba(99,102,241,0.36),0_16px_30px_-14px_rgba(79,70,229,0.65),inset_0_1px_0_rgba(255,255,255,1)]",
-                                showAskVisual && askMarker?.id === pressedAskNoteId && "translate-y-[3px] scale-[0.985] border-[#8d77ff]/85 shadow-[0_0_0_rgba(120,94,240,0)]",
-                                showLocateVisual && "rounded-[4px] bg-amber-100/58 text-stone-900 border-b border-amber-500/75",
+                                showNoteVisual && "inline-block cursor-pointer select-text rounded-[5px] border border-sky-300 dark:border-sky-700 bg-white dark:bg-slate-800 px-[4px] font-bold text-sky-600 dark:text-sky-400 shadow-[0_2px_0px_#7dd3fc,0_2px_6px_rgba(14,165,233,0.2)] dark:shadow-[0_2px_0px_#0369a1,0_2px_6px_rgba(0,0,0,0.4)] transition-all duration-150 ease-out active:translate-y-[2px] active:shadow-none hover:-translate-y-px hover:shadow-[0_3px_0px_#7dd3fc,0_4px_8px_rgba(14,165,233,0.3)] dark:hover:shadow-[0_3px_0px_#0369a1,0_4px_8px_rgba(0,0,0,0.5)]",
+                                showAskVisual && "inline-block cursor-pointer select-text rounded-[5px] border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-800 px-[4px] font-bold text-indigo-600 dark:text-indigo-400 shadow-[0_2px_0px_#a5b4fc,0_2px_6px_rgba(99,102,241,0.2)] dark:shadow-[0_2px_0px_#4338ca,0_2px_6px_rgba(0,0,0,0.4)] transition-all duration-150 ease-out active:translate-y-[2px] active:shadow-none hover:-translate-y-px hover:shadow-[0_3px_0px_#a5b4fc,0_4px_8px_rgba(99,102,241,0.3)] dark:hover:shadow-[0_3px_0px_#4338ca,0_4px_8px_rgba(0,0,0,0.5)]",
+                                showAskVisual && askMarker?.id === pressedAskNoteId && "translate-y-[2px] shadow-none",
+                                showLocateVisual && "cursor-text select-text box-decoration-clone rounded-[4px] px-[2px] bg-amber-500/15 text-amber-700 font-medium ring-1 ring-inset ring-amber-500/40 border-b-[2px] border-amber-500/60 pb-[2px]",
                             )}
                             style={markStyle}
                             data-reading-note-id={showNoteVisual ? noteMarker?.id : askMarker?.id}
@@ -3403,14 +3401,17 @@ export function ParagraphCard({
             )}
 
             {hoveredReadingNote && !showGrammar && typeof document !== "undefined" && createPortal(
-                <div
-                    className="pointer-events-none fixed z-[10000] w-max max-w-[min(360px,calc(100vw-24px))] rounded-lg border border-cyan-200/90 bg-white/95 px-2.5 py-1.5 text-xs font-medium leading-relaxed text-slate-700 shadow-[0_14px_28px_-14px_rgba(14,116,144,0.45)] backdrop-blur whitespace-pre-wrap break-words [overflow-wrap:anywhere] max-h-[36vh] overflow-y-auto"
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
+                    className="pointer-events-none fixed z-[10000] w-max max-w-[min(320px,calc(100vw-24px))] overflow-hidden rounded-[14px] border border-theme-border/30 bg-theme-base-bg shadow-xl backdrop-blur-3xl"
                     style={{
                         left: (() => {
                             const viewportPadding = 12;
                             const horizontalGap = 18;
-                            const tooltipMaxWidth = Math.min(360, window.innerWidth - viewportPadding * 2);
-                            const canPlaceRight = hoveredReadingNote.x + horizontalGap + tooltipMaxWidth <= window.innerWidth - viewportPadding;
+                            const tooltipMaxWidth = Math.min(320, typeof window !== "undefined" ? window.innerWidth - viewportPadding * 2 : 320);
+                            const canPlaceRight = hoveredReadingNote.x + horizontalGap + tooltipMaxWidth <= (typeof window !== "undefined" ? window.innerWidth : 1000) - viewportPadding;
                             if (canPlaceRight) return `${hoveredReadingNote.x + horizontalGap}px`;
                             return `${Math.max(viewportPadding, hoveredReadingNote.x - horizontalGap - tooltipMaxWidth)}px`;
                         })(),
@@ -3422,8 +3423,38 @@ export function ParagraphCard({
                             : "translateY(0)",
                     }}
                 >
-                    {hoveredReadingNote.text}
-                </div>,
+                    {(() => {
+                        const txt = hoveredReadingNote.text || "";
+                        if (txt.startsWith("AI问答")) {
+                            const [header, ...bodyParts] = txt.split("\n");
+                            const body = bodyParts.join("\n").replace(/[#*_`]/g, "").trim();
+                            return (
+                                <div className="flex flex-col">
+                                    <div className="flex items-center gap-1.5 border-b border-theme-border/20 bg-theme-surface/50 px-3 py-1.5 text-[10px] font-black tracking-wider text-indigo-500">
+                                        <MessageCircleQuestion className="h-3 w-3" />
+                                        {header.trim()}
+                                    </div>
+                                    {body && (
+                                        <div className="px-3 py-2.5 text-xs font-semibold leading-relaxed text-theme-text-muted opacity-90 line-clamp-3">
+                                            {body}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        }
+                        return (
+                            <div className="flex flex-col">
+                                <div className="flex items-center gap-1.5 border-b border-theme-border/20 bg-theme-surface/50 px-3 py-1.5 text-[10px] font-black tracking-wider text-sky-500">
+                                    <PenTool className="h-3 w-3" />
+                                    阅读笔记
+                                </div>
+                                <div className="px-3 py-2.5 text-xs font-semibold leading-relaxed text-theme-text line-clamp-3">
+                                    {txt}
+                                </div>
+                            </div>
+                        );
+                    })()}
+                </motion.div>,
                 document.body
             )}
         </div>
@@ -3531,13 +3562,17 @@ export function SelectionActionPopup({
     const [expandedQaIds, setExpandedQaIds] = useState<number[]>(() => (
         isAskReplayMode
             ? (qaPairs.length > 0 ? [qaPairs[qaPairs.length - 1].id] : [])
-            : (askPanelDefaultOpenToken ? qaPairs.map((pair) => pair.id) : [])
+            : (askPanelDefaultOpenToken ? qaPairs.map((pair) => pair.id) : (qaPairs.length > 0 ? [qaPairs[qaPairs.length - 1].id] : []))
     ));
-    const latestAskPairId = isAskReplayMode && qaPairs.length > 0 ? qaPairs[qaPairs.length - 1].id : null;
-    const candyTap = getPressableTap(shouldReduceMotion, 4, 0.985);
-    const candyPressStyle = getPressableStyle("rgba(238, 199, 225, 0.95)", 4);
-    const berryPressStyle = getPressableStyle("rgba(216, 208, 255, 0.95)", 4);
-    const softPressStyle = getPressableStyle("rgba(223, 232, 255, 0.95)", 4);
+
+    const previousQaCountRef = useRef(qaPairs.length);
+    useEffect(() => {
+        if (qaPairs.length > previousQaCountRef.current) {
+            const newIds = qaPairs.slice(previousQaCountRef.current).map(p => p.id);
+            setExpandedQaIds(prev => Array.from(new Set([...prev, ...newIds])));
+        }
+        previousQaCountRef.current = qaPairs.length;
+    }, [qaPairs]);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -3571,7 +3606,7 @@ export function SelectionActionPopup({
     const deleteActionCount = Number(canDeleteHighlight) + Number(canDeleteUnderline);
 
     const viewportPadding = 16;
-    const popupWidth = 380;
+    const popupWidth = 330;
     const popupHeight = Math.min(measuredHeight || 240, window.innerHeight - viewportPadding * 2);
     const preferredTop = selectionRect.bottom + 10 + dragOffset.y;
     const flippedTop = selectionRect.top - popupHeight - 10 + dragOffset.y;
@@ -3630,48 +3665,56 @@ export function SelectionActionPopup({
                 left: `${clampedLeft}px`,
                 width: 'auto',
                 maxWidth: `${popupWidth}px`,
-                minWidth: '280px'
+                minWidth: '260px'
             }}
             onMouseDown={(e) => e.stopPropagation()}
         >
-            <div className="relative max-h-[min(560px,calc(100vh-2rem))] overflow-y-auto rounded-[28px] border border-[#ffd9ec]/90 bg-[linear-gradient(180deg,rgba(255,250,253,0.97),rgba(249,245,255,0.95))] p-3.5 shadow-[0_18px_44px_rgba(225,112,185,0.2),0_8px_0_rgba(246,218,236,0.95)] backdrop-blur-2xl">
-                <div className="pointer-events-none absolute inset-x-6 top-0 h-16 rounded-b-[24px] bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.95),rgba(255,255,255,0))]" />
-                <div
-                    className="relative mb-3 flex items-start justify-between gap-3 cursor-grab active:cursor-grabbing"
-                    onPointerDown={handleDragStart}
-                    onPointerMove={handleDragMove}
-                    onPointerUp={handleDragEnd}
-                    onPointerCancel={handleDragEnd}
-                >
-                    <div className="min-w-0">
-                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#d27cb0]">
-                            Selected Text
-                        </p>
-                        <p className="mt-1 line-clamp-2 text-sm font-semibold leading-6 text-[#6d4a62]">
-                            {selectedText || "选中文本"}
-                        </p>
-                    </div>
-                    <motion.button
-                        type="button"
-                        onClick={onClose}
-                        whileTap={candyTap}
-                        style={candyPressStyle}
-                        className="ui-pressable shrink-0 rounded-full border border-[#f5d8e9] bg-white/90 p-1.5 text-[#c489ae] shadow-[0_3px_0_rgba(245,216,233,0.9)] transition-colors hover:bg-[#fff0f8] hover:text-[#a95a8d]"
+            <div className={cn("relative max-h-[min(560px,calc(100vh-2rem))] overflow-y-auto rounded-[1.25rem] border border-theme-border/30 bg-theme-base-bg shadow-2xl backdrop-blur-2xl", isAskReplayMode ? "p-2" : "p-3.5")}>
+                {!isAskReplayMode && (
+                    <div
+                        className="relative mb-3 flex items-start justify-between gap-3 cursor-grab active:cursor-grabbing border-b border-theme-border/20 pb-3"
+                        onPointerDown={handleDragStart}
+                        onPointerMove={handleDragMove}
+                        onPointerUp={handleDragEnd}
+                        onPointerCancel={handleDragEnd}
                     >
-                        <X className="h-3.5 w-3.5" />
-                    </motion.button>
-                </div>
+                        <div className="min-w-0 flex items-center gap-1">
+                            {isAskComposerOpen && (
+                                <motion.button
+                                    type="button"
+                                    onClick={() => setIsAskComposerOpen(false)}
+                                    whileTap={{ scale: 0.95 }}
+                                    className="shrink-0 rounded-full p-1.5 text-theme-text-muted hover:text-theme-text hover:bg-theme-active-hover transition-colors -ml-1.5"
+                                >
+                                    <ChevronLeft className="h-4 w-4" />
+                                </motion.button>
+                            )}
+                            <h3 className="line-clamp-2 text-[15px] font-bold leading-tight text-theme-text tracking-tight">
+                                {selectedText || "选中文本"}
+                            </h3>
+                        </div>
+                        <motion.button
+                            type="button"
+                            onClick={onClose}
+                            whileTap={{ scale: 0.95 }}
+                            className="shrink-0 rounded-full border border-theme-border/50 bg-theme-surface p-1.5 text-theme-text shadow-sm transition-colors hover:bg-theme-active-hover"
+                        >
+                            <X className="h-4 w-4" />
+                        </motion.button>
+                    </div>
+                )}
 
-                {!isAskReplayMode ? (
+                {(!isAskReplayMode && !isAskComposerOpen) ? (
                     <>
-                    <div className="grid grid-cols-2 gap-2.5">
+                    {!(isEditingNote || isNoteComposerOpen) && (
+                        <>
+                        <div className="grid grid-cols-2 gap-2">
                         <motion.button
                             type="button"
                             onClick={onCreateHighlight}
                             disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                            whileTap={candyTap}
-                            style={getPressableStyle("rgba(174,236,207,0.95)", 4)}
-                            className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[18px] border border-[#9fe6c7] bg-[linear-gradient(180deg,#f4fff9,#dcfff0)] px-3 py-2.5 text-sm font-black text-[#1b9c72] shadow-[0_4px_0_rgba(174,236,207,0.95)] transition-all hover:bg-[#ecfff6] disabled:cursor-not-allowed disabled:opacity-50"
+                            whileTap={{ scale: 0.98 }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-[14px] border border-emerald-500/20 bg-emerald-500/10 px-2 py-2 text-[12px] font-black text-emerald-600 shadow-sm transition-all hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <Highlighter className="h-3.5 w-3.5" />
                             高亮
@@ -3680,9 +3723,8 @@ export function SelectionActionPopup({
                             type="button"
                             onClick={onCreateUnderline}
                             disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                            whileTap={candyTap}
-                            style={getPressableStyle("rgba(244,202,255,0.95)", 4)}
-                            className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[18px] border border-[#f0b8ff] bg-[linear-gradient(180deg,#fff6ff,#fbe4ff)] px-3 py-2.5 text-sm font-black text-[#b13dd3] shadow-[0_4px_0_rgba(244,202,255,0.95)] transition-all hover:bg-[#fff0ff] disabled:cursor-not-allowed disabled:opacity-50"
+                            whileTap={{ scale: 0.98 }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-[14px] border border-fuchsia-500/20 bg-fuchsia-500/10 px-2 py-2 text-[12px] font-black text-fuchsia-600 shadow-sm transition-all hover:bg-fuchsia-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <Underline className="h-3.5 w-3.5" />
                             下划线
@@ -3691,9 +3733,8 @@ export function SelectionActionPopup({
                             type="button"
                             onClick={onOpenNoteComposer}
                             disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                            whileTap={candyTap}
-                            style={getPressableStyle("rgba(205,234,255,0.95)", 4)}
-                            className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[18px] border border-[#bfe4ff] bg-[linear-gradient(180deg,#f8fcff,#e7f5ff)] px-3 py-2.5 text-sm font-black text-[#1780c9] shadow-[0_4px_0_rgba(205,234,255,0.95)] transition-all hover:bg-[#f0f9ff] disabled:cursor-not-allowed disabled:opacity-50"
+                            whileTap={{ scale: 0.98 }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-[14px] border border-blue-500/20 bg-blue-500/10 px-2 py-2 text-[12px] font-black text-blue-600 shadow-sm transition-all hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             <PenTool className="h-3.5 w-3.5" />
                             {isEditingNote ? "编辑标注" : "标注"}
@@ -3702,39 +3743,38 @@ export function SelectionActionPopup({
                             type="button"
                             onClick={onAnalyze}
                             disabled={isAnalyzingPhrase}
-                            whileTap={candyTap}
-                            style={berryPressStyle}
-                            className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[18px] border border-[#d6c6ff] bg-[linear-gradient(180deg,#faf7ff,#eee7ff)] px-3 py-2.5 text-sm font-black text-[#7c49ff] shadow-[0_4px_0_rgba(228,215,255,0.95)] transition-all hover:bg-[#f6f1ff] disabled:cursor-not-allowed disabled:opacity-50"
+                            whileTap={{ scale: 0.98 }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-[14px] border border-indigo-500/20 bg-indigo-500/10 px-2 py-2 text-[12px] font-black text-indigo-600 shadow-sm transition-all hover:bg-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            {isAnalyzingPhrase ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                            {isAnalyzingPhrase ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
                             解读 · -{getReadingCoinCost("analyze_phrase")}
                         </motion.button>
                     </div>
-                    <div className="mt-2.5">
+                    <div className="mt-2 text-center">
                         <motion.button
                             type="button"
                             onClick={onLookupWord}
-                            whileTap={candyTap}
-                            style={softPressStyle}
-                            className="ui-pressable inline-flex w-full items-center justify-center gap-1.5 rounded-[18px] border border-[#c9d3ff] bg-[linear-gradient(180deg,#f7f8ff,#edf1ff)] px-3 py-2.5 text-sm font-black text-[#5e63ff] shadow-[0_4px_0_rgba(216,223,255,0.95)] transition-all hover:bg-[#f2f5ff]"
+                            whileTap={{ scale: 0.98 }}
+                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[14px] border border-sky-500/20 bg-sky-500/10 px-2 py-2.5 text-[12px] font-black text-sky-600 shadow-sm transition-all hover:bg-sky-500/15"
                         >
                             <BookOpen className="h-3.5 w-3.5" />
-                            查询
+                            查询选中词境 / 单词
                         </motion.button>
                     </div>
                     </>
+                    )}
+                    </>
                 ) : null}
 
-                {!isAskReplayMode && deleteActionCount > 0 ? (
+                {(!isAskReplayMode && !isAskComposerOpen) && deleteActionCount > 0 ? (
                     <div className={cn("mt-2.5 grid gap-2", deleteActionCount === 1 ? "grid-cols-1" : "grid-cols-2")}>
                         {canDeleteHighlight ? (
                             <motion.button
                                 type="button"
                                 onClick={onDeleteHighlight}
                                 disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                                whileTap={candyTap}
-                                style={getPressableStyle("rgba(255, 209, 224, 0.92)", 4)}
-                                className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[16px] border border-[#ffc3d6] bg-[#fff4f7] px-2 py-2 text-xs font-black text-[#dc4d83] transition-colors hover:bg-[#ffeaf1] disabled:cursor-not-allowed disabled:opacity-50"
+                                whileTap={{ scale: 0.98 }}
+                                className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-rose-500/20 bg-rose-500/10 px-2 py-2 text-xs font-black text-rose-600 transition-colors hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 删除高亮
                             </motion.button>
@@ -3744,9 +3784,8 @@ export function SelectionActionPopup({
                                 type="button"
                                 onClick={onDeleteUnderline}
                                 disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                                whileTap={candyTap}
-                                style={getPressableStyle("rgba(255, 223, 192, 0.92)", 4)}
-                                className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[16px] border border-[#ffd3ad] bg-[#fff6ec] px-2 py-2 text-xs font-black text-[#d57a2b] transition-colors hover:bg-[#fff0df] disabled:cursor-not-allowed disabled:opacity-50"
+                                whileTap={{ scale: 0.98 }}
+                                className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-amber-500/20 bg-amber-500/10 px-2 py-2 text-xs font-black text-amber-600 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 删除下划线
                             </motion.button>
@@ -3754,49 +3793,41 @@ export function SelectionActionPopup({
                     </div>
                 ) : null}
 
-                {isAskReplayMode ? (
-                    <div className="mt-2.5 rounded-[18px] border border-[#cfd6ff] bg-[linear-gradient(180deg,rgba(241,244,255,0.95),rgba(234,239,255,0.92))] px-3 py-2 text-xs font-black text-[#5460d9] shadow-[0_4px_0_rgba(220,227,255,0.9)]">
-                        AI 回答记录
-                    </div>
-                ) : (
+                {isAskReplayMode ? null : (!isAskComposerOpen && (
                     <div className="mt-2.5">
                         <motion.button
                             type="button"
                             onClick={() => {
                                 setExpandedQaIds([]);
-                                setIsAskComposerOpen((prev) => !prev);
+                                setIsAskComposerOpen(true);
                             }}
-                            whileTap={candyTap}
-                            style={softPressStyle}
-                            className={cn(
-                                "ui-pressable inline-flex w-full items-center justify-center gap-1.5 rounded-[18px] border px-3 py-2.5 text-sm font-black transition-colors",
-                                isAskComposerOpen
-                                    ? "border-[#bfd5ff] bg-[linear-gradient(180deg,#f4f8ff,#e8f1ff)] text-[#3270f6] shadow-[0_4px_0_rgba(210,226,255,0.92)]"
-                                    : "border-[#dce6ff] bg-white/92 text-[#4f76d9] hover:bg-[#f7faff]",
-                            )}
+                            whileTap={{ scale: 0.98 }}
+                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[14px] border border-indigo-500/30 bg-indigo-500/10 px-2 py-2 text-[12px] font-black text-indigo-600 shadow-sm transition-all hover:bg-indigo-500/15"
                         >
                             <MessageCircleQuestion className="h-3.5 w-3.5" />
                             向AI提问 · -{getReadingCoinCost("ask_ai")}
                         </motion.button>
                     </div>
-                )}
+                ))}
 
                 {isAskReplayMode || isAskComposerOpen ? (
-                    <div className="mt-2.5 overflow-hidden rounded-[24px] border border-[#dfe3ff] bg-[linear-gradient(180deg,rgba(255,252,255,0.96),rgba(244,246,255,0.92))] shadow-[0_8px_0_rgba(227,232,255,0.92),0_16px_36px_rgba(157,169,255,0.12)]">
-                        <div className="max-h-52 space-y-2.5 overflow-y-auto px-3 py-3">
-                            {qaPairs.length === 0 ? (
-                                <div className="rounded-[18px] border border-[#eadfff] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,244,255,0.92))] px-3 py-2.5 text-xs leading-6 text-[#7f7199] shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
-                                    输入问题，AI 会基于当前段落和选中文本来回答。
-                                </div>
-                            ) : (
+                    <div 
+                        className={cn("flex flex-col cursor-grab active:cursor-grabbing", !isAskReplayMode && "mt-2")}
+                        onPointerDown={isAskReplayMode ? handleDragStart : undefined}
+                        onPointerMove={isAskReplayMode ? handleDragMove : undefined}
+                        onPointerUp={isAskReplayMode ? handleDragEnd : undefined}
+                        onPointerCancel={isAskReplayMode ? handleDragEnd : undefined}
+                    >
+                        <div className={cn("overflow-y-auto px-1 -mx-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-theme-border/50 [&::-webkit-scrollbar-track]:bg-transparent", isAskReplayMode ? "max-h-[min(500px,calc(100vh-4rem))]" : "max-h-56", qaPairs.length > 0 && !isAskReplayMode ? "py-2 space-y-3" : "py-0 space-y-3")}>
+                            {qaPairs.length > 0 && (
                                 <>
                                     {qaPairs.map((pair, index) => {
-                                        const isExpanded = latestAskPairId === pair.id || expandedQaIds.includes(pair.id);
+                                        const isExpanded = expandedQaIds.includes(pair.id);
                                         const questionTitle = pair.question?.trim() || `问题 ${index + 1}`;
                                         return (
                                             <div
                                                 key={pair.id}
-                                                className="overflow-hidden rounded-[20px] border border-[#e6dcff] bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(247,243,255,0.94))] shadow-[0_6px_0_rgba(234,226,255,0.92)]"
+                                                className="overflow-hidden rounded-[14px] bg-theme-surface/50 border border-theme-border/10"
                                             >
                                                 <motion.button
                                                     type="button"
@@ -3808,9 +3839,8 @@ export function SelectionActionPopup({
                                                                 : [...prev, pair.id]
                                                         ));
                                                     }}
-                                                    whileTap={candyTap}
-                                                    style={berryPressStyle}
-                                                    className="ui-pressable flex w-full items-center justify-between gap-2 bg-[linear-gradient(90deg,#8d6bff,#a96dff)] px-3 py-2 text-left text-xs font-black text-white"
+                                                    whileTap={{ scale: 0.98 }}
+                                                    className="flex w-full items-center justify-between gap-2 border-b border-theme-border/20 bg-theme-surface px-3 py-2 text-left text-xs font-black text-theme-text"
                                                 >
                                                     <span className="min-w-0 truncate">
                                                         {`问题 ${index + 1} · ${questionTitle}`}
@@ -3820,13 +3850,10 @@ export function SelectionActionPopup({
                                                     </span>
                                                 </motion.button>
                                                 {isExpanded ? (
-                                                    <div className="px-3 py-2.5 text-xs leading-6 text-[#675b80]">
+                                                    <div className="px-3 py-2.5 text-xs leading-6 text-theme-text-muted">
                                                         {pair.answer
                                                             ? renderAskMarkdown(pair.answer)
-                                                            : <div className="text-[#9f92b9]">等待回答…</div>}
-                                                        {pair.isStreaming ? (
-                                                            <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-[#8d6bff]/50 align-middle" />
-                                                        ) : null}
+                                                            : <div className="opacity-70">等待回答…</div>}
                                                     </div>
                                                 ) : null}
                                             </div>
@@ -3836,69 +3863,68 @@ export function SelectionActionPopup({
                             )}
                         </div>
 
-                        <div className="border-t border-[#ece4ff] bg-[linear-gradient(180deg,rgba(250,247,255,0.92),rgba(244,246,255,0.86))] px-3 py-3">
-                            <div className="mb-2.5 flex items-center justify-between gap-2">
-                                <span className="text-[11px] font-black tracking-[0.12em] text-[#9a81c6]">回答模式</span>
-                                <div className="inline-flex items-center rounded-full border border-[#eadfff] bg-white/92 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)]">
-                                    {ASK_ANSWER_MODE_OPTIONS.map((option) => (
-                                        <motion.button
-                                            key={`ask-mode-selection-${option.mode}`}
-                                            type="button"
-                                            onClick={() => onAskAnswerModeChange(option.mode)}
-                                            disabled={isAskLoading}
-                                            whileTap={candyTap}
-                                            style={askAnswerMode === option.mode ? berryPressStyle : candyPressStyle}
-                                            className={cn(
-                                                "ui-pressable rounded-full px-2.5 py-1 text-[10px] font-black transition-colors",
-                                                askAnswerMode === option.mode
-                                                    ? "bg-[linear-gradient(180deg,#8c6bff,#7056ff)] text-white shadow-[0_3px_0_rgba(194,183,255,0.9)]"
-                                                    : "text-[#8a7ca8] hover:bg-[#f5f1ff] hover:text-[#6c5b8f]",
-                                            )}
-                                        >
-                                            {option.label}
-                                        </motion.button>
-                                    ))}
+                        {!isAskReplayMode && (
+                            <div className="mt-2 border-t border-theme-border/15 pt-3">
+                                <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                                    <span className="text-[10px] font-bold tracking-[0.1em] text-theme-text-muted">回答模式</span>
+                                    <div className="inline-flex items-center rounded-full bg-theme-surface p-0.5 border border-theme-border/10">
+                                        {ASK_ANSWER_MODE_OPTIONS.map((option) => (
+                                            <motion.button
+                                                key={`ask-mode-selection-${option.mode}`}
+                                                type="button"
+                                                onClick={() => onAskAnswerModeChange(option.mode)}
+                                                disabled={isAskLoading}
+                                                whileTap={{ scale: 0.95 }}
+                                                className={cn(
+                                                    "rounded-full px-2.5 py-1 text-[10px] font-black transition-colors",
+                                                    askAnswerMode === option.mode
+                                                        ? "bg-theme-active-hover text-theme-text shadow-sm"
+                                                        : "text-theme-text-muted hover:bg-theme-active-bg",
+                                                )}
+                                            >
+                                                {option.label}
+                                            </motion.button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 rounded-full border border-theme-border/20 bg-theme-surface px-4 py-1.5 shadow-sm">
+                                    <input
+                                        type="text"
+                                        value={question}
+                                        onChange={(event) => onQuestionChange(event.target.value)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === "Enter") {
+                                                event.preventDefault();
+                                                onAsk();
+                                            }
+                                        }}
+                                        placeholder={selectedText ? "针对选中文本提问..." : "输入你的问题..."}
+                                        className="w-full bg-transparent border-none text-sm font-medium text-theme-text placeholder:text-theme-text-muted/60 focus:outline-none focus:ring-0"
+                                    />
+                                    <motion.button
+                                        type="button"
+                                        onClick={onAsk}
+                                        disabled={isAskLoading || !question.trim()}
+                                        whileTap={{ scale: 0.95 }}
+                                        className="shrink-0 inline-flex h-8 w-8 items-center justify-center rounded-full bg-indigo-500/10 text-indigo-600 transition-all hover:bg-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                        {isAskLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                                    </motion.button>
                                 </div>
                             </div>
-
-                            <div className="flex items-center gap-2 rounded-[22px] border border-[#d5ddff] bg-[linear-gradient(180deg,#ffffff,#f5f8ff)] px-3 py-2 shadow-[0_5px_0_rgba(222,231,255,0.92)]">
-                                <input
-                                    type="text"
-                                    value={question}
-                                    onChange={(event) => onQuestionChange(event.target.value)}
-                                    onKeyDown={(event) => {
-                                        if (event.key === "Enter") {
-                                            event.preventDefault();
-                                            onAsk();
-                                        }
-                                    }}
-                                    placeholder={selectedText ? "针对选中文本提问..." : "输入你的问题..."}
-                                    className="w-full bg-transparent border-none text-sm font-medium text-[#5b5470] placeholder:text-[#b4aacd] focus:outline-none focus:ring-0"
-                                />
-                                <motion.button
-                                    type="button"
-                                    onClick={onAsk}
-                                    disabled={isAskLoading || !question.trim()}
-                                    whileTap={candyTap}
-                                    style={softPressStyle}
-                                    className="ui-pressable inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#cfd8ff] bg-[linear-gradient(180deg,#f4f7ff,#e6eeff)] text-[#5d79ff] transition-all hover:bg-[#eef4ff] disabled:cursor-not-allowed disabled:opacity-40"
-                                >
-                                    {isAskLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                                </motion.button>
-                            </div>
-                        </div>
+                        )}
                     </div>
                 ) : null}
 
-                {!isAskReplayMode && canDeleteNote ? (
+                {(!isAskReplayMode && !isAskComposerOpen) && canDeleteNote ? (
                     <div className="mt-2 grid grid-cols-2 gap-2">
                         <motion.button
                             type="button"
                             onClick={onEditNote}
                             disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                            whileTap={candyTap}
-                            style={getPressableStyle("rgba(205,234,255,0.95)", 4)}
-                            className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[16px] border border-[#bfe4ff] bg-[#f1faff] px-2 py-2 text-xs font-black text-[#1780c9] transition-colors hover:bg-[#e8f6ff] disabled:cursor-not-allowed disabled:opacity-50"
+                            whileTap={{ scale: 0.98 }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-blue-500/20 bg-blue-500/10 px-2 py-2 text-xs font-black text-blue-600 transition-colors hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             编辑标注
                         </motion.button>
@@ -3906,42 +3932,40 @@ export function SelectionActionPopup({
                             type="button"
                             onClick={onDeleteNote}
                             disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                            whileTap={candyTap}
-                            style={getPressableStyle("rgba(255, 209, 224, 0.92)", 4)}
-                            className="ui-pressable inline-flex items-center justify-center gap-1.5 rounded-[16px] border border-[#ffc3d6] bg-[#fff4f7] px-2 py-2 text-xs font-black text-[#dc4d83] transition-colors hover:bg-[#ffeaf1] disabled:cursor-not-allowed disabled:opacity-50"
+                            whileTap={{ scale: 0.98 }}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-rose-500/20 bg-rose-500/10 px-2 py-2 text-xs font-black text-rose-600 transition-colors hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             删除标注
                         </motion.button>
                     </div>
                 ) : null}
 
-                {!isAskReplayMode && noteLayerHidden ? (
+                {(!isAskReplayMode && !isAskComposerOpen) && noteLayerHidden ? (
                     <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-[11px] font-medium text-blue-700">
                         语法分析已开启，笔记高亮层暂时隐藏。关闭语法分析后会恢复显示。
                     </div>
                 ) : null}
 
-                {!isAskReplayMode && !noteLayerHidden && isEditingNote ? (
+                {(!isAskReplayMode && !isAskComposerOpen) && (!noteLayerHidden && isEditingNote) ? (
                     <div className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-2 text-[11px] font-semibold text-cyan-700">
                         已选中已有标注，直接修改内容后保存即可更新。
                     </div>
                 ) : null}
 
-                {!isAskReplayMode && isNoteComposerOpen && (
-                    <div className="mt-3 space-y-2.5 rounded-[22px] border border-[#d8e9ff] bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(243,249,255,0.92))] p-3 shadow-[0_6px_0_rgba(220,237,255,0.9)]">
+                {(!isAskReplayMode && !isAskComposerOpen) && isNoteComposerOpen && (
+                    <div className="mt-3 space-y-2.5 rounded-[14px] border border-theme-border/30 bg-theme-surface p-3 shadow-sm">
                         <textarea
                             value={noteDraft}
                             onChange={(event) => onNoteDraftChange(event.target.value)}
                             placeholder="写下你的标注..."
-                            className="h-20 w-full resize-none rounded-[18px] border border-[#d6e9ff] bg-[linear-gradient(180deg,#ffffff,#f5fbff)] px-3 py-2 text-sm text-[#5a6277] outline-none ring-[#d7e6ff] placeholder:text-[#b2bdd3] focus:ring-2"
+                            className="h-20 w-full resize-none rounded-[12px] border border-theme-border/30 bg-theme-base-bg px-3 py-2 text-sm text-theme-text outline-none focus:ring-1 focus:ring-blue-400 placeholder:text-theme-text-muted/60"
                         />
                         <div className="flex justify-end gap-2">
                             <motion.button
                                 type="button"
                                 onClick={onCancelNoteComposer}
-                                whileTap={candyTap}
-                                style={candyPressStyle}
-                                className="ui-pressable rounded-[14px] border border-[#e6dff5] bg-white/92 px-3 py-1.5 text-xs font-black text-[#8b7ca8] transition-colors hover:bg-[#fbf8ff]"
+                                whileTap={{ scale: 0.95 }}
+                                className="rounded-[10px] border border-theme-border/50 bg-theme-base-bg px-3 py-1.5 text-xs font-black text-theme-text transition-colors hover:bg-theme-surface"
                             >
                                 取消
                             </motion.button>
@@ -3949,9 +3973,8 @@ export function SelectionActionPopup({
                                 type="button"
                                 onClick={onSaveNote}
                                 disabled={!noteDraft.trim() || isSavingReadingNote}
-                                whileTap={candyTap}
-                                style={softPressStyle}
-                                className="ui-pressable rounded-[14px] border border-[#b7d7ff] bg-[linear-gradient(180deg,#63b7ff,#3b92ff)] px-3 py-1.5 text-xs font-black text-white transition-colors hover:bg-[#4ea3ff] disabled:cursor-not-allowed disabled:opacity-50"
+                                whileTap={{ scale: 0.95 }}
+                                className="rounded-[10px] bg-blue-500/10 px-3 py-1.5 text-xs font-black text-blue-600 transition-colors hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 {isSavingReadingNote ? "保存中..." : (isEditingNote ? "更新标注" : "保存标注")}
                             </motion.button>
@@ -3959,8 +3982,8 @@ export function SelectionActionPopup({
                     </div>
                 )}
 
-                {!isAskReplayMode && phraseAnalysis && (
-                    <div className="mt-3 space-y-3 rounded-xl border border-stone-200 bg-white/70 p-3">
+                {(!isAskReplayMode && !isAskComposerOpen) && phraseAnalysis && (
+                    <div className="mt-3 space-y-3 rounded-xl border border-theme-border/20 bg-theme-surface p-3">
                         {phraseAnalysis.translation ? (
                             <div className="space-y-1">
                                 <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-600/80">
