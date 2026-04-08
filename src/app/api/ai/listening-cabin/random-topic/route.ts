@@ -4,6 +4,7 @@ import { deepseek } from "@/lib/deepseek";
 import {
     buildListeningCabinAiRandomTopicPrompt,
     normalizeListeningCabinRequest,
+    pickListeningCabinAiTopicVariationHint,
 } from "@/lib/listening-cabin";
 
 type ModelJson = {
@@ -18,10 +19,26 @@ function extractTopic(raw: ModelJson) {
     return raw.topic.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function extractRecentTopics(rawPayload: unknown) {
+    const recentTopics = Array.isArray((rawPayload as { recentTopics?: unknown[] } | null)?.recentTopics)
+        ? (rawPayload as { recentTopics: unknown[] }).recentTopics
+        : [];
+
+    return recentTopics
+        .filter((item): item is string => typeof item === "string")
+        .map((topic) => topic.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim())
+        .filter(Boolean)
+        .slice(-6);
+}
+
 export async function POST(req: Request) {
     try {
         const rawPayload = await req.json().catch(() => null);
         const request = normalizeListeningCabinRequest(rawPayload);
+        const recentTopics = extractRecentTopics(rawPayload);
+        const variationHint = pickListeningCabinAiTopicVariationHint(
+            `${Date.now()}-${request.scriptMode}-${request.style}-${recentTopics.join("|")}`,
+        );
 
         const completion = await deepseek.chat.completions.create({
             model: "deepseek-chat",
@@ -35,6 +52,8 @@ export async function POST(req: Request) {
                         sentenceLength: request.sentenceLength,
                         scriptLength: request.scriptLength,
                         topicMode: request.topicMode,
+                        recentTopics,
+                        variationHint,
                     }),
                 },
             ],

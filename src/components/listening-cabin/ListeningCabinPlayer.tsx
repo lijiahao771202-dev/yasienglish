@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, useSpring, useTransform } from "framer-motion";
+import { AnimatePresence, motion, useSpring, useTransform, useMotionValue } from "framer-motion";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import confetti from "canvas-confetti";
 import {
@@ -94,9 +94,9 @@ function isTypographyStyle(value: string): value is TypographyStyle {
 }
 
 function renderSubtitleBlock(
-    sentences: ListeningCabinSentence[], 
-    activeIndex: number, 
-    themeColor: string, 
+    sentences: ListeningCabinSentence[],
+    activeIndex: number,
+    themeColor: string,
     fontFamily: string,
     transitionStyle: string,
     typographyStyle: string,
@@ -109,7 +109,7 @@ function renderSubtitleBlock(
         const isActive = sentence.index === activeIndex;
         const rawContent = renderSentence(sentence.english) || "";
         const words = rawContent.split(" ");
-        
+
         // Define Typography Styles with Ambient Shadow Support
         const getStyleConfig = () => {
             const baseStyle = {
@@ -123,32 +123,32 @@ function renderSubtitleBlock(
 
             switch (typographyStyle) {
                 case "aurora":
-                    return { 
+                    return {
                         ...baseStyle,
-                        textShadow: isActive && themeColor 
-                            ? `0 0 4px ${themeColor.replace('0.6', '0.35')}, 0 0 12px ${themeColor.replace('0.6', '0.15')}` 
+                        textShadow: isActive && themeColor
+                            ? `0 0 4px ${themeColor.replace('0.6', '0.35')}, 0 0 12px ${themeColor.replace('0.6', '0.15')}`
                             : `0 0 4px #00000010`,
                     };
                 case "hollow":
-                    return { 
+                    return {
                         ...baseStyle,
-                        color: "transparent", 
+                        color: "transparent",
                         WebkitTextStroke: "1px #1e293b",
                         fontWeight: 900,
                         textShadow: "none"
                     };
                 case "honey":
-                    return { 
+                    return {
                         ...baseStyle,
-                        color: "#713f12", 
+                        color: "#713f12",
                         textShadow: isActive && themeColor ? `0 2px 10px ${themeColor.replace('0.6', '0.2')}` : "0.5px 0.5px 1px rgba(0,0,0,0.05)",
                     };
                 case "neon_pulse":
                     return {
                         ...baseStyle,
                         color: "#fff",
-                        textShadow: isActive && themeColor 
-                            ? `0 0 8px ${themeColor}, 0 0 16px ${themeColor}, 0 0 24px ${themeColor}` 
+                        textShadow: isActive && themeColor
+                            ? `0 0 8px ${themeColor}, 0 0 16px ${themeColor}, 0 0 24px ${themeColor}`
                             : "0 0 4px rgba(0,0,0,0.1)",
                         animation: isActive ? "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite" : "none"
                     };
@@ -176,21 +176,21 @@ function renderSubtitleBlock(
         // Block-Level Container Variants
         const containerVariants = {
             hidden: { opacity: 0 },
-            visible: { 
+            visible: {
                 opacity: 1,
                 transition: {
-                    staggerChildren: transitionStyle === "radiant" ? 0.045 : 
-                                     transitionStyle === "typewriter" ? 0.08 : 
-                                     transitionStyle === "glide" ? 0.06 : 
-                                     transitionStyle === "stagger" ? 0.1 : 0,
+                    staggerChildren: transitionStyle === "radiant" ? 0.045 :
+                        transitionStyle === "typewriter" ? 0.08 :
+                            transitionStyle === "glide" ? 0.06 :
+                                transitionStyle === "stagger" ? 0.1 : 0,
                     delayChildren: 0.05
                 }
             },
-            exit: { 
+            exit: {
                 opacity: 0,
-                transition: { 
-                    staggerChildren: 0.015, 
-                    staggerDirection: -1 
+                transition: {
+                    staggerChildren: 0.015,
+                    staggerDirection: -1
                 }
             }
         };
@@ -216,7 +216,7 @@ function renderSubtitleBlock(
                                 key={cIdx}
                                 variants={{
                                     hidden: { opacity: 0, y: 12 },
-                                    visible: { 
+                                    visible: {
                                         opacity: 1, y: 0,
                                         transition: { type: "spring", stiffness: 120, damping: 28, mass: 1 }
                                     },
@@ -234,27 +234,27 @@ function renderSubtitleBlock(
             return words.map((word, wIdx) => {
                 const wordVar = {
                     hidden: transitionStyle === "glide" ? { opacity: 0, y: 25, scale: 0.9 } :
-                             transitionStyle === "typewriter" ? { opacity: 0, y: 4, filter: "blur(4px)" } :
-                             transitionStyle === "blur" ? { opacity: 0, filter: "blur(12px)", scale: 1.1 } :
-                             transitionStyle === "stagger" ? { opacity: 0, x: -20, rotate: -5 } :
-                             transitionStyle === "elastic" ? { opacity: 0, scale: 0.5, y: 20 } :
-                             transitionStyle === "neon" ? { opacity: 0, textShadow: "0 0 0px transparent" } :
-                             { opacity: 0 },
-                    visible: { 
+                        transitionStyle === "typewriter" ? { opacity: 0, y: 4, filter: "blur(4px)" } :
+                            transitionStyle === "blur" ? { opacity: 0, filter: "blur(12px)", scale: 1.1 } :
+                                transitionStyle === "stagger" ? { opacity: 0, x: -20, rotate: -5 } :
+                                    transitionStyle === "elastic" ? { opacity: 0, scale: 0.5, y: 20 } :
+                                        transitionStyle === "neon" ? { opacity: 0, textShadow: "0 0 0px transparent" } :
+                                            { opacity: 0 },
+                    visible: {
                         opacity: 1, y: 0, x: 0, scale: 1, rotate: 0, filter: "blur(0px)",
                         textShadow: (transitionStyle === "neon" ? `0 0 20px ${themeColor}` : styleConfig.textShadow) as any,
-                        transition: { 
-                            type: "spring" as const, 
-                            stiffness: transitionStyle === "elastic" ? 260 : 100, 
+                        transition: {
+                            type: "spring" as const,
+                            stiffness: transitionStyle === "elastic" ? 260 : 100,
                             damping: transitionStyle === "elastic" ? 15 : 22,
                             duration: 0.6
                         }
                     },
-                    exit: { 
-                        opacity: 0, 
-                        y: transitionStyle === "glide" ? -20 : -8, 
+                    exit: {
+                        opacity: 0,
+                        y: transitionStyle === "glide" ? -20 : -8,
                         filter: transitionStyle === "blur" ? "blur(10px)" : "none",
-                        transition: { duration: 0.25 } 
+                        transition: { duration: 0.25 }
                     }
                 };
 
@@ -275,24 +275,24 @@ function renderSubtitleBlock(
 
         const blockVariants = {
             hidden: transitionStyle === "mist" ? { opacity: 0, filter: "blur(20px) scale(0.98)" } :
-                    transitionStyle === "classic" ? { opacity: 0 } : {},
-            visible: transitionStyle === "mist" ? { 
-                        opacity: 1, scale: 1,
-                        transition: { duration: 0.9, ease: [0.22, 1, 0.36, 1] } 
-                    } :
-                    transitionStyle === "classic" ? { 
-                        opacity: 1, transition: { duration: 0.5 } 
-                    } : {},
+                transitionStyle === "classic" ? { opacity: 0 } : {},
+            visible: transitionStyle === "mist" ? {
+                opacity: 1, scale: 1,
+                transition: { duration: 0.9, ease: [0.22, 1, 0.36, 1] }
+            } :
+                transitionStyle === "classic" ? {
+                    opacity: 1, transition: { duration: 0.5 }
+                } : {},
             exit: { opacity: 0, transition: { duration: 0.3 } }
         };
 
         return (
-            <motion.div 
+            <motion.div
                 key={sentence.index}
                 variants={transitionStyle === "mist" || transitionStyle === "classic" ? blockVariants : containerVariants}
                 className="mb-8 last:mb-0 relative"
-                style={{ 
-                    fontFamily, 
+                style={{
+                    fontFamily,
                     pointerEvents: isActive ? "auto" : "none",
                     opacity: isActive ? 1 : 0.22,
                     WebkitFontSmoothing: "antialiased",
@@ -365,6 +365,23 @@ function ListeningCabinPlayerView({
     const { playerState, currentSubtitleSentences, audioEnergy, vocalHeat, audioRef } = player;
 
     const [hasInteractedWithPlay, setHasInteractedWithPlay] = useState(false);
+    
+    const isMasteryDraggingRef = useRef(false);
+    const masteryDragX = useMotionValue(0);
+    const masteryDragY = useMotionValue(0);
+
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem("listening_cabin_mastery_pos");
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (typeof parsed.x === "number" && typeof parsed.y === "number") {
+                    masteryDragX.set(parsed.x);
+                    masteryDragY.set(parsed.y);
+                }
+            }
+        } catch (e) {}
+    }, [masteryDragX, masteryDragY]);
 
     // Use a local map for instant UI feedback without re-triggering the player hook
     const [localMasteryMap, setLocalMasteryMap] = useState<Record<number, boolean>>({});
@@ -412,7 +429,7 @@ function ListeningCabinPlayerView({
     const isTogglingRef = useRef(false);
 
     const { playForgeSound, playSuccessSound, playGrandSuccessSound } = useForgeHaptics();
-    
+
     const [wordPopup, setWordPopup] = useState<PopupState | null>(null);
     const [lastLookupTrigger, setLastLookupTrigger] = useState<{ key: string; at: number }>({ key: "", at: 0 });
 
@@ -486,10 +503,10 @@ function ListeningCabinPlayerView({
     }, [currentSubtitleSentences]);
     const subtitleTypographyClass = useMemo(() => {
         const base = "mx-auto text-balance-editorial font-sans selection:bg-[#3b82f6]/20";
-        
+
         // Fluid Typography: clamp(min, preferred, max)
         const fluidFontSize = "text-[clamp(1.8rem,4vw+1rem,3.8rem)]";
-        
+
         return `${base} ${fluidFontSize} leading-[1.18] tracking-[-0.028em] text-[#1e293b]`;
     }, []);
     const activeSpeaker = useMemo(() => {
@@ -501,7 +518,7 @@ function ListeningCabinPlayerView({
     const speakerThemeMapping = useMemo(() => {
         const uniqueSpeakers = Array.from(new Set(session.sentences.map(s => s.speaker?.trim()).filter(Boolean)));
         const mapping: Record<string, number> = {};
-        
+
         uniqueSpeakers.forEach((speaker) => {
             // High-Performance Deterministic Hash for color stability
             let hash = 0;
@@ -540,19 +557,19 @@ function ListeningCabinPlayerView({
     }, [player, playerState.playbackMode]);
 
     const handleToggleMastery = useCallback(async () => {
-        if (!session || playerState.currentSentenceIndex < 0 || isTogglingRef.current) return;
-        
+        if (isMasteryDraggingRef.current || !session || playerState.currentSentenceIndex < 0 || isTogglingRef.current) return;
+
         // Lock the action to prevent rapid-fire clicks
         isTogglingRef.current = true;
-        
+
         // Determine current status (check local map first, then session)
         const isCurrentlyMastered = localMasteryMap[playerState.currentSentenceIndex] ?? session.sentences[playerState.currentSentenceIndex]?.isMastered;
         const nextMasteredStatus = !isCurrentlyMastered;
-        
+
         // Impact Visuals & Feedback
         setShowMasteryFlash(true);
         playSuccessSound();
-        
+
         if (nextMasteredStatus === true) {
             const btn = document.getElementById("mastery-zap-btn");
             if (btn) {
@@ -573,30 +590,30 @@ function ListeningCabinPlayerView({
                 });
             }
         }
-        
+
         // Immediate UI Update (Local map only, doesn't touch session object)
         setLocalMasteryMap(prev => ({
             ...prev,
             [playerState.currentSentenceIndex]: nextMasteredStatus
         }));
-        
+
         // Sync to DB (Background)
         const currentSession = await db.listening_cabin_sessions.get(session.id);
         if (currentSession) {
-            const updatedSentences = currentSession.sentences.map((s, idx) => 
+            const updatedSentences = currentSession.sentences.map((s, idx) =>
                 idx === playerState.currentSentenceIndex ? { ...s, isMastered: nextMasteredStatus } : s
             );
             await db.listening_cabin_sessions.update(session.id, {
                 sentences: updatedSentences
             });
         }
-        
+
         // Dynamic Auto-Advance & Settlement Detection
         setTimeout(() => {
             setShowMasteryFlash(false);
-            
+
             // Trigger Settlement if 100% Mastered
-            const totalMastered = session.sentences.filter((_, idx) => 
+            const totalMastered = session.sentences.filter((_, idx) =>
                 idx === playerState.currentSentenceIndex ? nextMasteredStatus : (localMasteryMap[idx] ?? session.sentences[idx].isMastered)
             ).length;
 
@@ -604,7 +621,7 @@ function ListeningCabinPlayerView({
                 // EPIC Celebration!
                 playGrandSuccessSound();
                 setShowEpicMasteryFlash(true);
-                
+
                 // Double confetti!
                 confetti({
                     particleCount: 300,
@@ -612,13 +629,13 @@ function ListeningCabinPlayerView({
                     origin: { y: 0.6 },
                     colors: ['#fbbf24', '#f59e0b', '#fffbeb', '#ffffff']
                 });
-                
+
                 // Keep the celebration going for ~3s before transitioning to the settlement screen
                 setTimeout(() => {
                     setShowEpicMasteryFlash(false);
                     setIsSettlementOpen(true);
                 }, 3000);
-                
+
                 // Note: isTogglingRef stays true while settlement is open to prevent background clicks
                 return;
             }
@@ -830,7 +847,7 @@ function ListeningCabinPlayerView({
             onMouseMove={(event) => {
                 const viewportHeight = window.innerHeight || 0;
                 const viewportWidth = window.innerWidth || 0;
-                
+
                 const isBottomArea = event.clientY >= viewportHeight - 180;
                 const isTopRightArea = event.clientY <= 120 && event.clientX >= viewportWidth - 180;
 
@@ -845,16 +862,16 @@ function ListeningCabinPlayerView({
                 {/* Secondary Background Pass for Materiality */}
                 <div className="premium-grain-overlay" />
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,rgba(255,255,255,0.9)_0%,transparent_80%),radial-gradient(circle_at_80%_70%,rgba(255,255,255,0.5)_0%,transparent_80%)] opacity-70" />
-                
+
                 {/* Phase 22: Unified Continuous Atmosphere (Persistent & Morphing) */}
-                <div 
+                <div
                     className="absolute inset-0 opacity-[0.98] contrast-[1.15] overflow-hidden mix-blend-multiply"
                     style={{ filter: 'url(#prism-grain)' }}
                 >
                     {/* Mastery Flash Feedback Layer */}
                     <AnimatePresence>
                         {showMasteryFlash && (
-                            <motion.div 
+                            <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 0.35 }}
                                 exit={{ opacity: 0 }}
@@ -867,10 +884,10 @@ function ListeningCabinPlayerView({
                         UNIFIED ATMOSPHERE: 
                         No AnimatePresence here. Light volumes are permanent and morph in-place.
                     */}
-                    
+
                     {/* Top-Left Marginal Flux (Primary) */}
-                    <motion.div 
-                        animate={{ 
+                    <motion.div
+                        animate={{
                             top: "0%", left: "0%",
                             opacity: 1
                         }}
@@ -878,17 +895,17 @@ function ListeningCabinPlayerView({
                         className="absolute top-0 left-0 w-[45vw] h-[45vh] -translate-x-[20%] -translate-y-[20%]"
                     >
                         <motion.div
-                            animate={{ 
+                            animate={{
                                 background: `radial-gradient(circle at center, ${activeMistTheme[0]} 0%, transparent 75%)`,
                                 opacity: [0.55, 0.9, 0.55],
                                 scale: [1, 1.05, 1],
                                 x: ["0%", "8%", "-5%", "0%"],
                                 y: ["0%", "-5%", "7%", "0%"]
                             }}
-                            transition={{ 
+                            transition={{
                                 background: { duration: 2.5, ease: "easeInOut" },
-                                duration: 22, 
-                                repeat: Infinity, 
+                                duration: 22,
+                                repeat: Infinity,
                                 ease: "linear",
                                 opacity: { duration: 6.5, repeat: Infinity, ease: "easeInOut" }
                             }}
@@ -897,8 +914,8 @@ function ListeningCabinPlayerView({
                     </motion.div>
 
                     {/* Bottom-Right Marginal Flux (Accent) */}
-                    <motion.div 
-                        animate={{ 
+                    <motion.div
+                        animate={{
                             bottom: "0%", right: "0%",
                             opacity: 1
                         }}
@@ -906,17 +923,17 @@ function ListeningCabinPlayerView({
                         className="absolute bottom-0 right-0 w-[40vw] h-[40vh] translate-x-[20%] translate-y-[20%]"
                     >
                         <motion.div
-                            animate={{ 
+                            animate={{
                                 background: `radial-gradient(circle at center, ${activeMistTheme[1]} 0%, transparent 75%)`,
                                 opacity: [0.4, 0.8, 0.4],
                                 scale: [1, 1.08, 1],
                                 x: ["0%", "-10%", "5%", "0%"],
                                 y: ["0%", "8%", "-6%", "0%"]
                             }}
-                            transition={{ 
+                            transition={{
                                 background: { duration: 2.5, ease: "easeInOut" },
-                                duration: 25, 
-                                repeat: Infinity, 
+                                duration: 25,
+                                repeat: Infinity,
                                 ease: "linear",
                                 opacity: { duration: 6, repeat: Infinity, ease: "easeInOut", delay: 1 }
                             }}
@@ -925,8 +942,8 @@ function ListeningCabinPlayerView({
                     </motion.div>
 
                     {/* Mid-Right Marginal Flux (Ghost) */}
-                    <motion.div 
-                        animate={{ 
+                    <motion.div
+                        animate={{
                             top: "50%", right: "0%",
                             opacity: 0.75
                         }}
@@ -934,16 +951,16 @@ function ListeningCabinPlayerView({
                         className="absolute top-1/2 right-0 w-[35vw] h-[55vh] translate-x-[30%] -translate-y-1/2"
                     >
                         <motion.div
-                            animate={{ 
+                            animate={{
                                 background: `radial-gradient(circle at center, ${activeMistTheme[2]} 0%, transparent 75%)`,
                                 opacity: [0.3, 0.7, 0.3],
                                 x: ["0%", "-12%", "4%", "0%"],
                                 y: ["-5%", "10%", "-5%"]
                             }}
-                            transition={{ 
+                            transition={{
                                 background: { duration: 2.5, ease: "easeInOut" },
-                                duration: 28, 
-                                repeat: Infinity, 
+                                duration: 28,
+                                repeat: Infinity,
                                 ease: "linear",
                                 opacity: { duration: 7, repeat: Infinity, ease: "easeInOut", delay: 2 }
                             }}
@@ -951,7 +968,7 @@ function ListeningCabinPlayerView({
                         />
                     </motion.div>
                 </div>
-                
+
                 {/* Content-Driven Parallax Orbs (Floating Foreground Depth) */}
                 <motion.div
                     animate={{
@@ -1055,8 +1072,8 @@ function ListeningCabinPlayerView({
                                                         onClick={() => setFontEn(opt.value)}
                                                         className={cn(
                                                             "w-full text-left px-4 py-2.5 rounded-2xl text-[13px] transition-all duration-300 border border-transparent",
-                                                            fontEn === opt.value 
-                                                                ? "bg-amber-100/80 text-amber-900 font-black border-amber-200/50 shadow-sm" 
+                                                            fontEn === opt.value
+                                                                ? "bg-amber-100/80 text-amber-900 font-black border-amber-200/50 shadow-sm"
                                                                 : "hover:bg-white/60 text-slate-500"
                                                         )}
                                                         style={{ fontFamily: opt.value }}
@@ -1084,8 +1101,8 @@ function ListeningCabinPlayerView({
                                                         onClick={() => setFontZh(opt.value)}
                                                         className={cn(
                                                             "w-full text-left px-4 py-2.5 rounded-2xl text-[13px] transition-all duration-300 border border-transparent",
-                                                            fontZh === opt.value 
-                                                                ? "bg-rose-100/80 text-rose-900 font-black border-rose-200/50 shadow-sm" 
+                                                            fontZh === opt.value
+                                                                ? "bg-rose-100/80 text-rose-900 font-black border-rose-200/50 shadow-sm"
                                                                 : "hover:bg-white/60 text-slate-500"
                                                         )}
                                                         style={{ fontFamily: opt.value }}
@@ -1116,8 +1133,8 @@ function ListeningCabinPlayerView({
                                                         onClick={() => setTransitionStyle(style.id as TransitionStyle)}
                                                         className={cn(
                                                             "px-3 py-3 rounded-2xl text-[10px] font-black uppercase tracking-wider text-left transition-all duration-300 border",
-                                                            transitionStyle === style.id 
-                                                                ? "bg-blue-600 text-white border-blue-600 shadow-[0_8px_20px_-4px_rgba(37,99,235,0.4)]" 
+                                                            transitionStyle === style.id
+                                                                ? "bg-blue-600 text-white border-blue-600 shadow-[0_8px_20px_-4px_rgba(37,99,235,0.4)]"
                                                                 : "bg-white/50 text-slate-500 border-slate-100 hover:bg-white hover:shadow-sm"
                                                         )}
                                                     >
@@ -1145,8 +1162,8 @@ function ListeningCabinPlayerView({
                                                         onClick={() => setTypographyStyle(style.id as TypographyStyle)}
                                                         className={cn(
                                                             "px-3 py-3 rounded-2xl text-[10px] font-black uppercase tracking-wider text-left transition-all duration-300 border",
-                                                            typographyStyle === style.id 
-                                                                ? "bg-amber-600 text-white border-amber-600 shadow-[0_8px_20px_-4px_rgba(217,119,6,0.4)]" 
+                                                            typographyStyle === style.id
+                                                                ? "bg-amber-600 text-white border-amber-600 shadow-[0_8px_20px_-4px_rgba(217,119,6,0.4)]"
                                                                 : "bg-white/50 text-slate-500 border-slate-100 hover:bg-white hover:shadow-sm"
                                                         )}
                                                     >
@@ -1200,7 +1217,7 @@ function ListeningCabinPlayerView({
                                 style={{ perspective: "1000px" }}
                             >
                                 {currentSpeakerTags.length > 0 ? (
-                                    <motion.div 
+                                    <motion.div
                                         className="mb-10 flex flex-wrap items-center justify-center gap-8"
                                         variants={{
                                             hidden: { opacity: 0, y: 10 },
@@ -1212,7 +1229,7 @@ function ListeningCabinPlayerView({
                                             const isActive = speaker === activeSpeaker;
                                             const themeIndex = speakerThemeMapping[speaker] ?? 0;
                                             const theme = SPEAKER_MIST_THEMES[themeIndex];
-                                            
+
                                             // Living Crystal v13: Ethereal Transparency - Softened Thermal Weights
                                             return (
                                                 <motion.div
@@ -1222,21 +1239,21 @@ function ListeningCabinPlayerView({
                                                         scale: isActive ? 1.02 : 0.96,
                                                         backgroundColor: isActive ? "rgba(255, 255, 255, 1)" : "rgba(255, 255, 255, 0.4)",
                                                         // [v10] Spectral Gradient Border (Fainter v13)
-                                                        borderColor: isActive 
+                                                        borderColor: isActive
                                                             ? theme[0].replace('0.45', '0.2')
                                                             : "rgba(0, 0, 0, 0.06)",
                                                         // [v11] Layered Dual-Glow Shadow (Softened v13)
-                                                        boxShadow: isActive 
-                                                            ? `0 8px 30px -12px rgba(0,0,0,0.04), 0 0 ${15 + (audioEnergy * 20) + (vocalHeat * 15)}px ${theme[0].replace('0.45', (0.08 + (audioEnergy * 0.12) + (vocalHeat * 0.1)).toString())}, 10px 0 ${20 + (audioEnergy * 15) + (vocalHeat * 15)}px ${theme[1].replace('0.35', (0.05 + (audioEnergy * 0.08) + (vocalHeat * 0.08)).toString())}` 
+                                                        boxShadow: isActive
+                                                            ? `0 8px 30px -12px rgba(0,0,0,0.04), 0 0 ${15 + (audioEnergy * 20) + (vocalHeat * 15)}px ${theme[0].replace('0.45', (0.08 + (audioEnergy * 0.12) + (vocalHeat * 0.1)).toString())}, 10px 0 ${20 + (audioEnergy * 15) + (vocalHeat * 15)}px ${theme[1].replace('0.35', (0.05 + (audioEnergy * 0.08) + (vocalHeat * 0.08)).toString())}`
                                                             : "0 2px 5px rgba(0,0,0,0.01)",
                                                         opacity: isActive ? 1 : [0.25, 0.4, 0.25],
                                                         // [v13] Muted Thermal Saturation Filter
                                                         filter: isActive ? `saturate(${1 + (vocalHeat * 0.25)}) brightness(${1 + (vocalHeat * 0.08)})` : "none"
                                                     }}
-                                                    transition={{ 
-                                                        type: "spring", 
-                                                        stiffness: isActive ? 90 : 120, 
-                                                        damping: 30, 
+                                                    transition={{
+                                                        type: "spring",
+                                                        stiffness: isActive ? 90 : 120,
+                                                        damping: 30,
                                                         mass: 1.2,
                                                         borderColor: { stiffness: 150, damping: 25 },
                                                         boxShadow: { stiffness: 60, damping: 40, mass: 1.5 },
@@ -1246,8 +1263,8 @@ function ListeningCabinPlayerView({
                                                 >
                                                     {/* [v9] Crystalline Micro-Texture Shimmer */}
                                                     {isActive && (
-                                                        <motion.div 
-                                                            animate={{ 
+                                                        <motion.div
+                                                            animate={{
                                                                 backgroundPosition: ["0% 0%", "100% 100%"]
                                                             }}
                                                             transition={{ duration: 15 / (1 + vocalHeat), repeat: Infinity, ease: "linear" }}
@@ -1256,16 +1273,16 @@ function ListeningCabinPlayerView({
                                                     )}
 
                                                     {/* [v10] Prismatic Recognition Ripple & Periodic Glass Swipe (Fainter v13) */}
-                                                    <motion.div 
+                                                    <motion.div
                                                         key={`swipe-${speaker}-${isActive}`}
                                                         initial={{ x: "-150%" }}
                                                         animate={{ x: "250%" }}
-                                                        transition={isActive 
-                                                            ? { duration: 1.5, ease: "circOut" } 
+                                                        transition={isActive
+                                                            ? { duration: 1.5, ease: "circOut" }
                                                             : { duration: 15, repeat: Infinity, ease: "linear", delay: 2 }
                                                         }
-                                                        style={{ 
-                                                            background: isActive 
+                                                        style={{
+                                                            background: isActive
                                                                 ? `linear-gradient(90deg, transparent, ${theme[0].replace('0.45', '0.1')}, white, ${theme[1].replace('0.35', '0.1')}, transparent)`
                                                                 : 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)'
                                                         }}
@@ -1274,8 +1291,8 @@ function ListeningCabinPlayerView({
 
                                                     {/* Internal Atmospheric Bloom (Softened v13) */}
                                                     {isActive && (
-                                                        <motion.div 
-                                                            animate={{ 
+                                                        <motion.div
+                                                            animate={{
                                                                 opacity: 0.04 + (audioEnergy * 0.08) + (vocalHeat * 0.05),
                                                                 scale: 1 + (audioEnergy * 0.15) + (vocalHeat * 0.08)
                                                             }}
@@ -1283,11 +1300,11 @@ function ListeningCabinPlayerView({
                                                             className="absolute inset-0 z-0 blur-3xl opacity-10 pointer-events-none"
                                                         />
                                                     )}
-                                                    
+
                                                     <div className="relative z-20 flex items-center gap-3.5">
                                                         {/* [v10] Gemstone Orb Indicator (Softened v13) */}
-                                                        <motion.div 
-                                                            animate={{ 
+                                                        <motion.div
+                                                            animate={{
                                                                 scale: 1 + (audioEnergy * 0.6) + (vocalHeat * 0.2),
                                                                 background: `linear-gradient(135deg, ${theme[0]}, ${theme[1]})`,
                                                                 boxShadow: `0 0 ${10 + (audioEnergy * 20) + (vocalHeat * 10)}px ${theme[0].replace('0.45', '0.6')}, 6px 0 ${15 + (audioEnergy * 15) + (vocalHeat * 10)}px ${theme[1].replace('0.35', '0.4')}`
@@ -1310,7 +1327,7 @@ function ListeningCabinPlayerView({
                                         })}
                                     </motion.div>
                                 ) : null}
-                                
+
                                 <div
                                     ref={subtitleLookupRootRef}
                                     data-word-popup-root="true"
@@ -1318,7 +1335,7 @@ function ListeningCabinPlayerView({
                                     onMouseUp={handleSubtitleSelectionLookup}
                                     onTouchEnd={handleSubtitleSelectionLookup}
                                 >
-                                    <h1 
+                                    <h1
                                         className={subtitleTypographyClass}
                                         style={{
                                             transition: "text-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
@@ -1328,15 +1345,15 @@ function ListeningCabinPlayerView({
                                     >
                                         {renderSubtitleBlock(currentSubtitleSentences, playerState.currentSentenceIndex, activeMistTheme[0], fontEn, transitionStyle, typographyStyle, fontSizeEn, handleSubtitleTokenClick)}
                                     </h1>
-                                    
+
                                     <motion.div
                                         variants={{
                                             hidden: { opacity: 0, y: 15, filter: "blur(12px)" },
-                                            visible: { 
-                                                opacity: 1, 
-                                                y: 0, 
+                                            visible: {
+                                                opacity: 1,
+                                                y: 0,
                                                 filter: "blur(0px)",
-                                                transition: { delay: 0.35, duration: 0.8, ease: [0.22, 1, 0.36, 1] as any } 
+                                                transition: { delay: 0.35, duration: 0.8, ease: [0.22, 1, 0.36, 1] as any }
                                             },
                                             exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
                                         }}
@@ -1356,7 +1373,7 @@ function ListeningCabinPlayerView({
                         {/* v14: Ethereal Glass Ribbon - Acoustic Progress Tracking */}
                         <div className="w-full max-w-[36rem] px-12 group/progress">
                             <div className="relative h-[6px] w-full rounded-full bg-white/12 border border-white/8 backdrop-blur-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)] overflow-visible transition-all duration-500 group-hover/progress:h-[8px]">
-                                
+
                                 {/* Micro-Milestone Markers (Sentence Boundaries) */}
                                 <div className="absolute inset-0 pointer-events-none z-10">
                                     {session.sentences.map((s, idx) => {
@@ -1364,13 +1381,13 @@ function ListeningCabinPlayerView({
                                         const pos = (s.startTime / 1000) / totalDuration;
                                         if (pos <= 0 || pos >= 1) return null;
                                         return (
-                                            <div 
+                                            <div
                                                 key={idx}
                                                 style={{ left: `${pos * 100}%` }}
                                                 className={cn(
                                                     "absolute top-1/2 -translate-y-1/2 w-[1.5px] h-[3px] rounded-full transition-all duration-700",
-                                                    playerState.currentSentenceIndex >= idx 
-                                                        ? "bg-white/40 scale-y-150" 
+                                                    playerState.currentSentenceIndex >= idx
+                                                        ? "bg-white/40 scale-y-150"
                                                         : "bg-black/10 opacity-20"
                                                 )}
                                             />
@@ -1382,7 +1399,7 @@ function ListeningCabinPlayerView({
                                 <div className="absolute inset-x-0 inset-y-0 overflow-hidden rounded-full mask-image-linear">
                                     <motion.div
                                         className="absolute inset-y-0 left-0 transition-colors duration-700"
-                                        style={{ 
+                                        style={{
                                             width: useTransform(springProgress, p => `${p * 100}%`),
                                             background: `linear-gradient(90deg, transparent, ${activeMistTheme[0].replace('0.45', '0.2')}, ${activeMistTheme[0]})`,
                                             boxShadow: `0 0 15px ${activeMistTheme[0].replace('0.45', '0.3')}`
@@ -1402,18 +1419,18 @@ function ListeningCabinPlayerView({
                                     className="absolute top-1/2 -translate-y-1/2 -ml-2.5 z-20 pointer-events-none"
                                 >
                                     {/* Outer Aura */}
-                                    <motion.div 
-                                        animate={{ 
+                                    <motion.div
+                                        animate={{
                                             scale: 1 + (audioEnergy * 0.45) + (vocalHeat * 0.15),
                                             opacity: 0.4 + (audioEnergy * 0.3)
                                         }}
                                         style={{ backgroundColor: activeMistTheme[0] }}
                                         className="absolute inset-0 rounded-full blur-[10px]"
                                     />
-                                    
+
                                     {/* The Core Satellite */}
-                                    <motion.div 
-                                        animate={{ 
+                                    <motion.div
+                                        animate={{
                                             scale: 1 + (audioEnergy * 0.2),
                                             backgroundColor: "#ffffff",
                                             boxShadow: `0 4px 12px rgba(0,0,0,0.08), 0 0 12px ${activeMistTheme[0].replace('0.45', '0.8')}`
@@ -1421,7 +1438,7 @@ function ListeningCabinPlayerView({
                                         className="relative w-4 h-4 rounded-full border border-white/50 flex items-center justify-center overflow-hidden"
                                     >
                                         <div className="absolute inset-0 bg-gradient-to-br from-white via-white to-slate-100" />
-                                        <motion.div 
+                                        <motion.div
                                             animate={{ opacity: [0.2, 0.5, 0.2], scale: [0.8, 1.2, 0.8] }}
                                             transition={{ duration: 2.5, repeat: Infinity }}
                                             style={{ backgroundColor: activeMistTheme[1] }}
@@ -1434,7 +1451,7 @@ function ListeningCabinPlayerView({
                             <div className="mt-5 flex items-center justify-between px-1">
                                 <div className="flex items-center gap-4">
                                     <div className="flex items-center gap-2">
-                                        <motion.div 
+                                        <motion.div
                                             animate={{ opacity: [0.3, 0.6, 0.3] }}
                                             transition={{ duration: 2, repeat: Infinity }}
                                             className="w-1 h-1 rounded-full bg-slate-400"
@@ -1454,7 +1471,7 @@ function ListeningCabinPlayerView({
                             {/* Phase 30: The Grand Mastery Settlement Ceremony */}
                             <AnimatePresence>
                                 {isSettlementOpen && (
-                                    <motion.div 
+                                    <motion.div
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         exit={{ opacity: 0 }}
@@ -1468,8 +1485,8 @@ function ListeningCabinPlayerView({
                                         >
                                             {/* Decorative Background Elements */}
                                             <div className="absolute top-0 inset-x-0 h-48 bg-gradient-to-b from-amber-50 to-transparent pointer-events-none" />
-                                            <motion.div 
-                                                animate={{ 
+                                            <motion.div
+                                                animate={{
                                                     scale: [1, 1.2, 1],
                                                     opacity: [0.3, 0.6, 0.3]
                                                 }}
@@ -1478,7 +1495,7 @@ function ListeningCabinPlayerView({
                                             />
 
                                             <div className="relative z-10 space-y-6">
-                                                <motion.div 
+                                                <motion.div
                                                     initial={{ rotate: -20, scale: 0.5 }}
                                                     animate={{ rotate: 0, scale: 1 }}
                                                     transition={{ delay: 0.2, type: "spring" }}
@@ -1514,8 +1531,8 @@ function ListeningCabinPlayerView({
                                                         <Home size={18} className="group-hover/home:rotate-12 transition-transform" />
                                                         返回主页
                                                     </motion.button>
-                                                    
-                                                    <button 
+
+                                                    <button
                                                         onClick={() => {
                                                             setIsSettlementOpen(false);
                                                             isTogglingRef.current = false;
@@ -1551,12 +1568,12 @@ function ListeningCabinPlayerView({
                         initial={false}
                         animate={
                             showControls
-                                ? { 
-                                    opacity: 1, 
-                                    y: 0, 
+                                ? {
+                                    opacity: 1,
+                                    y: 0,
                                     pointerEvents: "auto",
                                     boxShadow: `0 30px 70px rgba(0,0,0,0.1), inset 0 2px 14px rgba(255,255,255,0.6), 0 0 25px ${activeMistTheme[0].replace('0.35', '0.1')}`
-                                  }
+                                }
                                 : { opacity: 0, y: 32, pointerEvents: "none" }
                         }
                         style={{ backdropFilter: "blur(40px) saturate(1.2)" }}
@@ -1638,8 +1655,8 @@ function ListeningCabinPlayerView({
                                     aria-label={playerState.isPlaying ? "暂停播放" : "开始播放"}
                                 >
                                     {/* Jewel Core: Audio Reactive Glow */}
-                                    <motion.div 
-                                        animate={{ 
+                                    <motion.div
+                                        animate={{
                                             scale: playerState.isPlaying ? [1, 1.05, 1] : 1,
                                             opacity: playerState.isPlaying ? [0.4, 0.7, 0.4] : 0.2
                                         }}
@@ -1710,68 +1727,87 @@ function ListeningCabinPlayerView({
 
                 {/* Floating Crystal Zap - The Mastery FAB */}
                 <motion.div
-                    key={`mastery-icon-${playerState.currentSentenceIndex}`}
-                    className="fixed bottom-12 right-12 z-[200]"
-                    initial={{ opacity: 0, scale: 0.8, y: 20 }}
-                    animate={{ 
-                        opacity: 1, 
-                        scale: 1,
-                        y: [0, -10, 0]
+                    className="fixed bottom-36 right-6 md:bottom-12 md:right-12 z-[200]"
+                    style={{ x: masteryDragX, y: masteryDragY }}
+                    drag
+                    dragMomentum={false}
+                    dragElastic={0.1}
+                    onDragStart={() => {
+                        isMasteryDraggingRef.current = true;
                     }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    transition={{
-                        y: { duration: 4, repeat: Infinity, ease: "easeInOut" },
-                        opacity: { duration: 0.3 },
-                        scale: { type: "spring", stiffness: 300, damping: 25 }
+                    onDragEnd={() => {
+                        try {
+                            const newPos = { x: masteryDragX.get(), y: masteryDragY.get() };
+                            localStorage.setItem("listening_cabin_mastery_pos", JSON.stringify(newPos));
+                        } catch (e) {}
+                        setTimeout(() => {
+                            isMasteryDraggingRef.current = false;
+                        }, 100);
                     }}
                 >
-                    <motion.button
-                        id="mastery-zap-btn"
-                        onClick={handleToggleMastery}
-                        whileHover={{ scale: 1.15, rotate: 15 }}
-                        whileTap={{ scale: 0.85, rotate: -15 }}
-                        className="group relative w-16 h-16 rounded-full flex items-center justify-center bg-white/40 backdrop-blur-3xl border border-white/60 shadow-[0_20px_50px_rgba(0,0,0,0.15)] overflow-hidden"
-                        style={getPressableStyle("rgba(255,255,255,0.2)", 3)}
+                    <motion.div
+                        key={`mastery-icon-${playerState.currentSentenceIndex}`}
+                        initial={{ opacity: 0, scale: 0.8, y: 20 }}
+                        animate={{
+                            opacity: 1,
+                            scale: 1,
+                            y: [0, -10, 0]
+                        }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        transition={{
+                            y: { duration: 4, repeat: Infinity, ease: "easeInOut" },
+                            opacity: { duration: 0.3 },
+                            scale: { type: "spring", stiffness: 300, damping: 25 }
+                        }}
                     >
-                        {/* Inner Glowing Core */}
-                        <motion.div 
-                            animate={{ 
-                                opacity: [0.3, 0.6, 0.3],
-                                scale: [1, 1.2, 1]
-                            }}
-                            transition={{ duration: 3, repeat: Infinity }}
-                            style={{ backgroundColor: activeMistTheme[0] }}
-                            className="absolute inset-0 blur-xl z-0"
-                        />
-                        
-                        <Zap 
-                            className={cn(
-                                "relative z-10 w-7 h-7 transition-colors duration-500",
-                                (localMasteryMap[playerState.currentSentenceIndex] ?? session.sentences[playerState.currentSentenceIndex]?.isMastered)
-                                    ? "fill-amber-400 text-amber-500" 
-                                    : "text-slate-600/80 group-hover:text-amber-500"
-                            )} 
-                            strokeWidth={3} 
-                        />
-                    </motion.button>
+                        <motion.button
+                            id="mastery-zap-btn"
+                            onClick={handleToggleMastery}
+                            whileHover={{ scale: 1.15, rotate: 15 }}
+                            whileTap={{ scale: 0.85, rotate: -15 }}
+                            className="group relative w-16 h-16 rounded-full flex items-center justify-center bg-white/40 backdrop-blur-3xl border border-white/60 shadow-[0_20px_50px_rgba(0,0,0,0.15)] overflow-hidden"
+                            style={getPressableStyle("rgba(255,255,255,0.2)", 3)}
+                        >
+                            {/* Inner Glowing Core */}
+                            <motion.div
+                                animate={{
+                                    opacity: [0.3, 0.6, 0.3],
+                                    scale: [1, 1.2, 1]
+                                }}
+                                transition={{ duration: 3, repeat: Infinity }}
+                                style={{ backgroundColor: activeMistTheme[0] }}
+                                className="absolute inset-0 blur-xl z-0"
+                            />
+
+                            <Zap
+                                className={cn(
+                                    "relative z-10 w-7 h-7 transition-colors duration-500",
+                                    (localMasteryMap[playerState.currentSentenceIndex] ?? session.sentences[playerState.currentSentenceIndex]?.isMastered)
+                                        ? "fill-amber-400 text-amber-500"
+                                        : "text-slate-600/80 group-hover:text-amber-500"
+                                )}
+                                strokeWidth={3}
+                            />
+                        </motion.button>
+                    </motion.div>
                 </motion.div>
 
                 <AnimatePresence>
                     {showEpicMasteryFlash && (
-                        <motion.div 
+                        <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0, transition: { duration: 1 } }}
                             className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none overflow-hidden"
                         >
                             {/* Gold flash background */}
-                            <motion.div 
+                            <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: [0, 0.8, 0] }}
                                 transition={{ duration: 1.5, ease: "easeOut" }}
                                 className="absolute inset-0 bg-gradient-to-tr from-amber-400 via-yellow-100 to-amber-200 mix-blend-overlay"
                             />
-                            
+
                             {/* Radiant center blast */}
                             <motion.div
                                 initial={{ scale: 0, opacity: 1 }}
@@ -1781,18 +1817,18 @@ function ListeningCabinPlayerView({
                             />
 
                             {/* Text */}
-                            <motion.div 
+                            <motion.div
                                 initial={{ scale: 0.5, opacity: 0, y: 50 }}
                                 animate={{ scale: 1, opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
-                                transition={{ 
+                                transition={{
                                     type: "spring", stiffness: 100, damping: 15, mass: 1.5,
                                     opacity: { duration: 0.5 }
                                 }}
                                 className="relative z-10 flex flex-col items-center"
                             >
                                 <span className="text-[120px]">👑</span>
-                                <h1 
+                                <h1
                                     className="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-200 via-amber-400 to-amber-600 mt-4 text-center leading-tight tracking-[0.05em]"
                                     style={{
                                         textShadow: "0 10px 40px rgba(251, 191, 36, 0.5)",
@@ -1803,7 +1839,7 @@ function ListeningCabinPlayerView({
                                     <br />
                                     MASTERY
                                 </h1>
-                                <motion.div 
+                                <motion.div
                                     initial={{ width: 0 }}
                                     animate={{ width: "100%" }}
                                     transition={{ delay: 0.5, duration: 1, ease: "easeInOut" }}
@@ -1883,7 +1919,7 @@ export function ListeningCabinPlayer() {
                     <filter id="mercury-gooey" x="-50%" y="-50%" width="200%" height="200%">
                         <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
                         <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -8" result="gooey" />
-                        <feComposite in="SourceGraphic" in2="gooey" operator="atop"/>
+                        <feComposite in="SourceGraphic" in2="gooey" operator="atop" />
                     </filter>
                     {/* Prismatic Grain for Depth Texture */}
                     <filter id="prism-grain" x="0%" y="0%" width="100%" height="100%">

@@ -324,6 +324,7 @@ export default function ListeningCabinDashboard() {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const usedRandomTopicsRef = useRef<Set<string>>(new Set());
+    const recentAiTopicsRef = useRef<string[]>([]);
 
     const [request, setRequest] = useState<ListeningCabinGenerationRequest>({
         ...DEFAULT_LISTENING_CABIN_REQUEST,
@@ -509,6 +510,11 @@ export default function ListeningCabinDashboard() {
         setIsGeneratingAiTopic(true);
 
         try {
+            const recentTopics = Array.from(new Set([
+                ...(request.topicSource === "ai" && request.prompt ? [request.prompt.trim()] : []),
+                ...recentAiTopicsRef.current,
+            ].filter(Boolean))).slice(-6);
+
             const response = await fetch("/api/ai/listening-cabin/random-topic", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -519,6 +525,7 @@ export default function ListeningCabinDashboard() {
                     sentenceLength: request.sentenceLength,
                     scriptLength: request.scriptLength,
                     topicMode: request.topicMode,
+                    recentTopics,
                 }),
             });
             const data = await response.json().catch(() => null);
@@ -528,6 +535,10 @@ export default function ListeningCabinDashboard() {
             }
 
             const nextTopic = data.topic.trim();
+            recentAiTopicsRef.current = Array.from(new Set([
+                ...recentAiTopicsRef.current,
+                nextTopic,
+            ])).slice(-6);
             setRequest((current) => ({
                 ...current,
                 prompt: nextTopic,

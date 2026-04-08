@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
     buildListeningCabinAudioCacheKey,
+    buildListeningCabinAiRandomTopicPrompt,
     buildListeningCabinPrompt,
     canonicalizeListeningCabinSentenceSpeakers,
     buildListeningCabinMixedAudioCacheKey,
@@ -15,6 +16,7 @@ import {
     lintListeningCabinDraft,
     normalizeListeningCabinRequest,
     normalizeListeningCabinSentences,
+    pickListeningCabinAiTopicVariationHint,
     pickListeningCabinRandomTopic,
     playbackRateToTtsRate,
     resolveListeningCabinLengthProfile,
@@ -409,6 +411,56 @@ describe("listening cabin helpers", () => {
 
         expect(prompt).toContain("occasional natural repetition");
         expect(prompt).toContain("that, that is not true");
+    });
+
+    it("asks ai-generated topics to stay fresh and mildly unexpected without becoming absurd", () => {
+        const prompt = buildListeningCabinAiRandomTopicPrompt({
+            scriptMode: "monologue",
+            style: "storytelling",
+            cefrLevel: "B1",
+            sentenceLength: "medium",
+            scriptLength: "short",
+            topicMode: "hybrid",
+            recentTopics: [
+                "讲一个普通晨会如何更高效",
+                "聊聊如何在通勤路上学英语",
+            ],
+            variationHint: "This round, build the topic around one concrete object, note, message, or clue.",
+        });
+
+        expect(prompt).toContain("small surprise");
+        expect(prompt).toContain("awkward misunderstanding");
+        expect(prompt).toContain("Stay believable. No fantasy");
+        expect(prompt).toContain("Do NOT repeat or closely paraphrase these recent topic directions");
+        expect(prompt).toContain("讲一个普通晨会如何更高效");
+        expect(prompt).toContain("one concrete object, note, message, or clue");
+    });
+
+    it("adds freshness constraints when the topic comes from ai generation", () => {
+        const request = normalizeListeningCabinRequest({
+            prompt: "讲一个在陌生城市迷路却意外发现一家深夜小店的故事",
+            topicMode: "hybrid",
+            topicSource: "ai",
+            scriptMode: "monologue",
+        });
+        const profile = resolveListeningCabinLengthProfile(request.scriptLength, request.sentenceLength);
+        const prompt = buildListeningCabinPrompt({
+            request,
+            effectivePrompt: request.prompt,
+            profile,
+            speakerPlan: request.speakerPlan,
+        });
+
+        expect(prompt).toContain("Lean into freshness");
+        expect(prompt).toContain("one mildly unexpected turn");
+        expect(prompt).toContain("believable everyday detail");
+    });
+
+    it("picks deterministic ai topic variation hints from a seed", () => {
+        expect(pickListeningCabinAiTopicVariationHint("seed-a")).toBeTruthy();
+        expect(pickListeningCabinAiTopicVariationHint("seed-a")).toBe(
+            pickListeningCabinAiTopicVariationHint("seed-a"),
+        );
     });
 
     it("uses gentler lint thresholds for ultra-long scripts", () => {

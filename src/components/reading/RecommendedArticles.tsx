@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, Settings2, LayoutGrid, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useFeedStore } from "@/lib/feed-store";
 import { useUserStore } from "@/lib/store";
@@ -194,10 +195,21 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     const reducedMotion = Boolean(prefersReducedMotion);
     const silentImageHydrationRef = useRef<Record<string, boolean>>({});
     const [articles, setArticles] = useState<ArticleItem[]>([]);
-    const [category, setCategory] = useState<FeedCategory>('cat_mode');
+    const searchParams = useSearchParams();
+
+    const [category, setCategory] = useState<FeedCategory>(() => {
+        const routeTask = searchParams?.get('smart_task');
+        if (routeTask === 'reading_ai') return 'ai_gen';
+        if (routeTask === 'cat') return 'cat_mode';
+        return 'cat_mode';
+    });
     const [activeView, setActiveView] = useState<ArticleView>('all');
     const [genTopic, setGenTopic] = useState("");
-    const [genDifficulty, setGenDifficulty] = useState<'cet4' | 'cet6' | 'ielts'>('ielts');
+    const [genDifficulty, setGenDifficulty] = useState<'cet4' | 'cet6' | 'ielts'>(() => {
+        const routeExam = searchParams?.get('exam_track');
+        if (routeExam === 'cet4' || routeExam === 'cet6' || routeExam === 'ielts') return routeExam as 'cet4' | 'cet6' | 'ielts';
+        return 'ielts';
+    });
     const [isGenerating, setIsGenerating] = useState(false);
 
     // New states for enhanced UX
@@ -225,17 +237,18 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         show: {
             opacity: 1,
             transition: {
-                staggerChildren: 0.04,
-                delayChildren: 0.06,
+                staggerChildren: 0.08,
+                delayChildren: 0.05,
             },
         },
     };
     const listItemVariants = {
-        hidden: { opacity: 0, scale: 0.998 },
+        hidden: { opacity: 0, scale: 0.98, y: 30 },
         show: {
             opacity: 1,
             scale: 1,
-            transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] as const },
+            y: 0,
+            transition: { type: "spring", stiffness: 220, damping: 24, mass: 1 },
         },
     };
 
@@ -317,7 +330,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
             const { db } = await import("@/lib/db");
             const rows = (await db.articles
                 .toArray() as unknown as AIGenHistoryRecord[])
-                .filter((row) => Boolean((row as unknown as { isAIGenerated?: boolean }).isAIGenerated))
+                .filter((row) => (
+                    Boolean((row as unknown as { isAIGenerated?: boolean }).isAIGenerated)
+                    && !Boolean(row.isCatMode)
+                    && !row.url.startsWith("cat://")
+                ))
                 .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
             const historyItems: ArticleItem[] = rows.map((row) => ({
@@ -651,25 +668,35 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         { id: "ai_news", label: "AI 资讯" },
     ];
     const panelTransition = {
-        duration: prefersReducedMotion ? 0.16 : 0.44,
+        duration: prefersReducedMotion ? 0.16 : 0.6,
         ease: [0.22, 1, 0.36, 1] as const,
     };
     const panelEnter = prefersReducedMotion
         ? { opacity: 0 }
-        : { opacity: 0, y: 18, scale: 0.992, filter: "blur(12px)" };
+        : { opacity: 0, y: 25, scale: 0.98 };
     const panelExit = prefersReducedMotion
         ? { opacity: 0 }
-        : { opacity: 0, y: -12, scale: 0.99, filter: "blur(10px)" };
+        : { opacity: 0, y: -15, scale: 0.98 };
+
+    const blockEntryVariants = {
+        hidden: { opacity: 0, y: 25, scale: 0.98 },
+        show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 220, damping: 24, mass: 1 } },
+        exit: { opacity: 0, y: -15, scale: 0.98, transition: { duration: 0.2 } }
+    };
 
     return (
         <motion.div
             className="mx-auto w-full max-w-[1180px]"
-            initial={prefersReducedMotion ? false : { opacity: 0, y: 18, scale: 0.994, filter: "blur(12px)" }}
-            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: prefersReducedMotion ? 0.16 : 0.72, ease: [0.22, 1, 0.36, 1] }}
+            initial={prefersReducedMotion ? false : "hidden"}
+            animate="show"
+            variants={{
+                hidden: { opacity: 0 },
+                show: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.02 } }
+            }}
         >
             <motion.div
                 layout
+                variants={prefersReducedMotion ? undefined : blockEntryVariants}
                 transition={{ layout: panelTransition, duration: panelTransition.duration, ease: panelTransition.ease }}
                 className="relative mb-6 overflow-hidden rounded-[34px] border-4 border-[color:var(--mist-read-bd)] bg-[color:var(--mist-read-bg)] px-5 py-5 shadow-[0_12px_0_0_var(--mist-read-sd)] md:px-6 md:py-6"
             >
@@ -869,17 +896,21 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 </div>
             ) : null}
 
-            <AnimatePresence mode="wait" initial={false}>
+            <AnimatePresence mode="wait">
                 {category === 'ai_gen' ? (
                 <motion.div
                     key="board-ai-gen"
                     className="space-y-6"
-                    initial={panelEnter}
-                    animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                    exit={panelExit}
-                    transition={panelTransition}
+                    initial="hidden"
+                    animate="show"
+                    exit="exit"
+                    variants={{
+                        hidden: panelEnter,
+                        show: { opacity: 1, y: 0, scale: 1, transition: { staggerChildren: 0.08, ...panelTransition } },
+                        exit: panelExit
+                    }}
                 >
-                    <section className={cn(shellCardClass, "p-5 md:p-6")}>
+                    <motion.section variants={prefersReducedMotion ? undefined : blockEntryVariants} className={cn(shellCardClass, "p-5 md:p-6")}>
                         <div className="flex flex-wrap items-start justify-between gap-4">
                             <div>
                                 <p className="text-[11px] font-black uppercase tracking-[0.18em] text-theme-text-muted">AI Studio</p>
@@ -1022,9 +1053,9 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     </motion.button>
                                 </div>
                             </div>
-                    </section>
+                    </motion.section>
 
-                    <div className="space-y-3">
+                    <motion.div variants={prefersReducedMotion ? undefined : blockEntryVariants} className="space-y-3">
                         <div className="flex items-center justify-between px-1">
                             <h4 className="text-sm font-black text-theme-text">历史文章</h4>
                             <span className="text-xs text-theme-text-muted">{articles.length} 篇</span>
@@ -1059,19 +1090,23 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                 ))}
                             </motion.div>
                         )}
-                    </div>
+                    </motion.div>
                 </motion.div>
             ) : category === "cat_mode" ? (
                 <motion.div
                     key="board-cat-mode"
                     className="space-y-6"
-                    initial={panelEnter}
-                    animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                    exit={panelExit}
-                    transition={panelTransition}
+                    initial="hidden"
+                    animate="show"
+                    exit="exit"
+                    variants={{
+                        hidden: panelEnter,
+                        show: { opacity: 1, y: 0, scale: 1, transition: { staggerChildren: 0.08, ...panelTransition } },
+                        exit: panelExit
+                    }}
                 >
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.95fr)]">
-                        <section className={cn(shellCardClass, "p-5 md:p-6")}>
+                        <motion.section variants={prefersReducedMotion ? undefined : blockEntryVariants} className={cn(shellCardClass, "p-5 md:p-6")}>
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
                                     <p className="text-[11px] font-black uppercase tracking-[0.18em] text-theme-text-muted">Training Console</p>
@@ -1185,12 +1220,14 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                     </motion.div>
                                 )}
                             </AnimatePresence>
-                        </section>
+                        </motion.section>
 
-                        <CatGrowthChart currentScore={catScore} />
+                        <motion.div variants={prefersReducedMotion ? undefined : blockEntryVariants}>
+                            <CatGrowthChart currentScore={catScore} />
+                        </motion.div>
                     </div>
 
-                    <div className="space-y-3">
+                    <motion.div variants={prefersReducedMotion ? undefined : blockEntryVariants} className="space-y-3">
                         <div className="flex items-center justify-between px-1">
                             <h4 className="text-sm font-black text-theme-text">训练历史</h4>
                             <span className="text-xs text-theme-text-muted">{articles.length} 篇</span>
@@ -1225,16 +1262,20 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                                 ))}
                             </motion.div>
                         )}
-                    </div>
+                    </motion.div>
                 </motion.div>
             ) : (
                 <motion.div
                     key={`board-feed-${category}`}
                     className="space-y-8"
-                    initial={panelEnter}
-                    animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                    exit={panelExit}
-                    transition={panelTransition}
+                    initial="hidden"
+                    animate="show"
+                    exit="exit"
+                    variants={{
+                        hidden: panelEnter,
+                        show: { opacity: 1, y: 0, scale: 1, transition: { staggerChildren: 0.08, ...panelTransition } },
+                        exit: panelExit
+                    }}
                 >
                     {articles.length === 0 && (
                         <div className={cn(shellCardClass, "py-16 text-center text-sm italic text-theme-text-muted")}>
@@ -1243,14 +1284,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                     )}
 
                     {articles.length > 0 && (
-                        <AnimatePresence mode="wait" initial={false}>
+                        <AnimatePresence mode="wait">
                             <motion.div
                                 key={`feed-view-${category}-${activeView}-${feedViewModel.filteredArticles.length === 0 ? "empty" : "filled"}`}
                                 className="space-y-6"
-                                initial={panelEnter}
-                                animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                                exit={panelExit}
-                                transition={panelTransition}
+                                variants={prefersReducedMotion ? undefined : blockEntryVariants}
                             >
                                 {feedViewModel.filteredArticles.length === 0 ? (
                                     <div className={cn(shellCardClass, "p-10 text-center text-sm text-theme-text-muted")}>

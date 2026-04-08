@@ -30,10 +30,16 @@ function normalizeDailyPlanItemShape(item: DailyPlanItem, fallbackExamTrack?: Sm
         ?? inferSmartPlanExamTrack(item.text)
         ?? ((normalizedType === "reading_ai" || normalizedType === "cat") ? fallbackExamTrack : undefined);
 
+    let defaultChunk = item.chunk_size;
+    if (defaultChunk === undefined && normalizedType) {
+        defaultChunk = normalizedType === 'rebuild' ? 15 : 1;
+    }
+
     return {
         ...item,
         type: normalizedType,
         exam_track: examTrack,
+        chunk_size: defaultChunk,
     };
 }
 
@@ -101,8 +107,7 @@ export function useDailyPlans(date: Date) {
     ) => {
         if (!text.trim() || target <= 0) return;
 
-        let defaultChunk: number | undefined = undefined;
-        if (target >= 20 && type === 'rebuild') defaultChunk = 15;
+        let defaultChunk: number | undefined = type === 'rebuild' ? 15 : 1;
         const normalizedType = normalizeSmartPlanTaskType(type);
         if (!normalizedType) return;
 
@@ -161,8 +166,7 @@ export function useDailyPlans(date: Date) {
                 for (const t of tasks) {
                     if (!t.text.trim() || t.target <= 0) continue;
                     
-                    let defaultChunk: number | undefined = undefined;
-                    if (t.target >= 20 && t.type === 'rebuild') defaultChunk = 15;
+                    let defaultChunk: number | undefined = t.type === 'rebuild' ? 15 : 1;
                     const normalizedType = normalizeSmartPlanTaskType(t.type);
                     if (!normalizedType) continue;
                     const normalizedExamTrack = normalizeSmartPlanExamTrack(t.exam_track)

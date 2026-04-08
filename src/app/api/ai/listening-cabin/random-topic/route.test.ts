@@ -84,6 +84,10 @@ describe("listening cabin random topic route", () => {
         const response = await POST(buildRequest({
             scriptMode: "monologue",
             style: "workplace",
+            recentTopics: [
+                "讲一个普通晨会如何更高效",
+                "聊聊如何在通勤路上学英语",
+            ],
         }));
         await response.json();
 
@@ -91,6 +95,10 @@ describe("listening cabin random topic route", () => {
         const prompt = createCompletionMock.mock.calls[0]?.[0]?.messages?.[0]?.content;
         expect(typeof prompt).toBe("string");
         expect(prompt).toContain("专业");
+        expect(prompt).toContain("small surprise");
+        expect(prompt).toContain("Stay believable. No fantasy");
+        expect(prompt).toContain("Do NOT repeat or closely paraphrase these recent topic directions");
+        expect(prompt).toContain("讲一个普通晨会如何更高效");
     });
 
     it("returns 502 when ai topic payload is empty", async () => {
