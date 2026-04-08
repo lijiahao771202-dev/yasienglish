@@ -21,15 +21,32 @@ type RouteTaskContext = {
 
 function taskMatchesRoute(item: DailyPlanItem, routeTaskContext: RouteTaskContext | null, pathname: string) {
     if (pathname === '/' || pathname === '/home') return true;
-    if (!routeTaskContext) return true;
-    if (item.type !== routeTaskContext.taskType) return false;
-    if (routeTaskContext.taskType === 'reading_ai' && routeTaskContext.examTrack) {
-        return item.exam_track === routeTaskContext.examTrack;
+    
+    if (routeTaskContext) {
+        if (item.type !== routeTaskContext.taskType) return false;
+        if (routeTaskContext.taskType === 'reading_ai' && routeTaskContext.examTrack) {
+            return item.exam_track === routeTaskContext.examTrack;
+        }
+        if (routeTaskContext.taskType === 'cat' && routeTaskContext.examTrack) {
+            return !item.exam_track || item.exam_track === routeTaskContext.examTrack;
+        }
+        return true;
     }
-    if (routeTaskContext.taskType === 'cat' && routeTaskContext.examTrack) {
-        return !item.exam_track || item.exam_track === routeTaskContext.examTrack;
+
+    // No strict routeTaskContext was provided via searchParams, but we are on specialized pages.
+    // We should fallback to allowing ONLY tasks that make sense for this page, or hide them entirely.
+    if (pathname.startsWith('/read') || pathname.startsWith('/cat')) {
+        return item.type === 'cat' || item.type === 'reading_ai';
     }
-    return true;
+    if (pathname.startsWith('/listening-cabin')) {
+        return item.type === 'listening_cabin';
+    }
+    if (pathname.startsWith('/battle')) {
+        return item.type === 'rebuild';
+    }
+
+    // By default, if we're on some other sub-page, hide tracking rather than pollute it.
+    return false;
 }
 
 const playIncrementSound = () => {
@@ -213,7 +230,7 @@ export function GlobalSmartTracker() {
     const [incrementGoalId, setIncrementGoalId] = useState<string | null>(null);
     const [isExpanded, setIsExpanded] = useState(false);
     const [isFullyDismissed, setIsFullyDismissed] = useState(false);
-    const [revealChunks, setRevealChunks] = useState(false);
+    const [revealChunks, setRevealChunks] = useState(true);
     const [isHeroOverlay, setIsHeroOverlay] = useState(false);
     const [showAbsolute, setShowAbsolute] = useState(false);
 
@@ -228,8 +245,14 @@ export function GlobalSmartTracker() {
         const nextParams = new URLSearchParams(searchParams.toString());
         nextParams.delete('smart_entry');
         const nextQuery = nextParams.toString();
+        // Replace URL but do NOT depend on searchParams or router in a way that cancels timeouts eagerly
         router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+    }, [pathname, routeTaskContext, router, searchParams, smartEntryParam]);
 
+    // Independent effect for the hero entry sequence so URL cleanup doesn't cancel timeouts
+    useEffect(() => {
+        if (!isHeroOverlay) return;
+        
         const t1 = setTimeout(() => {
             setRevealChunks(true);
         }, 1800);
@@ -242,7 +265,7 @@ export function GlobalSmartTracker() {
             clearTimeout(t1);
             clearTimeout(t2);
         };
-    }, [pathname, routeTaskContext, router, searchParams, smartEntryParam]);
+    }, [isHeroOverlay]);
 
     useEffect(() => {
         if (!smartItems.length) return;
@@ -251,10 +274,10 @@ export function GlobalSmartTracker() {
         let hasNewIncrement = false;
 
         smartItems.forEach(item => {
-            const prev = prevItemsRef.current[item.id] || 0;
             const current = item.current || 0;
+            const prev = prevItemsRef.current[item.id];
 
-            if (current > prev) {
+            if (prev !== undefined && current > prev) {
                 let isChunkCompletion = false;
                 if (item.chunk_size && current % item.chunk_size === 0 && current < (item.target || 0)) {
                     isChunkCompletion = true;
@@ -551,7 +574,7 @@ export function GlobalSmartTracker() {
                                                     <span className="font-black tracking-wider text-sm text-theme-text-light shrink-0">
                                                         {isFullyCompleted 
                                                             ? `✓ ${absoluteCurrent}` 
-                                                            : (isChunked ? `剩 ${Math.max(0, remaining)}` : `${absoluteCurrent}/${absoluteTarget}`)}
+                                                            : (isChunked ? `${relativeCurrent}/${relativeTarget}` : `${absoluteCurrent}/${absoluteTarget}`)}
                                                     </span>
                                                 </div>
                                                 <div className="rounded-full overflow-hidden border-[2px] relative transition-all duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] h-3.5 border-theme-border bg-theme-card-bg">
@@ -733,7 +756,7 @@ export function GlobalSmartTracker() {
                                                 ? `✓ ${absoluteCurrent}`
                                                 : (showAbsolute 
                                                     ? `${absoluteCurrent}/${absoluteTarget}` 
-                                                    : (isChunked ? `剩 ${Math.max(0, remaining)}` : `${absoluteCurrent}/${absoluteTarget}`)
+                                                    : (isChunked ? `${relativeCurrent}/${relativeTarget}` : `${absoluteCurrent}/${absoluteTarget}`)
                                                 )}
                                         </span>
                                     </div>

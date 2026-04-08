@@ -441,10 +441,29 @@ export function ArticleDisplay({
         });
     }, [articleUrl, openWordPopup, title]);
 
+    const containerVariants = {
+        hidden: { opacity: 0 },
+        show: {
+            opacity: 1,
+            transition: { staggerChildren: 0.08, delayChildren: 0.05 }
+        }
+    };
+
+    const itemVariants = {
+        hidden: { opacity: 0, y: 35, scale: 0.99 },
+        show: { 
+            opacity: 1, 
+            y: 0, 
+            scale: 1,
+            transition: { type: "spring", stiffness: 180, damping: 24, mass: 1 } 
+        }
+    };
+
     return (
         <motion.article
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial="hidden"
+            animate="show"
+            variants={containerVariants}
             className="relative mx-auto w-full pb-28"
         >
             <div className="relative mb-24 overflow-hidden rounded-[2rem] border-4 border-theme-border bg-theme-base-bg p-6 shadow-[0_10px_0_var(--theme-shadow)] transition-all duration-500 md:p-10 xl:p-12">
@@ -454,12 +473,12 @@ export function ArticleDisplay({
                         {topActionNode}
                     </div>
                 ) : null}
-                <header className="relative mb-12 border-b-2 border-theme-border/50 pb-8 pt-1 text-left md:pr-60 xl:pr-72">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex rounded-full border-[3px] border-theme-border bg-theme-card-bg px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-theme-text shadow-[0_4px_0_var(--theme-shadow)]">
+                <motion.header variants={itemVariants} className="relative mb-14 border-b-[3px] border-theme-border pb-10 pt-2 text-left">
+                    <div className="flex flex-wrap items-center gap-3 md:pr-60 xl:pr-72">
+                        <span className="inline-flex -rotate-2 rounded-md border-[2.5px] border-theme-border bg-[#a7f3d0] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-[#064e3b] shadow-[2px_3px_0_var(--theme-shadow)] dark:border-theme-border/50 dark:bg-emerald-600/40 dark:text-emerald-100">
                             {articleSourceLabel}
                         </span>
-                        <span className="inline-flex rounded-full border-[3px] border-theme-border bg-theme-active-bg px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]">
+                        <span className="inline-flex rotate-1 rounded-md border-[2.5px] border-theme-border bg-[#fbcfe8] px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-[#831843] shadow-[2px_3px_0_var(--theme-shadow)] dark:border-theme-border/50 dark:bg-pink-600/40 dark:text-pink-100">
                             {estimatedReadMinutes} min read
                         </span>
                         {canOpenOriginalArticle && (
@@ -467,31 +486,33 @@ export function ArticleDisplay({
                                 href={articleUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 rounded-full border-[3px] border-theme-border bg-theme-primary-bg px-3 py-2 text-[11px] font-black uppercase tracking-[0.16em] text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)] transition hover:-translate-y-0.5"
+                                className="group inline-flex rotate-[1deg] items-center gap-1.5 rounded-md border-[2.5px] border-theme-border bg-theme-card-bg px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.16em] text-theme-text shadow-[2px_3px_0_var(--theme-shadow)] transition hover:bg-theme-active-bg/50 active:translate-y-[2px] active:shadow-none"
                             >
-                                原文
-                                <ExternalLink className="h-3.5 w-3.5" />
+                                原文 <ExternalLink className="h-3 w-3 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
                             </a>
                         )}
+                        <span className="inline-flex -rotate-1 items-center gap-2 rounded-md border-[2px] border-dashed border-theme-border/40 bg-theme-primary-bg/20 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-theme-text-muted">
+                            Editorial Sheet
+                        </span>
                     </div>
 
-                    <div className="mt-7">
-                        <h1 className="max-w-[15ch] font-newsreader text-[2.8rem] font-medium leading-[0.95] tracking-tight text-theme-text md:text-[3.6rem] xl:text-[4.1rem]">
+                    <div className="mt-8">
+                        <h1 className="font-newsreader text-[2.4rem] font-semibold leading-[1.15] text-theme-text drop-shadow-sm md:text-[3rem] xl:text-[3.4rem]">
                             {title}
                         </h1>
                     </div>
 
-                    <div className="mt-5 flex flex-wrap items-center gap-3 text-sm text-theme-text-muted">
-                        {byline ? (
+                    <div className="mt-6 flex flex-wrap items-center gap-3">
+                        <div className="group flex items-center gap-3 opacity-90 transition-opacity hover:opacity-100">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-theme-text text-theme-base-bg shadow-sm">
+                                <span className="font-newsreader text-base font-bold italic">By</span>
+                            </div>
                             <p className="font-newsreader text-xl italic text-theme-text-muted">
-                                By {byline}
+                                {byline || "Editorial Desk"}
                             </p>
-                        ) : null}
-                        <span className="inline-flex items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-card-bg px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-theme-text-muted">
-                            Editorial Reading Sheet
-                        </span>
+                        </div>
                     </div>
-                </header>
+                </motion.header>
 
                 {/* TED Video Player */}
                 {isTED && videoUrl && (
@@ -514,7 +535,8 @@ export function ArticleDisplay({
                                 const isLocatedParagraph = highlightedParagraphNumber === currentParagraphOrder;
                                 const useParagraphFallbackHighlight = isLocatedParagraph && !highlightedSnippet;
                                 return (
-                                    <div
+                                    <motion.div
+                                        variants={itemVariants}
                                         key={block.id || index}
                                         data-article-paragraph={currentParagraphOrder}
                                         className={cn(
@@ -552,29 +574,33 @@ export function ArticleDisplay({
                                             onToggleFocusLock={() => setLockedFocusIndex(prev => prev === index ? null : index)}
                                             highlightSnippet={isLocatedParagraph ? (highlightedSnippet || undefined) : undefined}
                                         />
-                                    </div>
+                                    </motion.div>
                                 );
                             } else if (block.type === 'header') {
                                 const HeaderTag = (block.tag || 'h2') as React.ElementType;
-                                return <HeaderTag key={index} className="mt-10 mb-4 font-newsreader text-3xl font-medium text-theme-text">{block.content}</HeaderTag>;
+                                return <motion.div variants={itemVariants} key={index}><HeaderTag className="mt-10 mb-4 font-newsreader text-3xl font-medium text-theme-text">{block.content}</HeaderTag></motion.div>;
                             } else if (block.type === 'list' && block.items) {
                                 const ListTag = (block.tag || 'ul') as React.ElementType;
                                 return (
-                                    <ListTag key={index} className="list-disc list-inside space-y-2 pl-4 text-theme-text">
-                                        {block.items.map((item, i) => <li key={i}>{item}</li>)}
-                                    </ListTag>
+                                    <motion.div variants={itemVariants} key={index}>
+                                        <ListTag className="list-disc list-inside space-y-2 pl-4 text-theme-text">
+                                            {block.items.map((item, i) => <li key={i}>{item}</li>)}
+                                        </ListTag>
+                                    </motion.div>
                                 );
                             } else if (block.type === 'image' && block.src) {
                                 return (
-                                    <div key={index} className="my-8 overflow-hidden rounded-[1.6rem] border-4 border-theme-border shadow-[0_8px_0_var(--theme-shadow)]">
+                                    <motion.div variants={itemVariants} key={index} className="my-8 overflow-hidden rounded-[1.6rem] border-4 border-theme-border shadow-[0_8px_0_var(--theme-shadow)]">
                                         <img src={block.src} alt={block.alt || ''} className="w-full h-auto object-cover" />
-                                    </div>
+                                    </motion.div>
                                 );
                             } else if (block.type === 'blockquote' && block.content) {
                                 return (
-                                    <blockquote key={index} className="my-8 rounded-[1.4rem] border-4 border-theme-border bg-theme-primary-bg/20 px-5 py-4 text-theme-text italic shadow-[0_6px_0_var(--theme-shadow)]">
-                                        {block.content}
-                                    </blockquote>
+                                    <motion.div variants={itemVariants} key={index}>
+                                        <blockquote className="my-8 rounded-[1.4rem] border-4 border-theme-border bg-theme-primary-bg/20 px-5 py-4 text-theme-text italic shadow-[0_6px_0_var(--theme-shadow)]">
+                                            {block.content}
+                                        </blockquote>
+                                    </motion.div>
                                 );
                             }
                             return null;

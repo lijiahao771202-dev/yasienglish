@@ -391,6 +391,49 @@ describe("useListeningCabinPlayer", () => {
         expect(latestAudio.pause).toHaveBeenCalled();
     });
 
+    it("re-seeks the current sentence instead of resuming a stale later timestamp in auto-all mode", async () => {
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://narration",
+            marks: [],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={buildSession()}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+
+        await flushMicrotasks();
+
+        if (!latestAudio || !latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        await act(async () => {
+            latestPlayer?.setAutoAllMode();
+            latestPlayer?.pausePlayback();
+        });
+
+        await act(async () => {
+            latestAudio.currentTime = 3.2;
+        });
+
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
+
+        await act(async () => {
+            await latestPlayer?.resumeOrPlay();
+        });
+
+        expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
+        expect(latestAudio.currentTime).toBeCloseTo(0, 3);
+        expect(latestPlayer.playerState.isPlaying).toBe(true);
+    });
+
     it("replays the current sentence on play in single-pause mode instead of continuing into the next one", async () => {
         getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
             audio: "mock://narration",

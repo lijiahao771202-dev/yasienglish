@@ -369,6 +369,21 @@ export function useListeningCabinPlayer({
         return timing ?? null;
     }, [resolvedSentences.length]);
 
+    const isAudioPositionAlignedWithSentence = useCallback((sentenceIndex: number, currentMs: number) => {
+        const timing = resolveSafeTimingForSentence(sentenceIndex);
+        if (!timing) {
+            return false;
+        }
+
+        const nextTiming = timingsRef.current[sentenceIndex + 1] ?? null;
+        const sentenceStartMs = Math.max(0, timing.startMs - SUBTITLE_SWITCH_DELAY_MS);
+        const sentenceEndMs = nextTiming
+            ? Math.max(nextTiming.startMs + SUBTITLE_SWITCH_DELAY_MS, timing.endMs)
+            : Math.max(timing.endMs, timing.startMs + STOP_MIN_AUDIBLE_WINDOW_MS);
+
+        return currentMs >= sentenceStartMs && currentMs < sentenceEndMs;
+    }, [resolveSafeTimingForSentence]);
+
     const computeStopAtMs = useCallback(
         (sentenceIndex: number, mode: ListeningCabinPlaybackMode) => {
             if (mode === "auto_all") {
@@ -613,12 +628,18 @@ export function useListeningCabinPlayer({
 
         await ensureNarrationReady();
 
+        const currentMs = audio.currentTime * 1000;
+        const isAlignedWithCurrentSentence = isAudioPositionAlignedWithSentence(
+            currentSentenceIndexRef.current,
+            currentMs,
+        );
+
         if (playbackModeRef.current !== "auto_all") {
             await seekToSentence(currentSentenceIndexRef.current, true);
             return;
         }
 
-        if (audio.src && audio.paused && audio.currentTime > 0 && !errorMessage) {
+        if (audio.src && audio.paused && audio.currentTime > 0 && !errorMessage && isAlignedWithCurrentSentence) {
             const commandToken = commandTokenRef.current + 1;
             commandTokenRef.current = commandToken;
             try {
@@ -640,7 +661,7 @@ export function useListeningCabinPlayer({
         }
 
         await seekToSentence(currentSentenceIndexRef.current, true);
-    }, [ensureNarrationReady, errorMessage, playbackRate, seekToSentence]);
+    }, [ensureNarrationReady, errorMessage, isAudioPositionAlignedWithSentence, playbackRate, seekToSentence]);
 
     const goToSentence = useCallback(async (sentenceIndex: number) => {
         await seekToSentence(sentenceIndex, true);
@@ -778,7 +799,7 @@ export function useListeningCabinPlayer({
             let capturedData = false;
 
             if (analyserRef.current && dataArrayRef.current) {
-                analyserRef.current.getByteFrequencyData(dataArrayRef.current as any);
+                analyserRef.current.getByteFrequencyData(dataArrayRef.current);
                 let sum = 0;
                 // Focus on human speech frequencies
                 const voiceRange = dataArrayRef.current.slice(0, Math.floor(dataArrayRef.current.length * 0.6));

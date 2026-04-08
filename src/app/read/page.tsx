@@ -1435,30 +1435,28 @@ function ReadingPageContent() {
                     enterQuizMode();
                 }}
                 aria-pressed={isQuizMode}
-                className="ui-pressable group flex items-center gap-2.5 rounded-full border-[3px] border-[#17120d] bg-[#2f66f3] px-5 py-2.5 text-sm font-black text-white transition-all duration-300"
-                style={getPressableStyle("rgba(23,18,13,0.12)", 6)}
+                className="group flex flex-wrap items-center gap-2.5 rounded-md border-[2.5px] border-theme-border bg-indigo-500 px-4 py-2 text-sm font-black text-white shadow-[2px_3px_0_var(--theme-shadow)] transition-all hover:-translate-y-0.5 hover:bg-indigo-400 active:translate-y-[2px] active:shadow-none dark:border-theme-border/50 dark:bg-indigo-600/90"
             >
-                <ClipboardCheck className="h-4 w-4 text-white transition-transform group-hover:scale-110" />
-                <span>{isQuizMode ? "隐藏题目" : "开始答题"}</span>
+                <ClipboardCheck className="h-4 w-4 transition-transform group-hover:-rotate-6 group-hover:scale-110" />
+                <span className="tracking-wide">{isQuizMode ? "隐藏题卡" : "开始答题"}</span>
                 <span className={cn(
-                    "rounded-full border-2 border-[#17120d] px-2 py-0.5 text-[10px] font-black",
-                    article.difficulty === 'cet4' && "bg-[#b7f0d4] text-[#0f8a69]",
-                    article.difficulty === 'cet6' && "bg-[#dbeafe] text-[#1d4ed8]",
-                    article.difficulty === 'ielts' && "bg-[#eadcff] text-[#7b45e7]"
+                    "flex items-center rounded bg-white/25 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
                 )}>
                     {article.difficulty === 'cet4' ? '四级' : article.difficulty === 'cet6' ? '六级' : '雅思'}
                 </span>
                 {!isQuizMode && !isPretestCompletedForArticle ? (
-                    <span className="rounded-full border-2 border-[#17120d] bg-[#fff4da] px-2 py-0.5 text-[10px] font-black text-[#9a6700]">
-                        前测
+                    <span className="flex items-center border-l-2 border-white/20 pl-2.5">
+                        <span className="rounded bg-rose-400/90 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                            前测
+                        </span>
                     </span>
                 ) : null}
             </button>
         );
     };
 
-    const quizPanelStyle = shouldEnableQuizPanelDrag
-        ? { transform: `translate3d(${quizPanelOffset.x}px, ${quizPanelOffset.y}px, 0)` }
+    const quizPanelStyle = (shouldEnableQuizPanelDrag && (isQuizPanelDragging || quizPanelOffset.x !== 0 || quizPanelOffset.y !== 0))
+        ? { transform: `translate3d(${quizPanelOffset.x}px, ${quizPanelOffset.y}px, 0)`, zIndex: 50 }
         : undefined;
 
     useEffect(() => {
@@ -1488,7 +1486,7 @@ function ReadingPageContent() {
     return (
         <main
             className={cn(
-                "relative overflow-hidden text-stone-800 transition-all duration-500 ease-in-out [WebkitTapHighlightColor:transparent]",
+                "relative overflow-x-hidden text-stone-800 transition-all duration-500 ease-in-out [WebkitTapHighlightColor:transparent]",
                 article
                     ? "min-h-screen bg-theme-base-bg px-4 pb-8 pt-24 md:px-8 md:pb-10 md:pt-28 xl:px-10"
                     : showStandardSplitQuiz
@@ -1829,28 +1827,9 @@ function ReadingPageContent() {
                     showStandardSplitQuiz ? "flex min-h-0 flex-col" : "mt-20",
                     isWritingMode && "h-[calc(100vh-120px)]"
                 )}
-                initial={prefersReducedMotion
-                    ? false
-                    : {
-                        opacity: 0,
-                        y: hasRouteEntry ? 18 : 12,
-                        scale: 0.994,
-                        filter: "blur(10px)",
-                    }}
-                animate={routeExitTarget
-                    ? {
-                        opacity: 0,
-                        y: prefersReducedMotion ? 0 : 18,
-                        scale: prefersReducedMotion ? 1 : 0.988,
-                        filter: prefersReducedMotion ? "none" : "blur(10px)",
-                    }
-                    : {
-                        opacity: 1,
-                        y: 0,
-                        scale: 1,
-                        filter: "blur(0px)",
-                    }}
-                transition={{ duration: prefersReducedMotion ? 0.18 : 0.5, ease: pageIntroEase }}
+                initial={{ opacity: 0 }}
+                animate={routeExitTarget ? { opacity: 0 } : { opacity: 1 }}
+                transition={{ duration: prefersReducedMotion ? 0.18 : (routeExitTarget ? 0.3 : 0.01), ease: pageIntroEase }}
             >
                 {catNotice ? (
                     <div className="mx-auto mb-4 flex w-full max-w-4xl flex-col gap-2">
@@ -1859,14 +1838,18 @@ function ReadingPageContent() {
                         </div>
                     </div>
                 ) : null}
-                <AnimatePresence mode="wait" initial={false}>
+                <AnimatePresence mode="wait">
                     {!article ? (
-                        <motion.div
-                            key="picker"
-                            initial={prefersReducedMotion ? false : { opacity: 0, y: 14, scale: 0.994, filter: "blur(8px)" }}
-                            animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -14, scale: 0.988, filter: "blur(10px)" }}
-                            transition={{ duration: prefersReducedMotion ? 0.16 : 0.48, ease: [0.16, 1, 0.3, 1] }}
+                            <motion.div
+                                key="picker"
+                                initial="hidden"
+                                animate="show"
+                                exit="exit"
+                                variants={{
+                                    hidden: { opacity: 0 },
+                                    show: { opacity: 1, transition: { duration: 0.01, staggerChildren: 0.1 } },
+                                    exit: prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98, transition: { duration: 0.15, ease: "easeOut" } }
+                                }}
                             className="relative mx-auto flex w-full max-w-[1180px] flex-col gap-6 overflow-hidden pb-16"
                         >
                             {error && (
@@ -1912,39 +1895,17 @@ function ReadingPageContent() {
                     ) : (
                         <motion.div
                             key={article.url || article.title}
-                            initial={prefersReducedMotion
-                                ? false
-                                : {
-                                    opacity: 0,
-                                    y: 20,
-                                    scale: 0.992,
-                                    filter: "blur(10px)",
-                                }}
-                            animate={{
-                                opacity: 1,
-                                y: 0,
-                                scale: 1,
-                                filter: "blur(0px)",
-                            }}
-                            exit={prefersReducedMotion
-                                ? { opacity: 0 }
-                                : {
-                                    opacity: 0,
-                                    y: -16,
-                                    scale: 0.988,
-                                    filter: "blur(12px)",
-                                }}
-                            transition={{
-                                duration: prefersReducedMotion ? 0.16 : 0.62,
-                                ease: [0.16, 1, 0.3, 1],
+                            initial="hidden"
+                            animate="show"
+                            exit="exit"
+                            variants={{
+                                hidden: { opacity: 0 },
+                                show: { opacity: 1, transition: { duration: 0.3, ease: "easeOut" } },
+                                exit: { opacity: 0, transition: { duration: 0.15 } }
                             }}
                             className={cn(
                                 "relative mx-auto grid w-full max-w-[1440px]",
-                                showStandardSplitQuiz && "min-h-0",
-                                "grid gap-6 xl:gap-8 2xl:gap-10",
-                                showStandardSplitQuiz
-                                    ? "grid-cols-1 min-h-0 xl:grid-cols-[minmax(0,1fr)_420px]"
-                                    : "grid-cols-1",
+                                "grid grid-cols-1 gap-6 xl:gap-8 2xl:gap-10",
                             )}
                         >
                         {/* Reading Column */}
@@ -1953,11 +1914,8 @@ function ReadingPageContent() {
                             ref={readingColumnRef}
                             data-reading-scroll-container="true"
                             className={cn(
-                            "space-y-8 xl:space-y-10",
-                            showStandardSplitQuiz
-                                ? "min-h-0 overflow-visible xl:pr-2 xl:pb-2"
-                                : "overflow-visible",
-                            showStandardSplitQuiz ? "max-w-none" : "mx-auto max-w-4xl"
+                            "space-y-8 xl:space-y-10 overflow-visible mx-auto max-w-4xl",
+                            showStandardSplitQuiz && "xl:mr-[440px] xl:max-w-none",
                         )}>
                             <ArticleDisplay
                                 title={article.title}
@@ -1981,38 +1939,37 @@ function ReadingPageContent() {
                                 <AudioPlayer text={article.textContent || ""} />
                             </div>
                         </div>
-
-                        {showStandardSplitQuiz && (
-                            <div className="min-h-0">
-                                <div
-                                    ref={quizPanelWrapperRef}
-                                    style={quizPanelStyle}
-                                    className={cn(
-                                        "min-h-0 xl:sticky xl:top-28 xl:flex xl:w-full xl:max-w-[420px] xl:flex-col xl:justify-self-end xl:self-start",
-                                        shouldEnableQuizPanelDrag && "transition-transform duration-75",
-                                    )}
-                                >
-                                    <div
-                                        ref={quizPanelGlassRef}
-                                        className="flex h-full max-h-[85vh] flex-col overflow-hidden rounded-[2rem] border-[3px] border-[#17120d] bg-[#fffaf0] shadow-[0_10px_0_rgba(23,18,13,0.14)]"
-                                    >
-                                        {renderQuizPanel()}
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Writing Overlay */}
-                        {isWritingMode && (
-                            <WritingEditor
-                                articleTitle={article.title}
-                                articleContent={article.textContent || article.content}
-                                onClose={() => setIsWritingMode(false)}
-                            />
-                        )}
                         </motion.div>
                     )}
                 </AnimatePresence>
+
+                {/* Fixed Quiz Panel — outside grid/motion tree to avoid transform/overflow breaking sticky */}
+                {showStandardSplitQuiz && article && (
+                    <div
+                        ref={quizPanelWrapperRef}
+                        style={quizPanelStyle}
+                        className={cn(
+                            "fixed top-28 right-10 z-40 w-[400px] flex flex-col",
+                            shouldEnableQuizPanelDrag && "transition-transform duration-75",
+                        )}
+                    >
+                        <div
+                            ref={quizPanelGlassRef}
+                            className="flex max-h-[calc(100vh-120px)] flex-col overflow-hidden rounded-[2rem] border-[3px] border-[#17120d] bg-[#fffaf0] shadow-[0_10px_0_rgba(23,18,13,0.14)]"
+                        >
+                            {renderQuizPanel()}
+                        </div>
+                    </div>
+                )}
+
+                {/* Writing Overlay */}
+                {isWritingMode && article && (
+                    <WritingEditor
+                        articleTitle={article.title}
+                        articleContent={article.textContent || article.content}
+                        onClose={() => setIsWritingMode(false)}
+                    />
+                )}
             </motion.div>
             </div>
         </main >

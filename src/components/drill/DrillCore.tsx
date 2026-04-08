@@ -1564,11 +1564,13 @@ const ParticleSwarmCanvas = memo(({ prefersReducedMotion, stageIndex = 0 }: { pr
 
         let time = 0;
 
-        // 3 vibrant, clean Macaron pastel colors (Pink, Mint, Lavender)
+        // The original 4 core colors (Pink, Blue, Emerald, Amber)
+        // With standard alpha blending this will look incredibly clean and rich.
         const blobs = [
-            { color: 'rgba(253, 164, 189, 0.5)',  speed: 0.8, radiusOffset: 5,   phaseOffset: 0 },   // Vibrant Macaron Pink
-            { color: 'rgba(134, 239, 172, 0.5)',  speed: 0.6, radiusOffset: 12,  phaseOffset: 2 },   // Vibrant Macaron Mint
-            { color: 'rgba(216, 180, 254, 0.5)', speed: 0.9, radiusOffset: -8,   phaseOffset: 4 }    // Vibrant Macaron Lavender
+            { color: 'rgba(236, 72, 153, 0.4)',  speed: 0.8, radiusOffset: 0,   phaseOffset: 0 },   // Classic Pink
+            { color: 'rgba(59, 130, 246, 0.4)',  speed: 0.6, radiusOffset: 12,  phaseOffset: 2 },   // Classic Blue
+            { color: 'rgba(16, 185, 129, 0.3)',  speed: 1.1, radiusOffset: -10, phaseOffset: 4 },   // Classic Emerald
+            { color: 'rgba(245, 158, 11, 0.3)',  speed: 0.5, radiusOffset: 5,   phaseOffset: 1 }    // Classic Amber
         ];
 
         const render = () => {
@@ -1638,15 +1640,13 @@ const ParticleSwarmCanvas = memo(({ prefersReducedMotion, stageIndex = 0 }: { pr
         };
     }, [prefersReducedMotion]);
 
-    const isReady = stageIndex === 2;
-
     return (
         <canvas 
             ref={canvasRef} 
             className={cn(
                 "absolute inset-0 z-0 mix-blend-multiply",
                 "transition-all duration-[1200ms] ease-out max-w-full overflow-hidden",
-                isReady ? "opacity-0 scale-150 blur-[15px]" : "opacity-60 scale-100 blur-[3px]"
+                "opacity-60 scale-100 blur-[3px]"
             )} 
         />
     );
@@ -9930,33 +9930,46 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             </div>
                         </div>
 
-                        <div className={cn(
-                            "mt-4 rounded-[1.75rem] border px-5 py-8 text-center md:px-8 md:py-10",
-                            isVerdantRebuild
-                                ? "border-emerald-200/80 bg-[#f7fcf8] shadow-[0_8px_18px_rgba(2,44,34,0.08)]"
-                                : activeCosmeticUi.inputShellClass
-                        )}>
-                            {renderPassageSentence(activeSegment, Boolean(activeSegmentResult))}
-                            {activeSegmentResult ? (
-                                <p className={cn(
-                                    "mx-auto mt-3 max-w-[42rem] font-mono text-[13px] leading-7 md:text-[14px]",
-                                    isVerdantRebuild ? "text-emerald-700/85" : activeCosmeticTheme.mutedClass
-                                )}>
-                                    {activeSegmentSentenceIpa || (isIpaReady ? "暂未命中完整音标词典，可先对照原句和音频。" : "正在加载音标词典...")}
-                                </p>
-                            ) : null}
-                            {rebuildPassageUiState[activePassageSegmentIndex]?.chineseExpanded ? (
-                                <p className={cn(
-                                    "mx-auto mt-4 max-w-[42rem] font-sans text-[15px] leading-8 md:text-base",
-                                    activeCosmeticTheme.mutedClass
-                                )}>
-                                    {activeSegment.chinese}
-                                </p>
-                            ) : null}
-                        </div>
+                        <div className="relative overflow-hidden">
+                            <AnimatePresence mode="wait">
+                                <motion.div
+                                    key={`segment-${activePassageSegmentIndex}-${Boolean(activeSegmentResult)}`}
+                                    initial={prefersReducedMotion ? false : { opacity: 0, x: 20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={prefersReducedMotion ? false : { opacity: 0, x: -20 }}
+                                    transition={{ duration: 0.3, ease: "easeInOut" }}
+                                    className="pt-4"
+                                >
+                                    <div className={cn(
+                                        "rounded-[1.75rem] border px-5 py-8 text-center md:px-8 md:py-10",
+                                        isVerdantRebuild
+                                            ? "border-emerald-200/80 bg-[#f7fcf8] shadow-[0_8px_18px_rgba(2,44,34,0.08)]"
+                                            : activeCosmeticUi.inputShellClass
+                                    )}>
+                                        {renderPassageSentence(activeSegment, Boolean(activeSegmentResult))}
+                                        {activeSegmentResult ? (
+                                            <p className={cn(
+                                                "mx-auto mt-3 max-w-[42rem] font-mono text-[13px] leading-7 md:text-[14px]",
+                                                isVerdantRebuild ? "text-emerald-700/85" : activeCosmeticTheme.mutedClass
+                                            )}>
+                                                {activeSegmentSentenceIpa || (isIpaReady ? "暂未命中完整音标词典，可先对照原句和音频。" : "正在加载音标词典...")}
+                                            </p>
+                                        ) : null}
+                                        {rebuildPassageUiState[activePassageSegmentIndex]?.chineseExpanded ? (
+                                            <p className={cn(
+                                                "mx-auto mt-4 max-w-[42rem] font-sans text-[15px] leading-8 md:text-base",
+                                                activeCosmeticTheme.mutedClass
+                                            )}>
+                                                {activeSegment.chinese}
+                                            </p>
+                                        ) : null}
+                                    </div>
 
-                        <div className="mt-5">
-                            {renderRebuildComposer(`提交第 ${activePassageSegmentIndex + 1} 段`, true, Boolean(activeSegmentResult))}
+                                    <div className="mt-5 pb-1">
+                                        {renderRebuildComposer(`提交第 ${activePassageSegmentIndex + 1} 段`, true, Boolean(activeSegmentResult))}
+                                    </div>
+                                </motion.div>
+                            </AnimatePresence>
                         </div>
                     </section>
                 ) : null}
@@ -9997,10 +10010,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     label: "难",
                                     className: activeCosmeticUi.audioLockedClass,
                                 },
-                            ] as const).map((option) => (
-                                <button
+                            ] as const).map((option, index) => (
+                                <motion.button
                                     key={option.value}
                                     type="button"
+                                    initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.8, y: 15 }}
+                                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                                    transition={{ duration: 0.6, delay: prefersReducedMotion ? 0 : 1.2 + index * 0.15, type: "spring", stiffness: 180, damping: 16 }}
+                                    whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                                     onClick={() => handleRebuildSelfEvaluate(option.value)}
                                     className={cn(
                                         "inline-flex min-h-14 items-center justify-center rounded-[1.2rem] border px-4 text-sm font-bold transition hover:-translate-y-0.5",
@@ -10008,7 +10025,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     )}
                                 >
                                     {option.label}
-                                </button>
+                                </motion.button>
                             ))}
                         </div>
                     </motion.section>
@@ -10641,9 +10658,20 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     const loaderActive = drillSurfacePhase === "bootstrap" || drillSurfacePhase === "loading";
     const [loaderTick, setLoaderTick] = useState(0);
+    const [isMinLoaderTimeMet, setIsMinLoaderTimeMet] = useState(false);
 
     useEffect(() => {
-        if (!loaderActive) {
+        if (drillSurfacePhase === "bootstrap" || drillSurfacePhase === "loading") {
+            setIsMinLoaderTimeMet(false);
+            const timer = setTimeout(() => {
+                setIsMinLoaderTimeMet(true);
+            }, 1800); // Enforce at least 1.8 seconds of loading to ensure fluid animations play out
+            return () => clearTimeout(timer);
+        }
+    }, [drillSurfacePhase === "bootstrap" || drillSurfacePhase === "loading"]);
+
+    useEffect(() => {
+        if (!loaderActive && isMinLoaderTimeMet) {
             setLoaderTick(0);
             return;
         }
@@ -10653,7 +10681,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         }, 760);
 
         return () => window.clearInterval(intervalId);
-    }, [loaderActive]);
+    }, [loaderActive, isMinLoaderTimeMet]);
+
+    // Only allow the UI to transition to "ready" when BOTH the drill is ready AND the minimum time has elapsed
+    const finalDrillSurfacePhase = drillSurfacePhase === "ready" && isMinLoaderTimeMet ? "ready" : "loading";
 
     type DrillLoadingVariant = DrillMode;
 
@@ -10698,24 +10729,24 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 key="drill-loading-system"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                exit={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
-                transition={{ duration: 1.2, ease: "easeInOut" }}
-                className={cn("fixed inset-0 z-[100] flex flex-col items-center justify-center bg-stone-50 overflow-hidden")}
+                exit={{ opacity: 0, scale: 1.4, filter: "blur(15px)" }}
+                transition={{ duration: 0.65, ease: "easeOut" }}
+                className={cn("fixed inset-0 z-[100] flex flex-col items-center justify-center bg-stone-50 overflow-hidden pointer-events-none")}
             >
                 <ParticleSwarmCanvas prefersReducedMotion={prefersReducedMotion ?? false} stageIndex={stageIndex} />
                 
-                <div className="relative z-10 w-full text-center flex flex-col items-center mt-36 mix-blend-multiply opacity-80">
+                <div className="absolute inset-x-0 bottom-24 z-10 w-full text-center flex flex-col items-center mix-blend-multiply opacity-80">
                     <AnimatePresence mode="wait">
-                        <motion.span
+                        <motion.div
                             key={variantUi.stages[stageIndex]}
-                            initial={{ y: 15, opacity: 0, filter: "blur(4px)" }}
-                            animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
-                            exit={{ y: -15, opacity: 0, filter: "blur(4px)" }}
-                            transition={{ duration: 0.8, ease: "easeOut" }}
-                            className="font-sans text-[13px] md:text-[15px] font-semibold tracking-[0.4em] text-stone-500 uppercase pl-2"
+                            initial={{ opacity: 0, y: 12, filter: "blur(12px)", scale: 0.94, letterSpacing: "0.1em" }}
+                            animate={{ opacity: 1, y: 0, filter: "blur(0px)", scale: 1, letterSpacing: "0.45em" }}
+                            exit={{ opacity: 0, filter: "blur(12px)", scale: 1.05, letterSpacing: "0.8em" }}
+                            transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+                            className="font-sans text-[12px] md:text-[14px] font-bold text-stone-500 uppercase pl-[0.45em]"
                         >
                             {variantUi.stages[stageIndex]}
-                        </motion.span>
+                        </motion.div>
                     </AnimatePresence>
                 </div>
             </motion.div>
@@ -10931,7 +10962,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 </div>
 
                 <AnimatePresence>
-                    {drillSurfacePhase !== "ready" && (
+                    {finalDrillSurfacePhase !== "ready" && (
                         renderDrillLoadingState({
                             title: mode === "translation" ? "正在生成句子..." : mode === "dictation" ? "正在准备听写..." : mode === "rebuild" ? "正在准备 Rebuild 练习..." : "正在准备音频...",
                             subtitle: mode === "translation" ? "Crafting your phrase" : mode === "dictation" ? "Preparing dictation stream" : mode === "rebuild" ? "Preparing rebuild puzzle" : "Preparing audio stream",
@@ -10942,7 +10973,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 </AnimatePresence>
 
                 <AnimatePresence mode="popLayout">
-                    {drillSurfacePhase === "ready" && (
+                    {finalDrillSurfacePhase === "ready" && (
                         <motion.div
                             key="drill-shell-card"
                             initial={{ scale: 0.92, opacity: 0, y: 30, filter: "blur(12px)" }}

@@ -955,6 +955,46 @@ function styleToneInstruction(style: ListeningCabinScriptStyle) {
     }
 }
 
+function buildTopicFreshnessInstruction(request: ListeningCabinGenerationRequest) {
+    if (request.topicSource === "ai" || request.topicMode === "hybrid") {
+        return [
+            "Lean into freshness: include one mildly unexpected turn, discovery, or contrast.",
+            "Anchor that freshness in believable everyday detail instead of fantasy or melodrama.",
+            "Add at least one concrete object, place detail, or tiny social cue listeners can picture clearly.",
+        ].join("\n- ");
+    }
+
+    if (request.topicMode === "random" || request.topicSource === "pool") {
+        return [
+            "Keep the topic lively instead of generic: avoid sounding like a bland productivity lecture.",
+            "Include one small memorable detail, awkward moment, or surprising observation.",
+            "Stay realistic and spoken, but let the scene feel slightly more vivid or playful than ordinary.",
+        ].join("\n- ");
+    }
+
+    return [
+        "Even when the user gives a manual topic, avoid generic wording.",
+        "Use vivid specifics, but do not drift away from the requested core topic.",
+    ].join("\n- ");
+}
+
+const AI_TOPIC_VARIATION_HINTS = [
+    "This round, prioritize a mildly awkward or misaligned social moment.",
+    "This round, build the topic around one concrete object, note, message, or clue.",
+    "This round, start ordinary and then let a small believable surprise appear.",
+    "This round, make the topic noticeably more playful or quietly humorous.",
+    "This round, center the topic on an unexpected discovery in a realistic setting.",
+    "This round, make two people want different outcomes before they realign.",
+] as const;
+
+export function pickListeningCabinAiTopicVariationHint(seedSource: string) {
+    const hash = seedSource.split("").reduce((acc, char) => {
+        return (acc * 33 + char.charCodeAt(0)) >>> 0;
+    }, 5381);
+
+    return AI_TOPIC_VARIATION_HINTS[hash % AI_TOPIC_VARIATION_HINTS.length] ?? AI_TOPIC_VARIATION_HINTS[0];
+}
+
 export function buildListeningCabinPrompt(params: {
     request: ListeningCabinGenerationRequest;
     effectivePrompt: string;
@@ -1005,8 +1045,14 @@ Strict writing constraints:
 - chinese should be concise and easy to map to the spoken line.
 - Use punctuation naturally to express emotion (comma, ellipsis, question mark, exclamation) without overusing.
 - You may use occasional natural repetition to express hesitation, emphasis, correction, or emotional pressure, for example repeating a word or short phrase once ("that, that is not true", "I just, I just froze"), but keep it rare and intentional.
+- Make the listening material memorable, not bland: include at least one concrete detail, one emotional beat, and one line that feels slightly unexpected but still believable.
 - No markdown, no extra explanation outside JSON.
 - Avoid rigid templates like "In conclusion", "This essay", "Firstly", "Secondly".
+
+Freshness and interest constraints:
+- ${buildTopicFreshnessInstruction(request)}
+- Do not become fantastical, absurd, preachy, or over-dramatic.
+- Keep the script useful for learners: vivid, but still easy to follow by ear.
 
 Mode constraints:
 ${request.scriptMode === "monologue"
@@ -1034,6 +1080,8 @@ export function buildListeningCabinAiRandomTopicPrompt(params: {
     sentenceLength: ListeningCabinSentenceLength;
     scriptLength: ListeningCabinScriptLength;
     topicMode: ListeningCabinTopicMode;
+    recentTopics?: string[];
+    variationHint?: string;
 }) {
     const styleLabel = LISTENING_CABIN_SCRIPT_STYLE_OPTIONS.find((option) => option.value === params.style)?.label ?? params.style;
     const modeConstraint = params.scriptMode === "monologue"
@@ -1041,6 +1089,11 @@ export function buildListeningCabinAiRandomTopicPrompt(params: {
         : params.scriptMode === "dialogue"
             ? "The topic must naturally fit a 2-4 speaker dialogue with turn-taking."
             : "The topic must naturally fit a podcast-style host and guests conversation (2-4 speakers).";
+    const recentTopics = (params.recentTopics ?? [])
+        .map((topic) => normalizeSentenceText(topic))
+        .filter(Boolean)
+        .slice(-6);
+    const variationHint = normalizeSentenceText(params.variationHint);
 
     return `
 You generate one high-quality listening topic for spoken English script creation.
@@ -1053,6 +1106,15 @@ Constraints:
 - Script length preference: ${params.scriptLength}
 - Topic mode context: ${params.topicMode}
 - Topic should be practical, life-like, and suitable for immersion listening (not essay-like).
+- Make the topic feel fresh and slightly more interesting than a generic classroom exercise.
+- Prefer topics with one of these ingredients: a small surprise, an awkward misunderstanding, an unusual discovery, a concrete object that matters, a tiny reversal, or a vivid social detail.
+- Stay believable. No fantasy, crime thriller, or extreme drama.
+- The topic should hint at a scene people want to hear unfold, not just a flat discussion label.
+- Avoid broad repeats. Do not return another topic that feels like the same setup with only surface wording changes.
+- ${variationHint || "This round, deliberately choose a noticeably different scene frame from your default habits."}
+- ${recentTopics.length > 0
+        ? `Do NOT repeat or closely paraphrase these recent topic directions:\n${recentTopics.map((topic) => `  - ${topic}`).join("\n")}`
+        : "If your first instinct feels generic, pivot to a clearly different setting, social dynamic, or trigger event."}
 - Output ONLY JSON.
 
 JSON schema:
