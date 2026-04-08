@@ -9,9 +9,11 @@ import {
     DEFAULT_LEARNING_PREFERENCES,
     DEFAULT_PROFILE_USERNAME,
     normalizeWordKey,
+    toLocalDailyPlanRecord,
     toLocalProfile,
     toLocalReadArticle,
     toRemoteEloHistoryRow,
+    toRemoteDailyPlanRow,
     toRemoteReadArticle,
     toLocalVocabularyItem,
     toRemoteVocabularyRow,
@@ -50,6 +52,7 @@ describe("user sync helpers", () => {
         expect(profile.username).toBe(DEFAULT_PROFILE_USERNAME);
         expect(profile.avatar_preset).toBe(DEFAULT_AVATAR_PRESET);
         expect(profile.learning_preferences).toEqual(DEFAULT_LEARNING_PREFERENCES);
+        expect(profile.daily_plan_snapshots).toEqual([]);
         expect(profile.sync_status).toBe("pending");
     });
 
@@ -89,6 +92,23 @@ describe("user sync helpers", () => {
                 ui_theme_preference: "bubblegum_pop",
                 tts_voice: "en-US-AriaNeural",
             },
+            daily_plan_snapshots: [
+                {
+                    date: "2026-04-08",
+                    updated_at: 1712563200000,
+                    items: [
+                        {
+                            id: "task-1",
+                            text: "雅思精听",
+                            completed: false,
+                            type: "listening",
+                            target: 2,
+                            current: 1,
+                            chunk_size: 1,
+                        },
+                    ],
+                },
+            ],
             updated_at: "2026-03-13T12:00:00.000Z",
             last_practice_at: "2026-03-13T11:59:00.000Z",
         });
@@ -108,6 +128,23 @@ describe("user sync helpers", () => {
         expect(localProfile.bio).toBe("Practice makes flow.");
         expect(localProfile.learning_preferences?.target_mode).toBe("battle");
         expect(localProfile.learning_preferences?.tts_voice).toBe("en-US-AriaNeural");
+        expect(localProfile.daily_plan_snapshots).toEqual([
+            {
+                date: "2026-04-08",
+                updated_at: 1712563200000,
+                items: [
+                    {
+                        id: "task-1",
+                        text: "雅思精听",
+                        completed: false,
+                        type: "listening_cabin",
+                        target: 2,
+                        current: 1,
+                        chunk_size: 1,
+                    },
+                ],
+            },
+        ]);
         expect(localProfile.sync_status).toBe("synced");
     });
 
@@ -125,6 +162,17 @@ describe("user sync helpers", () => {
             dictation_elo: 512,
             dictation_streak: 6,
             dictation_max_elo: 640,
+            exam_date: "2026-06-13",
+            exam_type: "ielts",
+            daily_plan_snapshots: [
+                {
+                    date: "2026-04-08",
+                    updated_at: 1712563200000,
+                    items: [
+                        { id: "task-1", text: "语感找回", completed: false, type: "rebuild", target: 20, current: 0, chunk_size: 15 },
+                    ],
+                },
+            ],
             last_practice_at: "2026-03-13T13:00:00.000Z",
             learning_preferences: {
                 target_mode: "vocab",
@@ -132,6 +180,7 @@ describe("user sync helpers", () => {
                 daily_goal_minutes: 45,
                 ui_theme_preference: "starlight_arcade",
                 tts_voice: "en-US-BrianNeural",
+                rebuild_auto_open_shadowing_prompt: true,
             },
         });
 
@@ -148,6 +197,17 @@ describe("user sync helpers", () => {
             dictation_elo: 512,
             dictation_streak: 6,
             dictation_max_elo: 640,
+            exam_date: "2026-06-13",
+            exam_type: "ielts",
+            daily_plan_snapshots: [
+                {
+                    date: "2026-04-08",
+                    updated_at: 1712563200000,
+                    items: [
+                        { id: "task-1", text: "语感找回", completed: false, type: "rebuild", target: 20, current: 0, chunk_size: 15 },
+                    ],
+                },
+            ],
             last_practice_at: "2026-03-13T13:00:00.000Z",
             learning_preferences: {
                 target_mode: "vocab",
@@ -155,6 +215,7 @@ describe("user sync helpers", () => {
                 daily_goal_minutes: 45,
                 ui_theme_preference: "starlight_arcade",
                 tts_voice: "en-US-BrianNeural",
+                rebuild_auto_open_shadowing_prompt: true,
             },
         });
     });
@@ -180,6 +241,78 @@ describe("user sync helpers", () => {
         expect(item.user_id).toBe("user-1");
         expect(item.word_key).toBe("resilient");
         expect(item.sync_status).toBe("pending");
+    });
+
+    it("round-trips daily plans with source metadata across remote sync helpers", () => {
+        const remote = toRemoteDailyPlanRow("user-1", {
+            date: "2026-04-08",
+            updated_at: 1712563200000,
+            items: [
+                {
+                    id: "task-1",
+                    text: "雅思冲刺",
+                    completed: false,
+                    type: "rebuild",
+                    target: 20,
+                    current: 4,
+                    chunk_size: 15,
+                    source: "ai",
+                },
+                {
+                    id: "task-2",
+                    text: "补一条",
+                    completed: true,
+                    source: "manual",
+                },
+            ],
+        });
+
+        expect(remote).toEqual({
+            user_id: "user-1",
+            date: "2026-04-08",
+            items: [
+                {
+                    id: "task-1",
+                    text: "雅思冲刺",
+                    completed: false,
+                    type: "rebuild",
+                    target: 20,
+                    current: 4,
+                    chunk_size: 15,
+                    source: "ai",
+                },
+                {
+                    id: "task-2",
+                    text: "补一条",
+                    completed: true,
+                    source: "manual",
+                },
+            ],
+            updated_at: "2024-04-08T08:00:00.000Z",
+        });
+
+        expect(toLocalDailyPlanRecord(remote)).toEqual({
+            date: "2026-04-08",
+            updated_at: 1712563200000,
+            items: [
+                {
+                    id: "task-1",
+                    text: "雅思冲刺",
+                    completed: false,
+                    type: "rebuild",
+                    target: 20,
+                    current: 4,
+                    chunk_size: 15,
+                    source: "ai",
+                },
+                {
+                    id: "task-2",
+                    text: "补一条",
+                    completed: true,
+                    source: "manual",
+                },
+            ],
+        });
     });
 
     it("preserves vocab source metadata across local and remote mappings", () => {

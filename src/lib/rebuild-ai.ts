@@ -1,10 +1,9 @@
 import { buildRebuildAiDrill, getListeningDifficultyExpectation, type DrillSourceMode } from "@/lib/listening-drill-bank";
 import { deepseek } from "@/lib/deepseek";
+import { buildRebuildSentenceDifficultyProfile } from "@/lib/rebuild-difficulty";
 import {
     buildRebuildTokenBank,
     collectRebuildDistractors,
-    getRebuildBandPosition,
-    getRebuildPracticeTier,
     tokenizeRebuildSentence,
 } from "@/lib/rebuild-mode";
 import {
@@ -142,28 +141,35 @@ function buildPassageSegmentDrill(params: {
 
 export async function generateRebuildAiDrill(params: {
     topic: string;
+    topicPrompt?: string;
     effectiveElo: number;
 }) {
-    const { topic, effectiveElo } = params;
-    const practiceTier = getRebuildPracticeTier(effectiveElo);
-    const listeningTarget = getListeningDifficultyExpectation(effectiveElo);
-    const bandPosition = getRebuildBandPosition(effectiveElo);
+    const { topic, topicPrompt, effectiveElo } = params;
+    const difficulty = buildRebuildSentenceDifficultyProfile(effectiveElo);
 
     const prompt = `
-You are generating a JSON object for an English listening rebuild puzzle.
+You are generating JSON for natural spoken English listening material.
 
-Topic: "${topic}"
-Effective Elo: ${effectiveElo}
-CEFR: ${practiceTier.cefr}
-Band Position: ${bandPosition ?? "mid"}
-Target word count: ${listeningTarget.min}-${listeningTarget.max}
+Display topic: "${topic}"
+${topicPrompt?.trim() ? `Scenario brief:\n${topicPrompt.trim()}` : `Scenario brief:\nTopic: ${topic}`}
+Difficulty target:
+- CEFR: ${difficulty.practiceTier.cefr}
+- Band Position: ${difficulty.bandPosition}
+- Preferred length: ${difficulty.wordWindow.preferredMin}-${difficulty.wordWindow.preferredMax} words
+- Hard limit: ${difficulty.wordWindow.hardMin}-${difficulty.wordWindow.hardMax} words
+- Complexity guidance: ${difficulty.complexityGuidance}
+- Clause tolerance: up to ${difficulty.syntaxComplexity.clauseMax} supporting clauses
+- Spoken naturalness: ${difficulty.syntaxComplexity.spokenNaturalness}
+- Reduced forms: ${difficulty.syntaxComplexity.reducedFormsPresence}
 
 Requirements:
-- Create ONE natural English sentence for a listening rebuild puzzle.
-- The sentence must fit the topic, but do not just repeat the topic label.
+- Write ONE natural spoken English listening sentence.
+- Make it sound like a real-life listening moment, not a lesson title or an exercise instruction.
+- The sentence must fit the scenario, but do not just repeat the topic labels.
 - Add a specific micro-scene in "_scenario_topic".
 - Return only "reference_english", "chinese", and "_scenario_topic".
-- Keep the sentence within the target word-count range.
+- Prefer the preferred length band, but keep naturalness first.
+- Never go outside the hard limit.
 
 Return valid JSON only:
 {
@@ -177,7 +183,7 @@ Return valid JSON only:
         messages: [
             {
                 role: "system",
-                content: "You are a strict JSON-only rebuild puzzle generator. Follow the requested topic and difficulty exactly.",
+                content: "You are a strict JSON-only generator for spoken English listening material. Output valid JSON and follow the scenario and difficulty exactly.",
             },
             { role: "user", content: prompt },
         ],
@@ -207,41 +213,40 @@ Return valid JSON only:
 
 export async function generateRebuildPassageAiDrill(params: {
     topic: string;
+    topicPrompt?: string;
     effectiveElo: number;
     segmentCount: 2 | 3 | 5;
 }) {
-    const { topic, effectiveElo, segmentCount } = params;
-    const practiceTier = getRebuildPracticeTier(effectiveElo);
-    const bandPosition = getRebuildBandPosition(effectiveElo);
+    const { topic, topicPrompt, effectiveElo, segmentCount } = params;
     const difficultyProfile = buildRebuildPassageDifficultyProfile(effectiveElo, segmentCount);
     const sessionId = `rebuild-passage-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
     const prompt = `
-You are generating a JSON object for an English rebuild passage session.
+You are generating JSON for a short spoken English listening passage.
 
-Topic: "${topic}"
-Effective Elo: ${effectiveElo}
-CEFR: ${practiceTier.cefr}
-Band Position: ${bandPosition ?? "mid"}
+Display topic: "${topic}"
+${topicPrompt?.trim() ? `Scenario brief:\n${topicPrompt.trim()}` : `Scenario brief:\nTopic: ${topic}`}
+Difficulty target:
+- CEFR: ${difficultyProfile.practiceTier.cefr}
+- Band Position: ${difficultyProfile.bandPosition ?? "mid"}
 Segments: ${segmentCount}
 Each segment should be ONE natural English sentence.
-Per-segment target mean: ${difficultyProfile.perSegmentWordWindow.mean} words
-Per-segment preferred band: ${difficultyProfile.perSegmentWordWindow.softMin}-${difficultyProfile.perSegmentWordWindow.softMax} words
-Per-segment hard limit: ${difficultyProfile.perSegmentWordWindow.hardMin}-${difficultyProfile.perSegmentWordWindow.hardMax} words
-Whole-passage preferred band: ${difficultyProfile.totalWordWindow.softMin}-${difficultyProfile.totalWordWindow.softMax} words
-Whole-passage hard limit: ${difficultyProfile.totalWordWindow.hardMin}-${difficultyProfile.totalWordWindow.hardMax} words
-Clause max per segment: ${difficultyProfile.syntaxComplexity.clauseMax}
-Memory load: ${difficultyProfile.syntaxComplexity.memoryLoad}
-Spoken naturalness: ${difficultyProfile.syntaxComplexity.spokenNaturalness}
-Reduced forms: ${difficultyProfile.syntaxComplexity.reducedFormsPresence}
+- Per-segment preferred band: ${difficultyProfile.perSegmentWordWindow.softMin}-${difficultyProfile.perSegmentWordWindow.softMax} words
+- Per-segment hard limit: ${difficultyProfile.perSegmentWordWindow.hardMin}-${difficultyProfile.perSegmentWordWindow.hardMax} words
+- Whole-passage preferred band: ${difficultyProfile.totalWordWindow.softMin}-${difficultyProfile.totalWordWindow.softMax} words
+- Whole-passage hard limit: ${difficultyProfile.totalWordWindow.hardMin}-${difficultyProfile.totalWordWindow.hardMax} words
+- Complexity guidance: ${difficultyProfile.syntaxComplexity.trainingFocus}
+- Clause max per segment: ${difficultyProfile.syntaxComplexity.clauseMax}
+- Spoken naturalness: ${difficultyProfile.syntaxComplexity.spokenNaturalness}
+- Reduced forms: ${difficultyProfile.syntaxComplexity.reducedFormsPresence}
 
 Requirements:
-- Create ONE coherent short passage split into exactly ${segmentCount} natural segments.
+- Create ONE coherent short spoken passage split into exactly ${segmentCount} natural segments.
 - All segments must stay on the same topic and same difficulty.
-- Prefer the soft word-count band, and lean toward the upper half of that band so the passage feels substantial.
+- Prefer the soft word-count band so the passage feels substantial without becoming stiff.
 - You may go slightly outside the preferred band, but never outside the hard limit.
 - Never shorten a sentence so much that it becomes unnatural or incomplete.
-- Each segment should feel like a full sentence in a short article update, not a clipped textbook fragment.
+- Each segment should feel like a full spoken sentence in real listening material, not a clipped textbook fragment.
 - Return only "_scenario_topic" and "segments".
 - Each segment must contain "reference_english" and "chinese".
 
@@ -264,7 +269,7 @@ Return valid JSON only:
                 messages: [
                     {
                         role: "system",
-                        content: "You are a strict JSON-only rebuild passage generator. Follow the requested topic and difficulty exactly.",
+                        content: "You are a strict JSON-only generator for spoken English listening passages. Output valid JSON and follow the scenario and difficulty exactly.",
                     },
                     { role: "user", content: prompt },
                 ],
@@ -320,13 +325,13 @@ Return valid JSON only:
                 },
                 _sourceMeta: {
                     sourceMode: "ai" as DrillSourceMode,
-                    bandPosition,
+                    bandPosition: difficultyProfile.bandPosition,
                     candidateId: sessionId,
                 },
                 _difficultyMeta: {
                     requestedElo: effectiveElo,
                     tier: getListeningDifficultyExpectation(effectiveElo).tier,
-                    cefr: practiceTier.cefr,
+                    cefr: difficultyProfile.practiceTier.cefr,
                     expectedWordRange: {
                         min: difficultyProfile.perSegmentWordWindow.hardMin,
                         max: difficultyProfile.perSegmentWordWindow.hardMax,
@@ -347,7 +352,7 @@ Return valid JSON only:
                 _rebuildMeta: {
                     variant: "passage" as const,
                     effectiveElo,
-                    bandPosition,
+                    bandPosition: difficultyProfile.bandPosition,
                     answerTokens: firstSegment.answerTokens,
                     tokenBank: firstSegment.tokenBank,
                     distractorTokens: firstSegment.distractorTokens,

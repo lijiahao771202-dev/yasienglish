@@ -31,6 +31,7 @@ function createCompletionPayload(payload: Record<string, unknown>) {
 function buildRequest(
     overrides: Partial<{
         articleTitle: string;
+        topicPrompt: string;
         articleContent: string;
         difficulty: string;
         eloRating: number;
@@ -43,6 +44,7 @@ function buildRequest(
     return {
         json: async () => ({
             articleTitle: "Battle Test Topic",
+            topicPrompt: "",
             articleContent: "",
             difficulty: "Level 3",
             eloRating: 820,
@@ -137,6 +139,47 @@ describe("drill next route", () => {
         expect(data._rebuildMeta.theme).toBe("Battle Test Topic");
     });
 
+    it("builds sentence rebuild prompts as spoken listening material with scenario guidance", async () => {
+        createCompletionMock.mockResolvedValue(
+            createCompletionPayload({
+                chinese: "下课后在前门等我。",
+                reference_english: "Meet me by the front gate after class.",
+                _scenario_topic: "课后碰面",
+            }),
+        );
+
+        await POST(buildRequest({
+            sourceMode: "ai",
+            mode: "rebuild",
+            rebuildVariant: "sentence",
+            eloRating: 1330,
+            articleTitle: "学习教育 · 校园行政 · 补交材料 · 学生 / 澄清方",
+            topicPrompt: [
+                "Domain: 学习教育",
+                "Subtheme: 校园行政",
+                "Scenario: 你在学生服务中心补交材料，想确认是否还能赶上今天的截止时间。",
+                "Role Frame: 学生 / 澄清方",
+                "Intent: clarify",
+                "Tone: polite, clear, slightly urgent",
+                "Constraint: the staff member has already mentioned the deadline once",
+            ].join("\n"),
+        }));
+
+        const request = createCompletionMock.mock.calls[0]?.[0];
+        const prompt = request?.messages?.[1]?.content;
+
+        expect(typeof prompt).toBe("string");
+        expect(prompt).toContain("natural spoken English listening material");
+        expect(prompt).toContain("Domain: 学习教育");
+        expect(prompt).toContain("Subtheme: 校园行政");
+        expect(prompt).toContain("Role Frame: 学生 / 澄清方");
+        expect(prompt).toContain("Preferred length:");
+        expect(prompt).toContain("Hard limit:");
+        expect(prompt).toContain("Complexity guidance:");
+        expect(prompt).not.toContain("rebuild puzzle");
+        expect(prompt).not.toContain("Target word count:");
+    });
+
     it("retries sentence rebuild generation after a transient upstream socket failure", async () => {
         createCompletionMock
             .mockRejectedValueOnce(Object.assign(new TypeError("terminated"), {
@@ -196,6 +239,59 @@ describe("drill next route", () => {
             .toBeGreaterThan(data._rebuildMeta.passageSession.segments[0].answerTokens.length);
         expect(data.reference_english).toBe("Wait for me near the arrivals gate first.");
         expect(data._topicMeta.subTopic).toBe("机场接人");
+    });
+
+    it("builds passage prompts as spoken listening material without puzzle wording", async () => {
+        createCompletionMock.mockResolvedValue(
+            createCompletionPayload({
+                _scenario_topic: "机场接人",
+                segments: [
+                    {
+                        chinese: "先在到达口旁边等我。",
+                        reference_english: "Wait for me near the arrivals gate first.",
+                    },
+                    {
+                        chinese: "如果行李出来晚了，就给司机发消息。",
+                        reference_english: "If the bags are late, text the driver right away.",
+                    },
+                    {
+                        chinese: "确认车牌以后，再带大家去短停区。",
+                        reference_english: "After you confirm the plate, lead everyone to short stay parking.",
+                    },
+                ],
+            }),
+        );
+
+        await POST(buildRequest({
+            sourceMode: "ai",
+            mode: "rebuild",
+            rebuildVariant: "passage",
+            segmentCount: 3,
+            eloRating: 1860,
+            articleTitle: "出行旅行 · 机场接送 · 到达协调 · 朋友 / 协调方",
+            topicPrompt: [
+                "Domain: 出行旅行",
+                "Subtheme: 机场接送",
+                "Scenario: 你在机场安排接人，需要边等航班边和朋友确认接车顺序。",
+                "Role Frame: 朋友 / 协调方",
+                "Intent: coordinate",
+                "Tone: calm, practical, spoken",
+                "Constraint: the group may arrive at slightly different times",
+            ].join("\n"),
+        }));
+
+        const request = createCompletionMock.mock.calls[0]?.[0];
+        const prompt = request?.messages?.[1]?.content;
+
+        expect(typeof prompt).toBe("string");
+        expect(prompt).toContain("short spoken English listening passage");
+        expect(prompt).toContain("Whole-passage preferred band:");
+        expect(prompt).toContain("Whole-passage hard limit:");
+        expect(prompt).toContain("Per-segment preferred band:");
+        expect(prompt).toContain("Per-segment hard limit:");
+        expect(prompt).toContain("Scenario: 你在机场安排接人");
+        expect(prompt).not.toContain("rebuild passage session");
+        expect(prompt).not.toContain("Per-segment target mean:");
     });
 
     it("retries passage rebuild generation after a transient upstream socket failure", async () => {

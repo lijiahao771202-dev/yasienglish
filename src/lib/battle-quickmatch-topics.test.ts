@@ -4,6 +4,7 @@ import {
     RANDOM_SCENARIO_TOPIC,
     getBattleQuickMatchPoolSize,
     pickBattleQuickMatchTopic,
+    resolveBattleScenarioContext,
     resolveBattleScenarioTopic,
 } from "./battle-quickmatch-topics";
 
@@ -19,6 +20,21 @@ describe("resolveBattleScenarioTopic", () => {
 
         expect(topic).toContain("·");
     });
+
+    it("builds a structured prompt for quickmatch scenarios", () => {
+        const spy = vi.spyOn(Math, "random").mockReturnValue(0);
+        const topic = resolveBattleScenarioContext(RANDOM_SCENARIO_TOPIC, 1200);
+        spy.mockRestore();
+
+        expect(topic.topicLine.split("·").map((part) => part.trim()).length).toBe(4);
+        expect(topic.topicPrompt).toContain("Domain:");
+        expect(topic.topicPrompt).toContain("Subtheme:");
+        expect(topic.topicPrompt).toContain("Scenario:");
+        expect(topic.topicPrompt).toContain("Role Frame:");
+        expect(topic.topicPrompt).toContain("Preferred length:");
+        expect(topic.topicPrompt).toContain("Hard limit:");
+        expect(topic.topicPrompt).not.toContain("rebuild puzzle");
+    });
 });
 
 describe("pickBattleQuickMatchTopic", () => {
@@ -30,11 +46,11 @@ describe("pickBattleQuickMatchTopic", () => {
         const spy = vi.spyOn(Math, "random").mockReturnValue(0);
 
         const recentTopicIds = [
-            "daily-life:morning-rush:first-person",
-            "social-relations:new-introduction:first-person",
-            "family-home:parent-talk:first-person",
-            "education-learning:class-participation:first-person",
-            "workplace-career:meeting-change:first-person",
+            "daily-life:home-routines:confirm-info:colleague-initiator",
+            "social-relations:friend-catchups:confirm-info:friend-decliner",
+            "family-home:shared-errands:confirm-info:family-coordinator",
+            "education-learning:classroom-participation:confirm-info:student-clarifier",
+            "workplace-career:meeting-rhythm:confirm-info:colleague-responder",
         ];
         const recentDomainIds = [
             "daily-life",
@@ -62,6 +78,8 @@ describe("pickBattleQuickMatchTopic", () => {
         expect(topic.topicLine).toContain(topic.domainLabel);
         expect(topic.label).toMatch(/·/);
         expect(topic.detail).toBeTruthy();
+        expect(topic.subthemeLabel).toBeTruthy();
+        expect(topic.roleFrameLabel).toBeTruthy();
     });
 
     it("falls back cleanly when the history has exhausted the pool", () => {
@@ -113,6 +131,6 @@ describe("pickBattleQuickMatchTopic", () => {
 
 describe("getBattleQuickMatchPoolSize", () => {
     it("creates a large enough pool for diverse quickmatch rounds", () => {
-        expect(getBattleQuickMatchPoolSize(1000)).toBeGreaterThan(900);
+        expect(getBattleQuickMatchPoolSize(1000)).toBeGreaterThan(4000);
     });
 });

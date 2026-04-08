@@ -7,6 +7,7 @@ import { Sparkles, Flame, BrainCircuit, BookOpenText, Target, CalendarDays, Chev
 import { Area, AreaChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { useDailyPlans } from "@/hooks/useDailyPlans";
 import { db } from "@/lib/db";
+import { saveProfilePatch } from "@/lib/user-repository";
 import { useRouter } from "next/navigation";
 
 import type { HomeDashboardViewModel } from "@/components/home/home-data";
@@ -194,9 +195,8 @@ function DailyPlanBento() {
                             const handleItemClick = () => {
                                 if (item.completed) return;
                                 if (item.type === 'rebuild') router.push('/battle');
-                                else if (item.type === 'cat') router.push('/'); // CAT module placeholder, fallback to home
-                                else if (item.type === 'reading') router.push('/read');
-                                else if (item.type === 'listening') router.push('/listening-cabin');
+                                else if (item.type === 'cat' || item.type === 'reading_ai') router.push('/read');
+                                else if (item.type === 'listening_cabin') router.push('/listening-cabin');
                             };
 
                             return (
@@ -322,17 +322,17 @@ export function HomeDashboardPanels_v2({
 
     const handleSaveExamDate = async () => {
         if (!tempExamDate) return;
-        const p = await db.user_profile.toCollection().first();
-        if (p && p.id) {
-            await db.user_profile.update(p.id, { 
-                exam_date: tempExamDate, 
+        try {
+            await saveProfilePatch({
+                exam_date: tempExamDate,
                 exam_type: tempExamType,
-                updated_at: new Date().toISOString(),
-                sync_status: "pending" 
             });
+            setShowExamModal(false);
+            window.dispatchEvent(new CustomEvent('yasi:sync_smart_goals'));
+        } catch (error) {
+            console.error("Failed to save exam goal:", error);
+            alert("考试日期保存失败，请稍后重试。");
         }
-        setShowExamModal(false);
-        window.dispatchEvent(new CustomEvent('yasi:sync_smart_goals'));
     };
     
     const immersionRatio = Math.min(1, vitalSigns.todayImmersionSeconds / Math.max(1, vitalSigns.targetImmersionSeconds));
@@ -418,6 +418,7 @@ export function HomeDashboardPanels_v2({
                     <button 
                         onClick={() => {
                             setTempExamDate(profile?.exam_date || "");
+                            setTempExamType(profile?.exam_type || "cet4");
                             setShowExamModal(true);
                         }}
                         className={`text-xs font-black px-2 py-1 rounded-lg border-2 flex items-center gap-1 transition-all

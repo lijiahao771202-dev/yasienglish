@@ -10,6 +10,7 @@ import { generateRebuildAiDrill, generateRebuildPassageAiDrill } from "@/lib/reb
 
 type DrillRouteBody = {
     articleTitle?: string;
+    topicPrompt?: string;
     articleContent?: string;
     difficulty?: string;
     eloRating?: number;
@@ -53,17 +54,22 @@ export async function POST(req: NextRequest) {
         const topic = typeof body.articleTitle === "string" && body.articleTitle.trim()
             ? body.articleTitle.trim()
             : "随机场景";
+        const topicPrompt = typeof body.topicPrompt === "string" && body.topicPrompt.trim()
+            ? body.topicPrompt.trim()
+            : undefined;
         const rebuildVariant = body.rebuildVariant === "passage" ? "passage" : "sentence";
         const segmentCount = body.segmentCount === 2 || body.segmentCount === 5 ? body.segmentCount : 3;
         try {
             const drill = rebuildVariant === "passage"
                 ? await generateRebuildPassageAiDrill({
                     topic,
+                    topicPrompt,
                     effectiveElo: eloRating,
                     segmentCount,
                 })
                 : await generateRebuildAiDrill({
                     topic,
+                    topicPrompt,
                     effectiveElo: eloRating,
                 });
             return NextResponse.json(drill);
