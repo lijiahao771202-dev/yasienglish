@@ -31,7 +31,7 @@ import { GhostTextarea } from "../vocab/GhostTextarea";
 import { InlineGrammarHighlights } from "../shared/InlineGrammarHighlights";
 import { LottieJsonPlayer } from "../shared/LottieJsonPlayer";
 import { PretextTextarea } from "../ui/PretextTextarea";
-import { resolveBattleScenarioTopic } from "@/lib/battle-quickmatch-topics";
+import { resolveBattleScenarioContext } from "@/lib/battle-quickmatch-topics";
 import { getBattleInteractiveWordClassName } from "@/lib/drill-interactive-word";
 import { calculateListeningElo } from "@/lib/listening-elo";
 import { calculateRebuildBattleElo } from "@/lib/rebuild-battle-elo";
@@ -1532,6 +1532,156 @@ const STREAK_TIER_VISUALS: Record<StreakTier, StreakTierVisual> = {
     },
 };
 
+const ParticleSwarmCanvas = memo(({ prefersReducedMotion, stageIndex = 0 }: { prefersReducedMotion?: boolean, stageIndex?: number }) => {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const stageIndexRef = useRef(stageIndex);
+
+    useEffect(() => {
+        stageIndexRef.current = stageIndex;
+    }, [stageIndex]);
+
+    // Keep track of current interpolated colors using a deep copy
+    const currentColorsRef = useRef([
+        { r: 56,  g: 189, b: 248, a: 0.45 },
+        { r: 99,  g: 102, b: 241, a: 0.45 },
+        { r: 45,  g: 212, b: 191, a: 0.35 },
+        { r: 59,  g: 130, b: 246, a: 0.35 }
+    ]);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        let animationFrameId: number;
+        const dpr = window.devicePixelRatio || 1;
+        
+        let width = canvas.parentElement?.clientWidth || window.innerWidth;
+        let height = canvas.parentElement?.clientHeight || window.innerHeight;
+        
+        const resize = () => {
+            if (!canvas.parentElement) return;
+            width = canvas.parentElement.clientWidth;
+            height = canvas.parentElement.clientHeight;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.scale(dpr, dpr);
+            canvas.style.width = '100%';
+            canvas.style.height = '100%';
+        };
+        resize();
+
+        const observer = new ResizeObserver(() => resize());
+        if (canvas.parentElement) observer.observe(canvas.parentElement);
+
+        let time = 0;
+
+        const blobPhysics = [
+            { speed: 0.8, radiusOffset: 0,   phaseOffset: 0 },
+            { speed: 0.6, radiusOffset: 12,  phaseOffset: 2 },
+            { speed: 1.1, radiusOffset: -10, phaseOffset: 4 },
+            { speed: 0.5, radiusOffset: 5,   phaseOffset: 1 } 
+        ];
+
+        const palettes = [
+            [
+                { r: 56,  g: 189, b: 248, a: 0.45 },
+                { r: 99,  g: 102, b: 241, a: 0.45 },
+                { r: 45,  g: 212, b: 191, a: 0.35 },
+                { r: 59,  g: 130, b: 246, a: 0.35 }
+            ],
+            [
+                { r: 16,  g: 185, b: 129, a: 0.45 },
+                { r: 250, g: 204, b: 21,  a: 0.45 },
+                { r: 245, g: 158, b: 11,  a: 0.35 },
+                { r: 52,  g: 211, b: 153, a: 0.35 }
+            ],
+            [
+                { r: 255, g: 255, b: 255, a: 0.8 },
+                { r: 226, g: 232, b: 240, a: 0.7 },
+                { r: 248, g: 250, b: 252, a: 0.6 },
+                { r: 203, g: 213, b: 225, a: 0.5 } 
+            ]
+        ];
+
+        const lerp = (start: number, end: number, t: number) => start * (1 - t) + end * t;
+
+        const render = () => {
+            ctx.clearRect(0, 0, width, height);
+            
+            // Slower, more elegant flow speed
+            time += prefersReducedMotion ? 0.002 : 0.006;
+
+            const targetPalette = palettes[Math.min(stageIndexRef.current, palettes.length - 1)];
+            const currentColors = currentColorsRef.current;
+            const lerpSpeed = 0.015; // Extremely smooth fade
+
+            for (let i = 0; i < 4; i++) {
+                currentColors[i].r = lerp(currentColors[i].r, targetPalette[i].r, lerpSpeed);
+                currentColors[i].g = lerp(currentColors[i].g, targetPalette[i].g, lerpSpeed);
+                currentColors[i].b = lerp(currentColors[i].b, targetPalette[i].b, lerpSpeed);
+                currentColors[i].a = lerp(currentColors[i].a, targetPalette[i].a, lerpSpeed);
+            }
+
+            const cx = width / 2;
+            const cy = height / 2 - 20; 
+            const baseRadius = Math.min(width, height) * 0.28;
+
+            ctx.globalCompositeOperation = 'multiply';
+
+            blobPhysics.forEach((physics, i) => {
+                ctx.beginPath();
+                const segments = 180; 
+                for (let j = 0; j <= segments; j++) {
+                    const angle = (j / segments) * Math.PI * 2;
+                    
+                    const phase = time * physics.speed + physics.phaseOffset;
+                    const deform1 = Math.sin(angle * 3 + phase) * (baseRadius * 0.12);
+                    const deform2 = Math.cos(angle * 2 - phase * 1.5) * (baseRadius * 0.18);
+                    const deform3 = Math.sin(angle * 5 + phase * 0.8) * (baseRadius * 0.06);
+                    
+                    const r = Math.max(10, baseRadius + physics.radiusOffset + deform1 + deform2 + deform3);
+                    
+                    const orbitX = Math.cos(time * 0.8 + i) * 20;
+                    const orbitY = Math.sin(time * 1.1 + i * 2) * 20;
+
+                    const x = cx + orbitX + Math.cos(angle) * r;
+                    const y = cy + orbitY + Math.sin(angle) * r;
+
+                    if (j === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                const col = currentColors[i];
+                ctx.fillStyle = `rgba(${Math.round(col.r)}, ${Math.round(col.g)}, ${Math.round(col.b)}, ${col.a})`;
+                ctx.fill();
+            });
+
+            ctx.globalCompositeOperation = 'source-over';
+
+            if (!prefersReducedMotion) {
+                animationFrameId = requestAnimationFrame(render);
+            } else {
+                animationFrameId = window.setTimeout(() => requestAnimationFrame(render), 60) as unknown as number;
+            }
+        };
+
+        render();
+
+        return () => {
+            if (prefersReducedMotion) {
+                clearTimeout(animationFrameId);
+            } else {
+                cancelAnimationFrame(animationFrameId);
+            }
+            observer.disconnect();
+        };
+    }, [prefersReducedMotion]); // Removed stageIndex from dependencies so time doesn't reset!
+
+    return <canvas ref={canvasRef} className="absolute inset-0 z-0 mix-blend-multiply opacity-60 blur-[3px] transition-opacity duration-1000" />;
+});
+
 export function DrillCore({ context, initialMode = "translation", listeningSourceMode = "ai", onClose }: DrillCoreProps) {
     // Mode State
     const [mode, setMode] = useState<DrillMode>(initialMode);
@@ -2246,7 +2396,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             body: JSON.stringify({
                 chinese: targetDrillData.chinese,
                 reference_english: targetDrillData.reference_english,
-                elo: eloRatingRef.current || DEFAULT_BASE_ELO,
+                elo: eloRatingRef.current ?? DEFAULT_BASE_ELO,
                 topic: targetDrillData._topicMeta?.topic || context.articleTitle || context.topic,
             }),
             signal,
@@ -2809,9 +2959,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
                             const isActiveRebuildMode = mode === "rebuild";
                             const maxElo = isActiveListeningMode
-                                ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
+                                ? Math.max(profile.listening_max_elo ?? DEFAULT_BASE_ELO, newElo)
                                 : isActiveRebuildMode
-                                    ? Math.max(profile.rebuild_max_elo || profile.rebuild_elo || DEFAULT_BASE_ELO, newElo)
+                                    ? Math.max(profile.rebuild_max_elo ?? profile.rebuild_elo ?? DEFAULT_BASE_ELO, newElo)
                                     : Math.max(profile.max_elo, newElo);
 
                             await settleBattle({
@@ -3244,7 +3394,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         if (elo < 3200) return { level: 'Level 8', label: 'C2+ 王者', cefr: 'C2+', color: 'text-purple-600', desc: '高压自然口语' };
         return { level: 'Level 9', label: '☠️ 处决', cefr: '∞', color: 'text-red-500', desc: '极限挑战' };
     };
-    const eloDifficulty = getEloDifficulty(currentElo || DEFAULT_BASE_ELO, mode);
+    const eloDifficulty = getEloDifficulty(currentElo ?? DEFAULT_BASE_ELO, mode);
 
     const [eloChange, setEloChange] = useState<number | null>(null);
     const [eloBreakdown, setEloBreakdown] = useState<{
@@ -4176,7 +4326,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             const isListening = mode === 'listening';
             const isDictation = mode === 'dictation';
             const activeElo = isDictation ? dictationElo : isListening ? listeningElo : eloRating;
-            const newElo = Math.max(0, (activeElo || DEFAULT_BASE_ELO) - penalty);
+            const newElo = Math.max(0, (activeElo ?? DEFAULT_BASE_ELO) - penalty);
 
             setEloChange(-penalty);
             setLootDrop({
@@ -4213,9 +4363,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
                 const isRebuild = mode === "rebuild";
                 const maxElo = isListening
-                    ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
+                    ? Math.max(profile.listening_max_elo ?? DEFAULT_BASE_ELO, newElo)
                     : isRebuild
-                        ? Math.max(profile.rebuild_max_elo || profile.rebuild_elo || DEFAULT_BASE_ELO, newElo)
+                        ? Math.max(profile.rebuild_max_elo ?? profile.rebuild_elo ?? DEFAULT_BASE_ELO, newElo)
                         : Math.max(profile.max_elo, newElo);
 
                 await settleBattle({
@@ -4349,13 +4499,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             }
         }
 
-        const targetTopic = resolveBattleScenarioTopic(context.articleTitle || context.topic, nextElo);
+        const targetScenario = resolveBattleScenarioContext(context.articleTitle || context.topic, nextElo);
 
         fetch("/api/drill/next", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                articleTitle: targetTopic,
+                articleTitle: targetScenario.topicLine,
+                topicPrompt: isRebuildMode ? targetScenario.topicPrompt : undefined,
                 articleContent: context.articleContent || "",
                 difficulty: getEloDifficulty(nextElo, mode).level,
                 eloRating: Math.max(0, nextElo),
@@ -4543,7 +4694,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             const effectiveDifficulty = getEloDifficulty(effectiveElo, mode);
             console.log(`[DEBUG] Sending to API: bossType=${nextBossType}, eloRating=${effectiveElo}`);
             // --- DETERMINE TOPIC ---
-            const targetTopic = resolveBattleScenarioTopic(context.articleTitle || context.topic, effectiveElo);
+            const targetScenario = resolveBattleScenarioContext(context.articleTitle || context.topic, effectiveElo);
 
             // --- RANDOM SURPRISE DROP ---
             if (currentStreak > 0 && Math.random() < 0.05) { // 5% chance on new drill load (only if they aren't totally failing)
@@ -4566,7 +4717,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    articleTitle: targetTopic,
+                    articleTitle: targetScenario.topicLine,
+                    topicPrompt: isRebuildMode ? targetScenario.topicPrompt : undefined,
                     articleContent: context.articleContent || "",
                     difficulty: effectiveDifficulty.level,
                     eloRating: effectiveElo,
@@ -4719,7 +4871,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             : Math.max(guidedCurrentAttemptCount, (guidedChoicesVisible || guidedRevealReady) ? 3 : 0);
         const guidedKey = getGuidedScriptKey(
             drillData,
-            eloRatingRef.current || DEFAULT_BASE_ELO,
+            eloRatingRef.current ?? DEFAULT_BASE_ELO,
             context.articleTitle || context.topic,
         );
         const requestCount = guidedAiHintRequestCountRef.current + 1;
@@ -4987,7 +5139,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     user_translation: translationToScore,
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
-                    current_elo: activeElo || DEFAULT_BASE_ELO,
+                    current_elo: activeElo ?? DEFAULT_BASE_ELO,
                     mode: scoreMode,
                     input_source: scoringInputSource,
                     teaching_mode: teachingMode,
@@ -5121,7 +5273,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 };
 
                 const challengeElo = drillData?._difficultyMeta?.requestedElo ?? activeElo ?? DEFAULT_BASE_ELO;
-                const result = calculateAdvancedElo(activeElo || DEFAULT_BASE_ELO, challengeElo, data.score, activeStreak);
+                const result = calculateAdvancedElo(activeElo ?? DEFAULT_BASE_ELO, challengeElo, data.score, activeStreak);
                 let change = result.total;
                 let newStreak = activeStreak;
 
@@ -5271,11 +5423,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 }
 
                 // === Elo Update Logic (ALWAYS EXECUTED) ===
-                const newElo = Math.max(0, (activeElo || DEFAULT_BASE_ELO) + change);
+                const newElo = Math.max(0, (activeElo ?? DEFAULT_BASE_ELO) + change);
                 prefetchNextElo = newElo;
 
                 // Rank Change Detection
-                const oldRank = getRank(activeElo || DEFAULT_BASE_ELO);
+                const oldRank = getRank(activeElo ?? DEFAULT_BASE_ELO);
                 const newRank = getRank(newElo);
                 if (newRank.title !== oldRank.title && change > 0) {
                     // Rank UP!
@@ -5408,7 +5560,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         });
                     } else {
                         const maxElo = isListening
-                            ? Math.max(profile.listening_max_elo || DEFAULT_BASE_ELO, newElo)
+                            ? Math.max(profile.listening_max_elo ?? DEFAULT_BASE_ELO, newElo)
                             : Math.max(profile.max_elo, newElo);
 
                         await settleBattle({
@@ -5480,7 +5632,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     user_translation: userTranslation,
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
-                    current_elo: activeElo || DEFAULT_BASE_ELO,
+                    current_elo: activeElo ?? DEFAULT_BASE_ELO,
                     score: drillFeedback.score,
                     mode: analysisMode,
                     input_source: isListeningFamilyMode && !isDictationMode ? "voice" : "keyboard",
@@ -5519,7 +5671,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     user_translation: userTranslation,
                     reference_english: drillData.reference_english,
                     original_chinese: drillData.chinese,
-                    current_elo: activeElo || DEFAULT_BASE_ELO,
+                    current_elo: activeElo ?? DEFAULT_BASE_ELO,
                     score: drillFeedback.score,
                     mode,
                     teaching_mode: teachingMode,
@@ -6227,7 +6379,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             clearRebuildSentenceShadowingPromptTimer();
             setPendingRebuildSentenceFeedback(null);
             setRebuildFeedback(nextFeedback);
-            setRebuildSentenceShadowingFlow("feedback");
+            setRebuildSentenceShadowingFlow("idle");
             if (rebuildShadowingAutoOpen) {
                 rebuildSentenceShadowingPromptTimerRef.current = window.setTimeout(() => {
                     setRebuildSentenceShadowingFlow("prompt");
@@ -6267,7 +6419,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         if (!nextFeedback) return;
         setRebuildFeedback(nextFeedback);
         setPendingRebuildSentenceFeedback(null);
-        setRebuildSentenceShadowingFlow("feedback");
+        setRebuildSentenceShadowingFlow("idle");
     }, [pendingRebuildSentenceFeedback, rebuildFeedback]);
 
     const upsertRebuildShadowingScopePatch = useCallback((
@@ -6869,17 +7021,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     useEffect(() => {
         if (!isRebuildMode || isRebuildPassage) return;
-        if (pendingRebuildSentenceFeedback) return;
-        if (!rebuildFeedback) {
-            if (rebuildSentenceShadowingFlow !== "idle") {
-                setRebuildSentenceShadowingFlow("idle");
-            }
-            return;
+        if (!rebuildFeedback && rebuildSentenceShadowingFlow !== "idle") {
+            setRebuildSentenceShadowingFlow("idle");
         }
-        if (rebuildSentenceShadowingFlow === "idle") {
-            setRebuildSentenceShadowingFlow("feedback");
-        }
-    }, [isRebuildMode, isRebuildPassage, pendingRebuildSentenceFeedback, rebuildFeedback, rebuildSentenceShadowingFlow]);
+    }, [isRebuildMode, isRebuildPassage, rebuildFeedback, rebuildSentenceShadowingFlow]);
 
     useEffect(() => {
         return () => {
@@ -7229,13 +7374,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             rebuildPassageResults.reduce((total, item) => total + item.feedback.systemDelta, 0) / segmentCount
         );
         const eloResult = calculateRebuildBattleElo({
-            playerElo: rebuildBattleElo || DEFAULT_BASE_ELO,
+            playerElo: rebuildBattleElo ?? DEFAULT_BASE_ELO,
             sessionSystemDelta,
             selfEvaluation: evaluation,
             streak: rebuildBattleStreak,
         });
         const change = eloResult.total;
-        const nextElo = Math.max(0, Math.min(3200, (rebuildBattleElo || DEFAULT_BASE_ELO) + change));
+        const nextElo = Math.max(0, Math.min(3200, (rebuildBattleElo ?? DEFAULT_BASE_ELO) + change));
         const nextStreak = change > 0 ? rebuildBattleStreak + 1 : 0;
         const rewardResult = calculatePassageRebuildRewards({
             sessionObjectiveScore100: aggregate.sessionObjectiveScore100,
@@ -7386,13 +7531,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             for (const evaluation of options) {
                 const delta = clampRebuildDifficultyDelta(rebuildFeedback.systemDelta + getRebuildSelfEvaluationDelta(evaluation));
                 const nextElo = Math.max(0, Math.min(3200, rebuildHiddenElo + delta));
-                const targetTopic = resolveBattleScenarioTopic(context.articleTitle || context.topic, nextElo);
+                const targetScenario = resolveBattleScenarioContext(context.articleTitle || context.topic, nextElo);
 
                 const response = await fetch("/api/drill/next", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        articleTitle: targetTopic,
+                        articleTitle: targetScenario.topicLine,
+                        topicPrompt: isRebuildMode ? targetScenario.topicPrompt : undefined,
                         articleContent: context.articleContent || "",
                         difficulty: getEloDifficulty(nextElo, mode).level,
                         eloRating: nextElo,
@@ -7582,7 +7728,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         }
 
         const penalty = TRANSLATION_TOO_HARD_PENALTY;
-        const currentTranslationElo = eloRatingRef.current || eloRating || DEFAULT_BASE_ELO;
+        const currentTranslationElo = eloRatingRef.current ?? eloRating ?? DEFAULT_BASE_ELO;
         const newElo = applyTranslationTooHardPenalty(currentTranslationElo, penalty);
 
         setIsReportingTooHard(true);
@@ -9178,6 +9324,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             const answerTotal = drillData._rebuildMeta?.answerTokens.length ?? 0;
             const answerFilled = rebuildAnswerTokens.length;
             const isReadyToSubmit = answerTotal > 0 && answerFilled === answerTotal;
+            const activeSentenceCorrection = !isRebuildPassage && rebuildFeedback
+                ? buildRebuildDisplaySentence({
+                    answerTokens: drillData._rebuildMeta?.answerTokens ?? [],
+                    evaluation: rebuildFeedback.evaluation,
+                })
+                : null;
             const isCurrentSegmentSolved = Boolean(
                 isRebuildPassage
                 && activePassageResult
@@ -9196,7 +9348,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 && activePassageResult
                 && !activePassageResult.feedback.evaluation.isCorrect
             );
+            const shouldShowSentenceCorrection = Boolean(
+                readOnlyAfterSubmit
+                && !isRebuildPassage
+                && rebuildFeedback
+            );
             const showInlinePassageCorrection = Boolean(shouldShowPassageCorrection && activePassageCorrection);
+            const showInlineSentenceCorrection = Boolean(shouldShowSentenceCorrection && activeSentenceCorrection);
             const activePassageSystemAssessmentClass = activePassageResult
                 ? activePassageResult.feedback.systemAssessment === "too_hard"
                     ? activeCosmeticUi.audioLockedClass
@@ -9321,6 +9479,47 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     </div>
                                 ) : null}
                             </div>
+                        ) : showInlineSentenceCorrection && activeSentenceCorrection ? (
+                            <div className="space-y-3">
+                                <div className="flex flex-wrap gap-2.5">
+                                    {activeSentenceCorrection.tokens.map((token, index) => (
+                                        <span
+                                            key={`sentence-inline-correction-${index}-${token.text}`}
+                                            className={cn(
+                                                "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border px-4 py-1.5 text-[14px] font-semibold",
+                                                token.kind === "correct"
+                                                    ? activeCosmeticUi.wordBadgeActiveClass
+                                                    : token.kind === "inserted"
+                                                        ? activeCosmeticUi.hintButtonClass
+                                                        : activeCosmeticUi.audioLockedClass
+                                            )}
+                                        >
+                                            {token.text}
+                                            {token.kind !== "correct" && token.originalText ? (
+                                                <span className={cn("text-[11px] line-through", activeCosmeticTheme.mutedClass)}>
+                                                    {token.originalText}
+                                                </span>
+                                            ) : null}
+                                        </span>
+                                    ))}
+                                </div>
+                                {activeSentenceCorrection.extraTokens.length > 0 ? (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className={cn("text-[11px] font-semibold", activeCosmeticTheme.mutedClass)}>多余词：</span>
+                                        {activeSentenceCorrection.extraTokens.map((token, index) => (
+                                            <span
+                                                key={`sentence-inline-extra-${index}-${token.text}`}
+                                                className={cn(
+                                                    "inline-flex min-h-[30px] items-center rounded-full border px-3 py-1 text-[12px] font-semibold line-through",
+                                                    activeCosmeticUi.audioLockedClass
+                                                )}
+                                            >
+                                                {token.text}
+                                            </span>
+                                        ))}
+                                    </div>
+                                ) : null}
+                            </div>
                         ) : rebuildAnswerTokens.length > 0 || rebuildTypingBuffer ? (
                             <AnimatePresence mode="sync" initial={false}>
                                 <div className="w-full min-w-0 flex flex-wrap items-center gap-2.5">
@@ -9428,6 +9627,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
                 {readOnlyAfterSubmit ? (
                     <div className="mt-8 space-y-3 px-1">
+                        {!isRebuildPassage ? (
+                            <p className={cn(
+                                "text-sm leading-7 md:text-[15px]",
+                                activeCosmeticTheme.mutedClass
+                            )}>
+                                {drillData.chinese}
+                            </p>
+                        ) : null}
                         <div className="flex items-center justify-between gap-3">
                             <div className="flex min-h-6 items-center gap-2">
                             {isCurrentSegmentSolved ? (
@@ -9457,22 +9664,24 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 </motion.div>
                             ) : null}
                             </div>
-                            {nextPendingSegmentIndex >= 0 ? (
-                                <button
-                                    type="button"
-                                    onClick={() => activatePassageSegment(nextPendingSegmentIndex)}
-                                    className="inline-flex h-11 items-center justify-center rounded-full border border-transparent px-6 text-sm font-black tracking-wide text-white transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.98]"
-                                    style={themedNextButtonStyle}
-                                >
-                                    下一段
-                                </button>
-                            ) : (
-                                !rebuildPassageSummary ? (
-                                    <span className={cn("text-xs font-semibold", activeCosmeticTheme.mutedClass)}>
-                                        先看完这段反馈，再往下做整篇总自评
-                                    </span>
-                                ) : null
-                            )}
+                            {isRebuildPassage ? (
+                                nextPendingSegmentIndex >= 0 ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => activatePassageSegment(nextPendingSegmentIndex)}
+                                        className="inline-flex h-11 items-center justify-center rounded-full border border-transparent px-6 text-sm font-black tracking-wide text-white transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.98]"
+                                        style={themedNextButtonStyle}
+                                    >
+                                        下一段
+                                    </button>
+                                ) : (
+                                    !rebuildPassageSummary ? (
+                                        <span className={cn("text-xs font-semibold", activeCosmeticTheme.mutedClass)}>
+                                            先看完这段反馈，再往下做整篇总自评
+                                        </span>
+                                    ) : null
+                                )
+                            ) : null}
                         </div>
                     </div>
                 ) : (
@@ -9520,7 +9729,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                     transition={prefersReducedMotion ? { duration: 0.15 } : { duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 >
-                    {renderRebuildComposer()}
+                    {renderRebuildComposer("发送", false, Boolean(rebuildFeedback))}
                 </motion.div>
             );
         }
@@ -10345,6 +10554,15 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         isGeneratingDrill,
         hasDrillData: !!drillData,
     });
+
+    useEffect(() => {
+        if (drillSurfacePhase === "ready") {
+            const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-modern-click-box-check-1120.mp3');
+            audio.volume = 0.25;
+            audio.play().catch(() => {});
+        }
+    }, [drillSurfacePhase]);
+
     const loaderActive = drillSurfacePhase === "bootstrap" || drillSurfacePhase === "loading";
     const [loaderTick, setLoaderTick] = useState(0);
 
@@ -10400,62 +10618,31 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         const pseudoProgress = Math.round(18 + (1 - Math.exp(-loaderTick / 6)) * 74);
 
         return (
-            <div className="h-full flex flex-col items-center justify-center relative overflow-hidden px-4">
-                <div className={cn("absolute inset-0", backgroundClass)} />
-                <div className="relative z-10 w-full max-w-[520px] overflow-hidden rounded-[2.5rem] border border-[rgba(200,200,200,0.4)] bg-[rgba(255,255,255,0.95)] p-10 shadow-[0_20px_60px_rgba(20,20,20,0.08)] backdrop-blur-[24px] md:p-14">
-                    
-                    <div className="relative mx-auto mb-12 flex h-24 w-24 items-center justify-center">
-                        {/* Soft shadow core */}
-                        <div className="absolute inset-3 rounded-full bg-stone-50/80 shadow-[inset_0_1px_4px_rgba(0,0,0,0.04)]" />
-                        
-                        {/* Premium SVG Caterpillar Scanner */}
-                        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
-                            <circle cx="50" cy="50" r="48" stroke="currentColor" strokeWidth="0.5" fill="none" className="text-stone-200/60" />
-                            <motion.circle
-                                cx="50" cy="50" r="48"
-                                stroke="currentColor"
-                                strokeWidth="1.5"
-                                fill="none"
-                                strokeLinecap="round"
-                                className="text-stone-800"
-                                animate={prefersReducedMotion ? { strokeDasharray: "300 300" } : { 
-                                    strokeDasharray: ["0 302", "150 152", "0 302"], 
-                                    strokeDashoffset: [0, -150, -302] 
-                                }}
-                                transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
-                            />
-                        </svg>
-
-                        <ModeIcon className="relative z-10 w-8 h-8 text-stone-800" strokeWidth={1.25} />
-                    </div>
-
-                    <div className="text-center space-y-3">
-                        <h3 className="font-newsreader text-[2rem] font-medium leading-none tracking-tight text-stone-900 md:text-[2.4rem]">{title}</h3>
-                        <p className="text-[14px] font-medium tracking-wide text-stone-500">{subtitle}</p>
-                        <p className="pt-2 text-[12px] text-stone-400">{variantUi.comfortCopy}</p>
-                    </div>
-
-                    <div className="mt-12 flex items-center justify-between text-[11px] font-bold tracking-[0.2em] uppercase text-stone-400">
+            <motion.div 
+                key="drill-loading-system"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 1.2, ease: "easeInOut" }}
+                className={cn("fixed inset-0 z-[100] flex flex-col items-center justify-center bg-stone-50 overflow-hidden")}
+            >
+                <ParticleSwarmCanvas prefersReducedMotion={prefersReducedMotion ?? false} stageIndex={stageIndex} />
+                
+                <div className="relative z-10 w-full text-center flex flex-col items-center mt-36 mix-blend-multiply opacity-80">
+                    <AnimatePresence mode="wait">
                         <motion.span
                             key={variantUi.stages[stageIndex]}
-                            initial={prefersReducedMotion ? false : { opacity: 0, y: 4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.4, ease: "easeOut" }}
-                            className="text-stone-800"
+                            initial={{ y: 15, opacity: 0, filter: "blur(4px)" }}
+                            animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
+                            exit={{ y: -15, opacity: 0, filter: "blur(4px)" }}
+                            transition={{ duration: 0.8, ease: "easeOut" }}
+                            className="font-sans text-[13px] md:text-[15px] font-semibold tracking-[0.4em] text-stone-500 uppercase pl-2"
                         >
                             {variantUi.stages[stageIndex]}
                         </motion.span>
-                        <span className="tabular-nums font-mono tracking-wider">{pseudoProgress}%</span>
-                    </div>
-
-                    <div className="relative mx-auto mt-4 h-[2px] w-full overflow-hidden rounded-full bg-stone-100">
-                        <div
-                            className="absolute left-0 top-0 h-full rounded-full transition-[width] duration-700 ease-out bg-stone-800"
-                            style={{ width: `${pseudoProgress}%` }}
-                        />
-                    </div>
+                    </AnimatePresence>
                 </div>
-            </div>
+            </motion.div>
         );
     };
 
@@ -10667,9 +10854,27 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     </AnimatePresence>
                 </div>
 
-                <motion.div
-                    layout
-                    ref={battleShellRef}
+                <AnimatePresence>
+                    {drillSurfacePhase !== "ready" && (
+                        renderDrillLoadingState({
+                            title: mode === "translation" ? "正在生成句子..." : mode === "dictation" ? "正在准备听写..." : mode === "rebuild" ? "正在准备 Rebuild 练习..." : "正在准备音频...",
+                            subtitle: mode === "translation" ? "Crafting your phrase" : mode === "dictation" ? "Preparing dictation stream" : mode === "rebuild" ? "Preparing rebuild puzzle" : "Preparing audio stream",
+                            backgroundClass: "bg-transparent",
+                            variant: mode,
+                        })
+                    )}
+                </AnimatePresence>
+
+                <AnimatePresence mode="popLayout">
+                    {drillSurfacePhase === "ready" && (
+                        <motion.div
+                            key="drill-shell-card"
+                            initial={{ scale: 0.95, opacity: 0, y: 15 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: -15 }}
+                            transition={{ duration: 0.6, ease: "easeOut" }}
+                            layout
+                            ref={battleShellRef}
                     className={cn(
                         "relative w-full overflow-hidden flex flex-col transition-all duration-700",
                         isRebuildPassage
@@ -10895,7 +11100,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 <div className="flex items-center h-[38px] px-0.5 bg-white/60 backdrop-blur-xl rounded-full border border-white/60 shadow-[0_8px_24px_rgba(0,0,0,0.03)] ring-1 ring-stone-200/30 overflow-hidden transition-all shrink-0">
                                     {/* Rank Section */}
                                     {(() => {
-                                        const rank = getRank(currentElo || DEFAULT_BASE_ELO);
+                                        const rank = getRank(currentElo ?? DEFAULT_BASE_ELO);
                                         return bossState.type === 'roulette_execution' ? (
                                             <div className="flex items-center gap-1.5 px-3 h-full rounded-full bg-red-900/10 text-red-700/90">
                                                 <Skull className="w-[14px] h-[14px] text-red-500" />
@@ -10911,7 +11116,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                 <rank.icon className="w-[14px] h-[14px]" />
                                                 <span className="font-bold text-[11px] tracking-wider uppercase drop-shadow-sm">{rank.title}</span>
                                                 <div className="w-[1px] h-3 bg-current opacity-20 mx-0.5" />
-                                                <span className="font-newsreader font-medium italic text-[13px]">{currentElo || DEFAULT_BASE_ELO}</span>
+                                                <span className="font-newsreader font-medium italic text-[13px]">{currentElo ?? DEFAULT_BASE_ELO}</span>
                                             </div>
                                         );
                                     })()}
@@ -11160,7 +11365,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                     body: JSON.stringify({
                                                         chinese: drillData.chinese,
                                                         reference_english: drillData.reference_english,
-                                                        elo: eloRating || DEFAULT_BASE_ELO,
+                                                        elo: eloRating ?? DEFAULT_BASE_ELO,
                                                     }),
                                                 })
                                                     .then(r => r.json())
@@ -11228,26 +11433,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         )}
 
 
-                        {drillSurfacePhase !== "ready" ? (
-                            renderDrillLoadingState({
-                                title: mode === "translation"
-                                    ? "正在生成句子..."
-                                    : mode === "dictation"
-                                        ? "正在准备听写..."
-                                        : mode === "rebuild"
-                                            ? "正在准备 Rebuild 练习..."
-                                            : "正在准备音频...",
-                                subtitle: mode === "translation"
-                                    ? "Crafting your phrase"
-                                    : mode === "dictation"
-                                        ? "Preparing dictation stream"
-                                        : mode === "rebuild"
-                                            ? "Preparing rebuild puzzle"
-                                            : "Preparing audio stream",
-                                backgroundClass: "bg-gradient-to-br from-stone-50 via-white to-slate-50/70",
-                                variant: mode,
-                            })
-                        ) : drillData ? (
+                        {/* Overlapping ready state allows cross-fade out of the absolute loader */}
+                        {drillSurfacePhase === "ready" && drillData ? (
                             <AnimatePresence mode="popLayout" initial={false}>
                                 {(!drillFeedback || isRebuildMode) ? (
                                     <motion.div
@@ -11256,14 +11443,16 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                         animate={{ x: 0, opacity: 1 }}
                                         exit={{ x: -20, opacity: 0 }}
                                         transition={{ duration: 0.4, ease: "easeOut" }}
-                                        className={cn(
-                                            "absolute inset-0 overflow-y-auto custom-scrollbar flex flex-col transition-[filter,opacity,transform] duration-300",
+                                            className={cn(
+                                                "absolute inset-0 overflow-y-auto custom-scrollbar flex flex-col transition-[filter,opacity,transform] duration-300",
                                             isRebuildMode
                                                 ? (isRebuildPassage ? "p-4 md:px-8 md:py-8 pb-10 md:pb-12" : "p-4 md:p-5 pb-5 md:pb-6")
                                                 : isDictationMode
                                                     ? "p-4 md:p-5 pb-6 md:pb-8"
                                                     : "p-6 md:p-8 pb-10 md:pb-12",
-                                            isRebuildMode && rebuildFeedback && !isRebuildPassage
+                                            isRebuildMode
+                                                && !isRebuildPassage
+                                                && (rebuildSentenceShadowingFlow === "prompt" || rebuildSentenceShadowingFlow === "shadowing")
                                                 ? "pointer-events-none opacity-15 blur-[3px]"
                                                 : ""
                                         )}
@@ -12035,7 +12224,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                 <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150 mt-4 w-full max-w-sm">
                                                                     {/* Rank Progress Bar */}
                                                                     {(() => {
-                                                                        const rank = getRank(currentElo || DEFAULT_BASE_ELO);
+                                                                        const rank = getRank(currentElo ?? DEFAULT_BASE_ELO);
                                                                         return (
                                                                             <div className="w-full mb-4">
                                                                                 <div className="flex justify-between text-xs font-bold text-stone-400 mb-1.5 uppercase tracking-wider">
@@ -12408,7 +12597,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             {isRebuildMode
                                 && !isRebuildPassage
                                 && (rebuildFeedback || pendingRebuildSentenceFeedback)
-                                && (rebuildSentenceShadowingFlow !== "idle" || Boolean(rebuildFeedback)) ? (
+                                && (rebuildSentenceShadowingFlow === "prompt" || rebuildSentenceShadowingFlow === "shadowing") ? (
                                 <motion.div
                                     key={`rebuild-feedback-modal-${(rebuildFeedback ?? pendingRebuildSentenceFeedback)?.resolvedAt ?? "pending"}`}
                                     initial={{ opacity: 0 }}
@@ -12425,7 +12614,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                         >
                                             {rebuildSentenceShadowingFlow === "prompt" ? (
                                                 renderRebuildSentenceShadowingPrompt()
-                                            ) : rebuildSentenceShadowingFlow === "shadowing" ? (
+                                            ) : (
                                                 <div className="mx-auto w-full max-w-3xl space-y-4">
                                                     {drillData ? renderRebuildShadowingPanel({
                                                         referenceEnglish: drillData.reference_english,
@@ -12442,8 +12631,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                         </button>
                                                     </div>
                                                 </div>
-                                            ) : (
-                                                renderRebuildFeedback()
                                             )}
                                         </motion.div>
                                 </motion.div>
@@ -12577,7 +12764,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
                     {/* Floating Action Bar - Redesigned */}
                     <AnimatePresence>
-                        {isRebuildMode && rebuildFeedback && !isRebuildPassage && rebuildSentenceShadowingFlow === "feedback" && !rebuildPassageSummary && !bossState.active && !gambleState.active && (
+                        {isRebuildMode && rebuildFeedback && !isRebuildPassage && rebuildSentenceShadowingFlow === "idle" && !rebuildPassageSummary && !bossState.active && !gambleState.active && (
                             <motion.div
                                 initial={{ y: 40, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
@@ -12694,6 +12881,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     ) : null}
                     {renderRebuildTutorPopup()}
                 </motion.div>
+                )}
+                </AnimatePresence>
 
                 {/* Negotiator Overlay (Crimson Roulette) - Localized */}
                 <AnimatePresence>
@@ -13189,63 +13378,41 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         <motion.div
                             key={eloSplash.uid}
                             initial={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)" }}
-                            animate={{ backdropFilter: "blur(12px)", backgroundColor: "rgba(0,0,0,0.6)" }}
+                            animate={{ backdropFilter: "blur(8px)", backgroundColor: "rgba(250,250,250,0.4)" }}
                             exit={{ backdropFilter: "blur(0px)", backgroundColor: "rgba(0,0,0,0)", opacity: 0 }}
                             className="fixed inset-0 z-[99999] flex items-center justify-center pointer-events-none"
                         >
                             {eloSplash.delta > 0 ? (
                                 <motion.div
-                                    initial={{ scale: 0.5, opacity: 0, y: 40, rotateX: 45 }}
-                                    animate={{ scale: [1.2, 1], opacity: 1, y: 0, rotateX: 0 }}
-                                    exit={{ scale: 1.1, opacity: 0, filter: "blur(10px)" }}
-                                    transition={{ type: "spring", stiffness: 400, damping: 25, duration: 0.6 }}
-                                    className="relative flex flex-col items-center justify-center p-12 rounded-[3.5rem] bg-gradient-to-b from-white/10 to-white/5 border border-white/20 shadow-[0_0_80px_rgba(16,185,129,0.3)] backdrop-blur-xl isolate overflow-hidden"
+                                    initial={{ scale: 0.95, opacity: 0, y: 30 }}
+                                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                                    exit={{ scale: 0.95, opacity: 0, filter: "blur(4px)" }}
+                                    transition={{ type: "spring", stiffness: 450, damping: 30 }}
+                                    className="flex items-center gap-5 px-6 py-4 bg-white/70 backdrop-blur-2xl shadow-[0_12px_40px_rgb(16,185,129,0.15)] border border-emerald-100/60 rounded-[2.5rem]"
                                 >
-                                    <div className="absolute inset-0 rounded-[3.5rem] mix-blend-overlay opacity-50 z-[-1]">
-                                        <div className="absolute inset-0 bg-gradient-to-tr from-emerald-400/30 via-transparent to-teal-300/30" />
-                                        <div className="absolute top-[-50%] left-[-50%] w-[200%] h-[200%] animate-[spin_4s_linear_infinite] bg-[conic-gradient(from_90deg_at_50%_50%,rgba(16,185,129,0)_0%,rgba(16,185,129,0.3)_50%,rgba(16,185,129,0)_100%)]" />
+                                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-[inset_0_2px_10px_rgba(255,255,255,1)]">
+                                        <TrendingUp className="w-6 h-6 stroke-[2.5]" />
                                     </div>
-                                    <motion.span 
-                                        className="relative text-[8rem] md:text-[11.5rem] font-black tracking-tighter text-emerald-400 drop-shadow-[0_0_30px_rgba(52,211,153,0.8)] leading-none"
-                                    >
-                                        +{eloSplash.delta}
-                                    </motion.span>
-                                    <motion.span 
-                                        initial={{ opacity: 0, letterSpacing: "0em" }}
-                                        animate={{ opacity: 1, letterSpacing: "0.2em" }}
-                                        transition={{ delay: 0.2, duration: 0.5 }}
-                                        className="relative mt-2 text-2xl md:text-3xl font-black text-white/95 uppercase drop-shadow-md"
-                                    >
-                                        Elo Gained
-                                    </motion.span>
+                                    <div className="flex flex-col text-left pr-4">
+                                        <span className="font-sans text-[11px] font-bold uppercase tracking-widest text-emerald-600/70">Elo Gained</span>
+                                        <span className="font-newsreader text-4xl font-medium tracking-tight text-emerald-600 leading-none mt-1">+{eloSplash.delta}</span>
+                                    </div>
                                 </motion.div>
                             ) : (
                                 <motion.div
-                                    initial={{ scale: 1.5, opacity: 0, skewX: -20, filter: "brightness(2) contrast(2)" }}
-                                    animate={{ 
-                                        scale: 1, 
-                                        opacity: 1, 
-                                        skewX: [20, -10, 8, -4, 0],
-                                        x: [-15, 15, -8, 8, 0],
-                                        filter: "brightness(1) contrast(1)"
-                                    }}
-                                    exit={{ scale: 0.9, opacity: 0, y: 50, filter: "grayscale(1)" }}
-                                    transition={{ duration: 0.5, ease: "easeOut" }}
-                                    className="flex flex-col items-center justify-center p-12 rounded-3xl bg-red-950/60 border-y-4 border-red-600/60 shadow-[0_0_120px_rgba(220,38,38,0.5)] backdrop-blur-md mix-blend-screen"
+                                    initial={{ scale: 0.95, opacity: 0, y: 30 }}
+                                    animate={{ scale: 1, opacity: 1, y: 0, x: [0, -3, 3, -2, 2, 0] }}
+                                    exit={{ scale: 0.95, opacity: 0, filter: "blur(4px)" }}
+                                    transition={{ duration: 0.45, ease: "easeOut" }}
+                                    className="flex items-center gap-5 px-6 py-4 bg-white/70 backdrop-blur-2xl shadow-[0_12px_40px_rgb(220,38,38,0.12)] border border-red-100/60 rounded-[2.5rem]"
                                 >
-                                    <motion.span 
-                                        className="text-[9.5rem] md:text-[13rem] font-black tracking-widest text-red-500 leading-none"
-                                        style={{ textShadow: "6px 0 0 rgba(255,0,0,0.8), -6px 0 0 rgba(0,255,255,0.4)" }}
-                                    >
-                                        {eloSplash.delta}
-                                    </motion.span>
-                                    <motion.span 
-                                        animate={{ opacity: [1, 0.4, 1, 0.1, 1], x: [0, -2, 2, 0] }}
-                                        transition={{ duration: 0.4, repeat: 2 }}
-                                        className="mt-4 text-3xl md:text-5xl font-black text-red-300 uppercase tracking-[0.35em]"
-                                    >
-                                        Elo Deducted
-                                    </motion.span>
+                                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-500 shadow-[inset_0_2px_10px_rgba(255,255,255,1)]">
+                                        <TrendingDown className="w-6 h-6 stroke-[2.5]" />
+                                    </div>
+                                    <div className="flex flex-col text-left pr-4">
+                                        <span className="font-sans text-[11px] font-bold uppercase tracking-widest text-red-500/70">Elo Deducted</span>
+                                        <span className="font-newsreader text-4xl font-medium tracking-tight text-red-500 leading-none mt-1">{eloSplash.delta}</span>
+                                    </div>
                                 </motion.div>
                             )}
                         </motion.div>

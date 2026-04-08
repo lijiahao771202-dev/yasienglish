@@ -140,16 +140,91 @@ export interface CachedArticle {
 
 export type ReadingMarkType = 'highlight' | 'underline' | 'note' | 'ask';
 
-export type SmartPlanTaskType = 'custom' | 'rebuild' | 'cat' | 'listening' | 'dictation' | 'vocab' | 'writing' | 'reading';
+export type SmartPlanExamTrack = 'cet4' | 'cet6' | 'ielts';
+export type SmartPlanTaskType =
+    | 'custom'
+    | 'rebuild'
+    | 'cat'
+    | 'reading_ai'
+    | 'listening_cabin'
+    | 'dictation'
+    | 'vocab'
+    | 'writing'
+    | 'reading'
+    | 'listening';
+export type DailyPlanSource = 'system' | 'ai' | 'manual';
 
 export interface DailyPlanItem {
     id: string;
     text: string;
     completed: boolean;
     type?: SmartPlanTaskType;
+    exam_track?: SmartPlanExamTrack;
     target?: number;
     current?: number;
     chunk_size?: number; // Size of each micro-step (e.g. 15 for a target of 100)
+    source?: DailyPlanSource;
+}
+
+const SMART_PLAN_TASK_TYPE_SET = new Set<SmartPlanTaskType>([
+    'custom',
+    'rebuild',
+    'cat',
+    'reading_ai',
+    'listening_cabin',
+    'dictation',
+    'vocab',
+    'writing',
+    'reading',
+    'listening',
+]);
+
+const SMART_PLAN_EXAM_TRACK_SET = new Set<SmartPlanExamTrack>(['cet4', 'cet6', 'ielts']);
+
+export function normalizeSmartPlanTaskType(type: unknown): SmartPlanTaskType | undefined {
+    if (typeof type !== 'string') {
+        return undefined;
+    }
+
+    if (type === 'reading') {
+        return 'reading_ai';
+    }
+
+    if (type === 'listening') {
+        return 'listening_cabin';
+    }
+
+    return SMART_PLAN_TASK_TYPE_SET.has(type as SmartPlanTaskType)
+        ? (type as SmartPlanTaskType)
+        : undefined;
+}
+
+export function normalizeSmartPlanExamTrack(track: unknown): SmartPlanExamTrack | undefined {
+    if (typeof track !== 'string') {
+        return undefined;
+    }
+
+    return SMART_PLAN_EXAM_TRACK_SET.has(track as SmartPlanExamTrack)
+        ? (track as SmartPlanExamTrack)
+        : undefined;
+}
+
+export function inferSmartPlanExamTrack(text: string): SmartPlanExamTrack | undefined {
+    const normalized = text.toLowerCase();
+
+    if (normalized.includes('cet-4') || normalized.includes('cet4') || text.includes('四级')) {
+        return 'cet4';
+    }
+
+    if (normalized.includes('cet-6') || normalized.includes('cet6') || text.includes('六级')) {
+        return 'cet6';
+    }
+
+    if (normalized.includes('ielts') || text.includes('雅思')) {
+        return 'ielts';
+    }
+
+    return undefined;
 }
 
 export interface DailyPlanRecord {
@@ -268,6 +343,7 @@ export interface LocalUserProfile extends SyncTracked {
     exam_date?: string;
     exam_type?: 'cet4' | 'cet6' | 'postgrad' | 'ielts';
     exam_goal_score?: number;
+    daily_plan_snapshots?: DailyPlanRecord[];
 }
 
 export interface SyncOutboxItem {

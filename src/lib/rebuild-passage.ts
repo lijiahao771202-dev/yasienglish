@@ -6,7 +6,7 @@ import {
     getRebuildPracticeTier,
     tokenizeRebuildSentence,
 } from "@/lib/rebuild-mode";
-import { getListeningDifficultyExpectation } from "@/lib/listening-drill-bank";
+import { buildRebuildSentenceDifficultyProfile } from "@/lib/rebuild-difficulty";
 import { countWords } from "@/lib/translationDifficulty";
 
 export interface RebuildPassageWordWindow {
@@ -70,12 +70,12 @@ function buildWordWindow(min: number, max: number): RebuildPassageWordWindow {
 
 function getPassageWordWindowBonus(segmentCount: 2 | 3 | 5) {
     if (segmentCount === 2) {
-        return { minBonus: 3, maxBonus: 5 };
+        return { minBonus: 4, maxBonus: 6 };
     }
     if (segmentCount === 3) {
-        return { minBonus: 2, maxBonus: 4 };
+        return { minBonus: 3, maxBonus: 5 };
     }
-    return { minBonus: 1, maxBonus: 3 };
+    return { minBonus: 2, maxBonus: 4 };
 }
 
 function isLikelyCompleteSegment(segment: string) {
@@ -90,12 +90,11 @@ export function buildRebuildPassageDifficultyProfile(
     effectiveElo: number,
     segmentCount: 2 | 3 | 5,
 ): RebuildPassageDifficultyProfile {
-    const practiceTier = getRebuildPracticeTier(effectiveElo);
-    const listeningTarget = getListeningDifficultyExpectation(effectiveElo);
+    const sentenceDifficulty = buildRebuildSentenceDifficultyProfile(effectiveElo);
     const { minBonus, maxBonus } = getPassageWordWindowBonus(segmentCount);
     const perSegmentWordWindow = buildWordWindow(
-        listeningTarget.min + minBonus,
-        listeningTarget.max + maxBonus,
+        sentenceDifficulty.wordWindow.hardMin + minBonus,
+        sentenceDifficulty.wordWindow.hardMax + maxBonus,
     );
     const totalMean = perSegmentWordWindow.mean * segmentCount;
     const totalSigma = Math.sqrt(segmentCount * Math.pow(perSegmentWordWindow.sigma, 2));
@@ -103,14 +102,14 @@ export function buildRebuildPassageDifficultyProfile(
     return {
         effectiveElo,
         segmentCount,
-        practiceTier,
+        practiceTier: getRebuildPracticeTier(effectiveElo),
         bandPosition: getRebuildBandPosition(effectiveElo),
         syntaxComplexity: {
-            clauseMax: listeningTarget.clauseMax,
-            memoryLoad: listeningTarget.memoryLoad,
-            spokenNaturalness: listeningTarget.spokenNaturalness,
-            reducedFormsPresence: listeningTarget.reducedFormsPresence,
-            trainingFocus: listeningTarget.trainingFocus,
+            clauseMax: sentenceDifficulty.syntaxComplexity.clauseMax,
+            memoryLoad: sentenceDifficulty.syntaxComplexity.memoryLoad,
+            spokenNaturalness: sentenceDifficulty.syntaxComplexity.spokenNaturalness,
+            reducedFormsPresence: sentenceDifficulty.syntaxComplexity.reducedFormsPresence,
+            trainingFocus: sentenceDifficulty.syntaxComplexity.trainingFocus,
         },
         perSegmentWordWindow,
         totalWordWindow: {

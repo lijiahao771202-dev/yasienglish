@@ -1,6 +1,8 @@
 import {
     db,
     type CachedArticle,
+    type DailyPlanItem,
+    type DailyPlanRecord,
     type EloHistoryItem,
     type InventoryState,
     type LocalUserProfile,
@@ -10,6 +12,9 @@ import {
     type VocabSourceKind,
     type VocabItem,
     type WritingEntry,
+    inferSmartPlanExamTrack,
+    normalizeSmartPlanExamTrack,
+    normalizeSmartPlanTaskType,
 } from "./db";
 import {
     normalizeHighlightedMeanings,
@@ -77,8 +82,112 @@ export interface RemoteProfileRow {
     exam_date?: string | null;
     exam_type?: string | null;
     exam_goal_score?: number | null;
+    daily_plan_snapshots?: DailyPlanRecord[] | null;
     updated_at: string;
     last_practice_at: string;
+}
+
+export interface RemoteDailyPlanRow {
+    user_id: string;
+    date: string;
+    items: DailyPlanItem[];
+    updated_at: string;
+    created_at?: string;
+}
+
+const MAX_DAILY_PLAN_SNAPSHOTS = 90;
+
+function normalizeDailyPlanItems(input: unknown): DailyPlanItem[] {
+    if (!Array.isArray(input)) {
+        return [];
+    }
+
+    return input
+        .map((item) => {
+            if (!item || typeof item !== "object") {
+                return null;
+            }
+
+            const rawItem = item as Record<string, unknown>;
+            const id = typeof rawItem.id === "string" ? rawItem.id.trim() : "";
+            const text = typeof rawItem.text === "string" ? rawItem.text.trim() : "";
+
+            if (!id || !text) {
+                return null;
+            }
+
+            const type = normalizeSmartPlanTaskType(rawItem.type);
+            const examTrack = normalizeSmartPlanExamTrack(rawItem.exam_track)
+                ?? ((type === "cat" || type === "reading_ai") ? inferSmartPlanExamTrack(text) : undefined);
+            const target = typeof rawItem.target === "number" && Number.isFinite(rawItem.target) ? rawItem.target : undefined;
+            const current = typeof rawItem.current === "number" && Number.isFinite(rawItem.current) ? rawItem.current : undefined;
+            const chunkSize = typeof rawItem.chunk_size === "number" && Number.isFinite(rawItem.chunk_size) ? rawItem.chunk_size : undefined;
+            const source = typeof rawItem.source === "string" ? rawItem.source : undefined;
+
+            return {
+                id,
+                text,
+                completed: Boolean(rawItem.completed),
+                ...(type ? { type } : {}),
+                ...(examTrack ? { exam_track: examTrack } : {}),
+                ...(target !== undefined ? { target } : {}),
+                ...(current !== undefined ? { current } : {}),
+                ...(chunkSize !== undefined ? { chunk_size: chunkSize } : {}),
+                ...(source ? { source } : {}),
+            };
+        })
+        .filter((item): item is DailyPlanItem => Boolean(item));
+}
+
+function normalizeDailyPlanSnapshots(input: unknown): DailyPlanRecord[] {
+    if (!Array.isArray(input)) {
+        return [];
+    }
+
+    return input
+        .map((record) => {
+            if (!record || typeof record !== "object") {
+                return null;
+            }
+
+            const raw = record as Record<string, unknown>;
+            const date = typeof raw.date === "string" ? raw.date.trim() : "";
+            const updatedAt = Number(raw.updated_at);
+            const rawItems = Array.isArray(raw.items) ? raw.items : [];
+
+            if (!date) {
+                return null;
+            }
+
+            const items = normalizeDailyPlanItems(rawItems);
+
+            return {
+                date,
+                items,
+                updated_at: Number.isFinite(updatedAt) ? updatedAt : Date.now(),
+            };
+        })
+        .filter((record): record is DailyPlanRecord => Boolean(record))
+        .sort((a, b) => b.updated_at - a.updated_at)
+        .slice(0, MAX_DAILY_PLAN_SNAPSHOTS);
+}
+
+export function toRemoteDailyPlanRow(userId: string, record: DailyPlanRecord): RemoteDailyPlanRow {
+    return {
+        user_id: userId,
+        date: record.date,
+        items: normalizeDailyPlanItems(record.items),
+        updated_at: new Date(record.updated_at).toISOString(),
+    };
+}
+
+export function toLocalDailyPlanRecord(remote: RemoteDailyPlanRow): DailyPlanRecord {
+    const updatedAt = Date.parse(remote.updated_at);
+    return {
+        date: remote.date,
+        items: normalizeDailyPlanItems(remote.items),
+        updated_at: Number.isFinite(updatedAt) ? updatedAt : Date.now(),
+    };
 }
 
 export interface RemoteVocabularyRow {
@@ -269,6 +378,7 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
         exam_date: undefined,
         exam_type: undefined,
         exam_goal_score: undefined,
+        daily_plan_snapshots: [],
         updated_at: new Date(now).toISOString(),
         sync_status: "pending",
     };
@@ -327,6 +437,7 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
         exam_date: remote.exam_date || undefined,
         exam_type: (remote.exam_type as any) || undefined,
         exam_goal_score: typeof remote.exam_goal_score === "number" ? remote.exam_goal_score : undefined,
+        daily_plan_snapshots: normalizeDailyPlanSnapshots(remote.daily_plan_snapshots),
         updated_at: remote.updated_at,
         sync_status: "synced",
     };
@@ -341,6 +452,7 @@ export function buildProfilePatch(
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
             | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
             | "rebuild_hidden_elo" | "rebuild_elo" | "rebuild_streak" | "rebuild_max_elo"
+            | "exam_date" | "exam_type" | "exam_goal_score" | "daily_plan_snapshots"
         >
     > & {
         last_practice_at?: string | number | null;
@@ -383,6 +495,9 @@ export function buildProfilePatch(
     if ((patch as any).exam_date !== undefined) nextPatch.exam_date = (patch as any).exam_date || null;
     if ((patch as any).exam_type !== undefined) nextPatch.exam_type = (patch as any).exam_type || null;
     if ((patch as any).exam_goal_score !== undefined) nextPatch.exam_goal_score = (patch as any).exam_goal_score ?? null;
+    if ((patch as any).daily_plan_snapshots !== undefined) {
+        nextPatch.daily_plan_snapshots = normalizeDailyPlanSnapshots((patch as any).daily_plan_snapshots);
+    }
     if (patch.last_practice_at !== undefined && patch.last_practice_at !== null) {
         nextPatch.last_practice_at = new Date(patch.last_practice_at).toISOString();
     }

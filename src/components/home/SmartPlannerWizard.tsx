@@ -1,14 +1,21 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Dumbbell, BookOpen, Headphones, X, Sparkles, ChevronRight, PenTool, BookOpenText } from 'lucide-react';
-import type { SmartPlanTaskType } from '@/lib/db';
+import { normalizeSmartPlanExamTrack, type SmartPlanExamTrack, type SmartPlanTaskType } from '@/lib/db';
+
+type SmartPlanDraft = {
+    type: SmartPlanTaskType;
+    target: number;
+    text: string;
+    exam_track?: SmartPlanExamTrack;
+};
 
 interface SmartPlannerWizardProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (type: SmartPlanTaskType, target: number, text: string) => void;
-    onBatchSave?: (tasks: {type: SmartPlanTaskType, target: number, text: string}[]) => void;
+    onSave: (type: SmartPlanTaskType, target: number, text: string, examTrack?: SmartPlanExamTrack) => void;
+    onBatchSave?: (tasks: SmartPlanDraft[]) => void;
     examType?: string;
     remainingDays?: number | null;
 }
@@ -33,22 +40,22 @@ const WIZARD_OPTIONS: { id: SmartPlanTaskType, icon: React.ReactNode, title: str
         defaultText: "攻克 CAT 精读"
     },
     {
-        id: 'listening',
+        id: 'listening_cabin',
         icon: <Headphones className="w-6 h-6 text-[#b68c92]" />,
-        title: "沉浸听力舱",
+        title: "听力仓",
         desc: "精听磨耳朵，逐句击破发音难点",
         presets: [1, 2, 3],
         unit: "篇",
-        defaultText: "沉浸式精听"
+        defaultText: "进入听力仓"
     },
     {
-        id: 'reading',
+        id: 'reading_ai',
         icon: <BookOpenText className="w-6 h-6 text-[#9a8c98]" />,
-        title: "精读泛读 (四六级/雅思)",
-        desc: "常规阅读，扩充词汇及长难句解析",
+        title: "AI 生成阅读",
+        desc: "进入阅读流 AI 生成，按四级六级或雅思生成文章",
         presets: [1, 2, 3, 5],
         unit: "篇",
-        defaultText: "常规泛读"
+        defaultText: "生成 AI 阅读"
     }
 ];
 
@@ -75,6 +82,8 @@ export function SmartPlannerWizard({ isOpen, onClose, onSave, onBatchSave, examT
         }
     }, [isOpen]);
 
+    const planExamTrack = normalizeSmartPlanExamTrack(examType);
+
     const handleSelectType = (id: SmartPlanTaskType) => {
         setSelectedType(id);
         const option = WIZARD_OPTIONS.find(o => o.id === id);
@@ -94,7 +103,8 @@ export function SmartPlannerWizard({ isOpen, onClose, onSave, onBatchSave, examT
              title = `${text} ${target} ${finalOption.unit}`;
         }
 
-        onSave(selectedType, target, title);
+        const examTrack = (selectedType === 'cat' || selectedType === 'reading_ai') ? planExamTrack : undefined;
+        onSave(selectedType, target, title, examTrack);
         onClose();
     };
 

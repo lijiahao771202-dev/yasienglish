@@ -65,14 +65,38 @@ function playWithContext(context: AudioContext, type: RebuildSfxType) {
     const startTime = context.currentTime + 0.01;
 
     switch (type) {
-        case "pick":
-            scheduleTone(context, { frequency: 720, startTime, duration: 0.06, gain: 0.03, type: "triangle" });
-            scheduleTone(context, { frequency: 960, startTime: startTime + 0.045, duration: 0.08, gain: 0.02, type: "sine" });
+        case "pick": {
+            // Elegant, elastic "bubble pop" sound for picking a word
+            const osc = context.createOscillator();
+            const gainNode = context.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(context.destination);
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(400, startTime);
+            osc.frequency.exponentialRampToValueAtTime(1200, startTime + 0.04);
+            gainNode.gain.setValueAtTime(0, startTime);
+            gainNode.gain.linearRampToValueAtTime(0.08, startTime + 0.005);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.08);
+            osc.start(startTime);
+            osc.stop(startTime + 0.1);
             return;
-        case "remove":
-            scheduleTone(context, { frequency: 430, startTime, duration: 0.055, gain: 0.024, type: "triangle" });
-            scheduleTone(context, { frequency: 310, startTime: startTime + 0.04, duration: 0.06, gain: 0.016, type: "sine" });
+        }
+        case "remove": {
+            // Soft hollow "thwack" dropping sound for removing a word
+            const osc = context.createOscillator();
+            const gainNode = context.createGain();
+            osc.connect(gainNode);
+            gainNode.connect(context.destination);
+            osc.type = "triangle";
+            osc.frequency.setValueAtTime(700, startTime);
+            osc.frequency.exponentialRampToValueAtTime(150, startTime + 0.05);
+            gainNode.gain.setValueAtTime(0, startTime);
+            gainNode.gain.linearRampToValueAtTime(0.06, startTime + 0.005);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.07);
+            osc.start(startTime);
+            osc.stop(startTime + 0.08);
             return;
+        }
         case "submit":
             scheduleTone(context, { frequency: 540, startTime, duration: 0.05, gain: 0.027, type: "square" });
             scheduleTone(context, { frequency: 820, startTime: startTime + 0.05, duration: 0.09, gain: 0.02, type: "triangle" });

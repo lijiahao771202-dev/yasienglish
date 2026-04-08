@@ -35,11 +35,14 @@ import {
     normalizeInventory,
     normalizeWordKey,
     type RemoteProfileRow,
+    type RemoteDailyPlanRow,
+    toLocalDailyPlanRecord,
     toLocalEloHistoryItem,
     toLocalProfile,
     toLocalReadArticle,
     toLocalVocabularyItem,
     toLocalWritingEntry,
+    toRemoteDailyPlanRow,
     toRemoteEloHistoryRow,
     toRemoteReadArticle,
     toRemoteVocabularyRow,
@@ -212,7 +215,7 @@ async function setActiveUserId(userId: string) {
 async function clearCoreTables() {
     await db.transaction(
         "rw",
-        [db.user_profile, db.vocabulary, db.writing_history, db.read_articles, db.articles, db.reading_notes, db.ai_cache, db.elo_history, db.sync_outbox],
+        [db.user_profile, db.vocabulary, db.writing_history, db.read_articles, db.articles, db.reading_notes, db.ai_cache, db.elo_history, db.daily_plans, db.sync_outbox],
         async () => {
             await db.user_profile.clear();
             await db.vocabulary.clear();
@@ -222,6 +225,7 @@ async function clearCoreTables() {
             await db.reading_notes.clear();
             await db.ai_cache.clear();
             await db.elo_history.clear();
+            await db.daily_plans.clear();
             await db.sync_outbox.clear();
         },
     );
@@ -256,6 +260,7 @@ async function getRemoteLatestUpdatedAt(userId: string) {
         supabase.from("writing_history").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("read_articles").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("elo_history").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("daily_plans").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
     const timestamps = responses.flatMap((response) => {
@@ -391,6 +396,7 @@ async function ensureRemoteProfile(userId: string) {
             exam_date: localProfile.exam_date ?? null,
             exam_type: localProfile.exam_type ?? null,
             exam_goal_score: localProfile.exam_goal_score ?? null,
+            daily_plan_snapshots: localProfile.daily_plan_snapshots ?? [],
             last_practice_at: new Date(localProfile.last_practice).toISOString(),
             updated_at: localProfile.updated_at || nowIso(),
         }
@@ -431,6 +437,7 @@ async function ensureRemoteProfile(userId: string) {
             exam_date: null,
             exam_type: null,
             exam_goal_score: null,
+            daily_plan_snapshots: [],
             last_practice_at: nowIso(),
             updated_at: nowIso(),
         };
@@ -494,6 +501,7 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
                 exam_date: localProfile.exam_date ?? null,
                 exam_type: localProfile.exam_type ?? null,
                 exam_goal_score: localProfile.exam_goal_score ?? null,
+                daily_plan_snapshots: localProfile.daily_plan_snapshots ?? [],
                 last_practice_at: new Date(localProfile.last_practice).toISOString(),
                 updated_at: localProfile.updated_at || nowIso(),
             };
@@ -718,6 +726,54 @@ async function queueOutboxItem({ entity, operation, recordKey, payload }: Outbox
     await db.sync_outbox.add(next);
 }
 
+async function syncDailyPlanMirror(userId: string) {
+    const supabase = createBrowserClientSingleton();
+    const [localPlans, remoteRes] = await Promise.all([
+        db.daily_plans.toArray(),
+        supabase.from("daily_plans").select("date, items, updated_at, created_at").eq("user_id", userId),
+    ]);
+
+    if (remoteRes.error) {
+        throw remoteRes.error;
+    }
+
+    const remotePlans = (remoteRes.data as RemoteDailyPlanRow[] | null) ?? [];
+    const remoteByDate = new Map(remotePlans.map((plan) => [plan.date, plan]));
+    const localByDate = new Map(localPlans.map((plan) => [plan.date, plan]));
+
+    const upserts = localPlans
+        .filter((localPlan) => {
+            const remotePlan = remoteByDate.get(localPlan.date);
+            if (!remotePlan) {
+                return true;
+            }
+
+            const remoteUpdatedAt = Date.parse(remotePlan.updated_at);
+            return !Number.isFinite(remoteUpdatedAt) || localPlan.updated_at >= remoteUpdatedAt;
+        })
+        .map((plan) => toRemoteDailyPlanRow(userId, plan));
+
+    if (upserts.length > 0) {
+        const result = await supabase
+            .from("daily_plans")
+            .upsert(upserts, { onConflict: "user_id,date" });
+        assertSupabaseMutationSucceeded(result, "daily_plans push");
+    }
+
+    const staleRemoteDates = remotePlans
+        .map((plan) => plan.date)
+        .filter((date) => !localByDate.has(date));
+
+    if (staleRemoteDates.length > 0) {
+        const result = await supabase
+            .from("daily_plans")
+            .delete()
+            .eq("user_id", userId)
+            .in("date", staleRemoteDates);
+        assertSupabaseMutationSucceeded(result, "daily_plans delete");
+    }
+}
+
 async function pullRemoteSnapshot(userId: string) {
     const supabase = createBrowserClientSingleton();
     const existingLocalProfile = await db.user_profile.orderBy("id").first();
@@ -728,12 +784,14 @@ async function pullRemoteSnapshot(userId: string) {
         writingRes,
         readRes,
         eloRes,
+        dailyPlansRes,
     ] = await Promise.all([
         supabase.from("profiles").select("*").eq("user_id", userId).single(),
         supabase.from("vocabulary").select("*").eq("user_id", userId).order("updated_at", { ascending: false }),
         supabase.from("writing_history").select("*").eq("user_id", userId).order("timestamp_ms", { ascending: false }),
         supabase.from("read_articles").select("*").eq("user_id", userId).order("timestamp_ms", { ascending: false }),
         supabase.from("elo_history").select("*").eq("user_id", userId).order("timestamp_ms", { ascending: true }),
+        supabase.from("daily_plans").select("user_id,date,items,updated_at,created_at").eq("user_id", userId).order("date", { ascending: true }),
     ]);
 
     if (profileRes.error) throw profileRes.error;
@@ -741,6 +799,7 @@ async function pullRemoteSnapshot(userId: string) {
     if (writingRes.error) throw writingRes.error;
     if (readRes.error) throw readRes.error;
     if (eloRes.error) throw eloRes.error;
+    if (dailyPlansRes.error) throw dailyPlansRes.error;
 
     const remoteProfileRow = profileRes.data as RemoteProfileRow & Record<string, unknown>;
     const remoteLocalProfile = toLocalProfile(profileRes.data as RemoteProfileRow);
@@ -767,6 +826,15 @@ async function pullRemoteSnapshot(userId: string) {
         dictation_max_elo: typeof remoteProfileRow.dictation_max_elo === "number"
             ? remoteProfileRow.dictation_max_elo
             : (existingLocalProfile?.dictation_max_elo ?? remoteLocalProfile.dictation_max_elo ?? remoteLocalProfile.listening_max_elo ?? DEFAULT_BASE_ELO),
+    };
+    const localDailyPlans = Array.isArray(localProfile.daily_plan_snapshots)
+        ? localProfile.daily_plan_snapshots
+        : [];
+    const remoteDailyPlans = ((dailyPlansRes.data as RemoteDailyPlanRow[] | null) ?? []).map(toLocalDailyPlanRecord);
+    const effectiveDailyPlans = remoteDailyPlans.length > 0 ? remoteDailyPlans : localDailyPlans;
+    const effectiveLocalProfile: LocalUserProfile = {
+        ...localProfile,
+        daily_plan_snapshots: effectiveDailyPlans,
     };
     const localVocabulary = (vocabRes.data as RemoteVocabularyRow[]).map(toLocalVocabularyItem);
     const localWriting = (writingRes.data as RemoteWritingHistoryRow[]).map(toLocalWritingEntry);
@@ -871,7 +939,7 @@ async function pullRemoteSnapshot(userId: string) {
 
     await db.transaction(
         "rw",
-        [db.user_profile, db.vocabulary, db.writing_history, db.read_articles, db.articles, db.reading_notes, db.ai_cache, db.elo_history],
+        [db.user_profile, db.vocabulary, db.writing_history, db.read_articles, db.articles, db.reading_notes, db.ai_cache, db.elo_history, db.daily_plans],
         async () => {
             await db.user_profile.clear();
             await db.vocabulary.clear();
@@ -879,8 +947,10 @@ async function pullRemoteSnapshot(userId: string) {
             await db.read_articles.clear();
             await db.reading_notes.clear();
             await db.elo_history.clear();
+            await db.daily_plans.clear();
 
-            await db.user_profile.add(localProfile);
+            await db.user_profile.add(effectiveLocalProfile);
+            if (effectiveDailyPlans.length) await db.daily_plans.bulkPut(effectiveDailyPlans);
             if (localVocabulary.length) await db.vocabulary.bulkPut(localVocabulary);
             if (localWriting.length) await db.writing_history.bulkAdd(localWriting);
             if (localRead.length) await db.read_articles.bulkPut(localRead);
@@ -1202,6 +1272,7 @@ async function syncRemoteMirror(userId: string, options: RemoteSyncOptions = {})
     }
     await enqueueLegacyDictationEloForSync(userId);
     await pushLocalNewerRecords(userId, remoteProfile);
+    await syncDailyPlanMirror(userId);
 
     const shouldAttemptPull = Boolean(options.forcePull || options.pullSnapshot);
     if (shouldAttemptPull && await shouldPullRemoteSnapshot(userId, Boolean(options.forcePull))) {
@@ -1581,6 +1652,7 @@ export async function saveProfilePatch(
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
             | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
             | "rebuild_hidden_elo" | "rebuild_elo" | "rebuild_streak" | "rebuild_max_elo"
+            | "exam_date" | "exam_type" | "exam_goal_score" | "daily_plan_snapshots"
         >
     > & {
         last_practice_at?: string | number | null;

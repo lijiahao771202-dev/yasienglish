@@ -13,17 +13,70 @@ const playIncrementSound = () => {
         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
         if (!AudioContext) return;
         const ctx = new AudioContext();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(800, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(1400, ctx.currentTime + 0.08);
-        gain.gain.setValueAtTime(0.4, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.08);
+        
+        const now = ctx.currentTime;
+        // G5 note for a pleasant, high-pitched +1 progress tick
+        const noteFreq = 783.99; 
+        
+        // --- 1. Wooden Mallet Strike (Transient Click) ---
+        const clickOsc = ctx.createOscillator();
+        const clickGain = ctx.createGain();
+        const clickFilter = ctx.createBiquadFilter();
+        
+        clickOsc.type = 'square';
+        clickOsc.frequency.setValueAtTime(800, now);
+        clickOsc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
+        
+        clickFilter.type = 'bandpass';
+        clickFilter.frequency.value = 1200;
+        clickFilter.Q.value = 0.5;
+        
+        clickGain.gain.setValueAtTime(0, now);
+        clickGain.gain.linearRampToValueAtTime(0.5, now + 0.002);
+        clickGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+        
+        clickOsc.connect(clickFilter);
+        clickFilter.connect(clickGain);
+        clickGain.connect(ctx.destination);
+        
+        // --- 2. Marimba Fundamental (Wooden Resonance Body) ---
+        const fundOsc = ctx.createOscillator();
+        const fundGain = ctx.createGain();
+        
+        fundOsc.type = 'sine';
+        fundOsc.frequency.value = noteFreq;
+        
+        fundGain.gain.setValueAtTime(0, now);
+        fundGain.gain.linearRampToValueAtTime(0.8, now + 0.01);
+        fundGain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+        
+        fundOsc.connect(fundGain);
+        fundGain.connect(ctx.destination);
+        
+        // --- 3. Marimba First Overtone (Characteristic Wood Edge) ---
+        // Acoustic marimbas have a prominent overtone at ~3.93x fundamental
+        const overtoneOsc = ctx.createOscillator();
+        const overtoneGain = ctx.createGain();
+        
+        overtoneOsc.type = 'sine';
+        overtoneOsc.frequency.value = noteFreq * 3.93; 
+        
+        overtoneGain.gain.setValueAtTime(0, now);
+        overtoneGain.gain.linearRampToValueAtTime(0.15, now + 0.01);
+        overtoneGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1); // Decays faster
+        
+        overtoneOsc.connect(overtoneGain);
+        overtoneGain.connect(ctx.destination);
+        
+        // Fire all synthetic parts
+        clickOsc.start(now);
+        fundOsc.start(now);
+        overtoneOsc.start(now);
+        
+        clickOsc.stop(now + 0.05);
+        fundOsc.stop(now + 0.25);
+        overtoneOsc.stop(now + 0.1);
+        
     } catch(e) {}
 };
 
@@ -32,35 +85,63 @@ const playCompletionSound = () => {
         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
         if (!AudioContext) return;
         const ctx = new AudioContext();
+        const now = ctx.currentTime;
         
-        // Base synth chord
-        [440, 554.37, 659.25].forEach((freq, i) => {
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.type = 'triangle';
-            osc.frequency.value = freq;
-            gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.05);
-            gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + i * 0.05 + 0.05);
-            gain.gain.linearRampToValueAtTime(0, ctx.currentTime + i * 0.05 + 0.6);
-            osc.start(ctx.currentTime + i * 0.05);
-            osc.stop(ctx.currentTime + i * 0.05 + 0.6);
-        });
+        // Helper to synthesize one marimba note
+        const playMarimbaNote = (freq: number, startTime: number) => {
+            // Transient Click
+            const clickOsc = ctx.createOscillator();
+            const clickGain = ctx.createGain();
+            const clickFilter = ctx.createBiquadFilter();
+            clickOsc.type = 'square';
+            clickOsc.frequency.setValueAtTime(800, startTime);
+            clickOsc.frequency.exponentialRampToValueAtTime(100, startTime + 0.05);
+            clickFilter.type = 'bandpass';
+            clickFilter.frequency.value = 1200;
+            clickFilter.Q.value = 0.5;
+            clickGain.gain.setValueAtTime(0, startTime);
+            clickGain.gain.linearRampToValueAtTime(0.4, startTime + 0.002);
+            clickGain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.05);
+            clickOsc.connect(clickFilter);
+            clickFilter.connect(clickGain);
+            clickGain.connect(ctx.destination);
+            
+            // Fundamental Body
+            const fundOsc = ctx.createOscillator();
+            const fundGain = ctx.createGain();
+            fundOsc.type = 'sine';
+            fundOsc.frequency.value = freq;
+            fundGain.gain.setValueAtTime(0, startTime);
+            fundGain.gain.linearRampToValueAtTime(0.7, startTime + 0.01);
+            fundGain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.3);
+            fundOsc.connect(fundGain);
+            fundGain.connect(ctx.destination);
+            
+            // First Overtone Check (Wood Edge)
+            const overtoneOsc = ctx.createOscillator();
+            const overtoneGain = ctx.createGain();
+            overtoneOsc.type = 'sine';
+            overtoneOsc.frequency.value = freq * 3.93; 
+            overtoneGain.gain.setValueAtTime(0, startTime);
+            overtoneGain.gain.linearRampToValueAtTime(0.1, startTime + 0.01);
+            overtoneGain.gain.exponentialRampToValueAtTime(0.01, startTime + 0.1);
+            overtoneOsc.connect(overtoneGain);
+            overtoneGain.connect(ctx.destination);
+            
+            clickOsc.start(startTime);
+            fundOsc.start(startTime);
+            overtoneOsc.start(startTime);
+            clickOsc.stop(startTime + 0.05);
+            fundOsc.stop(startTime + 0.3);
+            overtoneOsc.stop(startTime + 0.1);
+        };
         
-        // High sparkle
-        const osc2 = ctx.createOscillator();
-        const gain2 = ctx.createGain();
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        osc2.type = 'sine';
-        osc2.frequency.setValueAtTime(1046.50, ctx.currentTime + 0.3);
-        osc2.frequency.exponentialRampToValueAtTime(2093, ctx.currentTime + 0.4);
-        gain2.gain.setValueAtTime(0, ctx.currentTime + 0.3);
-        gain2.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.35);
-        gain2.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.8);
-        osc2.start(ctx.currentTime + 0.3);
-        osc2.stop(ctx.currentTime + 0.8);
+        // Play a grand Marimba major chord arpeggio (C5, E5, G5, C6) for completion/over-achievement
+        playMarimbaNote(523.25, now);         // C5
+        playMarimbaNote(659.25, now + 0.08);  // E5
+        playMarimbaNote(783.99, now + 0.16);  // G5
+        playMarimbaNote(1046.50, now + 0.24); // C6
+        
     } catch(e) {}
 };
 
@@ -152,8 +233,8 @@ export function GlobalSmartTracker() {
             if ((item.current || 0) < (item.target || 1) && !item.completed) return false;
             if (pathname === '/' || pathname === '/home') return true;
             if (pathname.startsWith('/battle') && item.type !== 'rebuild') return false;
-            if (pathname.startsWith('/listening-cabin') && item.type !== 'listening') return false;
-            if ((pathname.startsWith('/read') || pathname.startsWith('/cat')) && item.type !== 'reading' && item.type !== 'cat') return false;
+            if (pathname.startsWith('/listening-cabin') && item.type !== 'listening_cabin') return false;
+            if ((pathname.startsWith('/read') || pathname.startsWith('/cat')) && item.type !== 'reading_ai' && item.type !== 'cat') return false;
             if (pathname.startsWith('/vocab') && item.type !== 'vocab') return false;
             return true;
         });
@@ -221,8 +302,8 @@ export function GlobalSmartTracker() {
             
             // Only show relevant tasks on specific pages
             if (pathname.startsWith('/battle') && item.type !== 'rebuild') return false;
-            if (pathname.startsWith('/listening-cabin') && item.type !== 'listening') return false;
-            if ((pathname.startsWith('/read') || pathname.startsWith('/cat')) && item.type !== 'reading' && item.type !== 'cat') return false;
+            if (pathname.startsWith('/listening-cabin') && item.type !== 'listening_cabin') return false;
+            if ((pathname.startsWith('/read') || pathname.startsWith('/cat')) && item.type !== 'reading_ai' && item.type !== 'cat') return false;
             if (pathname.startsWith('/vocab') && item.type !== 'vocab') return false;
 
             return true;
