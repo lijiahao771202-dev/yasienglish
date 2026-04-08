@@ -1461,6 +1461,30 @@ function ReadingPageContent() {
         ? { transform: `translate3d(${quizPanelOffset.x}px, ${quizPanelOffset.y}px, 0)` }
         : undefined;
 
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!article) return;
+
+        const url = new URL(window.location.href);
+
+        if (article?.isCatMode) {
+            url.searchParams.set("smart_task", "cat");
+            if (article.difficulty) {
+                url.searchParams.set("exam_track", article.difficulty);
+            } else {
+                url.searchParams.delete("exam_track");
+            }
+        } else if (article?.isAIGenerated && article?.difficulty) {
+            url.searchParams.set("smart_task", "reading_ai");
+            url.searchParams.set("exam_track", article.difficulty);
+        } else {
+            url.searchParams.delete("smart_task");
+            url.searchParams.delete("exam_track");
+        }
+
+        window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    }, [article, article?.difficulty, article?.isAIGenerated, article?.isCatMode]);
+
     return (
         <main
             className={cn(
