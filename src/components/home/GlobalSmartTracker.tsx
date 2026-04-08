@@ -2,11 +2,35 @@
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useDailyPlans } from '@/hooks/useDailyPlans';
 import { Sparkles, Trophy, ChevronRight, X, Loader2, Blocks } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import type { DailyPlanItem } from '@/lib/db';
+import {
+    normalizeSmartPlanExamTrack,
+    normalizeSmartPlanTaskType,
+    type DailyPlanItem,
+    type SmartPlanExamTrack,
+    type SmartPlanTaskType,
+} from '@/lib/db';
+
+type RouteTaskContext = {
+    taskType: SmartPlanTaskType;
+    examTrack?: SmartPlanExamTrack;
+};
+
+function taskMatchesRoute(item: DailyPlanItem, routeTaskContext: RouteTaskContext | null, pathname: string) {
+    if (pathname === '/' || pathname === '/home') return true;
+    if (!routeTaskContext) return true;
+    if (item.type !== routeTaskContext.taskType) return false;
+    if (routeTaskContext.taskType === 'reading_ai' && routeTaskContext.examTrack) {
+        return item.exam_track === routeTaskContext.examTrack;
+    }
+    if (routeTaskContext.taskType === 'cat' && routeTaskContext.examTrack) {
+        return !item.exam_track || item.exam_track === routeTaskContext.examTrack;
+    }
+    return true;
+}
 
 const playIncrementSound = () => {
     try {
@@ -146,8 +170,37 @@ const playCompletionSound = () => {
 };
 
 export function GlobalSmartTracker() {
+    const router = useRouter();
     const pathname = usePathname() || '/';
+    const searchParams = useSearchParams();
     const { planRecord } = useDailyPlans(new Date());
+    const smartTaskParam = normalizeSmartPlanTaskType(searchParams.get('smart_task'));
+    const smartEntryParam = searchParams.get('smart_entry') === '1';
+    const smartExamTrackParam = normalizeSmartPlanExamTrack(searchParams.get('exam_track'));
+
+    const routeTaskContext = useMemo<RouteTaskContext | null>(() => {
+        if (pathname.startsWith('/battle')) {
+            return { taskType: 'rebuild' };
+        }
+
+        if (pathname.startsWith('/listening-cabin')) {
+            return { taskType: 'listening_cabin' };
+        }
+
+        if (pathname.startsWith('/read') || pathname.startsWith('/cat')) {
+            if (smartTaskParam === 'cat') {
+                return { taskType: 'cat', examTrack: smartExamTrackParam };
+            }
+
+            if (smartTaskParam === 'reading_ai') {
+                return { taskType: 'reading_ai', examTrack: smartExamTrackParam };
+            }
+
+            return null;
+        }
+
+        return null;
+    }, [pathname, smartExamTrackParam, smartTaskParam]);
 
     const smartItems = useMemo(() => {
         if (!planRecord) return [];
@@ -166,10 +219,16 @@ export function GlobalSmartTracker() {
 
     useEffect(() => {
         if (pathname === '/' || pathname === '/home' || pathname.startsWith('/profile') || pathname.startsWith('/vocab')) return;
+        if (!routeTaskContext || !smartEntryParam) return;
 
         setRevealChunks(false);
         setIsHeroOverlay(true);
         setIsExpanded(true); // Ensure items are visible during hero animation
+
+        const nextParams = new URLSearchParams(searchParams.toString());
+        nextParams.delete('smart_entry');
+        const nextQuery = nextParams.toString();
+        router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
 
         const t1 = setTimeout(() => {
             setRevealChunks(true);
@@ -183,7 +242,7 @@ export function GlobalSmartTracker() {
             clearTimeout(t1);
             clearTimeout(t2);
         };
-    }, [pathname]);
+    }, [pathname, routeTaskContext, router, searchParams, smartEntryParam]);
 
     useEffect(() => {
         if (!smartItems.length) return;
@@ -232,13 +291,10 @@ export function GlobalSmartTracker() {
         return smartItems.some(item => {
             if ((item.current || 0) < (item.target || 1) && !item.completed) return false;
             if (pathname === '/' || pathname === '/home') return true;
-            if (pathname.startsWith('/battle') && item.type !== 'rebuild') return false;
-            if (pathname.startsWith('/listening-cabin') && item.type !== 'listening_cabin') return false;
-            if ((pathname.startsWith('/read') || pathname.startsWith('/cat')) && item.type !== 'reading_ai' && item.type !== 'cat') return false;
             if (pathname.startsWith('/vocab') && item.type !== 'vocab') return false;
-            return true;
+            return taskMatchesRoute(item, routeTaskContext, pathname);
         });
-    }, [smartItems, pathname]);
+    }, [pathname, routeTaskContext, smartItems]);
 
     // Blast extreme confetti on over-completion
     useEffect(() => {
@@ -301,14 +357,10 @@ export function GlobalSmartTracker() {
             if (pathname === '/' || pathname === '/home') return true;
             
             // Only show relevant tasks on specific pages
-            if (pathname.startsWith('/battle') && item.type !== 'rebuild') return false;
-            if (pathname.startsWith('/listening-cabin') && item.type !== 'listening_cabin') return false;
-            if ((pathname.startsWith('/read') || pathname.startsWith('/cat')) && item.type !== 'reading_ai' && item.type !== 'cat') return false;
             if (pathname.startsWith('/vocab') && item.type !== 'vocab') return false;
-
-            return true;
+            return taskMatchesRoute(item, routeTaskContext, pathname);
         });
-    }, [smartItems, celebrateGoalId, pathname]);
+    }, [celebrateGoalId, pathname, routeTaskContext, smartItems]);
 
     // We do not early return null anymore so AnimatePresence can track unmounting!
     const shouldShowTracker = activeItems.length > 0 || celebrateGoalId || isHeroOverlay;

@@ -1534,19 +1534,6 @@ const STREAK_TIER_VISUALS: Record<StreakTier, StreakTierVisual> = {
 
 const ParticleSwarmCanvas = memo(({ prefersReducedMotion, stageIndex = 0 }: { prefersReducedMotion?: boolean, stageIndex?: number }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const stageIndexRef = useRef(stageIndex);
-
-    useEffect(() => {
-        stageIndexRef.current = stageIndex;
-    }, [stageIndex]);
-
-    // Keep track of current interpolated colors using a deep copy
-    const currentColorsRef = useRef([
-        { r: 56,  g: 189, b: 248, a: 0.45 },
-        { r: 99,  g: 102, b: 241, a: 0.45 },
-        { r: 45,  g: 212, b: 191, a: 0.35 },
-        { r: 59,  g: 130, b: 246, a: 0.35 }
-    ]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -1577,74 +1564,46 @@ const ParticleSwarmCanvas = memo(({ prefersReducedMotion, stageIndex = 0 }: { pr
 
         let time = 0;
 
-        const blobPhysics = [
-            { speed: 0.8, radiusOffset: 0,   phaseOffset: 0 },
-            { speed: 0.6, radiusOffset: 12,  phaseOffset: 2 },
-            { speed: 1.1, radiusOffset: -10, phaseOffset: 4 },
-            { speed: 0.5, radiusOffset: 5,   phaseOffset: 1 } 
+        // 3 vibrant, clean Macaron pastel colors (Pink, Mint, Lavender)
+        const blobs = [
+            { color: 'rgba(253, 164, 189, 0.5)',  speed: 0.8, radiusOffset: 5,   phaseOffset: 0 },   // Vibrant Macaron Pink
+            { color: 'rgba(134, 239, 172, 0.5)',  speed: 0.6, radiusOffset: 12,  phaseOffset: 2 },   // Vibrant Macaron Mint
+            { color: 'rgba(216, 180, 254, 0.5)', speed: 0.9, radiusOffset: -8,   phaseOffset: 4 }    // Vibrant Macaron Lavender
         ];
-
-        const palettes = [
-            [
-                { r: 56,  g: 189, b: 248, a: 0.45 },
-                { r: 99,  g: 102, b: 241, a: 0.45 },
-                { r: 45,  g: 212, b: 191, a: 0.35 },
-                { r: 59,  g: 130, b: 246, a: 0.35 }
-            ],
-            [
-                { r: 16,  g: 185, b: 129, a: 0.45 },
-                { r: 250, g: 204, b: 21,  a: 0.45 },
-                { r: 245, g: 158, b: 11,  a: 0.35 },
-                { r: 52,  g: 211, b: 153, a: 0.35 }
-            ],
-            [
-                { r: 255, g: 255, b: 255, a: 0.8 },
-                { r: 226, g: 232, b: 240, a: 0.7 },
-                { r: 248, g: 250, b: 252, a: 0.6 },
-                { r: 203, g: 213, b: 225, a: 0.5 } 
-            ]
-        ];
-
-        const lerp = (start: number, end: number, t: number) => start * (1 - t) + end * t;
 
         const render = () => {
             ctx.clearRect(0, 0, width, height);
             
-            // Slower, more elegant flow speed
-            time += prefersReducedMotion ? 0.002 : 0.006;
-
-            const targetPalette = palettes[Math.min(stageIndexRef.current, palettes.length - 1)];
-            const currentColors = currentColorsRef.current;
-            const lerpSpeed = 0.015; // Extremely smooth fade
-
-            for (let i = 0; i < 4; i++) {
-                currentColors[i].r = lerp(currentColors[i].r, targetPalette[i].r, lerpSpeed);
-                currentColors[i].g = lerp(currentColors[i].g, targetPalette[i].g, lerpSpeed);
-                currentColors[i].b = lerp(currentColors[i].b, targetPalette[i].b, lerpSpeed);
-                currentColors[i].a = lerp(currentColors[i].a, targetPalette[i].a, lerpSpeed);
-            }
+            // Adjusted speed: not too frantic, not too slow. Medium elegance.
+            time += prefersReducedMotion ? 0.002 : 0.0045;
 
             const cx = width / 2;
             const cy = height / 2 - 20; 
-            const baseRadius = Math.min(width, height) * 0.28;
+            // Scaled down base radius slightly so it never clips!
+            const baseRadius = Math.min(width, height) * 0.22;
 
-            ctx.globalCompositeOperation = 'multiply';
+            // REMOVED 'multiply' blend mode because it causes pastel colors to turn muddy gray when overlapping!
+            // Using standard alpha blending ('source-over') retains the clean, bright macaron aesthetic.
 
-            blobPhysics.forEach((physics, i) => {
+            blobs.forEach((blob, i) => {
                 ctx.beginPath();
-                const segments = 180; 
+                const segments = 150; 
                 for (let j = 0; j <= segments; j++) {
                     const angle = (j / segments) * Math.PI * 2;
                     
-                    const phase = time * physics.speed + physics.phaseOffset;
-                    const deform1 = Math.sin(angle * 3 + phase) * (baseRadius * 0.12);
-                    const deform2 = Math.cos(angle * 2 - phase * 1.5) * (baseRadius * 0.18);
-                    const deform3 = Math.sin(angle * 5 + phase * 0.8) * (baseRadius * 0.06);
+                    const phase = time * blob.speed + blob.phaseOffset;
+                    // FIXED: Frequencies MUST be strict integers (2, 3, 4) for the circle loop to close perfectly seamlessly!
+                    // Non-integers (like 2.5) cause the start (0) and end (2PI) radius to mismatch, creating a straight geometric cut-off line.
+                    const deform1 = Math.sin(angle * 2 + phase) * (baseRadius * 0.16);
+                    const deform2 = Math.cos(angle * 3 - phase * 1.2) * (baseRadius * 0.12);
+                    const deform3 = Math.sin(angle * 4 + phase * 0.8) * (baseRadius * 0.08);
                     
-                    const r = Math.max(10, baseRadius + physics.radiusOffset + deform1 + deform2 + deform3);
+                    const r = Math.max(10, baseRadius + blob.radiusOffset + deform1 + deform2 + deform3);
                     
-                    const orbitX = Math.cos(time * 0.8 + i) * 20;
-                    const orbitY = Math.sin(time * 1.1 + i * 2) * 20;
+                    // Reduced orbit radius from 45 -> 25 to prevent canvas boundary clipping 
+                    // while still keeping the centers cleanly separated!
+                    const orbitX = Math.cos(time * 0.6 + i * 2.1) * 25;
+                    const orbitY = Math.sin(time * 0.9 + i * 1.7) * 25;
 
                     const x = cx + orbitX + Math.cos(angle) * r;
                     const y = cy + orbitY + Math.sin(angle) * r;
@@ -1653,8 +1612,8 @@ const ParticleSwarmCanvas = memo(({ prefersReducedMotion, stageIndex = 0 }: { pr
                     else ctx.lineTo(x, y);
                 }
                 ctx.closePath();
-                const col = currentColors[i];
-                ctx.fillStyle = `rgba(${Math.round(col.r)}, ${Math.round(col.g)}, ${Math.round(col.b)}, ${col.a})`;
+                
+                ctx.fillStyle = blob.color;
                 ctx.fill();
             });
 
@@ -1677,9 +1636,20 @@ const ParticleSwarmCanvas = memo(({ prefersReducedMotion, stageIndex = 0 }: { pr
             }
             observer.disconnect();
         };
-    }, [prefersReducedMotion]); // Removed stageIndex from dependencies so time doesn't reset!
+    }, [prefersReducedMotion]);
 
-    return <canvas ref={canvasRef} className="absolute inset-0 z-0 mix-blend-multiply opacity-60 blur-[3px] transition-opacity duration-1000" />;
+    const isReady = stageIndex === 2;
+
+    return (
+        <canvas 
+            ref={canvasRef} 
+            className={cn(
+                "absolute inset-0 z-0 mix-blend-multiply",
+                "transition-all duration-[1200ms] ease-out max-w-full overflow-hidden",
+                isReady ? "opacity-0 scale-150 blur-[15px]" : "opacity-60 scale-100 blur-[3px]"
+            )} 
+        />
+    );
 });
 
 export function DrillCore({ context, initialMode = "translation", listeningSourceMode = "ai", onClose }: DrillCoreProps) {
@@ -9389,6 +9359,24 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         </span>
                     </div>
                     <div className="flex items-center gap-1.5">
+                        {!isRebuildPassage ? (
+                            <button
+                                type="button"
+                                onClick={() => setShowChinese(v => !v)}
+                                className={cn(
+                                    rebuildToggleClass,
+                                    showChinese
+                                        ? (isVerdantRebuild
+                                            ? "border-emerald-300/80 bg-emerald-50/90 text-emerald-800"
+                                            : activeCosmeticUi.audioUnlockedClass)
+                                        : (isVerdantRebuild
+                                            ? "border-emerald-200/80 bg-white/92 text-emerald-700"
+                                            : activeCosmeticUi.iconButtonClass)
+                                )}
+                            >
+                                <span className="inline-flex items-center gap-1"><Globe className="h-3 w-3" />中文</span>
+                            </button>
+                        ) : null}
                         <button
                             type="button"
                             onClick={() => setRebuildAutocorrect(v => !v)}
@@ -9439,83 +9427,135 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 : "min-h-[90px] border-white/60 bg-white/86")
                     )}>
                         {showInlinePassageCorrection && activePassageCorrection ? (
-                            <div className="space-y-3">
+                            <div
+                                className="space-y-3"
+                                data-word-popup-root="true"
+                                onMouseUp={() => handleInteractiveTextMouseUp(drillData.reference_english)}
+                            >
                                 <div className="flex flex-wrap gap-2.5">
                                     {activePassageCorrection.tokens.map((token, index) => (
-                                        <span
+                                        <motion.button
                                             key={`passage-inline-correction-${index}-${token.text}`}
+                                            type="button"
+                                            initial={prefersReducedMotion ? false : { opacity: 0, y: 6, scale: 0.98 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            transition={{ duration: 0.16, ease: "easeOut", delay: prefersReducedMotion ? 0 : index * 0.02 }}
+                                            whileTap={prefersReducedMotion ? undefined : { scale: 0.96, y: 1 }}
+                                            onClick={(e) => handleWordClick(e, token.text, drillData.reference_english)}
+                                            onMouseUp={() => handleInteractiveTextMouseUp(drillData.reference_english)}
                                             className={cn(
-                                                "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border px-4 py-1.5 text-[14px] font-semibold",
+                                                "inline-flex min-h-[42px] cursor-pointer touch-manipulation items-center gap-1.5 rounded-full border px-4 py-2 text-[14px] font-semibold text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-[1px]",
                                                 token.kind === "correct"
                                                     ? activeCosmeticUi.wordBadgeActiveClass
                                                     : token.kind === "inserted"
                                                         ? activeCosmeticUi.hintButtonClass
                                                         : activeCosmeticUi.audioLockedClass
                                             )}
+                                            style={{
+                                                boxShadow: token.kind === "correct"
+                                                    ? "0 5px 0 rgba(16,185,129,0.18)"
+                                                    : token.kind === "inserted"
+                                                        ? "0 5px 0 rgba(14,165,233,0.16)"
+                                                        : "0 5px 0 rgba(120,113,108,0.14)",
+                                            }}
                                         >
-                                            {token.text}
+                                            <span className="select-text">{token.text}</span>
                                             {token.kind !== "correct" && token.originalText ? (
-                                                <span className={cn("text-[11px] line-through", activeCosmeticTheme.mutedClass)}>
+                                                <span className={cn("select-text text-[11px] line-through", activeCosmeticTheme.mutedClass)}>
                                                     {token.originalText}
                                                 </span>
                                             ) : null}
-                                        </span>
+                                        </motion.button>
                                     ))}
                                 </div>
                                 {activePassageCorrection.extraTokens.length > 0 ? (
                                     <div className="flex flex-wrap items-center gap-2">
                                         <span className={cn("text-[11px] font-semibold", activeCosmeticTheme.mutedClass)}>多余词：</span>
                                         {activePassageCorrection.extraTokens.map((token, index) => (
-                                            <span
+                                            <motion.button
                                                 key={`passage-inline-extra-${index}-${token.text}`}
+                                                type="button"
+                                                initial={prefersReducedMotion ? false : { opacity: 0, y: 6, scale: 0.98 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                transition={{ duration: 0.16, ease: "easeOut", delay: prefersReducedMotion ? 0 : index * 0.02 }}
+                                                whileTap={prefersReducedMotion ? undefined : { scale: 0.96, y: 1 }}
+                                                onClick={(e) => handleWordClick(e, token.text, drillData.reference_english)}
+                                                onMouseUp={() => handleInteractiveTextMouseUp(drillData.reference_english)}
                                                 className={cn(
-                                                    "inline-flex min-h-[30px] items-center rounded-full border px-3 py-1 text-[12px] font-semibold line-through",
+                                                    "inline-flex min-h-[34px] cursor-pointer touch-manipulation items-center rounded-full border px-3 py-1.5 text-[12px] font-semibold line-through transition-all duration-200 hover:-translate-y-0.5 active:translate-y-[1px]",
                                                     activeCosmeticUi.audioLockedClass
                                                 )}
+                                                style={{ boxShadow: "0 4px 0 rgba(120,113,108,0.12)" }}
                                             >
-                                                {token.text}
-                                            </span>
+                                                <span className="select-text">{token.text}</span>
+                                            </motion.button>
                                         ))}
                                     </div>
                                 ) : null}
                             </div>
                         ) : showInlineSentenceCorrection && activeSentenceCorrection ? (
-                            <div className="space-y-3">
+                            <div
+                                className="space-y-3"
+                                data-word-popup-root="true"
+                                onMouseUp={() => handleInteractiveTextMouseUp(drillData.reference_english)}
+                            >
                                 <div className="flex flex-wrap gap-2.5">
                                     {activeSentenceCorrection.tokens.map((token, index) => (
-                                        <span
+                                        <motion.button
                                             key={`sentence-inline-correction-${index}-${token.text}`}
+                                            type="button"
+                                            initial={prefersReducedMotion ? false : { opacity: 0, y: 6, scale: 0.98 }}
+                                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                                            transition={{ duration: 0.16, ease: "easeOut", delay: prefersReducedMotion ? 0 : index * 0.02 }}
+                                            whileTap={prefersReducedMotion ? undefined : { scale: 0.96, y: 1 }}
+                                            onClick={(e) => handleWordClick(e, token.text, drillData.reference_english)}
+                                            onMouseUp={() => handleInteractiveTextMouseUp(drillData.reference_english)}
                                             className={cn(
-                                                "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border px-4 py-1.5 text-[14px] font-semibold",
+                                                "inline-flex min-h-[42px] cursor-pointer touch-manipulation items-center gap-1.5 rounded-full border px-4 py-2 text-[14px] font-semibold text-left transition-all duration-200 hover:-translate-y-0.5 active:translate-y-[1px]",
                                                 token.kind === "correct"
                                                     ? activeCosmeticUi.wordBadgeActiveClass
                                                     : token.kind === "inserted"
                                                         ? activeCosmeticUi.hintButtonClass
                                                         : activeCosmeticUi.audioLockedClass
                                             )}
+                                            style={{
+                                                boxShadow: token.kind === "correct"
+                                                    ? "0 5px 0 rgba(16,185,129,0.18)"
+                                                    : token.kind === "inserted"
+                                                        ? "0 5px 0 rgba(14,165,233,0.16)"
+                                                        : "0 5px 0 rgba(120,113,108,0.14)",
+                                            }}
                                         >
-                                            {token.text}
+                                            <span className="select-text">{token.text}</span>
                                             {token.kind !== "correct" && token.originalText ? (
-                                                <span className={cn("text-[11px] line-through", activeCosmeticTheme.mutedClass)}>
+                                                <span className={cn("select-text text-[11px] line-through", activeCosmeticTheme.mutedClass)}>
                                                     {token.originalText}
                                                 </span>
                                             ) : null}
-                                        </span>
+                                        </motion.button>
                                     ))}
                                 </div>
                                 {activeSentenceCorrection.extraTokens.length > 0 ? (
                                     <div className="flex flex-wrap items-center gap-2">
                                         <span className={cn("text-[11px] font-semibold", activeCosmeticTheme.mutedClass)}>多余词：</span>
                                         {activeSentenceCorrection.extraTokens.map((token, index) => (
-                                            <span
+                                            <motion.button
                                                 key={`sentence-inline-extra-${index}-${token.text}`}
+                                                type="button"
+                                                initial={prefersReducedMotion ? false : { opacity: 0, y: 6, scale: 0.98 }}
+                                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                transition={{ duration: 0.16, ease: "easeOut", delay: prefersReducedMotion ? 0 : index * 0.02 }}
+                                                whileTap={prefersReducedMotion ? undefined : { scale: 0.96, y: 1 }}
+                                                onClick={(e) => handleWordClick(e, token.text, drillData.reference_english)}
+                                                onMouseUp={() => handleInteractiveTextMouseUp(drillData.reference_english)}
                                                 className={cn(
-                                                    "inline-flex min-h-[30px] items-center rounded-full border px-3 py-1 text-[12px] font-semibold line-through",
+                                                    "inline-flex min-h-[34px] cursor-pointer touch-manipulation items-center rounded-full border px-3 py-1.5 text-[12px] font-semibold line-through transition-all duration-200 hover:-translate-y-0.5 active:translate-y-[1px]",
                                                     activeCosmeticUi.audioLockedClass
                                                 )}
+                                                style={{ boxShadow: "0 4px 0 rgba(120,113,108,0.12)" }}
                                             >
-                                                {token.text}
-                                            </span>
+                                                <span className="select-text">{token.text}</span>
+                                            </motion.button>
                                         ))}
                                     </div>
                                 ) : null}
@@ -9627,14 +9667,6 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
                 {readOnlyAfterSubmit ? (
                     <div className="mt-8 space-y-3 px-1">
-                        {!isRebuildPassage ? (
-                            <p className={cn(
-                                "text-sm leading-7 md:text-[15px]",
-                                activeCosmeticTheme.mutedClass
-                            )}>
-                                {drillData.chinese}
-                            </p>
-                        ) : null}
                         <div className="flex items-center justify-between gap-3">
                             <div className="flex min-h-6 items-center gap-2">
                             {isCurrentSegmentSolved ? (
@@ -9723,14 +9755,31 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
         if (!localPassageSession) {
             return (
-                <motion.div
-                    className="w-full max-w-4xl"
-                    initial={prefersReducedMotion ? false : { opacity: 0, y: 20, filter: "blur(4px)" }}
-                    animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                    transition={prefersReducedMotion ? { duration: 0.15 } : { duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                >
-                    {renderRebuildComposer("发送", false, Boolean(rebuildFeedback))}
-                </motion.div>
+                <div className="w-full max-w-4xl space-y-4">
+                    {showChinese ? (
+                        <motion.div
+                            initial={prefersReducedMotion ? false : { opacity: 0, y: 12, filter: "blur(4px)" }}
+                            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                            transition={prefersReducedMotion ? { duration: 0.15 } : { duration: 0.28, ease: "easeOut" }}
+                            className="px-4 text-center"
+                        >
+                            <p className={cn(
+                                "text-base font-medium leading-8 md:text-[1.05rem]",
+                                activeCosmeticTheme.mutedClass
+                            )}>
+                                {drillData.chinese}
+                            </p>
+                        </motion.div>
+                    ) : null}
+                    <motion.div
+                        className="w-full"
+                        initial={prefersReducedMotion ? false : { opacity: 0, y: 20, filter: "blur(4px)" }}
+                        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                        transition={prefersReducedMotion ? { duration: 0.15 } : { duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                        {renderRebuildComposer("发送", false, Boolean(rebuildFeedback))}
+                    </motion.div>
+                </div>
             );
         }
 
@@ -10557,9 +10606,36 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     useEffect(() => {
         if (drillSurfacePhase === "ready") {
-            const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-modern-click-box-check-1120.mp3');
-            audio.volume = 0.25;
-            audio.play().catch(() => {});
+            try {
+                const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+                if (!AudioCtx) return;
+                const ctx = new AudioCtx();
+                
+                const masterGain = ctx.createGain();
+                masterGain.gain.setValueAtTime(0.3, ctx.currentTime);
+                masterGain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+                masterGain.connect(ctx.destination);
+                
+                // High glass ping (Siri-like)
+                const osc1 = ctx.createOscillator();
+                osc1.type = 'sine';
+                osc1.frequency.setValueAtTime(1400, ctx.currentTime);
+                osc1.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.1);
+                osc1.connect(masterGain);
+                
+                // Soft thick baseline for premium feel
+                const osc2 = ctx.createOscillator();
+                osc2.type = 'triangle';
+                osc2.frequency.setValueAtTime(400, ctx.currentTime);
+                osc2.connect(masterGain);
+                
+                osc1.start();
+                osc2.start();
+                osc1.stop(ctx.currentTime + 0.4);
+                osc2.stop(ctx.currentTime + 0.4);
+            } catch (err) {
+                console.warn('WebAudio suppressed:', err);
+            }
         }
     }, [drillSurfacePhase]);
 
@@ -10622,7 +10698,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 key="drill-loading-system"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                exit={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
                 transition={{ duration: 1.2, ease: "easeInOut" }}
                 className={cn("fixed inset-0 z-[100] flex flex-col items-center justify-center bg-stone-50 overflow-hidden")}
             >
@@ -10869,10 +10945,10 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     {drillSurfacePhase === "ready" && (
                         <motion.div
                             key="drill-shell-card"
-                            initial={{ scale: 0.95, opacity: 0, y: 15 }}
-                            animate={{ scale: 1, opacity: 1, y: 0 }}
-                            exit={{ scale: 0.95, opacity: 0, y: -15 }}
-                            transition={{ duration: 0.6, ease: "easeOut" }}
+                            initial={{ scale: 0.92, opacity: 0, y: 30, filter: "blur(12px)" }}
+                            animate={{ scale: 1, opacity: 1, y: 0, filter: "blur(0px)" }}
+                            exit={{ scale: 0.95, opacity: 0, y: -15, filter: "blur(8px)" }}
+                            transition={{ duration: 0.85, ease: [0.16, 1, 0.3, 1] }}
                             layout
                             ref={battleShellRef}
                     className={cn(

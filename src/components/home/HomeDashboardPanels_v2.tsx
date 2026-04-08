@@ -194,9 +194,16 @@ function DailyPlanBento() {
                         {sortedItems.map(item => {
                             const handleItemClick = () => {
                                 if (item.completed) return;
-                                if (item.type === 'rebuild') router.push('/battle');
-                                else if (item.type === 'cat' || item.type === 'reading_ai') router.push('/read');
-                                else if (item.type === 'listening_cabin') router.push('/listening-cabin');
+                                const examTrackQuery = item.exam_track ? `&exam_track=${item.exam_track}` : "";
+                                if (item.type === 'rebuild') {
+                                    router.push('/battle?smart_task=rebuild&smart_entry=1');
+                                } else if (item.type === 'cat') {
+                                    router.push(`/read?smart_task=cat${examTrackQuery}&smart_entry=1`);
+                                } else if (item.type === 'reading_ai') {
+                                    router.push(`/read?smart_task=reading_ai${examTrackQuery}&smart_entry=1`);
+                                } else if (item.type === 'listening_cabin') {
+                                    router.push('/listening-cabin?smart_task=listening_cabin&smart_entry=1');
+                                }
                             };
 
                             return (
