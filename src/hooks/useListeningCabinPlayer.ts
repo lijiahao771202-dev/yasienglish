@@ -30,7 +30,9 @@ const SUBTITLE_END_EARLY_ALLOWANCE_MS = 40;
 const DEFAULT_SUBTITLE_ADVANCE_MS = 0;
 const STOP_BOUNDARY_GUARD_MS = 0;
 const STOP_TAIL_BUFFER_MS = 160;
-const STOP_BLEED_GUARD_MS = 56;
+const STOP_MIN_TAIL_AFTER_SENTENCE_MS = 12;
+const STOP_BLEED_GUARD_MS = 92;
+const STOP_PRE_MUTE_MS = 48;
 const STOP_MIN_AUDIBLE_WINDOW_MS = 420;
 const STOP_MIN_VALID_OFFSET_FROM_SEEK_MS = 300;
 const SEEK_BACKTRACK_TOLERANCE_MS = 40;
@@ -96,9 +98,10 @@ function getChunkEndMs(
         return Math.max(preferredStopMs, minAudibleStopMs);
     }
 
+    const latestSafeStopMs = nextTiming.startMs - STOP_BLEED_GUARD_MS;
     const upperStopMs = Math.max(
-        naturalEndMs + 24,
-        nextTiming.startMs - STOP_BLEED_GUARD_MS,
+        naturalEndMs + STOP_MIN_TAIL_AFTER_SENTENCE_MS,
+        latestSafeStopMs,
     );
     const clampedStopMs = Math.min(preferredStopMs, upperStopMs);
     return Math.max(clampedStopMs, minAudibleStopMs);
@@ -742,6 +745,19 @@ export function useListeningCabinPlayer({
             stopBoundaryFrameRef.current = null;
         };
 
+        const syncStopBoundaryMute = () => {
+            const stopAtMs = stopAtMsRef.current;
+            const suppressedUntilMs = suppressedUntilMsRef.current;
+            if (stopAtMs === null || suppressedUntilMs !== null) {
+                return;
+            }
+
+            const currentMs = audio.currentTime * 1000;
+            if (currentMs >= stopAtMs - STOP_PRE_MUTE_MS) {
+                audio.muted = true;
+            }
+        };
+
         const enforceStopBoundary = () => {
             const stopAtMs = stopAtMsRef.current;
             if (stopAtMs === null) {
@@ -777,6 +793,8 @@ export function useListeningCabinPlayer({
                 stopBoundaryFrameRef.current = null;
                 return;
             }
+
+            syncStopBoundaryMute();
 
             if (enforceStopBoundary()) {
                 stopBoundaryFrameRef.current = null;
@@ -859,6 +877,8 @@ export function useListeningCabinPlayer({
                  suppressedUntilMsRef.current = null;
                  audio.muted = false;
              }
+
+            syncStopBoundaryMute();
 
             if (enforceStopBoundary()) {
                 return;
@@ -1078,8 +1098,10 @@ export function useListeningCabinPlayer({
         currentSentence: resolvedSentences[currentSentenceIndex] ?? null,
         previousSentence: currentSentenceIndex > 0 ? resolvedSentences[currentSentenceIndex - 1] ?? null : null,
         nextSentencePreview: currentSentenceIndex < resolvedSentences.length - 1 ? resolvedSentences[currentSentenceIndex + 1] ?? null : null,
+        getSentenceTiming: resolveSafeTimingForSentence,
         currentSubtitleSentences: resolveChunkSentences(currentSubtitleChunk),
         previousSubtitleSentences: resolveChunkSentences(previousSubtitleChunk),
+
         nextSubtitleSentences: resolveChunkSentences(nextSubtitleChunk),
         pausePlayback,
         resumeOrPlay,

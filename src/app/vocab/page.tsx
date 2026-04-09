@@ -357,15 +357,25 @@ function VocabDashboardContent() {
             });
             const aiData = aiResponse.ok ? await aiResponse.json() : null;
 
-            if (!aiData?.context_meaning) {
-                throw new Error("AI_DEFINE_REQUIRED");
+            if (!aiData) {
+                throw new Error("AI_DEFINE_FAILED");
             }
+
+            const fallbackTranslation = Array.isArray(aiData.highlighted_meanings) && aiData.highlighted_meanings.length > 0 
+                ? aiData.highlighted_meanings[0] 
+                : (Array.isArray(aiData.meaning_groups) && aiData.meaning_groups[0]?.meanings[0] ? aiData.meaning_groups[0].meanings[0] : "");
+
+            const contextMeaningObj = aiData.context_meaning || {
+                definition: fallbackTranslation,
+                translation: fallbackTranslation,
+            };
 
             const base = createEmptyCard(word);
             const card: VocabItem = {
+                ...base,
                 word,
-                definition: aiData.context_meaning.definition || "",
-                translation: aiData.context_meaning.translation || "",
+                definition: contextMeaningObj.definition || "",
+                translation: contextMeaningObj.translation || "",
                 context: "",
                 example: "",
                 phonetic: aiData?.phonetic || "",

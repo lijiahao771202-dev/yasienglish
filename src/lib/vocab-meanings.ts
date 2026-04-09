@@ -139,8 +139,13 @@ export function resolveHighlightedMeaningsFromGroups(groups: MeaningGroup[] = []
             ? group.meanings.map((meaning) => String(meaning ?? "").trim()).filter(Boolean)
             : []
     ));
-    if (flattenedMeanings.length === 0 || highlightedMeanings.length === 0) {
+    if (flattenedMeanings.length === 0) {
         return [];
+    }
+
+    // If no highlights provided at all, auto-pick first meaning as fallback
+    if (highlightedMeanings.length === 0) {
+        return flattenedMeanings.slice(0, 1);
     }
 
     const resolved: string[] = [];
@@ -149,15 +154,29 @@ export function resolveHighlightedMeaningsFromGroups(groups: MeaningGroup[] = []
         const normalizedHighlight = normalizeMeaningMatchText(rawHighlight);
         if (!normalizedHighlight) continue;
 
-        const matchedMeaning = flattenedMeanings.find((meaning) => {
+        // 1. Exact match
+        let matchedMeaning = flattenedMeanings.find((meaning) => {
             const normalizedMeaning = normalizeMeaningMatchText(meaning);
-            if (!normalizedMeaning) return false;
             return normalizedMeaning === normalizedHighlight;
         });
+
+        // 2. Fuzzy: highlighted text contains a meaning, or a meaning contains highlighted text
+        if (!matchedMeaning) {
+            matchedMeaning = flattenedMeanings.find((meaning) => {
+                const normalizedMeaning = normalizeMeaningMatchText(meaning);
+                if (!normalizedMeaning) return false;
+                return normalizedHighlight.includes(normalizedMeaning) || normalizedMeaning.includes(normalizedHighlight);
+            });
+        }
 
         if (matchedMeaning && !resolved.includes(matchedMeaning)) {
             resolved.push(matchedMeaning);
         }
+    }
+
+    // 3. Last resort: if all matching failed, pick first meaning
+    if (resolved.length === 0) {
+        return flattenedMeanings.slice(0, 1);
     }
 
     return resolved;

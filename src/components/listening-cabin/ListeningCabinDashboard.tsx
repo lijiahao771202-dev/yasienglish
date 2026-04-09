@@ -65,7 +65,7 @@ import type {
     ListeningCabinSentence,
 } from "@/lib/listening-cabin";
 import { db } from "@/lib/db";
-import { updateListeningCabinSession } from "@/lib/listening-cabin-store";
+import { updateListeningCabinSession, toggleListeningCabinSentenceMastery, updateListeningCabinSentenceNote } from "@/lib/listening-cabin-store";
 
 // Audio Feedback Utility
 const playMasterySound = () => {
@@ -267,8 +267,7 @@ export default function ListeningCabinDashboard() {
     }, [isImmersiveMode, activeView, sessions, selectedSessionId]);
 
     const handleToggleMastery = async (session: ListeningCabinSession, index: number) => {
-        const updatedSentences = [...session.sentences];
-        const sentence = updatedSentences[index];
+        const sentence = session.sentences[index];
         if (!sentence) return;
 
         if (!sentence.isMastered) {
@@ -282,10 +281,7 @@ export default function ListeningCabinDashboard() {
              });
         }
 
-        updatedSentences[index] = {
-            ...sentence,
-            isMastered: !sentence.isMastered
-        };
+        const nextStatus = !sentence.isMastered;
 
         // NEW: Auto-advance in immersive mode if just mastered
         const sessionLength = session.sentenceCount;
@@ -295,24 +291,14 @@ export default function ListeningCabinDashboard() {
             }, 800);
         }
 
-        void updateListeningCabinSession(session.id, {
-            sentences: updatedSentences
-        });
+        void toggleListeningCabinSentenceMastery(session.id, index, nextStatus);
     };
 
     const handleUpdateNote = async (session: ListeningCabinSession, index: number, note: string) => {
-        const updatedSentences = [...session.sentences];
-        const sentence = updatedSentences[index];
+        const sentence = session.sentences[index];
         if (!sentence) return;
 
-        updatedSentences[index] = {
-            ...sentence,
-            note
-        };
-
-        void updateListeningCabinSession(session.id, {
-            sentences: updatedSentences
-        });
+        void updateListeningCabinSentenceNote(session.id, index, note);
     };
 
 

@@ -167,6 +167,32 @@ export function scheduleCard(card: VocabItem, rating: Rating, now: number = Date
     return newCard;
 }
 
+function formatEtaFromDue(now: number, due: number, scheduledDays: number): string {
+    const diffMs = Math.max(0, due - now);
+
+    if (scheduledDays > 0) {
+        return `${scheduledDays}d`;
+    }
+
+    const diffMinutes = Math.max(1, Math.round(diffMs / (1000 * 60)));
+    if (diffMinutes < 60) {
+        return `${diffMinutes}m`;
+    }
+
+    const diffHours = Math.max(1, Math.round(diffMinutes / 60));
+    if (diffHours < 24) {
+        return `${diffHours}h`;
+    }
+
+    const diffDays = Math.max(1, Math.round(diffHours / 24));
+    return `${diffDays}d`;
+}
+
+export function getRatingEtaLabel(card: VocabItem, rating: Rating, now: number = Date.now()): string {
+    const scheduled = scheduleCard(card, rating, now);
+    return formatEtaFromDue(now, scheduled.due, scheduled.scheduled_days);
+}
+
 // --- FSRS Math Helpers (Simplified based on the paper formulas) ---
 
 function initStability(rating: number): number {
