@@ -113,6 +113,36 @@ export async function updateListeningCabinSession(
     }
 }
 
+export async function toggleListeningCabinSentenceMastery(sessionId: string, sentenceIndex: number, isMastered: boolean) {
+    await db.transaction("rw", db.listening_cabin_sessions, async () => {
+        const session = await db.listening_cabin_sessions.get(sessionId);
+        if (!session || !session.sentences[sentenceIndex]) return;
+        
+        session.sentences[sentenceIndex].isMastered = isMastered;
+        session.updated_at = Date.now();
+        await db.listening_cabin_sessions.put(session);
+    });
+
+    if (typeof window !== "undefined") {
+        scheduleListeningCabinCloudUpsert(sessionId);
+    }
+}
+
+export async function updateListeningCabinSentenceNote(sessionId: string, sentenceIndex: number, note: string) {
+    await db.transaction("rw", db.listening_cabin_sessions, async () => {
+        const session = await db.listening_cabin_sessions.get(sessionId);
+        if (!session || !session.sentences[sentenceIndex]) return;
+        
+        session.sentences[sentenceIndex].note = note;
+        session.updated_at = Date.now();
+        await db.listening_cabin_sessions.put(session);
+    });
+
+    if (typeof window !== "undefined") {
+        scheduleListeningCabinCloudUpsert(sessionId);
+    }
+}
+
 export async function deleteListeningCabinSession(sessionId: string) {
     await db.listening_cabin_sessions.delete(sessionId);
     const existingTimer = pendingCloudUpdateTimers.get(sessionId);

@@ -352,10 +352,10 @@ export function VocabReviewEditableCard({
     };
 
     return (
-        <div data-review-layout="cute-bento" className="relative z-20 flex h-full min-h-0 flex-col bg-theme-base-bg overflow-hidden shadow-inner border-[3px] border-theme-border rounded-[1.5rem]">
+        <div data-review-layout="cute-bento" className="relative flex flex-col bg-theme-base-bg rounded-[1.5rem]">
             {/* Header: Controls & Word Input */}
-            <div className="shrink-0 pt-4 px-4 pb-2 z-10 sticky top-0 bg-theme-base-bg border-b-[3px] border-theme-border">
-                <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="shrink-0 pt-3 px-4 pb-1 bg-theme-base-bg border-b-[3px] border-theme-border rounded-t-[1.5rem]">
+                <div className="flex items-center justify-between gap-3 mb-1">
                     <div className="flex items-center gap-2">
                         {isGraduated ? (
                             <span className="flex items-center justify-center rounded-full bg-amber-100 text-amber-700 px-3 py-1 text-[11px] font-bold border-2 border-amber-300">
@@ -388,83 +388,102 @@ export function VocabReviewEditableCard({
                     </div>
                 </div>
 
-                <div className="flex flex-col items-center group relative min-h-[5.5rem] justify-center">
-                    {!isWordInputFocused && (
-                        <div className="absolute inset-0 flex flex-wrap items-center justify-center text-[3.2rem] sm:text-[4rem] font-newsreader font-bold tracking-tight drop-shadow-sm leading-none pointer-events-none transition-colors z-0">
-                            {(() => {
-                                let inputCursorTracker = 0;
-                                const chars = draft.word.split("");
-                                return (
-                                    <>
-                                        {chars.map((char, idx) => {
-                                            const isSpace = /\s/.test(char);
-                                            if (isSpace) {
-                                                return <span key={idx} className="w-[0.5em]">&nbsp;</span>;
-                                            }
+                <div className="flex flex-col items-center group relative min-h-[4.5rem] -mt-3 justify-center px-4 w-full">
+                    <div className="relative w-full flex flex-col items-center">
+                        {!isWordInputFocused && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
+                                <div className="text-center text-[3.2rem] sm:text-[4rem] font-newsreader font-bold tracking-tight drop-shadow-sm leading-none transition-colors break-words max-w-full">
+                                    {(() => {
+                                        let inputCursorTracker = 0;
+                                        // Split by whitespace but keep the whitespace tokens
+                                        const tokens = draft.word.split(/(\s+)/);
+                                        
+                                        return (
+                                            <>
+                                                {tokens.map((token, tokenIdx) => {
+                                                    const isWhitespaceToken = /^\s+$/.test(token);
+                                                    
+                                                    return (
+                                                        <span key={tokenIdx} className={isWhitespaceToken ? "whitespace-pre-wrap" : "inline-block"}>
+                                                            {token.split("").map((char, charIdx) => {
+                                                                const isSpace = /\s/.test(char);
+                                                                const ghostChar = ghostInput[inputCursorTracker]?.toLowerCase();
+                                                                const normalizedChar = char.toLowerCase();
+                                                                
+                                                                let status = "pending";
+                                                                if (ghostChar && !isSpace) {
+                                                                    status = ghostChar === normalizedChar ? "correct" : "wrong";
+                                                                }
+                                                                
+                                                                const isAnyTyping = ghostInput.length > 0;
+                                                                if (!isAnyTyping) {
+                                                                    status = "correct";
+                                                                }
+                                                                
+                                                                const isCursor = isAnyTyping && inputCursorTracker === ghostInput.length;
+                                                                if (!isSpace) {
+                                                                    inputCursorTracker++;
+                                                                }
 
-                                            const ghostChar = ghostInput[inputCursorTracker]?.toLowerCase();
-                                            const normalizedChar = char.toLowerCase();
-                                            
-                                            let status = "pending";
-                                            if (ghostChar) {
-                                                status = ghostChar === normalizedChar ? "correct" : "wrong";
-                                            }
-                                            
-                                            const isAnyTyping = ghostInput.length > 0;
-                                            if (!isAnyTyping) {
-                                                status = "correct";
-                                            }
-                                            
-                                            const isCursor = isAnyTyping && inputCursorTracker === ghostInput.length;
-                                            inputCursorTracker++;
-
-                                            return (
-                                                <span key={idx} className="relative inline-block transition-colors duration-150">
-                                                    <span className={cn(
-                                                        status === "correct" && "text-theme-text",
-                                                        status === "wrong" && "text-red-500",
-                                                        status === "pending" && "text-theme-text-muted opacity-30"
-                                                    )}>
-                                                        {char}
-                                                    </span>
-                                                    {isCursor && (
+                                                                return (
+                                                                    <span key={`${tokenIdx}-${charIdx}`} className="relative inline-block transition-colors duration-150">
+                                                                        {isSpace ? (
+                                                                            <span className="inline-block w-[0.25em]">&nbsp;</span>
+                                                                        ) : (
+                                                                            <span className={cn(
+                                                                                status === "correct" && "text-theme-text",
+                                                                                status === "wrong" && "text-red-500",
+                                                                                status === "pending" && "text-theme-text-muted opacity-30"
+                                                                            )}>
+                                                                                {char}
+                                                                            </span>
+                                                                        )}
+                                                                        {isCursor && !isSpace && (
+                                                                            <motion.span 
+                                                                                animate={{ opacity: [1, 0, 1] }} 
+                                                                                transition={{ repeat: Infinity, duration: 0.8 }} 
+                                                                                className="absolute -left-[2px] top-[15%] h-[70%] w-[3px] rounded-full bg-emerald-400" 
+                                                                            />
+                                                                        )}
+                                                                    </span>
+                                                                );
+                                                            })}
+                                                        </span>
+                                                    );
+                                                })}
+                                                {ghostInput.length > 0 && inputCursorTracker === ghostInput.length && (
+                                                    <span className="relative">
                                                         <motion.span 
                                                             animate={{ opacity: [1, 0, 1] }} 
                                                             transition={{ repeat: Infinity, duration: 0.8 }} 
-                                                            className="absolute -left-[2px] top-[15%] h-[70%] w-[3px] rounded-full bg-emerald-400" 
+                                                            className="absolute -left-[2px] top-[15%] h-[70%] w-[4px] rounded-full bg-theme-active-bg border-[1px] border-theme-border" 
                                                         />
-                                                    )}
-                                                </span>
-                                            );
-                                        })}
-                                        {ghostInput.length > 0 && inputCursorTracker === ghostInput.length && (
-                                            <span className="relative">
-                                                <motion.span 
-                                                    animate={{ opacity: [1, 0, 1] }} 
-                                                    transition={{ repeat: Infinity, duration: 0.8 }} 
-                                                    className="absolute -left-[2px] top-[15%] h-[70%] w-[4px] rounded-full bg-theme-active-bg border-[1px] border-theme-border" 
-                                                />
-                                            </span>
-                                        )}
-                                    </>
-                                );
-                            })()}
-                        </div>
-                    )}
-                    <input
-                        aria-label="编辑单词"
-                        value={draft.word}
-                        onChange={(event) => handleChange("word", event.target.value)}
-                        onFocus={() => setIsWordInputFocused(true)}
-                        onBlur={() => {
-                            setIsWordInputFocused(false);
-                            handleAutoSave();
-                        }}
-                        className={cn(
-                            "w-full text-center bg-transparent border-none outline-none font-newsreader text-[3.2rem] sm:text-[4rem] font-bold tracking-tight transition-all placeholder:text-theme-text-muted opacity-70 focus:scale-105 hover:bg-theme-card-bg focus:bg-theme-card-bg focus:rounded-[20px] relative z-10",
-                            isWordInputFocused ? "text-theme-text opacity-100" : "text-transparent caret-transparent"
+                                                    </span>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
                         )}
-                    />
+                        <PretextTextarea
+                            aria-label="编辑单词"
+                            value={draft.word}
+                            onChange={(event) => handleChange("word", event.target.value)}
+                            onFocus={() => setIsWordInputFocused(true)}
+                            onBlur={() => {
+                                setIsWordInputFocused(false);
+                                handleAutoSave();
+                            }}
+                            rows={getTextareaRows(draft.word, 1, 3)}
+                            minRows={1}
+                            maxRows={3}
+                            className={cn(
+                                "w-full resize-none text-center bg-transparent border-none outline-none font-newsreader text-[3.2rem] sm:text-[4rem] font-bold tracking-tight transition-all placeholder:text-theme-text-muted opacity-70 focus:scale-105 hover:bg-theme-card-bg focus:bg-theme-card-bg focus:rounded-[20px] relative z-10 p-0 m-0 leading-none overflow-hidden",
+                                isWordInputFocused ? "text-theme-text opacity-100" : "text-transparent caret-transparent"
+                            )}
+                        />
+                    </div>
                     <input
                         aria-label="编辑音标"
                         value={displayPhonetic}
@@ -480,8 +499,8 @@ export function VocabReviewEditableCard({
             </div>
 
             {/* Smart Segmented Control for Tabbing */}
-            <div className="flex-none px-4 pt-3 pb-1 flex justify-center z-10 sticky top-[138px] bg-theme-base-bg">
-                <div className="flex bg-theme-card-bg border-[3px] border-theme-border p-1.5 rounded-[20px] shadow-inner gap-1">
+            <div className="flex-none px-4 pt-3 pb-1 flex justify-center bg-theme-base-bg">
+                <div className="flex bg-theme-card-bg border-2 border-theme-border p-1.5 rounded-[20px] shadow-inner gap-1">
                     {[
                         { id: "meanings", label: "释义", icon: BookOpen },
                         { id: "examples", label: "例句", icon: Sparkles },
@@ -506,7 +525,7 @@ export function VocabReviewEditableCard({
             </div>
 
             {/* Tabbed Content Area */}
-            <div className="flex-1 overflow-y-auto px-4 pb-6 pt-2 pretty-scroll">
+            <div className="flex-1 px-4 pb-6 pt-2">
                 <AnimatePresence mode="wait">
                     {activeTab === "meanings" && (
                         <motion.div
@@ -515,31 +534,34 @@ export function VocabReviewEditableCard({
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -10 }}
                             transition={{ duration: 0.15, ease: "easeOut" }}
-                            className="flex flex-col gap-3"
+                            className="bg-theme-card-bg border-2 border-theme-border rounded-[24px] shadow-[0_4px_0_var(--theme-shadow)] transition-colors w-full overflow-hidden"
                         >
-                            {meaningDraftGroups.length > 0 ? (
-                                meaningDraftGroups.map((group, groupIndex) => {
-                                    const groupKey = `${draft.word}-${group.pos}`;
-                                    const isExpanded = expandedPosGroups[groupKey] ?? false;
-                                    const visibleMeanings = isExpanded ? group.meanings : group.meanings.slice(0, 3);
-                                    
-                                    return (
-                                        <div key={groupKey} className="bg-theme-card-bg border-[3px] border-theme-border rounded-[24px] p-2 sm:p-3 transition-colors shadow-[0_4px_0_var(--theme-shadow)]">
-                                            <div className="flex flex-col sm:flex-row items-start gap-2 sm:gap-3">
-                                                <div className="pt-2 sm:min-w-[40px] flex sm:justify-center px-2">
-                                                    <div className="flex h-7 items-center justify-center rounded-[10px] bg-theme-primary-bg border-2 border-theme-border px-2.5 text-[11px] sm:text-[12px] font-black uppercase tracking-wider text-theme-primary-text">
+                            <div className="flex flex-col">
+                                {meaningDraftGroups.length > 0 ? (
+                                    meaningDraftGroups.map((group, groupIndex) => {
+                                        const groupKey = `${draft.word}-${group.pos}`;
+                                        const isExpanded = expandedPosGroups[groupKey] ?? false;
+                                        const visibleMeanings = isExpanded ? group.meanings : group.meanings.slice(0, 3);
+                                        
+                                        return (
+                                            <div key={groupKey} className="flex items-start p-3 sm:p-4 gap-3 sm:gap-4 relative border-b-2 border-theme-border/30 last:border-b-0">
+                                                {/* Left Column: POS Ribbon */}
+                                                <div className="shrink-0 pt-1">
+                                                    <div className="flex h-[26px] min-w-[36px] items-center justify-center rounded-[8px] bg-theme-primary-bg border-2 border-theme-border px-2 text-[11px] sm:text-[12px] font-black uppercase tracking-wider text-theme-primary-text shadow-[0_2px_0_var(--theme-shadow)]">
                                                         {group.pos.replace('.', '')}.
                                                     </div>
                                                 </div>
-                                                <div className="flex flex-col gap-1.5 flex-1 min-w-0 w-full">
+                                                
+                                                {/* Right Column: Meanings List */}
+                                                <div className="flex flex-col gap-1 flex-1 w-full min-w-0 z-10">
                                                     <Reorder.Group 
                                                         as="div" 
                                                         axis="y" 
                                                         values={visibleMeanings} 
                                                         onReorder={(newMeanings) => handleReorderGroup(groupIndex, isExpanded ? newMeanings : [...newMeanings, ...group.meanings.slice(3)])} 
-                                                        className="flex flex-col gap-1.5"
+                                                        className="flex flex-col gap-1"
                                                     >
-                                                        {visibleMeanings.map((meaningObj) => {
+                                                        {visibleMeanings.map((meaningObj, index) => {
                                                             const isHighlighted = normalizedHighlightedMeanings.some((highlight) => meaningsLooselyMatch(meaningObj.text, highlight));
                                                             
                                                             return (
@@ -548,68 +570,73 @@ export function VocabReviewEditableCard({
                                                                     key={meaningObj.id}
                                                                     value={meaningObj}
                                                                     className={cn(
-                                                                        "group flex items-center gap-1 sm:gap-2 rounded-[16px] border-2 px-2 sm:px-3 py-1.5 transition-all shadow-[0_2px_0_var(--theme-shadow)]",
-                                                                        isHighlighted ? "bg-amber-100 border-amber-300" : "bg-theme-base-bg border-theme-border hover:bg-theme-card-bg"
+                                                                        "group relative flex items-start gap-1.5 sm:gap-2 rounded-xl px-2 py-1 transition-all w-full",
+                                                                        isHighlighted ? "bg-amber-100/50" : "hover:bg-theme-active-bg/60"
                                                                     )}
                                                                 >
-                                                                    <GripVertical className="h-4 w-4 shrink-0 text-theme-text-muted opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity" />
+                                                                    <div className="relative flex shrink-0 items-center justify-center pt-0.5 w-[18px]">
+                                                                        <GripVertical className="absolute -left-2 top-0 h-4 w-4 shrink-0 text-theme-text-muted opacity-0 group-hover:opacity-100 cursor-grab active:cursor-grabbing transition-opacity" />
+                                                                        <span className="text-[12px] font-black text-theme-text-muted opacity-50 select-none group-hover:opacity-0 transition-opacity">
+                                                                            {index + 1}.
+                                                                        </span>
+                                                                    </div>
                                                                     
-                                                                    <div className="min-w-0 flex-1">
+                                                                    <div className="min-w-0 flex-1 relative">
                                                                         <PretextTextarea
                                                                             aria-label={`编辑 ${group.pos} 释义`}
                                                                             value={meaningObj.text}
                                                                             onChange={(event) => handleMeaningChange(groupIndex, meaningObj.id, event.target.value)}
                                                                             onBlur={handleAutoSave}
-                                                                            rows={getTextareaRows(meaningObj.text, 1, 2)}
+                                                                            rows={getTextareaRows(meaningObj.text, 1, 3)}
                                                                             minRows={1}
-                                                                            maxRows={2}
+                                                                            maxRows={3}
                                                                             className={cn(
                                                                                 "w-full resize-none border-none bg-transparent p-0 text-[13.5px] leading-snug font-bold outline-none transition placeholder:text-theme-text-muted m-0",
                                                                                 isHighlighted ? "text-amber-900" : "text-theme-text"
                                                                             )}
                                                                         />
                                                                     </div>
-                                                                    <div className="shrink-0 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                                                                    <div className="shrink-0 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity pt-0.5">
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => handleHighlightToggle(meaningObj.text)}
                                                                             className={cn(
-                                                                                "flex h-7 w-7 items-center justify-center rounded-[10px] border-2 transition active:scale-95 shadow-sm",
-                                                                                isHighlighted ? "bg-amber-100 text-amber-600 border-amber-300 hover:bg-amber-200" : "bg-theme-card-bg text-theme-text-muted border-theme-border hover:text-theme-text"
+                                                                                "flex h-6 w-6 items-center justify-center rounded-[8px] transition active:scale-95",
+                                                                                isHighlighted ? "text-amber-600 bg-amber-200/50 hover:bg-amber-200" : "text-theme-text-muted hover:text-theme-text hover:bg-theme-card-bg shadow-sm border border-theme-border"
                                                                             )}
                                                                         >
-                                                                            <Star className="h-3.5 w-3.5" fill={isHighlighted ? "currentColor" : "none"} />
+                                                                            <Star className="h-3 w-3" fill={isHighlighted ? "currentColor" : "none"} />
                                                                         </button>
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => handleMeaningRemove(groupIndex, meaningObj.id)}
-                                                                            className="flex h-7 w-7 items-center justify-center rounded-[10px] bg-theme-card-bg border-2 border-theme-border text-red-400 shadow-sm transition hover:bg-red-50 hover:text-red-500 hover:border-red-200 active:scale-95"
+                                                                            className="flex h-6 w-6 items-center justify-center rounded-[8px] text-red-400 transition hover:bg-red-50 hover:text-red-500 active:scale-95 shadow-sm border border-theme-border bg-theme-base-bg"
                                                                         >
-                                                                            <Trash2 className="h-3.5 w-3.5" />
+                                                                            <Trash2 className="h-3 w-3" />
                                                                         </button>
                                                                     </div>
                                                                 </Reorder.Item>
                                                             )
                                                         })}
                                                     </Reorder.Group>
+                                                    {group.meanings.length > 3 && (
+                                                        <button
+                                                            onClick={() => onExpandedPosGroupsChange({ ...expandedPosGroups, [groupKey]: !isExpanded })}
+                                                            className="mt-2 w-full rounded-xl border-2 border-theme-border bg-theme-base-bg py-1.5 text-[11px] font-black tracking-wider text-theme-text-muted shadow-sm hover:bg-theme-card-bg hover:text-theme-text transition"
+                                                        >
+                                                            {isExpanded ? "收起" : `展开其余 ${group.meanings.length - 3} 个释义`}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
-                                            {group.meanings.length > 3 && (
-                                                <button
-                                                    onClick={() => onExpandedPosGroupsChange({ ...expandedPosGroups, [groupKey]: !isExpanded })}
-                                                    className="mt-2 w-full rounded-xl border-2 border-theme-border bg-theme-base-bg py-1.5 text-[11px] font-black tracking-wider text-theme-text-muted shadow-sm hover:bg-theme-card-bg hover:text-theme-text transition"
-                                                >
-                                                    {isExpanded ? "收起" : `展开其余 ${group.meanings.length - 3} 个释义`}
-                                                </button>
-                                            )}
-                                        </div>
                                     )
                                 })
                             ) : (
-                                <div className="rounded-[20px] border-[3px] border-dashed border-theme-border bg-theme-base-bg p-6 text-center text-sm font-black text-theme-text-muted">
+                                <div className="rounded-[20px] border-2 border-dashed border-theme-border bg-theme-base-bg p-6 text-center text-sm font-black text-theme-text-muted">
                                     暂无释义
                                 </div>
                             )}
+                            </div>
                         </motion.div>
                     )}
 
@@ -625,7 +652,7 @@ export function VocabReviewEditableCard({
                             {(draft.source_sentence || draft.example) ? (
                                 <>
                                     {draft.source_sentence && (
-                                        <div className="bg-theme-card-bg border-[3px] border-theme-border rounded-[20px] p-4 shadow-[0_4px_0_var(--theme-shadow)]">
+                                        <div className="bg-theme-card-bg border-2 border-theme-border rounded-[20px] p-4 shadow-[0_4px_0_var(--theme-shadow)]">
                                             <div className="flex items-center gap-2 mb-2">
                                                 <span className="inline-flex rounded-md bg-cyan-100 border-2 border-cyan-300 px-2 py-0.5 text-[10px] font-black text-cyan-700 uppercase tracking-wider">
                                                     来源
@@ -647,7 +674,7 @@ export function VocabReviewEditableCard({
                                     )}
 
                                     {draft.example && (
-                                        <div className="bg-theme-card-bg border-[3px] border-theme-border rounded-[20px] p-4 shadow-[0_4px_0_var(--theme-shadow)]">
+                                        <div className="bg-theme-card-bg border-2 border-theme-border rounded-[20px] p-4 shadow-[0_4px_0_var(--theme-shadow)]">
                                             <div className="mb-2 inline-flex rounded-md bg-emerald-100 border-2 border-emerald-300 px-2 py-0.5 text-[10px] font-black text-emerald-700 uppercase tracking-wider">
                                                 AI 造句
                                             </div>
@@ -664,7 +691,7 @@ export function VocabReviewEditableCard({
                                     )}
                                 </>
                             ) : (
-                                <div className="rounded-[20px] border-[3px] border-dashed border-theme-border bg-theme-base-bg p-6 text-center text-sm font-black text-theme-text-muted">
+                                <div className="rounded-[20px] border-2 border-dashed border-theme-border bg-theme-base-bg p-6 text-center text-sm font-black text-theme-text-muted">
                                     暂无例句
                                 </div>
                             )}
@@ -680,7 +707,7 @@ export function VocabReviewEditableCard({
                             transition={{ duration: 0.15, ease: "easeOut" }}
                             className="flex flex-col gap-3"
                         >
-                            <div className="bg-theme-card-bg border-[3px] border-theme-border rounded-[20px] p-4 shadow-[0_4px_0_var(--theme-shadow)]">
+                            <div className="bg-theme-card-bg border-2 border-theme-border rounded-[20px] p-4 shadow-[0_4px_0_var(--theme-shadow)]">
                                 <div className="mb-3 inline-flex rounded-md bg-indigo-100 border-2 border-indigo-300 px-2 py-0.5 text-[10px] font-bold text-indigo-700 uppercase tracking-wider">
                                     词根词缀剖析
                                 </div>

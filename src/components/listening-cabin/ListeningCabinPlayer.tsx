@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, useSpring, useTransform, useMotionValue } from "framer-motion";
+import { AnimatePresence, motion, useSpring, useTransform, useMotionValue, useAnimationFrame, animate } from "framer-motion";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import confetti from "canvas-confetti";
 import {
@@ -24,6 +24,7 @@ import { useForgeHaptics } from "@/hooks/useForgeHaptics";
 import { useListeningCabinPlayer } from "@/hooks/useListeningCabinPlayer";
 import { WordPopup, type PopupState } from "@/components/reading/WordPopup";
 import { db } from "@/lib/db";
+import { toggleListeningCabinSentenceMastery } from "@/lib/listening-cabin-store";
 import type {
     ListeningCabinPlaybackMode,
     ListeningCabinSentence,
@@ -82,15 +83,222 @@ const SUBTITLE_ADVANCE_OPTIONS = [
     { label: "1.2s", value: 1200 },
 ] as const;
 
-type TransitionStyle = "radiant" | "mist" | "glide" | "classic" | "typewriter" | "blur" | "stagger" | "elastic" | "neon";
+type TransitionStyle = "radiant" | "mist" | "glide" | "classic" | "typewriter" | "blur" | "stagger" | "elastic" | "neon" | "apple_karaoke" | "karaoke_pure" | "karaoke_pop" | "karaoke_ghost" | "karaoke_neon";
 type TypographyStyle = "crystal" | "aurora" | "hollow" | "honey" | "neon_pulse" | "pearl_glow" | "deep_sea_void";
 
 function isTransitionStyle(value: string): value is TransitionStyle {
-    return ["radiant", "mist", "glide", "classic", "typewriter", "blur", "stagger", "elastic", "neon"].includes(value);
+    return ["radiant", "mist", "glide", "classic", "typewriter", "blur", "stagger", "elastic", "neon", "apple_karaoke", "karaoke_pure", "karaoke_pop", "karaoke_ghost", "karaoke_neon"].includes(value);
 }
 
 function isTypographyStyle(value: string): value is TypographyStyle {
     return ["crystal", "aurora", "hollow", "honey", "neon_pulse", "pearl_glow", "deep_sea_void"].includes(value);
+}
+
+function AppleKaraokeWord({ 
+    word, 
+    sentenceIndex,
+    getSentenceTiming,
+    durationRatio, 
+    cumulativeRatio, 
+    isActive, 
+    themeColor, 
+    styleConfig, 
+    audioRef, 
+    karaokeVariant = "bouncy",
+    onClick 
+}: { 
+    word: string; 
+    sentenceIndex: number;
+    getSentenceTiming?: (index: number) => import("@/lib/listening-cabin").ListeningCabinSentenceTiming | null;
+    durationRatio: number; 
+    cumulativeRatio: number; 
+    isActive: boolean; 
+    themeColor: string; 
+    styleConfig: any; 
+    audioRef?: React.RefObject<HTMLAudioElement | null>; 
+    karaokeVariant?: "bouncy" | "pure" | "pop" | "ghost" | "neon";
+    onClick: React.MouseEventHandler<HTMLSpanElement>; 
+}) {
+    const opacity = useMotionValue(0.4);
+    const filterBlur = useMotionValue(
+        karaokeVariant === "ghost" ? 10 :
+        karaokeVariant === "pure" || karaokeVariant === "pop" || karaokeVariant === "neon" ? 0 : 
+        1.5
+    );
+    const scale = useMotionValue(
+        karaokeVariant === "pure" || karaokeVariant === "ghost" || karaokeVariant === "neon" ? 1 : 
+        karaokeVariant === "pop" ? 0.8 : 
+        0.96
+    );
+    const glow = useMotionValue(0);
+
+    const filter = useTransform(filterBlur, (val) => `blur(${Math.max(0, val)}px)`);
+    const textShadow = useTransform(glow, (val) => val > 0.01 ? `0 0 ${20 * val}px ${themeColor.replace('0.6', '0.6')}` : "none");
+
+    const activeStateRef = useRef<"upcoming" | "active" | "past" | "inactive">("inactive");
+
+    useAnimationFrame(() => {
+        const timing = getSentenceTiming ? getSentenceTiming(sentenceIndex) : null;
+
+        if (!isActive || !audioRef?.current || !timing || timing.endMs <= timing.startMs) {
+            const defaultState = isActive ? "past" : "inactive";
+            if (activeStateRef.current !== defaultState) {
+                activeStateRef.current = defaultState;
+                if (karaokeVariant === "pure") {
+                    animate(scale, 1, { duration: 0.1 });
+                    animate(opacity, isActive ? 1 : 0.35, { duration: 0.2 });
+                    animate(filterBlur, 0, { duration: 0.1 });
+                    animate(glow, 0, { duration: 0.1 });
+                } else if (karaokeVariant === "pop") {
+                    animate(scale, isActive ? 0.9 : 0.8, { type: "spring", stiffness: 300, damping: 20 });
+                    animate(opacity, isActive ? 0.8 : 0.2, { type: "spring", stiffness: 300, damping: 20 });
+                    animate(filterBlur, 0, { duration: 0 });
+                    animate(glow, 0, { duration: 0 });
+                } else if (karaokeVariant === "ghost") {
+                    animate(scale, 1, { duration: 0 });
+                    animate(opacity, isActive ? 0.2 : 0, { duration: 0.5 });
+                    animate(filterBlur, isActive ? 4 : 10, { duration: 0.5 });
+                    animate(glow, 0, { duration: 0 });
+                } else if (karaokeVariant === "neon") {
+                    animate(scale, 1, { duration: 0 });
+                    animate(opacity, isActive ? 0.4 : 0.1, { type: "spring", stiffness: 200, damping: 25 });
+                    animate(filterBlur, 0, { duration: 0 });
+                    animate(glow, isActive ? 0.2 : 0, { type: "spring", stiffness: 200, damping: 25 });
+                } else {
+                    animate(scale, isActive ? 1 : 0.96, { type: "spring", stiffness: 250, damping: 25 });
+                    animate(opacity, isActive ? 0.9 : 0.4, { type: "spring", stiffness: 250, damping: 25 });
+                    animate(filterBlur, isActive ? 0 : 1.5, { type: "spring", stiffness: 250, damping: 25 });
+                    animate(glow, 0, { type: "spring", stiffness: 250, damping: 25 });
+                }
+            }
+            return;
+        }
+
+        const startMs = timing.startMs;
+        const endMs = timing.endMs;
+        const currentMs = audioRef.current.currentTime * 1000;
+        
+        // Ensure some minimum duration per word to guarantee visibility flow
+        const sentenceDuration = Math.max(endMs - startMs, 300); 
+        
+        // Because speech isn't perfectly linear, we add slight stagger to make the transition feel organic
+        const wordStartMs = startMs + sentenceDuration * cumulativeRatio - 80; // slightly early anticipation
+        const wordEndMs = startMs + sentenceDuration * (cumulativeRatio + durationRatio) + 180; // keep it lit a bit longer
+
+        let targetState: "upcoming" | "active" | "past" = "upcoming";
+        if (currentMs > wordEndMs) {
+            targetState = "past";
+        } else if (currentMs >= wordStartMs) {
+            targetState = "active";
+        }
+
+        if (activeStateRef.current !== targetState) {
+            activeStateRef.current = targetState;
+            if (targetState === "upcoming") {
+                if (karaokeVariant === "pure") {
+                    animate(scale, 1, { duration: 0.1 });
+                    animate(opacity, 0.35, { duration: 0.2 });
+                    animate(filterBlur, 0, { duration: 0.1 });
+                    animate(glow, 0, { duration: 0.1 });
+                } else if (karaokeVariant === "pop") {
+                    animate(scale, 0.8, { type: "spring", stiffness: 400, damping: 25 });
+                    animate(opacity, 0.2, { type: "spring", stiffness: 400, damping: 25 });
+                    animate(filterBlur, 0, { duration: 0 });
+                    animate(glow, 0, { duration: 0 });
+                } else if (karaokeVariant === "ghost") {
+                    animate(scale, 1, { duration: 0 });
+                    animate(opacity, 0, { duration: 0.4 });
+                    animate(filterBlur, 10, { duration: 0.4 });
+                    animate(glow, 0, { duration: 0 });
+                } else if (karaokeVariant === "neon") {
+                    animate(scale, 1, { duration: 0.1 });
+                    animate(opacity, 0.1, { duration: 0.2 });
+                    animate(filterBlur, 0, { duration: 0.1 });
+                    animate(glow, 0, { duration: 0.1 });
+                } else {
+                    animate(scale, 0.96, { type: "spring", stiffness: 200, damping: 25 });
+                    animate(opacity, 0.4, { type: "spring", stiffness: 200, damping: 25 });
+                    animate(filterBlur, 1.5, { type: "spring", stiffness: 200, damping: 25 });
+                    animate(glow, 0, { type: "spring", stiffness: 200, damping: 25 });
+                }
+            } else if (targetState === "active") {
+                if (karaokeVariant === "pure") {
+                    animate(scale, 1, { duration: 0.1 });
+                    animate(opacity, 1.0, { duration: 0.1 });
+                    animate(filterBlur, 0, { duration: 0.1 });
+                    animate(glow, 0.3, { duration: 0.1 }); // Exceedingly soft glow for pure text
+                } else if (karaokeVariant === "pop") {
+                    animate(scale, 1.25, { type: "spring", stiffness: 500, damping: 15 }); // Big snappy pop!
+                    animate(opacity, 1.0, { type: "spring", stiffness: 500, damping: 15 });
+                    animate(filterBlur, 0, { duration: 0 });
+                    animate(glow, 1.5, { type: "spring", stiffness: 500, damping: 15 });
+                } else if (karaokeVariant === "ghost") {
+                    animate(scale, 1, { duration: 0 });
+                    animate(opacity, 1.0, { duration: 0.2 }); // materialize quickly
+                    animate(filterBlur, 0, { duration: 0.2 });
+                    animate(glow, 0.8, { duration: 0.2 });
+                } else if (karaokeVariant === "neon") {
+                    animate(scale, 1.05, { type: "spring", stiffness: 300, damping: 20 });
+                    animate(opacity, 1.0, { duration: 0.1 });
+                    animate(filterBlur, 0, { duration: 0.1 });
+                    animate(glow, 2, { duration: 0.1 }); // intense cyberpunk glow
+                } else {
+                    animate(scale, 1.10, { type: "spring", stiffness: 450, damping: 20 });
+                    animate(opacity, 1.0, { type: "spring", stiffness: 450, damping: 20 });
+                    animate(filterBlur, 0, { type: "spring", stiffness: 450, damping: 20 });
+                    animate(glow, 1, { type: "spring", stiffness: 450, damping: 20 });
+                }
+            } else if (targetState === "past") {
+                if (karaokeVariant === "pure") {
+                    animate(scale, 1, { duration: 0.3 });
+                    animate(opacity, 1.0, { duration: 0.3 }); // Retains full brightness exactly like Apple Music!
+                    animate(filterBlur, 0, { duration: 0.3 });
+                    animate(glow, 0, { duration: 0.3 });
+                } else if (karaokeVariant === "pop") {
+                    animate(scale, 0.9, { type: "spring", stiffness: 300, damping: 25 }); // shrinks down
+                    animate(opacity, 0.6, { type: "spring", stiffness: 300, damping: 25 });
+                    animate(filterBlur, 0, { duration: 0 });
+                    animate(glow, 0, { duration: 0 });
+                } else if (karaokeVariant === "ghost") {
+                    animate(scale, 1, { duration: 0 });
+                    animate(opacity, 0.2, { duration: 0.8 }); // fades away slowly into mist
+                    animate(filterBlur, 4, { duration: 0.8 });
+                    animate(glow, 0, { duration: 0.8 });
+                } else if (karaokeVariant === "neon") {
+                    animate(scale, 1, { type: "spring", stiffness: 200, damping: 25 });
+                    animate(opacity, 0.4, { duration: 0.3 });
+                    animate(filterBlur, 0, { duration: 0.3 });
+                    animate(glow, 0.2, { duration: 0.3 }); 
+                } else {
+                    animate(scale, 1.0, { type: "spring", stiffness: 350, damping: 25 });
+                    animate(opacity, 0.85, { type: "spring", stiffness: 350, damping: 25 });
+                    animate(filterBlur, 0, { type: "spring", stiffness: 350, damping: 25 });
+                    animate(glow, 0, { type: "spring", stiffness: 350, damping: 25 });
+                }
+            }
+        }
+    });
+
+    return (
+        <motion.span
+            data-word-popup-segment={word}
+            className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer hover:opacity-100 hover:!blur-none focus:outline-none"
+            onClick={onClick}
+            style={{
+                ...styleConfig, // Apply root typo configs
+                opacity,
+                filter,
+                scale,
+                textShadow,
+                color: styleConfig.color || "#1e293b",
+                transition: "color 0.4s ease, filter 0.4s ease"
+            }}
+        >
+            <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none active:text-blue-500">
+                {word}
+            </span>
+        </motion.span>
+    );
 }
 
 function renderSubtitleBlock(
@@ -101,12 +309,14 @@ function renderSubtitleBlock(
     transitionStyle: string,
     typographyStyle: string,
     fontSizeEn: number,
-    onWordClick: (word: string, context: string, anchorElement: HTMLElement) => void
+    onWordClick: (word: string, context: string, anchorElement: HTMLElement) => void,
+    audioRef?: React.RefObject<HTMLAudioElement | null>,
+    getSentenceTiming?: (index: number) => import("@/lib/listening-cabin").ListeningCabinSentenceTiming | null
 ) {
     if (!sentences) return null;
     return sentences.map((sentence, sIdx) => {
         if (!sentence) return null;
-        const isActive = sentence.index === activeIndex;
+        const isActive = (sentence.index - 1) === activeIndex;
         const rawContent = renderSentence(sentence.english) || "";
         const words = rawContent.split(" ");
 
@@ -197,6 +407,40 @@ function renderSubtitleBlock(
 
         // Subtitle Style Logic
         const renderWords = () => {
+            if (["apple_karaoke", "karaoke_pure", "karaoke_pop", "karaoke_ghost", "karaoke_neon"].includes(transitionStyle)) {
+                const totalChars = words.reduce((sum, word) => sum + (word.replace(/[^a-zA-Z]/g, '').length || 1), 0);
+                let cumulativeChars = 0;
+                return words.map((word, wIdx) => {
+                    const charCount = word.replace(/[^a-zA-Z]/g, '').length || 1;
+                    const durationRatio = charCount / totalChars;
+                    const cumulativeRatio = cumulativeChars / totalChars;
+                    cumulativeChars += charCount;
+
+                    return (
+                        <AppleKaraokeWord
+                            key={`${sIdx}-${wIdx}`}
+                            word={word}
+                            sentenceIndex={sentence.index - 1}
+                            getSentenceTiming={getSentenceTiming}
+                            durationRatio={durationRatio}
+                            cumulativeRatio={cumulativeRatio}
+                            isActive={isActive}
+                            themeColor={themeColor}
+                            styleConfig={styleConfig}
+                            audioRef={audioRef}
+                            karaokeVariant={
+                                transitionStyle === "karaoke_pure" ? "pure" : 
+                                transitionStyle === "karaoke_pop" ? "pop" : 
+                                transitionStyle === "karaoke_ghost" ? "ghost" : 
+                                transitionStyle === "karaoke_neon" ? "neon" : 
+                                "bouncy"
+                            }
+                            onClick={(event) => onWordClick(word, rawContent, event.currentTarget)}
+                        />
+                    );
+                });
+            }
+
             if (transitionStyle === "radiant") {
                 return words.map((word, wIdx) => (
                     <motion.span
@@ -207,26 +451,28 @@ function renderSubtitleBlock(
                             visible: { opacity: 1, transition: { staggerChildren: 0.008 } },
                             exit: { opacity: 0, transition: { duration: 0.2 } }
                         }}
-                        className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer selection:bg-blue-500/10 active:text-blue-600 transition-colors duration-400"
+                        className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer selection:bg-blue-500/10 focus:outline-none"
                         onClick={(event) => onWordClick(word, rawContent, event.currentTarget)}
                         style={styleConfig}
                     >
-                        {word.split("").map((char, cIdx) => (
-                            <motion.span
-                                key={cIdx}
-                                variants={{
-                                    hidden: { opacity: 0, y: 12 },
-                                    visible: {
-                                        opacity: 1, y: 0,
-                                        transition: { type: "spring", stiffness: 120, damping: 28, mass: 1 }
-                                    },
-                                    exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
-                                }}
-                                className="inline-block"
-                            >
-                                {char}
-                            </motion.span>
-                        ))}
+                        <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none active:text-blue-500">
+                            {word.split("").map((char, cIdx) => (
+                                <motion.span
+                                    key={cIdx}
+                                    variants={{
+                                        hidden: { opacity: 0, y: 12 },
+                                        visible: {
+                                            opacity: 1, y: 0,
+                                            transition: { type: "spring", stiffness: 120, damping: 28, mass: 1 }
+                                        },
+                                        exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
+                                    }}
+                                    className="inline-block"
+                                >
+                                    {char}
+                                </motion.span>
+                            ))}
+                        </span>
                     </motion.span>
                 ));
             }
@@ -263,11 +509,13 @@ function renderSubtitleBlock(
                         key={`${sIdx}-${wIdx}`}
                         data-word-popup-segment={word}
                         variants={wordVar}
-                        className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer hover:opacity-70 transition-opacity"
+                        className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer hover:opacity-70 transition-opacity focus:outline-none"
                         onClick={(event) => onWordClick(word, rawContent, event.currentTarget)}
                         style={styleConfig}
                     >
-                        {word}
+                        <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none active:text-blue-500">
+                            {word}
+                        </span>
                     </motion.span>
                 );
             });
@@ -362,7 +610,7 @@ function ListeningCabinPlayerView({
     };
     const [subtitleAdvanceMs, setSubtitleAdvanceMs] = useState(1000);
     const player = useListeningCabinPlayer({ session, restart, subtitleAdvanceMs });
-    const { playerState, currentSubtitleSentences, audioEnergy, vocalHeat, audioRef } = player;
+    const { playerState, currentSubtitleSentences, audioEnergy, vocalHeat, audioRef, getSentenceTiming } = player;
 
     const [hasInteractedWithPlay, setHasInteractedWithPlay] = useState(false);
     
@@ -418,7 +666,7 @@ function ListeningCabinPlayerView({
     const [showSettings, setShowSettings] = useState(false);
     const [fontEn, setFontEn] = useState("var(--font-inter)");
     const [fontZh, setFontZh] = useState("var(--font-zh-sans-modern)");
-    const [transitionStyle, setTransitionStyle] = useState<TransitionStyle>("radiant");
+    const [transitionStyle, setTransitionStyle] = useState<TransitionStyle>("karaoke_pure");
     const [typographyStyle, setTypographyStyle] = useState<TypographyStyle>("crystal");
     const [fontSizeEn, setFontSizeEn] = useState(1.1); // 1.1x default
     const [fontSizeZh, setFontSizeZh] = useState(1.0); // 1.0x default
@@ -598,15 +846,7 @@ function ListeningCabinPlayerView({
         }));
 
         // Sync to DB (Background)
-        const currentSession = await db.listening_cabin_sessions.get(session.id);
-        if (currentSession) {
-            const updatedSentences = currentSession.sentences.map((s, idx) =>
-                idx === playerState.currentSentenceIndex ? { ...s, isMastered: nextMasteredStatus } : s
-            );
-            await db.listening_cabin_sessions.update(session.id, {
-                sentences: updatedSentences
-            });
-        }
+        void toggleListeningCabinSentenceMastery(session.id, playerState.currentSentenceIndex, nextMasteredStatus);
 
         // Dynamic Auto-Advance & Settlement Detection
         setTimeout(() => {
@@ -1118,6 +1358,11 @@ function ListeningCabinPlayerView({
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Cinematic Motion</label>
                                             <div className="grid grid-cols-2 gap-2">
                                                 {[
+                                                    { id: "karaoke_pure", label: "🍎 纯净版浸入 (如水流扫过, 无弹跳无模糊极其平滑)" },
+                                                    { id: "apple_karaoke", label: "🍏 跃动版浸入 (经典 Apple Music 微失焦跃动)" },
+                                                    { id: "karaoke_pop", label: "🎧 流行律动 (如 Spotify 般跳跃显眼抓人眼球)" },
+                                                    { id: "karaoke_ghost", label: "🎥 电影幽灵 (字迹从迷雾中缓缓浮现又深邃消散)" },
+                                                    { id: "karaoke_neon", label: "🕹️ 赛博霓虹 (极致高对比，未读黑隐，读到爆亮)" },
                                                     { id: "radiant", label: "✨ 流光溢彩" },
                                                     { id: "mist", label: "🌫️ 空灵迷雾" },
                                                     { id: "glide", label: "🕊️ 垂直滑翔" },
@@ -1343,7 +1588,7 @@ function ListeningCabinPlayerView({
                                             fontFamily: fontEn
                                         }}
                                     >
-                                        {renderSubtitleBlock(currentSubtitleSentences, playerState.currentSentenceIndex, activeMistTheme[0], fontEn, transitionStyle, typographyStyle, fontSizeEn, handleSubtitleTokenClick)}
+                                        {renderSubtitleBlock(currentSubtitleSentences, playerState.currentSentenceIndex, activeMistTheme[0], fontEn, transitionStyle, typographyStyle, fontSizeEn, handleSubtitleTokenClick, audioRef, getSentenceTiming)}
                                     </h1>
 
                                     <motion.div
