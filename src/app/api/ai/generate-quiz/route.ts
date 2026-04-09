@@ -5,6 +5,7 @@ import {
     CAT_OBJECTIVE_QUESTION_TYPES,
     type CatObjectiveQuestionType,
     buildObjectiveDistribution,
+    getCatRankTier,
     getCatQuizBlueprint,
     normalizeCatScore,
 } from "@/lib/cat-score";
@@ -49,6 +50,28 @@ interface QuizCacheEntry {
 }
 
 const QUIZ_CACHE_TTL_MS = 15 * 60 * 1000;
+const QUIZ_PROMPT_VERSION = "2026-04-09-exam-style-v1";
+const TRUE_FALSE_NG_OPTIONS = ["True", "False", "Not Given"] as const;
+
+interface NormalizedExplanation {
+    summary: string;
+    reasoning?: string;
+    trap?: string;
+}
+
+export interface NormalizedGeneratedQuestion {
+    id: number;
+    itemId: string;
+    type: CatObjectiveQuestionType;
+    question: string;
+    options: string[];
+    answer?: string;
+    answers?: string[];
+    sourceParagraph: string;
+    evidence: string;
+    explanation: NormalizedExplanation;
+    itemDifficulty: number;
+}
 
 function getQuizCacheStore() {
     const globalScope = globalThis as typeof globalThis & { __yasiQuizCache?: Map<string, QuizCacheEntry> };
@@ -97,6 +120,18 @@ const STANDARD_DISTRIBUTION: Record<Difficulty, Record<CatObjectiveQuestionType,
         fill_blank_choice: 1,
     },
 };
+
+const QUESTION_TYPE_OFFSETS: Record<CatObjectiveQuestionType, number> = {
+    multiple_choice: -0.15,
+    true_false_ng: -0.05,
+    fill_blank_choice: 0.12,
+    matching: 0.2,
+    multiple_select: 0.32,
+};
+
+function clamp(value: number, min: number, max: number) {
+    return Math.min(max, Math.max(min, value));
+}
 
 function sumDistribution(distribution: Record<CatObjectiveQuestionType, number>) {
     return CAT_OBJECTIVE_QUESTION_TYPES.reduce((sum, type) => sum + distribution[type], 0);
@@ -153,14 +188,297 @@ function distributionText(distribution: Record<CatObjectiveQuestionType, number>
         .join("\n");
 }
 
-function buildStandardInstruction(difficulty: Difficulty) {
+function getStandardExamStyleGuide(difficulty: Difficulty) {
+    switch (difficulty) {
+        case "cet4":
+            return `Target exam feel: CET-4 reading.
+- Prioritize main idea, detail locating, reference resolution, and vocabulary-in-context.
+- Keep stems short and clear; avoid excessive abstraction or nested logic.
+- Distractors should be plausible but still distinguishable from the correct option through direct textual evidence.
+- Prefer questions that feel like college English test items, not generic app trivia.`;
+        case "cet6":
+            return `Target exam feel: CET-6 reading.
+- Emphasize inference, writer attitude, paragraph function, and sentence purpose in addition to factual detail.
+- Allow moderate paraphrase between the article and options; do not copy the source sentence verbatim.
+- Distractors should be stronger and closer to the passage wording than CET-4 style items.
+- Make the set feel like upper-band college English reading practice.`;
+        case "ielts":
+        default:
+            return `Target exam feel: IELTS Academic reading.
+- Favor evidence-sensitive items such as True/False/Not Given, matching, and summary-gap style reasoning when the distribution allows.
+- Use careful paraphrase and require the learner to distinguish contradiction from not mentioned.
+- Distractors should be subtle, information-dense, and grounded in specific evidence spans.
+- Make stems concise, objective, and exam-like rather than explanatory.`;
+    }
+}
+
+function getCatExamStyleGuide(score: number) {
+    const tier = getCatRankTier(score);
+
+    if (score < 800) {
+        return `Target learner band: ${tier.primaryLabel} / ${tier.secondaryLabel}.
+- Keep the questions literal and evidence-first.
+- Favor direct detail checks, simple reference questions, and low-burden vocabulary-in-context.
+- Limit each item to one reasoning step.`;
+    }
+
+    if (score < 1400) {
+        return `Target learner band: ${tier.primaryLabel} / ${tier.secondaryLabel}.
+- Make the set feel like CET-4 level reading practice.
+- Prioritize main idea, detail locating, reference resolution, and contextual vocabulary.
+- Use moderate paraphrase, but keep the answer path stable and teachable.`;
+    }
+
+    if (score < 2000) {
+        return `Target learner band: ${tier.primaryLabel} / ${tier.secondaryLabel}.
+- Make the set feel like CET-6 to TEM-4-prep practice.
+- Include inference, attitude, rhetorical purpose, and paragraph relation questions.
+- Distractors should be closer to the correct answer and require stronger elimination.`;
+    }
+
+    if (score < 2600) {
+        return `Target learner band: ${tier.primaryLabel} / ${tier.secondaryLabel}.
+- Make the set feel like TEM-4 / IELTS 6.x practice.
+- Blend detail, inference, paragraph-function, and cross-sentence evidence questions.
+- Use denser paraphrase and more competitive distractors.`;
+    }
+
+    return `Target learner band: ${tier.primaryLabel} / ${tier.secondaryLabel}.
+- Make the set feel like IELTS 7+ / TEM-8 style reading.
+- Use paragraph matching, viewpoint discrimination, summary-gap logic, and nuanced inference where allowed.
+- Require precise evidence control; wrong options should often be partially true but textually unsupported for the exact claim.`;
+}
+
+function getDifficultyBaseTheta(difficulty: Difficulty) {
+    switch (difficulty) {
+        case "cet4":
+            return -0.45;
+        case "cet6":
+            return 0.35;
+        case "ielts":
+        default:
+            return 1.1;
+    }
+}
+
+function getScoreBaseTheta(score: number) {
+    return (normalizeCatScore(score) / 3200) * 6 - 3;
+}
+
+function getExpectedDifficulty(params: {
+    quizMode: QuizMode;
+    difficulty: Difficulty;
+    score: number;
+    order: number;
+    questionCount: number;
+    type: CatObjectiveQuestionType;
+}) {
+    const { quizMode, difficulty, score, order, questionCount, type } = params;
+    const baseTheta = quizMode === "cat" ? getScoreBaseTheta(score) : getDifficultyBaseTheta(difficulty);
+    const spread = questionCount > 1 ? ((order - 1) / (questionCount - 1)) * 0.9 - 0.35 : 0;
+    const withTypeOffset = baseTheta + spread + QUESTION_TYPE_OFFSETS[type];
+    return Number(clamp(withTypeOffset, -3.5, 4.5).toFixed(3));
+}
+
+function normalizeOptionText(option: string, index: number) {
+    const trimmed = option.trim();
+    const expectedLetter = String.fromCharCode(65 + index);
+    return /^[A-D](?:[).:\-\s]|$)/i.test(trimmed) ? trimmed : `${expectedLetter}. ${trimmed}`;
+}
+
+function stripOptionPrefix(option: string) {
+    return option.replace(/^[A-D](?:[).:\-\s]+)?/i, "").trim();
+}
+
+function resolveAnswerToken(token: string, options: string[]) {
+    const normalizedToken = token.trim().toUpperCase();
+    if (["A", "B", "C", "D"].includes(normalizedToken)) {
+        return normalizedToken;
+    }
+
+    const matchedIndex = options.findIndex((option) => {
+        const full = option.trim().toUpperCase();
+        const withoutPrefix = stripOptionPrefix(option).toUpperCase();
+        return full === normalizedToken || withoutPrefix === normalizedToken;
+    });
+
+    return matchedIndex >= 0 ? String.fromCharCode(65 + matchedIndex) : normalizedToken;
+}
+
+function resolveTrueFalseNgAnswer(token: string) {
+    const normalizedToken = token.trim().toUpperCase();
+    if (normalizedToken === "A" || normalizedToken === "TRUE") return "True";
+    if (normalizedToken === "B" || normalizedToken === "FALSE") return "False";
+    if (normalizedToken === "C" || normalizedToken === "NOT GIVEN" || normalizedToken === "NOT_GIVEN") {
+        return "Not Given";
+    }
+    return "";
+}
+
+function normalizeExplanation(candidate: Record<string, unknown>) {
+    const rawExplanation = candidate.explanation;
+    if (typeof rawExplanation === "string" && rawExplanation.trim()) {
+        return {
+            summary: rawExplanation.trim(),
+            reasoning: typeof candidate.reasoning === "string" ? candidate.reasoning.trim() : undefined,
+            trap: typeof candidate.trap === "string" ? candidate.trap.trim() : undefined,
+        } satisfies NormalizedExplanation;
+    }
+
+    if (rawExplanation && typeof rawExplanation === "object") {
+        const explanationObj = rawExplanation as Record<string, unknown>;
+        const summary = typeof explanationObj.summary === "string"
+            ? explanationObj.summary.trim()
+            : "";
+        if (summary) {
+            return {
+                summary,
+                reasoning: typeof explanationObj.reasoning === "string" ? explanationObj.reasoning.trim() : undefined,
+                trap: typeof explanationObj.trap === "string" ? explanationObj.trap.trim() : undefined,
+            } satisfies NormalizedExplanation;
+        }
+    }
+
+    return null;
+}
+
+export function normalizeGeneratedQuestions(
+    rawQuestions: unknown[],
+    params: {
+        quizMode: QuizMode;
+        difficulty: Difficulty;
+        score: number;
+        expectedCount: number;
+        allowedTypes: CatObjectiveQuestionType[];
+    },
+) {
+    const allowedTypeSet = new Set(params.allowedTypes);
+    const safeExpectedCount = Math.max(1, params.expectedCount);
+    const normalized: NormalizedGeneratedQuestion[] = [];
+
+    for (const rawQuestion of rawQuestions) {
+        if (!rawQuestion || typeof rawQuestion !== "object") continue;
+        const candidate = rawQuestion as Record<string, unknown>;
+        const rawType = typeof candidate.type === "string" ? candidate.type : "";
+        const type = CAT_OBJECTIVE_QUESTION_TYPES.includes(rawType as CatObjectiveQuestionType)
+            ? rawType as CatObjectiveQuestionType
+            : null;
+        if (!type || !allowedTypeSet.has(type)) continue;
+
+        const question = typeof candidate.question === "string" ? candidate.question.trim() : "";
+        const sourceParagraph = typeof candidate.sourceParagraph === "string" ? candidate.sourceParagraph.trim() : "";
+        const evidence = typeof candidate.evidence === "string" ? candidate.evidence.trim() : "";
+        const explanation = normalizeExplanation(candidate);
+        if (!question || !sourceParagraph || !evidence || !explanation) continue;
+
+        if (type === "true_false_ng") {
+            const rawAnswer = typeof candidate.answer === "string" ? resolveTrueFalseNgAnswer(candidate.answer) : "";
+            if (!rawAnswer) continue;
+            normalized.push({
+                id: normalized.length + 1,
+                itemId: `quiz-item-${normalized.length + 1}`,
+                type,
+                question,
+                options: [...TRUE_FALSE_NG_OPTIONS],
+                answer: rawAnswer,
+                sourceParagraph,
+                evidence,
+                explanation,
+                itemDifficulty: typeof candidate.itemDifficulty === "number"
+                    ? Number(clamp(candidate.itemDifficulty, -3.5, 4.5).toFixed(3))
+                    : getExpectedDifficulty({
+                        quizMode: params.quizMode,
+                        difficulty: params.difficulty,
+                        score: params.score,
+                        order: normalized.length + 1,
+                        questionCount: safeExpectedCount,
+                        type,
+                    }),
+            });
+            continue;
+        }
+
+        const rawOptions = Array.isArray(candidate.options)
+            ? candidate.options.filter((option): option is string => typeof option === "string" && option.trim().length > 0)
+            : [];
+        if (rawOptions.length !== 4) continue;
+        const options = rawOptions.map(normalizeOptionText);
+
+        if (type === "multiple_select") {
+            const rawAnswers = Array.isArray(candidate.answers)
+                ? candidate.answers.filter((answer): answer is string => typeof answer === "string" && answer.trim().length > 0)
+                : [];
+            const fallbackAnswer = typeof candidate.answer === "string"
+                ? candidate.answer.split(/[，,;/|\s]+/g).filter(Boolean)
+                : [];
+            const answers = Array.from(new Set([...rawAnswers, ...fallbackAnswer].map((answer) => resolveAnswerToken(answer, options))))
+                .filter((answer) => ["A", "B", "C", "D"].includes(answer));
+            if (answers.length < 2 || answers.length > 3) continue;
+
+            normalized.push({
+                id: normalized.length + 1,
+                itemId: `quiz-item-${normalized.length + 1}`,
+                type,
+                question,
+                options,
+                answers,
+                sourceParagraph,
+                evidence,
+                explanation,
+                itemDifficulty: typeof candidate.itemDifficulty === "number"
+                    ? Number(clamp(candidate.itemDifficulty, -3.5, 4.5).toFixed(3))
+                    : getExpectedDifficulty({
+                        quizMode: params.quizMode,
+                        difficulty: params.difficulty,
+                        score: params.score,
+                        order: normalized.length + 1,
+                        questionCount: safeExpectedCount,
+                        type,
+                    }),
+            });
+            continue;
+        }
+
+        const answer = typeof candidate.answer === "string" ? resolveAnswerToken(candidate.answer, options) : "";
+        if (!["A", "B", "C", "D"].includes(answer)) continue;
+
+        normalized.push({
+            id: normalized.length + 1,
+            itemId: `quiz-item-${normalized.length + 1}`,
+            type,
+            question,
+            options,
+            answer,
+            sourceParagraph,
+            evidence,
+            explanation,
+            itemDifficulty: typeof candidate.itemDifficulty === "number"
+                ? Number(clamp(candidate.itemDifficulty, -3.5, 4.5).toFixed(3))
+                : getExpectedDifficulty({
+                    quizMode: params.quizMode,
+                    difficulty: params.difficulty,
+                    score: params.score,
+                    order: normalized.length + 1,
+                    questionCount: safeExpectedCount,
+                    type,
+                }),
+        });
+    }
+
+    return normalized;
+}
+
+export function buildStandardInstruction(difficulty: Difficulty) {
     const distribution = STANDARD_DISTRIBUTION[difficulty] ?? STANDARD_DISTRIBUTION.ielts;
     const questionCount = sumDistribution(distribution);
+    const examStyleGuide = getStandardExamStyleGuide(difficulty);
 
     return {
         questionCount,
         distribution,
         instruction: `Generate exactly ${questionCount} objective reading questions.
+${examStyleGuide}
+
 Question type distribution:
 ${distributionText(distribution)}
 
@@ -171,6 +489,9 @@ Question protocol (strict):
 4. \'true_false_ng\' options must be ["True", "False", "Not Given"] and one correct answer in \'answer\'.
 5. Every question must include sourceParagraph and evidence.
 6. Keep explanations Chinese-first and concise.
+7. Prefer paraphrased stems instead of copying a whole sentence from the passage.
+8. Cover different evidence locations where reasonable; avoid asking the same idea twice.
+9. Distractors must be plausible but textually wrong or unsupported, not silly.
 
 Return JSON only:
 {
@@ -195,7 +516,7 @@ Return JSON only:
     };
 }
 
-function buildCatInstruction(params: {
+export function buildCatInstruction(params: {
     score: number;
     questionCount: number;
     distribution: Record<CatObjectiveQuestionType, number>;
@@ -206,10 +527,12 @@ function buildCatInstruction(params: {
         .map((type) => `${TYPE_LABELS[type]} (${type})`)
         .join("、");
     const multipleSelectAllowed = allowedTypes.includes("multiple_select");
+    const examStyleGuide = getCatExamStyleGuide(score);
 
     return `Generate exactly ${questionCount} objective CAT adaptive reading questions.
 Learner CAT score: ${score}
 Allowed question types: ${allowedTypeText}
+${examStyleGuide}
 
 Question type distribution:
 ${distributionText(distribution)}
@@ -225,6 +548,9 @@ CAT strict protocol:
 6. Include sourceParagraph and evidence for every question.
 7. Explanation must be Chinese-first and concise.
 8. Order questions from easier to harder.
+9. Prefer paraphrase over surface copying in stems and options.
+10. Distractors should be close enough to force reading, but still be falsifiable from the passage.
+11. Keep the whole set feeling like one coherent exam paper for this learner band.
 
 Return JSON only:
 {
@@ -312,6 +638,7 @@ export async function POST(req: Request) {
         const promptArticle = toPromptArticle(articleContent);
         const cacheKey = createHash("sha1")
             .update(JSON.stringify({
+                version: QUIZ_PROMPT_VERSION,
                 mode: quizMode,
                 difficulty: normalizedDifficulty,
                 title: title || "",
@@ -365,8 +692,20 @@ IMPORTANT:
 
         const result = JSON.parse(content) as { questions?: unknown[] };
         const normalizedCatBandValue = Number.isFinite(Number(catBand)) ? Number(catBand) : null;
+        const normalizedQuestions = normalizeGeneratedQuestions(
+            Array.isArray(result.questions) ? result.questions : [],
+            {
+                quizMode,
+                difficulty: normalizedDifficulty,
+                score: normalizedCatScore,
+                expectedCount: isCatMode ? questionCount : standardInstruction.questionCount,
+                allowedTypes: isCatMode
+                    ? (catQuizBlueprint?.allowedTypes ?? computedCatBlueprint.allowedTypes)
+                    : CAT_OBJECTIVE_QUESTION_TYPES.filter((type) => standardInstruction.distribution[type] > 0),
+            },
+        );
         const payload = {
-            questions: Array.isArray(result.questions) ? result.questions : [],
+            questions: normalizedQuestions,
             difficulty: normalizedDifficulty,
             articleTitle: title,
             quizMode,

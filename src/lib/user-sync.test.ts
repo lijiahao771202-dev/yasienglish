@@ -233,14 +233,20 @@ describe("user sync helpers", () => {
             elapsed_days: 3,
             scheduled_days: 4,
             reps: 5,
+            lapses: 1,
+            learning_steps: 0,
             state: 1,
             last_review: 6,
             due: 7,
+            archived_at: 8,
         });
 
         expect(item.user_id).toBe("user-1");
         expect(item.word_key).toBe("resilient");
         expect(item.sync_status).toBe("pending");
+        expect(item.lapses).toBe(1);
+        expect(item.learning_steps).toBe(0);
+        expect(item.archived_at).toBe(8);
     });
 
     it("round-trips daily plans with source metadata across remote sync helpers", () => {
@@ -340,9 +346,12 @@ describe("user sync helpers", () => {
             elapsed_days: 3,
             scheduled_days: 4,
             reps: 5,
+            lapses: 1,
+            learning_steps: 0,
             state: 1,
             last_review: 6,
             due: 7,
+            archived_at: 8,
         });
 
         expect(local.source_kind).toBe("rebuild");
@@ -368,6 +377,9 @@ describe("user sync helpers", () => {
         expect(roundTrip.morphology_notes).toEqual(["turn: 转动/切换", "off: 离开、关闭状态"]);
         expect(roundTrip.meaning_groups).toEqual(local.meaning_groups);
         expect(roundTrip.highlighted_meanings).toEqual(["关闭"]);
+        expect(roundTrip.lapses).toBe(1);
+        expect(roundTrip.learning_steps).toBe(0);
+        expect(roundTrip.archived_at).toBe(8);
     });
 
     it("maps dictation elo history rows to remote payloads", () => {

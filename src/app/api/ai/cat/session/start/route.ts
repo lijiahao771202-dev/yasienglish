@@ -4,8 +4,10 @@ import { createClient } from "@supabase/supabase-js";
 import { deepseek } from "@/lib/deepseek";
 import { levelFromScore } from "@/lib/cat-growth";
 import {
+    CAT_RANK_TIERS,
     getCatMainSkillBand,
     getCatArticleTargets,
+    getCatNextRankTier,
     getCatQuizBlueprint,
     getCatSessionPolicy,
     getCatRankTier,
@@ -13,7 +15,6 @@ import {
     getLegacyBandFromScore,
     getLegacyDifficultyFromScore,
     normalizeCatScore,
-    CAT_MAIN_SKILL_BANDS,
     type CatArticleLexicalEvidence,
     type CatArticleLexicalMix,
     type CatArticleTargets,
@@ -21,11 +22,13 @@ import {
 import { getSupabasePublishableKey, getSupabaseUrl } from "@/lib/supabase/env";
 import { createServerClient, getServerUserSafely } from "@/lib/supabase/server";
 import { normalizeThetaFromScore } from "@/lib/cat-rasch";
-import { pickCatTopicSeed } from "@/lib/content-topic-pool";
+import { getCatDifficultyScoreOffset } from "@/lib/cat-self-assessment";
+import { pickCatTopicSeed, type TopicSelection } from "@/lib/content-topic-pool";
 
 interface StartCatPayload {
     topic?: string;
     band?: number;
+    difficultySignalHint?: number;
 }
 
 type ObjectiveQuestionType =
@@ -240,62 +243,192 @@ function parseModelDraft(raw: string): RawModelDraft | null {
     return parseTaggedDraft(raw);
 }
 
-function buildBandMappingPromptText() {
-    return CAT_MAIN_SKILL_BANDS
-        .map((band) => {
-            const scoreRange = band.max === null ? `${band.min}+` : `${band.min}-${band.max}`;
-            return `- ${scoreRange}: ${band.label} (${band.examMapping}) | 词汇重点: ${band.lexicalFocus}`;
-        })
-        .join("\n");
-}
-
 function clamp(value: number, min: number, max: number) {
     return Math.min(max, Math.max(min, value));
 }
 
-function buildArticlePrompt(params: {
-    topic: string;
-    score: number;
-    rankName: string;
-    primaryLabel: string;
-    secondaryLabel: string;
-    difficulty: ReturnType<typeof getLegacyDifficultyFromScore>;
+function getParagraphGuidance(wordCountMax: number) {
+    if (wordCountMax <= 320) return "2-3 natural paragraphs";
+    if (wordCountMax <= 560) return "3-4 natural paragraphs";
+    if (wordCountMax <= 850) return "4-5 natural paragraphs";
+    return "5-6 natural paragraphs";
+}
+
+function formatScoreWindow(minScore: number, maxScore: number | null) {
+    return maxScore === null ? `${minScore}+` : `${minScore}-${maxScore}`;
+}
+
+function buildRankSystemOverviewLines() {
+    return [
+        "- 0-599: high-school foundation track (A0, A1, A2).",
+        "- 600-1199: CET-4 track (B1, B1+, B2-).",
+        "- 1200-1799: CET-6 track (B2, B2+, C1-).",
+        "- 1800-2599: TEM-4 / IELTS 6.x track (C1, C1+, C2-, C2).",
+        "- 2600-3199: TEM-8 / IELTS 7.x track (C2+, S1, S2).",
+        "- 3200+: IELTS 8+ / master track.",
+    ];
+}
+
+function getStageMeaningSummary(targets: CatArticleTargets) {
+    const { rankTarget, contentTarget } = targets;
+
+    if (rankTarget.primaryLabel.includes("预备")) {
+        return `- Current stage: entering ${contentTarget.examMapping}. The passage should already belong to this exam family, but remain more guided than a full pass-level text.`;
+    }
+
+    if (rankTarget.primaryLabel.includes("强化")) {
+        return `- Current stage: reinforced ${contentTarget.examMapping} practice. Use a complete passage with controlled reasoning load and clear evidence paths.`;
+    }
+
+    if (rankTarget.primaryLabel.includes("冲刺")) {
+        return `- Current stage: late-stage ${contentTarget.examMapping} preparation. Push difficulty close to the exam, but do not cross into the next exam family.`;
+    }
+
+    if (rankTarget.primaryLabel.includes("通过") || rankTarget.primaryLabel.includes("稳定")) {
+        return `- Current stage: stable ${contentTarget.examMapping} mastery. Use a full passage at this level without drifting into the next exam family.`;
+    }
+
+    if (rankTarget.primaryLabel.includes("学术")) {
+        return `- Current stage: academic reading band. The passage should sustain denser ideas and evidence tracking without becoming research-paper prose.`;
+    }
+
+    if (rankTarget.primaryLabel.includes("高阶") || rankTarget.primaryLabel.includes("专业")) {
+        return `- Current stage: high-order professional reading. The text can be dense and analytical, but must still read like a teachable exam passage.`;
+    }
+
+    return `- Current stage: ${rankTarget.primaryLabel} (${rankTarget.secondaryLabel}). Keep the article clearly inside this band.`;
+}
+
+function getRelativeDifficultyLines(score: number) {
+    const current = getCatRankTier(score);
+    const previous = CAT_RANK_TIERS.find((tier) => tier.index === current.index - 1) ?? null;
+    const next = getCatNextRankTier(score);
+
+    return {
+        previousLine: previous
+            ? `- Harder than ${previous.primaryLabel} (${previous.secondaryLabel}).`
+            : "- Harder than beginner-baseline material.",
+        nextLine: next
+            ? `- Easier than ${next.primaryLabel} (${next.secondaryLabel}).`
+            : "- This is the current ceiling rank; do not artificially cap difficulty below it.",
+        previous,
+        next,
+    };
+}
+
+function getAdjacentRankLines(score: number) {
+    const current = getCatRankTier(score);
+    const previous = CAT_RANK_TIERS.find((tier) => tier.index === current.index - 1) ?? null;
+    const next = getCatNextRankTier(score);
+
+    return {
+        currentLine: `- Current rank score window: ${formatScoreWindow(current.minScore, current.maxScore)}.`,
+        previousLine: previous
+            ? `- Previous: ${previous.name} | ${previous.primaryLabel} / ${previous.secondaryLabel} | ${formatScoreWindow(previous.minScore, previous.maxScore)}.`
+            : "- Previous: none. This is the opening rank.",
+        nextLine: next
+            ? `- Next: ${next.name} | ${next.primaryLabel} / ${next.secondaryLabel} | ${formatScoreWindow(next.minScore, next.maxScore)}.`
+            : "- Next: none. This is the ceiling rank.",
+    };
+}
+
+function getDriftGuardLine(targets: CatArticleTargets) {
+    const { previous, next } = getRelativeDifficultyLines(targets.score);
+    const guardrails = [
+        previous ? `${previous.primaryLabel} (${previous.secondaryLabel}) simplicity` : "oversimplified beginner text",
+        next ? `${next.primaryLabel} (${next.secondaryLabel}) difficulty` : null,
+        targets.contentTarget.examMapping.includes("四级") || targets.contentTarget.examMapping.includes("六级")
+            ? "IELTS/TEM-style academic density"
+            : null,
+    ].filter(Boolean);
+
+    return `- Do not drift into: ${guardrails.join("; ")}.`;
+}
+
+function getTopicSourceLine(topicSelection: TopicSelection) {
+    return topicSelection.source === "user"
+        ? "- Topic source: user-provided topic."
+        : "- Topic source: random pool for this score band.";
+}
+
+export function buildArticlePrompt(params: {
+    topicSelection: TopicSelection;
     targets: CatArticleTargets;
     generationTheme: CatGenerationTheme;
 }) {
-    const { topic, score, rankName, primaryLabel, secondaryLabel, difficulty, targets, generationTheme } = params;
-    const { lexicalTarget, lengthTarget, syntaxTarget } = targets;
-    const shortWordMin = Math.max(80, Math.round(lengthTarget.wordCountMin * 0.45));
-    const shortWordMax = Math.max(shortWordMin + 40, Math.round(lengthTarget.wordCountMax * 0.6));
-    const mainBand = getCatMainSkillBand(score);
+    const { topicSelection, targets, generationTheme } = params;
+    const { lexicalTarget, lengthTarget, syntaxTarget, rankTarget, contentTarget, score } = targets;
     const clauseMarkers =
         "because, although, though, while, whereas, which, that, who, whose, whom, if, when, unless, whether, since, after, before, until, once, provided, despite, where, as";
+    const paragraphGuidance = getParagraphGuidance(lengthTarget.wordCountMax);
+    const relativeDifficulty = getRelativeDifficultyLines(score);
+    const adjacentRanks = getAdjacentRankLines(score);
 
     return [
-        "Task: Generate ONE CAT adaptive short reading passage for a Chinese learner.",
-        `Topic: ${topic}`,
-        `Learner score: ${score} | Rank: ${rankName} | ${primaryLabel} / ${secondaryLabel} | Bucket: ${difficulty}`,
-        `Main skill band: ${mainBand.label} (${mainBand.examMapping})`,
+        "Task: Generate ONE CAT adaptive reading passage for a Chinese learner.",
+        `Topic: ${topicSelection.topicLine}`,
+        `Learner score: ${score}`,
+        `Rank target: ${rankTarget.name} | ${rankTarget.primaryLabel} / ${rankTarget.secondaryLabel}`,
+        `Exam anchor: ${contentTarget.examMapping}`,
+        `Content focus: core=${contentTarget.coreDomain}; stretch=${contentTarget.stretchDomain}`,
         "",
-        "CAT score map (0-3200+):",
-        buildBandMappingPromptText(),
+        "Mode context:",
+        "- This mode generates one adaptive reading passage tuned to the learner's current rank, not a full exam paper.",
+        "- The passage should train the learner exactly at the current level boundary and preserve clear pedagogical control.",
+        "Rank system overview:",
+        ...buildRankSystemOverviewLines(),
+        "",
+        "Topic context:",
+        getTopicSourceLine(topicSelection),
+        `- Topic domain: ${topicSelection.domainLabel}.`,
+        `- Topic subtopic: ${topicSelection.subtopicLabel}.`,
+        `- Topic angle: ${topicSelection.angle}.`,
+        "- Keep the article anchored in this topic domain and angle; do not switch to an unrelated field.",
+        "",
+        "Score interpretation:",
+        "- Score scale: internal CAT ladder from 0 to 3200+.",
+        "- The raw score is only an internal locator for the product.",
+        "- Use the rank target and hard targets below as the true difficulty reference.",
+        adjacentRanks.currentLine,
+        "",
+        "Adjacent ranks:",
+        adjacentRanks.previousLine,
+        adjacentRanks.nextLine,
+        "",
+        "Stage meaning:",
+        getStageMeaningSummary(targets),
+        relativeDifficulty.previousLine,
+        relativeDifficulty.nextLine,
+        getDriftGuardLine(targets),
+        "",
+        "Difficulty control map:",
+        `- Rank-scale controls: wordCount ${lengthTarget.wordCountMin}-${lengthTarget.wordCountMax}; avg sentence length ${syntaxTarget.sentenceLengthRange[0]}-${syntaxTarget.sentenceLengthRange[1]} words; content focus core=${contentTarget.coreDomain}; stretch=${contentTarget.stretchDomain}.`,
+        "- Track-level controls:",
+        `- Vocabulary track: core=${lexicalTarget.coreTierLabel}; lower=${lexicalTarget.lowerTierLabel ?? "None"}; stretch=${lexicalTarget.stretchTierLabel}.`,
+        `- Overlevel cap: <=${Math.round(lexicalTarget.overlevelMax * 100)}%.`,
+        `- Syntax density track: complexSentenceRatio ${Math.round(syntaxTarget.complexSentenceRatioRange[0] * 100)}%-${Math.round(syntaxTarget.complexSentenceRatioRange[1] * 100)}%; multiClauseSentenceRatio ${Math.round(syntaxTarget.multiClauseSentenceRatioRange[0] * 100)}%-${Math.round(syntaxTarget.multiClauseSentenceRatioRange[1] * 100)}%; clauseDensity ${syntaxTarget.clauseDensityRange[0].toFixed(2)}-${syntaxTarget.clauseDensityRange[1].toFixed(2)}.`,
         "",
         "Why this matters:",
         "- The passage is used in adaptive CAT training. Difficulty must match the learner score.",
-        "- Keep challenge but avoid uncontrolled complexity spikes.",
+        "- Keep challenge, but stay inside this exact rank target rather than drifting into the next exam level.",
         "",
         "RANDOM STYLE INJECTION (must apply this generation):",
         `- Theme: ${generationTheme.name}`,
         `- Directive: ${generationTheme.directive}`,
         "",
+        "Question-generation readiness:",
+        "- The passage will later be turned into objective questions, so preserve evidence traceability.",
+        "- Make sure key claims, contrasts, causes, and details can be located in specific sentences or paragraphs.",
+        "",
         "THREE-AXIS HARD TARGETS (all required):",
         `1) Lexical ratio (decimal 0-1, not %): core=${lexicalTarget.coreTierLabel} ${Math.round(lexicalTarget.ratios.core[0] * 100)}%-${Math.round(lexicalTarget.ratios.core[1] * 100)}%; lower=${lexicalTarget.lowerTierLabel ?? "None"} ${Math.round(lexicalTarget.ratios.lower[0] * 100)}%-${Math.round(lexicalTarget.ratios.lower[1] * 100)}%; stretch=${lexicalTarget.stretchTierLabel} ${Math.round(lexicalTarget.ratios.stretch[0] * 100)}%-${Math.round(lexicalTarget.ratios.stretch[1] * 100)}%; overlevel<=${Math.round(lexicalTarget.overlevelMax * 100)}%.`,
-        `2) Length: short passage wordCount ${shortWordMin}-${shortWordMax} (english tokens).`,
-        `3) Syntax: complexSentenceRatio ${Math.round(syntaxTarget.complexSentenceRatioRange[0] * 100)}%-${Math.round(syntaxTarget.complexSentenceRatioRange[1] * 100)}%; multiClauseSentenceRatio ${Math.round(syntaxTarget.multiClauseSentenceRatioRange[0] * 100)}%-${Math.round(syntaxTarget.multiClauseSentenceRatioRange[1] * 100)}%; clauseDensity ${syntaxTarget.clauseDensityRange[0].toFixed(2)}-${syntaxTarget.clauseDensityRange[1].toFixed(2)}.`,
+        `2) Length: wordCount ${lengthTarget.wordCountMin}-${lengthTarget.wordCountMax} (english tokens).`,
+        `3) Syntax: average sentence length ${syntaxTarget.sentenceLengthRange[0]}-${syntaxTarget.sentenceLengthRange[1]} words; complexSentenceRatio ${Math.round(syntaxTarget.complexSentenceRatioRange[0] * 100)}%-${Math.round(syntaxTarget.complexSentenceRatioRange[1] * 100)}%; multiClauseSentenceRatio ${Math.round(syntaxTarget.multiClauseSentenceRatioRange[0] * 100)}%-${Math.round(syntaxTarget.multiClauseSentenceRatioRange[1] * 100)}%; clauseDensity ${syntaxTarget.clauseDensityRange[0].toFixed(2)}-${syntaxTarget.clauseDensityRange[1].toFixed(2)}.`,
         "",
         "Writing rules:",
-        "- Write 2-3 coherent short paragraphs only.",
+        `- Write a complete passage using ${paragraphGuidance}.`,
         "- Keep the title concise and natural.",
+        "- Make the article feel like this rank level, not a shorter teaser and not a harder next-band passage.",
         "- Do not output placeholder text, markdown fences, bullet lists, or commentary.",
         "- Do not mention prompt instructions in the content.",
         "",
@@ -308,7 +441,7 @@ function buildArticlePrompt(params: {
         "",
         "INTERNAL WORKFLOW (must follow before final output):",
         "A. Plan ratio first: choose lexicalMix.lower/core/stretch/overlevel within target bands and make sum about 1.00.",
-        "B. Draft short passage in 2-3 coherent paragraphs.",
+        "B. Draft the full passage at the target rank level with natural paragraphing.",
         "C. Self-check length + syntax using the validator rules above.",
         "D. Self-check lexicalEvidence: every evidence word MUST appear verbatim in content.",
         "E. If any axis misses, revise internally. Return final result only once.",
@@ -322,7 +455,7 @@ function buildArticlePrompt(params: {
         "one short title line",
         "",
         "[Article]",
-        "2-3 short paragraphs of article content",
+        "full article content with natural paragraphing",
         "",
         "[LexicalMix]",
         "lower: 0.xx",
@@ -351,6 +484,24 @@ function getBearerToken(request: Request) {
     }
 
     return token.trim() || null;
+}
+
+async function getRecentCatTopicLines(params: {
+    dbClient: Awaited<ReturnType<typeof createServerClient>> | ReturnType<typeof createClient>;
+    userId: string;
+}) {
+    const { data } = await params.dbClient
+        .from("cat_sessions")
+        .select("topic")
+        .eq("user_id", params.userId)
+        .order("created_at", { ascending: false })
+        .limit(24);
+
+    return Array.isArray(data)
+        ? data
+            .map((row) => (typeof row.topic === "string" ? row.topic.trim() : ""))
+            .filter(Boolean)
+        : [];
 }
 
 function normalizeEvidenceBucket(input: unknown) {
@@ -474,22 +625,13 @@ async function generateDraft(params: {
 
 async function generateValidatedArticle(params: {
     score: number;
-    topic: string;
-    rankName: string;
-    primaryLabel: string;
-    secondaryLabel: string;
-    difficulty: ReturnType<typeof getLegacyDifficultyFromScore>;
+    topicSelection: TopicSelection;
     generationTheme: CatGenerationTheme;
     useSharedKey?: boolean;
 }) {
     const difficultyTargets = getCatArticleTargets(params.score);
     const prompt = buildArticlePrompt({
-        topic: params.topic,
-        score: params.score,
-        rankName: params.rankName,
-        primaryLabel: params.primaryLabel,
-        secondaryLabel: params.secondaryLabel,
-        difficulty: params.difficulty,
+        topicSelection: params.topicSelection,
         targets: difficultyTargets,
         generationTheme: params.generationTheme,
     });
@@ -518,274 +660,294 @@ async function generateValidatedArticle(params: {
 
 
 export async function POST(request: Request) {
-    const body = (await request.json().catch(() => ({}))) as StartCatPayload;
-    const supabase = await createServerClient();
-    const { user, error } = await getServerUserSafely();
-    const bearerToken = getBearerToken(request);
+    try {
+        const body = (await request.json().catch(() => ({}))) as StartCatPayload;
+        const supabase = await createServerClient();
+        const { user, error } = await getServerUserSafely();
+        const bearerToken = getBearerToken(request);
 
-    let resolvedUser = user;
-    if (!resolvedUser) {
-        if (bearerToken) {
-            const { data, error: bearerError } = await supabase.auth.getUser(bearerToken);
-            resolvedUser = data.user ?? null;
-            if (bearerError || !resolvedUser) {
+        let resolvedUser = user;
+        if (!resolvedUser) {
+            if (bearerToken) {
+                const { data, error: bearerError } = await supabase.auth.getUser(bearerToken);
+                resolvedUser = data.user ?? null;
+                if (bearerError || !resolvedUser) {
+                    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+                }
+            } else if (error) {
+                return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+            } else {
                 return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
             }
-        } else if (error) {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-        } else {
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
-    }
 
-    const dbClient = bearerToken
-        ? createClient(getSupabaseUrl(), getSupabasePublishableKey(), {
-              auth: {
-                  persistSession: false,
-                  autoRefreshToken: false,
-              },
-              global: {
-                  headers: {
-                      Authorization: `Bearer ${bearerToken}`,
+        const dbClient = bearerToken
+            ? createClient(getSupabaseUrl(), getSupabasePublishableKey(), {
+                  auth: {
+                      persistSession: false,
+                      autoRefreshToken: false,
                   },
-              },
-          })
-        : supabase;
+                  global: {
+                      headers: {
+                          Authorization: `Bearer ${bearerToken}`,
+                      },
+                  },
+              })
+            : supabase;
 
-    const { data: profile } = await dbClient
-        .from("profiles")
-        .select("*")
-        .eq("user_id", resolvedUser.id)
-        .maybeSingle();
+        const { data: profile } = await dbClient
+            .from("profiles")
+            .select("*")
+            .eq("user_id", resolvedUser.id)
+            .maybeSingle();
 
-    const scoreBefore = normalizeCatScore(Number((profile as Record<string, unknown> | null)?.cat_score ?? 1000));
-    const levelBefore = Number((profile as Record<string, unknown> | null)?.cat_level ?? levelFromScore(scoreBefore));
-    const thetaBefore = Number((profile as Record<string, unknown> | null)?.cat_theta ?? normalizeThetaFromScore(scoreBefore));
-    const seBefore = clamp(Number((profile as Record<string, unknown> | null)?.cat_se ?? 1.15), 0.22, 2.4);
-    const nextBand = getLegacyBandFromScore(scoreBefore);
-    const difficulty = getLegacyDifficultyFromScore(scoreBefore);
-    const rankBefore = getCatRankTier(scoreBefore);
-    const scoreToNextRank = getCatScoreToNextRank(scoreBefore);
-    const mainSkillBand = getCatMainSkillBand(scoreBefore);
-    const topicSeed = pickCatTopicSeed({
-        score: scoreBefore,
-        userTopic: typeof body.topic === "string" ? body.topic : "",
-    });
-    const topic = topicSeed.topicLine;
-    const generationTheme = pickRandomCatGenerationTheme();
+        const scoreBefore = normalizeCatScore(Number((profile as Record<string, unknown> | null)?.cat_score ?? 1000));
+        const difficultySignalHintRaw = Number(body.difficultySignalHint ?? 0);
+        const difficultySignalHint = Number.isFinite(difficultySignalHintRaw)
+            ? Math.max(-1, Math.min(1, difficultySignalHintRaw))
+            : 0;
+        const generationScore = normalizeCatScore(scoreBefore + getCatDifficultyScoreOffset(difficultySignalHint));
+        const levelBefore = Number((profile as Record<string, unknown> | null)?.cat_level ?? levelFromScore(scoreBefore));
+        const thetaBefore = Number((profile as Record<string, unknown> | null)?.cat_theta ?? normalizeThetaFromScore(scoreBefore));
+        const seBefore = clamp(Number((profile as Record<string, unknown> | null)?.cat_se ?? 1.15), 0.22, 2.4);
+        const nextBand = getLegacyBandFromScore(generationScore);
+        const difficulty = getLegacyDifficultyFromScore(generationScore);
+        const rankBefore = getCatRankTier(scoreBefore);
+        const scoreToNextRank = getCatScoreToNextRank(scoreBefore);
+        const mainSkillBand = getCatMainSkillBand(scoreBefore);
+        const requestedTopic = typeof body.topic === "string" ? body.topic : "";
+        const recentTopicLines = requestedTopic.trim()
+            ? []
+            : await getRecentCatTopicLines({
+                dbClient,
+                userId: resolvedUser.id,
+            });
+        const topicSeed = pickCatTopicSeed({
+            score: generationScore,
+            userTopic: requestedTopic,
+            recentTopicLines,
+        });
+        const topic = topicSeed.topicLine;
+        const generationTheme = pickRandomCatGenerationTheme();
 
-    const passageOneResult = await generateValidatedArticle({
-        score: scoreBefore,
-        topic,
-        rankName: rankBefore.name,
-        primaryLabel: rankBefore.primaryLabel,
-        secondaryLabel: rankBefore.secondaryLabel,
-        difficulty,
-        generationTheme,
-        useSharedKey: true,
-    });
+        const passageOneResult = await generateValidatedArticle({
+            score: generationScore,
+            topicSelection: topicSeed,
+            generationTheme,
+            useSharedKey: true,
+        });
 
-    if (!passageOneResult.draft) {
-        return NextResponse.json(
-            {
-                error: "Failed to generate CAT article.",
-                auditMode: CAT_AUDIT_MODE,
-                difficultyTargets: passageOneResult.difficultyTargets,
-            },
-            { status: 500 },
-        );
-    }
-
-    const passageOneDraft = passageOneResult.draft;
-    const questionBlueprint = getCatQuizBlueprint(scoreBefore);
-    const sessionPolicy = getCatSessionPolicy(scoreBefore);
-    const challengeRatioMin = Math.max(0, Number((sessionPolicy.challengeRatio - 0.08).toFixed(2)));
-    const challengeRatioMax = Math.min(1, Number((sessionPolicy.challengeRatio + 0.08).toFixed(2)));
-    const sessionBlueprint: SessionBlueprint = {
-        minItems: sessionPolicy.minItems,
-        maxItems: sessionPolicy.maxItems,
-        targetSe: sessionPolicy.targetSe,
-        stopRule: "precision_first",
-        challengeRatioTarget: [challengeRatioMin, challengeRatioMax],
-        passages: [
-            {
-                passageIndex: 1,
-                title: passageOneDraft.title || "CAT Short Passage",
-                content: passageOneDraft.content,
-                targetScore: scoreBefore,
-                qualityTier: "ok",
-            },
-        ],
-        items: [],
-    };
-
-    const articleTitle = passageOneDraft.title || `${rankBefore.name} 阅读训练`;
-    const articleUrl = `cat://${resolvedUser.id}/${Date.now()}`;
-    const blocks = splitParagraphs(passageOneDraft.content).map((paragraph) => ({ type: "paragraph", content: paragraph }));
-    const difficultyTargets = passageOneResult.difficultyTargets;
-    const qualityTier = "ok" as const;
-    const attemptCount = 1;
-    const usedReasoner = false;
-
-    let sessionRow: {
-        session_id?: string;
-        score_before?: number;
-        level_before?: number;
-        theta_before?: number;
-        band?: number;
-        difficulty?: string;
-        created_at?: string;
-    } = {};
-
-    const { data: sessionData, error: sessionError } = await dbClient.rpc("start_cat_session", {
-        p_topic: topic,
-        p_difficulty: difficulty,
-        p_band: nextBand,
-        p_article_title: articleTitle,
-        p_article_url: articleUrl,
-    });
-
-    if (sessionError) {
-        if (!isMissingRpcFunction(sessionError, "start_cat_session")) {
-            return NextResponse.json({ error: sessionError.message }, { status: 500 });
+        if (!passageOneResult.draft) {
+            return NextResponse.json(
+                {
+                    error: "Failed to generate CAT article.",
+                    auditMode: CAT_AUDIT_MODE,
+                    difficultyTargets: passageOneResult.difficultyTargets,
+                },
+                { status: 500 },
+            );
         }
 
-        const { data: insertedSession, error: insertError } = await dbClient
-            .from("cat_sessions")
-            .insert({
-                user_id: resolvedUser.id,
-                topic,
-                difficulty,
-                band: nextBand,
-                score_before: scoreBefore,
-                article_title: articleTitle,
-                article_url: articleUrl,
-                status: "started",
-            })
-            .select("id, band, difficulty, created_at")
-            .single();
-
-        if (insertError) {
-            return NextResponse.json({ error: insertError.message }, { status: 500 });
-        }
-
-        sessionRow = {
-            session_id: insertedSession.id,
-            score_before: scoreBefore,
-            level_before: levelBefore,
-            theta_before: thetaBefore,
-            band: insertedSession.band ?? nextBand,
-            difficulty: insertedSession.difficulty ?? difficulty,
-            created_at: insertedSession.created_at ?? new Date().toISOString(),
-        };
-    } else {
-        const rpcRow = Array.isArray(sessionData) ? sessionData[0] : sessionData;
-        sessionRow = rpcRow ?? {};
-    }
-
-    try {
-        await dbClient
-            .from("cat_sessions")
-            .update({
-                session_blueprint: sessionBlueprint,
-                quality_tier: qualityTier,
-                se_before: seBefore,
-                target_se: sessionPolicy.targetSe,
-                item_count: questionBlueprint.questionCount,
-                updated_at: new Date().toISOString(),
-            })
-            .eq("id", sessionRow?.session_id ?? "");
-            // ignore missing column/table errors in older DBs
-    } catch {
-        // no-op
-    }
-
-    return NextResponse.json({
-        article: {
-            title: articleTitle,
-            content: passageOneDraft.content,
-            byline: passageOneDraft.byline,
-            textContent: passageOneDraft.content,
-            blocks,
-            url: articleUrl,
-            difficulty,
-            isAIGenerated: true,
-            isCatMode: true,
-            catSessionId: sessionRow?.session_id,
-            catBand: sessionRow?.band ?? nextBand,
-            catScoreSnapshot: scoreBefore,
-            catThetaSnapshot: thetaBefore,
-            catSeSnapshot: seBefore,
-            catRankName: rankBefore.name,
-            catRankPrimaryLabel: rankBefore.primaryLabel,
-            catRankSecondaryLabel: rankBefore.secondaryLabel,
-            catQuizBlueprint: {
-                score: scoreBefore,
-                questionCount: questionBlueprint.questionCount,
-                ratioBandLabel: questionBlueprint.ratioBandLabel,
-                distribution: questionBlueprint.distribution,
-                allowedTypes: questionBlueprint.allowedTypes,
-            },
-            catSessionBlueprint: sessionBlueprint,
-            catDifficultyProfile: {
-                wordCount: [difficultyTargets.lengthTarget.wordCountMin, difficultyTargets.lengthTarget.wordCountMax],
-                complexSentenceRatio: difficultyTargets.syntaxTarget.complexSentenceRatioRange,
-                multiClauseSentenceRatio: difficultyTargets.syntaxTarget.multiClauseSentenceRatioRange,
-                clauseDensity: difficultyTargets.syntaxTarget.clauseDensityRange,
-                lexicalRatios: difficultyTargets.lexicalTarget.ratios,
-            },
-            generationTheme: {
-                id: generationTheme.id,
-                name: generationTheme.name,
-            },
-        },
-        catSession: {
-            id: sessionRow?.session_id,
-            band: sessionRow?.band ?? nextBand,
-            difficulty: sessionRow?.difficulty ?? difficulty,
-            scoreBefore: sessionRow?.score_before ?? scoreBefore,
-            levelBefore: sessionRow?.level_before ?? levelBefore,
-            thetaBefore: sessionRow?.theta_before ?? thetaBefore,
-            seBefore,
-            createdAt: sessionRow?.created_at ?? new Date().toISOString(),
-            topic,
-            rankBefore: rankBefore.name,
-            primaryLabel: rankBefore.primaryLabel,
-            secondaryLabel: rankBefore.secondaryLabel,
-            scoreToNextRank,
-            stopRule: "precision_first",
+        const passageOneDraft = passageOneResult.draft;
+        const questionBlueprint = getCatQuizBlueprint(generationScore);
+        const sessionPolicy = getCatSessionPolicy(generationScore);
+        const challengeRatioMin = Math.max(0, Number((sessionPolicy.challengeRatio - 0.08).toFixed(2)));
+        const challengeRatioMax = Math.min(1, Number((sessionPolicy.challengeRatio + 0.08).toFixed(2)));
+        const sessionBlueprint: SessionBlueprint = {
             minItems: sessionPolicy.minItems,
             maxItems: sessionPolicy.maxItems,
             targetSe: sessionPolicy.targetSe,
-            generationTheme: generationTheme.name,
-            topicSeed,
-        },
-        catProfile: {
-            score: scoreBefore,
-            level: levelBefore,
-            theta: thetaBefore,
-            se: seBefore,
-            points: (profile as Record<string, unknown> | null)?.cat_points ?? 0,
-            currentBand: (profile as Record<string, unknown> | null)?.cat_current_band ?? nextBand,
-            rank: rankBefore.name,
-            primaryLabel: rankBefore.primaryLabel,
-            secondaryLabel: rankBefore.secondaryLabel,
-            scoreToNextRank,
-            mainSkillBand,
-        },
-        qualityTier,
-        attemptCount,
-        usedReasoner,
-        auditMode: CAT_AUDIT_MODE,
-        model: passageOneResult.model,
-        difficultyTargets,
-        difficultyAudit: null,
-        validationSummary: null,
-        abilitySnapshot: {
-            score: scoreBefore,
-            theta: thetaBefore,
-            se: seBefore,
-            rank: rankBefore.name,
-        },
-    });
+            stopRule: "precision_first",
+            challengeRatioTarget: [challengeRatioMin, challengeRatioMax],
+            passages: [
+                {
+                    passageIndex: 1,
+                    title: passageOneDraft.title || "CAT Short Passage",
+                    content: passageOneDraft.content,
+                    targetScore: generationScore,
+                    qualityTier: "ok",
+                },
+            ],
+            items: [],
+        };
+
+        const articleTitle = passageOneDraft.title || `${rankBefore.name} 阅读训练`;
+        const articleUrl = `cat://${resolvedUser.id}/${Date.now()}`;
+        const blocks = splitParagraphs(passageOneDraft.content).map((paragraph) => ({ type: "paragraph", content: paragraph }));
+        const difficultyTargets = passageOneResult.difficultyTargets;
+        const qualityTier = "ok" as const;
+        const attemptCount = 1;
+        const usedReasoner = false;
+
+        let sessionRow: {
+            session_id?: string;
+            score_before?: number;
+            level_before?: number;
+            theta_before?: number;
+            band?: number;
+            difficulty?: string;
+            created_at?: string;
+        } = {};
+
+        const { data: sessionData, error: sessionError } = await dbClient.rpc("start_cat_session", {
+            p_topic: topic,
+            p_difficulty: difficulty,
+            p_band: nextBand,
+            p_article_title: articleTitle,
+            p_article_url: articleUrl,
+        });
+
+        if (sessionError) {
+            if (!isMissingRpcFunction(sessionError, "start_cat_session")) {
+                return NextResponse.json({ error: sessionError.message }, { status: 500 });
+            }
+
+            const { data: insertedSession, error: insertError } = await dbClient
+                .from("cat_sessions")
+                .insert({
+                    user_id: resolvedUser.id,
+                    topic,
+                    difficulty,
+                    band: nextBand,
+                    score_before: scoreBefore,
+                    article_title: articleTitle,
+                    article_url: articleUrl,
+                    status: "started",
+                })
+                .select("id, band, difficulty, created_at")
+                .single();
+
+            if (insertError) {
+                return NextResponse.json({ error: insertError.message }, { status: 500 });
+            }
+
+            sessionRow = {
+                session_id: insertedSession.id,
+                score_before: scoreBefore,
+                level_before: levelBefore,
+                theta_before: thetaBefore,
+                band: insertedSession.band ?? nextBand,
+                difficulty: insertedSession.difficulty ?? difficulty,
+                created_at: insertedSession.created_at ?? new Date().toISOString(),
+            };
+        } else {
+            const rpcRow = Array.isArray(sessionData) ? sessionData[0] : sessionData;
+            sessionRow = rpcRow ?? {};
+        }
+
+        try {
+            await dbClient
+                .from("cat_sessions")
+                .update({
+                    session_blueprint: sessionBlueprint,
+                    quality_tier: qualityTier,
+                    se_before: seBefore,
+                    target_se: sessionPolicy.targetSe,
+                    item_count: questionBlueprint.questionCount,
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", sessionRow?.session_id ?? "");
+                // ignore missing column/table errors in older DBs
+        } catch {
+            // no-op
+        }
+
+        return NextResponse.json({
+            article: {
+                title: articleTitle,
+                content: passageOneDraft.content,
+                byline: passageOneDraft.byline,
+                textContent: passageOneDraft.content,
+                blocks,
+                url: articleUrl,
+                difficulty,
+                isAIGenerated: true,
+                isCatMode: true,
+                catSessionId: sessionRow?.session_id,
+                catBand: sessionRow?.band ?? nextBand,
+                catScoreSnapshot: scoreBefore,
+                catThetaSnapshot: thetaBefore,
+                catSeSnapshot: seBefore,
+                catRankName: rankBefore.name,
+                catRankPrimaryLabel: rankBefore.primaryLabel,
+                catRankSecondaryLabel: rankBefore.secondaryLabel,
+                catQuizBlueprint: {
+                    score: generationScore,
+                    questionCount: questionBlueprint.questionCount,
+                    ratioBandLabel: questionBlueprint.ratioBandLabel,
+                    distribution: questionBlueprint.distribution,
+                    allowedTypes: questionBlueprint.allowedTypes,
+                },
+                catSessionBlueprint: sessionBlueprint,
+                catDifficultyProfile: {
+                    wordCount: [difficultyTargets.lengthTarget.wordCountMin, difficultyTargets.lengthTarget.wordCountMax],
+                    sentenceLength: difficultyTargets.syntaxTarget.sentenceLengthRange,
+                    complexSentenceRatio: difficultyTargets.syntaxTarget.complexSentenceRatioRange,
+                    multiClauseSentenceRatio: difficultyTargets.syntaxTarget.multiClauseSentenceRatioRange,
+                    clauseDensity: difficultyTargets.syntaxTarget.clauseDensityRange,
+                    lexicalRatios: difficultyTargets.lexicalTarget.ratios,
+                },
+                generationTheme: {
+                    id: generationTheme.id,
+                    name: generationTheme.name,
+                },
+            },
+            catSession: {
+                id: sessionRow?.session_id,
+                band: sessionRow?.band ?? nextBand,
+                difficulty: sessionRow?.difficulty ?? difficulty,
+                scoreBefore: sessionRow?.score_before ?? scoreBefore,
+                generationScore,
+                levelBefore: sessionRow?.level_before ?? levelBefore,
+                thetaBefore: sessionRow?.theta_before ?? thetaBefore,
+                seBefore,
+                createdAt: sessionRow?.created_at ?? new Date().toISOString(),
+                topic,
+                rankBefore: rankBefore.name,
+                primaryLabel: rankBefore.primaryLabel,
+                secondaryLabel: rankBefore.secondaryLabel,
+                scoreToNextRank,
+                stopRule: "precision_first",
+                minItems: sessionPolicy.minItems,
+                maxItems: sessionPolicy.maxItems,
+                targetSe: sessionPolicy.targetSe,
+                difficultySignalHint,
+                generationTheme: generationTheme.name,
+                topicSeed,
+            },
+            catProfile: {
+                score: scoreBefore,
+                level: levelBefore,
+                theta: thetaBefore,
+                se: seBefore,
+                points: (profile as Record<string, unknown> | null)?.cat_points ?? 0,
+                currentBand: (profile as Record<string, unknown> | null)?.cat_current_band ?? nextBand,
+                rank: rankBefore.name,
+                primaryLabel: rankBefore.primaryLabel,
+                secondaryLabel: rankBefore.secondaryLabel,
+                scoreToNextRank,
+                mainSkillBand,
+            },
+            qualityTier,
+            attemptCount,
+            usedReasoner,
+            auditMode: CAT_AUDIT_MODE,
+            model: passageOneResult.model,
+            difficultyTargets,
+            difficultyAudit: null,
+            validationSummary: null,
+            abilitySnapshot: {
+                score: scoreBefore,
+                theta: thetaBefore,
+                se: seBefore,
+                rank: rankBefore.name,
+            },
+        });
+    } catch (error) {
+        console.error("CAT session start failed:", error);
+        const message = error instanceof Error && error.message.trim()
+            ? error.message
+            : "启动 CAT 训练失败。";
+        return NextResponse.json({ error: message }, { status: 500 });
+    }
 }

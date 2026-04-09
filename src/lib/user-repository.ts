@@ -1173,6 +1173,51 @@ async function enqueueLegacyDictationEloForSync(userId: string) {
     });
 }
 
+async function enqueueVocabularyFsrsResetForSync(userId: string) {
+    const resetMeta = await db.sync_meta.get("migration:vocabulary_fsrs_reset");
+    if (!resetMeta?.value) {
+        return;
+    }
+
+    const appliedMetaKey = `migration:vocabulary_fsrs_reset:${userId}`;
+    const appliedMeta = await db.sync_meta.get(appliedMetaKey);
+    if (appliedMeta?.value === resetMeta.value) {
+        return;
+    }
+
+    const vocabulary = await db.vocabulary.toArray();
+    for (const item of vocabulary) {
+        const remoteId = item.remote_id || crypto.randomUUID();
+        const updatedAt = nowIso();
+        const nextItem = {
+            ...item,
+            remote_id: remoteId,
+            user_id: userId,
+            updated_at: updatedAt,
+            sync_status: "pending" as const,
+        };
+
+        await db.vocabulary.update(item.word, {
+            remote_id: remoteId,
+            user_id: userId,
+            updated_at: updatedAt,
+            sync_status: "pending",
+        });
+        await queueOutboxItem({
+            entity: "vocabulary",
+            operation: "upsert",
+            recordKey: nextItem.word_key || normalizeWordKey(nextItem.word),
+            payload: toRemoteVocabularyRow(userId, nextItem),
+        });
+    }
+
+    await db.sync_meta.put({
+        key: appliedMetaKey,
+        value: resetMeta.value,
+        updated_at: Date.now(),
+    });
+}
+
 export async function flushOutbox() {
     requireOnline();
     const userId = await getAuthenticatedUserId();
@@ -1220,9 +1265,16 @@ export async function flushOutbox() {
             }
 
             if (item.entity === "read_articles") {
-                const { error } = await supabase
-                    .from("read_articles")
-                    .upsert(item.payload, { onConflict: "user_id,url" });
+                const result = item.operation === "delete"
+                    ? await supabase
+                        .from("read_articles")
+                        .delete()
+                        .eq("user_id", userId)
+                        .eq("url", item.record_key)
+                    : await supabase
+                        .from("read_articles")
+                        .upsert(item.payload, { onConflict: "user_id,url" });
+                const { error } = result;
                 if (error) throw error;
             }
 
@@ -1271,6 +1323,7 @@ async function syncRemoteMirror(userId: string, options: RemoteSyncOptions = {})
         await migrateLegacyData(userId);
     }
     await enqueueLegacyDictationEloForSync(userId);
+    await enqueueVocabularyFsrsResetForSync(userId);
     await pushLocalNewerRecords(userId, remoteProfile);
     await syncDailyPlanMirror(userId);
 
@@ -1638,6 +1691,33 @@ export async function markArticleAsRead(url: string, metadata?: ReadArticleSnaps
         operation: "upsert",
         recordKey: normalizedUrl,
         payload: toRemoteReadArticle(userId, nextItem),
+    });
+    useSyncStatusStore.getState().setPhase("syncing");
+    void scheduleBackgroundSync();
+}
+
+export async function deleteReadArticleSnapshot(url: string) {
+    const normalizedUrl = url.trim();
+    if (!normalizedUrl) {
+        throw new Error("Missing article url.");
+    }
+
+    const userId = await getActiveUserId();
+
+    await db.transaction("rw", db.articles, db.read_articles, db.sync_outbox, async () => {
+        await db.articles.delete(normalizedUrl);
+        await db.read_articles.delete(normalizedUrl);
+    });
+
+    if (!userId) {
+        return;
+    }
+
+    await queueOutboxItem({
+        entity: "read_articles",
+        operation: "delete",
+        recordKey: normalizedUrl,
+        payload: { user_id: userId, url: normalizedUrl },
     });
     useSyncStatusStore.getState().setPhase("syncing");
     void scheduleBackgroundSync();

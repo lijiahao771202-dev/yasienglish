@@ -1,71 +1,137 @@
 import { describe, expect, it } from "vitest";
+import { fsrs as createOfficialFsrs, Rating as OfficialRating, State as OfficialState, type Card } from "ts-fsrs";
 
 import type { VocabItem } from "./db";
-import { Rating, State, createEmptyCard, graduateCard, isCardGraduated, getRatingEtaLabel, scheduleCard } from "./fsrs";
+import {
+    Rating,
+    State,
+    archiveVocabularyCard,
+    createEmptyCard,
+    getRatingEtaLabel,
+    isVocabularyArchived,
+    resetVocabularySchedulingState,
+    scheduleCard,
+} from "./fsrs";
 
-function buildCard(): VocabItem {
-    const now = new Date("2026-03-30T10:00:00.000Z").getTime();
+const officialScheduler = createOfficialFsrs();
+
+function buildNewCard(now: number): VocabItem {
     return {
-        ...createEmptyCard("brief"),
+        ...createEmptyCard("brief", now),
         word: "brief",
         definition: "n. 简报",
         translation: "n. 简报",
         context: "",
         example: "",
         timestamp: now - 1000,
+    } as VocabItem;
+}
+
+function buildReviewCard(now: number): VocabItem {
+    return {
+        ...buildNewCard(now),
         stability: 2.3,
         difficulty: 4.2,
         elapsed_days: 1,
         scheduled_days: 1,
         reps: 2,
+        lapses: 1,
+        learning_steps: 0,
         state: State.Review,
         last_review: now - 86400000,
         due: now,
-    } as VocabItem;
+    };
 }
 
-describe("fsrs graduation", () => {
-    it("graduates a card out of the review queue with a persistent sentinel schedule", () => {
-        const now = new Date("2026-03-30T10:00:00.000Z").getTime();
-        const graduated = graduateCard(buildCard(), now);
+function toOfficialCard(card: VocabItem): Card {
+    return {
+        due: new Date(card.due),
+        stability: card.stability,
+        difficulty: card.difficulty,
+        elapsed_days: card.elapsed_days,
+        scheduled_days: card.scheduled_days,
+        learning_steps: card.learning_steps,
+        reps: card.reps,
+        lapses: card.lapses,
+        state: card.state as OfficialState,
+        last_review: card.last_review > 0 ? new Date(card.last_review) : undefined,
+    };
+}
 
-        expect(graduated.state).toBe(State.Review);
-        expect(graduated.scheduled_days).toBeGreaterThanOrEqual(365000);
-        expect(graduated.due).toBeGreaterThan(now + 100 * 365 * 24 * 60 * 60 * 1000);
-        expect(graduated.last_review).toBe(now);
-        expect(graduated.reps).toBe(3);
-        expect(isCardGraduated(graduated)).toBe(true);
+describe("official fsrs adapter", () => {
+    it("matches ts-fsrs for a new card preview", () => {
+        const now = Date.parse("2026-04-09T10:00:00.000Z");
+        const card = buildNewCard(now);
+
+        const expected = officialScheduler.next(toOfficialCard(card), new Date(now), OfficialRating.Easy).card;
+        const scheduled = scheduleCard(card, Rating.Easy, now);
+
+        expect(scheduled.state).toBe(expected.state);
+        expect(scheduled.scheduled_days).toBe(expected.scheduled_days);
+        expect(scheduled.learning_steps).toBe(expected.learning_steps);
+        expect(scheduled.reps).toBe(expected.reps);
+        expect(scheduled.lapses).toBe(expected.lapses);
+        expect(scheduled.due).toBe(expected.due.getTime());
+        expect(getRatingEtaLabel(card, Rating.Easy, now)).toBe(`${expected.scheduled_days}d`);
     });
 
-    it("does not treat a normal review card as graduated", () => {
-        expect(isCardGraduated(buildCard())).toBe(false);
+    it("matches ts-fsrs for a review lapse", () => {
+        const now = Date.parse("2026-04-09T10:00:00.000Z");
+        const card = buildReviewCard(now);
+
+        const expected = officialScheduler.next(toOfficialCard(card), new Date(now), OfficialRating.Again).card;
+        const scheduled = scheduleCard(card, Rating.Again, now);
+
+        expect(scheduled.state).toBe(expected.state);
+        expect(scheduled.scheduled_days).toBe(expected.scheduled_days);
+        expect(scheduled.learning_steps).toBe(expected.learning_steps);
+        expect(scheduled.reps).toBe(expected.reps);
+        expect(scheduled.lapses).toBe(expected.lapses);
+        expect(scheduled.due).toBe(expected.due.getTime());
+        expect(scheduled.stability).toBeCloseTo(expected.stability, 8);
+        expect(scheduled.difficulty).toBeCloseTo(expected.difficulty, 8);
     });
 });
 
-describe("fsrs rating eta labels", () => {
-    it("uses the real scheduled result for a new card instead of a static placeholder", () => {
-        const now = new Date("2026-04-09T10:00:00.000Z").getTime();
+describe("vocabulary scheduling resets", () => {
+    it("fully resets scheduling fields while preserving word content", () => {
+        const now = Date.parse("2026-04-09T10:00:00.000Z");
         const card = {
-            ...createEmptyCard("brief"),
-            word: "brief",
-            definition: "n. 简报",
-            translation: "n. 简报",
-            context: "",
-            example: "",
-            timestamp: now - 1000,
-        } as VocabItem;
+            ...buildReviewCard(now),
+            archived_at: now - 1000,
+        };
 
-        expect(getRatingEtaLabel(card, Rating.Again, now)).toBe("1m");
-        expect(getRatingEtaLabel(card, Rating.Hard, now)).toBe("5m");
-        expect(getRatingEtaLabel(card, Rating.Good, now)).toBe("10m");
-        expect(getRatingEtaLabel(card, Rating.Easy, now)).toBe("6d");
+        const reset = resetVocabularySchedulingState(card, now);
+
+        expect(reset.word).toBe(card.word);
+        expect(reset.translation).toBe(card.translation);
+        expect(reset.timestamp).toBe(card.timestamp);
+        expect(reset.stability).toBe(0);
+        expect(reset.difficulty).toBe(0);
+        expect(reset.elapsed_days).toBe(0);
+        expect(reset.scheduled_days).toBe(0);
+        expect(reset.reps).toBe(0);
+        expect(reset.lapses).toBe(0);
+        expect(reset.learning_steps).toBe(0);
+        expect(reset.state).toBe(State.New);
+        expect(reset.last_review).toBe(0);
+        expect(reset.due).toBe(now);
+        expect(reset.archived_at).toBeUndefined();
     });
+});
 
-    it("matches the scheduleCard result for review cards", () => {
-        const now = new Date("2026-04-09T10:00:00.000Z").getTime();
-        const card = buildCard();
-        const scheduled = scheduleCard(card, Rating.Easy, now);
+describe("manual archive helpers", () => {
+    it("archives a card without rewriting scheduling fields", () => {
+        const now = Date.parse("2026-04-09T10:00:00.000Z");
+        const card = buildReviewCard(now);
 
-        expect(getRatingEtaLabel(card, Rating.Easy, now)).toBe(`${scheduled.scheduled_days}d`);
+        const archived = archiveVocabularyCard(card, now);
+
+        expect(isVocabularyArchived(archived)).toBe(true);
+        expect(archived.archived_at).toBe(now);
+        expect(archived.due).toBe(card.due);
+        expect(archived.state).toBe(card.state);
+        expect(archived.scheduled_days).toBe(card.scheduled_days);
+        expect(archived.stability).toBe(card.stability);
     });
 });

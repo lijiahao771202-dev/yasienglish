@@ -55,16 +55,33 @@ describe("cat score model", () => {
     });
 
     it("maps score to three-axis article targets by boundary", () => {
-        expect(getCatArticleTargets(799).lexicalTarget.coreTier).toBe("high_school");
-        expect(getCatArticleTargets(800).lexicalTarget.coreTier).toBe("cet4");
-        expect(getCatArticleTargets(1399).lexicalTarget.coreTier).toBe("cet4");
-        expect(getCatArticleTargets(1400).lexicalTarget.coreTier).toBe("cet6");
-        expect(getCatArticleTargets(1999).lexicalTarget.coreTier).toBe("cet6");
-        expect(getCatArticleTargets(2000).lexicalTarget.coreTier).toBe("tem4_ielts6");
+        expect(getCatArticleTargets(599).lexicalTarget.coreTier).toBe("high_school");
+        expect(getCatArticleTargets(600).lexicalTarget.coreTier).toBe("cet4");
+        expect(getCatArticleTargets(1199).lexicalTarget.coreTier).toBe("cet4");
+        expect(getCatArticleTargets(1200).lexicalTarget.coreTier).toBe("cet6");
+        expect(getCatArticleTargets(1799).lexicalTarget.coreTier).toBe("cet6");
+        expect(getCatArticleTargets(1800).lexicalTarget.coreTier).toBe("tem4_ielts6");
         expect(getCatArticleTargets(2599).lexicalTarget.coreTier).toBe("tem4_ielts6");
         expect(getCatArticleTargets(2600).lexicalTarget.coreTier).toBe("tem8_ielts7");
         expect(getCatArticleTargets(3199).lexicalTarget.coreTier).toBe("tem8_ielts7");
         expect(getCatArticleTargets(3200).lexicalTarget.coreTier).toBe("tem8plus_ielts8");
+
+        expect(getCatArticleTargets(100).lengthTarget).toEqual({ wordCountMin: 180, wordCountMax: 240 });
+        expect(getCatArticleTargets(500).lengthTarget).toEqual({ wordCountMin: 220, wordCountMax: 300 });
+        expect(getCatArticleTargets(700).lengthTarget).toEqual({ wordCountMin: 280, wordCountMax: 360 });
+        expect(getCatArticleTargets(900).lengthTarget).toEqual({ wordCountMin: 360, wordCountMax: 440 });
+        expect(getCatArticleTargets(1100).lengthTarget).toEqual({ wordCountMin: 420, wordCountMax: 520 });
+        expect(getCatArticleTargets(1300).lengthTarget).toEqual({ wordCountMin: 460, wordCountMax: 560 });
+        expect(getCatArticleTargets(1500).lengthTarget).toEqual({ wordCountMin: 520, wordCountMax: 620 });
+        expect(getCatArticleTargets(1700).lengthTarget).toEqual({ wordCountMin: 560, wordCountMax: 680 });
+        expect(getCatArticleTargets(1900).lengthTarget).toEqual({ wordCountMin: 600, wordCountMax: 720 });
+        expect(getCatArticleTargets(2100).lengthTarget).toEqual({ wordCountMin: 640, wordCountMax: 780 });
+        expect(getCatArticleTargets(2300).lengthTarget).toEqual({ wordCountMin: 700, wordCountMax: 850 });
+        expect(getCatArticleTargets(2500).lengthTarget).toEqual({ wordCountMin: 760, wordCountMax: 900 });
+        expect(getCatArticleTargets(2700).lengthTarget).toEqual({ wordCountMin: 820, wordCountMax: 980 });
+        expect(getCatArticleTargets(2900).lengthTarget).toEqual({ wordCountMin: 880, wordCountMax: 1040 });
+        expect(getCatArticleTargets(3100).lengthTarget).toEqual({ wordCountMin: 920, wordCountMax: 1100 });
+        expect(getCatArticleTargets(3400).lengthTarget).toEqual({ wordCountMin: 980, wordCountMax: 1200 });
     });
 
     it("returns score distance to next rank", () => {
@@ -182,9 +199,9 @@ describe("cat score model", () => {
         const multiClauseSentence =
             "Progress remains stable because the class tracks errors while each member keeps consistent study notes every day.";
         const passText = [
-            ...Array.from({ length: 15 }, () => simpleSentence),
-            ...Array.from({ length: 4 }, () => complexSentence),
-            multiClauseSentence,
+            ...Array.from({ length: 26 }, () => simpleSentence),
+            ...Array.from({ length: 8 }, () => complexSentence),
+            ...Array.from({ length: 2 }, () => multiClauseSentence),
         ].join(" ");
 
         const pass = validateCatArticleAgainstTargets({

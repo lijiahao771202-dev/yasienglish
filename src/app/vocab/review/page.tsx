@@ -2,14 +2,13 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { db, VocabItem } from '@/lib/db';
-import { Rating, graduateCard, getRatingEtaLabel, scheduleCard } from '@/lib/fsrs';
+import { archiveVocabularyCard, getRatingEtaLabel, isVocabularyArchived, Rating, scheduleCard } from '@/lib/fsrs';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
-import { ArrowLeft, Check, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { saveVocabulary, updateVocabularyEntry } from '@/lib/user-repository';
-import { GlassCard } from '@/components/ui/GlassCard';
 import { VocabReviewEditableCard } from '@/components/vocab/VocabReviewEditableCard';
 import { pickPreferredMeaningGroups } from '@/lib/vocab-meanings';
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
@@ -25,6 +24,16 @@ type DictionaryPayload = {
     translation?: string;
     pos_groups?: PosGroup[];
 };
+
+type AudioContextConstructor = typeof AudioContext;
+
+function getAudioContextClass(): AudioContextConstructor | undefined {
+    const audioWindow = window as Window & typeof globalThis & {
+        webkitAudioContext?: AudioContextConstructor;
+    };
+
+    return audioWindow.AudioContext ?? audioWindow.webkitAudioContext;
+}
 
 const POS_ORDER = ["n.", "v.", "adj.", "adv.", "prep.", "pron.", "conj.", "aux.", "num.", "int."];
 const POS_PREFIX_RE = /^(n|v|adj|adv|prep|pron|conj|aux|num|int)\.\s*/i;
@@ -119,7 +128,7 @@ function isEditableKeyboardTarget(target: EventTarget | null) {
 
 function playRatingEasyChime() {
     try {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        const AudioContextClass = getAudioContextClass();
         if (!AudioContextClass) return;
         const ctx = new AudioContextClass();
         
@@ -151,7 +160,7 @@ function playRatingEasyChime() {
 
 function playSuccessChime(combo: number = 1) {
     try {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        const AudioContextClass = getAudioContextClass();
         if (!AudioContextClass) return;
         const ctx = new AudioContextClass();
         
@@ -223,7 +232,7 @@ function playSuccessChime(combo: number = 1) {
 
 function playVictoryChime() {
     try {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        const AudioContextClass = getAudioContextClass();
         if (!AudioContextClass) return;
         const ctx = new AudioContextClass();
         
@@ -340,7 +349,7 @@ export default function ReviewPage() {
     }, [backgroundTheme]);
 
     useEffect(() => {
-        const onBackgroundChange = (event: Event) => {
+        const onBackgroundChange = () => {
             forceBackgroundRefresh((value) => value + 1);
         };
         window.addEventListener(BACKGROUND_CHANGED_EVENT, onBackgroundChange);
@@ -353,12 +362,12 @@ export default function ReviewPage() {
     useEffect(() => {
         const loadCards = async () => {
             const now = Date.now();
-            const cards = await db.vocabulary
+            const dueCards = await db.vocabulary
                 .where('due')
                 .belowOrEqual(now)
                 .sortBy('due');
 
-            setQueue(cards.slice(0, 25));
+            setQueue(dueCards.filter((item) => !isVocabularyArchived(item)).slice(0, 25));
             setIsLoading(false);
         };
 
@@ -479,11 +488,11 @@ export default function ReviewPage() {
 
         resetCardUiState();
         moveToNextCard();
-    }, [currentCard, moveToNextCard, resetCardUiState, spellCombo]);
+    }, [currentCard, moveToNextCard, resetCardUiState]);
 
-    const handleGraduate = useCallback(async (nextItem: VocabItem, previousWord: string) => {
-        const graduatedCard = graduateCard(nextItem);
-        const saved = await updateVocabularyEntry(previousWord, graduatedCard);
+    const handleArchive = useCallback(async (nextItem: VocabItem, previousWord: string) => {
+        const archivedCard = archiveVocabularyCard(nextItem);
+        const saved = await updateVocabularyEntry(previousWord, archivedCard);
 
         setQueue((prev) => prev.map((card, index) => (
             index === currentIndex ? saved : card
@@ -535,7 +544,7 @@ export default function ReviewPage() {
                 scale: [1, 1 + (0.01 * intensity), 1],
                 rotate: [0, (Math.random() - 0.5) * intensity, 0],
                 filter: [`brightness(1) drop-shadow(0 0 0px rgba(0,0,0,0))`, `brightness(1.1) drop-shadow(0 0 ${10 + intensity * 5}px rgba(${nextCombo > 4 ? '192,132,252' : '52,211,153'}, ${0.3 + intensity * 0.05}))`, `brightness(1) drop-shadow(0 0 0px rgba(0,0,0,0))`],
-                transition: { duration: 1.0, type: "tween", ease: "easeInOut" }
+                transition: { duration: 0.7, type: "tween", ease: "easeInOut" }
             });
 
             setShowComboAnimation(true);
@@ -931,9 +940,8 @@ export default function ReviewPage() {
                                             expandedPosGroups={expandedPosGroups}
                                             onExpandedPosGroupsChange={setExpandedPosGroups}
                                             onPlayAudio={playAudio}
-                                            onGraduate={handleGraduate}
+                                            onArchive={handleArchive}
                                             ghostInput={ghostInput}
-                                            onGhostInput={setGhostInput}
                                             onSaved={(savedCard) => {
                                                 setQueue((prev) => prev.map((card, index) => (
                                                     index === currentIndex ? savedCard : card

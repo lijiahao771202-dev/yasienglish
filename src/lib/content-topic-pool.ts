@@ -1,3 +1,5 @@
+import { getCatRankTier } from "@/lib/cat-score";
+
 export type TopicDifficulty = "cet4" | "cet6" | "ielts";
 
 export interface TopicSelection {
@@ -27,6 +29,15 @@ type TopicCombo = {
     domain: TopicDomain;
     subtopic: TopicSubtopic;
     angle: string;
+};
+
+type TopicChannel = "ai_gen" | "cat";
+
+type TopicHistory = {
+    comboKeys: string[];
+    subtopicKeys: string[];
+    domainIds: string[];
+    topicLines: string[];
 };
 
 const TOPIC_DOMAINS: TopicDomain[] = [
@@ -194,23 +205,75 @@ const AI_DOMAIN_IDS_BY_DIFFICULTY: Record<TopicDifficulty, string[]> = {
     ielts: TOPIC_DOMAINS.map((domain) => domain.id),
 };
 
-const RECENT_TOPIC_KEYS: Record<"ai_gen" | "cat", string[]> = {
-    ai_gen: [],
-    cat: [],
+const ALL_TOPIC_DOMAIN_IDS = TOPIC_DOMAINS.map((domain) => domain.id);
+
+const CAT_DOMAIN_IDS_BY_RANK_ID: Record<string, string[]> = {
+    a0: ["education", "psychology", "city-life", "health", "culture-history"],
+    a1: ["education", "psychology", "city-life", "health", "culture-history", "technology-ai"],
+    a2: ["education", "psychology", "city-life", "health", "culture-history", "technology-ai", "media-communication"],
+    b1: ["education", "psychology", "city-life", "health", "culture-history", "technology-ai", "media-communication"],
+    b1_plus: ["education", "psychology", "city-life", "health", "culture-history", "technology-ai", "media-communication", "career-workplace"],
+    b2_minus: ["education", "psychology", "city-life", "health", "culture-history", "technology-ai", "media-communication", "career-workplace", "environment", "economy"],
+    b2: ["education", "psychology", "city-life", "health", "technology-ai", "media-communication", "career-workplace", "environment", "economy"],
+    b2_plus: ["education", "psychology", "technology-ai", "media-communication", "career-workplace", "environment", "economy", "society-governance", "city-life"],
+    c1_minus: ["education", "psychology", "technology-ai", "media-communication", "career-workplace", "environment", "economy", "society-governance", "culture-history"],
+    c1: ["technology-ai", "media-communication", "career-workplace", "environment", "economy", "society-governance", "law-ethics", "education", "psychology"],
+    c1_plus: ["technology-ai", "media-communication", "career-workplace", "environment", "economy", "society-governance", "law-ethics", "research-methods", "culture-history", "education"],
+    c2_minus: ["economy", "technology-ai", "environment", "society-governance", "law-ethics", "career-workplace", "research-methods", "media-communication", "culture-history"],
+    c2: ["economy", "technology-ai", "environment", "society-governance", "law-ethics", "career-workplace", "research-methods", "media-communication", "culture-history", "psychology"],
+    c2_plus: ["economy", "technology-ai", "environment", "society-governance", "law-ethics", "career-workplace", "research-methods", "media-communication", "culture-history", "psychology", "education", "health"],
+    s1: ["economy", "technology-ai", "environment", "society-governance", "law-ethics", "career-workplace", "research-methods", "media-communication", "culture-history", "psychology", "education", "health", "city-life"],
+    s2: ALL_TOPIC_DOMAIN_IDS,
+    master: ALL_TOPIC_DOMAIN_IDS,
 };
 
-const RECENT_TOPIC_WINDOW = 20;
+const RECENT_TOPIC_HISTORY: Record<TopicChannel, TopicHistory> = {
+    ai_gen: {
+        comboKeys: [],
+        subtopicKeys: [],
+        domainIds: [],
+        topicLines: [],
+    },
+    cat: {
+        comboKeys: [],
+        subtopicKeys: [],
+        domainIds: [],
+        topicLines: [],
+    },
+};
+
+const RECENT_TOPIC_WINDOWS = {
+    comboKeys: 36,
+    subtopicKeys: 24,
+    domainIds: 10,
+    topicLines: 24,
+} as const;
 
 function randomPick<T>(items: T[]): T {
     return items[Math.floor(Math.random() * items.length)];
 }
 
-function pushRecent(channel: "ai_gen" | "cat", key: string) {
-    const bucket = RECENT_TOPIC_KEYS[channel];
-    bucket.push(key);
-    if (bucket.length > RECENT_TOPIC_WINDOW) {
-        bucket.splice(0, bucket.length - RECENT_TOPIC_WINDOW);
+function pushBounded(list: string[], value: string, limit: number) {
+    list.push(value);
+    if (list.length > limit) {
+        list.splice(0, list.length - limit);
     }
+}
+
+function buildTopicLine(combo: TopicCombo) {
+    return `${combo.subtopic.label} · ${combo.angle}`;
+}
+
+function buildSubtopicKey(combo: TopicCombo) {
+    return `${combo.domain.id}:${combo.subtopic.id}`;
+}
+
+function rememberTopicCombo(channel: TopicChannel, combo: TopicCombo) {
+    const history = RECENT_TOPIC_HISTORY[channel];
+    pushBounded(history.comboKeys, combo.key, RECENT_TOPIC_WINDOWS.comboKeys);
+    pushBounded(history.subtopicKeys, buildSubtopicKey(combo), RECENT_TOPIC_WINDOWS.subtopicKeys);
+    pushBounded(history.domainIds, combo.domain.id, RECENT_TOPIC_WINDOWS.domainIds);
+    pushBounded(history.topicLines, normalizeUserTopic(buildTopicLine(combo)), RECENT_TOPIC_WINDOWS.topicLines);
 }
 
 function buildCombos(domainIds: string[]) {
@@ -237,7 +300,38 @@ function normalizeUserTopic(topic: string) {
     return topic.trim().replace(/\s+/g, " ");
 }
 
-function pickRandomFromDomains(domainIds: string[], channel: "ai_gen" | "cat"): TopicSelection {
+function pickCandidateCombos(params: {
+    combos: TopicCombo[];
+    channel: TopicChannel;
+    recentTopicLines?: string[];
+}) {
+    const { combos, channel, recentTopicLines = [] } = params;
+    const history = RECENT_TOPIC_HISTORY[channel];
+    const recentComboKeys = new Set(history.comboKeys);
+    const recentSubtopicKeys = new Set(history.subtopicKeys);
+    const recentDomainIds = new Set(history.domainIds);
+    const blockedTopicLines = new Set([
+        ...history.topicLines,
+        ...recentTopicLines.map((topic) => normalizeUserTopic(topic)),
+    ]);
+
+    const stages = [
+        combos.filter((combo) => !blockedTopicLines.has(normalizeUserTopic(buildTopicLine(combo))) && !recentComboKeys.has(combo.key) && !recentSubtopicKeys.has(buildSubtopicKey(combo)) && !recentDomainIds.has(combo.domain.id)),
+        combos.filter((combo) => !blockedTopicLines.has(normalizeUserTopic(buildTopicLine(combo))) && !recentComboKeys.has(combo.key) && !recentSubtopicKeys.has(buildSubtopicKey(combo))),
+        combos.filter((combo) => !blockedTopicLines.has(normalizeUserTopic(buildTopicLine(combo))) && !recentComboKeys.has(combo.key) && !recentDomainIds.has(combo.domain.id)),
+        combos.filter((combo) => !blockedTopicLines.has(normalizeUserTopic(buildTopicLine(combo))) && !recentComboKeys.has(combo.key)),
+        combos.filter((combo) => !blockedTopicLines.has(normalizeUserTopic(buildTopicLine(combo))) && !recentSubtopicKeys.has(buildSubtopicKey(combo)) && !recentDomainIds.has(combo.domain.id)),
+        combos.filter((combo) => !blockedTopicLines.has(normalizeUserTopic(buildTopicLine(combo))) && !recentSubtopicKeys.has(buildSubtopicKey(combo))),
+        combos.filter((combo) => !blockedTopicLines.has(normalizeUserTopic(buildTopicLine(combo))) && !recentDomainIds.has(combo.domain.id)),
+        combos.filter((combo) => !blockedTopicLines.has(normalizeUserTopic(buildTopicLine(combo)))),
+        combos.filter((combo) => !recentComboKeys.has(combo.key)),
+        combos,
+    ];
+
+    return stages.find((stage) => stage.length > 0) ?? combos;
+}
+
+function pickRandomFromDomains(domainIds: string[], channel: TopicChannel, recentTopicLines?: string[]): TopicSelection {
     const combos = buildCombos(domainIds);
     if (combos.length === 0) {
         return {
@@ -251,10 +345,13 @@ function pickRandomFromDomains(domainIds: string[], channel: "ai_gen" | "cat"): 
         };
     }
 
-    const recent = RECENT_TOPIC_KEYS[channel];
-    const available = combos.filter((combo) => !recent.includes(combo.key));
-    const picked = randomPick(available.length > 0 ? available : combos);
-    pushRecent(channel, picked.key);
+    const available = pickCandidateCombos({
+        combos,
+        channel,
+        recentTopicLines,
+    });
+    const picked = randomPick(available);
+    rememberTopicCombo(channel, picked);
 
     return {
         source: "random",
@@ -263,7 +360,7 @@ function pickRandomFromDomains(domainIds: string[], channel: "ai_gen" | "cat"): 
         subtopicId: picked.subtopic.id,
         subtopicLabel: picked.subtopic.label,
         angle: picked.angle,
-        topicLine: `${picked.subtopic.label} · ${picked.angle}`,
+        topicLine: buildTopicLine(picked),
     };
 }
 
@@ -288,27 +385,14 @@ export function pickAIGenerationTopicSeed(params: {
 }
 
 function catDomainIdsByScore(score: number) {
-    if (score < 800) {
-        return ["education", "psychology", "city-life", "health", "culture-history"];
-    }
-    if (score < 1400) {
-        return ["education", "psychology", "city-life", "health", "technology-ai", "media-communication"];
-    }
-    if (score < 2000) {
-        return ["education", "psychology", "technology-ai", "economy", "media-communication", "career-workplace", "environment"];
-    }
-    if (score < 2600) {
-        return ["economy", "technology-ai", "environment", "society-governance", "law-ethics", "career-workplace", "research-methods"];
-    }
-    if (score < 3200) {
-        return ["economy", "technology-ai", "environment", "society-governance", "law-ethics", "research-methods", "media-communication", "culture-history"];
-    }
-    return TOPIC_DOMAINS.map((domain) => domain.id);
+    const rank = getCatRankTier(score);
+    return CAT_DOMAIN_IDS_BY_RANK_ID[rank.id] ?? ALL_TOPIC_DOMAIN_IDS;
 }
 
 export function pickCatTopicSeed(params: {
     score: number;
     userTopic?: string;
+    recentTopicLines?: string[];
 }): TopicSelection {
     const normalized = normalizeUserTopic(params.userTopic || "");
     if (normalized) {
@@ -323,5 +407,14 @@ export function pickCatTopicSeed(params: {
         };
     }
 
-    return pickRandomFromDomains(catDomainIdsByScore(params.score), "cat");
+    return pickRandomFromDomains(catDomainIdsByScore(params.score), "cat", params.recentTopicLines);
+}
+
+export function __resetTopicHistoryForTests() {
+    (["ai_gen", "cat"] as const).forEach((channel) => {
+        RECENT_TOPIC_HISTORY[channel].comboKeys.length = 0;
+        RECENT_TOPIC_HISTORY[channel].subtopicKeys.length = 0;
+        RECENT_TOPIC_HISTORY[channel].domainIds.length = 0;
+        RECENT_TOPIC_HISTORY[channel].topicLines.length = 0;
+    });
 }

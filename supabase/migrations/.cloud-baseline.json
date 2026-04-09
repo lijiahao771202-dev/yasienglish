@@ -1,0 +1,30 @@
+{
+  "migrations": [
+    "20260313_auth_sync",
+    "20260313_auth_sync_search_path",
+    "20260313_profile_identity",
+    "20260314_economy_reset",
+    "20260314_profiles_deepseek_key",
+    "20260320_admin_messages",
+    "20260320_cat_reading_mode",
+    "20260320_mail_delete_policy",
+    "20260320_mail_rewards",
+    "20260321_cat_rasch_precision",
+    "20260321_reset_battle_elo_to_400",
+    "20260322_supabase_sync_backfill",
+    "20260323_clear_elo_history",
+    "20260324_profiles_rebuild_hidden_elo",
+    "20260325_rebuild_passage_battle_elo",
+    "20260328_enable_dictation_elo_sync",
+    "20260329_vocabulary_meaning_metadata",
+    "20260329_vocabulary_source_metadata",
+    "20260330_vocabulary_ai_analysis_metadata",
+    "20260402_read_articles_snapshot_payload",
+    "20260403_vocabulary_sync_metadata_repair",
+    "20260405_listening_cabin_sessions_sync",
+    "20260407_profiles_exam_date",
+    "20260408_create_daily_plans_table",
+    "20260408_profiles_daily_plan_snapshots",
+    "20260409_vocabulary_official_fsrs_fields"
+  ]
+}

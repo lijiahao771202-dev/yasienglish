@@ -282,15 +282,20 @@ export function UserAvatarMenu({
         >
             <motion.button
                 type="button"
+                animate={!open ? { y: [0, -3, 0], rotate: [0, 1, -1, 0] } : { y: 0, rotate: 0 }}
                 whileTap={{ scale: 0.93 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                transition={{ 
+                    type: "spring", stiffness: 400, damping: 25,
+                    y: { repeat: Infinity, duration: 3, ease: "easeInOut" },
+                    rotate: { repeat: Infinity, duration: 4, ease: "easeInOut" }
+                }}
                 aria-label="Open profile menu"
                 onClick={() => setOpen((current) => !current)}
                 className={isSidebar
-                    ? "relative flex w-full cursor-pointer items-center gap-3 rounded-[1.65rem] border-[3px] border-theme-border bg-theme-base-bg px-3 py-3 shadow-[0_4px_0_0_var(--theme-shadow)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_var(--theme-shadow)] transition-all"
+                    ? "relative flex w-full cursor-pointer items-center gap-3 rounded-[1.65rem] border-[3px] border-theme-border bg-theme-base-bg px-3 py-3 shadow-[0_4px_0_0_var(--theme-shadow)] hover:shadow-[0_6px_0_0_var(--theme-shadow)] transition-all"
                     : isHeader
-                        ? "relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-base-bg shadow-[0_4px_0_0_var(--theme-shadow)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_var(--theme-shadow)] transition-all"
-                        : "relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-base-bg shadow-[0_4px_0_0_var(--theme-shadow)] hover:-translate-y-0.5 hover:shadow-[0_6px_0_0_var(--theme-shadow)] transition-all"}
+                        ? "relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-base-bg shadow-[0_4px_0_0_var(--theme-shadow)] hover:shadow-[0_6px_0_0_var(--theme-shadow)] transition-all"
+                        : "relative flex h-14 w-14 cursor-pointer items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-base-bg shadow-[0_4px_0_0_var(--theme-shadow)] hover:shadow-[0_6px_0_0_var(--theme-shadow)] transition-all"}
             >
                 <PresetAvatar presetId={avatarPreset} size={isSidebar ? 52 : 44} />
                 {unreadCount > 0 ? (

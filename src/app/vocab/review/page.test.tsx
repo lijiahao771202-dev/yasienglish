@@ -61,6 +61,8 @@ const baseCard = {
     elapsed_days: 0,
     scheduled_days: 0,
     reps: 0,
+    lapses: 0,
+    learning_steps: 0,
     state: 0,
     last_review: 0,
     due: Date.now() - 60_000,
@@ -127,7 +129,7 @@ describe("vocab review page", () => {
             await Promise.resolve();
         });
 
-        const revealButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Reveal Answer"));
+        const revealButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("看看答案"));
         expect(revealButton).toBeTruthy();
 
         await act(async () => {
@@ -135,10 +137,12 @@ describe("vocab review page", () => {
             await new Promise((resolve) => window.setTimeout(resolve, 350));
         });
 
-        expect(container.querySelector('input[aria-label="编辑单词"]')).toBeTruthy();
+        expect(container.querySelector('textarea[aria-label="编辑单词"]')).toBeTruthy();
         expect(container.querySelector('textarea[aria-label="编辑释义 v. 1"]')).toBeTruthy();
-        expect(container.querySelector('[data-review-rating-bar="compact"]')).toBeTruthy();
-        expect(Array.from(container.querySelectorAll('[data-review-rating-bar="compact"] button')).map((button) => button.textContent)).toHaveLength(4);
+        expect(container.textContent).toContain("重来");
+        expect(container.textContent).toContain("困难");
+        expect(container.textContent).toContain("熟悉");
+        expect(container.textContent).toContain("简单");
 
         await act(async () => {
             root.unmount();
