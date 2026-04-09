@@ -621,6 +621,8 @@ export function WordPopup({
                 elapsed_days: base.elapsed_days ?? 0,
                 scheduled_days: base.scheduled_days ?? 0,
                 reps: base.reps ?? 0,
+                lapses: base.lapses ?? 0,
+                learning_steps: base.learning_steps ?? 0,
                 state: base.state ?? 0,
                 last_review: base.last_review ?? 0,
                 due: base.due ?? Date.now(),

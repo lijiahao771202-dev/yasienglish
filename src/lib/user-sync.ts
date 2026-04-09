@@ -214,9 +214,12 @@ export interface RemoteVocabularyRow {
     elapsed_days: number;
     scheduled_days: number;
     reps: number;
+    lapses: number;
+    learning_steps: number;
     state: number;
     last_review_ms: number;
     due_ms: number;
+    archived_at_ms?: number | null;
     created_at?: string;
     updated_at: string;
 }
@@ -521,6 +524,9 @@ export function createLocalVocabularyItem(userId: string, item: VocabItem): Voca
         source_label: item.source_label?.trim() || defaultVocabSourceLabel(sourceKind),
         source_sentence: sourceSentence,
         source_note: item.source_note?.trim() || "",
+        lapses: item.lapses ?? 0,
+        learning_steps: item.learning_steps ?? 0,
+        archived_at: typeof item.archived_at === "number" ? item.archived_at : undefined,
         updated_at: new Date().toISOString(),
         sync_status: "pending",
     };
@@ -551,9 +557,12 @@ export function toRemoteVocabularyRow(userId: string, item: VocabItem): RemoteVo
         elapsed_days: item.elapsed_days,
         scheduled_days: item.scheduled_days,
         reps: item.reps,
+        lapses: item.lapses,
+        learning_steps: item.learning_steps,
         state: item.state,
         last_review_ms: item.last_review,
         due_ms: item.due,
+        archived_at_ms: item.archived_at ?? null,
         updated_at: item.updated_at || new Date().toISOString(),
     };
 }
@@ -584,9 +593,12 @@ export function toLocalVocabularyItem(remote: RemoteVocabularyRow): VocabItem {
         elapsed_days: remote.elapsed_days,
         scheduled_days: remote.scheduled_days,
         reps: remote.reps,
+        lapses: remote.lapses ?? 0,
+        learning_steps: remote.learning_steps ?? 0,
         state: remote.state,
         last_review: remote.last_review_ms,
         due: remote.due_ms,
+        archived_at: typeof remote.archived_at_ms === "number" ? remote.archived_at_ms : undefined,
         updated_at: remote.updated_at,
         sync_status: "synced",
     };

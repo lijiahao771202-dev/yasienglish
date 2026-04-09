@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { createEmptyCard, isCardGraduated, State } from "@/lib/fsrs";
+import { createEmptyCard, isVocabularyArchived, State } from "@/lib/fsrs";
 import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 import { VocabEditDialog } from "@/components/vocab/VocabEditDialog";
 
@@ -36,7 +36,7 @@ const VOCAB_FILTERS: Array<{
     { key: "recent", label: "最近添加", emptyTitle: "最近还没有新词", emptyHint: "去读一篇文章，顺手把新词收进来吧。" },
     { key: "due", label: "待复习", emptyTitle: "今天没有待复习卡片", emptyHint: "这会儿可以放心去读新内容，稍后再回来刷。" },
     { key: "learning", label: "学习中", emptyTitle: "当前没有学习中的词卡", emptyHint: "新的词卡开始滚动后，这里就会热闹起来。" },
-    { key: "graduated", label: "已掌握", emptyTitle: "还没有毕业词卡", emptyHint: "等你把一些词真正记牢，这里就会慢慢积累起来。" },
+    { key: "graduated", label: "已掌握", emptyTitle: "还没有归档词卡", emptyHint: "把真正掌握的词手动归档，它们就会收进这里。" },
 ];
 
 const VOCAB_PAGE_EASE = [0.22, 1, 0.36, 1] as const;
@@ -83,11 +83,12 @@ function filterVocabularyByCategory(vocab: VocabItem[], filter: VocabFilterKey, 
         case "all":
             return [...vocab].sort(compareByDueThenTimestamp);
         case "due":
-            return vocab.filter((item) => item.due <= now).sort(compareByDueThenTimestamp);
+            return vocab.filter((item) => !isVocabularyArchived(item) && item.due <= now).sort(compareByDueThenTimestamp);
         case "learning":
             return vocab
                 .filter(
                     (item) =>
+                        !isVocabularyArchived(item) &&
                         (item.state === State.New || item.state === State.Learning || item.state === State.Relearning) &&
                         item.due > now,
                 )
@@ -97,7 +98,7 @@ function filterVocabularyByCategory(vocab: VocabItem[], filter: VocabFilterKey, 
                 .sort((a, b) => b.timestamp - a.timestamp)
                 .slice(0, 12);
         case "graduated":
-            return vocab.filter((item) => isCardGraduated(item)).sort(compareByDueThenTimestamp);
+            return vocab.filter((item) => isVocabularyArchived(item)).sort(compareByDueThenTimestamp);
         default:
             return [...vocab].sort(compareByDueThenTimestamp);
     }
@@ -111,19 +112,19 @@ function formatShortDate(timestamp: number) {
 }
 
 function getStateMeta(item: VocabItem) {
+    if (isVocabularyArchived(item)) {
+        return {
+            label: "MASTER",
+            badgeClassName: "border-green-400 bg-green-50 text-green-700",
+            stickerClassName: "bg-pink-300",
+        };
+    }
+
     if (item.due <= Date.now()) {
         return {
             label: "REVIEW",
             badgeClassName: "border-blue-400 bg-blue-50 text-blue-600",
             stickerClassName: "bg-yellow-300",
-        };
-    }
-
-    if (isCardGraduated(item)) {
-        return {
-            label: "MASTER",
-            badgeClassName: "border-green-400 bg-green-50 text-green-700",
-            stickerClassName: "bg-pink-300",
         };
     }
 
@@ -177,7 +178,7 @@ function VocabWordCard({
 }) {
     const stateMeta = getStateMeta(item);
     const sourceLabel = item.source_label || defaultVocabSourceLabel(item.source_kind);
-    const dueLabel = item.due <= now ? "今天复习" : formatShortDate(item.due);
+    const dueLabel = isVocabularyArchived(item) ? "手动归档" : item.due <= now ? "今天复习" : formatShortDate(item.due);
 
     return (
         <motion.article
@@ -293,7 +294,7 @@ function VocabDashboardContent() {
 
     const totalWords = vocab.length;
     const dueWords = vocab.filter((item) => item.due <= now).length;
-    const masteredWords = vocab.filter((item) => isCardGraduated(item)).length;
+    const masteredWords = vocab.filter((item) => isVocabularyArchived(item)).length;
 
     const handleRouteExit = (target: "home" | "review") => {
         if (routeExitTarget) return;
@@ -393,6 +394,8 @@ function VocabDashboardContent() {
                 elapsed_days: base.elapsed_days ?? 0,
                 scheduled_days: base.scheduled_days ?? 0,
                 reps: base.reps ?? 0,
+                lapses: base.lapses ?? 0,
+                learning_steps: base.learning_steps ?? 0,
                 state: base.state ?? 0,
                 last_review: base.last_review ?? 0,
                 due: base.due ?? Date.now(),

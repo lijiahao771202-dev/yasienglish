@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { VocabItem } from "@/lib/db";
-import { GRADUATED_SCHEDULED_DAYS, State } from "@/lib/fsrs";
+import { State } from "@/lib/fsrs";
 
 let liveQueryValue: VocabItem[] | undefined;
 
@@ -106,6 +106,8 @@ function buildCard(word: string, overrides: Partial<VocabItem> = {}): VocabItem 
         elapsed_days: 0,
         scheduled_days: 1,
         reps: 0,
+        lapses: 0,
+        learning_steps: 0,
         state: State.Review,
         last_review: NOW - 60_000,
         due: NOW + 24 * 60 * 60 * 1000,
@@ -161,7 +163,7 @@ const vocabularyFixture: VocabItem[] = [
         timestamp: NOW - 9_000,
         due: NOW + 400 * 24 * 60 * 60 * 1000,
         state: State.Review,
-        scheduled_days: GRADUATED_SCHEDULED_DAYS,
+        archived_at: NOW,
         last_review: NOW,
     }),
     buildCard("recent-1", { timestamp: NOW - 8_000 }),
@@ -264,7 +266,7 @@ describe("vocab page category filters", () => {
         });
 
         await act(async () => {
-            clickButtonByText(container, "已熟记");
+            clickButtonByText(container, "已掌握");
         });
         expect(container.textContent).toContain("graduated-card");
         expect(container.textContent).not.toContain("due-card");

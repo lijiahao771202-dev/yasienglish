@@ -20,6 +20,36 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Supabase Migrations
+
+Use the repo scripts instead of hand-running ad hoc SQL when you change cloud schema.
+
+Create a new migration file with a unique timestamp prefix:
+
+```bash
+npm run supabase:migration:new -- your_change_name
+```
+
+Check whether there are any cloud-managed migrations still not applied to the linked Supabase project:
+
+```bash
+npm run supabase:migrations:check
+```
+
+Push pending cloud-managed migrations to Supabase:
+
+```bash
+npm run supabase:migrations:push
+```
+
+Notes:
+
+- The push/check script reads the linked project ref from `supabase/.temp/project-ref`.
+- Authentication prefers `SUPABASE_ACCESS_TOKEN`; on macOS it can also reuse the local Supabase CLI token from Keychain.
+- CI should expose the same token as the repository secret `SUPABASE_ACCESS_TOKEN`.
+- Historical date-only migrations are frozen in `supabase/migrations/.cloud-baseline.json`.
+- New migrations should always use the generated unique timestamp format to avoid duplicate-version drift.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

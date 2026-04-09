@@ -108,6 +108,19 @@ export interface CatArticleLexicalEvidence {
 
 export interface CatArticleTargets {
     score: number;
+    rankTarget: {
+        id: string;
+        name: string;
+        minScore: number;
+        maxScore: number | null;
+        primaryLabel: string;
+        secondaryLabel: string;
+    };
+    contentTarget: {
+        examMapping: string;
+        coreDomain: string;
+        stretchDomain: string;
+    };
     lexicalTarget: {
         coreTier: CatLexicalTier;
         coreTierLabel: string;
@@ -128,6 +141,7 @@ export interface CatArticleTargets {
         wordCountMax: number;
     };
     syntaxTarget: {
+        sentenceLengthRange: [number, number];
         complexSentenceRatioRange: [number, number];
         multiClauseSentenceRatioRange: [number, number];
         clauseDensityRange: [number, number];
@@ -268,66 +282,61 @@ const CAT_LEXICAL_TIER_LABELS: Record<CatLexicalTier, string> = {
     tem8plus_ielts8: "TEM8+ / IELTS 8.x 词汇",
 };
 
-type CatArticleTargetBand = {
+type CatArticleLexicalBand = {
     min: number;
     max: number | null;
     coreTier: CatLexicalTier;
     lowerTier: CatLexicalTier | null;
     stretchTier: CatLexicalTier;
     overlevelMax: number;
-    wordCountRange: [number, number];
     complexSentenceRatioRange: [number, number];
     multiClauseSentenceRatioRange: [number, number];
     clauseDensityRange: [number, number];
 };
 
-const CAT_ARTICLE_TARGET_BANDS: CatArticleTargetBand[] = [
+const CAT_ARTICLE_LEXICAL_BANDS: CatArticleLexicalBand[] = [
     {
         min: 0,
-        max: 799,
+        max: 599,
         coreTier: "high_school",
         lowerTier: null,
         stretchTier: "cet4",
         overlevelMax: 0.03,
-        wordCountRange: range(180, 300),
         complexSentenceRatioRange: range(0.18, 0.34),
         multiClauseSentenceRatioRange: range(0.02, 0.12),
         clauseDensityRange: range(0.16, 0.4),
     },
     {
-        min: 800,
-        max: 1399,
+        min: 600,
+        max: 1199,
         coreTier: "cet4",
         lowerTier: "high_school",
         stretchTier: "cet6",
         overlevelMax: 0.05,
-        wordCountRange: range(260, 400),
-        complexSentenceRatioRange: range(0.24, 0.42),
-        multiClauseSentenceRatioRange: range(0.05, 0.18),
+        complexSentenceRatioRange: range(0.24, 0.44),
+        multiClauseSentenceRatioRange: range(0.04, 0.16),
         clauseDensityRange: range(0.26, 0.5),
     },
     {
-        min: 1400,
-        max: 1999,
+        min: 1200,
+        max: 1799,
         coreTier: "cet6",
         lowerTier: "cet4",
         stretchTier: "tem4_ielts6",
         overlevelMax: 0.05,
-        wordCountRange: range(340, 520),
-        complexSentenceRatioRange: range(0.32, 0.52),
-        multiClauseSentenceRatioRange: range(0.1, 0.24),
+        complexSentenceRatioRange: range(0.32, 0.54),
+        multiClauseSentenceRatioRange: range(0.08, 0.22),
         clauseDensityRange: range(0.38, 0.62),
     },
     {
-        min: 2000,
+        min: 1800,
         max: 2599,
         coreTier: "tem4_ielts6",
         lowerTier: "cet6",
         stretchTier: "tem8_ielts7",
         overlevelMax: 0.05,
-        wordCountRange: range(420, 620),
-        complexSentenceRatioRange: range(0.42, 0.64),
-        multiClauseSentenceRatioRange: range(0.16, 0.34),
+        complexSentenceRatioRange: range(0.4, 0.62),
+        multiClauseSentenceRatioRange: range(0.14, 0.32),
         clauseDensityRange: range(0.52, 0.78),
     },
     {
@@ -337,9 +346,8 @@ const CAT_ARTICLE_TARGET_BANDS: CatArticleTargetBand[] = [
         lowerTier: "tem4_ielts6",
         stretchTier: "tem8plus_ielts8",
         overlevelMax: 0.05,
-        wordCountRange: range(520, 760),
-        complexSentenceRatioRange: range(0.5, 0.72),
-        multiClauseSentenceRatioRange: range(0.24, 0.42),
+        complexSentenceRatioRange: range(0.5, 0.74),
+        multiClauseSentenceRatioRange: range(0.22, 0.42),
         clauseDensityRange: range(0.68, 0.96),
     },
     {
@@ -349,7 +357,6 @@ const CAT_ARTICLE_TARGET_BANDS: CatArticleTargetBand[] = [
         lowerTier: "tem8_ielts7",
         stretchTier: "tem8plus_ielts8",
         overlevelMax: 0.05,
-        wordCountRange: range(620, 860),
         complexSentenceRatioRange: range(0.58, 0.82),
         multiClauseSentenceRatioRange: range(0.3, 0.52),
         clauseDensityRange: range(0.8, 1.15),
@@ -412,7 +419,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[0],
         coreDomain: "日常生活",
         stretchDomain: "家庭与校园",
-        targetWordCountRange: range(160, 220),
+        targetWordCountRange: range(180, 240),
         targetSentenceLengthRange: range(8, 12),
         targetClauseDensityRange: range(0.05, 0.12),
         minimumCoreCoverage: 0.58,
@@ -424,7 +431,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[1],
         coreDomain: "校园基础",
         stretchDomain: "自我介绍",
-        targetWordCountRange: range(180, 240),
+        targetWordCountRange: range(200, 260),
         targetSentenceLengthRange: range(8, 12.5),
         targetClauseDensityRange: range(0.06, 0.13),
         minimumCoreCoverage: 0.6,
@@ -436,7 +443,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[2],
         coreDomain: "日常互动",
         stretchDomain: "学习习惯",
-        targetWordCountRange: range(200, 260),
+        targetWordCountRange: range(220, 300),
         targetSentenceLengthRange: range(9, 13),
         targetClauseDensityRange: range(0.07, 0.14),
         minimumCoreCoverage: 0.62,
@@ -448,7 +455,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[3],
         coreDomain: "学校生活",
         stretchDomain: "简单叙事",
-        targetWordCountRange: range(220, 280),
+        targetWordCountRange: range(280, 360),
         targetSentenceLengthRange: range(9.5, 13.5),
         targetClauseDensityRange: range(0.08, 0.16),
         minimumCoreCoverage: 0.64,
@@ -460,7 +467,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[4],
         coreDomain: "校园事务",
         stretchDomain: "连贯叙述",
-        targetWordCountRange: range(240, 300),
+        targetWordCountRange: range(360, 440),
         targetSentenceLengthRange: range(10, 14),
         targetClauseDensityRange: range(0.09, 0.18),
         minimumCoreCoverage: 0.66,
@@ -472,7 +479,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[5],
         coreDomain: "个人经历",
         stretchDomain: "观点说明",
-        targetWordCountRange: range(260, 320),
+        targetWordCountRange: range(420, 520),
         targetSentenceLengthRange: range(10.5, 15),
         targetClauseDensityRange: range(0.1, 0.2),
         minimumCoreCoverage: 0.68,
@@ -484,7 +491,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[6],
         coreDomain: "公共话题",
         stretchDomain: "信息整合",
-        targetWordCountRange: range(300, 360),
+        targetWordCountRange: range(460, 560),
         targetSentenceLengthRange: range(11, 16),
         targetClauseDensityRange: range(0.12, 0.22),
         minimumCoreCoverage: 0.7,
@@ -496,7 +503,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[7],
         coreDomain: "社会情境",
         stretchDomain: "原因分析",
-        targetWordCountRange: range(320, 390),
+        targetWordCountRange: range(520, 620),
         targetSentenceLengthRange: range(11.5, 17),
         targetClauseDensityRange: range(0.13, 0.24),
         minimumCoreCoverage: 0.72,
@@ -508,7 +515,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[8],
         coreDomain: "观点表达",
         stretchDomain: "问题解决",
-        targetWordCountRange: range(350, 430),
+        targetWordCountRange: range(560, 680),
         targetSentenceLengthRange: range(12, 18),
         targetClauseDensityRange: range(0.14, 0.26),
         minimumCoreCoverage: 0.74,
@@ -520,7 +527,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[9],
         coreDomain: "学术讨论",
         stretchDomain: "论证扩展",
-        targetWordCountRange: range(380, 470),
+        targetWordCountRange: range(600, 720),
         targetSentenceLengthRange: range(12.5, 19),
         targetClauseDensityRange: range(0.16, 0.28),
         minimumCoreCoverage: 0.76,
@@ -532,7 +539,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[10],
         coreDomain: "社会议题",
         stretchDomain: "跨段综合",
-        targetWordCountRange: range(420, 520),
+        targetWordCountRange: range(640, 780),
         targetSentenceLengthRange: range(13, 20),
         targetClauseDensityRange: range(0.18, 0.3),
         minimumCoreCoverage: 0.78,
@@ -544,7 +551,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[11],
         coreDomain: "学术文本",
         stretchDomain: "多视角论证",
-        targetWordCountRange: range(460, 580),
+        targetWordCountRange: range(700, 850),
         targetSentenceLengthRange: range(14, 22),
         targetClauseDensityRange: range(0.2, 0.34),
         minimumCoreCoverage: 0.8,
@@ -556,7 +563,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[12],
         coreDomain: "抽象主题",
         stretchDomain: "领域比较",
-        targetWordCountRange: range(500, 620),
+        targetWordCountRange: range(760, 900),
         targetSentenceLengthRange: range(15, 24),
         targetClauseDensityRange: range(0.22, 0.38),
         minimumCoreCoverage: 0.82,
@@ -568,7 +575,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[13],
         coreDomain: "专业叙述",
         stretchDomain: "复杂推理",
-        targetWordCountRange: range(540, 660),
+        targetWordCountRange: range(820, 980),
         targetSentenceLengthRange: range(16, 25),
         targetClauseDensityRange: range(0.24, 0.4),
         minimumCoreCoverage: 0.83,
@@ -580,7 +587,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[14],
         coreDomain: "专业分析",
         stretchDomain: "研究综述",
-        targetWordCountRange: range(580, 700),
+        targetWordCountRange: range(880, 1040),
         targetSentenceLengthRange: range(17, 26),
         targetClauseDensityRange: range(0.26, 0.44),
         minimumCoreCoverage: 0.84,
@@ -592,7 +599,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[15],
         coreDomain: "跨学科整合",
         stretchDomain: "理论评述",
-        targetWordCountRange: range(620, 760),
+        targetWordCountRange: range(920, 1100),
         targetSentenceLengthRange: range(18, 28),
         targetClauseDensityRange: range(0.28, 0.48),
         minimumCoreCoverage: 0.85,
@@ -604,7 +611,7 @@ export const tierLexicalProfile: TierLexicalProfile[] = [
         ...CAT_RANK_TIERS[16],
         coreDomain: "研究级表达",
         stretchDomain: "高阶综合",
-        targetWordCountRange: range(660, 820),
+        targetWordCountRange: range(980, 1200),
         targetSentenceLengthRange: range(19, 30),
         targetClauseDensityRange: range(0.3, 0.52),
         minimumCoreCoverage: 0.86,
@@ -833,44 +840,61 @@ export function getCatMainSkillBand(score: number): CatMainSkillBand {
     }) ?? CAT_MAIN_SKILL_BANDS[0];
 }
 
-function getCatArticleTargetBand(score: number) {
+function getCatArticleLexicalBand(score: number) {
     const normalizedScore = normalizeCatScore(score);
-    return CAT_ARTICLE_TARGET_BANDS.find((band) => {
+    return CAT_ARTICLE_LEXICAL_BANDS.find((band) => {
         if (band.max === null) return normalizedScore >= band.min;
         return normalizedScore >= band.min && normalizedScore <= band.max;
-    }) ?? CAT_ARTICLE_TARGET_BANDS[0];
+    }) ?? CAT_ARTICLE_LEXICAL_BANDS[0];
 }
 
 export function getCatArticleTargets(score: number): CatArticleTargets {
     const normalizedScore = normalizeCatScore(score);
-    const band = getCatArticleTargetBand(normalizedScore);
+    const rank = getCatRankTier(normalizedScore);
+    const mainSkillBand = getCatMainSkillBand(normalizedScore);
+    const lexicalProfile = getTierLexicalProfile(normalizedScore);
+    const lexicalBand = getCatArticleLexicalBand(normalizedScore);
     const defaultRatios: CatArticleTargets["lexicalTarget"]["ratios"] = {
-        lower: band.lowerTier ? [0.15, 0.28] : [0, 0.12],
+        lower: lexicalBand.lowerTier ? [0.15, 0.28] : [0, 0.12],
         core: [0.6, 0.75],
         stretch: [0.08, 0.2],
-        overlevel: [0, band.overlevelMax],
+        overlevel: [0, lexicalBand.overlevelMax],
     };
 
     return {
         score: normalizedScore,
+        rankTarget: {
+            id: rank.id,
+            name: rank.name,
+            minScore: rank.minScore,
+            maxScore: rank.maxScore,
+            primaryLabel: rank.primaryLabel,
+            secondaryLabel: rank.secondaryLabel,
+        },
+        contentTarget: {
+            examMapping: mainSkillBand.examMapping,
+            coreDomain: lexicalProfile.coreDomain,
+            stretchDomain: lexicalProfile.stretchDomain,
+        },
         lexicalTarget: {
-            coreTier: band.coreTier,
-            coreTierLabel: CAT_LEXICAL_TIER_LABELS[band.coreTier],
-            lowerTier: band.lowerTier,
-            lowerTierLabel: band.lowerTier ? CAT_LEXICAL_TIER_LABELS[band.lowerTier] : null,
-            stretchTier: band.stretchTier,
-            stretchTierLabel: CAT_LEXICAL_TIER_LABELS[band.stretchTier],
+            coreTier: lexicalBand.coreTier,
+            coreTierLabel: CAT_LEXICAL_TIER_LABELS[lexicalBand.coreTier],
+            lowerTier: lexicalBand.lowerTier,
+            lowerTierLabel: lexicalBand.lowerTier ? CAT_LEXICAL_TIER_LABELS[lexicalBand.lowerTier] : null,
+            stretchTier: lexicalBand.stretchTier,
+            stretchTierLabel: CAT_LEXICAL_TIER_LABELS[lexicalBand.stretchTier],
             ratios: defaultRatios,
-            overlevelMax: band.overlevelMax,
+            overlevelMax: lexicalBand.overlevelMax,
         },
         lengthTarget: {
-            wordCountMin: band.wordCountRange[0],
-            wordCountMax: band.wordCountRange[1],
+            wordCountMin: lexicalProfile.targetWordCountRange[0],
+            wordCountMax: lexicalProfile.targetWordCountRange[1],
         },
         syntaxTarget: {
-            complexSentenceRatioRange: band.complexSentenceRatioRange,
-            multiClauseSentenceRatioRange: band.multiClauseSentenceRatioRange,
-            clauseDensityRange: band.clauseDensityRange,
+            sentenceLengthRange: lexicalProfile.targetSentenceLengthRange,
+            complexSentenceRatioRange: lexicalBand.complexSentenceRatioRange,
+            multiClauseSentenceRatioRange: lexicalBand.multiClauseSentenceRatioRange,
+            clauseDensityRange: lexicalBand.clauseDensityRange,
         },
     };
 }

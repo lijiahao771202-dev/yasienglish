@@ -2,6 +2,7 @@ import Dexie, { Table } from 'dexie';
 import type { LearningPreferences } from "@/lib/profile-settings";
 import type { ListeningCabinSession } from "@/lib/listening-cabin";
 import type { MeaningGroup } from "@/lib/vocab-meanings";
+import { resetVocabularySchedulingState } from "@/lib/fsrs";
 
 export type SyncStatus = 'synced' | 'pending' | 'error';
 
@@ -99,9 +100,12 @@ export interface VocabItem extends SyncTracked {
     elapsed_days: number;
     scheduled_days: number;
     reps: number;
+    lapses: number;
+    learning_steps: number;
     state: number; // 0: New, 1: Learning, 2: Review, 3: Relearning
     last_review: number;
     due: number;
+    archived_at?: number;
 }
 
 export interface WritingEntry extends SyncTracked {
@@ -132,10 +136,23 @@ export interface CachedArticle {
     catSeSnapshot?: number;
     catSessionBlueprint?: Record<string, unknown>;
     catQuizBlueprint?: Record<string, unknown>;
+    catSelfAssessed?: boolean;
     quizCompleted?: boolean;
     quizCorrect?: number;
     quizTotal?: number;
     quizScorePercent?: number;
+    quizQuestions?: Record<string, unknown>[];
+    quizAnswers?: Record<number, string | string[]>;
+    quizResponses?: Array<{
+        itemId: string;
+        order: number;
+        answer?: string | string[];
+        correct: boolean;
+        latencyMs: number;
+        itemDifficulty: number;
+        itemType?: string;
+    }>;
+    quizQualityTier?: "ok" | "low_confidence";
 }
 
 export type ReadingMarkType = 'highlight' | 'underline' | 'note' | 'ask';
@@ -340,6 +357,7 @@ export interface LocalUserProfile extends SyncTracked {
     cat_points?: number;
     cat_current_band?: number;
     cat_updated_at?: string;
+    cat_pending_difficulty_signal?: number;
     exam_date?: string;
     exam_type?: 'cet4' | 'cet6' | 'postgrad' | 'ielts';
     exam_goal_score?: number;
@@ -1210,6 +1228,38 @@ export class YasiDB extends Dexie {
             sync_meta: '&key, updated_at',
             listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
             daily_plans: '&date, updated_at',
+        });
+
+        // Version 40: migrate vocabulary scheduling to official FSRS and add archive state.
+        this.version(40).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, archived_at, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+            daily_plans: '&date, updated_at',
+        }).upgrade(async tx => {
+            const resetAt = Date.now();
+            await tx.table('vocabulary').toCollection().modify((item: VocabItem) => {
+                Object.assign(item, resetVocabularySchedulingState(item, resetAt), {
+                    updated_at: new Date(resetAt).toISOString(),
+                    sync_status: "pending",
+                });
+            });
+            await tx.table('sync_meta').put({
+                key: 'migration:vocabulary_fsrs_reset',
+                value: resetAt,
+                updated_at: resetAt,
+            });
         });
     }
 }

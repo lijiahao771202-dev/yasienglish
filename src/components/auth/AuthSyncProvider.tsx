@@ -154,6 +154,31 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
     }, [sessionUser?.id, setPhase, setReady, shouldBootstrap]);
 
     useEffect(() => {
+        if (typeof window === "undefined") return;
+        const html = document.documentElement;
+        const observer = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === "attributes" && mutation.attributeName === "data-bg-theme") {
+                    const currentTheme = html.getAttribute("data-bg-theme");
+                    const expectedTheme = getSavedBackgroundTheme(sessionUser?.id);
+                    if (currentTheme !== expectedTheme) {
+                        html.setAttribute("data-bg-theme", expectedTheme);
+                    }
+                }
+            }
+        });
+        observer.observe(html, { attributes: true });
+        
+        // Ensure it's correctly applied at least once after session updates
+        const expectedTheme = getSavedBackgroundTheme(sessionUser?.id);
+        if (html.getAttribute("data-bg-theme") !== expectedTheme) {
+            html.setAttribute("data-bg-theme", expectedTheme);
+        }
+
+        return () => observer.disconnect();
+    }, [sessionUser?.id]);
+
+    useEffect(() => {
         const supabase = createBrowserClientSingleton();
         let cancelled = false;
         let receivedInitialSession = false;

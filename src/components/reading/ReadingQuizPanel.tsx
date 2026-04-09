@@ -164,6 +164,8 @@ function isSameQuestionSet(prev: QuizQuestion[], next: QuizQuestion[]) {
 export interface QuizSubmitPayload {
     correct: number;
     total: number;
+    answers?: Record<number, QuizAnswerValue>;
+    questions?: QuizQuestion[];
     responses?: Array<{
         itemId: string;
         order: number;
@@ -210,6 +212,19 @@ interface ReadingQuizPanelProps {
     onClearLocate?: () => void;
     activeLocateQuestionNumber?: number | null;
     cachedQuestions?: QuizQuestion[];
+    initialAnswers?: Record<number, QuizAnswerValue>;
+    initialResponses?: Array<{
+        itemId: string;
+        order: number;
+        answer?: string | string[];
+        correct: boolean;
+        latencyMs: number;
+        itemDifficulty: number;
+        itemType?: string;
+    }>;
+    initialSubmitted?: boolean;
+    initialScore?: { correct: number; total: number } | null;
+    lockAfterCompletion?: boolean;
     onQuestionsReady?: (questions: QuizQuestion[]) => void;
     onSubmitScore?: (score: QuizSubmitPayload) => void;
     titleNode?: React.ReactNode;
@@ -242,6 +257,11 @@ export function ReadingQuizPanel({
     onClearLocate,
     activeLocateQuestionNumber,
     cachedQuestions,
+    initialAnswers,
+    initialResponses,
+    initialSubmitted = false,
+    initialScore = null,
+    lockAfterCompletion = false,
     onQuestionsReady,
     onSubmitScore,
     titleNode,
@@ -266,6 +286,44 @@ export function ReadingQuizPanel({
     const catAutoFinalizeTimerRef = useRef<number | null>(null);
 
     const diffMeta = DIFFICULTY_META[difficulty] || DIFFICULTY_META.ielts;
+
+    const hydrateCompletedState = useCallback((nextQuestions: QuizQuestion[]) => {
+        if (!initialSubmitted) return;
+
+        setAnswers(initialAnswers ?? {});
+        setIsSubmitted(true);
+        setScore(initialScore);
+        setExpandedExplanations(Object.fromEntries(nextQuestions.map((question) => [question.id, true])));
+        setStandardGradedMap(
+            quizMode === "standard"
+                ? Object.fromEntries(nextQuestions.map((question) => [question.id, true]))
+                : {},
+        );
+
+        if (quizMode === "cat" && Array.isArray(initialResponses) && initialResponses.length > 0) {
+            const questionByItemId = new Map(
+                nextQuestions
+                    .filter((question) => typeof question.itemId === "string" && question.itemId.trim().length > 0)
+                    .map((question) => [question.itemId as string, question]),
+            );
+
+            setCatResponseMap(initialResponses.reduce<Record<number, CatQuestionResponse>>((accumulator, response, index) => {
+                const question = questionByItemId.get(response.itemId);
+                const questionId = question?.id ?? index + 1;
+                accumulator[questionId] = {
+                    itemId: response.itemId,
+                    order: response.order,
+                    answer: response.answer,
+                    correct: response.correct,
+                    latencyMs: response.latencyMs,
+                    itemDifficulty: response.itemDifficulty,
+                    itemType: response.itemType,
+                };
+                return accumulator;
+            }, {}));
+            setCatStepIndex(0);
+        }
+    }, [initialAnswers, initialResponses, initialScore, initialSubmitted, quizMode]);
 
     const clearAutoCompactTimer = useCallback(() => {
         if (autoCompactTimerRef.current) {
@@ -316,6 +374,7 @@ export function ReadingQuizPanel({
                 if (quizMode === "cat" && floatingCompact) {
                     setIsCatCompactMode(true);
                 }
+                hydrateCompletedState(cachedQuestions);
             }
             setIsLoading(false);
             setError(null);
@@ -362,6 +421,7 @@ export function ReadingQuizPanel({
                         if (quizMode === "cat" && floatingCompact) {
                             setIsCatCompactMode(true);
                         }
+                        hydrateCompletedState(normalizedQuestions);
                         onQuestionsReady?.(normalizedQuestions);
                     } else {
                         setError("未能生成题目，请重试。");
@@ -375,7 +435,7 @@ export function ReadingQuizPanel({
         };
         fetchQuiz();
         return () => { cancelled = true; };
-    }, [articleContent, difficulty, articleTitle, cachedQuestions, onQuestionsReady, quizMode, catBand, catScore, catQuizBlueprint, floatingCompact, questions]);
+    }, [articleContent, difficulty, articleTitle, cachedQuestions, onQuestionsReady, quizMode, catBand, catScore, catQuizBlueprint, floatingCompact, questions, hydrateCompletedState]);
 
     const handleSelectAnswer = (question: QuizQuestion, option: string) => {
         if (isSubmitted) return;
@@ -437,6 +497,7 @@ export function ReadingQuizPanel({
     };
 
     const handleReset = () => {
+        if (lockAfterCompletion) return;
         onClearLocate?.();
         clearAutoCompactTimer();
         clearAutoFinalizeTimer();
@@ -516,7 +577,11 @@ export function ReadingQuizPanel({
         const finalScore = scoreObjectiveQuiz(questions, answers);
         setScore(finalScore);
         setIsSubmitted(true);
-        onSubmitScore?.(finalScore);
+        onSubmitScore?.({
+            ...finalScore,
+            answers,
+            questions,
+        });
     };
 
     const handleSubmitCurrentCatQuestion = () => {
@@ -575,10 +640,13 @@ export function ReadingQuizPanel({
         }
         onSubmitScore?.({
             ...finalScore,
+            answers,
+            questions,
             responses,
             qualityTier: quizMode === "cat" && typeof catSe === "number" && catSe > 1.25 ? "low_confidence" : "ok",
         });
     }, [
+        answers,
         catResponseMap,
         catSe,
         clearAutoCompactTimer,
@@ -586,6 +654,7 @@ export function ReadingQuizPanel({
         floatingCompact,
         hasReachedCatMin,
         onSubmitScore,
+        questions,
         quizMode,
         setIsCatCompactMode,
         setIsSubmitted,
@@ -803,7 +872,7 @@ export function ReadingQuizPanel({
                                     userAnswer={answers[catCurrentQuestion.id]}
                                     onSelect={handleSelectAnswer}
                                     onTextInput={handleTextAnswer}
-                                    isSubmitted={Boolean(catResponseMap[catCurrentQuestion.id])}
+                                    isSubmitted={isSubmitted || Boolean(catResponseMap[catCurrentQuestion.id])}
                                     isCorrect={catResponseMap[catCurrentQuestion.id]?.correct}
                                     isExpanded={Boolean(expandedExplanations[catCurrentQuestion.id])}
                                     onToggleExpand={toggleExplanation}
@@ -976,7 +1045,7 @@ export function ReadingQuizPanel({
                         </div>
                     ) : (
                         <div className="flex gap-3">
-                            {quizMode !== "cat" ? (
+                            {quizMode !== "cat" && !lockAfterCompletion ? (
                                 <button
                                     onClick={handleReset}
                                     className="flex flex-1 items-center justify-center gap-2 rounded-[1.2rem] border-[3px] border-[#17120d] bg-white py-3 text-sm font-black text-[#17120d] transition-all hover:-translate-y-0.5"

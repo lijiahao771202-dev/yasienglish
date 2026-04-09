@@ -10,7 +10,7 @@ import { useUserStore } from "@/lib/store";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { getPressableStyle, getPressableTap } from "@/lib/pressable";
-import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
+import { applyServerProfilePatchToLocal, deleteReadArticleSnapshot } from "@/lib/user-repository";
 import { CAT_RANK_TIERS, getCatRankIconByTierId, getCatRankTier, getCatScoreToNextRank, getLegacyBandFromScore } from "@/lib/cat-score";
 import { CatGrowthChart } from "@/components/reading/CatGrowthChart";
 
@@ -27,6 +27,9 @@ export interface ArticleItem {
     quizCorrect?: number;
     quizTotal?: number;
     quizScorePercent?: number;
+    catSelfAssessed?: boolean;
+    catBand?: number;
+    catScoreSnapshot?: number;
 }
 
 interface AIGenHistoryRecord {
@@ -43,6 +46,9 @@ interface AIGenHistoryRecord {
     quizCorrect?: number;
     quizTotal?: number;
     quizScorePercent?: number;
+    catSelfAssessed?: boolean;
+    catBand?: number;
+    catScoreSnapshot?: number;
 }
 
 type FeedCategory = 'psychology' | 'ai_news' | 'ai_gen' | 'cat_mode';
@@ -95,6 +101,7 @@ interface RecommendedArticlesProps {
     onSelect: (url: string) => void;
     onArticleLoaded?: (article: GeneratedArticleData) => void;
     onListUpdate?: (articles: ArticleItem[]) => void;
+    onArticleDeleted?: (url: string) => void;
 }
 
 function getArticleTimestamp(article: ArticleItem): number {
@@ -149,6 +156,21 @@ function mergeFeedArticles(existingArticles: ArticleItem[], fetchedArticles: Art
     return uniqueByLink(sortByNewest([...refreshedArticles, ...appendedExisting]));
 }
 
+async function safeParseResponsePayload(response: Response) {
+    const rawText = await response.text().catch(() => "");
+    if (!rawText.trim()) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(rawText) as Record<string, unknown>;
+    } catch {
+        return {
+            error: rawText.trim(),
+        };
+    }
+}
+
 function formatArticleDate(article: ArticleItem): string {
     const timestamp = getArticleTimestamp(article);
     if (!timestamp) {
@@ -190,7 +212,7 @@ function isArticleItem(value: unknown): value is ArticleItem {
     );
 }
 
-export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }: RecommendedArticlesProps) {
+export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, onArticleDeleted }: RecommendedArticlesProps) {
     const prefersReducedMotion = useReducedMotion();
     const reducedMotion = Boolean(prefersReducedMotion);
     const silentImageHydrationRef = useRef<Record<string, boolean>>({});
@@ -230,6 +252,9 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     const catBand = typeof profile?.cat_current_band === "number"
         ? profile.cat_current_band
         : getLegacyBandFromScore(catScore);
+    const catPendingDifficultySignal = typeof profile?.cat_pending_difficulty_signal === "number"
+        ? profile.cat_pending_difficulty_signal
+        : 0;
     const catRank = getCatRankTier(catScore);
     const catScoreToNextRank = getCatScoreToNextRank(catScore);
     const listContainerVariants = {
@@ -350,6 +375,9 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 quizCorrect: row.quizCorrect,
                 quizTotal: row.quizTotal,
                 quizScorePercent: row.quizScorePercent,
+                catSelfAssessed: row.catSelfAssessed,
+                catBand: row.catBand,
+                catScoreSnapshot: row.catScoreSnapshot,
             }));
 
             const ordered = sortByNewest(historyItems);
@@ -383,6 +411,9 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 quizCorrect: row.quizCorrect,
                 quizTotal: row.quizTotal,
                 quizScorePercent: row.quizScorePercent,
+                catSelfAssessed: row.catSelfAssessed,
+                catBand: row.catBand,
+                catScoreSnapshot: row.catScoreSnapshot,
             }));
 
             const ordered = sortByNewest(historyItems);
@@ -593,27 +624,39 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
                 body: JSON.stringify({
                     topic: catTopic.trim() || undefined,
                     band: catBand,
+                    difficultySignalHint: catPendingDifficultySignal || undefined,
                 }),
             });
-            const payload = await response.json();
+            const payload = await safeParseResponsePayload(response);
             if (!response.ok) {
-                throw new Error(payload.error || "启动 CAT 训练失败。");
+                const message = payload && typeof payload.error === "string"
+                    ? payload.error
+                    : `启动 CAT 训练失败（${response.status}）`;
+                throw new Error(message);
+            }
+            if (!payload) {
+                throw new Error("启动 CAT 训练失败：服务器返回了空响应。");
             }
 
             await applyServerProfilePatchToLocal({
-                cat_score: payload?.catProfile?.score,
-                cat_level: payload?.catProfile?.level,
-                cat_theta: payload?.catProfile?.theta,
-                cat_se: payload?.catProfile?.se,
-                cat_points: payload?.catProfile?.points,
-                cat_current_band: payload?.catProfile?.currentBand,
+                cat_score: (payload.catProfile as Record<string, unknown> | undefined)?.score,
+                cat_level: (payload.catProfile as Record<string, unknown> | undefined)?.level,
+                cat_theta: (payload.catProfile as Record<string, unknown> | undefined)?.theta,
+                cat_se: (payload.catProfile as Record<string, unknown> | undefined)?.se,
+                cat_points: (payload.catProfile as Record<string, unknown> | undefined)?.points,
+                cat_current_band: (payload.catProfile as Record<string, unknown> | undefined)?.currentBand,
             });
+            if (profile?.id !== undefined && catPendingDifficultySignal !== 0) {
+                await db.user_profile.update(profile.id, {
+                    cat_pending_difficulty_signal: 0,
+                });
+            }
 
-            if (payload?.article && onArticleLoaded) {
+            if (payload.article && onArticleLoaded) {
                 onArticleLoaded(payload.article as GeneratedArticleData);
             }
             setNotification({
-                message: `CAT 已启动 · ${payload?.catSession?.rankBefore ?? catRank.name}`,
+                message: `CAT 已启动 · ${((payload.catSession as Record<string, unknown> | undefined)?.rankBefore as string | undefined) ?? catRank.name}`,
                 type: "success",
             });
             setTimeout(() => setNotification(null), 2600);
@@ -628,8 +671,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         if (category === 'ai_gen' || category === "cat_mode") {
             if (confirm('Are you sure you want to remove this article?')) {
                 try {
-                    const { db } = await import("@/lib/db");
-                    await db.articles.delete(link);
+                    if (onArticleDeleted) onArticleDeleted(link);
+                    await deleteReadArticleSnapshot(link);
                     setArticles((prev) => {
                         const next = prev.filter(a => a.link !== link);
                         if (onListUpdate) onListUpdate(next);
@@ -645,6 +688,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
         if (confirm('Are you sure you want to remove this article?')) {
             await deleteArticle(category, link);
             setArticles(prev => prev.filter(a => a.link !== link));
+            if (onArticleDeleted) onArticleDeleted(link);
         }
     };
 
@@ -1349,7 +1393,6 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate }:
     );
 }
 
-// Extracted Card Component for Reusability
 function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = false, isAnyLoading = false }: {
     item: ArticleItem,
     status: ArticleStatus,
@@ -1359,14 +1402,46 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
     isLoading?: boolean,
     isAnyLoading?: boolean,
 }) {
-    const isRead = status === 'read';
-    const difficultyMeta = getDifficultyBadgeMeta(item.difficulty);
-    const statusMeta = status === 'new'
-        ? { label: '新到达', className: 'border-theme-border bg-theme-primary-bg text-theme-primary-text' }
-        : status === 'read'
-            ? { label: '已读', className: 'border-theme-border bg-theme-active-bg text-theme-active-text' }
-            : { label: '未读', className: 'border-theme-border bg-theme-base-bg text-theme-text-muted' };
-    const sourceLabel = category === "ai_gen" ? "AI Studio" : item.source;
+    const isCatMode = category === "cat_mode";
+    const isCatFullyCompleted = isCatMode ? Boolean(item.quizCompleted && item.catSelfAssessed) : false;
+    const isPendingAssessment = isCatMode && item.quizCompleted && !item.catSelfAssessed;
+    
+    const isRead = isCatMode ? isCatFullyCompleted : status === 'read';
+    let difficultyMeta = getDifficultyBadgeMeta(item.difficulty);
+    
+    if (typeof item.catScoreSnapshot === "number") {
+        const tier = getCatRankTier(item.catScoreSnapshot);
+        difficultyMeta = {
+            label: tier.name,
+            className: "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_3px_0_0_var(--theme-shadow)]",
+        };
+    } else if (item.catBand !== undefined) {
+        const legacyApproxScore = (item.catBand - 1) * 400;
+        const tier = getCatRankTier(legacyApproxScore);
+        difficultyMeta = {
+            label: tier.name,
+            className: "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_3px_0_0_var(--theme-shadow)]",
+        };
+    }
+    
+    let statusMeta;
+    if (isCatMode) {
+        if (isCatFullyCompleted) {
+            statusMeta = { label: '已完成', className: 'border-theme-border bg-theme-active-bg text-theme-active-text' };
+        } else if (isPendingAssessment) {
+            statusMeta = { label: '待自评', className: 'border-theme-border bg-amber-200 text-amber-800 shadow-[0_4px_0_0_rgba(251,191,36,0.3)]' };
+        } else {
+            statusMeta = { label: '待完成', className: 'border-theme-border bg-theme-primary-bg text-theme-primary-text animate-[bounce_2s_infinite] shadow-[0_4px_0_0_var(--theme-shadow)]' };
+        }
+    } else {
+        statusMeta = status === 'new'
+            ? { label: '新到达', className: 'border-theme-border bg-theme-primary-bg text-theme-primary-text' }
+            : status === 'read'
+                ? { label: '已读', className: 'border-theme-border bg-theme-active-bg text-theme-active-text' }
+                : { label: '未读', className: 'border-theme-border bg-theme-base-bg text-theme-text-muted' };
+    }
+
+    const sourceLabel = category === "ai_gen" ? "AI Studio" : (item.source || "Feed");
     const primaryImageUrl = typeof item.image === "string" && item.image.trim().length > 0 ? item.image.trim() : null;
     const backupImageUrl = `https://picsum.photos/seed/${encodeURIComponent((item.title || item.link).slice(0, 64))}/960/540`;
     const imageCandidates = Array.from(
@@ -1451,7 +1526,7 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
                             event.stopPropagation();
                             onDelete(item.link);
                         }}
-                        className="ui-pressable flex h-7 w-7 items-center justify-center rounded-full border-2 border-theme-border bg-theme-card-bg text-rose-500"
+                        className="ui-pressable opacity-0 group-hover:opacity-100 transition-opacity flex h-7 w-7 items-center justify-center rounded-full border-2 border-theme-border bg-theme-card-bg text-rose-500"
                         style={getPressableStyle("var(--theme-shadow)", 3)}
                         title="删除文章"
                         aria-label="删除文章"

@@ -1,9 +1,9 @@
 "use client";
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useSyncExternalStore } from 'react';
 
-type ThemeId = 'welcome' | 'warm' | 'sunlight' | 'vintage' | 'green' | 'cool' | 'mono' | 'dark' | 'navy' | 'coal';
-type FontId = 'serif' | 'sans' | 'mono' | 'merriweather' | 'lora' | 'inter' | 'roboto-mono' | 'libre-baskerville' | 'source-serif' | 'work-sans' | 'comic';
+type ThemeId = 'welcome' | 'warm' | 'sunlight' | 'vintage' | 'green' | 'cool' | 'mono' | 'dark' | 'navy' | 'coal' | 'mint' | 'lavender' | 'rose' | 'sky' | 'sand' | 'latte' | 'mocha' | 'slate' | 'dracula' | 'hacker' | 'midnight' | 'crimson' | 'forest' | 'ocean' | 'sepia' | 'peach' | 'matcha' | 'berry' | 'cyberpunk' | 'nord';
+type FontId = 'serif' | 'sans' | 'mono' | 'merriweather' | 'lora' | 'inter' | 'roboto-mono' | 'libre-baskerville' | 'source-serif' | 'work-sans' | 'comic' | 'arial' | 'helvetica' | 'georgia' | 'verdana' | 'tahoma' | 'trebuchet' | 'times' | 'palatino' | 'garamond' | 'bookman' | 'impact' | 'lucida' | 'courier' | 'consolas' | 'optima' | 'didot' | 'copperplate' | 'papyrus' | 'century' | 'candara';
 type FontSize = 'text-base' | 'text-lg' | 'text-xl' | 'text-2xl';
 
 interface ReadingSettings {
@@ -45,6 +45,26 @@ const THEMES = [
     { id: 'dark', class: 'bg-slate-950 text-slate-200' },
     { id: 'navy', class: 'bg-blue-950 text-blue-100' },
     { id: 'coal', class: 'bg-stone-950 text-stone-200' },
+    { id: 'mint', class: 'bg-emerald-50 text-emerald-900 border-emerald-200' },
+    { id: 'lavender', class: 'bg-purple-50 text-purple-900 border-purple-200' },
+    { id: 'rose', class: 'bg-rose-50 text-rose-900 border-rose-200' },
+    { id: 'sky', class: 'bg-sky-50 text-sky-900 border-sky-200' },
+    { id: 'sand', class: 'bg-[#fdf9e3] text-[#5b4636] border-[#e6d9b1]' },
+    { id: 'latte', class: 'bg-orange-50 text-stone-800' },
+    { id: 'mocha', class: 'bg-stone-200 text-stone-900 border-stone-300' },
+    { id: 'slate', class: 'bg-slate-200 text-slate-900 border-slate-300' },
+    { id: 'dracula', class: 'bg-zinc-900 text-purple-200 border-purple-900' },
+    { id: 'hacker', class: 'bg-black text-emerald-400 border-emerald-900' },
+    { id: 'midnight', class: 'bg-indigo-950 text-indigo-100' },
+    { id: 'crimson', class: 'bg-rose-950 text-rose-100' },
+    { id: 'forest', class: 'bg-emerald-950 text-emerald-100' },
+    { id: 'ocean', class: 'bg-cyan-950 text-cyan-100' },
+    { id: 'sepia', class: 'bg-[#f4ecd8] text-[#5b4636] border-[#d8c8a8]' },
+    { id: 'peach', class: 'bg-[#fff0e6] text-orange-950 border-[#ffdeb3]' },
+    { id: 'matcha', class: 'bg-[#e8f4e6] text-[#2c4c3b] border-[#bad8b6]' },
+    { id: 'berry', class: 'bg-fuchsia-50 text-fuchsia-950 border-fuchsia-200' },
+    { id: 'cyberpunk', class: 'bg-yellow-400 text-black border-black' },
+    { id: 'nord', class: 'bg-[#2E3440] text-[#D8DEE9]' },
 ];
 
 const FONTS = {
@@ -59,63 +79,110 @@ const FONTS = {
     'source-serif': 'font-source-serif',
     'work-sans': 'font-work-sans',
     'comic': 'font-comic',
+    arial: 'font-[Arial,sans-serif]',
+    helvetica: 'font-[Helvetica,sans-serif]',
+    georgia: 'font-[Georgia,serif]',
+    verdana: 'font-[Verdana,sans-serif]',
+    tahoma: 'font-[Tahoma,sans-serif]',
+    trebuchet: 'font-[Trebuchet_MS,sans-serif]',
+    times: 'font-[Times_New_Roman,serif]',
+    palatino: 'font-[Palatino,serif]',
+    garamond: 'font-[Garamond,serif]',
+    bookman: 'font-[Bookman_Old_Style,serif]',
+    impact: 'font-[Impact,sans-serif]',
+    lucida: 'font-[Lucida_Sans_Unicode,sans-serif]',
+    courier: 'font-[Courier_New,monospace]',
+    consolas: 'font-[Consolas,monospace]',
+    optima: 'font-[Optima,sans-serif]',
+    didot: 'font-[Didot,serif]',
+    copperplate: 'font-[Copperplate,sans-serif]',
+    papyrus: 'font-[Papyrus,fantasy]',
+    century: 'font-[Century_Gothic,sans-serif]',
+    candara: 'font-[Candara,sans-serif]',
 };
 
+const DEFAULT_THEME: ThemeId = 'warm';
+const DEFAULT_FONT: FontId = 'serif';
+const DEFAULT_FONT_SIZE: FontSize = 'text-xl';
+const READING_SETTINGS_EVENT = 'reading-settings-change';
+
+function readStoredTheme(): ThemeId {
+    const storedTheme = localStorage.getItem('reading_theme');
+    return THEMES.some((item) => item.id === storedTheme) ? (storedTheme as ThemeId) : DEFAULT_THEME;
+}
+
+function readStoredFont(): FontId {
+    const storedFont = localStorage.getItem('reading_font');
+    return storedFont && storedFont in FONTS ? (storedFont as FontId) : DEFAULT_FONT;
+}
+
+function readStoredFontSize(): FontSize {
+    const storedSize = localStorage.getItem('reading_size');
+    return storedSize === 'text-base' || storedSize === 'text-lg' || storedSize === 'text-xl' || storedSize === 'text-2xl'
+        ? storedSize
+        : DEFAULT_FONT_SIZE;
+}
+
+function readStoredFocusMode() {
+    return localStorage.getItem('reading_focus_mode') === 'true';
+}
+
+function readStoredBionicMode() {
+    return localStorage.getItem('reading_bionic_mode') === 'true';
+}
+
+function subscribeReadingSettings(onStoreChange: () => void) {
+    if (typeof window === 'undefined') {
+        return () => undefined;
+    }
+
+    const handleChange = () => onStoreChange();
+    window.addEventListener('storage', handleChange);
+    window.addEventListener(READING_SETTINGS_EVENT, handleChange);
+
+    return () => {
+        window.removeEventListener('storage', handleChange);
+        window.removeEventListener(READING_SETTINGS_EVENT, handleChange);
+    };
+}
+
+function emitReadingSettingsChange() {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new Event(READING_SETTINGS_EVENT));
+}
+
 export function ReadingSettingsProvider({ children }: { children: React.ReactNode }) {
-    const [theme, setTheme] = useState<ThemeId>(() => {
-        if (typeof window === "undefined") return 'warm';
-        const storedTheme = localStorage.getItem('reading_theme');
-        return THEMES.some((item) => item.id === storedTheme) ? (storedTheme as ThemeId) : 'warm';
-    });
-    const [font, setFont] = useState<FontId>(() => {
-        if (typeof window === "undefined") return 'serif';
-        const storedFont = localStorage.getItem('reading_font');
-        return storedFont && storedFont in FONTS ? (storedFont as FontId) : 'serif';
-    });
-    const [fontSize, setFontSize] = useState<FontSize>(() => {
-        if (typeof window === "undefined") return 'text-xl';
-        const storedSize = localStorage.getItem('reading_size');
-        return storedSize === 'text-base' || storedSize === 'text-lg' || storedSize === 'text-xl' || storedSize === 'text-2xl'
-            ? storedSize
-            : 'text-xl';
-    });
-    const [isFocusMode, setIsFocusMode] = useState<boolean>(() => {
-        if (typeof window === "undefined") return false;
-        return localStorage.getItem('reading_focus_mode') === 'true';
-    });
-    const [isBionicMode, setIsBionicMode] = useState<boolean>(() => {
-        if (typeof window === "undefined") return false;
-        return localStorage.getItem('reading_bionic_mode') === 'true';
-    });
+    const theme = useSyncExternalStore(subscribeReadingSettings, readStoredTheme, () => DEFAULT_THEME);
+    const font = useSyncExternalStore(subscribeReadingSettings, readStoredFont, () => DEFAULT_FONT);
+    const fontSize = useSyncExternalStore(subscribeReadingSettings, readStoredFontSize, () => DEFAULT_FONT_SIZE);
+    const isFocusMode = useSyncExternalStore(subscribeReadingSettings, readStoredFocusMode, () => false);
+    const isBionicMode = useSyncExternalStore(subscribeReadingSettings, readStoredBionicMode, () => false);
+
     const updateTheme = (newTheme: ThemeId) => {
-        setTheme(newTheme);
         localStorage.setItem('reading_theme', newTheme);
+        emitReadingSettingsChange();
     };
 
     const updateFont = (newFont: FontId) => {
-        setFont(newFont);
         localStorage.setItem('reading_font', newFont);
+        emitReadingSettingsChange();
     };
 
     const updateFontSize = (newSize: FontSize) => {
-        setFontSize(newSize);
         localStorage.setItem('reading_size', newSize);
+        emitReadingSettingsChange();
     };
 
     const toggleFocusMode = () => {
-        setIsFocusMode(prev => {
-            const newVal = !prev;
-            localStorage.setItem('reading_focus_mode', String(newVal));
-            return newVal;
-        });
+        const newVal = !isFocusMode;
+        localStorage.setItem('reading_focus_mode', String(newVal));
+        emitReadingSettingsChange();
     };
 
     const toggleBionicMode = () => {
-        setIsBionicMode(prev => {
-            const newVal = !prev;
-            localStorage.setItem('reading_bionic_mode', String(newVal));
-            return newVal;
-        });
+        const newVal = !isBionicMode;
+        localStorage.setItem('reading_bionic_mode', String(newVal));
+        emitReadingSettingsChange();
     };
 
     return (

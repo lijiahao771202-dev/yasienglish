@@ -6,6 +6,13 @@ import {
     recommendBadges,
 } from "@/lib/cat-growth";
 import { runCatRaschSession, type CatRaschResponse } from "@/lib/cat-rasch";
+import {
+    getCatDifficultySignal,
+    getCatSelfAssessmentScoreCorrection,
+    getCatSystemAssessment,
+    type CatSelfAssessment,
+    type CatSystemAssessment,
+} from "@/lib/cat-self-assessment";
 import { getCatRankTier, getCatSessionPolicy } from "@/lib/cat-score";
 import { rewardReadingCoins } from "@/lib/reading-economy-server";
 import { createServerClient, getServerUserSafely } from "@/lib/supabase/server";
@@ -16,6 +23,7 @@ interface SubmitCatPayload {
     quizTotal?: number;
     readingMs?: number;
     qualityTier?: "ok" | "low_confidence";
+    selfAssessment?: CatSelfAssessment;
     responses?: Array<{
         itemId?: string | number;
         order?: number;
@@ -35,6 +43,35 @@ function isMissingRpcFunction(error: { message?: string } | null, functionName: 
 
 function clamp(value: number, min: number, max: number) {
     return Math.min(max, Math.max(min, value));
+}
+
+function parseSelfAssessment(input: unknown): CatSelfAssessment | null {
+    if (input === "easy" || input === "just_right" || input === "hard") {
+        return input;
+    }
+    return null;
+}
+
+function readSessionBlueprint(input: unknown) {
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+        return {} as Record<string, unknown>;
+    }
+    return input as Record<string, unknown>;
+}
+
+function readStoredSettlementMeta(input: unknown) {
+    const blueprint = readSessionBlueprint(input);
+    const settlement = blueprint.settlement;
+    if (!settlement || typeof settlement !== "object" || Array.isArray(settlement)) {
+        return null;
+    }
+    return settlement as {
+        objectiveDelta?: number;
+        systemAssessment?: CatSystemAssessment | null;
+        selfAssessment?: CatSelfAssessment | null;
+        scoreCorrection?: number;
+        difficultySignal?: number;
+    };
 }
 
 function expectedReadingMsByDifficulty(difficulty?: string) {
@@ -74,12 +111,14 @@ function parseRaschResponses(raw: SubmitCatPayload["responses"]) {
 }
 
 export async function POST(request: Request) {
+    try {
     const { user, error } = await getServerUserSafely();
     if (error || !user) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const body = (await request.json().catch(() => ({}))) as SubmitCatPayload;
+    const selfAssessment = parseSelfAssessment(body.selfAssessment);
     const sessionId = body.sessionId?.trim();
     if (!sessionId) {
         return NextResponse.json({ error: "sessionId is required" }, { status: 400 });
@@ -122,6 +161,7 @@ export async function POST(request: Request) {
         const rankAfterCompleted = getCatRankTier(settledScore);
         const completedSe =
             Number((session as Record<string, unknown>).se_after ?? (profile as Record<string, unknown>).cat_se ?? seBeforeSnapshot);
+        const storedSettlement = readStoredSettlementMeta((session as Record<string, unknown>).session_blueprint);
         return NextResponse.json({
             alreadyCompleted: true,
             cat: {
@@ -148,6 +188,11 @@ export async function POST(request: Request) {
                     maxItems: sessionPolicy.maxItems,
                     targetSe: sessionPolicy.targetSe,
                 },
+                objectiveDelta: Number(storedSettlement?.objectiveDelta ?? settledDelta),
+                systemAssessment: storedSettlement?.systemAssessment ?? null,
+                selfAssessment: storedSettlement?.selfAssessment ?? selfAssessment ?? null,
+                scoreCorrection: Number(storedSettlement?.scoreCorrection ?? 0),
+                difficultySignal: Number(storedSettlement?.difficultySignal ?? 0),
             },
             animationPayload: {
                 scoreBefore: Number(session.score_before ?? scoreBeforeSnapshot),
@@ -217,7 +262,7 @@ export async function POST(request: Request) {
         ? raschSession?.accuracy ?? 0
         : clamp(quizCorrect / Math.max(1, quizTotal), 0, 1);
 
-    const growth = useRaschMode
+    const objectiveGrowth = useRaschMode
         ? {
             performance: clamp(accuracy * 0.72 + speedScore * 0.14 + stabilityScore * 0.14, 0, 1),
             delta: raschSession?.delta ?? 0,
@@ -236,6 +281,37 @@ export async function POST(request: Request) {
             speedScore,
             stabilityScore,
         });
+
+    const systemAssessment = getCatSystemAssessment({
+        delta: objectiveGrowth.delta,
+        accuracy,
+        challengeRatio: useRaschMode ? raschSession?.challengeRatio ?? null : null,
+        qualityTier,
+    });
+    const scoreCorrection = selfAssessment
+        ? getCatSelfAssessmentScoreCorrection(systemAssessment, selfAssessment)
+        : 0;
+    const difficultySignal = selfAssessment
+        ? getCatDifficultySignal(systemAssessment, selfAssessment)
+        : 0;
+    const correctedDelta = clamp(objectiveGrowth.delta + scoreCorrection, -48, 66);
+    const correctedScoreAfter = Math.max(1, scoreBeforeSnapshot + correctedDelta);
+    const correctedThetaAfter = clamp(
+        Number(objectiveGrowth.thetaAfter ?? Number(profile.cat_theta ?? 0)) + scoreCorrection / 162,
+        -3.5,
+        4.5,
+    );
+    const correctedLevelAfter = levelFromScore(correctedScoreAfter);
+    const correctedNextBand = normalizeBand(Math.floor(correctedScoreAfter / 400) + 1);
+
+    const growth = {
+        ...objectiveGrowth,
+        delta: correctedDelta,
+        scoreAfter: correctedScoreAfter,
+        thetaAfter: correctedThetaAfter,
+        levelAfter: correctedLevelAfter,
+        nextBand: correctedNextBand,
+    };
 
     const badges = recommendBadges({
         levelBefore: Number(profile.cat_level ?? 1),
@@ -424,6 +500,29 @@ export async function POST(request: Request) {
         }
     }
 
+    try {
+        const currentBlueprint = readSessionBlueprint((session as Record<string, unknown>).session_blueprint);
+        await supabase
+            .from("cat_sessions")
+            .update({
+                session_blueprint: {
+                    ...currentBlueprint,
+                    settlement: {
+                        objectiveDelta: objectiveGrowth.delta,
+                        systemAssessment,
+                        selfAssessment,
+                        scoreCorrection,
+                        difficultySignal,
+                    },
+                },
+                updated_at: nowIso,
+            })
+            .eq("id", session.id)
+            .eq("user_id", user.id);
+    } catch {
+        // ignore if settlement metadata cannot be persisted
+    }
+
     const quizReward = 6 + (accuracy >= 0.8 ? 2 : 0) + (growth.delta > 0 ? 1 : 0);
     let readingReward: { balance: number; delta: number; applied: boolean } = {
         balance: 0,
@@ -500,6 +599,11 @@ export async function POST(request: Request) {
                 : null,
             qualityTier: useRaschMode ? qualityTier : null,
             challengeRatio: useRaschMode ? raschSession?.challengeRatio ?? null : null,
+            objectiveDelta: objectiveGrowth.delta,
+            systemAssessment,
+            selfAssessment,
+            scoreCorrection,
+            difficultySignal,
             awardedBadges: submitRow?.awarded_badges ?? badges,
         },
         readingCoins: {
@@ -517,4 +621,11 @@ export async function POST(request: Request) {
             isRankDown: finalRankAfter.index < rankBefore.index,
         },
     });
+    } catch (error) {
+        console.error("CAT session submit failed:", error);
+        const message = error instanceof Error && error.message.trim()
+            ? error.message
+            : "CAT 结算失败。";
+        return NextResponse.json({ error: message }, { status: 500 });
+    }
 }

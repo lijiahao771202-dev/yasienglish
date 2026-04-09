@@ -8,6 +8,7 @@ import {
     getSavedBackgroundTheme,
     setSavedBackgroundTheme,
 } from "@/lib/background-preferences";
+import { ThemeThumbnailMock } from "@/components/home/theme-picker/ThemeThumbnailMock";
 
 interface BackgroundThemePickerProps {
     userId?: string | null;
@@ -42,19 +43,12 @@ export function BackgroundThemePicker({ userId }: BackgroundThemePickerProps) {
             </div>
 
             <div 
-                className="mb-6 rounded-[1.5rem] border-[3px] border-theme-border bg-theme-base-bg p-4 shadow-[0_6px_0_0_var(--theme-shadow)]"
+                className="mb-6 rounded-[1.5rem] border-[3px] border-theme-border bg-theme-base-bg p-4 shadow-[0_6px_0_0_var(--theme-shadow)] transition-colors duration-500"
                 data-bg-theme={selectedSpec.id}
             >
-                <div className="relative h-28 overflow-hidden rounded-[1rem] border-[3px] border-theme-border shadow-[inset_0_4px_12px_rgba(0,0,0,0.05)] bg-theme-base-bg">
-                    <div className={`absolute inset-0 ${selectedSpec.baseLayer}`} />
-                    {selectedSpec.coverGradient && <div className="absolute inset-0 opacity-80" style={{ backgroundImage: selectedSpec.coverGradient }} />}
-                    {selectedSpec.glassLayer && <div className={`absolute inset-0 ${selectedSpec.glassLayer}`} />}
-                    {selectedSpec.glowLayer && <div className={`absolute inset-0 ${selectedSpec.glowLayer}`} />}
-                    {selectedSpec.bottomLayer && <div className={`absolute inset-x-0 bottom-0 h-[42%] ${selectedSpec.bottomLayer}`} />}
-                    {selectedSpec.vignetteLayer && <div className={`absolute inset-0 ${selectedSpec.vignetteLayer}`} />}
-                    {/* UI Tokens Preview */}
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-[0.4rem] border-2 border-theme-border bg-theme-primary-bg px-4 py-1.5 shadow-[0_3px_0_0_var(--theme-shadow)] text-[10px] font-black text-theme-primary-text">
-                        Color
+                <div className="relative h-32 md:h-40 overflow-hidden rounded-[1rem] border-[3px] border-theme-border shadow-[inset_0_4px_12px_rgba(0,0,0,0.05)] bg-theme-base-bg flex items-center justify-center pointer-events-none transition-colors duration-500">
+                    <div className="origin-center" style={{ transform: "scale(0.85)" }}>
+                        <ThemeThumbnailMock />
                     </div>
                 </div>
                 <p className="mt-4 flex items-center justify-between"><span className="text-[15px] font-black text-theme-text">{selectedSpec.name}</span><span className="text-xs font-bold text-theme-text-muted">{selectedSpec.description}</span></p>
@@ -74,16 +68,9 @@ export function BackgroundThemePicker({ userId }: BackgroundThemePickerProps) {
                             className={`group overflow-hidden rounded-[1.2rem] border-[3px] text-left transition hover:-translate-y-1 ${active ? "border-theme-primary-bg ring-[4px] ring-theme-primary-bg/40 shadow-[0_6px_0_0_var(--theme-shadow)]" : "border-theme-border shadow-[0_4px_0_0_var(--theme-shadow)] hover:shadow-[0_8px_0_0_var(--theme-shadow)]"}`}
                             data-bg-theme={theme.id}
                         >
-                            <div className="relative aspect-[4/3] w-full border-b-[3px] border-theme-border overflow-hidden bg-theme-base-bg">
-                                <div className={`absolute inset-0 ${theme.baseLayer}`} />
-                                {theme.coverGradient && <div className="absolute inset-0 opacity-80 backdrop-blur-md" style={{ backgroundImage: theme.coverGradient }} />}
-                                {theme.glassLayer && <div className={`absolute inset-0 ${theme.glassLayer}`} />}
-                                {theme.glowLayer && <div className={`absolute inset-0 ${theme.glowLayer}`} />}
-                                {theme.bottomLayer && <div className={`absolute inset-x-0 bottom-0 h-[40%] ${theme.bottomLayer}`} />}
-                                {theme.vignetteLayer && <div className={`absolute inset-0 ${theme.vignetteLayer}`} />}
-                                
-                                <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1 w-full scale-90">
-                                    <div className="h-4 w-12 rounded-[0.3rem] border-[2px] border-theme-border bg-theme-primary-bg shadow-[0_2px_0_0_var(--theme-shadow)]" />
+                            <div className="relative aspect-[4/3] w-full border-b-[3px] border-theme-border overflow-hidden bg-theme-base-bg flex items-center justify-center transition-colors duration-500 pointer-events-none">
+                                <div className="origin-center" style={{ transform: "scale(0.35)" }}>
+                                    <ThemeThumbnailMock />
                                 </div>
                             </div>
                             <div className="bg-theme-card-bg px-3 py-2.5 flex flex-col items-center justify-center">

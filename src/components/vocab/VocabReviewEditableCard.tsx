@@ -6,7 +6,7 @@ import { AnimatePresence, motion, Reorder } from "framer-motion";
 
 import { PretextTextarea } from "@/components/ui/PretextTextarea";
 import type { VocabItem } from "@/lib/db";
-import { isCardGraduated } from "@/lib/fsrs";
+import { isVocabularyArchived } from "@/lib/fsrs";
 import { updateVocabularyEntry } from "@/lib/user-repository";
 import {
     normalizeMeaningMatchText,
@@ -26,6 +26,10 @@ type PosGroupDraft = {
     meanings: { id: string; text: string }[];
 };
 
+type WindowWithPersistDraftTimer = Window & typeof globalThis & {
+    __persistDraftTimer?: ReturnType<typeof window.setTimeout>;
+};
+
 interface VocabReviewEditableCardProps {
     item: VocabItem;
     posGroups: PosGroup[];
@@ -33,7 +37,7 @@ interface VocabReviewEditableCardProps {
     onExpandedPosGroupsChange: (next: Record<string, boolean>) => void;
     onPlayAudio: (word: string) => void;
     onSaved: (item: VocabItem) => void;
-    onGraduate?: (item: VocabItem, previousWord: string) => Promise<void> | void;
+    onArchive?: (item: VocabItem, previousWord: string) => Promise<void> | void;
     ghostInput?: string;
 }
 
@@ -125,7 +129,7 @@ export function VocabReviewEditableCard({
     onExpandedPosGroupsChange,
     onPlayAudio,
     onSaved,
-    onGraduate,
+    onArchive,
     ghostInput = "",
 }: VocabReviewEditableCardProps) {
     const [draft, setDraft] = useState<DraftState>(() => buildDraft(item));
@@ -179,7 +183,7 @@ export function VocabReviewEditableCard({
     const hasWordAnalysis = wordBreakdown.length > 0 || morphologyNotes.length > 0;
     
     const displayPhonetic = draft.phonetic.trim() || resolvedPhonetic.trim();
-    const isGraduated = isCardGraduated(item);
+    const isArchived = isVocabularyArchived(item);
 
     useEffect(() => {
         const word = normalizeWord(draft.word);
@@ -217,17 +221,6 @@ export function VocabReviewEditableCard({
             controller.abort();
         };
     }, [draft.phonetic, draft.word, resolvedPhonetic]);
-
-    const isDirty = useMemo(() => {
-        return (
-            normalizeWord(draft.word) !== item.word
-            || draft.phonetic.trim() !== (item.phonetic || "")
-            || draft.source_sentence.trim() !== (item.source_sentence || "")
-            || draft.example.trim() !== item.example
-            || draft.highlighted_meanings.join("|") !== (Array.isArray(item.highlighted_meanings) ? item.highlighted_meanings : []).join("|")
-            || serializeMeaningGroups(plainMeaningDraftGroups) !== serializeMeaningGroups(itemMeaningGroups)
-        );
-    }, [draft, item, itemMeaningGroups, plainMeaningDraftGroups]);
 
     const handleChange = (field: keyof DraftState, value: string) => {
         setDraft((current) => ({ ...current, [field]: value }));
@@ -282,41 +275,55 @@ export function VocabReviewEditableCard({
             || nextDraft.source_sentence.trim() !== (item.source_sentence || "")
             || nextDraft.example.trim() !== item.example
             || serializeMeaningGroups(nextMeaningDraftGroups) !== serializeMeaningGroups(itemMeaningGroups)
+            || nextDraft.highlighted_meanings.join("|") !== (Array.isArray(item.highlighted_meanings) ? item.highlighted_meanings : []).join("|")
         );
 
-        if (!normalizeWord(nextDraft.word) || isSaving || isGraduating || !hasPendingChanges) return;
+        if (!normalizeWord(nextDraft.word) || isGraduating || !hasPendingChanges) return;
+        
+        // Eagerly update the parent component's local state to prevent scheduling logic from using stale card data
+        onSaved(nextItem);
+        
         setIsSaving(true);
         setError(null);
-        try {
-            const saved = await updateVocabularyEntry(item.word, nextItem);
-            onSaved(saved);
-        } catch (saveError) {
-            const message = saveError instanceof Error ? saveError.message : "保存失败，请重试。";
-            setError(message === "DUPLICATE_VOCAB_WORD" ? "这个词已经在生词本里了。" : "保存失败，请重试。");
-        } finally {
-            setIsSaving(false);
+        
+        // Use a debounce to prevent dropping fast subsequent edits (e.g., rapid deletions)
+        const windowWithTimer = window as WindowWithPersistDraftTimer;
+        if (windowWithTimer.__persistDraftTimer) {
+            clearTimeout(windowWithTimer.__persistDraftTimer);
         }
-    }, [buildPendingItem, draft, isGraduating, isSaving, item, itemMeaningGroups, onSaved, plainMeaningDraftGroups]);
+        windowWithTimer.__persistDraftTimer = window.setTimeout(async () => {
+            try {
+                const saved = await updateVocabularyEntry(item.word, nextItem);
+                onSaved(saved);
+            } catch (saveError) {
+                const message = saveError instanceof Error ? saveError.message : "保存失败，请重试。";
+                setError(message === "DUPLICATE_VOCAB_WORD" ? "这个词已经在生词本里了。" : "保存失败，请重试。");
+            } finally {
+                setIsSaving(false);
+            }
+        }, 500);
+    }, [buildPendingItem, draft, isGraduating, item, itemMeaningGroups, onSaved, plainMeaningDraftGroups]);
 
     const handleAutoSave = () => {
-        if (!isDirty) return;
         void persistDraft();
     };
 
     const handleMeaningRemove = (groupIndex: number, meaningId: string) => {
-        const nextMeaningDraftGroups = meaningDraftGroups
-            .map((group, currentGroupIndex) => {
-                if (currentGroupIndex !== groupIndex) return group;
-                return {
-                    ...group,
-                    meanings: group.meanings.filter((m) => m.id !== meaningId),
-                };
-            })
-            .filter((group) => group.meanings.length > 0);
-
-        setMeaningDraftGroups(nextMeaningDraftGroups);
+        setMeaningDraftGroups((current) => {
+            const nextMeaningDraftGroups = current
+                .map((group, currentGroupIndex) => {
+                    if (currentGroupIndex !== groupIndex) return group;
+                    return {
+                        ...group,
+                        meanings: group.meanings.filter((m) => m.id !== meaningId),
+                    };
+                })
+                .filter((group) => group.meanings.length > 0);
+            
+            void persistDraft(draft, fromPosGroupDrafts(nextMeaningDraftGroups));
+            return nextMeaningDraftGroups;
+        });
         setError(null);
-        void persistDraft(draft, fromPosGroupDrafts(nextMeaningDraftGroups));
     };
 
     const handleHighlightToggle = (meaning: string) => {
@@ -338,28 +345,28 @@ export function VocabReviewEditableCard({
         setError(null);
     };
 
-    const handleGraduate = async () => {
-        if (!onGraduate || isSaving || isGraduating) return;
+    const handleArchive = async () => {
+        if (!onArchive || isSaving || isGraduating) return;
         setIsGraduating(true);
         setError(null);
         try {
-            await onGraduate(buildPendingItem(), item.word);
-        } catch (graduateError) {
-            const message = graduateError instanceof Error ? graduateError.message : "熟记失败，请重试。";
-            setError(message || "熟记失败，请重试。");
+            await onArchive(buildPendingItem(), item.word);
+        } catch (archiveError) {
+            const message = archiveError instanceof Error ? archiveError.message : "归档失败，请重试。";
+            setError(message || "归档失败，请重试。");
             setIsGraduating(false);
         }
     };
 
     return (
-        <div data-review-layout="cute-bento" className="relative flex flex-col bg-theme-base-bg rounded-[1.5rem]">
+        <div data-review-layout="single-card" className="relative flex flex-col bg-theme-base-bg rounded-[1.5rem]">
             {/* Header: Controls & Word Input */}
-            <div className="shrink-0 pt-3 px-4 pb-1 bg-theme-base-bg border-b-[3px] border-theme-border rounded-t-[1.5rem]">
+            <div data-review-word-section="true" className="shrink-0 pt-3 px-4 pb-1 bg-theme-base-bg border-b-[3px] border-theme-border rounded-t-[1.5rem]">
                 <div className="flex items-center justify-between gap-3 mb-1">
                     <div className="flex items-center gap-2">
-                        {isGraduated ? (
+                        {isArchived ? (
                             <span className="flex items-center justify-center rounded-full bg-amber-100 text-amber-700 px-3 py-1 text-[11px] font-bold border-2 border-amber-300">
-                                🌟 已熟记
+                                已归档
                             </span>
                         ) : null}
                         <p className={cn("text-[11px] font-bold text-theme-text-muted transition-opacity whitespace-nowrap", isSaving && "opacity-60")}>
@@ -368,14 +375,14 @@ export function VocabReviewEditableCard({
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {onGraduate ? (
+                        {onArchive ? (
                             <button
                                 type="button"
-                                onClick={handleGraduate}
+                                onClick={handleArchive}
                                 disabled={isSaving || isGraduating}
                                 className="flex h-8 items-center gap-1.5 rounded-full bg-theme-primary-bg border-2 border-theme-border text-theme-primary-text px-3 text-[12px] font-bold shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-60 disabled:scale-100"
                             >
-                                {isGraduating ? <Loader2 className="h-3 w-3 animate-spin" /> : "⚡"} 熟记
+                                {isGraduating ? <Loader2 className="h-3 w-3 animate-spin" /> : "⚡"} 归档
                             </button>
                         ) : null}
                         <button
@@ -525,7 +532,8 @@ export function VocabReviewEditableCard({
             </div>
 
             {/* Tabbed Content Area */}
-            <div className="flex-1 px-4 pb-6 pt-2">
+            <div data-review-content-section="true" className="flex-1 px-4 pb-6 pt-2">
+                <div data-review-content-scroller="true" className="h-full">
                 <AnimatePresence mode="wait">
                     {activeTab === "meanings" && (
                         <motion.div
@@ -569,6 +577,8 @@ export function VocabReviewEditableCard({
                                                                     as="div"
                                                                     key={meaningObj.id}
                                                                     value={meaningObj}
+                                                                    data-highlighted-meaning={isHighlighted ? "true" : undefined}
+                                                                    data-highlight-source={isHighlighted ? "ai" : undefined}
                                                                     className={cn(
                                                                         "group relative flex items-start gap-1.5 sm:gap-2 rounded-xl px-2 py-1 transition-all w-full",
                                                                         isHighlighted ? "bg-amber-100/50" : "hover:bg-theme-active-bg/60"
@@ -583,7 +593,7 @@ export function VocabReviewEditableCard({
                                                                     
                                                                     <div className="min-w-0 flex-1 relative">
                                                                         <PretextTextarea
-                                                                            aria-label={`编辑 ${group.pos} 释义`}
+                                                                            aria-label={`编辑释义 ${group.pos} ${index + 1}`}
                                                                             value={meaningObj.text}
                                                                             onChange={(event) => handleMeaningChange(groupIndex, meaningObj.id, event.target.value)}
                                                                             onBlur={handleAutoSave}
@@ -610,6 +620,7 @@ export function VocabReviewEditableCard({
                                                                         <button
                                                                             type="button"
                                                                             onClick={() => handleMeaningRemove(groupIndex, meaningObj.id)}
+                                                                            aria-label={`删除释义 ${group.pos} ${index + 1}`}
                                                                             className="flex h-6 w-6 items-center justify-center rounded-[8px] text-red-400 transition hover:bg-red-50 hover:text-red-500 active:scale-95 shadow-sm border border-theme-border bg-theme-base-bg"
                                                                         >
                                                                             <Trash2 className="h-3 w-3" />
@@ -662,6 +673,7 @@ export function VocabReviewEditableCard({
                                                 )}
                                             </div>
                                             <PretextTextarea
+                                                aria-label="编辑来源例句"
                                                 value={draft.source_sentence}
                                                 onChange={(event) => handleChange("source_sentence", event.target.value)}
                                                 onBlur={handleAutoSave}
@@ -679,6 +691,7 @@ export function VocabReviewEditableCard({
                                                 AI 造句
                                             </div>
                                             <PretextTextarea
+                                                aria-label="编辑AI例句"
                                                 value={draft.example}
                                                 onChange={(event) => handleChange("example", event.target.value)}
                                                 onBlur={handleAutoSave}
@@ -733,6 +746,7 @@ export function VocabReviewEditableCard({
                         </motion.div>
                     )}
                 </AnimatePresence>
+                </div>
             </div>
             
         </div>

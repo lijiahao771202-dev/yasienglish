@@ -9,6 +9,7 @@ import { AudioPlayer } from "@/components/shadowing/AudioPlayer";
 import { WritingEditor } from "@/components/writing/WritingEditor";
 import { RecommendedArticles } from "@/components/reading/RecommendedArticles";
 import { ReadingQuizPanel, QuizQuestion, type QuizSubmitPayload } from "@/components/reading/ReadingQuizPanel";
+import { CatSelfAssessmentDialog } from "@/components/reading/CatSelfAssessmentDialog";
 import { ReadPretestOverlay } from "@/components/reading/ReadPretestOverlay";
 import { ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -40,6 +41,12 @@ import {
     type ReadingCoinFxEvent,
 } from "@/lib/reading-coin-fx";
 import { getPressableStyle } from "@/lib/pressable";
+import {
+    CAT_SELF_ASSESSMENT_LABELS,
+    CAT_SYSTEM_ASSESSMENT_LABELS,
+    type CatSelfAssessment,
+    type CatSystemAssessment,
+} from "@/lib/cat-self-assessment";
 
 interface ArticleData {
     title: string;
@@ -85,6 +92,11 @@ interface ArticleData {
     quizCorrect?: number;
     quizTotal?: number;
     quizScorePercent?: number;
+    quizQuestions?: QuizQuestion[];
+    quizAnswers?: Record<number, string | string[]>;
+    quizResponses?: QuizSubmitPayload["responses"];
+    quizQualityTier?: "ok" | "low_confidence";
+    catSelfAssessed?: boolean;
 }
 
 interface ArticleBlock {
@@ -141,6 +153,19 @@ interface CatSettlementPayload {
     itemCount?: number | null;
     minItems?: number | null;
     maxItems?: number | null;
+    objectiveDelta?: number;
+    systemAssessment?: CatSystemAssessment | null;
+    selfAssessment?: CatSelfAssessment | null;
+    scoreCorrection?: number;
+    difficultySignal?: number | null;
+}
+
+interface PendingCatSubmission {
+    correct: number;
+    total: number;
+    readingMs?: number;
+    responses?: QuizSubmitPayload["responses"];
+    qualityTier?: QuizSubmitPayload["qualityTier"];
 }
 
 const buildReadingArticleKey = (article: Pick<ArticleData, "title" | "url">) => {
@@ -148,6 +173,33 @@ const buildReadingArticleKey = (article: Pick<ArticleData, "title" | "url">) => 
     if (normalizedUrl) return normalizedUrl;
     return `title:${(article.title || "untitled").trim().toLowerCase()}`;
 };
+
+async function parseJsonResponseSafely(response: Response) {
+    const raw = await response.text();
+    if (!raw.trim()) return {} as Record<string, unknown>;
+    try {
+        return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+        if (response.ok) {
+            throw new Error("CAT 结算返回了无效响应");
+        }
+        throw new Error(`CAT 结算失败（${response.status}）`);
+    }
+}
+
+function formatCatSubmitErrorMessage(error: unknown) {
+    if (!(error instanceof Error)) {
+        return "CAT 结算失败，请重试";
+    }
+    const message = error.message.trim();
+    if (!message) {
+        return "CAT 结算失败，请重试";
+    }
+    if (message === "fetch failed" || message.toLowerCase() === "failed to fetch") {
+        return "CAT 结算请求失败，请重试";
+    }
+    return message;
+}
 
 const extractParagraphTextsForGrammar = (article: ArticleData): string[] => {
     if (Array.isArray(article.blocks) && article.blocks.length > 0) {
@@ -202,6 +254,10 @@ const buildArticleCloudPayload = (article: ArticleData, timestamp: number) => ({
     quizCorrect: article.quizCorrect,
     quizTotal: article.quizTotal,
     quizScorePercent: article.quizScorePercent,
+    quizQuestions: article.quizQuestions,
+    quizAnswers: article.quizAnswers,
+    quizResponses: article.quizResponses,
+    quizQualityTier: article.quizQualityTier,
 });
 
 const toCloudReadingNote = (note: ReadingNoteItem): Omit<ReadingNoteItem, "id"> => ({
@@ -286,6 +342,8 @@ function ReadingPageContent() {
     const [activeReadingCoinFx, setActiveReadingCoinFx] = useState<ReadingCoinFxEvent | null>(null);
     const [catNotice, setCatNotice] = useState<string | null>(null);
     const [catSettlement, setCatSettlement] = useState<CatSettlementPayload | null>(null);
+    const [pendingCatSubmission, setPendingCatSubmission] = useState<PendingCatSubmission | null>(null);
+    const [isSubmittingCatAssessment, setIsSubmittingCatAssessment] = useState(false);
     const [isWritingMode, setIsWritingMode] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [isQuizMode, setIsQuizMode] = useState(false);
@@ -322,6 +380,7 @@ function ReadingPageContent() {
     const scrollBeforeSplitRef = useRef(0);
     const dockHideTimerRef = useRef<number | null>(null);
     const quizPrefetchRef = useRef<Record<string, boolean>>({});
+    const deletedArticleUrlsRef = useRef<Set<string>>(new Set());
     const resumedArticleRef = useRef<string | null>(null);
     const snapshotPersistTimerRef = useRef<number | null>(null);
     const [articleSnapshotRevision, setArticleSnapshotRevision] = useState(0);
@@ -344,9 +403,29 @@ function ReadingPageContent() {
         dark: "bg-[linear-gradient(180deg,rgba(2,6,23,0.6),rgba(15,23,42,0.46))]",
         navy: "bg-[linear-gradient(180deg,rgba(23,37,84,0.56),rgba(30,58,138,0.38))]",
         coal: "bg-[linear-gradient(180deg,rgba(28,25,23,0.56),rgba(41,37,36,0.4))]",
+        mint: "bg-[linear-gradient(180deg,rgba(209,250,229,0.45),rgba(167,243,208,0.3))]",
+        lavender: "bg-[linear-gradient(180deg,rgba(243,232,255,0.45),rgba(233,213,255,0.3))]",
+        rose: "bg-[linear-gradient(180deg,rgba(255,228,230,0.45),rgba(254,205,211,0.3))]",
+        sky: "bg-[linear-gradient(180deg,rgba(224,242,254,0.45),rgba(186,230,253,0.3))]",
+        sand: "bg-[#fdf9e3]/45",
+        latte: "bg-[linear-gradient(180deg,rgba(255,237,213,0.45),rgba(254,215,170,0.3))]",
+        mocha: "bg-[linear-gradient(180deg,rgba(231,229,228,0.45),rgba(214,211,209,0.3))]",
+        slate: "bg-[linear-gradient(180deg,rgba(226,232,240,0.45),rgba(203,213,225,0.3))]",
+        dracula: "bg-[linear-gradient(180deg,rgba(24,24,27,0.6),rgba(39,39,42,0.46))]",
+        hacker: "bg-[linear-gradient(180deg,rgba(0,0,0,0.65),rgba(10,25,15,0.55))]",
+        midnight: "bg-[linear-gradient(180deg,rgba(30,27,75,0.6),rgba(49,46,129,0.46))]",
+        crimson: "bg-[linear-gradient(180deg,rgba(76,5,25,0.6),rgba(136,19,55,0.46))]",
+        forest: "bg-[linear-gradient(180deg,rgba(2,44,34,0.6),rgba(6,78,59,0.46))]",
+        ocean: "bg-[linear-gradient(180deg,rgba(8,51,68,0.6),rgba(22,78,99,0.46))]",
+        sepia: "bg-[#f4ecd8]/45",
+        peach: "bg-[#fff0e6]/45",
+        matcha: "bg-[#e8f4e6]/45",
+        berry: "bg-fuchsia-50/45",
+        cyberpunk: "bg-[#ffeb3b]/45",
+        nord: "bg-[linear-gradient(180deg,rgba(46,52,64,0.6),rgba(59,66,82,0.46))]",
     };
     const activeReadingFilm = article ? readingThemeFilm[theme] : undefined;
-    const shouldUseGlobalBackgroundLayers = article ? theme === "welcome" : false;
+    const shouldUseGlobalBackgroundLayers = !article || theme === "welcome";
     const catSettlementFilm = shouldUseGlobalBackgroundLayers
         ? backgroundSpec.transitionFilm
         : (activeReadingFilm ?? "bg-[linear-gradient(180deg,rgba(241,245,249,0.55),rgba(203,213,225,0.48))]");
@@ -371,6 +450,18 @@ function ReadingPageContent() {
         }
         return "本局已完成结算";
     }, []);
+    useEffect(() => {
+        if (!article?.isCatMode || article.catSelfAssessed || !article.quizCompleted) return;
+        if (pendingCatSubmission || isSubmittingCatAssessment) return;
+        if (!Array.isArray(article.quizResponses) || article.quizResponses.length === 0) return;
+
+        setPendingCatSubmission({
+            correct: Math.max(0, Number(article.quizCorrect ?? 0)),
+            total: Math.max(1, Number(article.quizTotal ?? article.quizResponses.length)),
+            responses: article.quizResponses,
+            qualityTier: article.quizQualityTier,
+        });
+    }, [article, isSubmittingCatAssessment, pendingCatSubmission]);
     const pushReadingCoinFx = useCallback((payload: {
         delta?: number;
         action?: ReadingEconomyAction | null;
@@ -386,6 +477,123 @@ function ReadingPageContent() {
         if (!event) return;
         setReadingCoinFxQueue((prev) => [...prev, event]);
     }, []);
+    const submitPendingCatSession = useCallback(async (selfAssessment: CatSelfAssessment | null) => {
+        if (!pendingCatSubmission || !article?.isCatMode || !article.catSessionId) {
+            setPendingCatSubmission(null);
+            return;
+        }
+
+        setIsSubmittingCatAssessment(true);
+        try {
+            const response = await fetch("/api/ai/cat/session/submit", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    sessionId: article.catSessionId,
+                    quizCorrect: pendingCatSubmission.correct,
+                    quizTotal: pendingCatSubmission.total,
+                    readingMs: pendingCatSubmission.readingMs,
+                    responses: pendingCatSubmission.responses,
+                    qualityTier: pendingCatSubmission.qualityTier,
+                    selfAssessment: selfAssessment ?? undefined,
+                }),
+            });
+            const payload = await parseJsonResponseSafely(response);
+            if (!response.ok) {
+                throw new Error(typeof payload.error === "string" ? payload.error : "CAT submit failed");
+            }
+
+            await applyServerProfilePatchToLocal({
+                cat_score: payload?.cat?.score,
+                cat_level: payload?.cat?.level,
+                cat_theta: payload?.cat?.theta,
+                cat_se: payload?.cat?.se,
+                cat_points: payload?.cat?.points,
+                cat_current_band: payload?.cat?.currentBand,
+                cat_updated_at: payload?.cat?.updatedAt ?? new Date().toISOString(),
+                reading_coins: payload?.readingCoins?.balance,
+            });
+            try {
+                const profileRow = await db.user_profile.orderBy("id").first();
+                if (profileRow?.id !== undefined) {
+                    await db.user_profile.update(profileRow.id, {
+                        cat_pending_difficulty_signal: Number(payload?.session?.difficultySignal ?? 0),
+                    });
+                }
+                if (article?.url) {
+                    await db.articles.update(article.url, {
+                        catSelfAssessed: selfAssessment !== null,
+                        timestamp: Date.now(),
+                    });
+                }
+            } catch (profilePatchError) {
+                console.error("Failed to persist CAT difficulty signal locally:", profilePatchError);
+            }
+            setArticle((prev) => prev ? { ...prev, catSelfAssessed: selfAssessment !== null } : prev);
+
+            if (payload?.readingCoins?.delta > 0) {
+                pushReadingCoinFx({
+                    action: "quiz_complete",
+                    delta: payload.readingCoins.delta,
+                    applied: payload?.readingCoins?.applied !== false,
+                });
+            }
+
+            if (payload?.session?.delta !== undefined) {
+                const signedDelta = Number(payload.session.delta);
+                const deltaText = signedDelta >= 0 ? `+${signedDelta}` : `${signedDelta}`;
+                const policyUsed = payload?.session?.policyUsed;
+                const correction = Number(payload?.session?.scoreCorrection ?? 0);
+                const correctionText = correction === 0
+                    ? ""
+                    : ` · 自评修正 ${correction > 0 ? `+${correction}` : correction}`;
+                const stopHint = formatCatStopReason({
+                    stopReason: payload?.session?.stopReason,
+                    itemCount: payload?.session?.itemCount,
+                    minItems: policyUsed?.minItems,
+                    maxItems: policyUsed?.maxItems,
+                });
+                setCatNotice(`CAT 本局结算 ${deltaText} 分${correctionText} · ${stopHint}`);
+                window.setTimeout(() => setCatNotice(null), 4200);
+            }
+
+            if (payload?.animationPayload) {
+                const policyUsed = payload?.session?.policyUsed;
+                const animationPayload = {
+                    ...(payload.animationPayload as CatSettlementPayload),
+                    stopReason: payload?.session?.stopReason,
+                    itemCount: payload?.session?.itemCount,
+                    minItems: policyUsed?.minItems,
+                    maxItems: policyUsed?.maxItems,
+                    systemAssessment: payload?.session?.systemAssessment ?? null,
+                    selfAssessment: payload?.session?.selfAssessment ?? selfAssessment ?? null,
+                    objectiveDelta: Number(payload?.session?.objectiveDelta ?? payload?.session?.delta ?? 0),
+                    scoreCorrection: Number(payload?.session?.scoreCorrection ?? 0),
+                    difficultySignal: Number(payload?.session?.difficultySignal ?? 0),
+                } as CatSettlementPayload;
+                setCatSettlement(animationPayload);
+            }
+            
+            if (article?.url) {
+                try {
+                    const { db } = await import("@/lib/db");
+                    await db.articles.update(article.url, {
+                        catSelfAssessed: true,
+                    });
+                    setArticle((prev) => prev ? { ...prev, catSelfAssessed: true } : prev);
+                } catch (updateErr) {
+                    console.error("Failed to mark article as self assessed", updateErr);
+                }
+            }
+            setPendingCatSubmission(null);
+        } catch (submitError) {
+            console.error(submitError);
+            setCatNotice(formatCatSubmitErrorMessage(submitError));
+            window.setTimeout(() => setCatNotice(null), 4200);
+        } finally {
+            setIsSubmittingCatAssessment(false);
+        }
+    }, [article, formatCatStopReason, pendingCatSubmission, pushReadingCoinFx]);
     const navEntryInitial = hasRouteEntry
         ? { opacity: 0, y: 16, scale: 0.992, filter: "blur(8px)" }
         : { opacity: 0, y: 10 };
@@ -405,6 +613,7 @@ function ReadingPageContent() {
         if (!targetArticle?.url) return;
         const articleUrl = targetArticle.url.trim();
         if (!articleUrl) return;
+        if (deletedArticleUrlsRef.current.has(articleUrl)) return;
 
         await db.articles.put({
             url: articleUrl,
@@ -430,6 +639,11 @@ function ReadingPageContent() {
             quizCorrect: targetArticle.quizCorrect,
             quizTotal: targetArticle.quizTotal,
             quizScorePercent: targetArticle.quizScorePercent,
+            quizQuestions: targetArticle.quizQuestions,
+            quizAnswers: targetArticle.quizAnswers,
+            quizResponses: targetArticle.quizResponses,
+            quizQualityTier: targetArticle.quizQualityTier,
+            catSelfAssessed: targetArticle.catSelfAssessed,
         });
     }, []);
 
@@ -437,6 +651,7 @@ function ReadingPageContent() {
         if (!targetArticle?.url) return;
         const articleUrl = targetArticle.url.trim();
         if (!articleUrl) return;
+        if (deletedArticleUrlsRef.current.has(articleUrl)) return;
 
         const articleKey = buildReadingArticleKey(targetArticle);
         const paragraphTexts = extractParagraphTextsForGrammar(targetArticle);
@@ -494,6 +709,7 @@ function ReadingPageContent() {
         clearDockHideTimer();
         dockHideTimerRef.current = window.setTimeout(() => {
             setIsDockVisible(false);
+            setIsThemeMenuOpen(false);
         }, delay);
     }, [clearDockHideTimer]);
 
@@ -1150,6 +1366,11 @@ function ReadingPageContent() {
                     quizCorrect: cached.quizCorrect,
                     quizTotal: cached.quizTotal,
                     quizScorePercent: cached.quizScorePercent,
+                    quizQuestions: Array.isArray(cached.quizQuestions) ? cached.quizQuestions as QuizQuestion[] : undefined,
+                    quizAnswers: cached.quizAnswers,
+                    quizResponses: cached.quizResponses,
+                    quizQualityTier: cached.quizQualityTier,
+                    catSelfAssessed: cached.catSelfAssessed,
                 });
 
                 // Update timestamp
@@ -1234,13 +1455,31 @@ function ReadingPageContent() {
                 floatingCompact={false}
                 onClose={() => setIsQuizMode(false)}
                 cachedQuestions={
-                    article.isCatMode && Array.isArray(article.catSessionBlueprint?.items) && article.catSessionBlueprint.items.length > 0
-                        ? article.catSessionBlueprint.items
-                        : (quizCacheKey ? quizCache[quizCacheKey] : undefined)
+                    article.quizQuestions && article.quizQuestions.length > 0
+                        ? article.quizQuestions
+                        : article.isCatMode && Array.isArray(article.catSessionBlueprint?.items) && article.catSessionBlueprint.items.length > 0
+                            ? article.catSessionBlueprint.items
+                            : (quizCacheKey ? quizCache[quizCacheKey] : undefined)
                 }
+                initialSubmitted={Boolean(article.quizCompleted)}
+                initialScore={
+                    typeof article.quizCorrect === "number" && typeof article.quizTotal === "number"
+                        ? { correct: article.quizCorrect, total: article.quizTotal }
+                        : null
+                }
+                initialAnswers={article.quizAnswers}
+                initialResponses={article.quizResponses}
+                lockAfterCompletion={Boolean(article.quizCompleted)}
                 onQuestionsReady={(questions) => {
                     if (!quizCacheKey || !quizDbKey) return;
                     setQuizCache((prev) => ({ ...prev, [quizCacheKey]: questions }));
+                    setArticle((prev) => {
+                        if (!prev) return prev;
+                        return {
+                            ...prev,
+                            quizQuestions: questions,
+                        };
+                    });
                     void (async () => {
                         try {
                             const { db } = await import("@/lib/db");
@@ -1252,6 +1491,12 @@ function ReadingPageContent() {
                                 data: { questions },
                                 timestamp: Date.now(),
                             });
+                            if (article?.url) {
+                                await db.articles.update(article.url, {
+                                    quizQuestions: questions,
+                                    timestamp: Date.now(),
+                                });
+                            }
                         } catch (error) {
                             console.error("Failed to persist quiz cache:", error);
                         }
@@ -1269,6 +1514,10 @@ function ReadingPageContent() {
                             quizCorrect: correct,
                             quizTotal: total,
                             quizScorePercent: scorePercent,
+                            quizQuestions: submission.questions ?? prev.quizQuestions,
+                            quizAnswers: submission.answers as Record<number, string | string[]> | undefined ?? prev.quizAnswers,
+                            quizResponses: submission.responses ?? prev.quizResponses,
+                            quizQualityTier: submission.qualityTier ?? prev.quizQualityTier,
                         };
                     });
 
@@ -1281,6 +1530,10 @@ function ReadingPageContent() {
                                     quizCorrect: correct,
                                     quizTotal: total,
                                     quizScorePercent: scorePercent,
+                                    quizQuestions: submission.questions,
+                                    quizAnswers: submission.answers,
+                                    quizResponses: submission.responses,
+                                    quizQualityTier: submission.qualityTier,
                                     timestamp: Date.now(),
                                 });
                                 // Notify daily plan tracker that a reading quiz was completed
@@ -1294,69 +1547,13 @@ function ReadingPageContent() {
                     if (sessionUser?.id && article?.url) {
                         const dedupeKey = buildQuizCompleteDedupeKey({ userId: sessionUser.id, articleUrl: article.url });
                         if (article.isCatMode && article.catSessionId) {
-                            void (async () => {
-                                try {
-                                    const response = await fetch("/api/ai/cat/session/submit", {
-                                        method: "POST",
-                                        headers: { "Content-Type": "application/json" },
-                                        body: JSON.stringify({
-                                            sessionId: article.catSessionId,
-                                            quizCorrect: correct,
-                                            quizTotal: total,
-                                            readingMs,
-                                            responses: submission.responses,
-                                            qualityTier: submission.qualityTier,
-                                        }),
-                                    });
-                                    const payload = await response.json();
-                                    if (!response.ok) {
-                                        throw new Error(payload.error || "CAT submit failed");
-                                    }
-                                    await applyServerProfilePatchToLocal({
-                                        cat_score: payload?.cat?.score,
-                                        cat_level: payload?.cat?.level,
-                                        cat_theta: payload?.cat?.theta,
-                                        cat_se: payload?.cat?.se,
-                                        cat_points: payload?.cat?.points,
-                                        cat_current_band: payload?.cat?.currentBand,
-                                        cat_updated_at: payload?.cat?.updatedAt ?? new Date().toISOString(),
-                                        reading_coins: payload?.readingCoins?.balance,
-                                    });
-                                    if (payload?.readingCoins?.delta > 0) {
-                                        pushReadingCoinFx({
-                                            action: "quiz_complete",
-                                            delta: payload.readingCoins.delta,
-                                            applied: payload?.readingCoins?.applied !== false,
-                                        });
-                                    }
-                                    if (payload?.session?.delta !== undefined) {
-                                        const signedDelta = Number(payload.session.delta);
-                                        const deltaText = signedDelta >= 0 ? `+${signedDelta}` : `${signedDelta}`;
-                                        const policyUsed = payload?.session?.policyUsed;
-                                        const stopHint = formatCatStopReason({
-                                            stopReason: payload?.session?.stopReason,
-                                            itemCount: payload?.session?.itemCount,
-                                            minItems: policyUsed?.minItems,
-                                            maxItems: policyUsed?.maxItems,
-                                        });
-                                        setCatNotice(`CAT 本局结算 ${deltaText} 分 · ${stopHint}`);
-                                        window.setTimeout(() => setCatNotice(null), 4200);
-                                    }
-                                    if (payload?.animationPayload) {
-                                    const policyUsed = payload?.session?.policyUsed;
-                                    const animationPayload = {
-                                        ...(payload.animationPayload as CatSettlementPayload),
-                                        stopReason: payload?.session?.stopReason,
-                                        itemCount: payload?.session?.itemCount,
-                                        minItems: policyUsed?.minItems,
-                                        maxItems: policyUsed?.maxItems,
-                                    } as CatSettlementPayload;
-                                    setCatSettlement(animationPayload);
-                                }
-                            } catch (submitError) {
-                                console.error(submitError);
-                            }
-                            })();
+                            setPendingCatSubmission({
+                                correct,
+                                total,
+                                readingMs,
+                                responses: submission.responses,
+                                qualityTier: submission.qualityTier,
+                            });
                         } else {
                             void applyReadingEconomy({
                                 action: "quiz_complete",
@@ -1497,14 +1694,16 @@ function ReadingPageContent() {
                 fontClass
             )}
         >
-            <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-                <div className={`absolute inset-0 ${backgroundSpec.baseLayer}`} />
-                {backgroundSpec.coverGradient && <div className="absolute inset-0 opacity-[0.25]" style={{ backgroundImage: backgroundSpec.coverGradient, mixBlendMode: 'overlay' }} />}
-                {backgroundSpec.glassLayer && <div className={`absolute inset-0 ${backgroundSpec.glassLayer}`} />}
-                {backgroundSpec.glowLayer && <div className={`absolute inset-0 ${backgroundSpec.glowLayer}`} />}
-                {backgroundSpec.bottomLayer && <div className={`absolute inset-x-0 bottom-0 h-1/2 ${backgroundSpec.bottomLayer}`} />}
-                {backgroundSpec.vignetteLayer && <div className={`absolute inset-0 ${backgroundSpec.vignetteLayer}`} />}
-            </div>
+            {shouldUseGlobalBackgroundLayers && (
+                <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+                    <div className={`absolute inset-0 ${backgroundSpec.baseLayer}`} />
+                    {backgroundSpec.coverGradient && <div className="absolute inset-0 opacity-[0.25]" style={{ backgroundImage: backgroundSpec.coverGradient, mixBlendMode: 'overlay' }} />}
+                    {backgroundSpec.glassLayer && <div className={`absolute inset-0 ${backgroundSpec.glassLayer}`} />}
+                    {backgroundSpec.glowLayer && <div className={`absolute inset-0 ${backgroundSpec.glowLayer}`} />}
+                    {backgroundSpec.bottomLayer && <div className={`absolute inset-x-0 bottom-0 h-1/2 ${backgroundSpec.bottomLayer}`} />}
+                    {backgroundSpec.vignetteLayer && <div className={`absolute inset-0 ${backgroundSpec.vignetteLayer}`} />}
+                </div>
+            )}
             {article && activeReadingFilm && theme !== "welcome" && (
                 <motion.div
                     key={`reading-theme-${theme}`}
@@ -1538,6 +1737,21 @@ function ReadingPageContent() {
                             transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
                         />
                     </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {pendingCatSubmission && (
+                    <CatSelfAssessmentDialog
+                        open
+                        isSubmitting={isSubmittingCatAssessment}
+                        onSelect={(value) => {
+                            void submitPendingCatSession(value);
+                        }}
+                        onClose={() => {
+                            void submitPendingCatSession(null);
+                        }}
+                    />
                 )}
             </AnimatePresence>
 
@@ -1629,6 +1843,48 @@ function ReadingPageContent() {
                                         <span className="pb-1 text-xs font-semibold text-slate-500">CAT Score</span>
                                     </div>
                                 </div>
+                                {(catSettlement.systemAssessment || catSettlement.selfAssessment || typeof catSettlement.objectiveDelta === "number") && (
+                                    <div className="mt-4 grid gap-3 md:grid-cols-4">
+                                        <div className="rounded-2xl border border-white/70 bg-white/58 px-4 py-3">
+                                            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">System Delta</p>
+                                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                                                {typeof catSettlement.objectiveDelta === "number"
+                                                    ? `系统原判 ${catSettlement.objectiveDelta > 0 ? "+" : ""}${catSettlement.objectiveDelta} 分`
+                                                    : "系统未标注"}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-2xl border border-white/70 bg-white/58 px-4 py-3">
+                                            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">System</p>
+                                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                                                {catSettlement.systemAssessment
+                                                    ? CAT_SYSTEM_ASSESSMENT_LABELS[catSettlement.systemAssessment]
+                                                    : "系统未标注"}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-2xl border border-white/70 bg-white/58 px-4 py-3">
+                                            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Self</p>
+                                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                                                {catSettlement.selfAssessment
+                                                    ? CAT_SELF_ASSESSMENT_LABELS[catSettlement.selfAssessment]
+                                                    : "未填写自评"}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-2xl border border-white/70 bg-white/58 px-4 py-3">
+                                            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Correction</p>
+                                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                                                {Number(catSettlement.scoreCorrection ?? 0) === 0
+                                                    ? "本局无修正"
+                                                    : `自评修正 ${Number(catSettlement.scoreCorrection ?? 0) > 0 ? "+" : ""}${Number(catSettlement.scoreCorrection ?? 0)}`}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-2xl border border-white/70 bg-white/58 px-4 py-3">
+                                            <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Final Delta</p>
+                                            <p className="mt-1 text-sm font-semibold text-slate-900">
+                                                最终结算 {catSettlement.delta > 0 ? "+" : ""}{catSettlement.delta} 分
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
                                 <div className="mt-5 flex justify-end">
                                     <button
                                         type="button"
@@ -1678,7 +1934,7 @@ function ReadingPageContent() {
                 }}
             >
                 {article ? (
-                    <div className="relative flex w-full max-w-[1400px] flex-nowrap items-center gap-2 overflow-x-auto rounded-[1.5rem] border-[3px] border-[color:var(--mist-read-bd)] bg-[color:var(--mist-read-bg)] px-3 py-3 shadow-[0_8px_0_var(--mist-read-sd)]">
+                    <div className="relative flex w-full max-w-[1400px] flex-nowrap items-center gap-2 rounded-[1.5rem] border-[3px] border-[color:var(--mist-read-bd)] bg-[color:var(--mist-read-bg)] px-3 py-3 shadow-[0_8px_0_var(--mist-read-sd)]">
                         <button
                             onClick={() => {
                                 setArticle(null);
@@ -1867,8 +2123,15 @@ function ReadingPageContent() {
                             <div>
                                 <RecommendedArticles
                                     onSelect={handleUrlSubmit}
+                                    onArticleDeleted={(url) => {
+                                        deletedArticleUrlsRef.current.add(url);
+                                        setArticle((prev) => prev?.url === url ? null : prev);
+                                    }}
                                     onArticleLoaded={(data) => {
                                         const nextArticle = data as ArticleData;
+                                        if (nextArticle.url) {
+                                            deletedArticleUrlsRef.current.delete(nextArticle.url);
+                                        }
                                         setArticle(nextArticle);
                                         setArticleStartedAt(Date.now());
                                         void persistArticleLocally(nextArticle)
@@ -1909,14 +2172,17 @@ function ReadingPageContent() {
                             )}
                         >
                         {/* Reading Column */}
-                        <div
+                        <motion.div
+                            layout
+                            transition={{ type: "spring", stiffness: 320, damping: 28, mass: 0.8 }}
                             key={readingViewportKey}
                             ref={readingColumnRef}
                             data-reading-scroll-container="true"
                             className={cn(
-                            "space-y-8 xl:space-y-10 overflow-visible mx-auto max-w-4xl",
-                            showStandardSplitQuiz && "xl:mr-[440px] xl:max-w-none",
-                        )}>
+                                "space-y-8 xl:space-y-10 overflow-visible mx-auto max-w-4xl",
+                                showStandardSplitQuiz && "xl:mr-[440px] xl:max-w-none",
+                            )}
+                        >
                             <ArticleDisplay
                                 title={article.title}
                                 content={article.content}
@@ -1938,29 +2204,39 @@ function ReadingPageContent() {
                             <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">
                                 <AudioPlayer text={article.textContent || ""} />
                             </div>
-                        </div>
+                        </motion.div>
                         </motion.div>
                     )}
                 </AnimatePresence>
 
                 {/* Fixed Quiz Panel — outside grid/motion tree to avoid transform/overflow breaking sticky */}
-                {showStandardSplitQuiz && article && (
-                    <div
-                        ref={quizPanelWrapperRef}
-                        style={quizPanelStyle}
-                        className={cn(
-                            "fixed top-28 right-10 z-40 w-[400px] flex flex-col",
-                            shouldEnableQuizPanelDrag && "transition-transform duration-75",
-                        )}
-                    >
-                        <div
-                            ref={quizPanelGlassRef}
-                            className="flex max-h-[calc(100vh-120px)] flex-col overflow-hidden rounded-[2rem] border-[3px] border-[#17120d] bg-[#fffaf0] shadow-[0_10px_0_rgba(23,18,13,0.14)]"
+                <AnimatePresence>
+                    {showStandardSplitQuiz && article && (
+                        <motion.div
+                            initial={{ opacity: 0, x: 36, y: 16, rotate: 3, scale: 0.94 }}
+                            animate={{ opacity: 1, x: 0, y: 0, rotate: 0, scale: 1 }}
+                            exit={{ opacity: 0, x: 36, y: 16, rotate: 3, scale: 0.94 }}
+                            transition={{ type: "spring", stiffness: 320, damping: 28, mass: 0.8 }}
+                            className="fixed top-28 right-10 z-40 origin-bottom-right pointer-events-none"
                         >
-                            {renderQuizPanel()}
-                        </div>
-                    </div>
-                )}
+                            <div
+                                ref={quizPanelWrapperRef}
+                                style={quizPanelStyle}
+                                className={cn(
+                                    "w-[400px] flex flex-col pointer-events-auto",
+                                    shouldEnableQuizPanelDrag && "transition-transform duration-75",
+                                )}
+                            >
+                                <div
+                                    ref={quizPanelGlassRef}
+                                    className="flex max-h-[calc(100vh-120px)] flex-col overflow-hidden rounded-[2rem] border-[3px] border-[#17120d] bg-[#fffaf0] shadow-[0_10px_0_rgba(23,18,13,0.14)]"
+                                >
+                                    {renderQuizPanel()}
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* Writing Overlay */}
                 {isWritingMode && article && (
