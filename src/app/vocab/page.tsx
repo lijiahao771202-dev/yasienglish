@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useMemo, useRef, useState } from "react";
+import React, { Suspense, useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { db, VocabItem } from "@/lib/db";
 import { deleteVocabulary, saveVocabulary } from "@/lib/user-repository";
 import { defaultVocabSourceLabel } from "@/lib/user-sync";
@@ -10,6 +10,7 @@ import {
     ArrowLeft,
     Brain,
     Clock,
+    Compass,
     GraduationCap,
     Loader2,
     PencilLine,
@@ -22,6 +23,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { createEmptyCard, isVocabularyArchived, State } from "@/lib/fsrs";
 import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 import { VocabEditDialog } from "@/components/vocab/VocabEditDialog";
+import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 
 type AddWordFeedback = { type: "success" | "error"; text: string } | null;
 type VocabFilterKey = "all" | "due" | "learning" | "recent" | "graduated";
@@ -283,7 +285,135 @@ function VocabDashboardContent() {
     const [editingItem, setEditingItem] = useState<VocabItem | null>(null);
     const [activeFilter, setActiveFilter] = useState<VocabFilterKey>("recent");
     const [routeExitTarget, setRouteExitTarget] = useState<"home" | "review" | null>(null);
+    const [showVocabTour, setShowVocabTour] = useState(false);
     const manualInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        const hasCompleted = localStorage.getItem("vocab-v2-onboarded");
+        if (!hasCompleted) {
+            const timer = setTimeout(() => {
+                setShowVocabTour(true);
+            }, 800);
+            return () => clearTimeout(timer);
+        }
+    }, []);
+
+    const handleVocabTourComplete = useCallback(() => {
+        setShowVocabTour(false);
+        try {
+            localStorage.setItem("vocab-v2-onboarded", "true");
+        } catch (e) {
+            console.error(e);
+        }
+    }, []);
+
+    const vocabTourSteps: TourStep[] = [
+        {
+            targetId: "vocab-overview",
+            title: "生词本：不背单词的哲学 📖",
+            content: "我们在设计这款应用时，刻意弱化了传统的『机械式背单词』功能。因为我们坚信：脱离上下文语境的死记硬背，效率极低且违背大脑认知规律。\n\n真正的语言习得，应当自然发生在充满好奇心的阅读与听力探索之中！",
+            placement: "bottom"
+        },
+        {
+            targetId: "vocab-dynamic-cards",
+            title: "会呼吸的记忆载体 🫁",
+            content: "在阅读或者跟读时，只要您重点查询了某个生词，它就会携带【当时的原文被发现的例句】和【原汁语境】，自动脱落进这里的『隐形养词池』。\n\n每一张卡牌都是活生生的，带有您探索时的“记忆锚点”。",
+            placement: "top"
+        },
+        {
+            targetId: "vocab-review-button",
+            title: "复习的入口 ⏳",
+            content: "虽然不提倡海量盲背，但巩固依然必不可少。\n一旦有卡牌达到遗忘的临界点，右上角的“温柔复习”按钮就会亮起。然而，系统背后的调度策略十分硬核——这完全归功于强大的 FSRS 算法。",
+            placement: "bottom"
+        },
+        {
+            targetId: "fsrs-explanation-modal", 
+            title: "FSRS 记忆引擎 🚀",
+            content: "我们在底层为您接入了目前全球最领先的开源遗忘调度算法。彻底告别无效的死记硬背，把复习时机交给最懂您的算法大脑。",
+            placement: "bottom",
+            customModal: (
+                <div className="flex flex-col bg-transparent p-4 md:p-6">
+                    {/* Header */}
+                    <div className="shrink-0 mb-4 flex flex-col gap-1 text-center">
+                        <span className="mx-auto inline-flex items-center gap-1.5 rounded-full border-2 border-indigo-200 bg-indigo-50 px-3 py-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-indigo-600">
+                            FSRS 算法内幕解析
+                        </span>
+                        <h3 className="text-xl md:text-2xl font-black text-theme-text tracking-tight mt-1">为什么要用 FSRS 取代艾宾浩斯？</h3>
+                    </div>
+
+                    {/* Main Content: 2-Column Split */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 flex-1 min-h-0">
+                        
+                        {/* 左侧：底层逻辑与对比 */}
+                        <div className="flex flex-col gap-3">
+                            <div className="text-[12px] md:text-[13px] text-theme-text leading-relaxed bg-indigo-500/10 border-l-[4px] border-indigo-500 p-3 rounded-r-xl">
+                                <span className="font-bold text-indigo-600 dark:text-indigo-400 block mb-1">📐 算法底层硬核推演：</span> 
+                                <span className="text-theme-text-muted opacity-90">FSRS 是一个运用机器学习持续进化的黑盒模型。它的核心是用抽象的 DSR 时序偏微分方程去拟合人类大脑。当你在复习时做出选择，系统会同步提取真实反馈，利用<b>梯度下降法（Gradient Descent）</b>不断修正你的专属神经元记忆衰退曲线。</span>
+                            </div>
+
+                            <div className="flex flex-col gap-2.5">
+                                <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-3">
+                                    <div className="font-bold text-rose-500 mb-0.5 flex items-center gap-1"><span className="text-sm">❌</span> 艾宾浩斯的致命缺陷</div>
+                                    <div className="text-[12px] text-theme-text-muted opacity-90 leading-normal">
+                                        传统的「1、2、4、7天」机械复习法，假定<b>所有词汇衰退速度一样</b>。导致极其困难的词在后期因间隔太长，15 天再去复习时早忘得一干二净，彻底陷入死循环。
+                                    </div>
+                                </div>
+                                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
+                                    <div className="font-bold text-emerald-500 mb-0.5 flex items-center gap-1"><span className="text-sm">✅</span> FSRS 的自适应降维</div>
+                                    <div className="text-[12px] text-theme-text-muted opacity-90 leading-normal">
+                                        基于千万级真实背词行为打磨，承认<b>“词与词生来的难度不同”</b>。仿佛你的私人认知教练，为每个词单独建立张量模型，精准切卡在濒临边缘的时间点执行曝光。
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 右侧：三维控制参数 */}
+                        <div className="flex flex-col gap-2.5">
+                            <div className="font-bold text-[13px] text-theme-text/80 mb-0.5 pl-1 flex items-center gap-2">
+                                三维核心追踪参量
+                                <div className="h-px flex-1 bg-theme-border/30"></div>
+                            </div>
+                            
+                            <div className="flex gap-3 bg-theme-card-bg border-[1.5px] border-theme-border/20 rounded-xl p-3 hover:border-emerald-300 transition-colors">
+                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-[13px]">🏃</div>
+                                <div className="flex flex-col gap-0.5">
+                                    <h4 className="font-bold text-[13px] text-theme-text">R: 维持度 (Retrievability)</h4>
+                                    <span className="text-[12px] text-theme-text-muted leading-tight">精准测算遗忘率，只在 R 跌落到你“将忘未忘”的濒死阈值时才让你复习，绝不做无用功。</span>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 bg-theme-card-bg border-[1.5px] border-theme-border/20 rounded-xl p-3 hover:border-amber-300 transition-colors">
+                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 text-[13px]">⚓️</div>
+                                <div className="flex flex-col gap-0.5">
+                                    <h4 className="font-bold text-[13px] text-theme-text">S: 稳定性 (Stability)</h4>
+                                    <span className="text-[12px] text-theme-text-muted leading-tight">点击“简单”立刻触发质变，系统判定长期连接形成，下次复习呈指数级飞跃推迟。</span>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 bg-theme-card-bg border-[1.5px] border-theme-border/20 rounded-xl p-3 hover:border-rose-300 transition-colors">
+                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600 text-[13px]">⛰️</div>
+                                <div className="flex flex-col gap-0.5">
+                                    <h4 className="font-bold text-[13px] text-theme-text">D: 困难度 (Difficulty)</h4>
+                                    <span className="text-[12px] text-theme-text-muted leading-tight">对点击“难”的孤岛，拉高内部 D 值更频密地用它刺激工作记忆，直至重新攻克。</span>
+                                </div>
+                            </div>
+
+                            <div className="mt-1 flex-1 min-h-[46px] rounded-xl bg-indigo-50 border-[2px] border-indigo-200 flex items-center justify-center text-center p-2">
+                                <p className="text-[12px] font-black text-indigo-900 leading-snug">💡 抛弃固执：一眼能在语境中认出就霸气地给「简单」</p>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            )
+        },
+        {
+            targetId: "vocab-manual-add",
+            title: "万物皆可入库 ✨",
+            content: "当然，如果您在发呆、看剧或生活里偶遇了想积累的词，随时敲进这里。AI 助教将秒速为您自动补充精准翻译及音标体系。快来构建您的专属词网吧！",
+            placement: "bottom"
+        }
+    ];
 
     const vocabQuery = useLiveQuery(() => db.vocabulary.toArray());
     const vocab = useMemo(() => vocabQuery ?? [], [vocabQuery]);
@@ -476,6 +606,14 @@ function VocabDashboardContent() {
                         </span>
                     </div>
                     <div className="flex items-center gap-2 text-[12px] font-bold text-theme-text">
+                        <button
+                            onClick={() => setShowVocabTour(true)}
+                            className="ui-pressable inline-flex h-8 w-8 items-center justify-center rounded-[0.7rem] border-[3px] border-theme-border bg-theme-base-bg text-theme-text hover:bg-theme-card-bg mr-2"
+                            style={getPressableStyle("var(--theme-shadow)", 2)}
+                            aria-label="功能指引"
+                        >
+                            <Compass className="h-4 w-4" />
+                        </button>
                         <span>温柔复习</span>
                         <span className="h-7 w-7 rounded-full border-[3px] border-theme-border bg-theme-text" />
                     </div>
@@ -487,7 +625,7 @@ function VocabDashboardContent() {
 
                 <div className="relative mx-auto max-w-7xl px-4 pt-8 sm:px-6 sm:pt-10">
                     <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                        <motion.div {...getBlockEnterProps(reducedMotion, 0.06)}>
+                        <motion.div {...getBlockEnterProps(reducedMotion, 0.06)} data-tour-target="vocab-overview">
                             <h1 className="text-[2.8rem] font-black tracking-tight text-theme-text sm:text-[3.6rem]">生词本</h1>
                             <div className="mt-4 flex flex-wrap items-center gap-3">
                                 <span className="inline-flex items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-card-bg px-3 py-1.5 text-[12px] font-black text-theme-text shadow-[0_2px_0_var(--theme-shadow)]">
@@ -506,6 +644,7 @@ function VocabDashboardContent() {
                         </motion.div>
 
                         <motion.button
+                            data-tour-target="vocab-review-button"
                             type="button"
                             {...getBlockEnterProps(reducedMotion, 0.14)}
                             whileTap={getPressableTap(reducedMotion, 4, 0.98)}
@@ -541,6 +680,7 @@ function VocabDashboardContent() {
                             </label>
 
                             <form
+                                data-tour-target="vocab-manual-add"
                                 onSubmit={handleManualAddWord}
                                 className="flex items-center gap-3 lg:w-[360px]"
                             >
@@ -618,6 +758,7 @@ function VocabDashboardContent() {
                     </motion.section>
 
                     <motion.section
+                        data-tour-target="vocab-dynamic-cards"
                         {...getBlockEnterProps(reducedMotion, 0.28)}
                         className="mt-8 rounded-[2rem] border-[3px] border-theme-border bg-theme-card-bg p-4 shadow-[0_8px_0_var(--theme-shadow)] sm:p-6"
                     >
@@ -705,6 +846,15 @@ function VocabDashboardContent() {
                 onClose={() => setEditingItem(null)}
                 onSaved={(nextItem) => setEditingItem(nextItem)}
             />
+
+            {showVocabTour && (
+                <SpotlightTour
+                    steps={vocabTourSteps}
+                    isOpen={showVocabTour}
+                    onComplete={handleVocabTourComplete}
+                    onClose={handleVocabTourComplete}
+                />
+            )}
             </motion.main>
         </>
     );

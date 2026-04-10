@@ -13,6 +13,12 @@ export const CAT_SELF_ASSESSMENT_LABELS: Record<CatSelfAssessment, string> = {
     hard: "自评：偏难",
 };
 
+const SELF_SUGGESTED_CORRECTION: Record<CatSelfAssessment, number> = {
+    easy: 12,
+    just_right: 0,
+    hard: -12,
+};
+
 const SYSTEM_SIGNAL: Record<CatSystemAssessment, -1 | 0 | 1> = {
     too_easy: 1,
     matched: 0,
@@ -29,7 +35,7 @@ const SCORE_CORRECTION_TABLE: Record<CatSystemAssessment, Record<CatSelfAssessme
     too_easy: {
         easy: 12,
         just_right: 6,
-        hard: 0,
+        hard: -6,
     },
     matched: {
         easy: 6,
@@ -37,7 +43,7 @@ const SCORE_CORRECTION_TABLE: Record<CatSystemAssessment, Record<CatSelfAssessme
         hard: -6,
     },
     too_hard: {
-        easy: 0,
+        easy: 6,
         just_right: -6,
         hard: -12,
     },
@@ -77,6 +83,38 @@ export function getCatSelfAssessmentScoreCorrection(
     selfAssessment: CatSelfAssessment,
 ) {
     return SCORE_CORRECTION_TABLE[systemAssessment][selfAssessment];
+}
+
+export function getCatSelfAssessmentSuggestedCorrection(selfAssessment: CatSelfAssessment) {
+    return SELF_SUGGESTED_CORRECTION[selfAssessment];
+}
+
+export function getCatScoreCorrectionSummary(params: {
+    selfAssessment?: CatSelfAssessment | null;
+    scoreCorrection?: number | null;
+}) {
+    const selfAssessment = params.selfAssessment ?? null;
+    const appliedCorrection = Number(params.scoreCorrection ?? 0);
+
+    if (!selfAssessment) {
+        return {
+            selfSuggestedCorrection: 0,
+            label: "未填写自评",
+        };
+    }
+
+    const selfSuggestedCorrection = getCatSelfAssessmentSuggestedCorrection(selfAssessment);
+    if (appliedCorrection === 0 && selfSuggestedCorrection !== 0) {
+        return {
+            selfSuggestedCorrection,
+            label: "最终修正 0 分（与系统判断冲突）",
+        };
+    }
+
+    return {
+        selfSuggestedCorrection,
+        label: `最终修正 ${appliedCorrection > 0 ? "+" : ""}${appliedCorrection} 分`,
+    };
 }
 
 export function getCatDifficultySignal(

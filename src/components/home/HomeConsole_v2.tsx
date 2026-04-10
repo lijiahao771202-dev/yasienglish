@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, BookAudio, BookOpenText, BrainCircuit, Clock3, Sparkles, Stars, Swords, X } from "lucide-react";
+import { ArrowRight, BookAudio, BookOpenText, BrainCircuit, Clock3, Sparkles, Stars, Swords, X, Compass } from "lucide-react";
 
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { HomeDashboardPanels_v2 } from "@/components/home/HomeDashboardPanels_v2";
 import { buildHomeDashboardModel } from "@/components/home/home-data";
 import { db } from "@/lib/db";
+import { saveProfilePatch } from "@/lib/user-repository";
+import { RANDOM_ENGLISH_TTS_VOICE } from "@/lib/profile-settings";
+import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
+import { Volume2, CloudUpload, Loader2, Check } from "lucide-react";
 
 interface HomeConsoleProps {
     passwordUpdated?: boolean;
@@ -133,8 +137,89 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
         };
     }, [dueWordCount, reviewReminderDismissed, routeTransitionTarget, showReviewReminder]);
 
+    const [showHomeTour, setShowHomeTour] = useState(false);
+    const [settingVoice, setSettingVoice] = useState(false);
+    const [voiceSet, setVoiceSet] = useState(false);
+
+    useEffect(() => {
+        const hasCompleted = localStorage.getItem("v2-onboarded");
+        if (!hasCompleted) {
+            // Slight delay so the page can render and animate in first
+            const timer = setTimeout(() => setShowHomeTour(true), 1200);
+            return () => clearTimeout(timer);
+        }
+    }, []);
+
+    const handleTourComplete = useCallback(() => {
+        setShowHomeTour(false);
+        try {
+            localStorage.setItem("v2-onboarded", "true");
+        } catch (e) {
+            console.error(e);
+        }
+        
+        // Dispatch the event so UserAvatarMenu picks it up, opens itself, and starts its own nested tour
+        window.dispatchEvent(new Event("start-avatar-tour"));
+    }, []);
+
+    const handleSetRandomVoice = async () => {
+        setSettingVoice(true);
+        try {
+            await saveProfilePatch({
+                learning_preferences: {
+                    ...(profile?.learning_preferences || {}),
+                    tts_voice: RANDOM_ENGLISH_TTS_VOICE,
+                },
+            });
+            setVoiceSet(true);
+        } catch (e) {
+            window.alert("配置失败，请检查网络后重试。");
+        } finally {
+            setSettingVoice(false);
+        }
+    };
+
+    const homeTourSteps: TourStep[] = [
+        {
+            targetId: "core-modules",
+            title: "核心训练区",
+            content: "四大核心模组，在这里全景呈现。您可以根据每一天的心情，选择听力精听、阅读精读、对战比拼或单纯背单词。",
+            placement: "bottom"
+        },
+        {
+            targetId: "daily-plan",
+            title: "每日计划指南针",
+            content: "为您量身定制的备考日程表。智能切分大考任务，今天该做什么、还差多少，随时了然于胸。",
+            placement: "right"
+        },
+        {
+            targetId: "immersion-echo",
+            title: "沉浸回声",
+            content: "一分耕耘，一分收获。在这里追踪您每日有效的专注时长，积水成渊。",
+            placement: "bottom"
+        },
+        {
+            targetId: "habit-pulse",
+            title: "本周脉搏",
+            content: "火种代表您的每一次坚持。只要有付诸行动，这一天专属于您的光团就会亮起。",
+            placement: "top"
+        },
+        {
+            targetId: "header-avatar-btn",
+            title: "系统神经中枢",
+            content: "向导的最后一环：这里藏着 Yasi 系统的总控制台。请在此结束主向导后，点击右上角您的头像展开设置面板，为您配置全局动态发音规则吧！",
+            placement: "bottom"
+        }
+    ];
+
     return (
         <main className="font-welcome-ui relative min-h-screen w-full overflow-hidden px-4 py-4 sm:px-6 sm:py-6 lg:px-8 flex flex-col items-center justify-center bg-transparent transition-colors">
+            <SpotlightTour 
+                isOpen={showHomeTour} 
+                onClose={handleTourComplete} 
+                onComplete={handleTourComplete}
+                steps={homeTourSteps} 
+            />
             <AnimatePresence>
                 {routeTransitionTarget && (
                     <motion.div
@@ -282,7 +367,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                     欢迎回来
                                 </h1>
                             </div>
-                            <div className="flex flex-wrap md:flex-nowrap gap-4">
+                            <div data-tour-target="core-modules" className="flex flex-wrap md:flex-nowrap gap-4">
                                 <motion.button
                                     whileHover={{ scale: 1.04, y: -2 }}
                                     whileTap={{ scale: 0.96 }}
@@ -358,6 +443,20 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                 </motion.div>
             </motion.div>
             
+            {/* Tour Trigger Button */}
+            <motion.button
+                initial={{ opacity: 0, scale: 0.8, rotate: -20 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ delay: 1, type: "spring", stiffness: 300, damping: 20 }}
+                whileHover={{ scale: 1.1, rotate: 15 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setShowHomeTour(true)}
+                className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full border-4 border-[#1e1b4b] bg-indigo-200 text-[#1e1b4b] shadow-[0_6px_0_0_#1e1b4b] active:translate-y-1 active:shadow-[0_2px_0_0_#1e1b4b]"
+                title="开启功能向导"
+            >
+                <Compass className="h-6 w-6 stroke-[2.5]" />
+            </motion.button>
+
             <style dangerouslySetInnerHTML={{ __html: `
                 .__hide-scrollbars::-webkit-scrollbar { display: none; }
                 .__hide-scrollbars { -ms-overflow-style: none; scrollbar-width: none; }

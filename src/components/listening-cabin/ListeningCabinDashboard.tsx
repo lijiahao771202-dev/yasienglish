@@ -25,6 +25,7 @@ import {
     Zap,
     ChevronRight,
     ChevronLeft,
+    Compass,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -66,6 +67,7 @@ import type {
 } from "@/lib/listening-cabin";
 import { db } from "@/lib/db";
 import { updateListeningCabinSession, toggleListeningCabinSentenceMastery, updateListeningCabinSentenceNote } from "@/lib/listening-cabin-store";
+import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 
 // Audio Feedback Utility
 const playMasterySound = () => {
@@ -244,6 +246,71 @@ export default function ListeningCabinDashboard() {
     const [isNoteOverlayOpen, setIsNoteOverlayOpen] = useState(false);
 
     const { playForgeSound, playSuccessSound } = useForgeHaptics();
+
+    // Spotlight Tour
+    const [showCabinTour, setShowCabinTour] = useState(false);
+    useEffect(() => {
+        const hasCompleted = localStorage.getItem("cabin-v2-onboarded");
+        if (!hasCompleted) {
+            const timer = setTimeout(() => setShowCabinTour(true), 1200);
+            return () => clearTimeout(timer);
+        }
+    }, []);
+
+    const handleTourComplete = () => {
+        localStorage.setItem("cabin-v2-onboarded", "true");
+        setShowCabinTour(false);
+    };
+
+    const cabinTourSteps: TourStep[] = [
+        {
+            targetId: "wizard-forge",
+            title: "向导式锻造",
+            content: "不知道怎么选听力材料？交给智能向导吧！几步点选即可为您定制专属的连读、弱读或雅思场景音频。",
+            placement: "bottom"
+        },
+        {
+            targetId: "adventure-records",
+            title: "冒险日志",
+            content: "这存放着每一次生成的音频。主操作按钮可直接【进入播放】精听；下方三个小图标依次是：【查看文本脚本】、【重头强行重听】以及【永久删除日志】。赶紧试着追求 100% 熟练度通关吧！",
+            placement: "top"
+        }
+    ];
+
+    // Wizard Spotlight Tour
+    const [showWizardTour, setShowWizardTour] = useState(false);
+    useEffect(() => {
+        if (showWizard) {
+            const hasCompleted = localStorage.getItem("wizard-v3-onboarded");
+            if (!hasCompleted) {
+                // Wait for the modal popup spring animation
+                const timer = setTimeout(() => setShowWizardTour(true), 600);
+                return () => clearTimeout(timer);
+            }
+        } else {
+            setShowWizardTour(false);
+        }
+    }, [showWizard]);
+
+    const handleWizardTourComplete = () => {
+        localStorage.setItem("wizard-v3-onboarded", "true");
+        setShowWizardTour(false);
+    };
+
+    const wizardTourSteps: TourStep[] = [
+        {
+            targetId: "wizard-step-mode",
+            title: "全能脚本生成器",
+            content: "欢迎来到剧本工作室！您可以选择单人口播、经典对话，甚至可以生成多人各抒己见的播客模式！",
+            placement: "right"
+        },
+        {
+            targetId: "wizard-progress",
+            title: "向导式无忧配置",
+            content: "只要跟着顶部的进度条一步点一下，难度、语速、口音...系统自会安排妥当！您可以随时返回上一步修改。",
+            placement: "bottom"
+        }
+    ];
 
     // Keyboard navigation for Focus Mode
     useEffect(() => {
@@ -732,6 +799,18 @@ export default function ListeningCabinDashboard() {
 
     return (
         <main className="relative min-h-screen overflow-x-hidden transition-colors duration-300 [WebkitTapHighlightColor:transparent]">
+            <SpotlightTour 
+                isOpen={showCabinTour} 
+                onClose={handleTourComplete} 
+                onComplete={handleTourComplete}
+                steps={cabinTourSteps} 
+            />
+            <SpotlightTour 
+                isOpen={showWizardTour} 
+                onClose={handleWizardTourComplete} 
+                onComplete={handleWizardTourComplete}
+                steps={wizardTourSteps} 
+            />
             <div className="relative mx-auto max-w-[1120px] px-4 pb-10 pt-5 sm:px-6 lg:px-8">
                 <header className="mb-8 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
@@ -764,6 +843,7 @@ export default function ListeningCabinDashboard() {
                             {/* Top Hero: Guidance Forge */}
                             <section className="flex flex-col items-center">
                                 <motion.div
+                                    data-tour-target="wizard-forge"
                                     initial={{ opacity: 0, scale: 0.95 }}
                                     animate={{ opacity: 1, scale: 1 }}
                                     transition={{ type: "spring", damping: 20, stiffness: 100 }}
@@ -802,7 +882,7 @@ export default function ListeningCabinDashboard() {
                             </section>
 
                             {/* Bottom Section: History Records Gallery */}
-                            <section className="flex flex-col gap-10 pb-20">
+                            <section data-tour-target="adventure-records" className="flex flex-col gap-10 pb-20">
                                 <div className="flex items-end justify-between px-6">
                                     <div className="flex flex-col gap-2">
                                         <div className="flex items-center gap-3">
@@ -1374,9 +1454,7 @@ export default function ListeningCabinDashboard() {
                         </motion.div>
                     )}
                 </AnimatePresence>
-            </div>
-
-            {/* Phase 25: The Guidance Forge Wizard — v3.0 'Crystal Forge' Centered Modal */}
+            </div>            {/* Phase 25: The Guidance Forge Wizard — v3.0 'Crystal Forge' Centered Modal */}
             <AnimatePresence>
                 {showWizard && (
                     <motion.div 
@@ -1414,7 +1492,7 @@ export default function ListeningCabinDashboard() {
                                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Crystal Forge v3.0</p>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-5">
+                                <div data-tour-target="wizard-progress" className="flex items-center gap-5">
                                     <div className="flex gap-2 px-4 py-2 bg-slate-50/80 rounded-full border border-slate-100 shadow-inner">
                                         {[1,2,3,4,5,6,7].map(step => (
                                             <motion.div 
@@ -1441,7 +1519,7 @@ export default function ListeningCabinDashboard() {
                                 <AnimatePresence mode="wait">
                                     {/* Step 1: Mode */}
                                     {wizardStep === 1 && (
-                                        <motion.div key="s1" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
+                                        <motion.div data-tour-target="wizard-step-mode" key="s1" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} transition={{ duration: 0.3 }} className="space-y-4">
                                             <div>
                                                 <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">🎭 选择模式</h3>
                                                 <p className="text-xs text-slate-400 mt-1 font-semibold">脚本的基础交互方式</p>
@@ -1989,6 +2067,20 @@ export default function ListeningCabinDashboard() {
             </AnimatePresence>
 
             <audio ref={previewAudioRef} hidden />
+
+            {/* Tour Trigger Button */}
+            <motion.button
+                initial={{ opacity: 0, scale: 0.8, rotate: -20 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ delay: 1, type: "spring", stiffness: 300, damping: 20 }}
+                whileHover={{ scale: 1.1, rotate: 15 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setShowCabinTour(true)}
+                className="fixed bottom-6 right-6 z-[2500] flex h-14 w-14 items-center justify-center rounded-full border-4 border-[#1e1b4b] bg-indigo-200 text-[#1e1b4b] shadow-[0_6px_0_0_#1e1b4b] active:translate-y-1 active:shadow-[0_2px_0_0_#1e1b4b]"
+                title="开启功能向导"
+            >
+                <Compass className="h-6 w-6 stroke-[2.5]" />
+            </motion.button>
         </main>
     );
 }

@@ -6,9 +6,10 @@ import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, ChevronRight, CloudUpload, Image as ImageIcon, Loader2, LogOut, Mail, Play, RefreshCw, Search, Settings2, Volume2, X } from "lucide-react";
+import { BookOpen, Check, ChevronRight, CloudUpload, Image as ImageIcon, Loader2, LogOut, Mail, Play, RefreshCw, Search, Settings2, Volume2, X } from "lucide-react";
 
 import { PresetAvatar } from "@/components/profile/PresetAvatar";
+import { UserManualModal } from "@/components/profile/UserManualModal";
 import { db } from "@/lib/db";
 import { getUserFacingSyncError, saveProfilePatch, syncNow } from "@/lib/user-repository";
 import {
@@ -23,6 +24,7 @@ import {
     type TtsVoice,
     type TtsVoiceOption,
 } from "@/lib/profile-settings";
+import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 import { requestTtsPayload } from "@/lib/tts-client";
 import { useSyncStatusStore } from "@/lib/sync-status";
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
@@ -131,6 +133,7 @@ export function UserAvatarMenu({
     const [mailboxOpen, setMailboxOpen] = useState(false);
     const [backgroundOpen, setBackgroundOpen] = useState(false);
     const [ttsVoiceOpen, setTtsVoiceOpen] = useState(false);
+    const [manualOpen, setManualOpen] = useState(false);
     const [ttsVoiceBusy, setTtsVoiceBusy] = useState(false);
     const [previewVoice, setPreviewVoice] = useState<LearningPreferenceTtsVoice | null>(null);
     const [voiceFilter, setVoiceFilter] = useState<VoiceFilter>("all");
@@ -141,6 +144,17 @@ export function UserAvatarMenu({
     const voiceListRef = useRef<HTMLDivElement | null>(null);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
     const router = useRouter();
+    const [showAvatarTour, setShowAvatarTour] = useState(false);
+
+    // Global listener for tour orchestration
+    useEffect(() => {
+        const handleStartAvatarTour = () => {
+            setOpen(true);
+            setShowAvatarTour(true);
+        };
+        window.addEventListener("start-avatar-tour", handleStartAvatarTour);
+        return () => window.removeEventListener("start-avatar-tour", handleStartAvatarTour);
+    }, []);
     const isSidebar = placement === "sidebar";
     const isHeader = placement === "header";
     const selectedVoiceOption = useMemo(() => getVoicePickerOption(selectedVoice), [selectedVoice]);
@@ -186,17 +200,18 @@ export function UserAvatarMenu({
     }, []);
 
     useEffect(() => {
-        if (!mailboxOpen && !backgroundOpen && !ttsVoiceOpen) return;
+        if (!mailboxOpen && !backgroundOpen && !ttsVoiceOpen && !manualOpen) return;
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Escape") {
                 setMailboxOpen(false);
                 setBackgroundOpen(false);
                 setTtsVoiceOpen(false);
+                setManualOpen(false);
             }
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [backgroundOpen, mailboxOpen, ttsVoiceOpen]);
+    }, [backgroundOpen, mailboxOpen, ttsVoiceOpen, manualOpen]);
 
     useEffect(() => {
         setSelectedVoice(normalizeLearningPreferenceTtsVoice(learningPreferences.tts_voice));
@@ -281,6 +296,7 @@ export function UserAvatarMenu({
             className={isSidebar ? "relative z-[130] w-full" : isHeader ? "relative z-[130]" : "fixed right-4 top-4 z-[130]"}
         >
             <motion.button
+                data-tour-target="header-avatar-btn"
                 type="button"
                 animate={!open ? { y: [0, -3, 0], rotate: [0, 1, -1, 0] } : { y: 0, rotate: 0 }}
                 whileTap={{ scale: 0.93 }}
@@ -332,29 +348,32 @@ export function UserAvatarMenu({
                     </div>
 
                     {/* Sync status */}
-                    <div className={`mt-2 rounded-[0.8rem] border-2 px-3 py-2.5 ${
-                        syncLabel === "Synced"
-                            ? "border-theme-border bg-emerald-50 text-emerald-800"
-                            : syncLabel === "Sync failed"
-                                ? "border-theme-border bg-rose-50 text-rose-800"
-                                : "border-theme-border bg-indigo-50 text-indigo-800"
-                    }`}>
-                        <div className="flex items-center gap-2 text-xs font-bold">
-                            <RefreshCw className={`h-3.5 w-3.5 ${manualSyncing ? "animate-spin" : ""}`} />
-                            {syncLabel}
+                    <div>
+                        <div className={`mt-2 rounded-[0.8rem] border-2 px-3 py-2.5 ${
+                            syncLabel === "Synced"
+                                ? "border-theme-border bg-emerald-50 text-emerald-800"
+                                : syncLabel === "Sync failed"
+                                    ? "border-theme-border bg-rose-50 text-rose-800"
+                                    : "border-theme-border bg-indigo-50 text-indigo-800"
+                        }`}>
+                            <div className="flex items-center gap-2 text-xs font-bold">
+                                <RefreshCw className={`h-3.5 w-3.5 ${manualSyncing ? "animate-spin" : ""}`} />
+                                {syncLabel}
+                            </div>
+                            <p className="mt-1 text-xs font-medium opacity-80">{syncDescription}</p>
                         </div>
-                        <p className="mt-1 text-xs font-medium opacity-80">{syncDescription}</p>
+                        <button
+                            type="button"
+                            onClick={async () => { setManualSyncing(true); try { await syncNow(); } catch (error) { window.alert(getUserFacingSyncError(error)); } finally { setManualSyncing(false); } }}
+                            className="mt-2 flex w-full cursor-pointer items-center justify-between rounded-[0.8rem] px-3 py-2 text-sm font-bold text-theme-text hover:bg-theme-card-bg border-2 border-transparent hover:border-theme-border transition-colors"
+                        >
+                            <span className="flex items-center gap-2.5"><CloudUpload className="h-4 w-4" />{manualSyncing ? "同步中…" : "立即同步云端档案"}</span>
+                        </button>
                     </div>
 
                     {/* Action grid */}
                     <div className="mt-2 grid grid-cols-2 gap-2">
-                        <button
-                            type="button"
-                            onClick={async () => { setManualSyncing(true); try { await syncNow(); } catch (error) { window.alert(getUserFacingSyncError(error)); } finally { setManualSyncing(false); } }}
-                            className="col-span-2 flex w-full cursor-pointer items-center justify-between rounded-[0.8rem] px-3 py-2 text-sm font-bold text-theme-text hover:bg-theme-card-bg border-2 border-transparent hover:border-theme-border transition-colors"
-                        >
-                            <span className="flex items-center gap-2.5"><CloudUpload className="h-4 w-4" />{manualSyncing ? "同步中…" : "立即同步云端档案"}</span>
-                        </button>
+
                         <button
                             type="button"
                             onClick={() => { setMailboxOpen(true); setOpen(false); }}
@@ -376,7 +395,17 @@ export function UserAvatarMenu({
                     
                     <button
                         type="button"
-                        onClick={() => { setMailboxOpen(false); setBackgroundOpen(false); setTtsVoiceOpen((c) => { const n = !c; if (n) { setVoiceFilter("all"); setVoiceSearch(""); } return n; }); }}
+                        onClick={() => { setMailboxOpen(false); setBackgroundOpen(false); setTtsVoiceOpen(false); setManualOpen(true); }}
+                        className="flex w-full mb-2 cursor-pointer items-center justify-between rounded-[0.8rem] px-3 py-2 text-sm font-bold text-theme-text hover:bg-theme-card-bg border-2 border-transparent hover:border-theme-border transition-colors"
+                    >
+                        <span className="flex items-center gap-2.5"><BookOpen className="h-4 w-4" />软件使用手册</span>
+                        <ChevronRight className="h-4 w-4 text-theme-text-muted" />
+                    </button>
+
+                    <button
+                        type="button"
+                        data-tour-target="menu-speaker-btn"
+                        onClick={() => { setMailboxOpen(false); setBackgroundOpen(false); setManualOpen(false); setTtsVoiceOpen((c) => { const n = !c; if (n) { setVoiceFilter("all"); setVoiceSearch(""); } return n; }); }}
                         className="flex w-full cursor-pointer items-center justify-between rounded-[0.8rem] px-3 py-2 text-sm font-bold text-theme-text hover:bg-theme-card-bg border-2 border-transparent hover:border-theme-border transition-colors"
                     >
                         <span className="flex items-center gap-2.5"><Volume2 className="h-4 w-4" />专属发言人</span>
@@ -506,6 +535,7 @@ export function UserAvatarMenu({
                                                                 <div 
                                                                     key={option.voice} 
                                                                     data-voice-card={option.voice} 
+                                                                    data-tour-target={option.voice === RANDOM_ENGLISH_TTS_VOICE ? "voice-option-random" : undefined}
                                                                     className={`flex flex-col justify-between rounded-[1.2rem] border-[3px] border-theme-border p-4 shadow-[0_4px_0_0_var(--theme-shadow)] ${selected ? "bg-theme-active-bg" : "bg-theme-card-bg"}`}
                                                                 >
                                                                     <div>
@@ -620,6 +650,45 @@ export function UserAvatarMenu({
                         </motion.div>
                     )}
                 </AnimatePresence>,
+                document.body
+            )}
+            {typeof window !== "undefined" && createPortal(
+                <UserManualModal isOpen={manualOpen} onClose={() => setManualOpen(false)} />,
+                document.body
+            )}
+            {typeof window !== "undefined" && createPortal(
+                <SpotlightTour 
+                    isOpen={showAvatarTour} 
+                    onClose={() => setShowAvatarTour(false)} 
+                    onComplete={() => {
+                        setShowAvatarTour(false);
+                        localStorage.setItem("avatar-menu-tour-onboarded", "true");
+                    }}
+                    steps={[
+                        {
+                            targetId: "menu-speaker-btn",
+                            title: "全站语音引擎配置",
+                            content: "在此配置【专属发言人】，系统会为您分配全球海量发音人！点击【下一步】帮您展开配置面板。",
+                            placement: "left"
+                        },
+                        {
+                            targetId: "voice-option-random",
+                            title: "开启动态随机盲盒",
+                            content: "强烈建议选择【动态随机】，每次系统领读或纠错，都会为您分配不同的专业英美口音，强迫您的耳朵适应真实听力环境！点击【选择】立即启用！",
+                            placement: "left",
+                            onEnter: () => {
+                                setTtsVoiceOpen(true);
+                                // Scroll the specific element into view
+                                setTimeout(() => {
+                                    const targetElement = document.querySelector('[data-tour-target="voice-option-random"]');
+                                    if (targetElement) {
+                                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    }
+                                }, 100);
+                            }
+                        }
+                    ]} 
+                />,
                 document.body
             )}
         </div>

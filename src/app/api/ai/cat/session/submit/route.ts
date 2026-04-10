@@ -5,7 +5,12 @@ import {
     normalizeBand,
     recommendBadges,
 } from "@/lib/cat-growth";
-import { runCatRaschSession, type CatRaschResponse } from "@/lib/cat-rasch";
+import {
+    runCatRaschSession,
+    type CatRaschItemTrace,
+    type CatRaschResponse,
+    type CatStopReason,
+} from "@/lib/cat-rasch";
 import {
     getCatDifficultySignal,
     getCatSelfAssessmentScoreCorrection,
@@ -18,6 +23,7 @@ import { rewardReadingCoins } from "@/lib/reading-economy-server";
 import { createServerClient, getServerUserSafely } from "@/lib/supabase/server";
 
 interface SubmitCatPayload {
+    mode?: "prepare" | "finalize";
     sessionId?: string;
     quizCorrect?: number;
     quizTotal?: number;
@@ -33,6 +39,51 @@ interface SubmitCatPayload {
         itemDifficulty?: number;
         itemType?: string;
     }>;
+}
+
+interface ObjectiveGrowthSnapshot {
+    performance: number;
+    delta: number;
+    scoreAfter: number;
+    levelAfter: number;
+    thetaAfter: number;
+    nextBand: number;
+    pointsDelta: number;
+}
+
+interface PreparedSettlementMetrics {
+    accuracy: number;
+    speedScore: number;
+    stabilityScore: number;
+    readingMs: number;
+    quizCorrect: number;
+    quizTotal: number;
+    seBefore: number | null;
+    seAfter: number | null;
+    targetSe: number | null;
+    stopReason: CatStopReason | null;
+    itemCount: number;
+    policyUsed: {
+        minItems: number;
+        maxItems: number;
+        targetSe: number;
+    } | null;
+    qualityTier: "ok" | "low_confidence" | null;
+    challengeRatio: number | null;
+}
+
+interface StoredSettlementMeta {
+    prepared?: boolean;
+    finalized?: boolean;
+    objectiveDelta?: number;
+    systemAssessment?: CatSystemAssessment | null;
+    selfAssessment?: CatSelfAssessment | null;
+    scoreCorrection?: number;
+    difficultySignal?: number;
+    mode?: "rasch" | "legacy";
+    objectiveGrowth?: ObjectiveGrowthSnapshot;
+    metrics?: PreparedSettlementMetrics;
+    traces?: CatRaschItemTrace[];
 }
 
 function isMissingRpcFunction(error: { message?: string } | null, functionName: string) {
@@ -65,13 +116,7 @@ function readStoredSettlementMeta(input: unknown) {
     if (!settlement || typeof settlement !== "object" || Array.isArray(settlement)) {
         return null;
     }
-    return settlement as {
-        objectiveDelta?: number;
-        systemAssessment?: CatSystemAssessment | null;
-        selfAssessment?: CatSelfAssessment | null;
-        scoreCorrection?: number;
-        difficultySignal?: number;
-    };
+    return settlement as StoredSettlementMeta;
 }
 
 function expectedReadingMsByDifficulty(difficulty?: string) {
@@ -110,6 +155,106 @@ function parseRaschResponses(raw: SubmitCatPayload["responses"]) {
         .filter((item): item is CatRaschResponse => item !== null);
 }
 
+function buildPreparedSettlement(params: {
+    scoreBeforeSnapshot: number;
+    thetaBeforeSnapshot: number;
+    seBeforeSnapshot: number;
+    qualityTier: "ok" | "low_confidence";
+    sessionPolicy: ReturnType<typeof getCatSessionPolicy>;
+    expectedMs: number;
+    body: SubmitCatPayload;
+    normalizedResponses: CatRaschResponse[];
+}) {
+    const readingMsRaw = params.normalizedResponses.reduce((sum, item) => sum + Math.max(0, item.latencyMs), 0);
+    const rawReadingMs = Math.round(Number(params.body.readingMs ?? (readingMsRaw || params.expectedMs)));
+    const readingMs = Math.max(90_000, rawReadingMs);
+
+    const speedRatio = params.expectedMs / Math.max(readingMs, params.expectedMs * 0.48);
+    const speedScore = clamp(speedRatio, 0.15, 1);
+    const stabilityScore = 0.72;
+
+    const raschSession = params.normalizedResponses.length > 0
+        ? runCatRaschSession({
+            scoreBefore: params.scoreBeforeSnapshot,
+            thetaBefore: params.thetaBeforeSnapshot,
+            seBefore: params.seBeforeSnapshot,
+            responses: params.normalizedResponses,
+            minItems: params.sessionPolicy.minItems,
+            maxItems: params.sessionPolicy.maxItems,
+            targetSe: params.sessionPolicy.targetSe,
+            qualityTier: params.qualityTier,
+            growthPace: "balanced",
+        })
+        : null;
+
+    const useRaschMode = params.normalizedResponses.length > 0;
+    const quizCorrect = useRaschMode
+        ? raschSession?.traces.filter((item) => item.correct).length ?? 0
+        : Math.max(0, Math.round(Number(params.body.quizCorrect ?? 0)));
+    const quizTotal = useRaschMode
+        ? raschSession?.usedItemCount ?? 0
+        : Math.max(1, Math.round(Number(params.body.quizTotal ?? 5)));
+    const accuracy = useRaschMode
+        ? raschSession?.accuracy ?? 0
+        : clamp(quizCorrect / Math.max(1, quizTotal), 0, 1);
+
+    const objectiveGrowth = useRaschMode
+        ? {
+            performance: clamp(accuracy * 0.72 + speedScore * 0.14 + stabilityScore * 0.14, 0, 1),
+            delta: raschSession?.delta ?? 0,
+            scoreAfter: raschSession?.scoreAfter ?? params.scoreBeforeSnapshot,
+            levelAfter: levelFromScore(raschSession?.scoreAfter ?? params.scoreBeforeSnapshot),
+            thetaAfter: raschSession?.thetaAfter ?? params.thetaBeforeSnapshot,
+            nextBand: normalizeBand(Math.floor((raschSession?.scoreAfter ?? params.scoreBeforeSnapshot) / 400) + 1),
+            pointsDelta: raschSession?.pointsDelta ?? 4,
+        }
+        : computeCatGrowth({
+            score: params.scoreBeforeSnapshot,
+            level: levelFromScore(params.scoreBeforeSnapshot),
+            theta: params.thetaBeforeSnapshot,
+            currentBand: normalizeBand(Math.floor(params.scoreBeforeSnapshot / 400) + 1),
+            accuracy,
+            speedScore,
+            stabilityScore,
+        });
+
+    const systemAssessment = getCatSystemAssessment({
+        delta: objectiveGrowth.delta,
+        accuracy,
+        challengeRatio: useRaschMode ? raschSession?.challengeRatio ?? null : null,
+        qualityTier: params.qualityTier,
+    });
+
+    return {
+        mode: useRaschMode ? "rasch" as const : "legacy" as const,
+        objectiveGrowth,
+        metrics: {
+            accuracy,
+            speedScore,
+            stabilityScore,
+            readingMs,
+            quizCorrect,
+            quizTotal,
+            seBefore: useRaschMode ? raschSession?.seBefore ?? null : null,
+            seAfter: useRaschMode ? raschSession?.seAfter ?? null : null,
+            targetSe: useRaschMode ? raschSession?.targetSe ?? null : null,
+            stopReason: useRaschMode ? raschSession?.stopReason ?? null : null,
+            itemCount: useRaschMode ? raschSession?.usedItemCount ?? quizTotal : quizTotal,
+            policyUsed: useRaschMode
+                ? {
+                    minItems: params.sessionPolicy.minItems,
+                    maxItems: params.sessionPolicy.maxItems,
+                    targetSe: params.sessionPolicy.targetSe,
+                }
+                : null,
+            qualityTier: useRaschMode ? params.qualityTier : null,
+            challengeRatio: useRaschMode ? raschSession?.challengeRatio ?? null : null,
+        } satisfies PreparedSettlementMetrics,
+        systemAssessment,
+        traces: raschSession?.traces ?? [],
+    };
+}
+
 export async function POST(request: Request) {
     try {
     const { user, error } = await getServerUserSafely();
@@ -118,6 +263,7 @@ export async function POST(request: Request) {
     }
 
     const body = (await request.json().catch(() => ({}))) as SubmitCatPayload;
+    const mode = body.mode === "prepare" || body.mode === "finalize" ? body.mode : "finalize";
     const selfAssessment = parseSelfAssessment(body.selfAssessment);
     const sessionId = body.sessionId?.trim();
     if (!sessionId) {
@@ -154,6 +300,8 @@ export async function POST(request: Request) {
     const sessionPolicy = getCatSessionPolicy(scoreBeforeSnapshot);
     const seBeforeSnapshot = clamp(Number((profile as Record<string, unknown>).cat_se ?? 1.15), 0.22, 2.4);
     const rankBefore = getCatRankTier(scoreBeforeSnapshot);
+    const currentBlueprint = readSessionBlueprint((session as Record<string, unknown>).session_blueprint);
+    const storedSettlement = readStoredSettlementMeta(currentBlueprint);
 
     if (session.status === "completed") {
         const settledScore = Number(session.score_after ?? profile.cat_score ?? scoreBeforeSnapshot);
@@ -161,7 +309,6 @@ export async function POST(request: Request) {
         const rankAfterCompleted = getCatRankTier(settledScore);
         const completedSe =
             Number((session as Record<string, unknown>).se_after ?? (profile as Record<string, unknown>).cat_se ?? seBeforeSnapshot);
-        const storedSettlement = readStoredSettlementMeta((session as Record<string, unknown>).session_blueprint);
         return NextResponse.json({
             alreadyCompleted: true,
             cat: {
@@ -207,87 +354,102 @@ export async function POST(request: Request) {
     }
 
     const normalizedResponses = parseRaschResponses(body.responses);
-    const useRaschMode = normalizedResponses.length > 0;
     const qualityTier = body.qualityTier === "low_confidence" ? "low_confidence" : "ok";
-
     const expectedMs = expectedReadingMsByDifficulty(session.difficulty);
-    const responseLatencySum = normalizedResponses.reduce((sum, item) => sum + Math.max(0, item.latencyMs), 0);
-    const rawReadingMs = Math.round(Number(body.readingMs ?? (responseLatencySum || expectedMs)));
-    const readingMs = Math.max(90_000, rawReadingMs);
-
-    const speedRatio = expectedMs / Math.max(readingMs, expectedMs * 0.48);
-    const speedScore = clamp(speedRatio, 0.15, 1);
-
-    const { data: recentSessions } = await supabase
-        .from("cat_sessions")
-        .select("accuracy")
-        .eq("user_id", user.id)
-        .eq("status", "completed")
-        .order("created_at", { ascending: false })
-        .limit(4);
-
-    const recentAccuracies = (recentSessions ?? [])
-        .map((item) => Number(item.accuracy))
-        .filter((value) => Number.isFinite(value));
-
-    let stabilityScore = 0.72;
-    if (recentAccuracies.length >= 2) {
-        const mean = recentAccuracies.reduce((sum, item) => sum + item, 0) / recentAccuracies.length;
-        const variance = recentAccuracies.reduce((sum, item) => sum + (item - mean) ** 2, 0) / recentAccuracies.length;
-        const std = Math.sqrt(variance);
-        stabilityScore = clamp(1 - std / 0.34, 0.25, 1);
-    }
-
-    const raschSession = useRaschMode
-        ? runCatRaschSession({
-            scoreBefore: scoreBeforeSnapshot,
-            thetaBefore: Number(profile.cat_theta ?? 0),
-            seBefore: seBeforeSnapshot,
-            responses: normalizedResponses,
-            minItems: sessionPolicy.minItems,
-            maxItems: sessionPolicy.maxItems,
-            targetSe: sessionPolicy.targetSe,
+    const canReusePreparedSettlement = Boolean(
+        storedSettlement?.prepared
+        && !storedSettlement?.finalized
+        && storedSettlement.objectiveGrowth
+        && storedSettlement.metrics
+    );
+    const preparedSettlement = canReusePreparedSettlement
+        ? storedSettlement
+        : buildPreparedSettlement({
+            scoreBeforeSnapshot,
+            thetaBeforeSnapshot: Number(profile.cat_theta ?? 0),
+            seBeforeSnapshot,
             qualityTier,
-            growthPace: "balanced",
-        })
-        : null;
-
-    const quizCorrect = useRaschMode
-        ? raschSession?.traces.filter((item) => item.correct).length ?? 0
-        : Math.max(0, Math.round(Number(body.quizCorrect ?? 0)));
-    const quizTotal = useRaschMode
-        ? raschSession?.usedItemCount ?? 0
-        : Math.max(1, Math.round(Number(body.quizTotal ?? 5)));
-    const accuracy = useRaschMode
-        ? raschSession?.accuracy ?? 0
-        : clamp(quizCorrect / Math.max(1, quizTotal), 0, 1);
-
-    const objectiveGrowth = useRaschMode
-        ? {
-            performance: clamp(accuracy * 0.72 + speedScore * 0.14 + stabilityScore * 0.14, 0, 1),
-            delta: raschSession?.delta ?? 0,
-            scoreAfter: raschSession?.scoreAfter ?? scoreBeforeSnapshot,
-            levelAfter: levelFromScore(raschSession?.scoreAfter ?? scoreBeforeSnapshot),
-            thetaAfter: raschSession?.thetaAfter ?? Number(profile.cat_theta ?? 0),
-            nextBand: normalizeBand(Math.floor((raschSession?.scoreAfter ?? scoreBeforeSnapshot) / 400) + 1),
-            pointsDelta: raschSession?.pointsDelta ?? 4,
-        }
-        : computeCatGrowth({
-            score: scoreBeforeSnapshot,
-            level: Number(profile.cat_level ?? 1),
-            theta: Number(profile.cat_theta ?? 0),
-            currentBand: normalizeBand(Number(profile.cat_current_band ?? session.band ?? 3)),
-            accuracy,
-            speedScore,
-            stabilityScore,
+            sessionPolicy,
+            expectedMs,
+            body,
+            normalizedResponses,
         });
 
-    const systemAssessment = getCatSystemAssessment({
-        delta: objectiveGrowth.delta,
-        accuracy,
-        challengeRatio: useRaschMode ? raschSession?.challengeRatio ?? null : null,
-        qualityTier,
-    });
+    if (mode === "prepare") {
+        const objectiveState = preparedSettlement.objectiveGrowth!;
+        const preparedMetrics = preparedSettlement.metrics!;
+        try {
+            await supabase
+                .from("cat_sessions")
+                .update({
+                    session_blueprint: {
+                        ...currentBlueprint,
+                        settlement: {
+                            ...preparedSettlement,
+                            prepared: true,
+                            finalized: false,
+                            objectiveDelta: objectiveState.delta,
+                            selfAssessment: null,
+                            scoreCorrection: 0,
+                            difficultySignal: 0,
+                        },
+                    },
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", session.id)
+                .eq("user_id", user.id);
+        } catch {
+            // ignore prepare persistence failures; finalize can recompute from raw responses
+        }
+
+        return NextResponse.json({
+            prepared: true,
+            session: {
+                id: session.id,
+                stage: "prepared",
+                mode: preparedSettlement.mode ?? "legacy",
+                objectiveDelta: objectiveState.delta,
+                systemAssessment: preparedSettlement.systemAssessment ?? null,
+                scoreCorrection: 0,
+                difficultySignal: 0,
+                accuracy: preparedMetrics.accuracy,
+                readingMs: preparedMetrics.readingMs,
+                itemCount: preparedMetrics.itemCount,
+                policyUsed: preparedMetrics.policyUsed,
+                stopReason: preparedMetrics.stopReason,
+            },
+            animationPayload: {
+                scoreBefore: scoreBeforeSnapshot,
+                scoreAfter: objectiveState.scoreAfter,
+                delta: objectiveState.delta,
+                rankBefore,
+                rankAfter: getCatRankTier(objectiveState.scoreAfter),
+                isRankUp: getCatRankTier(objectiveState.scoreAfter).index > rankBefore.index,
+                isRankDown: getCatRankTier(objectiveState.scoreAfter).index < rankBefore.index,
+            },
+        });
+    }
+
+    const objectiveGrowth = preparedSettlement.objectiveGrowth;
+    const preparedMetrics = preparedSettlement.metrics;
+    if (!objectiveGrowth || !preparedMetrics) {
+        return NextResponse.json({ error: "CAT objective settlement is missing." }, { status: 400 });
+    }
+
+    const useRaschMode = (preparedSettlement.mode ?? "legacy") === "rasch";
+    const accuracy = preparedMetrics.accuracy;
+    const speedScore = preparedMetrics.speedScore;
+    const stabilityScore = preparedMetrics.stabilityScore;
+    const readingMs = preparedMetrics.readingMs;
+    const quizCorrect = preparedMetrics.quizCorrect;
+    const quizTotal = preparedMetrics.quizTotal;
+    const systemAssessment = preparedSettlement.systemAssessment
+        ?? getCatSystemAssessment({
+            delta: objectiveGrowth.delta,
+            accuracy,
+            challengeRatio: preparedMetrics.challengeRatio ?? null,
+            qualityTier,
+        });
     const scoreCorrection = selfAssessment
         ? getCatSelfAssessmentScoreCorrection(systemAssessment, selfAssessment)
         : 0;
@@ -361,7 +523,7 @@ export async function POST(request: Request) {
         const nextCatScore = growth.scoreAfter;
         const nextCatLevel = growth.levelAfter;
         const nextCatTheta = growth.thetaAfter;
-        const nextCatSe = useRaschMode ? Number(raschSession?.seAfter ?? seBeforeSnapshot) : seBeforeSnapshot;
+        const nextCatSe = useRaschMode ? Number(preparedMetrics.seAfter ?? seBeforeSnapshot) : seBeforeSnapshot;
         const nextCatPoints = Math.max(0, Number(profile.cat_points ?? 0) + growth.pointsDelta);
         const nextCatBand = growth.nextBand;
 
@@ -446,12 +608,12 @@ export async function POST(request: Request) {
     }
 
     const nowIso = new Date().toISOString();
-    if (useRaschMode && raschSession) {
+    if (useRaschMode) {
         try {
             await supabase
                 .from("profiles")
                 .update({
-                    cat_se: raschSession.seAfter,
+                    cat_se: Number(preparedMetrics.seAfter ?? seBeforeSnapshot),
                     cat_updated_at: nowIso,
                     updated_at: nowIso,
                 })
@@ -464,10 +626,10 @@ export async function POST(request: Request) {
             await supabase
                 .from("cat_sessions")
                 .update({
-                    se_before: raschSession.seBefore,
-                    se_after: raschSession.seAfter,
-                    stop_reason: raschSession.stopReason,
-                    item_count: raschSession.usedItemCount,
+                    se_before: preparedMetrics.seBefore,
+                    se_after: preparedMetrics.seAfter,
+                    stop_reason: preparedMetrics.stopReason,
+                    item_count: preparedMetrics.itemCount,
                     quality_tier: qualityTier,
                     updated_at: nowIso,
                 })
@@ -478,7 +640,7 @@ export async function POST(request: Request) {
         }
 
         try {
-            const itemRows = raschSession.traces.map((trace) => ({
+            const itemRows = (preparedSettlement.traces ?? []).map((trace) => ({
                 session_id: session.id,
                 user_id: user.id,
                 item_id: trace.itemId,
@@ -501,13 +663,15 @@ export async function POST(request: Request) {
     }
 
     try {
-        const currentBlueprint = readSessionBlueprint((session as Record<string, unknown>).session_blueprint);
         await supabase
             .from("cat_sessions")
             .update({
                 session_blueprint: {
                     ...currentBlueprint,
                     settlement: {
+                        ...preparedSettlement,
+                        prepared: true,
+                        finalized: true,
                         objectiveDelta: objectiveGrowth.delta,
                         systemAssessment,
                         selfAssessment,
@@ -557,7 +721,7 @@ export async function POST(request: Request) {
 
     const finalScore = Number(submitRow?.cat_score ?? growth.scoreAfter);
     const finalSe = useRaschMode
-        ? Number(submitRow?.cat_se ?? raschSession?.seAfter ?? seBeforeSnapshot)
+        ? Number(submitRow?.cat_se ?? preparedMetrics.seAfter ?? seBeforeSnapshot)
         : Number((profile as Record<string, unknown>).cat_se ?? seBeforeSnapshot);
     const finalRankAfter = getCatRankTier(finalScore);
     const finalDelta = Number(submitRow?.delta ?? growth.delta);
@@ -585,20 +749,16 @@ export async function POST(request: Request) {
             readingMs,
             quizCorrect,
             quizTotal,
-            seBefore: useRaschMode ? raschSession?.seBefore ?? null : null,
-            seAfter: useRaschMode ? raschSession?.seAfter ?? null : null,
-            targetSe: useRaschMode ? raschSession?.targetSe ?? null : null,
-            stopReason: useRaschMode ? raschSession?.stopReason ?? null : null,
-            itemCount: useRaschMode ? raschSession?.usedItemCount ?? quizTotal : quizTotal,
+            seBefore: useRaschMode ? preparedMetrics.seBefore ?? null : null,
+            seAfter: useRaschMode ? preparedMetrics.seAfter ?? null : null,
+            targetSe: useRaschMode ? preparedMetrics.targetSe ?? null : null,
+            stopReason: useRaschMode ? preparedMetrics.stopReason ?? null : null,
+            itemCount: useRaschMode ? preparedMetrics.itemCount : quizTotal,
             policyUsed: useRaschMode
-                ? {
-                    minItems: sessionPolicy.minItems,
-                    maxItems: sessionPolicy.maxItems,
-                    targetSe: sessionPolicy.targetSe,
-                }
+                ? preparedMetrics.policyUsed
                 : null,
-            qualityTier: useRaschMode ? qualityTier : null,
-            challengeRatio: useRaschMode ? raschSession?.challengeRatio ?? null : null,
+            qualityTier: useRaschMode ? preparedMetrics.qualityTier : null,
+            challengeRatio: useRaschMode ? preparedMetrics.challengeRatio ?? null : null,
             objectiveDelta: objectiveGrowth.delta,
             systemAssessment,
             selfAssessment,

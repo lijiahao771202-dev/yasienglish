@@ -18,11 +18,13 @@ import {
     CheckCircle2,
     Flame,
     Sparkles,
+    Compass,
 } from "lucide-react";
 import { useForgeHaptics } from "@/hooks/useForgeHaptics";
 
 import { useListeningCabinPlayer } from "@/hooks/useListeningCabinPlayer";
 import { WordPopup, type PopupState } from "@/components/reading/WordPopup";
+import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 import { db } from "@/lib/db";
 import { toggleListeningCabinSentenceMastery } from "@/lib/listening-cabin-store";
 import type {
@@ -731,6 +733,94 @@ function ListeningCabinPlayerView({
         localStorage.setItem("listening_cabin_font_size_zh", fontSizeZh.toString());
     }, [fontEn, fontZh, transitionStyle, typographyStyle, subtitleAdvanceMs, fontSizeEn, fontSizeZh, preferencesHydrated]);
 
+    // Player Spotlight Tour
+    const [showPlayerTour, setShowPlayerTour] = useState(false);
+    const showPlayerTourRef = useRef(false);
+
+    useEffect(() => {
+        showPlayerTourRef.current = showPlayerTour;
+        if (showPlayerTour) {
+            setShowControls(true);
+            setShowSettings(false);
+        }
+    }, [showPlayerTour]);
+
+    useEffect(() => {
+        const hasCompleted = localStorage.getItem("player-v2-onboarded");
+        if (!hasCompleted) {
+            // Delay slightly after mount so the player finishes entrance animation
+            const timer = setTimeout(() => setShowPlayerTour(true), 1500);
+            return () => clearTimeout(timer);
+        }
+    }, []);
+
+    const handlePlayerTourComplete = () => {
+        localStorage.setItem("player-v2-onboarded", "true");
+        setShowPlayerTour(false);
+    };
+
+    const playerTourSteps: TourStep[] = [
+        {
+            targetId: "player-controls",
+            title: "沉浸式控制台",
+            content: "主光影律动会跟随不同发音人的音色智能变化。你可以选择循环当前句或连续播放，感受“水流般的丝滑播放体验”。",
+            placement: "top"
+        },
+        {
+            targetId: "player-mastery",
+            title: "能量捕获与浮窗",
+            content: "这颗“闪电核心”可以全屏自由拖拽不会遮挡字幕！遇到彻底听懂的句子只需随手一点，标记为熟练，努力去开启最终的大满贯动画结界吧！",
+            placement: "left"
+        },
+        {
+            targetId: "player-settings",
+            title: "文字工坊设定",
+            content: "想要更纯粹或更炫酷的播放字幕特效？点这里随时开启【文字工坊】。十几种卡拉OK级入场特效、数款字体滤镜以及字幕提前量全都由你主宰！",
+            placement: "bottom"
+        }
+    ];
+
+    // Settings Spotlight Tour
+    const [showSettingsTour, setShowSettingsTour] = useState(false);
+    useEffect(() => {
+        if (showSettings) {
+            const hasCompleted = localStorage.getItem("settings-v2-onboarded");
+            if (!hasCompleted) {
+                // Delay slightly after mount so the settings modal finishes entrance animation
+                const timer = setTimeout(() => setShowSettingsTour(true), 500);
+                return () => clearTimeout(timer);
+            }
+        } else {
+            setShowSettingsTour(false);
+        }
+    }, [showSettings]);
+
+    const handleSettingsTourComplete = () => {
+        localStorage.setItem("settings-v2-onboarded", "true");
+        setShowSettingsTour(false);
+    };
+
+    const settingsTourSteps: TourStep[] = [
+        {
+            targetId: "settings-motion",
+            title: "核心动效与引擎",
+            content: "这是文字工坊最核心的部分：您可以随意切换字幕的进场动效与底层的视觉流光体。从经典的发光水流扫过到赛博朋克的霓虹闪亮，十几种沉浸式视觉特效供您赏玩！",
+            placement: "left"
+        },
+        {
+            targetId: "settings-typography",
+            title: "双语独立字效排版",
+            content: "上下滑动看，英文字幕与中文字幕具有完全独立的字号、字体配置环境。无论是原汁原味的无衬线体，还是自带气质的中文字型，互不干涉。",
+            placement: "left"
+        },
+        {
+            targetId: "settings-timing",
+            title: "字幕毫秒级提前量",
+            content: "如果感觉字幕出现速度总是比发音慢半拍？您可以在这里全场统一设置字幕的提前进入时间，让眼睛完美匹配您大脑里的声音节奏！",
+            placement: "left"
+        }
+    ];
+
     const completionLabel = useMemo(() => {
         const current = String(playerState.currentSentenceIndex + 1).padStart(2, "0");
         const total = String(session.sentences.length).padStart(2, "0");
@@ -901,6 +991,8 @@ function ListeningCabinPlayerView({
     }, []);
 
     const scheduleHideControls = useCallback(() => {
+        if (showPlayerTourRef.current) return;
+
         if (hideControlsTimerRef.current !== null) {
             window.clearTimeout(hideControlsTimerRef.current);
         }
@@ -1246,8 +1338,25 @@ function ListeningCabinPlayerView({
                         showControls || showSettings ? "opacity-100" : "pointer-events-none opacity-0",
                     )}
                 >
+                    {/* Spotlight Tour for Player */}
+                    <SpotlightTour 
+                        isOpen={showPlayerTour} 
+                        onClose={handlePlayerTourComplete} 
+                        onComplete={handlePlayerTourComplete}
+                        steps={playerTourSteps} 
+                    />
+
+                    {/* Spotlight Tour for Settings (Layered dynamically above when modal is open) */}
+                    <SpotlightTour 
+                        isOpen={showSettingsTour} 
+                        onClose={handleSettingsTourComplete} 
+                        onComplete={handleSettingsTourComplete}
+                        steps={settingsTourSteps} 
+                    />
+
                     {/* Phase 24: Typographic Atelier Toggle */}
                     <motion.button
+                        data-tour-target="player-settings"
                         type="button"
                         onClick={() => setShowSettings(!showSettings)}
                         whileHover={{ scale: 1.1, rotate: 15 }}
@@ -1296,7 +1405,7 @@ function ListeningCabinPlayerView({
                                     {/* Typography Section */}
                                     <div className="space-y-6 max-h-[65vh] overflow-y-auto pr-3 custom-scrollbar -mr-3">
                                         {/* English Config */}
-                                        <section className="space-y-3">
+                                        <section data-tour-target="settings-typography" className="space-y-3">
                                             <div className="flex items-center justify-between px-1">
                                                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">English Typography</label>
                                                 <div className="flex items-center gap-2 bg-slate-100/50 rounded-full px-2 py-1">
@@ -1354,7 +1463,7 @@ function ListeningCabinPlayerView({
                                         </section>
 
                                         {/* Motion System */}
-                                        <section className="space-y-3">
+                                        <section data-tour-target="settings-motion" className="space-y-3">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Cinematic Motion</label>
                                             <div className="grid grid-cols-2 gap-2">
                                                 {[
@@ -1419,7 +1528,7 @@ function ListeningCabinPlayerView({
                                         </section>
 
                                         {/* Timing Calibration */}
-                                        <section className="space-y-3 pb-2">
+                                        <section data-tour-target="settings-timing" className="space-y-3 pb-2">
                                             <div className="flex items-center justify-between px-1">
                                                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Subtitle Timing</label>
                                                 <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
@@ -1809,6 +1918,7 @@ function ListeningCabinPlayerView({
 
                 <div className="pb-8 text-center px-6">
                     <motion.div
+                        data-tour-target="player-controls"
                         className="mx-auto flex w-fit items-center gap-10 rounded-[32px] bg-white/45 px-10 py-5 border border-white/20"
                         initial={false}
                         animate={
@@ -1972,6 +2082,7 @@ function ListeningCabinPlayerView({
 
                 {/* Floating Crystal Zap - The Mastery FAB */}
                 <motion.div
+                    data-tour-target="player-mastery"
                     className="fixed bottom-36 right-6 md:bottom-12 md:right-12 z-[200]"
                     style={{ x: masteryDragX, y: masteryDragY }}
                     drag
@@ -2095,6 +2206,26 @@ function ListeningCabinPlayerView({
                     )}
                 </AnimatePresence>
             </div>
+
+            {/* Tour Manually Trigger Button */}
+            <motion.button
+                initial={{ opacity: 0, scale: 0.8, rotate: -20 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ delay: 1, type: "spring", stiffness: 300, damping: 20 }}
+                whileHover={{ scale: 1.1, rotate: 15 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                    if (showSettings) {
+                        setShowSettingsTour(true);
+                    } else {
+                        setShowPlayerTour(true);
+                    }
+                }}
+                className="fixed bottom-6 right-6 z-[2800] flex h-14 w-14 items-center justify-center rounded-full border-4 border-[#1e1b4b] bg-indigo-200 text-[#1e1b4b] shadow-[0_6px_0_0_#1e1b4b] active:translate-y-1 active:shadow-[0_2px_0_0_#1e1b4b]"
+                title="开启功能向导"
+            >
+                <Compass className="h-6 w-6 stroke-[2.5]" />
+            </motion.button>
         </motion.main>
     );
 }

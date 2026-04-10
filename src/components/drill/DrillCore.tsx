@@ -2,7 +2,7 @@
 
 import { memo, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Sparkles, RefreshCw, Send, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, TrendingDown, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock, Shuffle, SkipForward, CheckCircle2, Target } from "lucide-react";
+import { Sparkles, RefreshCw, Send, ArrowRight, HelpCircle, MessageCircle, Wand2, Mic, Play, Volume2, Globe, Headphones, Eye, EyeOff, BookOpen, BrainCircuit, X, Trophy, TrendingUp, TrendingDown, Zap, Gift, Crown, Gem, Dices, AlertTriangle, Skull, Heart, ChevronRight, Flame, Lock, Shuffle, SkipForward, CheckCircle2, Target, Compass } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as Diff from 'diff';
@@ -26,6 +26,7 @@ import {
     type TutorHistoryTurn,
     type TutorStructuredResponse,
 } from "./AiTeacherConversation";
+import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 import { RebuildTutorLauncher, RebuildTutorPopup, type RebuildTutorPopupState } from "./RebuildTutorPopup";
 import { GhostTextarea } from "../vocab/GhostTextarea";
 import { InlineGrammarHighlights } from "../shared/InlineGrammarHighlights";
@@ -1678,6 +1679,81 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [drillFeedback, setDrillFeedback] = useState<DrillFeedback | null>(null);
     const [rebuildFeedback, setRebuildFeedback] = useState<RebuildFeedbackState | null>(null);
     const [eloSplash, setEloSplash] = useState<{ uid: string, delta: number } | null>(null);
+
+    const [showRebuildTour, setShowRebuildTour] = useState(false);
+
+    useEffect(() => {
+        if (drillData?._rebuildMeta) {
+            const isPassage = drillData._rebuildMeta.variant === "passage";
+            const storageKey = isPassage ? "rebuild-drill-passage-tour-onboarded" : "rebuild-drill-sentence-tour-onboarded";
+            const hasAppeared = localStorage.getItem(storageKey);
+            if (!hasAppeared) {
+                const timer = setTimeout(() => {
+                    setShowRebuildTour(true);
+                    localStorage.setItem(storageKey, "true");
+                }, 900);
+                return () => clearTimeout(timer);
+            }
+        }
+    }, [drillData?._rebuildMeta]);
+
+    const rebuildTourSteps: TourStep[] = drillData?._rebuildMeta?.variant === "passage" ? [
+        {
+            targetId: "rebuild-drill-passage-tracker",
+            title: "短文主线进度",
+            content: "在排位最高难度的「短文模式」下，不考生单词，考的是整段整段的长句工作记忆！右上角的刻度就是你的攻坚据点坐标。",
+            placement: "bottom"
+        },
+        {
+            targetId: "rebuild-drill-atelier",
+            title: "全封闭盲听车间",
+            content: "只给原声音频，剥夺一切字幕。不要尝试翻译成中文，你要做的是死背英语残影，然后把脑海里的残影立刻拼出来！",
+            placement: "top"
+        },
+        {
+            targetId: "rebuild-drill-controls",
+            title: "决不妥协的排位参数",
+            content: "我们在排位中强制禁用了「中文」大意。但你仍可在此处开启「纠正」来自动容错大小写片段，或者开启终极硬核的「隐藏词」：彻底关闭所有残影供词，凭空默写！",
+            placement: "bottom"
+        },
+        {
+            targetId: "rebuild-drill-tokens",
+            title: "全键盘极速流",
+            content: "听完马上还原原句！支持全键盘盲打：敲首字母极速定位，空格确认，Backspace无缝回退。用最暴爽的手速把残影固化！",
+            placement: "top"
+        },
+        {
+            targetId: "rebuild-drill-submit",
+            title: "战损无悔",
+            content: "如果确实卡壳了千万别死磕，果断「跳过」止损！记住，你在这里的每一次试错或跳过，最后都会被无情地汇编入你的主干排位战损！",
+            placement: "top"
+        }
+    ] : [
+        {
+            targetId: "rebuild-drill-atelier",
+            title: "无下限热身车间",
+            content: "单句热身模式。你可以无限次、无脑地反复听。它完全不影响你的主干排位分，AI 仅仅在暗中调校你下一题的手感和分层。",
+            placement: "bottom"
+        },
+        {
+            targetId: "rebuild-drill-controls",
+            title: "辅助火力系统",
+            content: "完全听不出卡死？别慌，你可以开启「中文」偷看句意大纲。或者开启「纠正」来防小拼写手误。对自己的听力极度自信？直接开启「隐藏词」强行盲拼！",
+            placement: "bottom"
+        },
+        {
+            targetId: "rebuild-drill-tokens",
+            title: "极速词块重建",
+            content: "听取残影后，用键盘敲首字母抢位，空格录入，Backspace 抹除。纯靠键盘盲打流重构语块，不用碰鼠标！",
+            placement: "top"
+        },
+        {
+            targetId: "rebuild-drill-submit",
+            title: "无痛探底",
+            content: "热身模式的容错率拉满，听不出就毫不犹豫地点「跳过」！在这个模式下「发送」的报错数据，只会作为养料暗中去喂给 AI，用来摸透你的底细！",
+            placement: "top"
+        }
+    ];
     const lastEloSplashObjRef = useRef<any>(null);
     const { isReady: isIpaReady, getIPA } = useIPA(isRebuildMode);
     const [hasRatedDrill, setHasRatedDrill] = useState(false);
@@ -9334,7 +9410,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 : activeCosmeticUi.wordBadgeActiveClass;
 
             return (
-                <div className={cn(
+                <div data-tour-target="rebuild-drill-atelier" className={cn(
                     "min-w-0 border p-4 transition-colors rounded-[1.55rem]",
                     rebuildLedgerClass
                 )}>
@@ -9358,7 +9434,18 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             {readOnlyAfterSubmit ? "已提交" : isReadyToSubmit ? "可提交" : "构建中"}
                         </span>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div data-tour-target="rebuild-drill-controls" className="flex flex-wrap justify-end items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => setShowRebuildTour(true)}
+                            className={cn(
+                                rebuildToggleClass,
+                                isVerdantRebuild ? "border-emerald-200/80 bg-white/92 text-emerald-700" : activeCosmeticUi.iconButtonClass
+                            )}
+                            title="重新查看操作向导"
+                        >
+                            <span className="inline-flex items-center gap-1"><Compass className="h-3 w-3" />向导</span>
+                        </button>
                         {!isRebuildPassage ? (
                             <button
                                 type="button"
@@ -9615,7 +9702,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     </div>
                     {/* Token Pool */}
                     {!readOnlyAfterSubmit && (
-                        <div className={cn(
+                        <div data-tour-target="rebuild-drill-tokens" className={cn(
                             "transition-all duration-500 ease-in-out",
                             rebuildHideTokens ? "pointer-events-none mt-0 h-0 max-h-0 opacity-0 overflow-hidden" : "mt-5 max-h-[500px] opacity-100"
                         )}>
@@ -9717,7 +9804,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         </div>
                     </div>
                 ) : (
-                    <div className="mt-5 flex gap-3 px-1">
+                    <div data-tour-target="rebuild-drill-submit" className="mt-5 flex gap-3 px-1">
                         <button
                             type="button"
                             onClick={handleSkipRebuild}
@@ -9860,7 +9947,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             >
                 {!rebuildPassageSummary ? (
                     <section className={cn("rounded-[2rem] border p-5 md:px-7 md:py-7", rebuildLedgerClass)}>
-                        <div className="flex flex-col gap-4 border-b border-stone-100/80 px-1 pb-4 md:flex-row md:items-center md:justify-between">
+                        <div data-tour-target="rebuild-drill-passage-tracker" className="flex flex-col gap-4 border-b border-stone-100/80 px-1 pb-4 md:flex-row md:items-center md:justify-between">
                             <div className="flex min-w-0 flex-1 items-center gap-3">
                                 <span className={cn("shrink-0 text-[11px] font-semibold tracking-[0.06em]", activeCosmeticTheme.mutedClass)}>
                                     第 {currentStageNumber} / {totalSegments} 段
@@ -13658,6 +13745,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            <SpotlightTour
+                isOpen={showRebuildTour}
+                onClose={() => setShowRebuildTour(false)}
+                steps={rebuildTourSteps}
+            />
         </>
     );
 }

@@ -777,6 +777,11 @@ async function syncDailyPlanMirror(userId: string) {
 async function pullRemoteSnapshot(userId: string) {
     const supabase = createBrowserClientSingleton();
     const existingLocalProfile = await db.user_profile.orderBy("id").first();
+    const pendingReadArticleDeletes = new Set(
+        (await db.sync_outbox.toArray())
+            .filter((item) => item.entity === "read_articles" && item.operation === "delete")
+            .map((item) => item.record_key),
+    );
 
     const [
         profileRes,
@@ -838,7 +843,9 @@ async function pullRemoteSnapshot(userId: string) {
     };
     const localVocabulary = (vocabRes.data as RemoteVocabularyRow[]).map(toLocalVocabularyItem);
     const localWriting = (writingRes.data as RemoteWritingHistoryRow[]).map(toLocalWritingEntry);
-    const localRead = (readRes.data as RemoteReadArticleRow[]).map(toLocalReadArticle);
+    const localRead = (readRes.data as RemoteReadArticleRow[])
+        .map(toLocalReadArticle)
+        .filter((item) => !pendingReadArticleDeletes.has(item.url));
     const localElo = (eloRes.data as RemoteEloHistoryRow[]).map(toLocalEloHistoryItem);
     const restoredArticlesByUrl = new Map<string, CachedArticle>();
     const restoredNotesByKey = new Map<string, Omit<ReadingNoteItem, "id">>();
@@ -847,6 +854,9 @@ async function pullRemoteSnapshot(userId: string) {
     const allowedMarkTypes = new Set(["highlight", "underline", "note", "ask"]);
 
     for (const readItem of localRead) {
+        if (pendingReadArticleDeletes.has(readItem.url)) {
+            continue;
+        }
         if (readItem.article_payload && typeof readItem.article_payload === "object") {
             const payload = readItem.article_payload as CachedArticle;
             const restoredArticle: CachedArticle = {
@@ -1326,6 +1336,7 @@ async function syncRemoteMirror(userId: string, options: RemoteSyncOptions = {})
     await enqueueVocabularyFsrsResetForSync(userId);
     await pushLocalNewerRecords(userId, remoteProfile);
     await syncDailyPlanMirror(userId);
+    await flushOutbox();
 
     const shouldAttemptPull = Boolean(options.forcePull || options.pullSnapshot);
     if (shouldAttemptPull && await shouldPullRemoteSnapshot(userId, Boolean(options.forcePull))) {
@@ -1336,8 +1347,6 @@ async function syncRemoteMirror(userId: string, options: RemoteSyncOptions = {})
             updated_at: Date.now(),
         });
     }
-
-    await flushOutbox();
 
     await db.sync_meta.put({
         key: "last_bootstrap_at",

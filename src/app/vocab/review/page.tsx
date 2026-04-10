@@ -10,6 +10,8 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { saveVocabulary, updateVocabularyEntry } from '@/lib/user-repository';
 import { VocabReviewEditableCard } from '@/components/vocab/VocabReviewEditableCard';
+import { SpotlightTour } from "@/components/ui/SpotlightTour";
+import { createPortal } from "react-dom";
 import { pickPreferredMeaningGroups } from '@/lib/vocab-meanings';
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { applyBackgroundThemeToDocument, BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
@@ -38,6 +40,7 @@ function getAudioContextClass(): AudioContextConstructor | undefined {
 const POS_ORDER = ["n.", "v.", "adj.", "adv.", "prep.", "pron.", "conj.", "aux.", "num.", "int."];
 const POS_PREFIX_RE = /^(n|v|adj|adv|prep|pron|conj|aux|num|int)\.\s*/i;
 const POS_SCAN_RE = /\b(n|v|adj|adv|prep|pron|conj|aux|num|int)\./gi;
+const SHORT_INTERVAL_REINSERT_WINDOW_MS = 30 * 60 * 1000;
 
 function normalizeText(input: string) {
     return input.replace(/\s+/g, " ").replace(/；/g, ";").trim();
@@ -52,6 +55,13 @@ function splitMeanings(raw: string) {
 
 function dedupe(values: string[]) {
     return Array.from(new Set(values)).slice(0, 5);
+}
+
+function formatCountdown(ms: number) {
+    const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function normalizeGhostWord(input: string) {
@@ -132,26 +142,34 @@ function playRatingEasyChime() {
         if (!AudioContextClass) return;
         const ctx = new AudioContextClass();
         
-        // A clean, crisp "ping" or "coin" sound (not mixed chords)
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        
-        osc.type = "sine";
-        
-        // Quick glide upwards
         const startTime = ctx.currentTime;
-        osc.frequency.setValueAtTime(880.00, startTime); // A5
-        osc.frequency.exponentialRampToValueAtTime(1760.00, startTime + 0.08); // A6
         
-        // Sharp attack, quick decay
-        gain.gain.setValueAtTime(0, startTime);
-        gain.gain.linearRampToValueAtTime(0.2, startTime + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.3);
+        // A magical, sparkling arpeggio for "Easy" mastery (C5, E5, G5, C6, E6)
+        const notes = [523.25, 659.25, 783.99, 1046.50, 1318.51]; 
         
-        osc.start(startTime);
-        osc.stop(startTime + 0.3);
+        notes.forEach((freq, i) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            
+            // Sweet, glassy tone
+            osc.type = "sine";
+            
+            const noteStart = startTime + (i * 0.05); // Rapid magical sweep
+            
+            osc.frequency.setValueAtTime(freq, noteStart);
+            
+            gain.gain.setValueAtTime(0, noteStart);
+            // Dynamic velocity: slightly softer as it goes up
+            const amp = Math.max(0.04, 0.12 - (i * 0.015));
+            gain.gain.linearRampToValueAtTime(amp, noteStart + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, noteStart + 1.2);
+            
+            osc.start(noteStart);
+            osc.stop(noteStart + 1.2);
+        });
         
     } catch (e) {
         console.warn("Audio Context not supported", e);
@@ -236,8 +254,11 @@ function playVictoryChime() {
         if (!AudioContextClass) return;
         const ctx = new AudioContextClass();
         
-        // Majestic Fanfare: C4(261.63), G4(392.00), C5(523.25), E5(659.25), G5(783.99), C6(1046.50)
-        const sweep = [261.63, 392.00, 523.25, 659.25, 783.99]; 
+        const startTime = ctx.currentTime;
+        
+        // Epic sweeping run (C major arpeggio spanning 3 octaves)
+        const sweep = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50, 1318.51, 1567.98]; 
+        const chordStart = startTime + (sweep.length * 0.045);
         
         sweep.forEach((freq, i) => {
             const osc = ctx.createOscillator();
@@ -247,53 +268,38 @@ function playVictoryChime() {
             
             osc.type = "sine"; 
             
-            const startTime = ctx.currentTime + i * 0.05; // extremely fast ascending sweep
-            osc.frequency.setValueAtTime(freq, startTime);
+            const noteStart = startTime + i * 0.045; // slightly faster sweeping run
+            osc.frequency.setValueAtTime(freq, noteStart);
             
-            gain.gain.setValueAtTime(0, startTime);
-            gain.gain.linearRampToValueAtTime(0.08, startTime + 0.02); 
-            gain.gain.exponentialRampToValueAtTime(0.001, startTime + 1.0); 
+            gain.gain.setValueAtTime(0, noteStart);
+            gain.gain.linearRampToValueAtTime(0.08, noteStart + 0.015); 
+            gain.gain.exponentialRampToValueAtTime(0.001, noteStart + 0.8); 
             
-            osc.start(startTime);
-            osc.stop(startTime + 1.0);
+            osc.start(noteStart);
+            osc.stop(noteStart + 0.8);
         });
 
-        // The Grand Climax: Big C Major Chord
-        const climaxNotes = [523.25, 659.25, 783.99, 1046.50];
-        const climaxStart = ctx.currentTime + sweep.length * 0.05;
+        // The Grand Climax: Epic multi-octave chord
+        const climaxNotes = [523.25, 659.25, 783.99, 1046.50, 1567.98];
         
         climaxNotes.forEach((freq) => {
-            // Triangle waves for a rich, brass-like synth pop
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.connect(gain);
             gain.connect(ctx.destination);
             
+            // Triangle wave for rich synth-brass feel
             osc.type = "triangle";
-            osc.frequency.setValueAtTime(freq, climaxStart);
+            osc.frequency.setValueAtTime(freq, chordStart);
             
-            gain.gain.setValueAtTime(0, climaxStart);
-            gain.gain.linearRampToValueAtTime(0.08, climaxStart + 0.05); // punchy attack
-            // Slow majestic decay
-            gain.gain.exponentialRampToValueAtTime(0.001, climaxStart + 2.5);
+            gain.gain.setValueAtTime(0, chordStart);
+            gain.gain.linearRampToValueAtTime(0.1, chordStart + 0.05); // punchy
+            // Epic long decay
+            gain.gain.exponentialRampToValueAtTime(0.001, chordStart + 3.5);
             
-            osc.start(climaxStart);
-            osc.stop(climaxStart + 2.5);
+            osc.start(chordStart);
+            osc.stop(chordStart + 3.5);
         });
-        
-        // Add a sparkling shimmer at the climax
-        const shimmer = ctx.createOscillator();
-        const shimmerGain = ctx.createGain();
-        shimmer.connect(shimmerGain);
-        shimmerGain.connect(ctx.destination);
-        shimmer.type = "sine";
-        shimmer.frequency.setValueAtTime(2093.00, climaxStart); // High C7
-        shimmerGain.gain.setValueAtTime(0, climaxStart);
-        shimmerGain.gain.linearRampToValueAtTime(0.03, climaxStart + 0.1);
-        shimmerGain.gain.exponentialRampToValueAtTime(0.001, climaxStart + 2.0);
-        shimmer.start(climaxStart);
-        shimmer.stop(climaxStart + 2.0);
-
     } catch (e) {
         console.warn("Audio Context not supported", e);
     }
@@ -331,6 +337,9 @@ export default function ReviewPage() {
     const [queue, setQueue] = useState<VocabItem[]>([]);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isFinished, setIsFinished] = useState(false);
+    const [isWaitingForShortReview, setIsWaitingForShortReview] = useState(false);
+    const [nextShortReviewDueAt, setNextShortReviewDueAt] = useState<number | null>(null);
+    const [countdownNow, setCountdownNow] = useState(() => Date.now());
     const [isRevealed, setIsRevealed] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [dictionaryPosMap, setDictionaryPosMap] = useState<Record<string, PosGroup[]>>({});
@@ -338,6 +347,13 @@ export default function ReviewPage() {
     const [ghostInput, setGhostInput] = useState("");
     const [spellCombo, setSpellCombo] = useState(0);
     const [showComboAnimation, setShowComboAnimation] = useState(false);
+    const [showTour, setShowTour] = useState(false);
+    
+    useEffect(() => {
+        if (!localStorage.getItem("vocab-review-tour-onboarded")) {
+            setShowTour(true);
+        }
+    }, []);
     
     const sessionUser = useAuthSessionUser();
     const backgroundTheme = getSavedBackgroundTheme(sessionUser?.id);
@@ -358,6 +374,39 @@ export default function ReviewPage() {
 
     const ghostMatchedPrevRef = useRef(false);
     const ghostCompletionAudioPlayedRef = useRef(false);
+    const shortReviewTimersRef = useRef<Map<string, number>>(new Map());
+    const shortReviewDueAtRef = useRef<Map<string, number>>(new Map());
+    const pendingShortReviewsRef = useRef(0);
+
+    const refreshNextShortReviewDueAt = useCallback(() => {
+        const dueValues = Array.from(shortReviewDueAtRef.current.values());
+        if (dueValues.length === 0) {
+            setNextShortReviewDueAt(null);
+            return;
+        }
+        setNextShortReviewDueAt(Math.min(...dueValues));
+    }, []);
+
+    useEffect(() => {
+        const timerMap = shortReviewTimersRef.current;
+        const dueMap = shortReviewDueAtRef.current;
+        return () => {
+            timerMap.forEach((timeoutId) => {
+                window.clearTimeout(timeoutId);
+            });
+            timerMap.clear();
+            dueMap.clear();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isWaitingForShortReview || !nextShortReviewDueAt) return;
+        setCountdownNow(Date.now());
+        const intervalId = window.setInterval(() => {
+            setCountdownNow(Date.now());
+        }, 1000);
+        return () => window.clearInterval(intervalId);
+    }, [isWaitingForShortReview, nextShortReviewDueAt]);
 
     useEffect(() => {
         const loadCards = async () => {
@@ -446,11 +495,50 @@ export default function ReviewPage() {
         ghostCompletionAudioPlayedRef.current = false;
     }, []);
 
+    const scheduleShortIntervalRequeue = useCallback((card: VocabItem) => {
+        const now = Date.now();
+        const delayMs = Math.max(0, card.due - now);
+        if (delayMs === 0 || delayMs > SHORT_INTERVAL_REINSERT_WINDOW_MS) {
+            return false;
+        }
+
+        const cardKey = card.word.toLowerCase();
+        const previousTimer = shortReviewTimersRef.current.get(cardKey);
+        if (previousTimer) {
+            window.clearTimeout(previousTimer);
+        } else {
+            pendingShortReviewsRef.current += 1;
+        }
+        shortReviewDueAtRef.current.set(cardKey, card.due);
+        refreshNextShortReviewDueAt();
+
+        const timeoutId = window.setTimeout(() => {
+            shortReviewTimersRef.current.delete(cardKey);
+            shortReviewDueAtRef.current.delete(cardKey);
+            pendingShortReviewsRef.current = Math.max(0, pendingShortReviewsRef.current - 1);
+            refreshNextShortReviewDueAt();
+            setQueue((prev) => [...prev, card]);
+            setIsWaitingForShortReview(false);
+            setIsFinished(false);
+        }, delayMs);
+
+        shortReviewTimersRef.current.set(cardKey, timeoutId);
+        return true;
+    }, [refreshNextShortReviewDueAt]);
+
     const moveToNextCard = useCallback((delayMs = 140) => {
         if (currentIndex < queue.length - 1) {
             window.setTimeout(() => setCurrentIndex((prev) => prev + 1), delayMs);
         } else {
-            window.setTimeout(() => setIsFinished(true), delayMs);
+            window.setTimeout(() => {
+                if (pendingShortReviewsRef.current > 0) {
+                    setCurrentIndex((prev) => prev + 1);
+                    setIsWaitingForShortReview(true);
+                    setIsFinished(false);
+                    return;
+                }
+                setIsFinished(true);
+            }, delayMs);
         }
     }, [currentIndex, queue.length]);
 
@@ -464,14 +552,29 @@ export default function ReviewPage() {
             const end = Date.now() + duration;
 
             (function frame() {
+                // Left cannon
                 confetti({
-                    particleCount: 3,
-                    angle: 90,
-                    spread: 45,
-                    origin: { x: 0.5, y: 0.8 },
-                    colors: ['#10b981', '#fbbf24', '#fef3c7'],
-                    startVelocity: 35,
-                    gravity: 0.5,
+                    particleCount: 5,
+                    angle: 60,
+                    spread: 55,
+                    origin: { x: 0, y: 0.7 },
+                    colors: ['#10b981', '#34d399', '#fef3c7', '#ffffff'],
+                    startVelocity: 50,
+                    gravity: 0.8,
+                    shapes: ['star', 'circle'],
+                    scalar: 1.2,
+                    zIndex: 100
+                });
+
+                // Right cannon
+                confetti({
+                    particleCount: 5,
+                    angle: 120,
+                    spread: 55,
+                    origin: { x: 1, y: 0.7 },
+                    colors: ['#10b981', '#34d399', '#fef3c7', '#ffffff'],
+                    startVelocity: 50,
+                    gravity: 0.8,
                     shapes: ['star', 'circle'],
                     scalar: 1.2,
                     zIndex: 100
@@ -485,10 +588,11 @@ export default function ReviewPage() {
 
         const updatedCard = scheduleCard(currentCard, rating);
         await saveVocabulary(updatedCard);
+        scheduleShortIntervalRequeue(updatedCard);
 
         resetCardUiState();
         moveToNextCard();
-    }, [currentCard, moveToNextCard, resetCardUiState]);
+    }, [currentCard, moveToNextCard, resetCardUiState, scheduleShortIntervalRequeue]);
 
     const handleArchive = useCallback(async (nextItem: VocabItem, previousWord: string) => {
         const archivedCard = archiveVocabularyCard(nextItem);
@@ -673,44 +777,48 @@ export default function ReviewPage() {
         if (isFinished && queue.length > 0) {
             playVictoryChime();
             
-            const duration = 3.5 * 1000;
+            const duration = 5 * 1000;
             const animationEnd = Date.now() + duration;
+            const defaults = { startVelocity: 40, spread: 360, ticks: 80, zIndex: 100 };
 
             const randomInRange = (min: number, max: number) => {
                 return Math.random() * (max - min) + min;
-            }
+            };
 
-            const frame = () => {
+            // Masssive initial center burst
+            confetti({
+                particleCount: 200,
+                spread: 160,
+                origin: { y: 0.6 },
+                colors: ['#26ccff', '#a25afd', '#ff5e7e', '#88ff5a', '#fcff42', '#ffa62d', '#ff36ff'],
+                startVelocity: 60,
+                gravity: 0.8,
+                shapes: ['star', 'circle'],
+                zIndex: 100
+            });
+
+            const interval = setInterval(() => {
                 const timeLeft = animationEnd - Date.now();
                 if (timeLeft <= 0) {
                     clearInterval(interval);
                     return;
                 }
 
-                const particleCount = 40 * (timeLeft / Math.max(duration, 1));
+                // Exponentially more particles
+                const particleCount = 120 * (timeLeft / duration);
                 
-                // Left cannon burst
-                confetti({
-                    particleCount,
-                    angle: 60,
-                    spread: 60,
-                    origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
-                    colors: ['#78ff44', '#29cdff', '#fdff6a', '#a864fd'],
-                    zIndex: 100
-                });
-                // Right cannon burst
-                confetti({
-                    particleCount,
-                    angle: 120,
-                    spread: 60,
-                    origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
-                    colors: ['#78ff44', '#29cdff', '#fdff6a', '#a864fd'],
-                    zIndex: 100
-                });
-            };
+                // Fireworks randomized full screen locations
+                confetti(Object.assign({}, defaults, { 
+                    particleCount, 
+                    origin: { x: randomInRange(0.1, 0.9), y: Math.random() - 0.2 },
+                    colors: ['#26ccff', '#a25afd', '#ff5e7e', '#88ff5a', '#fcff42', '#ffa62d', '#ff36ff'],
+                    startVelocity: randomInRange(40, 70), // More explosive velocity
+                    gravity: 0.6,
+                    shapes: ['square', 'circle', 'star']
+                }));
+            }, 180); // trigger more frequently
             
-            const interval = setInterval(frame, 250);
-            frame(); // initial burst
+            return () => clearInterval(interval);
         }
     }, [isFinished, queue.length]);
 
@@ -725,6 +833,40 @@ export default function ReviewPage() {
                 <div className="relative z-10 flex w-[300px] flex-col items-center gap-4 rounded-[1.5rem] bg-theme-card-bg border-[3px] border-theme-border p-8 shadow-[0_8px_0_var(--theme-shadow)]">
                     <Loader2 className="h-10 w-10 animate-spin text-theme-primary-bg" />
                     <p className="text-sm font-black tracking-wide text-theme-text-muted">正在准备生词本...</p>
+                </div>
+            </main>
+        );
+    }
+
+    if (isWaitingForShortReview) {
+        const countdownLabel = nextShortReviewDueAt
+            ? formatCountdown(nextShortReviewDueAt - countdownNow)
+            : "00:00";
+        return (
+            <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-theme-base-bg px-6">
+                <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+                    <div className={`absolute inset-0 ${backgroundSpec.baseLayer}`} />
+                    {backgroundSpec.coverGradient && <div className="absolute inset-0 opacity-[0.25]" style={{ backgroundImage: backgroundSpec.coverGradient, mixBlendMode: 'overlay' }} />}
+                    {backgroundSpec.glassLayer && <div className={`absolute inset-0 ${backgroundSpec.glassLayer}`} />}
+                </div>
+
+                <div className="relative z-10 w-full max-w-sm rounded-[1.5rem] bg-theme-card-bg border-[3px] border-theme-border px-8 py-10 text-center shadow-[0_8px_0_var(--theme-shadow)]">
+                    <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-theme-primary-bg border-[3px] border-theme-border text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]">
+                        <Loader2 className="h-8 w-8 animate-spin" />
+                    </div>
+                    <h2 className="font-newsreader text-[2.2rem] font-bold text-theme-text tracking-tight">短间隔词卡排队中</h2>
+                    <p className="mt-3 text-[2rem] font-black tracking-[0.08em] text-theme-text">
+                        {countdownLabel}
+                    </p>
+                    <p className="mt-2 text-sm font-black leading-relaxed text-theme-text-muted">
+                        刚刚点了“重来/困难”，这张卡会在倒计时结束后自动回到本轮复习。
+                    </p>
+                    <Link
+                        href="/vocab"
+                        className="mt-8 inline-flex items-center justify-center rounded-2xl border-[3px] border-theme-border bg-theme-active-bg px-6 py-3 text-[15px] font-black tracking-wider text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] transition hover:bg-theme-active-hover active:scale-95"
+                    >
+                        先关闭本轮
+                    </Link>
                 </div>
             </main>
         );
@@ -845,7 +987,7 @@ export default function ReviewPage() {
                                     transition={{ duration: 0.25, ease: "easeOut" }}
                                     className="w-full flex-shrink-0"
                                 >
-                                    <div className="flex h-[38vh] min-h-[300px] flex-col items-center justify-center rounded-[2.5rem] border-[3px] border-theme-border bg-theme-card-bg px-8 text-center shadow-[0_8px_0_var(--theme-shadow)]">
+                                    <div data-tour-target="review-spell-input" className="flex h-[38vh] min-h-[300px] flex-col items-center justify-center rounded-[2.5rem] border-[3px] border-theme-border bg-theme-card-bg px-8 text-center shadow-[0_8px_0_var(--theme-shadow)]">
                                         <div className="text-[3.8rem] md:text-[4.5rem] font-newsreader font-bold text-theme-text tracking-tight drop-shadow-sm leading-none relative break-words text-center px-4 max-w-full">
                                             {(() => {
                                                 let inputCursorTracker = 0;
@@ -917,6 +1059,7 @@ export default function ReviewPage() {
                                     </div>
                                     <div className="mt-8 flex justify-center z-10 relative">
                                         <button
+                                            data-tour-target="review-reveal-btn"
                                             onClick={() => setIsRevealed(true)}
                                             className="h-16 w-full max-w-[320px] rounded-[1.5rem] border-[4px] border-theme-border bg-theme-primary-bg text-[16px] font-black tracking-wide text-theme-primary-text shadow-[0_6px_0_var(--theme-shadow)] transition hover:bg-theme-primary-hover active:translate-y-2 active:shadow-none"
                                         >
@@ -950,7 +1093,7 @@ export default function ReviewPage() {
                                         />
                                     </div>
 
-                                    <div className="shrink-0 w-full px-1 py-2">
+                                    <div data-tour-target="review-fsrs-buttons" className="shrink-0 w-full px-1 py-2">
                                         <div className="grid grid-cols-4 gap-2 md:gap-3">
                                             <RatingButton
                                                 label="重来"
@@ -988,6 +1131,56 @@ export default function ReviewPage() {
                     </motion.div>
                 </div>
             </div>
+            {typeof window !== "undefined" && createPortal(
+                <SpotlightTour 
+                    isOpen={showTour} 
+                    onClose={() => setShowTour(false)} 
+                    onComplete={() => {
+                        setShowTour(false);
+                        localStorage.setItem("vocab-review-tour-onboarded", "true");
+                    }}
+                    steps={[
+                        {
+                            targetId: "review-spell-input",
+                            title: "盲打沉浸校验",
+                            content: "在不看答案的情况下，直接在键盘上敲击字母进行拼写。连续拼对会触发史诗级 Combo 动画哦！",
+                            placement: "bottom"
+                        },
+                        {
+                            targetId: "review-reveal-btn",
+                            title: "翻面看答案",
+                            content: "实在想不起来？按下空格键或点击这里翻开卡片。",
+                            placement: "top"
+                        },
+                        {
+                            targetId: "review-fsrs-buttons",
+                            title: "FSRS 记忆引擎",
+                            content: "翻面后，诚实地给出评价。我们的底层 FSRS 算法会自动推演你遗忘的临界点，并精准安排下一次复习。",
+                            placement: "top",
+                            onEnter: () => setIsRevealed(true)
+                        },
+                        {
+                            targetId: "review-archive-btn",
+                            title: "永久踢出缓存",
+                            content: "遇到烂熟于心的词（比如 Apple），毫不留情地点这里！让它永远滚出你的复习队列，降低大脑的无效认知负荷。",
+                            placement: "bottom"
+                        },
+                        {
+                            targetId: "review-star-btn",
+                            title: "标记重点释义",
+                            content: "点亮专属金星，将最重要的那个意思标记为重点高亮。",
+                            placement: "bottom"
+                        },
+                        {
+                            targetId: "review-edit-delete",
+                            title: "无缝删除与编辑",
+                            content: "看哪个释义不爽？直接点垃圾桶删除！或者直接点击文本框，改成你自己理解的人话。Yasi 的生词本是你独属的军火库。",
+                            placement: "bottom"
+                        }
+                    ]} 
+                />,
+                document.body
+            )}
         </main>
     );
 }

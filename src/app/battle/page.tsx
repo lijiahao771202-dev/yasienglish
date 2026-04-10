@@ -4,7 +4,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useEffect, useCallback, type ComponentType } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { DrillCore } from "@/components/drill/DrillCore";
-import { Zap, ChevronRight, Lock, House, Sword, CircleHelp, X, BookOpen, Feather, Gauge, Coins, Gift, Blocks } from "lucide-react";
+import { Zap, ChevronRight, Lock, House, Sword, CircleHelp, X, BookOpen, Feather, Gauge, Coins, Gift, Blocks, Compass, Target } from "lucide-react";
+import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 import { cn } from "@/lib/utils";
 import { getRank } from "@/lib/rankUtils";
 import { db } from "@/lib/db";
@@ -306,6 +307,169 @@ function BattlePageContent() {
     const [activeGuideSection, setActiveGuideSection] = useState<GuideSectionId>("overview");
     const [refreshCount, setRefreshCount] = useState(0);
     const [navTransition, setNavTransition] = useState<"home" | "read" | null>(null);
+    const [showBattleTour, setShowBattleTour] = useState(false);
+
+    const activeModeDifficultyElo = battleMode === "translation"
+        ? eloRating
+        : battleMode === "dictation"
+            ? dictationElo
+            : (rebuildVariant === "passage" ? rebuildBattleElo : rebuildPracticeElo);
+
+
+    useEffect(() => {
+        const hasAppeared = localStorage.getItem("battle-hub-tour-onboarded");
+        if (!hasAppeared) {
+            const timer = setTimeout(() => {
+                setShowBattleTour(true);
+                localStorage.setItem("battle-hub-tour-onboarded", "true");
+            }, 800);
+            return () => clearTimeout(timer);
+        }
+    }, []);
+
+    const battleTourSteps: TourStep[] = [
+        {
+            targetId: "battle-tabs",
+            title: "三大硬核实战营",
+            content: "重构、听写、翻译。这里不仅是普通的练习场，更是冷酷的排位试炼域。切页，就相当于切换了对应的拷问模块！",
+            placement: "bottom"
+        },
+        {
+            targetId: "battle-rebuild-overview",
+            title: "Rebuild核心解析",
+            content: "您现在挂载的正是 Rebuild 模式。在这个系统里，您需要完全依靠听觉，将碎片化的语料在无生词状态下重新搭建成完美的句型树，极度考验您的短期工作记忆区！",
+            placement: "bottom"
+        },
+        {
+            targetId: "battle-rebuild-variants",
+            title: "单句练习 vs. 短文排位",
+            content: "我们在模式内切分出两套体系：「单句」模式只作为热身赛改变您的隐藏练习层级，而「短文分段」才是真正的上代币排位赛，您的发挥将严格计入最终的主宰 Elo 结算网络！",
+            placement: "bottom"
+        },
+        {
+            targetId: "battle-chart",
+            title: "全隔离算力雷达",
+            content: "各模式互不干涉。系统为您每一项技能铺设了独立隔绝的 Elo 评分池。这意味着您的长难句翻译短板，绝不会拖累您的听音辨识段位！",
+            placement: "top"
+        },
+        {
+            targetId: "show-ladder-modal",
+            title: "直指毕业天梯",
+            content: "我们在后台调配了冷酷的「段位试炼谱系」。每一次涨分都是在强行解锁更变态的被动惩罚机制！请仔细看清上方的每一道防线，把打上 2400+ 冲向大师境当作你在这里的终极毕业目标！",
+            placement: "top",
+            customModal: (
+                <div className="rounded-[2.2rem] bg-theme-base-bg/95 backdrop-blur-xl p-5 md:p-6 shadow-2xl border-4 border-theme-border/50 flex flex-col max-h-full">
+                    <div className="shrink-0 mb-4 flex flex-col gap-2 text-center">
+                        <span className={cn("mx-auto inline-flex items-center gap-1.5 rounded-full border-2 border-rose-200 bg-rose-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-rose-600")}>
+                            <Target className="h-3 w-3" />
+                            Ultimate Goal
+                        </span>
+                        <h3 className="text-xl font-black text-theme-text tracking-tight">排位机制与底册参数体系</h3>
+                        <p className="mx-auto max-w-xl text-xs leading-5 text-theme-text opacity-80">
+                            排位分数直接挂钩底层的惩罚网络，得分越高，下发的试题参数越变态。请瞄准 <span className={cn("px-1 font-black text-rose-600")}>2400 (大师)</span> 最终毕业！
+                        </p>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 p-3">
+                            {(() => {
+                                const details = battleMode === "translation" ? TRANSLATION_DIFFICULTY_DETAIL : LISTENING_DIFFICULTY_DETAIL;
+                                const reversedDetails = [...details].reverse();
+                                return reversedDetails.map((row) => {
+                                    const rawElo = row.elo.includes("+") ? parseInt(row.elo.split("+")[0]) : parseInt(row.elo.split("-")[0]);
+                                    const isGraduation = rawElo === 2400; 
+                                    const isCurrent = activeModeDifficultyElo >= rawElo && (row.elo.includes("+") ? true : activeModeDifficultyElo <= parseInt(row.elo.split("-")[1]!));
+                                    const isPunishment = rawElo >= 3200;
+
+                                    return (
+                                        <div 
+                                            key={row.elo}
+                                            className={cn(
+                                                "relative flex flex-col rounded-[1.1rem] border-[3px] p-3 transition-all text-left",
+                                                isCurrent 
+                                                    ? cn("scale-[1.02] shadow-[0_6px_12px_rgba(0,0,0,0.12)] border-theme-base bg-theme-active-bg z-10")
+                                                    : "border-theme-border/30 bg-theme-base-bg/80 hover:border-theme-border/60 hover:bg-theme-card-bg"
+                                            )}
+                                        >
+                                            {isCurrent && (
+                                                <div className="absolute -top-2.5 -left-2.5 rounded-full bg-theme-base px-2 py-0.5 text-[10px] font-black tracking-widest text-white shadow-lg">
+                                                    YOU
+                                                </div>
+                                            )}
+                                            {isGraduation && (
+                                                <div className="absolute -right-2 -top-2.5 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-black tracking-widest text-amber-950 shadow-md">
+                                                    🎯 毕业
+                                                </div>
+                                            )}
+                                            {isPunishment && (
+                                                <div className="absolute -right-2 -top-2.5 rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-black tracking-widest text-white shadow-md">
+                                                    ☠️ 极刑
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-center justify-between mb-2.5 border-b-2 border-theme-border/20 pb-1.5">
+                                                <div className="flex items-center gap-1">
+                                                    <span className={cn("text-[10px] font-black rounded px-1.5 py-0.5", isCurrent ? "bg-theme-base text-white" : "bg-theme-border/40 text-theme-text-muted")}>
+                                                        {row.tier.split(" ")[0]}
+                                                    </span>
+                                                    <span className={cn("text-base font-black tracking-tight", isCurrent ? "text-theme-text" : "text-theme-text opacity-90")}>
+                                                        {row.tier.split(" ")[1]}
+                                                    </span>
+                                                </div>
+                                                <span className={cn("font-mono text-[10px] font-bold tracking-tight", isCurrent ? "text-theme-base" : "text-theme-text border border-theme-border/50 bg-theme-base-bg px-1 rounded-md")}>
+                                                    Elo {row.elo}
+                                                </span>
+                                            </div>
+
+                                            <div className="flex flex-col gap-1.5 mt-auto">
+                                                {"audio" in row ? (
+                                                    <>
+                                                        <div className="flex justify-between items-center bg-theme-base-bg/50 rounded-md px-2 py-0.5">
+                                                            <span className="text-[10px] font-bold text-theme-text-muted">词汇跨度</span>
+                                                            <span className="text-[11px] font-black text-theme-text text-right">{row.vocab}词</span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center bg-theme-base-bg/50 rounded-md px-2 py-0.5">
+                                                            <span className="text-[10px] font-bold text-theme-text-muted">碎片密度</span>
+                                                            <span className="text-[11px] font-black text-theme-text text-right">{row.validateRange}词/句</span>
+                                                        </div>
+                                                        <div className="flex flex-col bg-theme-base-bg/50 rounded-md px-2 py-0.5">
+                                                            <span className="text-[9px] font-bold text-theme-text-muted uppercase">播报风格</span>
+                                                            <span className="text-[11px] font-black text-theme-text truncate">{row.audio}</span>
+                                                        </div>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="flex justify-between items-center bg-theme-base-bg/50 rounded-md px-2 py-0.5">
+                                                            <span className="text-[10px] font-bold text-theme-text-muted">衍生词法</span>
+                                                            <span className="text-[11px] font-black text-theme-text text-right truncate overflow-hidden max-w-[60%]">{row.vocab}</span>
+                                                        </div>
+                                                        <div className="flex justify-between items-center bg-theme-base-bg/50 rounded-md px-2 py-0.5">
+                                                            <span className="text-[10px] font-bold text-theme-text-muted">跨度</span>
+                                                            <span className="text-[11px] font-black text-theme-text text-right">{row.wordRange}</span>
+                                                        </div>
+                                                        <div className="flex flex-col bg-theme-base-bg/50 rounded-md px-2 py-0.5">
+                                                            <span className="text-[9px] font-bold text-theme-text-muted uppercase">语法模型锁定</span>
+                                                            <span className="text-[11px] font-black text-theme-text truncate" title={row.syntax}>{row.syntax}</span>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                });
+                            })()}
+                        </div>
+                    </div>
+                </div>
+            )
+        },
+        {
+            targetId: "battle-quick",
+            title: "极限智适应匹配",
+            content: "拒绝挑挑拣拣！底层算力引擎会立刻扫描您的精确段位上限，在毫秒级冷锻一局强度卡在能力撕裂边缘的绝望试卷！现在，马上结束导览，狠狠砸下这个按钮开启您的破壁第一战！",
+            placement: "top"
+        }
+    ];
 
     const loadProfile = useCallback(() => {
         db.user_profile.orderBy('id').first().then(async (profile) => {
@@ -351,11 +515,7 @@ function BattlePageContent() {
     const routeFrom = searchParams.get("from");
     const hasBattleEntry = routeFrom === "home" || routeFrom === "read";
     const battleIntroEase = [0.22, 1, 0.36, 1] as const;
-    const activeModeDifficultyElo = battleMode === "translation"
-        ? eloRating
-        : battleMode === "dictation"
-            ? dictationElo
-            : (rebuildVariant === "passage" ? rebuildBattleElo : rebuildPracticeElo);
+
     const buildBattleSelection = useCallback((topic: string): BattleDrillSelection => (
         battleMode === "rebuild"
             ? {
@@ -531,7 +691,7 @@ function BattlePageContent() {
                 <div className="mb-12">
                     <div className={cn("p-5 md:p-6", chunkySurface)}>
                         <div className="space-y-6">
-                            <div className={cn("relative flex w-full items-center gap-2 overflow-x-auto", segmentedShell)}>
+                            <div data-tour-target="battle-tabs" className={cn("relative flex w-full items-center gap-2 overflow-x-auto", segmentedShell)}>
                                 <motion.div
                                     className={cn("absolute top-2 h-[calc(100%-16px)] rounded-[1.15rem] border-4", cuteTone.activeTab)}
                                     initial={false}
@@ -559,7 +719,7 @@ function BattlePageContent() {
                                 ))}
                             </div>
 
-                            <div className="rounded-[1.6rem] border-4 border-theme-border bg-theme-card-bg p-5 shadow-[0_4px_0_var(--theme-shadow)]">
+                            <div data-tour-target="battle-rebuild-overview" className="rounded-[1.6rem] border-4 border-theme-border bg-theme-card-bg p-5 shadow-[0_4px_0_var(--theme-shadow)]">
                                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                     <div>
                                         <p className="text-[11px] font-black uppercase tracking-[0.22em] text-theme-text-muted">Drill Source</p>
@@ -577,7 +737,7 @@ function BattlePageContent() {
                                     </div>
                                 </div>
                                 {battleMode === "rebuild" ? (
-                                    <div className="mt-4 space-y-4 border-t-2 border-theme-border/30 pt-4">
+                                    <div data-tour-target="battle-rebuild-variants" className="mt-4 space-y-4 border-t-2 border-theme-border/30 pt-4">
                                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                             <div>
                                                 <p className="text-[11px] font-black uppercase tracking-[0.22em] text-theme-text-muted">Rebuild Branch</p>
@@ -643,6 +803,7 @@ function BattlePageContent() {
                             </div>
 
                             <button
+                                data-tour-target="battle-quick"
                                 onClick={() => setActiveDrill(buildBattleSelection(RANDOM_SCENARIO_TOPIC))}
                                 className={cn("ui-pressable group relative w-full overflow-hidden rounded-[1.6rem] border-4 border-theme-border p-6 text-left transition-all md:p-8", cuteTone.cardTint)}
                                 style={getPressableStyle("var(--theme-shadow)", 6)}
@@ -670,7 +831,7 @@ function BattlePageContent() {
                 </div>
 
                 {/* Elo Chart */}
-                <div className="mb-10">
+                <div data-tour-target="battle-chart" className="mb-10">
                     <AnimatePresence mode="wait" initial={false}>
                         <motion.div
                             key={`${battleMode}-${refreshCount}`}
@@ -740,7 +901,7 @@ function BattlePageContent() {
                 </div>
 
                 {/* Topic Grid */}
-                <div className={cn("p-5 md:p-6", chunkySurface)}>
+                <div data-tour-target="battle-topics" className={cn("p-5 md:p-6", chunkySurface)}>
                     <div className="mb-8 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                         <div>
                             <h3 className="flex items-center gap-3 text-2xl font-black text-stone-900">
@@ -798,6 +959,7 @@ function BattlePageContent() {
                         })}
                     </div>
                 </div>
+
             </motion.div>
 
             <AnimatePresence>
@@ -1144,6 +1306,33 @@ function BattlePageContent() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Compass Manual Trigger */}
+            <AnimatePresence>
+                {!showGuide && !activeDrill && (
+                    <motion.button
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => setShowBattleTour(true)}
+                        className={cn(
+                            "fixed bottom-6 right-6 z-[60] flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-theme-border shadow-[0_4px_0_0_var(--theme-shadow)] transition-colors",
+                            "bg-theme-primary-bg text-theme-primary-text hover:bg-theme-active-bg hover:text-theme-active-text"
+                        )}
+                        aria-label="打开功能导览"
+                    >
+                        <Compass className="h-6 w-6 stroke-[2.5]" />
+                    </motion.button>
+                )}
+            </AnimatePresence>
+
+            <SpotlightTour
+                isOpen={showBattleTour}
+                onClose={() => setShowBattleTour(false)}
+                steps={battleTourSteps}
+            />
         </div>
     );
 }
