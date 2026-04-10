@@ -39,6 +39,7 @@ interface VocabReviewEditableCardProps {
     onSaved: (item: VocabItem) => void;
     onArchive?: (item: VocabItem, previousWord: string) => Promise<void> | void;
     ghostInput?: string;
+    isTourActive?: boolean;
 }
 
 interface DraftState {
@@ -131,6 +132,7 @@ export function VocabReviewEditableCard({
     onSaved,
     onArchive,
     ghostInput = "",
+    isTourActive = false,
 }: VocabReviewEditableCardProps) {
     const [draft, setDraft] = useState<DraftState>(() => buildDraft(item));
     
@@ -607,7 +609,10 @@ export function VocabReviewEditableCard({
                                                                             )}
                                                                         />
                                                                     </div>
-                                                                    <div className="shrink-0 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity pt-0.5">
+                                                                    <div className={cn(
+                                                                        "shrink-0 flex items-center gap-1 transition-opacity pt-0.5",
+                                                                        isTourActive ? "opacity-100" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                                                                    )}>
                                                                         <button
                                                                             type="button"
                                                                             data-tour-target={groupIndex === 0 && index === 0 ? "review-star-btn" : undefined}

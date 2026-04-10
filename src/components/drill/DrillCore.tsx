@@ -86,6 +86,7 @@ import {
     type DailyDrillProgress,
 } from "@/lib/daily-drill-progress";
 import { buildGuidedHintCacheKey, fetchGuidedHintWithRetry } from "@/lib/guidedHintClient";
+import { fetchNextDrillWithRetry } from "@/lib/drill-generation-client";
 import { type GrammarDisplayMode, type GrammarSentenceAnalysis } from "@/lib/grammarHighlights";
 import {
     buildFallbackGuidedScript,
@@ -1939,7 +1940,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [rebuildPassageShadowingFlow, setRebuildPassageShadowingFlow] = useState<RebuildSentenceShadowingFlow>("idle");
     const [rebuildPassageShadowingSegmentIndex, setRebuildPassageShadowingSegmentIndex] = useState<number | null>(null);
     const [pendingRebuildAdvanceElo, setPendingRebuildAdvanceElo] = useState<number | null>(null);
-    const lastRebuildResolvedAtRef = useRef<number | null>(null);
+    // Ref removed -> now inline
+    const [perfectComboAt, setPerfectComboAt] = useState<number | null>(null);
+    const [rebuildCombo, setRebuildCombo] = useState(0);
+    const [rebuildComboFxAt, setRebuildComboFxAt] = useState<number | null>(null);
+    const rebuildComboLastAtRef = useRef<number>(0);
+    const [rebuildAutocompleteSuggestion, setRebuildAutocompleteSuggestion] = useState<string | null>(null);
     const lastScoreCelebrationRef = useRef<string>("");
     const rebuildTokenOrderRef = useRef<Map<string, number>>(new Map());
     const prefersReducedMotion = useReducedMotion();
@@ -2169,6 +2175,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setRebuildEditCount(0);
         setRebuildStartedAt(nextDrillData?._rebuildMeta ? Date.now() : null);
         setRebuildTypingBuffer("");
+        setRebuildAutocompleteSuggestion(null);
+        setRebuildCombo(0);
+        rebuildComboLastAtRef.current = 0;
     }, []);
 
     const applyPassageDraftToActiveState = useCallback((draft: RebuildPassageSegmentDraftState) => {
@@ -3999,41 +4008,61 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     }, [drillData, context, setContext]);
 
     const launchRebuildSuccessCelebration = useCallback(() => {
-        playRebuildSfx("success");
-        playRebuildSfx("celebrate");
+        playRebuildSfx("perfect");
+        setPerfectComboAt(Date.now());
         if (prefersReducedMotion) return;
 
-        confetti({
-            particleCount: 180,
-            spread: 84,
-            startVelocity: 34,
-            scalar: 0.98,
-            origin: { y: 0.68, x: 0.5 },
-            colors: ["#34d399", "#2dd4bf", "#fbbf24", "#ffffff"],
-        });
-        window.setTimeout(() => {
+        const colors = ["#34d399", "#2dd4bf", "#fbbf24", "#ffffff", "#f43f5e", "#a855f7", "#818cf8"];
+
+        // Phase 1: Massive central starburst
+        confetti({ particleCount: 120, spread: 100, startVelocity: 60, origin: { x: 0.5, y: 0.45 }, colors, zIndex: 9999, scalar: 1.2, ticks: 100 });
+        confetti({ particleCount: 60, spread: 160, startVelocity: 45, origin: { x: 0.5, y: 0.45 }, colors, zIndex: 9999, scalar: 0.8, ticks: 80 });
+
+        // Phase 2: Rapid-fire fireworks from random points
+        const duration = 2500;
+        const animationEnd = Date.now() + duration;
+        const interval: ReturnType<typeof setInterval> = setInterval(() => {
+            const timeLeft = animationEnd - Date.now();
+            if (timeLeft <= 0) return clearInterval(interval);
+
+            const intensity = timeLeft / duration;
+            const count = Math.floor(35 * intensity) + 10;
             confetti({
-                particleCount: 120,
-                spread: 70,
-                startVelocity: 30,
-                scalar: 0.9,
-                origin: { y: 0.62, x: 0.18 },
-                angle: 58,
-                colors: ["#34d399", "#a7f3d0", "#fbbf24", "#ffffff"],
+                particleCount: count,
+                spread: 50 + Math.random() * 80,
+                startVelocity: 25 + Math.random() * 40,
+                origin: { x: 0.15 + Math.random() * 0.7, y: Math.random() * 0.5 },
+                colors,
+                zIndex: 9999,
+                ticks: 70,
+                scalar: 0.8 + Math.random() * 0.5,
+                shapes: ["circle", "square"],
             });
         }, 120);
-        window.setTimeout(() => {
-            confetti({
-                particleCount: 120,
-                spread: 70,
-                startVelocity: 30,
-                scalar: 0.9,
-                origin: { y: 0.62, x: 0.82 },
-                angle: 122,
-                colors: ["#2dd4bf", "#99f6e4", "#fde68a", "#ffffff"],
-            });
-        }, 220);
-    }, [playRebuildSfx, prefersReducedMotion]);
+
+        // Phase 3: Two dramatic side blasts at the climax
+        setTimeout(() => {
+            confetti({ particleCount: 80, angle: 60, spread: 55, startVelocity: 55, origin: { x: 0, y: 0.65 }, colors, zIndex: 9999 });
+            confetti({ particleCount: 80, angle: 120, spread: 55, startVelocity: 55, origin: { x: 1, y: 0.65 }, colors, zIndex: 9999 });
+        }, 400);
+
+        // Phase 4: Final golden shower
+        setTimeout(() => {
+            confetti({ particleCount: 100, spread: 180, startVelocity: 30, origin: { x: 0.5, y: 0 }, colors: ["#fbbf24", "#fcd34d", "#ffffff"], zIndex: 9999, ticks: 120, gravity: 0.6 });
+        }, 1200);
+    }, [prefersReducedMotion]);
+
+    useEffect(() => {
+        if (!perfectComboAt) return;
+        const timer = setTimeout(() => setPerfectComboAt(null), 2500);
+        return () => clearTimeout(timer);
+    }, [perfectComboAt]);
+
+    useEffect(() => {
+        if (!rebuildComboFxAt) return;
+        const timer = setTimeout(() => setRebuildComboFxAt(null), 1500);
+        return () => clearTimeout(timer);
+    }, [rebuildComboFxAt]);
 
     useEffect(() => {
         if (!eloSplash) return;
@@ -4130,19 +4159,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         }
     }, [isRebuildMode, isRebuildPassage, rebuildPassageSummary, rebuildFeedback]);
 
-    useEffect(() => {
-        if (isRebuildPassage) return;
-        if (!rebuildFeedback?.resolvedAt) return;
-        if (lastRebuildResolvedAtRef.current === rebuildFeedback.resolvedAt) return;
-        lastRebuildResolvedAtRef.current = rebuildFeedback.resolvedAt;
-
-        if (rebuildFeedback.evaluation.isCorrect && !rebuildFeedback.skipped) {
-            launchRebuildSuccessCelebration();
-            return;
-        }
-
-        playRebuildSfx("error");
-    }, [isRebuildPassage, launchRebuildSuccessCelebration, rebuildFeedback, playRebuildSfx]);
+    // Effect removed. Triggered inline now.
 
 
     // --- Spacebar Logic ---
@@ -4757,39 +4774,25 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 }, 1000); // 1 second after generation starts
             }
 
-            const response = await fetch("/api/drill/next", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    articleTitle: targetScenario.topicLine,
-                    topicPrompt: isRebuildMode ? targetScenario.topicPrompt : undefined,
-                    articleContent: context.articleContent || "",
-                    difficulty: effectiveDifficulty.level,
-                    eloRating: effectiveElo,
-                    mode: generationMode,
-                    sourceMode: activeDrillSourceMode,
-                    excludeBankIds: activeDrillSourceMode === "bank" ? listeningBankExcludeIds : undefined,
-                    rebuildVariant: isRebuildMode ? rebuildVariant : undefined,
-                    segmentCount: isRebuildPassage ? rebuildSegmentCount : undefined,
-                    bossType: nextBossType, // Inject Boss Context for Custom Scenarios
-                    _t: Date.now() // Cache buster to prevent repeated drills
-                }),
-                signal, // Pass abort signal
+            const data = await fetchNextDrillWithRetry({
+                articleTitle: targetScenario.topicLine,
+                topicPrompt: isRebuildMode ? targetScenario.topicPrompt : undefined,
+                articleContent: context.articleContent || "",
+                difficulty: effectiveDifficulty.level,
+                eloRating: effectiveElo,
+                mode: generationMode,
+                sourceMode: activeDrillSourceMode,
+                excludeBankIds: activeDrillSourceMode === "bank" ? listeningBankExcludeIds : undefined,
+                rebuildVariant: isRebuildMode ? rebuildVariant : undefined,
+                segmentCount: isRebuildPassage ? rebuildSegmentCount : undefined,
+                bossType: nextBossType,
+                _t: Date.now(),
+            }, {
+                signal,
+                maxAttempts: 3,
             });
 
-            // Check if aborted before processing response
             if (signal.aborted) return;
-
-            const data = await response.json();
-
-            // Check again after JSON parsing
-            if (signal.aborted) return;
-
-            if (!response.ok || data?.error) {
-                throw new Error(data?.error || "Failed to generate drill");
-            }
 
             setDrillData(
                 data?._rebuildMeta?.variant === "passage"
@@ -6289,19 +6292,35 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         rebuildPassageResults,
     ]);
 
-    const handleRebuildSelectToken = useCallback((tokenId: string) => {
+    const handleRebuildSelectToken = useCallback((tokenId: string, source: "click" | "autocomplete" | "type" = "click") => {
         if (!isRebuildMode) return;
         if (isRebuildPassage && activePassageResult) return;
         if (!isRebuildPassage && rebuildFeedback) return;
         setRebuildAvailableTokens((currentTokens) => {
             const token = currentTokens.find((item) => item.id === tokenId);
             if (!token) return currentTokens;
-            playRebuildSfx("pick");
+            playRebuildSfx(source === "click" ? "pick" : source);
             setRebuildAnswerTokens((answerTokens) => (
                 answerTokens.some((item) => item.id === token.id)
                     ? answerTokens
                     : [...answerTokens, token]
             ));
+            // Combo tracking
+            const now = Date.now();
+            const gap = now - rebuildComboLastAtRef.current;
+            rebuildComboLastAtRef.current = now;
+            if (gap < 2500) {
+                setRebuildCombo((prev) => {
+                    const next = prev + 1;
+                    if (next > 0 && next % 5 === 0) {
+                        playRebuildSfx("celebrate");
+                        setRebuildComboFxAt(now);
+                    }
+                    return next;
+                });
+            } else {
+                setRebuildCombo(1);
+            }
             return currentTokens.filter((item) => item.id !== tokenId);
         });
     }, [activePassageResult, isRebuildMode, isRebuildPassage, rebuildFeedback]);
@@ -6405,6 +6424,12 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 return nextState;
             });
 
+            // Record daily progress when ALL passage segments have been submitted
+            const totalSegments = passageSession?.segmentCount ?? passageSession?.segments?.length ?? 0;
+            if (totalSegments > 0 && nextResults.length >= totalSegments) {
+                recordCompletedDrill();
+            }
+
             if (evaluation.isCorrect && !skipped) {
                 launchRebuildSuccessCelebration();
             } else {
@@ -6422,6 +6447,14 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 }, REBUILD_PASSAGE_SHADOWING_PROMPT_DELAY_MS);
             }
         } else {
+            // Record daily progress immediately on single-sentence submit
+            recordCompletedDrill();
+
+            if (evaluation.isCorrect && !skipped) {
+                launchRebuildSuccessCelebration();
+            } else {
+                playRebuildSfx("error");
+            }
             clearRebuildSentenceShadowingPromptTimer();
             setPendingRebuildSentenceFeedback(null);
             setRebuildFeedback(nextFeedback);
@@ -6442,6 +6475,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         drillData?._rebuildMeta,
         isRebuildMode,
         isRebuildPassage,
+        passageSession,
         rebuildAnswerTokens,
         rebuildFeedback,
         rebuildPassageResults,
@@ -6454,6 +6488,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         rebuildShadowingAutoOpen,
         launchRebuildSuccessCelebration,
         playRebuildSfx,
+        recordCompletedDrill,
     ]);
 
     const handleSkipRebuild = useCallback(() => {
@@ -7156,7 +7191,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             for (const token of tokens) {
                 const tokenClean = normalizeRebuildTokenForMatch(token.text);
                 const dist = levenshtein(inputClean, tokenClean);
-                const threshold = Math.max(1, Math.floor(tokenClean.length / 4));
+                const threshold = tokenClean.length <= 3 ? 1 : Math.max(1, Math.floor(tokenClean.length / 4));
                 if (dist <= threshold && dist < bestDist) {
                     bestDist = dist;
                 }
@@ -7183,6 +7218,19 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     const next = rebuildTypingBufferRef.current.slice(0, -1);
                     rebuildTypingBufferRef.current = next;
                     setRebuildTypingBuffer(next);
+                    // Update autocomplete suggestion for new buffer
+                    if (next.length > 0) {
+                        const nextClean = normalizeRebuildTokenForMatch(next);
+                        const prefixTokens = rebuildAvailableTokens.filter((t) => normalizeRebuildTokenForMatch(t.text).startsWith(nextClean));
+                        if (prefixTokens.length > 0) {
+                            const sorted = [...prefixTokens].sort((a, b) => a.text.length - b.text.length);
+                            setRebuildAutocompleteSuggestion(sorted[0].text);
+                        } else {
+                            setRebuildAutocompleteSuggestion(null);
+                        }
+                    } else {
+                        setRebuildAutocompleteSuggestion(null);
+                    }
                 } else if (rebuildAnswerTokens.length > 0) {
                     const lastToken = rebuildAnswerTokens[rebuildAnswerTokens.length - 1];
                     handleRebuildRemoveToken(lastToken.id);
@@ -7206,18 +7254,20 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             typedRaw: buffered,
                             expectedRaw: expectedNextAnswerToken,
                         }) ?? exactMatches[0];
-                        handleRebuildSelectToken(matchedToken.id);
+                        handleRebuildSelectToken(matchedToken.id, "type");
                         rebuildTypingBufferRef.current = "";
                         setRebuildTypingBuffer("");
+                        setRebuildAutocompleteSuggestion(null);
                         return;
                     }
 
                     if (rebuildAutocorrect) {
                         const fuzzyResult = fuzzyMatch(buffered, rebuildAvailableTokens);
                         if (fuzzyResult) {
-                            handleRebuildSelectToken(fuzzyResult.id);
+                            handleRebuildSelectToken(fuzzyResult.id, "type");
                             rebuildTypingBufferRef.current = "";
                             setRebuildTypingBuffer("");
+                            setRebuildAutocompleteSuggestion(null);
                             return;
                         }
                     }
@@ -7234,7 +7284,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 const buf = rebuildTypingBufferRef.current;
                 if (buf.length > 0) {
                     const currentClean = normalizeRebuildTokenForMatch(buf);
-                    // 1. Try exact match first
+                    // Space = explicit user intent to commit the current word
                     const exactMatches = rebuildAvailableTokens.filter((token) => (
                         normalizeRebuildTokenForMatch(token.text) === currentClean
                     ));
@@ -7244,23 +7294,61 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                             typedRaw: buf,
                             expectedRaw: expectedNextAnswerToken,
                         }) ?? exactMatches[0];
-                        handleRebuildSelectToken(matchedToken.id);
+                        handleRebuildSelectToken(matchedToken.id, "type");
                         rebuildTypingBufferRef.current = "";
                         setRebuildTypingBuffer("");
+                        setRebuildAutocompleteSuggestion(null);
                     } else if (rebuildAutocorrect) {
-                        // 2. Autocorrect: fuzzy match fallback
+                        // No exact match — try fuzzy match fallback
                         const fuzzyResult = fuzzyMatch(buf, rebuildAvailableTokens);
                         if (fuzzyResult) {
-                            handleRebuildSelectToken(fuzzyResult.id);
+                            handleRebuildSelectToken(fuzzyResult.id, "type");
                             rebuildTypingBufferRef.current = "";
                             setRebuildTypingBuffer("");
+                            setRebuildAutocompleteSuggestion(null);
                         }
                     }
-                    // If no match, just do nothing (don't play audio)
                 } else {
                     // Empty buffer -> Play audio!
                     if (!isPlaying) {
                         void playAudio();
+                    }
+                }
+                return;
+            }
+
+            if (e.key === "Tab") {
+                e.preventDefault();
+                const buf = rebuildTypingBufferRef.current;
+                if (buf.length > 0) {
+                    const currentClean = normalizeRebuildTokenForMatch(buf);
+                    const prefixTokens = rebuildAvailableTokens.filter((t) =>
+                        normalizeRebuildTokenForMatch(t.text).startsWith(currentClean)
+                    );
+                    if (prefixTokens.length > 0) {
+                        const sorted = [...prefixTokens].sort((a, b) => a.text.length - b.text.length);
+                        if (prefixTokens.length === 1) {
+                            // Only one match → auto-commit
+                            handleRebuildSelectToken(sorted[0].id, "autocomplete");
+                            rebuildTypingBufferRef.current = "";
+                            setRebuildTypingBuffer("");
+                            setRebuildAutocompleteSuggestion(null);
+                        } else {
+                            // Fill to common prefix of all matches
+                            let common = normalizeRebuildTokenForMatch(sorted[0].text);
+                            for (const t of prefixTokens) {
+                                const norm = normalizeRebuildTokenForMatch(t.text);
+                                let i = 0;
+                                while (i < common.length && i < norm.length && common[i] === norm[i]) i++;
+                                common = common.slice(0, i);
+                            }
+                            if (common.length > currentClean.length) {
+                                const fillText = sorted[0].text.slice(0, common.length);
+                                rebuildTypingBufferRef.current = fillText;
+                                setRebuildTypingBuffer(fillText);
+                                setRebuildAutocompleteSuggestion(sorted[0].text);
+                            }
+                        }
                     }
                 }
                 return;
@@ -7279,26 +7367,42 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     normalizeRebuildTokenForMatch(token.text) === nextClean
                 ));
 
-                if (exactMatches.length > 0 && prefixMatches.length === exactMatches.length) {
+                const expectedClean = expectedNextAnswerToken ? normalizeRebuildTokenForMatch(expectedNextAnswerToken) : "";
+                const matchesExpected = exactMatches.length > 0 && nextClean === expectedClean;
+                const isUnambiguous = exactMatches.length > 0 && prefixMatches.length === exactMatches.length;
+
+                if (matchesExpected || isUnambiguous) {
                     setTimeout(() => {
                         const matchedToken = pickPreferredRebuildTokenCandidate({
                             candidates: exactMatches,
                             typedRaw: nextBuf,
                             expectedRaw: expectedNextAnswerToken,
                         }) ?? exactMatches[0];
-                        handleRebuildSelectToken(matchedToken.id);
+                        handleRebuildSelectToken(matchedToken.id, "type");
                         rebuildTypingBufferRef.current = "";
                         setRebuildTypingBuffer("");
+                        setRebuildAutocompleteSuggestion(null);
                     }, 0);
                 } else if (rebuildAutocorrect && prefixMatches.length === 0) {
                     // No prefix matches at all — try fuzzy autocorrect immediately
                     const fuzzyResult = fuzzyMatch(nextBuf, rebuildAvailableTokens);
                     if (fuzzyResult) {
                         setTimeout(() => {
-                            handleRebuildSelectToken(fuzzyResult.id);
+                            handleRebuildSelectToken(fuzzyResult.id, "type");
                             rebuildTypingBufferRef.current = "";
                             setRebuildTypingBuffer("");
+                            setRebuildAutocompleteSuggestion(null);
                         }, 0);
+                    } else {
+                        setRebuildAutocompleteSuggestion(null);
+                    }
+                } else {
+                    // Update autocomplete suggestion
+                    if (prefixMatches.length > 0) {
+                        const sorted = [...prefixMatches].sort((a, b) => a.text.length - b.text.length);
+                        setRebuildAutocompleteSuggestion(sorted[0].text);
+                    } else {
+                        setRebuildAutocompleteSuggestion(null);
                     }
                 }
             }
@@ -7371,7 +7475,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 coinsDelta: rewardResult.earnedCoins + (dropResult?.coinsDelta ?? 0),
                 itemDelta: dropResult?.itemDelta ?? {},
             });
-            recordCompletedDrill();
+            // recordCompletedDrill() moved to handleSubmitRebuild for instant +1 on submit
             setRebuildHiddenElo(nextElo);
             void persistRebuildHiddenElo(nextElo);
             setRebuildFeedback((currentFeedback) => currentFeedback ? { ...currentFeedback, selfEvaluation: evaluation } : currentFeedback);
@@ -7467,7 +7571,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             coinsDelta: rewardResult.earnedCoins + (dropResult?.coinsDelta ?? 0),
             itemDelta: dropResult?.itemDelta ?? {},
         }).coins;
-        recordCompletedDrill();
+        // recordCompletedDrill() moved to handleSubmitRebuild for instant +1 on last segment submit
 
         setRebuildBattleElo(nextElo);
         setRebuildBattleStreak(nextStreak);
@@ -7489,6 +7593,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     activeTheme: cosmeticTheme,
                     source: "battle",
                 });
+            }
+            if (aggregate.sessionScore100 === 100) {
+                launchRebuildSuccessCelebration();
             }
             setRebuildPassageSummary({
                 sessionObjectiveScore100: aggregate.sessionObjectiveScore100,
@@ -9507,11 +9614,11 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                         "relative rounded-[1rem] border px-3 py-3",
                         isVerdantRebuild
                             ? (compact
-                                ? "min-h-[82px] border-emerald-200/80 bg-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]"
-                                : "min-h-[90px] border-emerald-200/80 bg-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]")
+                                ? "min-h-[64px] border-emerald-200/80 bg-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]"
+                                : "min-h-[72px] border-emerald-200/80 bg-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]")
                             : (compact
-                                ? "min-h-[82px] border-white/60 bg-white/88"
-                                : "min-h-[90px] border-white/60 bg-white/86")
+                                ? "min-h-[64px] border-white/60 bg-white/88"
+                                : "min-h-[72px] border-white/60 bg-white/86")
                     )}>
                         {showInlinePassageCorrection && activePassageCorrection ? (
                             <div
@@ -9648,16 +9755,21 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 ) : null}
                             </div>
                         ) : rebuildAnswerTokens.length > 0 || rebuildTypingBuffer ? (
-                            <AnimatePresence mode="sync" initial={false}>
-                                <div className="w-full min-w-0 flex flex-wrap items-center gap-2.5">
-                                    {rebuildAnswerTokens.map((token) => (
+                            <AnimatePresence mode="popLayout" initial={false}>
+                                <motion.div layout className="w-full min-w-0 flex flex-wrap items-center gap-2.5 relative">
+                                    {rebuildAnswerTokens.map((token, idx) => (
                                         <motion.button
+                                            layout
+                                            layoutId={`typing-to-token-${idx}`}
                                             key={`ans-${token.id}`}
                                             type="button"
-                                            initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.9 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            exit={{ opacity: 0, scale: 0.9 }}
-                                            transition={{ duration: 0.15, ease: "easeOut" }}
+                                            initial={prefersReducedMotion ? false : { opacity: 0, filter: "blur(4px)" }}
+                                            animate={{ opacity: 1, filter: "blur(0px)" }}
+                                            exit={{ opacity: 0, filter: "blur(4px)" }}
+                                            transition={{ 
+                                                default: prefersReducedMotion ? { duration: 0.15 } : { duration: 0.2, ease: "easeOut" },
+                                                layout: { type: "spring", stiffness: 450, damping: 14 } 
+                                            }}
                                             whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
                                             onClick={() => handleRebuildRemoveToken(token.id)}
                                             className={cn(
@@ -9678,21 +9790,48 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                     ))}
                                     {rebuildTypingBuffer && (
                                         <motion.div
+                                            layout
+                                            layoutId={`typing-to-token-${rebuildAnswerTokens.length}`}
                                             key="typing-ghost"
-                                            initial={{ opacity: 0, scale: 0.9 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            exit={{ opacity: 0, scale: 0.9 }}
-                                            transition={{ duration: 0.12, ease: "easeOut" }}
+                                            initial={{ opacity: 0, filter: "blur(4px)" }}
+                                            animate={{ opacity: 1, filter: "blur(0px)" }}
+                                            exit={{ opacity: 0, filter: "blur(4px)" }}
+                                            transition={{ 
+                                                default: prefersReducedMotion ? { duration: 0.12 } : { duration: 0.2, ease: "easeOut" },
+                                                layout: { duration: 0 } 
+                                            }}
                                             className={cn(
-                                                "inline-flex min-h-[38px] min-w-0 max-w-full items-start gap-1.5 rounded-full border px-4 py-1.5 text-left text-[14px] font-bold whitespace-normal break-all",
-                                                activeCosmeticUi.wordBadgeIdleClass
+                                                "inline-flex min-h-[38px] min-w-0 max-w-full items-center gap-[2px] rounded-full px-4 py-1.5 text-left text-[15px] font-bold whitespace-normal break-all transition-all",
+                                                "border border-[color:var(--theme-active-bg)]/40 bg-theme-base-bg/80 backdrop-blur-md text-[color:var(--theme-active-bg)] shadow-[0_4px_16px_-4px_rgba(0,0,0,0.08)] ring-4 ring-[color:var(--theme-active-bg)]/10"
                                             )}
                                         >
-                                            <span className="block min-w-0 max-w-full break-all">{rebuildTypingBuffer}</span>
-                                            <span className="h-4 w-[2px] animate-pulse rounded-full bg-current/70" />
+                                            <span className="block min-w-0 max-w-full break-all tracking-wide">{rebuildTypingBuffer}</span>
+                                            {rebuildAutocompleteSuggestion && rebuildAutocompleteSuggestion.toLowerCase().startsWith(rebuildTypingBuffer.toLowerCase()) && rebuildAutocompleteSuggestion.length > rebuildTypingBuffer.length ? (
+                                                <span className="block min-w-0 max-w-full break-all opacity-40 tracking-wide">{rebuildAutocompleteSuggestion.slice(rebuildTypingBuffer.length)}</span>
+                                            ) : null}
+                                            <span className="h-[18px] w-[2.5px] ml-[3px] animate-pulse rounded-full bg-[color:var(--theme-active-bg)]" />
                                         </motion.div>
                                     )}
-                                </div>
+                                    {rebuildCombo >= 5 && (
+                                        <motion.div
+                                            key={`combo-${rebuildCombo}`}
+                                            initial={{ opacity: 0, scale: 0.5, y: -10 }}
+                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                            className={cn(
+                                                "inline-flex items-center gap-1.5 rounded-full border border-white/20 px-3 py-1 text-[11px] font-black uppercase tracking-wider transition-all",
+                                                rebuildCombo >= 10 
+                                                    ? "bg-[linear-gradient(135deg,#f59e0b,#ea580c)] text-white shadow-[0_4px_16px_rgba(234,88,12,0.35)]" 
+                                                    : "bg-[linear-gradient(135deg,#38bdf8,#6366f1)] text-white shadow-[0_4px_16px_rgba(99,102,241,0.3)]"
+                                            )}
+                                        >
+                                            <motion.span 
+                                                animate={{ scale: [1, 1.2, 1], rotate: [0, -10, 10, 0] }} 
+                                                transition={{ duration: 0.8, repeat: Infinity, repeatDelay: 1.5 }}
+                                            >🔥</motion.span>
+                                            {rebuildCombo}x COMBO
+                                        </motion.div>
+                                    )}
+                                </motion.div>
                             </AnimatePresence>
                         ) : (
                             <span className={cn("select-none text-[14px] font-semibold leading-relaxed tracking-wide", activeCosmeticTheme.mutedClass)}>
@@ -9711,27 +9850,45 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                 activeCosmeticTheme.mutedClass,
                                 rebuildTokenDividerClass
                             )}>
-                                快捷键：空格选词 · Backspace 撤回 · Enter 提交
+                                空格选词 · Backspace 撤回 · Enter 提交
                             </div>
                             <div className="w-full min-w-0 max-h-[140px] overflow-x-hidden overflow-y-auto py-1 pr-1">
-                                <AnimatePresence mode="sync" initial={false}>
-                                    <div className="w-full min-w-0 flex flex-wrap gap-2.5">
-                                        {rebuildAvailableTokens.map((token) => (
+                                <AnimatePresence mode="popLayout" initial={false}>
+                                    <motion.div layout className="w-full min-w-0 flex flex-wrap content-start gap-2.5 relative">
+                                        {rebuildAvailableTokens.map((token) => {
+                                            const typingClean = rebuildTypingBuffer ? normalizeRebuildTokenForMatch(rebuildTypingBuffer) : "";
+                                            const tokenClean = normalizeRebuildTokenForMatch(token.text);
+                                            const isMatch = typingClean.length > 0 && tokenClean.startsWith(typingClean);
+                                            const isExact = typingClean.length > 0 && tokenClean === typingClean;
+                                            return (
                                             <motion.button
                                                 key={`avail-${token.id}`}
                                                 type="button"
-                                                initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.9 }}
-                                                animate={{ opacity: 1, scale: 1 }}
-                                                exit={{ opacity: 0, scale: 0.9 }}
-                                                transition={{ duration: 0.15, ease: "easeOut" }}
+                                                initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.8, y: 10 }}
+                                                animate={{
+                                                    opacity: typingClean.length > 0 ? (isMatch ? 1 : 0.35) : 1,
+                                                    scale: isExact ? 1.05 : 1,
+                                                    y: 0,
+                                                }}
+                                                exit={{ opacity: 0, scale: 0.8, y: -10 }}
+                                                transition={{ 
+                                                    default: prefersReducedMotion ? { duration: 0.15 } : { type: "spring", stiffness: 400, damping: 25 }
+                                                }}
                                                 whileTap={prefersReducedMotion ? undefined : { scale: 0.96 }}
-                                                onClick={() => handleRebuildSelectToken(token.id)}
+                                                onClick={() => {
+                                                    handleRebuildSelectToken(token.id);
+                                                    rebuildTypingBufferRef.current = "";
+                                                    setRebuildTypingBuffer("");
+                                                    setRebuildAutocompleteSuggestion(null);
+                                                }}
                                                 className={cn(
                                                     "min-w-0 max-w-full text-left whitespace-normal break-all",
                                                     isVerdantRebuild
                                                         ? rebuildKeywordChipClass
                                                         : "inline-flex min-h-[38px] items-center gap-1.5 rounded-full border px-4 py-1.5 text-[14px] font-semibold transition-all hover:-translate-y-0.5",
-                                                    !isVerdantRebuild && activeCosmeticUi.keywordChipClass
+                                                    !isVerdantRebuild && activeCosmeticUi.keywordChipClass,
+                                                    isExact && "ring-2 ring-emerald-400/60",
+                                                    isMatch && !isExact && "ring-1 ring-sky-300/50",
                                                 )}
                                             >
                                                 <span className="block min-w-0 max-w-full break-all">{token.text}</span>
@@ -9744,8 +9901,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                     </span>
                                                 )}
                                             </motion.button>
-                                        ))}
-                                    </div>
+                                        );})}
+                                    </motion.div>
                                 </AnimatePresence>
                             </div>
                         </div>
@@ -9842,22 +9999,26 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
         if (!localPassageSession) {
             return (
-                <div className="w-full max-w-4xl space-y-4">
-                    {showChinese ? (
-                        <motion.div
-                            initial={prefersReducedMotion ? false : { opacity: 0, y: 12, filter: "blur(4px)" }}
-                            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                            transition={prefersReducedMotion ? { duration: 0.15 } : { duration: 0.28, ease: "easeOut" }}
-                            className="px-4 text-center"
-                        >
-                            <p className={cn(
-                                "text-base font-medium leading-8 md:text-[1.05rem]",
-                                activeCosmeticTheme.mutedClass
-                            )}>
-                                {drillData.chinese}
-                            </p>
-                        </motion.div>
-                    ) : null}
+                <div className="w-full max-w-4xl relative">
+                    <AnimatePresence>
+                        {showChinese ? (
+                            <motion.div
+                                key="rebuild-chinese-hint"
+                                initial={prefersReducedMotion ? false : { opacity: 0, y: 8, filter: "blur(4px)" }}
+                                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                                exit={{ opacity: 0, y: 4, filter: "blur(4px)" }}
+                                transition={prefersReducedMotion ? { duration: 0.12 } : { duration: 0.25, ease: "easeOut" }}
+                                className="absolute left-0 right-0 bottom-full mb-2 z-10 pointer-events-none"
+                            >
+                                <p className={cn(
+                                    "text-center text-sm font-medium leading-relaxed px-4 py-1.5 md:text-base",
+                                    activeCosmeticTheme.mutedClass
+                                )}>
+                                    {drillData.chinese}
+                                </p>
+                            </motion.div>
+                        ) : null}
+                    </AnimatePresence>
                     <motion.div
                         className="w-full"
                         initial={prefersReducedMotion ? false : { opacity: 0, y: 20, filter: "blur(4px)" }}
@@ -11614,7 +11775,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                     </div>
 
                     {/* Content Body */}
-                    <div className="flex-1 relative overflow-y-auto flex flex-col">
+                    <div className="flex-1 relative overflow-y-auto flex flex-col overflow-x-hidden">
+
 
                         {/* Scoring Flip Card Animation */}
                         {!isRebuildMode && (
@@ -11665,8 +11827,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                 onClick={() => { void playAudio(); }}
                                                                 disabled={isPlaying || isAudioLoading || (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)}
                                                                 className={cn(
-                                                                    "group relative flex items-center justify-center transition-all duration-500",
-                                                                    isRebuildMode ? "w-[4.5rem] h-[4.5rem] mb-2 mt-0" : isDictationMode ? "w-20 h-20 mb-4 mt-2" : "w-24 h-24 mb-8 mt-4",
+                                                                    "group relative flex items-center justify-center transition-all duration-500 shrink-0",
+                                                                    isRebuildMode ? "w-[3.75rem] h-[3.75rem] mb-1 sm:mb-2 mt-0" : isDictationMode ? "w-20 h-20 mb-4 mt-2" : "w-24 h-24 mb-8 mt-4",
                                                                     (bossState.active && bossState.type === 'echo' && hasPlayedEchoRef.current)
                                                                         ? "grayscale opacity-50 cursor-not-allowed scale-95"
                                                                         : "hover:scale-105 active:scale-95 disabled:opacity-80 disabled:scale-100"
@@ -11696,7 +11858,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                             isDictationMode={isDictationMode}
                                                                             isPlaying={isPlaying}
                                                                         />
-                                                                    ) : <Play className={cn("ml-1.5 fill-theme-primary-bg text-theme-primary-bg", isRebuildMode ? "w-8 h-8" : "w-10 h-10")} />}
+                                                                    ) : <Play className={cn("ml-1.5 fill-theme-primary-bg text-theme-primary-bg", isRebuildMode ? "w-6 h-6" : "w-10 h-10")} />}
                                                                 </div>
                                                             </button>
 
@@ -11704,7 +11866,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                             {/* Composite Control Bar */}
                                                             <div className={cn(
                                                                 "flex items-center justify-center gap-2 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150",
-                                                                isRebuildMode ? "mb-10 mt-[-0.25rem]" : isDictationMode ? "mb-4" : "mb-8",
+                                                                isRebuildMode ? "mb-2 sm:mb-4 mt-[-0.25rem]" : isDictationMode ? "mb-4" : "mb-8",
                                                             )}>
                                                                 <div className="flex items-center bg-stone-200/50 backdrop-blur-md p-1.5 rounded-full shadow-inner border border-stone-100/20">
                                                                     {/* Blind Toggle */}

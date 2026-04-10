@@ -124,6 +124,7 @@ export function InlineGrammarHighlights({
     const sentenceMarkers = showSentenceMarkers ? viewModel.sentenceMarkers : [];
     const [activeSentenceStart, setActiveSentenceStart] = useState<number | null>(null);
     const [activeRangeKey, setActiveRangeKey] = useState<string | null>(null);
+    const [popupAlign, setPopupAlign] = useState<"center" | "left" | "right">("center");
 
     const sentenceStarts = sentenceMarkers.map((item) => item.start).sort((left, right) => left - right);
     const markerByStart = new Map(sentenceMarkers.map((item) => [item.start, item]));
@@ -172,6 +173,18 @@ export function InlineGrammarHighlights({
                         const overlapCount = segment.highlight.overlapCount ?? 0;
                         const explanationBlocks = buildExplanationBlocks(segment.highlight.explanation);
                         const rangeKey = `${segment.start}-${segment.end}`;
+                        const handleActivate = () => {
+                            setActiveSentenceStart(segment.highlight?.sentenceStart ?? segmentSentenceStart);
+                            setActiveRangeKey(rangeKey);
+                        };
+
+                        const checkAlignment = (target: HTMLElement) => {
+                            const rect = target.getBoundingClientRect();
+                            if (rect.left < 170) setPopupAlign("left");
+                            else if (window.innerWidth - rect.right < 170) setPopupAlign("right");
+                            else setPopupAlign("center");
+                        };
+
                         return (
                             <span
                                 key={rangeKey}
@@ -179,16 +192,16 @@ export function InlineGrammarHighlights({
                                 role="button"
                                 aria-label={`${segment.highlight.translatedLabel}：${segment.highlight.explanation}`}
                                 data-grammar-layer={segment.highlight.layer}
-                                onMouseEnter={() => {
-                                    setActiveSentenceStart(segment.highlight?.sentenceStart ?? segmentSentenceStart);
-                                    setActiveRangeKey(rangeKey);
+                                onMouseEnter={(e) => {
+                                    handleActivate();
+                                    checkAlignment(e.currentTarget);
                                 }}
                                 onMouseLeave={() => {
                                     setActiveRangeKey((current) => (current === rangeKey ? null : current));
                                 }}
-                                onFocus={() => {
-                                    setActiveSentenceStart(segment.highlight?.sentenceStart ?? segmentSentenceStart);
-                                    setActiveRangeKey(rangeKey);
+                                onFocus={(e) => {
+                                    handleActivate();
+                                    checkAlignment(e.currentTarget);
                                 }}
                                 onBlur={() => {
                                     setActiveRangeKey((current) => (current === rangeKey ? null : current));
@@ -211,7 +224,12 @@ export function InlineGrammarHighlights({
                                 ) : null}
                                 {segment.text}
                                 <span
-                                    className="pointer-events-none absolute bottom-full left-1/2 z-[100] mb-3 w-[min(20rem,calc(100vw-2rem))] -translate-x-1/2 rounded-[22px] border p-3 opacity-0 shadow-[0_18px_44px_rgba(28,25,23,0.16)] ring-1 ring-white/70 transition-opacity duration-150 ease-out group-hover/highlight:opacity-100 group-focus/highlight:opacity-100"
+                                    className={cn(
+                                        "pointer-events-none absolute bottom-full z-[100] mb-3 w-[min(20rem,calc(100vw-2rem))] rounded-[22px] border p-3 opacity-0 shadow-[0_18px_44px_rgba(28,25,23,0.16)] ring-1 ring-white/70 transition-opacity duration-150 ease-out group-hover/highlight:opacity-100 group-focus/highlight:opacity-100",
+                                                popupAlign === "left" && "left-0",
+                                                popupAlign === "right" && "right-0",
+                                                popupAlign === "center" && "left-1/2 -translate-x-1/2"
+                                            )}
                                     style={{
                                         borderColor: popupTheme.cardBorder,
                                         backgroundColor: "rgba(255,253,248,0.985)",
@@ -299,7 +317,12 @@ export function InlineGrammarHighlights({
                                         ) : null}
                                     </span>
                                     <span
-                                        className="absolute left-1/2 top-full -mt-[1px] h-3.5 w-3.5 -translate-x-1/2 rotate-45 rounded-[3px] border-b border-r"
+                                        className={cn(
+                                            "absolute top-full -mt-[1px] h-3.5 w-3.5 rotate-45 rounded-[3px] border-b border-r",
+                                            popupAlign === "left" && "left-4",
+                                            popupAlign === "right" && "right-4",
+                                            popupAlign === "center" && "left-1/2 -translate-x-1/2"
+                                        )}
                                         style={{ borderColor: popupTheme.cardBorder, backgroundColor: "rgba(255,251,244,0.96)" }}
                                     />
                                 </span>

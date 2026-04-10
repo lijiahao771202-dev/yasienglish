@@ -22,6 +22,53 @@ type DrillRouteBody = {
     segmentCount?: 2 | 3 | 5;
 };
 
+const REBUILD_ROUTE_MAX_ATTEMPTS = 3;
+
+async function waitBeforeRetry(attempt: number) {
+    await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+}
+
+async function generateRebuildDrillWithRetry(args: {
+    topic: string;
+    topicPrompt?: string;
+    effectiveElo: number;
+    rebuildVariant: "sentence" | "passage";
+    segmentCount: 2 | 3 | 5;
+}) {
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= REBUILD_ROUTE_MAX_ATTEMPTS; attempt += 1) {
+        try {
+            return args.rebuildVariant === "passage"
+                ? await generateRebuildPassageAiDrill({
+                    topic: args.topic,
+                    topicPrompt: args.topicPrompt,
+                    effectiveElo: args.effectiveElo,
+                    segmentCount: args.segmentCount,
+                })
+                : await generateRebuildAiDrill({
+                    topic: args.topic,
+                    topicPrompt: args.topicPrompt,
+                    effectiveElo: args.effectiveElo,
+                });
+        } catch (error) {
+            lastError = error;
+
+            if (attempt === REBUILD_ROUTE_MAX_ATTEMPTS) {
+                throw error;
+            }
+
+            console.warn(
+                `[Drill Route] Retrying rebuild generation (${attempt}/${REBUILD_ROUTE_MAX_ATTEMPTS})`,
+                error,
+            );
+            await waitBeforeRetry(attempt);
+        }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error("Failed to generate rebuild drill.");
+}
+
 export async function POST(req: NextRequest) {
     const body = await req.json() as DrillRouteBody;
     const requestedMode = body.mode === "rebuild"
@@ -60,18 +107,13 @@ export async function POST(req: NextRequest) {
         const rebuildVariant = body.rebuildVariant === "passage" ? "passage" : "sentence";
         const segmentCount = body.segmentCount === 2 || body.segmentCount === 5 ? body.segmentCount : 3;
         try {
-            const drill = rebuildVariant === "passage"
-                ? await generateRebuildPassageAiDrill({
-                    topic,
-                    topicPrompt,
-                    effectiveElo: eloRating,
-                    segmentCount,
-                })
-                : await generateRebuildAiDrill({
-                    topic,
-                    topicPrompt,
-                    effectiveElo: eloRating,
-                });
+            const drill = await generateRebuildDrillWithRetry({
+                topic,
+                topicPrompt,
+                effectiveElo: eloRating,
+                rebuildVariant,
+                segmentCount,
+            });
             return NextResponse.json(drill);
         } catch (error) {
             console.error("Rebuild AI generation failed:", error);

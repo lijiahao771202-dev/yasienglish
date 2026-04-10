@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { db, VocabItem } from '@/lib/db';
 import { archiveVocabularyCard, getRatingEtaLabel, isVocabularyArchived, Rating, scheduleCard } from '@/lib/fsrs';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, HelpCircle } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -1085,6 +1085,7 @@ export default function ReviewPage() {
                                             onPlayAudio={playAudio}
                                             onArchive={handleArchive}
                                             ghostInput={ghostInput}
+                                            isTourActive={showTour}
                                             onSaved={(savedCard) => {
                                                 setQueue((prev) => prev.map((card, index) => (
                                                     index === currentIndex ? savedCard : card
@@ -1131,6 +1132,16 @@ export default function ReviewPage() {
                     </motion.div>
                 </div>
             </div>
+
+            {/* Manual Tour Trigger */}
+            <button
+                onClick={() => setShowTour(true)}
+                className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-theme-primary-bg border-[3px] border-theme-border text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)] transition hover:bg-theme-primary-hover active:translate-y-1 active:shadow-none"
+                aria-label="重新观看使用引导"
+            >
+                <HelpCircle className="h-6 w-6" />
+            </button>
+
             {typeof window !== "undefined" && createPortal(
                 <SpotlightTour 
                     isOpen={showTour} 
@@ -1143,8 +1154,9 @@ export default function ReviewPage() {
                         {
                             targetId: "review-spell-input",
                             title: "盲打沉浸校验",
-                            content: "在不看答案的情况下，直接在键盘上敲击字母进行拼写。连续拼对会触发史诗级 Combo 动画哦！",
-                            placement: "bottom"
+                            content: `请直接在您的全键盘上敲击字母试试！\n试着按几下，输入错了会红底惩罚，连续拼对会触发史诗级 Combo！\n（强制互动：请至少敲击 5 次体验手感。当前进度：${Math.min(ghostInput.length, 5)}/5 👇）`,
+                            placement: "bottom",
+                            nextDisabled: ghostInput.length < 5
                         },
                         {
                             targetId: "review-reveal-btn",

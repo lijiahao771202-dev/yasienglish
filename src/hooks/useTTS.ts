@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getAudioFromCache } from "@/lib/tts-cache";
+import { deleteAudioFromCache, getAudioFromCache } from "@/lib/tts-cache";
 import { requestTtsPayload } from "@/lib/tts-client";
 import { ttsQueue } from "@/lib/tts-queue";
+import { describeHtmlMediaErrorCode, isLikelyPlayableMpegBlob } from "@/lib/tts-audio";
 
 interface TtsWordMark {
     time: number;
@@ -21,6 +22,7 @@ export function useTTS(text: string) {
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const objectUrlRef = useRef<string | null>(null);
+    const lastAudioSourceRef = useRef<"cache" | "network" | null>(null);
 
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -92,9 +94,19 @@ export function useTTS(text: string) {
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
         };
         audio.onerror = (e) => {
-            console.error("Audio playback error", e);
+            const mediaError = audioRef.current?.error;
+            const sourceText = latestTextRef.current;
+            console.error("Audio playback error", {
+                eventType: e?.type ?? "unknown",
+                code: mediaError?.code ?? null,
+                reason: describeHtmlMediaErrorCode(mediaError?.code),
+                src: audioRef.current?.src ?? null,
+                textPreview: sourceText.slice(0, 80),
+                source: lastAudioSourceRef.current,
+            });
             setIsPlaying(false);
             if (rafRef.current) cancelAnimationFrame(rafRef.current);
+            void deleteAudioFromCache(sourceText);
         };
         audio.onloadedmetadata = () => {
             if (audioRef.current) {
@@ -138,6 +150,7 @@ export function useTTS(text: string) {
         setIsPlaying(false);
         setAudioUrl(null);
         setMarks(marksCache.get(text) ?? []);
+        lastAudioSourceRef.current = null;
 
         if (audioRef.current) {
             audioRef.current.pause();
@@ -167,8 +180,13 @@ export function useTTS(text: string) {
             // 1. Cache first for audio bytes.
             const cachedBlob = await getAudioFromCache(text);
             if (cachedBlob) {
+                const isValidCachedBlob = await isLikelyPlayableMpegBlob(cachedBlob);
+                if (!isValidCachedBlob) {
+                    await deleteAudioFromCache(text);
+                } else {
                 const url = URL.createObjectURL(cachedBlob);
                 setResolvedAudioUrl(url, true);
+                    lastAudioSourceRef.current = "cache";
 
                 // Audio may be in browser cache while marks are not; fetch marks in background.
                 if (!marksCache.has(text)) {
@@ -177,12 +195,14 @@ export function useTTS(text: string) {
 
                 setIsLoading(false);
                 return url;
+                }
             }
 
             // 2. Queue request when cache misses.
             const result = await ttsQueue.add(text);
             const url = URL.createObjectURL(result.blob);
             setResolvedAudioUrl(url, true);
+            lastAudioSourceRef.current = "network";
 
             const nextMarks = Array.isArray(result.marks) ? result.marks : [];
             marksCache.set(text, nextMarks);

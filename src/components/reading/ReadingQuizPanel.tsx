@@ -523,15 +523,26 @@ export function ReadingQuizPanel({
         setStandardStepIndex((prev) => Math.min(prev, questions.length - 1));
     }, [questions.length]);
 
+    const catReviewQuestions = isSubmitted
+        ? questions.filter((question) => Boolean(catResponseMap[question.id]))
+        : questions;
+    const catActiveQuestions = catReviewQuestions.length > 0 ? catReviewQuestions : questions;
+    const catQuestionCount = catActiveQuestions.length;
+    const catSafeIndex = catQuestionCount > 0
+        ? Math.min(catStepIndex, catQuestionCount - 1)
+        : 0;
+    const catCurrentQuestion = catActiveQuestions[catSafeIndex];
+    const catAtFirst = catSafeIndex === 0;
+    const catAtLast = catQuestionCount > 0 && catSafeIndex === catQuestionCount - 1;
+
     const catSubmittedCount = Object.keys(catResponseMap).length;
-    const catCurrentQuestion = questions[catStepIndex];
     const catCurrentCommitted = Boolean(catCurrentQuestion && catResponseMap[catCurrentQuestion.id]);
     const catCurrentCanSubmit = Boolean(catCurrentQuestion && isObjectiveQuestionAnswered(catCurrentQuestion, answers[catCurrentQuestion.id]));
     const catMinRequired = Math.min(catMinItems, Math.max(1, questions.length));
     const catMaxAllowed = Math.min(catMaxItems, Math.max(1, questions.length));
     const hasReachedCatMin = catSubmittedCount >= catMinRequired;
     const hasReachedCatMax = catSubmittedCount >= catMaxAllowed;
-    const nextUnsubmittedIndex = questions.findIndex((question, index) => index > catStepIndex && !catResponseMap[question.id]);
+    const nextUnsubmittedIndex = questions.findIndex((question, index) => index > catSafeIndex && !catResponseMap[question.id]);
     const hasNextQuestion = nextUnsubmittedIndex >= 0;
     const standardQuestionCount = questions.length;
     const standardSafeIndex = standardQuestionCount > 0
@@ -552,6 +563,14 @@ export function ReadingQuizPanel({
     const standardProgressHint = standardQuestionCount > 0
         ? `第 ${standardSafeIndex + 1} / ${standardQuestionCount} 题 · 已批改 ${standardGradedCount} 题`
         : "暂无题目";
+
+    useEffect(() => {
+        if (catQuestionCount === 0) {
+            setCatStepIndex(0);
+            return;
+        }
+        setCatStepIndex((prev) => Math.min(prev, catQuestionCount - 1));
+    }, [catQuestionCount]);
 
     const handlePrevStandardQuestion = () => {
         onClearLocate?.();
@@ -603,10 +622,28 @@ export function ReadingQuizPanel({
         }
     };
 
+    const handlePrevSubmittedQuestion = () => {
+        onClearLocate?.();
+        if (quizMode === "cat") {
+            setCatStepIndex((prev) => Math.max(0, prev - 1));
+            return;
+        }
+        setStandardStepIndex((prev) => Math.max(0, prev - 1));
+    };
+
+    const handleNextSubmittedQuestion = () => {
+        onClearLocate?.();
+        if (quizMode === "cat") {
+            setCatStepIndex((prev) => Math.min(Math.max(0, catQuestionCount - 1), prev + 1));
+            return;
+        }
+        setStandardStepIndex((prev) => Math.min(Math.max(0, standardQuestionCount - 1), prev + 1));
+    };
+
     useEffect(() => {
         if (!onClearLocate || activeLocateQuestionNumber == null) return;
         const activeQuestionNumber = quizMode === "cat"
-            ? (catCurrentQuestion ? catStepIndex + 1 : null)
+            ? (catCurrentQuestion ? catSafeIndex + 1 : null)
             : (standardCurrentQuestion ? standardSafeIndex + 1 : null);
         if (activeQuestionNumber == null) {
             onClearLocate();
@@ -618,7 +655,7 @@ export function ReadingQuizPanel({
     }, [
         activeLocateQuestionNumber,
         catCurrentQuestion,
-        catStepIndex,
+        catSafeIndex,
         onClearLocate,
         quizMode,
         standardCurrentQuestion,
@@ -868,7 +905,7 @@ export function ReadingQuizPanel({
                             >
                                 <QuestionCard
                                     question={catCurrentQuestion}
-                                    index={catStepIndex}
+                                    index={catSafeIndex}
                                     userAnswer={answers[catCurrentQuestion.id]}
                                     onSelect={handleSelectAnswer}
                                     onTextInput={handleTextAnswer}
@@ -1044,7 +1081,13 @@ export function ReadingQuizPanel({
                             </div>
                         </div>
                     ) : (
-                        <div className="flex gap-3">
+                        <div className="space-y-2">
+                            <p className="text-xs font-medium text-slate-500">
+                                {quizMode === "cat"
+                                    ? `复盘第 ${catSafeIndex + 1} / ${Math.max(1, catQuestionCount)} 题`
+                                    : `复盘第 ${standardSafeIndex + 1} / ${Math.max(1, standardQuestionCount)} 题`}
+                            </p>
+                            <div className="flex gap-3">
                             {quizMode !== "cat" && !lockAfterCompletion ? (
                                 <button
                                     onClick={handleReset}
@@ -1055,12 +1098,32 @@ export function ReadingQuizPanel({
                                 </button>
                             ) : null}
                             <button
-                                onClick={onClose}
-                                className="flex flex-1 items-center justify-center gap-2 rounded-[1.2rem] border-[3px] border-[#17120d] bg-[#2f66f3] py-3 text-sm font-black text-white shadow-[0_4px_0_rgba(23,18,13,0.12)] transition-all hover:-translate-y-0.5"
+                                onClick={handlePrevSubmittedQuestion}
+                                disabled={quizMode === "cat" ? catAtFirst : standardAtFirst}
+                                className={cn(
+                                    "flex flex-1 items-center justify-center gap-2 rounded-[1.2rem] border-[3px] py-3 text-sm font-black transition-all",
+                                    (quizMode === "cat" ? catAtFirst : standardAtFirst)
+                                        ? "border-[#17120d] bg-[#d7d4cc] text-[#8b7a66] cursor-not-allowed"
+                                        : "border-[#17120d] bg-white text-[#17120d] hover:-translate-y-0.5"
+                                )}
                             >
-                                <ChevronRight className="h-4 w-4" />
-                                完成
+                                <ChevronLeft className="h-4 w-4" />
+                                上一题
                             </button>
+                            <button
+                                onClick={handleNextSubmittedQuestion}
+                                disabled={quizMode === "cat" ? catAtLast : standardAtLast}
+                                className={cn(
+                                    "flex flex-1 items-center justify-center gap-2 rounded-[1.2rem] border-[3px] py-3 text-sm font-black transition-all",
+                                    (quizMode === "cat" ? catAtLast : standardAtLast)
+                                        ? "border-[#17120d] bg-[#d7d4cc] text-[#8b7a66] cursor-not-allowed"
+                                        : "border-[#17120d] bg-[#2f66f3] text-white shadow-[0_4px_0_rgba(23,18,13,0.12)] hover:-translate-y-0.5"
+                                )}
+                            >
+                                下一题
+                                <ChevronRight className="h-4 w-4" />
+                            </button>
+                            </div>
                         </div>
                     )}
                 </div>

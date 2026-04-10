@@ -12,6 +12,7 @@ import { buildWordLookupDedupeKey, INSUFFICIENT_READING_COINS, type ReadingEcono
 import { dispatchReadingCoinFx } from "@/lib/reading-coin-fx";
 import { type MeaningGroup } from "@/lib/vocab-meanings";
 import { getPressableStyle, getPressableTap } from "@/lib/pressable";
+import { retryClientAction, type RetryableClientError } from "@/lib/client-retry";
 
 export interface PopupState {
     word: string;
@@ -433,7 +434,7 @@ export function WordPopup({
 
         const dedupeKey = `word_deep:${sessionUser?.id || "anon"}:${(popup.articleUrl || "unknown").toLowerCase()}:${popup.word.trim().toLowerCase()}`;
         const existing = aiDefinitionInFlight.get(cacheKey);
-        const loadAnalysis = existing ?? (async (): Promise<AiDefinitionLoad> => {
+        const loadAnalysis = existing ?? retryClientAction(async (): Promise<AiDefinitionLoad> => {
             const response = await fetch("/api/ai/define", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -451,10 +452,16 @@ export function WordPopup({
                         : undefined,
                 }),
             });
-            const data = await response.json();
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                data = null;
+            }
             if (!response.ok) {
-                const error = new Error(data?.error || "Failed to analyze word");
-                (error as Error & { responseData?: unknown }).responseData = data;
+                const error = new Error(data?.error || "Failed to analyze word") as RetryableClientError;
+                error.responseData = data;
+                error.responseStatus = response.status;
                 throw error;
             }
 
@@ -470,7 +477,7 @@ export function WordPopup({
                 } satisfies AiDefinitionResult,
                 payload: data,
             };
-        })();
+        });
 
         if (!existing) {
             aiDefinitionInFlight.set(cacheKey, loadAnalysis.finally(() => {
@@ -628,7 +635,7 @@ export function WordPopup({
                 due: base.due ?? Date.now(),
             };
 
-            await saveVocabulary(card);
+            await retryClientAction(() => saveVocabulary(card));
         } catch (error) {
             console.error("Failed to save vocab:", error);
             const responseData = (error as Error & { responseData?: { errorCode?: string } }).responseData;

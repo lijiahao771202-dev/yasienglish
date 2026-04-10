@@ -466,8 +466,11 @@ export function ArticleDisplay({
             variants={containerVariants}
             className="relative mx-auto w-full pb-28"
         >
-            <div className="relative mb-24 overflow-hidden rounded-[2rem] border-4 border-theme-border bg-theme-base-bg p-6 shadow-[0_10px_0_var(--theme-shadow)] transition-all duration-500 md:p-10 xl:p-12">
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-theme-base-bg/95 to-transparent" />
+            <div className="relative mb-24 rounded-[2rem] border-4 border-theme-border bg-theme-base-bg p-6 shadow-[0_10px_0_var(--theme-shadow)] transition-all duration-500 md:p-10 xl:p-12">
+                {/* Isolate overflow-hidden decoration to prevent clipping popups */}
+                <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[calc(2rem-4px)]">
+                    <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-theme-base-bg/95 to-transparent" />
+                </div>
                 {topActionNode ? (
                     <div className="absolute right-6 top-6 z-20 md:right-10 md:top-10 xl:right-12 xl:top-10">
                         {topActionNode}

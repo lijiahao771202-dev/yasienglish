@@ -435,7 +435,16 @@ export function HomeDashboardPanels_v2({
                     </button>
                 </div>
                 {accountEmail && (
-                    <div className="hidden sm:block">
+                    <div className="hidden sm:flex items-center gap-4">
+                        <button
+                            onClick={() => router.push('/paywall-demo')}
+                            className="group flex items-center gap-1.5 rounded-xl border-[2.5px] border-amber-300/60 bg-amber-50 px-3 py-1.5 shadow-[0_3px_0_0_rgba(251,191,36,0.25)] transition-all hover:bg-amber-100/80 active:translate-y-[3px] active:shadow-none dark:border-amber-500/40 dark:bg-amber-900/20"
+                        >
+                            <span className="text-amber-500 drop-shadow-sm group-hover:animate-pulse">✨</span>
+                            <span className="font-newsreader text-[13px] font-bold tracking-widest text-amber-700 dark:text-amber-300 uppercase">
+                                Premium
+                            </span>
+                        </button>
                         <ConnectedUserAvatarMenu email={accountEmail} placement="header" />
                     </div>
                 )}

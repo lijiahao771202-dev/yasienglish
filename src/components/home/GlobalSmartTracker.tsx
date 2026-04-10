@@ -54,70 +54,34 @@ const playIncrementSound = () => {
         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
         if (!AudioContext) return;
         const ctx = new AudioContext();
-        
         const now = ctx.currentTime;
-        // G5 note for a pleasant, high-pitched +1 progress tick
-        const noteFreq = 783.99; 
-        
-        // --- 1. Wooden Mallet Strike (Transient Click) ---
-        const clickOsc = ctx.createOscillator();
-        const clickGain = ctx.createGain();
-        const clickFilter = ctx.createBiquadFilter();
-        
-        clickOsc.type = 'square';
-        clickOsc.frequency.setValueAtTime(800, now);
-        clickOsc.frequency.exponentialRampToValueAtTime(100, now + 0.05);
-        
-        clickFilter.type = 'bandpass';
-        clickFilter.frequency.value = 1200;
-        clickFilter.Q.value = 0.5;
-        
-        clickGain.gain.setValueAtTime(0, now);
-        clickGain.gain.linearRampToValueAtTime(0.5, now + 0.002);
-        clickGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
-        
-        clickOsc.connect(clickFilter);
-        clickFilter.connect(clickGain);
-        clickGain.connect(ctx.destination);
-        
-        // --- 2. Marimba Fundamental (Wooden Resonance Body) ---
-        const fundOsc = ctx.createOscillator();
-        const fundGain = ctx.createGain();
-        
-        fundOsc.type = 'sine';
-        fundOsc.frequency.value = noteFreq;
-        
-        fundGain.gain.setValueAtTime(0, now);
-        fundGain.gain.linearRampToValueAtTime(0.8, now + 0.01);
-        fundGain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
-        
-        fundOsc.connect(fundGain);
-        fundGain.connect(ctx.destination);
-        
-        // --- 3. Marimba First Overtone (Characteristic Wood Edge) ---
-        // Acoustic marimbas have a prominent overtone at ~3.93x fundamental
-        const overtoneOsc = ctx.createOscillator();
-        const overtoneGain = ctx.createGain();
-        
-        overtoneOsc.type = 'sine';
-        overtoneOsc.frequency.value = noteFreq * 3.93; 
-        
-        overtoneGain.gain.setValueAtTime(0, now);
-        overtoneGain.gain.linearRampToValueAtTime(0.15, now + 0.01);
-        overtoneGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1); // Decays faster
-        
-        overtoneOsc.connect(overtoneGain);
-        overtoneGain.connect(ctx.destination);
-        
-        // Fire all synthetic parts
-        clickOsc.start(now);
-        fundOsc.start(now);
-        overtoneOsc.start(now);
-        
-        clickOsc.stop(now + 0.05);
-        fundOsc.stop(now + 0.25);
-        overtoneOsc.stop(now + 0.1);
-        
+
+        // Soft "dewdrop" tap — gentle sine with quick decay
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(660, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.03);
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.045, now + 0.004);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+
+        // Tiny shimmer overtone
+        const osc2 = ctx.createOscillator();
+        const g2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(1320, now);
+        g2.gain.setValueAtTime(0, now);
+        g2.gain.linearRampToValueAtTime(0.015, now + 0.003);
+        g2.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+        osc2.connect(g2);
+        g2.connect(ctx.destination);
+        osc2.start(now);
+        osc2.stop(now + 0.08);
     } catch(e) {}
 };
 
@@ -680,9 +644,9 @@ export function GlobalSmartTracker() {
                                 initial={{ opacity: 0, scale: 0.8, x: 50 }}
                                 animate={{ 
                                     opacity: 1, 
-                                    scale: isInc ? [1, 1.05, 0.95, 1.02, 1] : 1, 
+                                    scale: isInc ? [1, 1.08, 0.94, 1.03, 1] : 1, 
                                     x: 0,
-                                    rotate: isInc ? [0, -2, 2, -1, 0] : 0,
+                                    rotate: isInc ? [0, -3, 3, -1.5, 0] : 0,
                                 }}
                                 transition={{ 
                                     default: { type: "spring", stiffness: 300, damping: 20 },
@@ -690,7 +654,7 @@ export function GlobalSmartTracker() {
                                     rotate: { type: "tween", duration: 0.5 }
                                 }}
                                 exit={{ opacity: 0, scale: 0.8, x: 50 }}
-                                className={`flex items-center rounded-[3rem] border-[5px] cursor-grab relative overflow-hidden transition-all duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                                className={`flex items-center rounded-[3rem] border-[5px] cursor-grab relative transition-all duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                                     isHeroOverlay ? 'w-[400px] p-4 gap-5 shadow-2xl scale-105' : 'w-[280px] p-2 pr-4 gap-3'
                                 } ${
                                     isCeleb ? 'bg-yellow-200 border-yellow-500 shadow-[0_6px_0_0_rgba(234,179,8,1)]' 
@@ -700,16 +664,30 @@ export function GlobalSmartTracker() {
                             >
                                 <AnimatePresence>
                                     {isInc && (
-                                        <motion.div
-                                            initial={{ opacity: 0, y: 0, scale: 0, rotate: -20 }}
-                                            animate={{ opacity: 1, y: -45, scale: [1.8, 1.2, 1.3, 1.2], rotate: [20, -10, 5, 0] }}
-                                            exit={{ opacity: 0, y: -60, scale: 0.8 }}
-                                            transition={{ duration: 0.6, ease: "easeOut" }}
-                                            className="absolute -top-10 -right-2 text-emerald-500 font-black text-4xl drop-shadow-[0_0_15px_rgba(16,185,129,0.5)] z-50 pointer-events-none"
-                                            style={{ WebkitTextStroke: '2px white' }}
-                                        >
-                                            +1
-                                        </motion.div>
+                                        <>
+                                            {/* Ring pulse burst */}
+                                            <motion.div
+                                                initial={{ opacity: 0.7, scale: 0.3 }}
+                                                animate={{ opacity: 0, scale: 2.5 }}
+                                                exit={{ opacity: 0 }}
+                                                transition={{ duration: 0.7, ease: "easeOut" }}
+                                                className="absolute -top-4 -right-4 w-16 h-16 rounded-full border-[3px] border-emerald-400 z-40 pointer-events-none"
+                                            />
+                                            {/* Flying +1 */}
+                                            <motion.div
+                                                initial={{ opacity: 0, y: 10, scale: 0.3 }}
+                                                animate={{ opacity: [0, 1, 1, 0], y: [10, -30, -55, -75], scale: [0.3, 1.6, 1.3, 1] }}
+                                                exit={{ opacity: 0 }}
+                                                transition={{ duration: 1, ease: "easeOut" }}
+                                                className="absolute -top-2 right-2 text-emerald-400 font-black text-5xl z-50 pointer-events-none"
+                                                style={{ 
+                                                    WebkitTextStroke: '2.5px white',
+                                                    filter: 'drop-shadow(0 0 20px rgba(16,185,129,0.7)) drop-shadow(0 0 40px rgba(16,185,129,0.4))',
+                                                }}
+                                            >
+                                                +1
+                                            </motion.div>
+                                        </>
                                     )}
                                 </AnimatePresence>
                                 {/* Left icon bubble */}

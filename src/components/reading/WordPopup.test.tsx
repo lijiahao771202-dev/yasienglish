@@ -68,7 +68,10 @@ const flushPromises = async (count = 2) => {
     }
 };
 
-const renderPopup = async (overrides?: Partial<React.ComponentProps<typeof WordPopup>>) => {
+const renderPopup = async (
+    overrides?: Partial<React.ComponentProps<typeof WordPopup>>,
+    popupOverride?: Partial<PopupState>,
+) => {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -78,7 +81,7 @@ const renderPopup = async (overrides?: Partial<React.ComponentProps<typeof WordP
     await act(async () => {
         root.render(
             <WordPopup
-                popup={popup}
+                popup={{ ...popup, ...popupOverride }}
                 onClose={vi.fn()}
                 {...overrides}
             />,
@@ -155,7 +158,10 @@ describe("WordPopup", () => {
             return Promise.reject(new Error(`Unexpected fetch: ${url}`));
         }));
 
-        await renderPopup();
+        await renderPopup(undefined, {
+            word: "transit strategy retry",
+            context: "The retry-specific context needs fresh AI definition.",
+        });
 
         const addButton = getAddButton();
         expect(addButton).toBeTruthy();
@@ -212,6 +218,53 @@ describe("WordPopup", () => {
         expect(getAddButton()?.getAttribute("title")).toBe("加入生词本");
         expect(document.body.textContent).toContain("保存失败，请重试");
         expect(document.body.textContent).not.toContain("已加入生词本。");
+    });
+
+    it("retries transient save failures before succeeding", async () => {
+        vi.useFakeTimers();
+        mocks.dbFirst.mockResolvedValue(null);
+        mocks.saveVocabulary
+            .mockRejectedValueOnce(new Error("failed to fetch"))
+            .mockResolvedValueOnce(undefined);
+        vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url === "/api/dictionary") {
+                return Promise.resolve(buildFetchResponse({
+                    definition: "strategy",
+                    translation: "策略",
+                    phonetic: "/test/",
+                    pos_groups: [],
+                }));
+            }
+            if (url === "/api/ai/define") {
+                return Promise.resolve(buildFetchResponse({
+                    context_meaning: {
+                        definition: "conscious substitution",
+                        translation: "有意识替代",
+                    },
+                    phonetic: "/test/",
+                    meaning_groups: [],
+                    highlighted_meanings: [],
+                    word_breakdown: [],
+                    morphology_notes: [],
+                    readingCoins: null,
+                }));
+            }
+            return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+        }));
+
+        await renderPopup();
+
+        await act(async () => {
+            getAddButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            await vi.runAllTimersAsync();
+        });
+        await flushPromises(4);
+
+        expect(mocks.saveVocabulary).toHaveBeenCalledTimes(2);
+        expect(getAddButton()?.getAttribute("title")).toBe("已加入生词本");
+        expect(document.body.textContent).toContain("已加入生词本。");
+        vi.useRealTimers();
     });
 
     it("keeps saved state when the vocab already exists", async () => {
