@@ -1,7 +1,7 @@
 import React, { useLayoutEffect, useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft } from "lucide-react";
+import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft, Layers } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
@@ -126,14 +126,6 @@ interface RewritePracticeScore {
         reason: string;
         category?: string;
     }>;
-}
-
-interface RewritePracticeNavigationPayload {
-    openedAt: string;
-    articleTitle?: string;
-    articleUrl?: string;
-    paragraphOrder: number;
-    paragraphText: string;
 }
 
 interface PhraseAnalysisResult {
@@ -316,6 +308,19 @@ export function ParagraphCard({
         () => buildAskQaPairs(messages, streamingContent, isAskLoading),
         [isAskLoading, messages, streamingContent],
     );
+    const [expandedAskQaIds, setExpandedAskQaIds] = useState<string[]>(() => 
+        qaPairs.length > 0 ? [qaPairs[qaPairs.length - 1].id] : []
+    );
+    const previousAskQaCountRef = useRef(qaPairs.length);
+    useEffect(() => {
+        if (qaPairs.length > previousAskQaCountRef.current) {
+            const newIds = qaPairs.slice(previousAskQaCountRef.current).map((p) => p.id);
+            if (newIds.length > 0) {
+                setExpandedAskQaIds(newIds);
+            }
+        }
+        previousAskQaCountRef.current = qaPairs.length;
+    }, [qaPairs]);
 
     // Rewrite Practice State
     const [isRewriteModeOpen, setIsRewriteModeOpen] = useState(false);
@@ -1271,20 +1276,43 @@ export function ParagraphCard({
         }
 
         return (
-            <ul className="list-disc space-y-1.5 pl-6 marker:text-stone-400">
-                {sentenceUnits.map((unit) => (
-                    <li key={`reading-layout-${unit.start}-${unit.end}`} className="text-stone-800 leading-[1.48]">
-                        <span
-                            data-reading-layout-segment="true"
-                            data-segment-start={unit.start}
-                            data-segment-end={unit.end}
-                            className="whitespace-pre-wrap"
-                        >
+            <motion.div
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                variants={{
+                    hidden: { opacity: 0 },
+                    visible: {
+                        opacity: 1,
+                        transition: { staggerChildren: 0.05 },
+                    },
+                    exit: { opacity: 0, transition: { staggerChildren: 0.02, staggerDirection: -1 } }
+                }}
+                className="flex flex-col gap-4 py-2"
+            >
+                {sentenceUnits.map((unit, i) => (
+                    <motion.div
+                        key={`reading-layout-${unit.start}-${unit.end}`}
+                        variants={{
+                            hidden: { opacity: 0, x: -10, y: 5, filter: "blur(4px)" },
+                            visible: { opacity: 1, x: 0, y: 0, filter: "blur(0px)" },
+                            exit: { opacity: 0, x: -5, filter: "blur(2px)" }
+                        }}
+                        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                        className="relative flex items-start gap-3 group/layout-item pl-1"
+                    >
+                        {/* Premium Soft Badge Indicator */}
+                        <div className="mt-[2px] flex h-5 min-w-[20px] shrink-0 select-none items-center justify-center rounded bg-theme-surface/80 border border-theme-border/20 text-[9px] font-black text-theme-text-muted/70 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-all duration-300 ease-out group-hover/layout-item:scale-105 group-hover/layout-item:bg-indigo-500/5 group-hover/layout-item:border-indigo-500/20 group-hover/layout-item:text-indigo-500">
+                            {i + 1}
+                        </div>
+
+                        {/* Content Block */}
+                        <div className="leading-[1.7] text-[15px] tracking-[0.015em] relative flex-1 text-theme-text">
                             {renderTextWithReadingMarks(unit.text, undefined, unit.start, locateMarkerRange)}
-                        </span>
-                    </li>
+                        </div>
+                    </motion.div>
                 ))}
-            </ul>
+            </motion.div>
         );
     };
 
@@ -1365,21 +1393,25 @@ export function ParagraphCard({
     }, [grammarDisplayMode, grammarHighlightSentences, grammarLayoutLines, text]);
 
     const renderAskMarkdown = (content: string) => (
-        <div className="prose prose-sm max-w-none text-inherit leading-7 prose-p:my-2 prose-ol:my-3 prose-ol:space-y-2 prose-ul:my-3 prose-ul:space-y-1.5">
+        <div className="prose prose-sm max-w-none text-inherit leading-relaxed prose-p:my-2 prose-ol:my-3 prose-ol:space-y-2 prose-ul:my-3 prose-ul:space-y-1.5 marker:text-stone-400">
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
-                    p: ({ children }) => <p className="my-2 text-inherit">{children}</p>,
-                    ol: ({ children }) => <ol className="my-3 list-decimal space-y-2.5 pl-6 marker:font-semibold marker:text-amber-700">{children}</ol>,
-                    ul: ({ children }) => <ul className="my-3 list-disc space-y-1.5 pl-5 marker:text-stone-400">{children}</ul>,
-                    li: ({ children }) => <li className="my-1 leading-7">{children}</li>,
+                    h1: ({ children }) => <h1 className="mb-3 mt-5 text-[16px] font-black tracking-tight text-stone-800">{children}</h1>,
+                    h2: ({ children }) => <h2 className="mb-2.5 mt-4 border-b border-stone-200/60 pb-1 text-[15px] font-bold text-stone-800">{children}</h2>,
+                    h3: ({ children }) => <h3 className="mb-2 mt-4 text-[14px] font-bold text-stone-800">{children}</h3>,
+                    h4: ({ children }) => <h4 className="mb-1.5 mt-3 text-[13px] font-bold text-stone-700">{children}</h4>,
+                    p: ({ children }) => <p className="my-2 leading-7 text-stone-700">{children}</p>,
+                    ol: ({ children }) => <ol className="my-3 list-decimal space-y-2.5 pl-6 marker:font-bold marker:text-indigo-500">{children}</ol>,
+                    ul: ({ children }) => <ul className="my-3 list-disc space-y-2 pl-6 marker:text-stone-400">{children}</ul>,
+                    li: ({ children }) => <li className="my-1 leading-7 text-stone-700">{children}</li>,
                     blockquote: ({ children }) => (
-                        <blockquote className="my-2 rounded-r-lg border-l-4 border-sky-300 bg-sky-50/60 px-3 py-2 text-sky-900">
+                        <blockquote className="my-3 rounded-r-xl border-l-4 border-indigo-400 bg-indigo-50/50 px-4 py-2.5 text-indigo-900 shadow-sm [&>p]:m-0">
                             {children}
                         </blockquote>
                     ),
                     strong: ({ children }) => (
-                        <strong className="rounded-[6px] bg-amber-100/90 px-1.5 py-0.5 font-semibold text-amber-950 shadow-[inset_0_-1px_0_rgba(251,191,36,0.35)] underline decoration-amber-300/80 decoration-[1.5px] underline-offset-[3px]">
+                        <strong className="font-bold text-stone-900 shadow-[inset_0_-4px_0_rgba(199,210,254,0.6)]">
                             {children}
                         </strong>
                     ),
@@ -1387,20 +1419,23 @@ export function ParagraphCard({
                         const isInline = !String(codeClassName || "").includes("language-");
                         if (isInline) {
                             return (
-                                <code className="rounded-md border border-sky-100 bg-sky-50/85 px-1.5 py-0.5 text-[0.9em] font-medium text-sky-800">
+                                <code className="rounded-md border border-stone-200/60 bg-stone-100/80 px-1.5 py-0.5 text-[0.9em] font-medium text-pink-600">
                                     {children}
                                 </code>
                             );
                         }
                         return (
-                            <code className={cn("text-xs", codeClassName)} {...props}>
-                                {children}
-                            </code>
+                            <div className="my-3 overflow-hidden rounded-xl border border-stone-200/60 shadow-sm">
+                                <div className="bg-stone-100/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-500">Code</div>
+                                <code className={cn("block overflow-x-auto bg-stone-50 p-3 text-[12px] leading-relaxed text-stone-800", codeClassName)} {...props}>
+                                    {children}
+                                </code>
+                            </div>
                         );
                     },
                 }}
             >
-                {content.replace(/\n/g, "  \n")}
+                {content}
             </ReactMarkdown>
         </div>
     );
@@ -1812,25 +1847,6 @@ export function ParagraphCard({
         setIsNoteComposerOpen(false);
         setNoteDraft("");
         window.getSelection()?.removeAllRanges();
-    };
-
-    const openRewritePractice = () => {
-        if (typeof window === "undefined") return;
-        const rewriteId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-        const payload: RewritePracticeNavigationPayload = {
-            openedAt: new Date().toISOString(),
-            articleTitle,
-            articleUrl,
-            paragraphOrder,
-            paragraphText: text,
-        };
-        try {
-            window.sessionStorage.setItem(`rewrite-practice:${rewriteId}`, JSON.stringify(payload));
-            router.push(`/read/rewrite?id=${rewriteId}`);
-        } catch (error) {
-            console.error("Failed to persist rewrite practice payload:", error);
-            router.push("/read/rewrite");
-        }
     };
 
     const requestRewritePrompt = async (excludedSentences: string[]) => {
@@ -2676,160 +2692,199 @@ export function ParagraphCard({
                     onMouseUp={isEditMode ? undefined : handleSelection}
                     dangerouslySetInnerHTML={isEditMode ? { __html: safeHtml } : undefined}
                 >
-                    {isEditMode ? null : (shouldRenderGrammarLayer ? (
-                        grammarAnalysis ? (
-                            isGrammarLayoutMode ? (
-                                renderGrammarLayoutList()
-                            ) : (
-                                <InlineGrammarHighlights
-                                    text={text}
-                                    sentences={grammarHighlightSentences}
-                                    displayMode={grammarDisplayMode}
-                                    showSentenceMarkers
-                                    showSegmentTranslation
-                                />
-                            )
-                        ) : (
-                            <span className="text-stone-700">{text}</span>
-                        )
-                    ) : (
-                        isSpeakingOpen && isSegmentListOpen ? (
-                            renderSegmentedSentenceList()
-                        ) : isReadingLayoutMode ? (
-                            renderReadingLayoutList()
-                        ) : (
-                            playbackIsRunning || playbackTimeMs > 0 ? (
-                            playMode === "full" ? (
-                                fullMarks.length > 0
-                                    ? renderWordLevelKtv({
-                                        sourceText: text,
-                                        marks: fullMarks,
-                                        tokenToMark: fullTokenToMark,
-                                        currentMs: playbackTimeMs,
-                                        isSeekEnabled: isPlaybackSessionActive,
-                                        onWordSeek: handleFullWordSeek,
-                                    })
-                                    : renderCharacterFallback(text, playbackTimeMs, playbackDurationMs)
-                            ) : (
-                                sentenceUnits.length === 0 ? (
-                                    <span>{text}</span>
+                    {isEditMode ? null : (
+                        <AnimatePresence mode="wait">
+                            {shouldRenderGrammarLayer ? (
+                                grammarAnalysis ? (
+                                    <motion.div key="grammar-layer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
+                                        {isGrammarLayoutMode ? (
+                                            renderGrammarLayoutList()
+                                        ) : (
+                                            <InlineGrammarHighlights
+                                                text={text}
+                                                sentences={grammarHighlightSentences}
+                                                displayMode={grammarDisplayMode}
+                                                showSentenceMarkers
+                                                showSegmentTranslation
+                                            />
+                                        )}
+                                    </motion.div>
                                 ) : (
-                                    <span>
-                                        {sentenceUnits.map((unit, unitIndex) => {
-                                        if (unitIndex !== activeListenSentenceIndex) {
-                                            return (
-                                                <span
-                                                    key={`sentence-muted-${unit.start}-${unit.end}`}
-                                                    className="text-stone-400/95"
-                                                >
-                                                    {unit.text}
-                                                </span>
-                                            );
-                                        }
-
-                                        if (activeSentenceMarks.length > 0) {
-                                            return (
-                                                <React.Fragment key={`sentence-active-${unit.start}-${unit.end}`}>
-                                                    {renderWordLevelKtv({
-                                                        sourceText: unit.text,
-                                                        marks: activeSentenceMarks,
-                                                        tokenToMark: activeSentenceTokenToMark,
+                                    <motion.span key="default-grammar-text" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-stone-700 inline-block">{text}</motion.span>
+                                )
+                            ) : (
+                                isSpeakingOpen && isSegmentListOpen ? (
+                                    <motion.div key="speaking-layer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
+                                        {renderSegmentedSentenceList()}
+                                    </motion.div>
+                                ) : isReadingLayoutMode ? (
+                                    <motion.div key="layout-mode-layer" initial={{ opacity: 0, filter: "blur(2px)" }} animate={{ opacity: 1, filter: "blur(0px)" }} exit={{ opacity: 0, filter: "blur(2px)" }} transition={{ duration: 0.3, ease: "easeInOut" }}>
+                                        {renderReadingLayoutList()}
+                                    </motion.div>
+                                ) : (
+                                    <motion.div 
+                                        key="default-text-layer"
+                                        initial={{ opacity: 0, filter: "blur(2px)" }} 
+                                        animate={{ opacity: 1, filter: "blur(0px)" }} 
+                                        exit={{ opacity: 0, filter: "blur(2px)" }}
+                                        transition={{ duration: 0.3, ease: "easeInOut" }}
+                                        className="inline"
+                                    >
+                                        {playbackIsRunning || playbackTimeMs > 0 ? (
+                                            playMode === "full" ? (
+                                                fullMarks.length > 0
+                                                    ? renderWordLevelKtv({
+                                                        sourceText: text,
+                                                        marks: fullMarks,
+                                                        tokenToMark: fullTokenToMark,
                                                         currentMs: playbackTimeMs,
                                                         isSeekEnabled: isPlaybackSessionActive,
-                                                        onWordSeek: handleSentenceWordSeek,
-                                                    })}
-                                                </React.Fragment>
-                                            );
-                                        }
+                                                        onWordSeek: handleFullWordSeek,
+                                                    })
+                                                    : renderCharacterFallback(text, playbackTimeMs, playbackDurationMs)
+                                            ) : (
+                                                sentenceUnits.length === 0 ? (
+                                                    <span>{text}</span>
+                                                ) : (
+                                                    <span>
+                                                        {sentenceUnits.map((unit, unitIndex) => {
+                                                        if (unitIndex !== activeListenSentenceIndex) {
+                                                            return (
+                                                                <span
+                                                                    key={`sentence-muted-${unit.start}-${unit.end}`}
+                                                                    className="text-stone-400/95"
+                                                                >
+                                                                    {unit.text}
+                                                                </span>
+                                                            );
+                                                        }
 
-                                        return (
-                                            <React.Fragment key={`sentence-fallback-${unit.start}-${unit.end}`}>
-                                                {renderCharacterFallback(unit.text, playbackTimeMs, playbackDurationMs)}
-                                            </React.Fragment>
-                                        );
-                                        })}
-                                    </span>
-                                )
-                            )
-                            ) : (
-                                // Default or Bionic Text
-                                isBionicMode ? (
-                                    <span>
-                                        {bionicText(text).map((segment, i) => {
-                                            if (segment.type === 'word') {
-                                                return (
-                                                    <span key={i}>
-                                                        <strong className="font-bold">{segment.bold}</strong>
-                                                        <span className="font-normal">{segment.regular}</span>
+                                                        if (activeSentenceMarks.length > 0) {
+                                                            return (
+                                                                <React.Fragment key={`sentence-active-${unit.start}-${unit.end}`}>
+                                                                    {renderWordLevelKtv({
+                                                                        sourceText: unit.text,
+                                                                        marks: activeSentenceMarks,
+                                                                        tokenToMark: activeSentenceTokenToMark,
+                                                                        currentMs: playbackTimeMs,
+                                                                        isSeekEnabled: isPlaybackSessionActive,
+                                                                        onWordSeek: handleSentenceWordSeek,
+                                                                    })}
+                                                                </React.Fragment>
+                                                            );
+                                                        }
+
+                                                        return (
+                                                            <React.Fragment key={`sentence-fallback-${unit.start}-${unit.end}`}>
+                                                                {renderCharacterFallback(unit.text, playbackTimeMs, playbackDurationMs)}
+                                                            </React.Fragment>
+                                                        );
+                                                        })}
                                                     </span>
-                                                );
-                                            }
-                                            return <span key={i}>{segment.text}</span>;
-                                        })}
-                                    </span>
-                                ) : (
-                                    renderTextWithReadingMarks(text, highlightSnippet, 0, locateMarkerRange)
+                                                )
+                                            )
+                                        ) : (
+                                            // Default or Bionic Text
+                                            isBionicMode ? (
+                                                <span>
+                                                    {bionicText(text).map((segment, i) => {
+                                                        if (segment.type === 'word') {
+                                                            return (
+                                                                <span key={i}>
+                                                                    <strong className="font-bold">{segment.bold}</strong>
+                                                                    <span className="font-normal">{segment.regular}</span>
+                                                                </span>
+                                                            );
+                                                        }
+                                                        return <span key={i}>{segment.text}</span>;
+                                                    })}
+                                                </span>
+                                            ) : (
+                                                renderTextWithReadingMarks(text, highlightSnippet, 0, locateMarkerRange)
+                                            )
+                                        )}
+                                    </motion.div>
                                 )
-                            )
-                        )
-                    ))}
+                            )}
+                        </AnimatePresence>
+                    )}
 
                 </div>
 
-                {/* Inline Actions Bar (Visible on Hover) */}
-                <div className="h-8 flex items-center gap-3 opacity-0 group-hover:opacity-100 [.read-tour-active_&]:opacity-100 transition-opacity">
+                <div className="mt-2 flex w-full items-center justify-between h-8 opacity-0 group-hover:opacity-100 [.read-tour-active_&]:opacity-100 transition-opacity">
                     <button
                         data-tour-target={index === 0 ? "paragraph-listen" : undefined}
                         onClick={() => setIsSpeakingOpen(!isSpeakingOpen)}
-                        className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", isSpeakingOpen ? "bg-red-100 text-red-600" : "text-stone-400 hover:bg-stone-100 hover:text-red-500")}
+                        className={cn(
+                            "flex items-center gap-1.5 text-xs font-semibold transition-colors",
+                            isSpeakingOpen ? "text-rose-500" : "text-stone-400/80 hover:text-stone-600"
+                        )}
                     >
-                        <Mic className="w-3 h-3" /> Speaking
+                        <Mic className="w-3.5 h-3.5" /> 朗读
                     </button>
 
                     <button
                         data-tour-target={index === 0 ? "paragraph-translate" : undefined}
                         onClick={() => handleTranslate(false)}
-                        className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", translation ? "bg-rose-100 text-rose-600" : "text-stone-400 hover:bg-stone-100 hover:text-stone-600")}
+                        className={cn(
+                            "flex items-center gap-1.5 text-xs font-semibold transition-colors",
+                            showTranslation ? "text-indigo-500" : "text-stone-400/80 hover:text-stone-600"
+                        )}
                     >
-                        {isTranslating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Languages className="w-3 h-3" />}
-                        {showTranslation ? "Hide" : `Translate · -${getReadingCoinCost("translate")}`}
+                        {isTranslating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Languages className="w-3.5 h-3.5" />}
+                        {showTranslation ? "折叠翻译" : (
+                            <>
+                                翻译 <span className="text-[10px] text-amber-500/80">⚡{getReadingCoinCost("translate")}</span>
+                            </>
+                        )}
                     </button>
 
                     <button
                         data-tour-target={index === 0 ? "paragraph-grammar" : undefined}
                         onClick={() => handleGrammarAnalysis(false)}
-                        className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", grammarAnalysis ? "bg-orange-100 text-orange-600" : "text-stone-400 hover:bg-stone-100 hover:text-orange-500")}
-                    >
-                        {isAnalyzingGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : <BookOpen className="w-3 h-3" />}
-                        {showGrammar ? "Hide Grammar" : `Grammar · -${getReadingCoinCost("grammar_basic")}`}
-                    </button>
-
-                    <button
-                        onClick={() => setIsReadingLayoutMode((prev) => !prev)}
                         className={cn(
-                            "flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md",
-                            isReadingLayoutMode
-                                ? "bg-stone-100 text-stone-700"
-                                : "text-stone-400 hover:bg-stone-100 hover:text-stone-600",
+                            "flex items-center gap-1.5 text-xs font-semibold transition-colors",
+                            showGrammar ? "text-teal-600" : "text-stone-400/80 hover:text-stone-600"
                         )}
-                        title={isReadingLayoutMode ? "还原整段" : "排版"}
                     >
-                        <List className="w-3 h-3" /> {isReadingLayoutMode ? "还原" : "排版"}
+                        {isAnalyzingGrammar ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5" />}
+                        {showGrammar ? "折叠语法" : (
+                            <>
+                                语法 <span className="text-[10px] text-amber-500/80">⚡{getReadingCoinCost("grammar_basic")}</span>
+                            </>
+                        )}
                     </button>
 
                     <button
                         data-tour-target={index === 0 ? "paragraph-ask" : undefined}
                         onClick={() => setIsAskOpen(!isAskOpen)}
-                        className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", isAskOpen ? "bg-blue-100 text-blue-600" : "text-stone-400 hover:bg-stone-100 hover:text-blue-500")}
+                        className={cn(
+                            "flex items-center gap-1.5 text-xs font-semibold transition-colors",
+                            isAskOpen ? "text-sky-500" : "text-stone-400/80 hover:text-stone-600"
+                        )}
                     >
-                        <MessageCircleQuestion className="w-3 h-3" /> Ask AI · -{getReadingCoinCost("ask_ai")}
+                        <MessageCircleQuestion className="w-3.5 h-3.5" />
+                        Ask AI
+                        {!isAskOpen && (
+                            <span className="text-[10px] text-amber-500/80">⚡{getReadingCoinCost("ask_ai")}</span>
+                        )}
                     </button>
 
                     <button
-                        onClick={openRewritePractice}
-                        className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-stone-400 transition-colors hover:bg-stone-100 hover:text-amber-500"
+                        onClick={() => setIsReadingLayoutMode((prev) => !prev)}
+                        disabled={isSpeakingOpen || showGrammar}
+                        className={cn(
+                            "flex items-center gap-1.5 text-xs font-semibold transition-colors",
+                            isReadingLayoutMode ? "text-theme-text" : "text-theme-text-muted hover:text-theme-text",
+                            (isSpeakingOpen || showGrammar) && "opacity-30 cursor-not-allowed hover:text-theme-text-muted"
+                        )}
+                        title={
+                            isSpeakingOpen || showGrammar
+                                ? "已在当前模式下使用专属排版"
+                                : isReadingLayoutMode ? "还原整段" : "排版"
+                        }
                     >
-                        <PenTool className="w-3 h-3" /> 仿写模式
+                        <List className="w-3.5 h-3.5" /> {isReadingLayoutMode ? "还原" : "排版"}
                     </button>
                 </div>
 
@@ -2874,42 +2929,52 @@ export function ParagraphCard({
                     )
                 }
 
-                {
-                    showGrammar && grammarAnalysis && (
+                <AnimatePresence>
+                    {showGrammar && grammarAnalysis && (
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: "auto" }}
-                            className="relative space-y-4 rounded-[28px] border border-[#eadcc0] bg-[linear-gradient(180deg,rgba(255,251,242,0.96),rgba(248,242,228,0.92))] p-5 shadow-[0_18px_45px_rgba(120,94,42,0.08)] ring-1 ring-white/70 group/grammar"
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2, ease: "easeOut" }}
+                            className="mt-3 overflow-hidden origin-top"
                         >
-                            <div className="space-y-3">
-                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e8d9ba] bg-white/45 px-3 py-2.5">
+                            <div className="space-y-4 rounded-2xl border border-theme-border/20 bg-theme-base-bg p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] ring-1 ring-theme-border/5 group/grammar">
+                                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-theme-border/10 bg-theme-surface/50 px-3 py-2.5">
                                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                        <span className="rounded-full border border-[#dccaa5] bg-[#f7ecd2] px-2.5 py-1 font-sans text-[10px] font-semibold tracking-[0.08em] text-[#7b541b]">
+                                        <span className="rounded-md border border-theme-border/20 bg-theme-surface px-2.5 py-1 text-[10px] font-bold tracking-wider text-theme-text-muted">
                                             {grammarModeLabel}
                                         </span>
                                         <button
                                             onClick={() => setIsGrammarLayoutMode((prev) => !prev)}
                                             className={cn(
-                                                "rounded-full border px-2.5 py-1 font-sans text-[10px] font-semibold tracking-[0.06em] transition-colors",
+                                                "rounded-md border px-2.5 py-1 text-[10px] font-bold tracking-wide transition-colors",
                                                 isGrammarLayoutMode
-                                                    ? "border-[#d8c193] bg-[#f7ebd0] text-[#7b5117]"
-                                                    : "border-[#e4d8bf] bg-white/80 text-stone-600 hover:bg-[#fcf7eb] hover:text-stone-700",
+                                                    ? "border-theme-border/30 bg-theme-active-hover text-theme-text"
+                                                    : "border-theme-border/10 bg-theme-surface/80 text-theme-text-muted hover:bg-theme-surface hover:text-theme-text",
                                             )}
-                                            title={isGrammarLayoutMode ? "取消排版" : "排版"}
+                                            title={isGrammarLayoutMode ? "取消排版" : "打开大纲模式进行排版"}
                                         >
-                                            {isGrammarLayoutMode ? "取消排版" : "排版"}
+                                            {isGrammarLayoutMode ? "取消排版" : "段落大纲"}
+                                        </button>
+                                        <button
+                                            onClick={() => handleGrammarAnalysis(true)}
+                                            disabled={isAnalyzingGrammar}
+                                            className="rounded-md border border-theme-border/10 bg-theme-surface/80 p-1 text-theme-text-muted transition-colors hover:bg-theme-surface hover:text-theme-text disabled:opacity-50"
+                                            title="重新分析语法结构"
+                                        >
+                                            <RotateCcw className={cn("h-3.5 w-3.5", isAnalyzingGrammar && "animate-spin")} />
                                         </button>
                                     </div>
 
                                     <div className="flex flex-wrap items-center justify-end gap-2">
-                                        <div className="flex items-center rounded-full border border-[#dfcfab] bg-white/85 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                                        <div className="flex items-center rounded-lg border border-theme-border/20 bg-theme-surface p-0.5 shadow-sm">
                                             <button
                                                 onClick={() => setGrammarDisplayMode("core")}
                                                 className={cn(
-                                                    "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
+                                                    "rounded-md px-3 py-1 text-[11px] font-bold tracking-wide transition-all",
                                                     grammarDisplayMode === "core"
-                                                        ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
-                                                        : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
+                                                        ? "bg-theme-active-hover text-theme-text shadow-sm border border-theme-border/10"
+                                                        : "text-theme-text-muted hover:bg-theme-active-bg hover:text-theme-text",
                                                 )}
                                             >
                                                 主干结构
@@ -2917,10 +2982,10 @@ export function ParagraphCard({
                                             <button
                                                 onClick={() => setGrammarDisplayMode("full")}
                                                 className={cn(
-                                                    "rounded-full px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-all",
+                                                    "rounded-md px-3 py-1 text-[11px] font-bold tracking-wide transition-all",
                                                     grammarDisplayMode === "full"
-                                                        ? "bg-[#f3e2b5] text-[#6b4c18] shadow-[0_6px_16px_rgba(160,122,42,0.18)]"
-                                                        : "text-stone-500 hover:bg-[#fcf7eb] hover:text-stone-700",
+                                                        ? "bg-theme-active-hover text-theme-text shadow-sm border border-theme-border/10"
+                                                        : "text-theme-text-muted hover:bg-theme-active-bg hover:text-theme-text",
                                                 )}
                                             >
                                                 完整分析
@@ -2931,63 +2996,63 @@ export function ParagraphCard({
                                             onClick={() => void handleToggleDeepAnalysis()}
                                             disabled={isAnalyzingDeepGrammar || grammarSentences.length === 0}
                                             className={cn(
-                                                "flex items-center gap-1 rounded-full border px-3 py-1.5 font-sans text-[11px] font-semibold tracking-[0.08em] transition-colors",
+                                                "flex items-center gap-1.5 rounded-lg border px-3 py-1 text-[11px] font-bold tracking-wide transition-colors",
                                                 showDeepAnalysis
-                                                    ? "border-[#d8c193] bg-[#f7ebd0] text-[#7b5117]"
-                                                    : "border-[#e4d5b5] bg-white/75 text-[#8a5d1f] hover:bg-white",
-                                                "disabled:cursor-not-allowed disabled:opacity-65",
+                                                    ? "border-theme-border/30 bg-theme-active-hover text-theme-text"
+                                                    : "border-theme-border/20 bg-theme-surface text-theme-text-muted hover:bg-theme-active-bg hover:text-theme-text",
+                                                "disabled:cursor-not-allowed disabled:opacity-50",
                                             )}
                                         >
-                                            {isAnalyzingDeepGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                                            {showDeepAnalysis ? "Hide Deep" : `Deep · -${getReadingCoinCost("grammar_deep")}`}
+                                            {isAnalyzingDeepGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : <Layers className="w-3 h-3" />}
+                                            {showDeepAnalysis ? "关闭解析" : `Deep · -${getReadingCoinCost("grammar_deep")}`}
                                         </button>
                                     </div>
                                 </div>
 
                                 {showDeepAnalysis ? (
-                                    <div className="space-y-3 rounded-2xl border border-[#e7d8ba] bg-white/75 p-3">
+                                    <div className="space-y-3 rounded-xl border border-theme-border/20 bg-theme-surface/50 p-3 ring-1 ring-theme-border/5">
                                         {grammarSentences.length > 1 ? (
-                                            <div className="flex gap-1 overflow-x-auto rounded-lg bg-orange-100/50 p-1 scrollbar-hide">
+                                            <div className="flex gap-1 overflow-x-auto rounded-lg bg-theme-base-bg p-1 scrollbar-hide">
                                                 {grammarSentences.map((item, idx) => (
                                                     <button
                                                         key={`${item.sentence || "sentence"}-${idx}`}
                                                         onClick={() => void handleDeepSentenceChange(idx)}
                                                         className={cn(
-                                                            "whitespace-nowrap rounded-md px-3 py-1 text-xs font-medium transition-all",
+                                                            "whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-bold transition-all",
                                                             activeGrammarSentenceIndex === idx
-                                                                ? "bg-white text-orange-600 shadow-sm"
-                                                                : "text-orange-500 hover:bg-white/65 hover:text-orange-700",
+                                                                ? "bg-indigo-500/10 text-indigo-500"
+                                                                : "text-theme-text-muted hover:bg-theme-surface/80 hover:text-theme-text",
                                                         )}
                                                     >
-                                                        Sentence {idx + 1}
+                                                        句 {idx + 1}
                                                     </button>
                                                 ))}
                                             </div>
                                         ) : null}
 
-                                        <div className="rounded-xl border border-orange-100 bg-white/70 p-3">
+                                        <div className="rounded-xl border border-theme-border/10 bg-theme-base-bg p-3 shadow-sm">
                                             {activeDeepSentence ? (
-                                                <div className="space-y-3">
+                                                <div className="space-y-4">
                                                     {activeDeepSentence.analysis_results.length > 0 ? (
-                                                        <div className="overflow-hidden rounded-lg border border-stone-200">
-                                                            <table className="min-w-full divide-y divide-stone-200">
-                                                                <thead className="bg-stone-50">
+                                                        <div className="overflow-hidden rounded-lg border border-theme-border/20">
+                                                            <table className="min-w-full divide-y divide-theme-border/10">
+                                                                <thead className="bg-theme-surface">
                                                                     <tr>
-                                                                        <th scope="col" className="w-1/3 px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-stone-500">
-                                                                            语法点
+                                                                        <th scope="col" className="w-1/3 px-3 py-2 text-left text-[11px] font-bold tracking-wider text-theme-text-muted/80">
+                                                                            语法考点
                                                                         </th>
-                                                                        <th scope="col" className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-stone-500">
+                                                                        <th scope="col" className="px-3 py-2 text-left text-[11px] font-bold tracking-wider text-theme-text-muted/80">
                                                                             详细解析
                                                                         </th>
                                                                     </tr>
                                                                 </thead>
-                                                                <tbody className="divide-y divide-stone-200 bg-white">
+                                                                <tbody className="divide-y divide-theme-border/10 bg-theme-base-bg">
                                                                     {activeDeepSentence.analysis_results.map((result, idx) => (
-                                                                        <tr key={`${result.point}-${idx}`} className="transition-colors hover:bg-stone-50/50">
-                                                                            <td className="px-3 py-3 text-xs font-semibold align-top text-stone-800">
+                                                                        <tr key={`${result.point}-${idx}`} className="transition-colors hover:bg-theme-surface/40">
+                                                                            <td className="px-3 py-3 text-[12px] font-bold text-theme-text align-top">
                                                                                 {result.point}
                                                                             </td>
-                                                                            <td className="px-3 py-3 text-xs leading-relaxed text-stone-600">
+                                                                            <td className="px-3 py-3 text-[12px] leading-relaxed text-theme-text-muted">
                                                                                 {result.explanation}
                                                                             </td>
                                                                         </tr>
@@ -2996,16 +3061,16 @@ export function ParagraphCard({
                                                             </table>
                                                         </div>
                                                     ) : (
-                                                        <p className="text-xs text-stone-600">
-                                                            当前句暂未提取到可展示的深度语法点，你可以点击刷新重新生成。
+                                                        <p className="text-xs text-theme-text-muted">
+                                                            当前句暂未提取到可展示的深度语法点，你可以点击上方重新分析刷新。
                                                         </p>
                                                     )}
 
                                                     {activeDeepSentence.sentence_tree ? (
-                                                        <div className="border-t border-stone-100 pt-3">
-                                                            <div className="mb-3 flex items-center gap-2">
-                                                                <Gauge className="h-4 w-4 text-amber-600" />
-                                                                <h5 className="text-xs font-bold uppercase tracking-wider text-stone-500">
+                                                        <div className="border-t border-theme-border/10 pt-4">
+                                                            <div className="mb-3 flex items-center gap-2 text-indigo-500">
+                                                                <Gauge className="h-4 w-4" />
+                                                                <h5 className="text-[11px] font-black uppercase tracking-wider">
                                                                     Syntax Structure
                                                                 </h5>
                                                             </div>
@@ -3014,16 +3079,16 @@ export function ParagraphCard({
                                                     ) : null}
                                                 </div>
                                             ) : (
-                                                <div className="flex items-center justify-between gap-3">
-                                                    <p className="text-sm text-stone-500">
-                                                        当前句还没有深度结构，点击右侧按钮开始分析。
+                                                <div className="flex flex-col items-center justify-center gap-3 py-6">
+                                                    <p className="text-sm text-theme-text-muted">
+                                                        当前句还没有深度结构，点击右侧按钮开始首句分析。
                                                     </p>
                                                     <button
                                                         onClick={() => activeGrammarSentence && void ensureDeepAnalysisForSentence(activeGrammarSentence, false)}
                                                         disabled={isAnalyzingDeepGrammar || !activeGrammarSentence}
-                                                        className="rounded-full border border-[#e4d5b5] bg-white px-3 py-1.5 text-xs font-semibold text-[#8a5d1f] transition-colors hover:bg-[#fff7e6] disabled:cursor-not-allowed disabled:opacity-60"
+                                                        className="rounded-full border border-theme-border/20 bg-theme-surface px-4 py-2 text-xs font-bold text-theme-text transition-colors hover:bg-theme-active-bg disabled:cursor-not-allowed disabled:opacity-50"
                                                     >
-                                                        {isAnalyzingDeepGrammar ? "分析中..." : "Analyze Current Sentence"}
+                                                        {isAnalyzingDeepGrammar ? "正在提取深层框架..." : "开始深入解析本句"}
                                                     </button>
                                                 </div>
                                             )}
@@ -3032,58 +3097,116 @@ export function ParagraphCard({
                                 ) : null}
                             </div>
                         </motion.div>
-                    )
-                }
+                    )}
+                </AnimatePresence>
 
-                {
-                    isAskOpen && (
+                <AnimatePresence>
+                    {isAskOpen && (
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: "auto" }}
-                            className="space-y-3"
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2, ease: "easeOut" }}
+                            className="mt-3 overflow-hidden origin-top"
                         >
-                            <div className="overflow-hidden rounded-2xl border border-white/60 bg-white/62 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.32)] ring-1 ring-white/45 backdrop-blur-xl">
-                                <div className="border-b border-white/60 bg-white/36 px-4 py-2.5">
-                                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-stone-500">Ask AI · {getReadingCoinCost("ask_ai")} 阅读币/次</p>
+                            <div className="overflow-hidden rounded-2xl border border-theme-border/20 bg-theme-base-bg shadow-[0_2px_8px_rgba(0,0,0,0.04)] ring-1 ring-theme-border/5">
+                                <div className="flex items-center justify-between border-b border-theme-border/10 bg-theme-surface/80 px-4 py-2.5">
+                                    <div className="flex items-center gap-2 text-theme-text">
+                                        <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
+                                        <span className="text-xs font-bold tracking-wide">Yasi AI</span>
+                                    </div>
+                                    <div className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 border border-amber-500/20">
+                                        ⚡ {getReadingCoinCost("ask_ai")} 币/次
+                                    </div>
                                 </div>
 
-                                <div className="max-h-72 min-h-[132px] overflow-y-auto space-y-2 px-4 py-3">
+                                <div className="max-h-80 min-h-[160px] overflow-y-auto space-y-4 p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-theme-border/30">
                                     {qaPairs.length === 0 ? (
-                                        <div className="rounded-xl border border-white/60 bg-white/46 p-3 text-sm text-stone-500">
-                                            输入问题，AI 会基于当前段落回答，支持 <span className="font-semibold text-stone-700">Markdown</span> 输出。
+                                        <div className="flex h-full flex-col items-center justify-center space-y-2 py-6 text-center text-theme-text-muted">
+                                            <div className="rounded-full border border-theme-border/20 bg-theme-surface p-2.5">
+                                                <MessageCircleQuestion className="h-5 w-5 text-theme-text-muted/50" />
+                                            </div>
+                                            <p className="text-[12px]">向 AI 自由提问当前段落内容<br/>支持 Markdown 高级排版输出</p>
                                         </div>
                                     ) : (
                                         <>
-                                            {qaPairs.map((pair) => (
-                                                <div
-                                                    key={pair.id}
-                                                    className="overflow-hidden rounded-2xl border border-white/65 bg-white/68 shadow-[0_10px_28px_-24px_rgba(15,23,42,0.5)]"
-                                                >
-                                                    {pair.question && (
-                                                        <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-3.5 py-2 text-sm font-medium text-white">
-                                                            {pair.question}
+                                            {qaPairs.map((pair, index) => {
+                                                const isExpanded = expandedAskQaIds.includes(pair.id);
+                                                return (
+                                                <div key={pair.id} className="mb-4 overflow-hidden rounded-2xl border border-theme-border/20 bg-theme-base-bg shadow-[0_2px_8px_rgba(0,0,0,0.04)] ring-1 ring-theme-border/5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setExpandedAskQaIds((prev) =>
+                                                                prev.includes(pair.id)
+                                                                    ? prev.filter((id) => id !== pair.id)
+                                                                    : [...prev, pair.id]
+                                                            )
+                                                        }}
+                                                        className="flex w-full items-start justify-between gap-3 border-b border-theme-border/10 bg-theme-surface/50 px-4 py-3.5 text-left transition-colors hover:bg-theme-surface"
+                                                    >
+                                                        <div className="flex items-start gap-2">
+                                                            <div className="mt-0.5 shrink-0 rounded-full bg-indigo-500/10 p-1 text-indigo-500">
+                                                                <MessageCircleQuestion className="h-3.5 w-3.5" />
+                                                            </div>
+                                                            <div className={cn("text-[13px] font-bold leading-relaxed text-theme-text transition-all", !isExpanded && "line-clamp-2 text-theme-text-muted")}>
+                                                                {pair.question || `问题 ${index + 1}`}
+                                                            </div>
                                                         </div>
-                                                    )}
-                                                    <div className="px-3.5 py-3 text-sm text-stone-700">
-                                                        {pair.answer ? (
-                                                            renderAskMarkdown(pair.answer)
-                                                        ) : (
-                                                            <div className="text-stone-400">等待回答…</div>
-                                                        )}
-                                                        {pair.isStreaming && (
-                                                            <span className="ml-1 inline-block h-4 w-2 animate-pulse rounded-sm bg-indigo-500/50 align-middle" />
-                                                        )}
-                                                    </div>
+                                                        <div className="shrink-0 pt-0.5 text-[11px] font-bold text-indigo-400">
+                                                            {isExpanded ? "收起" : "展开"}
+                                                        </div>
+                                                    </button>
+                                                    {isExpanded ? (
+                                                        <div className="px-5 py-4 text-[13px] leading-relaxed text-theme-text">
+                                                            {pair.answer ? (
+                                                                <div className="prose prose-sm prose-stone max-w-none text-theme-text">
+                                                                    {renderAskMarkdown(pair.answer)}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex items-center gap-2 py-1 text-indigo-400">
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                    <span className="text-[13px] font-medium">Yasi AI 正在思考...</span>
+                                                                </div>
+                                                            )}
+                                                            {pair.isStreaming && (
+                                                                <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse bg-indigo-500 align-middle" />
+                                                            )}
+                                                        </div>
+                                                    ) : null}
                                                 </div>
-                                            ))}
+                                            )})}
                                         </>
                                     )}
                                 </div>
 
-                                <div className="border-t border-white/60 bg-white/42 px-4 py-3">
-                                    <div className="mb-2.5 flex items-center justify-between gap-2">
-                                        <span className="text-[11px] font-semibold text-stone-500">回答模式</span>
-                                        <div className="inline-flex items-center rounded-full border border-stone-200 bg-white/85 p-0.5">
+                                <div className="border-t border-theme-border/10 bg-theme-base-bg p-3">
+                                    <div className="mb-3 flex items-center justify-between gap-2">
+                                        <div className="flex flex-wrap gap-1.5">
+                                            <button
+                                                onClick={() => handleAskAI("帮我分析这段话的语法结构")}
+                                                disabled={isAskLoading}
+                                                className="rounded-lg border border-theme-border/20 bg-theme-surface px-2.5 py-1 text-[11px] font-medium text-theme-text-muted transition-colors hover:bg-theme-active-hover hover:text-theme-text disabled:opacity-50"
+                                            >
+                                                🔍 语法分析
+                                            </button>
+                                            <button
+                                                onClick={() => handleAskAI("用一句话总结这段话的大意")}
+                                                disabled={isAskLoading}
+                                                className="rounded-lg border border-theme-border/20 bg-theme-surface px-2.5 py-1 text-[11px] font-medium text-theme-text-muted transition-colors hover:bg-theme-active-hover hover:text-theme-text disabled:opacity-50"
+                                            >
+                                                📝 总结大意
+                                            </button>
+                                            <button
+                                                onClick={() => handleAskAI("列出这段话中的高级词汇并解释")}
+                                                disabled={isAskLoading}
+                                                className="rounded-lg border border-theme-border/20 bg-theme-surface px-2.5 py-1 text-[11px] font-medium text-theme-text-muted transition-colors hover:bg-theme-active-hover hover:text-theme-text disabled:opacity-50"
+                                            >
+                                                ✨ 难词解析
+                                            </button>
+                                        </div>
+
+                                        <div className="shrink-0 flex items-center rounded-lg border border-theme-border/20 bg-theme-surface p-0.5">
                                             {ASK_ANSWER_MODE_OPTIONS.map((option) => (
                                                 <button
                                                     key={`ask-mode-paragraph-${option.mode}`}
@@ -3091,10 +3214,10 @@ export function ParagraphCard({
                                                     onClick={() => setAskAnswerMode(option.mode)}
                                                     disabled={isAskLoading}
                                                     className={cn(
-                                                        "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                                                        "rounded-md px-2 py-0.5 text-[10px] font-bold transition-all",
                                                         askAnswerMode === option.mode
-                                                            ? "bg-indigo-600 text-white shadow-sm"
-                                                            : "text-stone-500 hover:bg-stone-100 hover:text-stone-700",
+                                                            ? "bg-theme-active-hover text-indigo-600 shadow-sm border border-theme-border/10"
+                                                            : "text-theme-text-muted hover:text-theme-text",
                                                     )}
                                                 >
                                                     {option.label}
@@ -3103,52 +3226,28 @@ export function ParagraphCard({
                                         </div>
                                     </div>
 
-                                    <div className="flex flex-wrap gap-2 pb-2.5">
-                                        <button
-                                            onClick={() => handleAskAI("帮我分析这段话的语法结构")}
-                                            disabled={isAskLoading}
-                                            className="text-xs bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50"
-                                        >
-                                            🔍 语法分析
-                                        </button>
-                                        <button
-                                            onClick={() => handleAskAI("用一句话总结这段话的大意")}
-                                            disabled={isAskLoading}
-                                            className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-200 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50"
-                                        >
-                                            📝 总结大意
-                                        </button>
-                                        <button
-                                            onClick={() => handleAskAI("列出这段话中的高级词汇并解释")}
-                                            disabled={isAskLoading}
-                                            className="text-xs bg-violet-50 hover:bg-violet-100 text-violet-600 border border-violet-200 px-3 py-1.5 rounded-full transition-colors disabled:opacity-50"
-                                        >
-                                            ✨ 难词解析
-                                        </button>
-                                    </div>
-
-                                    <div className="flex items-center gap-2 rounded-xl border border-white/70 bg-white/70 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                                    <div className="relative flex items-center">
                                         <input
                                             type="text"
                                             value={question}
                                             onChange={(e) => setQuestion(e.target.value)}
                                             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleAskAI()}
-                                            placeholder={selectedText ? "针对选中文本提问..." : "输入你的问题..."}
-                                            className="w-full bg-transparent border-none text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-0"
+                                            placeholder={selectedText ? "针对选中文本提问..." : "输入你的问题，按回车发送..."}
+                                            className="w-full rounded-xl border border-theme-border/30 bg-theme-surface/70 py-2.5 pl-3.5 pr-10 text-[13px] text-theme-text placeholder:text-theme-text-muted/60 transition-colors focus:border-indigo-400 focus:bg-theme-base-bg focus:outline-none focus:ring-1 focus:ring-indigo-400"
                                         />
                                         <button
                                             onClick={() => handleAskAI()}
                                             disabled={isAskLoading || !question.trim()}
-                                            className="inline-flex h-8 w-8 items-center justify-center rounded-full text-stone-500 transition-all hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                                            className="absolute right-1.5 top-1/2 flex -translate-y-1/2 h-7 w-7 items-center justify-center rounded-lg text-indigo-500 transition-all hover:bg-indigo-500/10 disabled:text-theme-text-muted/40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
                                         >
-                                            {isAskLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                            {isAskLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 -ml-0.5" />}
                                         </button>
                                     </div>
                                 </div>
                             </div>
                         </motion.div>
-                    )
-                }
+                    )}
+                </AnimatePresence>
 
             </div>
 

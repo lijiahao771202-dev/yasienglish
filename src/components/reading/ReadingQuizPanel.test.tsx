@@ -27,6 +27,15 @@ async function renderQuizPanel(
             answer: "A",
             explanation: "The passage focuses on review and memory.",
         },
+        {
+            id: 2,
+            itemId: "q-2",
+            type: "true_false_ng",
+            question: "The students reviewed notes only once a month.",
+            options: ["A. True", "B. False", "C. Not Given"],
+            answer: "B",
+            explanation: "The passage says they reviewed every evening, not once a month.",
+        },
     ];
 
     await act(async () => {
@@ -35,12 +44,13 @@ async function renderQuizPanel(
                 articleContent="Students review notes every evening."
                 articleTitle="Memory Routine"
                 difficulty="cet4"
+                quizMode="cat"
                 onClose={vi.fn()}
                 cachedQuestions={cachedQuestions}
                 initialSubmitted
                 lockAfterCompletion
-                initialScore={{ correct: 1, total: 1 }}
-                initialAnswers={{ 1: "A. Memory grows with review" }}
+                initialScore={{ correct: 1, total: 2 }}
+                initialAnswers={{ 1: "A. Memory grows with review", 2: "A. True" }}
                 initialResponses={[
                     {
                         itemId: "q-1",
@@ -50,6 +60,15 @@ async function renderQuizPanel(
                         latencyMs: 8000,
                         itemDifficulty: -0.1,
                         itemType: "multiple_choice",
+                    },
+                    {
+                        itemId: "q-2",
+                        order: 2,
+                        answer: "A. True",
+                        correct: false,
+                        latencyMs: 6000,
+                        itemDifficulty: 0.2,
+                        itemType: "true_false_ng",
                     },
                 ]}
                 {...overrides}
@@ -70,12 +89,25 @@ afterEach(async () => {
 });
 
 describe("ReadingQuizPanel", () => {
-    it("locks completed quizzes and keeps review mode without reset", async () => {
+    it("uses previous and next controls to review submitted answers after reopening", async () => {
         const { container } = await renderQuizPanel();
+        const getButtons = () => Array.from(container.querySelectorAll("button"));
 
-        expect(container.textContent).toContain("正确率 100%");
+        expect(container.textContent).toContain("正确率 50%");
         expect(container.textContent).toContain("✓ 正确");
         expect(container.textContent).not.toContain("重做");
-        expect(container.textContent).toContain("完成");
+        expect(container.textContent).toContain("上一题");
+        expect(container.textContent).toContain("下一题");
+        expect(container.textContent).not.toContain("完成");
+        expect(container.textContent).toContain("What is the main idea?");
+
+        const nextButton = getButtons().find((button) => button.textContent?.includes("下一题"));
+        expect(nextButton).toBeTruthy();
+
+        await act(async () => {
+            nextButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(container.textContent).toContain("The students reviewed notes only once a month.");
     });
 });

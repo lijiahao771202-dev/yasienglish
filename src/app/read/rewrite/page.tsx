@@ -252,7 +252,7 @@ export default function RewritePracticePage() {
             <main className="min-h-screen bg-[#ede7d8] px-4 py-12 sm:px-6">
                 <div className="mx-auto max-w-3xl rounded-[32px] bg-[#e8eaf0] p-8 shadow-[18px_18px_40px_rgba(15,23,42,0.11),-16px_-16px_36px_rgba(255,255,255,0.72)]">
                     <h1 className="text-2xl font-black text-[#1f2435]">未找到仿写练习上下文</h1>
-                    <p className="mt-3 text-sm text-[#585a68]">请从阅读页的段落工具栏进入仿写模式。</p>
+                    <p className="mt-3 text-sm text-[#585a68]">请从完整测试里的仿写练习进入。</p>
                     <Link
                         href="/read?from=home"
                         className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-black text-[#585a68] shadow-[7px_7px_16px_rgba(15,23,42,0.08),-7px_-7px_16px_rgba(255,255,255,0.7)]"

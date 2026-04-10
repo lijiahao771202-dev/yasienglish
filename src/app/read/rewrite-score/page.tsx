@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
+import confetti from "canvas-confetti";
 import {
     ArrowLeft,
     CircleCheckBig,
@@ -94,6 +95,69 @@ export default function RewriteScorePage() {
         }
     }, [scoreId]);
 
+    const [hasCelebrated, setHasCelebrated] = useState(false);
+
+    useEffect(() => {
+        if (payload?.score?.total_score === 100 && !hasCelebrated) {
+            setHasCelebrated(true);
+
+            // Synthesized success chime
+            const playSuccessSound = () => {
+                const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+                if (!AudioContextClass) return;
+                const audioCtx = new AudioContextClass();
+                const playTone = (freq: number, type: OscillatorType, time: number, duration: number) => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, audioCtx.currentTime + time);
+                    gain.gain.setValueAtTime(0.1, audioCtx.currentTime + time);
+                    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + time + duration);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(audioCtx.currentTime + time);
+                    osc.stop(audioCtx.currentTime + time + duration);
+                };
+                playTone(523.25, "sine", 0, 0.15); // C5
+                playTone(659.25, "sine", 0.15, 0.15); // E5
+                playTone(783.99, "sine", 0.3, 0.15); // G5
+                playTone(1046.50, "sine", 0.45, 0.4); // C6
+            };
+
+            try {
+                playSuccessSound();
+            } catch (e) {
+                console.error("Audio playback failed", e);
+            }
+
+            // Confetti animation
+            const duration = 2500;
+            const end = Date.now() + duration;
+
+            const frame = () => {
+                confetti({
+                    particleCount: 4,
+                    angle: 60,
+                    spread: 55,
+                    origin: { x: 0 },
+                    colors: ["#f6ad55", "#6366f1", "#10b981", "#ecfeff"]
+                });
+                confetti({
+                    particleCount: 4,
+                    angle: 120,
+                    spread: 55,
+                    origin: { x: 1 },
+                    colors: ["#f6ad55", "#6366f1", "#10b981", "#ecfeff"]
+                });
+
+                if (Date.now() < end) {
+                    requestAnimationFrame(frame);
+                }
+            };
+            frame();
+        }
+    }, [payload, hasCelebrated]);
+
     const handleContinueNext = () => {
         if (!payload || typeof window === "undefined") return;
         setIsContinuing(true);
@@ -109,7 +173,7 @@ export default function RewriteScorePage() {
             <main className="min-h-screen bg-[radial-gradient(circle_at_15%_10%,rgba(253,230,138,0.28),transparent_48%),linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] px-4 py-14 sm:px-6">
                 <div className="mx-auto max-w-3xl rounded-3xl border border-white/70 bg-white/88 p-8 shadow-[0_40px_85px_-52px_rgba(15,23,42,0.65)]">
                     <h1 className="text-2xl font-bold text-slate-900">未找到仿写评分记录</h1>
-                    <p className="mt-3 text-sm text-slate-600">请从阅读页进入仿写模式并提交评分后查看。</p>
+                    <p className="mt-3 text-sm text-slate-600">请先在完整测试里的仿写练习中完成作答并提交评分。</p>
                     <Link
                         href="/read?from=home"
                         className="mt-6 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:text-slate-900"

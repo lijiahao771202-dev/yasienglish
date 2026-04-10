@@ -12,6 +12,7 @@ export interface TourStep {
     placement?: "top" | "bottom" | "left" | "right";
     customModal?: React.ReactNode;
     onEnter?: () => void;
+    nextDisabled?: boolean;
 }
 
 interface SpotlightTourProps {
@@ -91,6 +92,7 @@ export function SpotlightTour({ steps, isOpen, onClose, onComplete }: SpotlightT
     if (!isOpen) return null;
 
     const handleNext = () => {
+        if (currentStep?.nextDisabled) return;
         if (currentStepIndex < steps.length - 1) {
             setCurrentStepIndex((prev) => prev + 1);
         } else {
@@ -275,7 +277,7 @@ export function SpotlightTour({ steps, isOpen, onClose, onComplete }: SpotlightT
                             top: tooltipY,
                         }}
                         // Ensure it doesn't overflow screen limits regardless of placement
-                        className="w-[320px] sm:w-[360px] flex flex-col gap-3 rounded-[2rem] border-[4px] border-[#1e1b4b] bg-indigo-50 p-6 shadow-[0_12px_0_0_#1e1b4b] z-10"
+                        className="w-[320px] sm:w-[360px] flex flex-col gap-3 rounded-[2rem] border-[4px] border-[#1e1b4b] bg-indigo-50 p-6 shadow-[0_12px_0_0_#1e1b4b] z-[100000]"
                     >
                         <div className="flex items-center justify-between">
                             <h3 className="font-welcome-display text-2xl font-black text-[#1e1b4b] leading-none tracking-tight">
@@ -320,12 +322,15 @@ export function SpotlightTour({ steps, isOpen, onClose, onComplete }: SpotlightT
                                     </motion.button>
                                 )}
                                 <motion.button
-                                    whileHover={{ scale: 1.05 }}
-                                    whileTap={{ scale: 0.9 }}
+                                    whileHover={!currentStep?.nextDisabled ? { scale: 1.05 } : undefined}
+                                    whileTap={!currentStep?.nextDisabled ? { scale: 0.9 } : undefined}
                                     onClick={handleNext}
+                                    disabled={currentStep?.nextDisabled}
                                     className={cn(
-                                        "flex h-10 px-4 items-center gap-2 rounded-xl border-[3px] border-[#1e1b4b] font-black text-[#1e1b4b] shadow-[0_4px_0_0_#1e1b4b] active:translate-y-1 active:shadow-[0_1px_0_0_#1e1b4b]",
-                                        currentStepIndex === steps.length - 1 ? "bg-[#facc15]" : "bg-indigo-300"
+                                        "flex h-10 px-4 items-center gap-2 rounded-xl border-[3px] border-[#1e1b4b] font-black shadow-[0_4px_0_0_#1e1b4b]",
+                                        currentStep?.nextDisabled 
+                                            ? "bg-gray-200 text-gray-400 cursor-not-allowed border-gray-400 shadow-none -translate-y-0"
+                                            : "text-[#1e1b4b] active:translate-y-1 active:shadow-[0_1px_0_0_#1e1b4b] " + (currentStepIndex === steps.length - 1 ? "bg-[#facc15]" : "bg-indigo-300")
                                     )}
                                 >
                                     {currentStepIndex === steps.length - 1 ? (
