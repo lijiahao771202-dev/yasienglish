@@ -445,7 +445,7 @@ export function HomeDashboardPanels_v2({
             <div className="grid grid-cols-2 md:grid-cols-4 gap-5 flex-1 min-h-0">
 
                 {/* ─── DAILY PLAN WIDGET ─── */}
-                <div className="col-span-2 row-span-2 relative min-h-[460px]">
+                <div data-tour-target="daily-plan" className="col-span-2 row-span-2 relative min-h-[460px]">
                     <div className="absolute inset-0">
                         <DailyPlanBento />
                     </div>
@@ -453,6 +453,7 @@ export function HomeDashboardPanels_v2({
 
                 {/* 1. IMMERSION ECHO */}
                 <motion.div
+                    data-tour-target="immersion-echo"
                     whileHover={{ scale: 1.02, rotate: 0.5 }}
                     whileTap={{ scale: 0.98 }}
                     transition={springTransition}
@@ -486,6 +487,7 @@ export function HomeDashboardPanels_v2({
 
                 {/* 2. HABIT PULSE */}
                 <motion.div
+                    data-tour-target="habit-pulse"
                     whileHover={{ scale: 1.03 }}
                     whileTap={{ scale: 0.97 }}
                     transition={springTransition}

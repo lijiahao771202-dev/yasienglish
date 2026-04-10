@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, Settings2, LayoutGrid, ChevronDown } from "lucide-react";
+import { Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, Settings2, LayoutGrid, ChevronDown, Compass } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,7 @@ import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 import { applyServerProfilePatchToLocal, deleteReadArticleSnapshot } from "@/lib/user-repository";
 import { CAT_RANK_TIERS, getCatRankIconByTierId, getCatRankTier, getCatScoreToNextRank, getLegacyBandFromScore } from "@/lib/cat-score";
 import { CatGrowthChart } from "@/components/reading/CatGrowthChart";
+import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 
 export interface ArticleItem {
     title: string;
@@ -244,6 +245,93 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const [isStartingCat, setIsStartingCat] = useState(false);
     const [catStartError, setCatStartError] = useState<string | null>(null);
     const [isCatRankOverviewOpen, setIsCatRankOverviewOpen] = useState(false);
+    const [showHubTour, setShowHubTour] = useState(false);
+
+    useEffect(() => {
+        if (category === "cat_mode") {
+            const hasCompleted = localStorage.getItem("read-hub-v2-onboarded");
+            if (!hasCompleted) {
+                setIsCatRankOverviewOpen(true); // Open rank container for tour target
+                const timer = setTimeout(() => setShowHubTour(true), 1500);
+                return () => clearTimeout(timer);
+            }
+        }
+    }, [category]);
+
+    const handleHubTourComplete = () => {
+        localStorage.setItem("read-hub-v2-onboarded", "true");
+        setShowHubTour(false);
+    };
+
+    const hubTourSteps: TourStep[] = category === "ai_gen" ? [
+        {
+            targetId: "read-hub-tabs",
+            title: "全能沙盒泛读区",
+            content: "与严格定级的 CAT 模式不同，『AI 生成区』不设限制！您可以把它当做一个自由训练场，随心所欲定制定制题材与考纲难度。",
+            placement: "bottom"
+        },
+        {
+            targetId: "hub-ai-studio",
+            title: "智能出卷台",
+            content: "不管您是要考量词汇量的四六级，还是着重逻辑链的雅思，在这里点击切换，大模型会自动注入对应的出题标准与长难句式！",
+            placement: "bottom"
+        },
+        {
+            targetId: "hub-ai-topic",
+            title: "突破界限的题材库",
+            content: "觉得预设不够玩？直接输入您感兴趣的偏门词条，哪怕是“元宇宙修仙”，系统都能强行给您抽取出严肃的四六级雅思考试长文！这就是生成式AI的魅力所在！",
+            placement: "top"
+        }
+    ] : [
+        {
+            targetId: "read-hub-tabs",
+            title: "双引擎阅读架构",
+            content: "阅读中心内嵌了两种运转逻辑截然不同的引擎。右侧的『AI 生成』是供您拓展舒适区、自配考纲的“泛读沙盒”；而您当前开启的『CAT 成长』，则是旨在刺探您真实词汇与逻辑上限的“智适应定级斗兽场”。",
+            placement: "bottom"
+        },
+        {
+            targetId: "hub-cat-console",
+            title: "极简背后的黑盒模型",
+            content: "这并非传统的做题机。在极简的工作面板下，运转着严格的 IRT（项目反应理论）算法引擎。在这里“难度选择”被直接接管；每当您点击开始，贝叶斯模型都会基于您当下的能力潜能 (Theta)，从海量语料核心里萃取出一篇命中要害、信息增益率最大的文章。一局一测，拒绝无效冗余。",
+            placement: "bottom"
+        },
+        {
+            targetId: "hub-cat-rank",
+            title: "多维量化成长网络",
+            content: "所有枯燥的能力参数都已被具象化为段位天梯。我们将底层的自适应算力评级，跨界融合了大家熟悉的青铜、钻石、星耀等游戏化机制，构建了一个让人上瘾的攀登体感。",
+            placement: "top"
+        },
+        {
+            targetId: "hub-cat-tier-a2",
+            title: "奠基：初高阶基础带",
+            content: "排位起步！A区序列涵盖了从零基础到高中毕业的词汇模型。您的每次正确反馈，都在自动为您修补这层脆弱的地基。",
+            placement: "top"
+        },
+        {
+            targetId: "hub-cat-tier-c1_minus",
+            title: "突围：四六级双穿门槛",
+            content: "当您冲杀至这片 B-C 组交界赛区（1600分左右），意味着您已彻底撕裂国内英语四六级的统考封锁线，正式具备实战长难句的解码算力！",
+            placement: "bottom"
+        },
+        {
+            targetId: "hub-cat-tier-c2",
+            title: "深水区：雅思高阶考核",
+            content: "这是极其艰险的 C2 编队区域（2400分）。在这里，系统将抛给您极高密度的学术语料，抽象逻辑链将开始全面压榨您的工作记忆区！",
+            placement: "bottom"
+        },
+        {
+            targetId: "hub-cat-tier-master",
+            title: "终极毕业指标",
+            content: "一路披荆斩棘，这就是我们最终为您锁定的目标：Master（8.0+ 满分段）。系统会持续用魔鬼强度的智适应难题为您护航，一旦您站上神坛，即可宣告光荣毕业！",
+            placement: "top"
+        },
+        {
+            targetId: "hub-cat-chart",
+            title: "Theta 潜能动态巡航",
+            content: "这不是死板的分数线，而是算法对您每一次战局的“心电图”捕获。在提交每一篇高强度的盲测自评后，数学模型将实时重构信心域，这条曲线会在动态纠偏中为您划出认知的攀升轨迹。现在，请开启您的第一场心智演练！",
+            placement: "left"
+        }
+    ];
 
     const { setFeed, getFeed, loadFeedFromDB, deleteArticle } = useFeedStore();
     const { readArticleUrls } = useUserStore();
@@ -841,42 +929,49 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                         </AnimatePresence>
                     </motion.div>
 
-                    <div className="grid gap-3 rounded-[28px] border-4 border-theme-border bg-theme-card-bg p-2 shadow-[0_3px_0_var(--theme-shadow)] md:grid-cols-4">
-                        {tabItems.map((tab) => (
-                            <button
-                                key={tab.id}
-                                onClick={() => {
-                                    setShowSettings(false);
-                                    setCatStartError(null);
-                                    if (tab.id === "ai_gen" || tab.id === "cat_mode") {
-                                        setCategory(tab.id);
-                                        return;
-                                    }
-                                    const cached = getFeed(tab.id);
-                                    setCategory(tab.id);
-                                    if (cached && cached.length > 0) {
-                                        setArticles(sortByNewest(cached));
-                                    } else {
-                                        setArticles([]);
-                                    }
-                                }}
-                                className={cn(
-                                    "ui-pressable relative overflow-hidden rounded-full px-4 py-3 text-center text-sm font-black tracking-wide",
-                                    category === tab.id
-                                        ? "text-theme-active-text"
-                                        : "bg-theme-base-bg text-theme-text-muted hover:text-theme-text"
-                                )}
-                                style={getPressableStyle(category === tab.id ? "var(--theme-shadow)" : "rgba(0,0,0,0.1)", 4)}
-                            >
-                                {category === tab.id ? (
-                                    <motion.span
-                                        layoutId="read-category-pill"
-                                        className="absolute inset-0 rounded-full bg-theme-active-bg shadow-[0_6px_0_0_var(--theme-shadow)] border-[3px] border-theme-border"
-                                        transition={panelTransition}
-                                    />
-                                ) : null}
-                                <span className="relative z-10">{tab.label}</span>
-                            </button>
+                    <div className="flex flex-col md:flex-row gap-3 rounded-[28px] border-4 border-theme-border bg-theme-card-bg p-2 shadow-[0_3px_0_var(--theme-shadow)]">
+                        {[
+                            { tourId: "read-hub-tabs", items: tabItems.slice(0, 2) },
+                            { tourId: undefined, items: tabItems.slice(2, 4) }
+                        ].map((group, groupIdx) => (
+                            <div key={groupIdx} data-tour-target={group.tourId} className="grid flex-1 gap-3 md:grid-cols-2">
+                                {group.items.map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => {
+                                            setShowSettings(false);
+                                            setCatStartError(null);
+                                            if (tab.id === "ai_gen" || tab.id === "cat_mode") {
+                                                setCategory(tab.id);
+                                                return;
+                                            }
+                                            const cached = getFeed(tab.id);
+                                            setCategory(tab.id);
+                                            if (cached && cached.length > 0) {
+                                                setArticles(sortByNewest(cached));
+                                            } else {
+                                                setArticles([]);
+                                            }
+                                        }}
+                                        className={cn(
+                                            "ui-pressable relative overflow-hidden rounded-full px-4 py-3 text-center text-sm font-black tracking-wide",
+                                            category === tab.id
+                                                ? "text-theme-active-text"
+                                                : "bg-theme-base-bg text-theme-text-muted hover:text-theme-text"
+                                        )}
+                                        style={getPressableStyle(category === tab.id ? "var(--theme-shadow)" : "rgba(0,0,0,0.1)", 4)}
+                                    >
+                                        {category === tab.id ? (
+                                            <motion.span
+                                                layoutId="read-category-pill"
+                                                className="absolute inset-0 rounded-full bg-theme-active-bg shadow-[0_6px_0_0_var(--theme-shadow)] border-[3px] border-theme-border"
+                                                transition={panelTransition}
+                                            />
+                                        ) : null}
+                                        <span className="relative z-10">{tab.label}</span>
+                                    </button>
+                                ))}
+                            </div>
                         ))}
                     </div>
 
@@ -954,7 +1049,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                         exit: panelExit
                     }}
                 >
-                    <motion.section variants={prefersReducedMotion ? undefined : blockEntryVariants} className={cn(shellCardClass, "p-5 md:p-6")}>
+                    <motion.section data-tour-target="hub-ai-studio" variants={prefersReducedMotion ? undefined : blockEntryVariants} className={cn(shellCardClass, "p-5 md:p-6")}>
                         <div className="flex flex-wrap items-start justify-between gap-4">
                             <div>
                                 <p className="text-[11px] font-black uppercase tracking-[0.18em] text-theme-text-muted">AI Studio</p>
@@ -1031,7 +1126,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                 })}
                         </div>
 
-                        <div className={cn(insetCardClass, "mt-5 p-4 md:p-5")}>
+                        <div data-tour-target="hub-ai-topic" className={cn(insetCardClass, "mt-5 p-4 md:p-5")}>
                                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                                     <h5 className="text-sm font-black text-theme-text">主题选择</h5>
                                     {genTopic.trim() && (
@@ -1150,7 +1245,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     }}
                 >
                     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.95fr)]">
-                        <motion.section variants={prefersReducedMotion ? undefined : blockEntryVariants} className={cn(shellCardClass, "p-5 md:p-6")}>
+                        <motion.section data-tour-target="hub-cat-console" variants={prefersReducedMotion ? undefined : blockEntryVariants} className={cn(shellCardClass, "p-5 md:p-6")}>
                             <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
                                     <p className="text-[11px] font-black uppercase tracking-[0.18em] text-theme-text-muted">Training Console</p>
@@ -1168,6 +1263,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
 
                             <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-[1.05fr_1fr]">
                                 <button
+                                    data-tour-target="hub-cat-rank"
                                     type="button"
                                     onClick={() => setIsCatRankOverviewOpen((prev) => !prev)}
                                     className={cn("ui-pressable w-full px-4 py-4 text-left", insetCardClass)}
@@ -1233,13 +1329,14 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                                         className="overflow-hidden"
                                     >
-                                        <div className={cn(insetCardClass, "mt-4 p-3")}>
+                                        <div data-tour-target="hub-cat-tiers" className={cn(insetCardClass, "mt-4 p-3")}>
                                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
                                                 {CAT_RANK_TIERS.map((tier) => {
                                                     const isActive = tier.id === catRank.id;
                                                     return (
                                                         <div
                                                             key={tier.id}
+                                                            data-tour-target={`hub-cat-tier-${tier.id}`}
                                                             className={cn(
                                                                 "rounded-[18px] border-[3px] px-3 py-2.5 transition-all",
                                                                 isActive
@@ -1266,7 +1363,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                             </AnimatePresence>
                         </motion.section>
 
-                        <motion.div variants={prefersReducedMotion ? undefined : blockEntryVariants}>
+                        <motion.div data-tour-target="hub-cat-chart" className="self-start" variants={prefersReducedMotion ? undefined : blockEntryVariants}>
                             <CatGrowthChart currentScore={catScore} />
                         </motion.div>
                     </div>
@@ -1389,6 +1486,34 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            <SpotlightTour 
+                isOpen={showHubTour} 
+                onClose={handleHubTourComplete} 
+                onComplete={handleHubTourComplete}
+                steps={hubTourSteps} 
+            />
+
+            <motion.button
+                initial={{ opacity: 0, scale: 0.8, rotate: -20 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ delay: 1, type: "spring", stiffness: 300, damping: 20 }}
+                whileHover={{ scale: 1.1, rotate: 15 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => {
+                    if (category === "ai_gen") {
+                        setTimeout(() => setShowHubTour(true), 150);
+                    } else {
+                        setCategory("cat_mode");
+                        setIsCatRankOverviewOpen(true);
+                        setTimeout(() => setShowHubTour(true), 300);
+                    }
+                }}
+                className="fixed bottom-6 right-6 z-[2800] flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_6px_0_0_var(--theme-shadow)] active:translate-y-1 active:shadow-[0_2px_0_0_var(--theme-shadow)]"
+                title="开启阅读入口指南"
+            >
+                <Compass className="h-6 w-6 stroke-[2.5]" />
+            </motion.button>
         </motion.div>
     );
 }

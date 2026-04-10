@@ -11,8 +11,9 @@ import { RecommendedArticles } from "@/components/reading/RecommendedArticles";
 import { ReadingQuizPanel, QuizQuestion, type QuizSubmitPayload } from "@/components/reading/ReadingQuizPanel";
 import { CatSelfAssessmentDialog } from "@/components/reading/CatSelfAssessmentDialog";
 import { ReadPretestOverlay } from "@/components/reading/ReadPretestOverlay";
-import { ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck, GripVertical } from "lucide-react";
+import { ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck, GripVertical, Compass } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 import axios from "axios";
 import { useUserStore } from "@/lib/store";
 import { resolveDailyArticleCandidate } from "@/lib/dailyArticle";
@@ -41,12 +42,18 @@ import {
     type ReadingCoinFxEvent,
 } from "@/lib/reading-coin-fx";
 import { getPressableStyle } from "@/lib/pressable";
+import { buildReadArticleCloudPayload } from "@/lib/read-article-snapshot";
 import {
     CAT_SELF_ASSESSMENT_LABELS,
     CAT_SYSTEM_ASSESSMENT_LABELS,
+    getCatScoreCorrectionSummary,
     type CatSelfAssessment,
     type CatSystemAssessment,
 } from "@/lib/cat-self-assessment";
+import {
+    buildPreparedCatSettlementPreview,
+    type PreparedCatSettlementSnapshot,
+} from "@/lib/cat-settlement-preview";
 
 interface ArticleData {
     title: string;
@@ -130,6 +137,8 @@ interface QuizPanelDragState {
 }
 
 interface CatSettlementPayload {
+    alreadyCompleted?: boolean;
+    isPendingFinalization?: boolean;
     scoreBefore: number;
     scoreAfter: number;
     delta: number;
@@ -229,37 +238,6 @@ const extractParagraphTextsForGrammar = (article: ArticleData): string[] => {
     return fallback;
 };
 
-const buildArticleCloudPayload = (article: ArticleData, timestamp: number) => ({
-    url: article.url || "",
-    title: article.title || "",
-    content: article.content || "",
-    textContent: article.textContent || article.content || "",
-    byline: article.byline,
-    siteName: article.siteName,
-    videoUrl: article.videoUrl,
-    image: article.image ?? null,
-    blocks: article.blocks,
-    timestamp,
-    difficulty: article.difficulty,
-    isAIGenerated: article.isAIGenerated,
-    isCatMode: article.isCatMode,
-    catSessionId: article.catSessionId,
-    catBand: article.catBand,
-    catScoreSnapshot: article.catScoreSnapshot,
-    catThetaSnapshot: article.catThetaSnapshot,
-    catSeSnapshot: article.catSeSnapshot,
-    catSessionBlueprint: article.catSessionBlueprint,
-    catQuizBlueprint: article.catQuizBlueprint,
-    quizCompleted: article.quizCompleted,
-    quizCorrect: article.quizCorrect,
-    quizTotal: article.quizTotal,
-    quizScorePercent: article.quizScorePercent,
-    quizQuestions: article.quizQuestions,
-    quizAnswers: article.quizAnswers,
-    quizResponses: article.quizResponses,
-    quizQualityTier: article.quizQualityTier,
-});
-
 const toCloudReadingNote = (note: ReadingNoteItem): Omit<ReadingNoteItem, "id"> => ({
     article_key: note.article_key,
     article_url: note.article_url,
@@ -344,13 +322,86 @@ function ReadingPageContent() {
     const [catSettlement, setCatSettlement] = useState<CatSettlementPayload | null>(null);
     const [pendingCatSubmission, setPendingCatSubmission] = useState<PendingCatSubmission | null>(null);
     const [isSubmittingCatAssessment, setIsSubmittingCatAssessment] = useState(false);
+    const [isPreparingCatAssessment, setIsPreparingCatAssessment] = useState(false);
+    const preparedCatSessionIdRef = useRef<string | null>(null);
+    const preparingCatSessionPromiseRef = useRef<Promise<void> | null>(null);
+    const preparedCatSettlementRef = useRef<PreparedCatSettlementSnapshot | null>(null);
     const [isWritingMode, setIsWritingMode] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
-    const [isQuizMode, setIsQuizMode] = useState(false);
+    const [isQuizMode, setIsQuizMode] = useState<boolean>(false);
     const [isPretestOverlayOpen, setIsPretestOverlayOpen] = useState(false);
     const [isPretestCompletedForArticle, setIsPretestCompletedForArticle] = useState(false);
-    const [routeExitTarget, setRouteExitTarget] = useState<"home" | "battle" | null>(null);
     const [quizLocateRequest, setQuizLocateRequest] = useState<QuizLocateRequest | null>(null);
+    const [showReadTour, setShowReadTour] = useState(false);
+
+    useEffect(() => {
+        if (article && !isPretestOverlayOpen) {
+            const hasCompleted = localStorage.getItem("read-v2-onboarded");
+            if (!hasCompleted) {
+                const timer = setTimeout(() => setShowReadTour(true), 1500);
+                return () => clearTimeout(timer);
+            }
+        }
+    }, [article, isPretestOverlayOpen]);
+
+    const handleReadTourComplete = () => {
+        localStorage.setItem("read-v2-onboarded", "true");
+        setShowReadTour(false);
+    };
+
+    const readTourSteps: TourStep[] = [
+        {
+            targetId: "read-tools",
+            title: "阅读工具箱",
+            content: "页面上方提供了丰富的辅助工具：\n【专注模式】隐藏周边干扰\n【仿生阅读】加粗词首提升眼动速度\n【外观调色盘】随时调整主题配色\n【编辑模式】自由更改并保存长难句解析！",
+            placement: "bottom"
+        },
+        {
+            targetId: "paragraph-listen",
+            title: "精读系统：多模式片段伴读",
+            content: "我们为每一个段落都配备了独立的工作栏！\n点击 Speaking，立刻展开原音级跟读面板。不仅支持全文流畅连读，您还能随时切换到『逐句精听』模式，享受无缝听感。",
+            placement: "bottom"
+        },
+        {
+            targetId: "paragraph-translate",
+            title: "精读系统：AI 语境双层翻译",
+            content: "不再需要跳出文章查字典！我们利用大模型，一键为您生成最符合当前语境的精准翻译。",
+            placement: "bottom"
+        },
+        {
+            targetId: "paragraph-grammar",
+            title: "精读系统：重型语法剖析机",
+            content: "遇到长难句不要慌！\n点击 Grammar，AI 会瞬间扫描并高亮出段落内所有的多重嵌套从句。您可以一键将复杂的句子“抽丝剥茧”，生成可视化的『树状语法层级』，彻底打通阅读逻辑！",
+            placement: "bottom"
+        },
+        {
+            targetId: "paragraph-ask",
+            title: "精读系统：情景式问答场",
+            content: "在阅读期间，AI 私教将随时待命！\n通过 Ask AI，您可以对当前段落发出任何拷问：分析结构、总结大干、提取高级词汇等，AI都会瞬间为您作出解答。",
+            placement: "bottom"
+        },
+        {
+            targetId: "read-coin-balance",
+            title: "阅读金币积累",
+            content: "在这里随时查看您的财富！每当您完成一篇精读或通过单词测试，都会触发沉浸式的金币奖励特效。努力积攒，后续可解锁高级能力！",
+            placement: "bottom"
+        },
+        {
+            targetId: "read-quiz-toggle",
+            title: "终极试炼：AI 题卡库",
+            content: "我们为文章潜藏了专属的【题卡库 / AI Studio】！只要您觉得文章精读完毕，点击这里即可弹出隐藏的训练面板，接受四六级/雅思难度的灵魂拷问！",
+            placement: "top"
+        }
+    ];
+
+    useEffect(() => {
+        if (showReadTour) {
+            document.body.classList.add("read-tour-active");
+            return () => document.body.classList.remove("read-tour-active");
+        }
+    }, [showReadTour]);
+
+    const [routeExitTarget, setRouteExitTarget] = useState<"home" | "battle" | null>(null);
     const [articleStartedAt, setArticleStartedAt] = useState<number | null>(null);
     const [quizCache, setQuizCache] = useState<Record<string, QuizQuestion[]>>({});
     const [quizCacheHydrated, setQuizCacheHydrated] = useState<Record<string, boolean>>({});
@@ -450,6 +501,12 @@ function ReadingPageContent() {
         }
         return "本局已完成结算";
     }, []);
+    const catSettlementCorrectionSummary = catSettlement
+        ? getCatScoreCorrectionSummary({
+            selfAssessment: catSettlement.selfAssessment,
+            scoreCorrection: catSettlement.scoreCorrection,
+        })
+        : null;
     useEffect(() => {
         if (!article?.isCatMode || article.catSelfAssessed || !article.quizCompleted) return;
         if (pendingCatSubmission || isSubmittingCatAssessment) return;
@@ -477,6 +534,71 @@ function ReadingPageContent() {
         if (!event) return;
         setReadingCoinFxQueue((prev) => [...prev, event]);
     }, []);
+    const preparePendingCatSession = useCallback(async () => {
+        if (!pendingCatSubmission || !article?.isCatMode || !article.catSessionId) {
+            return;
+        }
+        if (preparedCatSessionIdRef.current === article.catSessionId) {
+            return;
+        }
+        if (preparingCatSessionPromiseRef.current) {
+            await preparingCatSessionPromiseRef.current;
+            return;
+        }
+
+        const promise = (async () => {
+            setIsPreparingCatAssessment(true);
+            try {
+                const response = await fetch("/api/ai/cat/session/submit", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        mode: "prepare",
+                        sessionId: article.catSessionId,
+                        quizCorrect: pendingCatSubmission.correct,
+                        quizTotal: pendingCatSubmission.total,
+                        readingMs: pendingCatSubmission.readingMs,
+                        responses: pendingCatSubmission.responses,
+                        qualityTier: pendingCatSubmission.qualityTier,
+                    }),
+                });
+                const payload = await parseJsonResponseSafely(response);
+                if (!response.ok) {
+                    throw new Error(typeof payload.error === "string" ? payload.error : "CAT prepare failed");
+                }
+                preparedCatSessionIdRef.current = article.catSessionId;
+                if (payload?.animationPayload && payload?.session) {
+                    const animation = payload.animationPayload as Record<string, unknown>;
+                    preparedCatSettlementRef.current = {
+                        sessionId: article.catSessionId,
+                        objectiveDelta: Number(payload.session.objectiveDelta ?? animation.delta ?? 0),
+                        systemAssessment: (payload.session.systemAssessment ?? null) as CatSystemAssessment | null,
+                        stopReason: (payload.session.stopReason ?? null) as string | null,
+                        itemCount: Number(payload.session.itemCount ?? 0) || null,
+                        minItems: Number(payload.session.policyUsed?.minItems ?? 0) || null,
+                        maxItems: Number(payload.session.policyUsed?.maxItems ?? 0) || null,
+                        scoreBefore: Number(animation.scoreBefore ?? 0),
+                        scoreAfter: Number(animation.scoreAfter ?? 0),
+                        delta: Number(animation.delta ?? 0),
+                        rankBefore: animation.rankBefore as CatSettlementPayload["rankBefore"],
+                        rankAfter: animation.rankAfter as CatSettlementPayload["rankAfter"],
+                        isRankUp: Boolean(animation.isRankUp),
+                        isRankDown: Boolean(animation.isRankDown),
+                    };
+                }
+            } catch (prepareError) {
+                preparedCatSessionIdRef.current = null;
+                preparedCatSettlementRef.current = null;
+                console.error("Failed to prepare CAT settlement:", prepareError);
+            } finally {
+                setIsPreparingCatAssessment(false);
+                preparingCatSessionPromiseRef.current = null;
+            }
+        })();
+
+        preparingCatSessionPromiseRef.current = promise;
+        await promise;
+    }, [article, pendingCatSubmission]);
     const submitPendingCatSession = useCallback(async (selfAssessment: CatSelfAssessment | null) => {
         if (!pendingCatSubmission || !article?.isCatMode || !article.catSessionId) {
             setPendingCatSubmission(null);
@@ -484,16 +606,33 @@ function ReadingPageContent() {
         }
 
         setIsSubmittingCatAssessment(true);
+        const submissionSnapshot = pendingCatSubmission;
+        const preparedSnapshot = preparedCatSessionIdRef.current === article.catSessionId
+            ? preparedCatSettlementRef.current
+            : null;
+        const optimisticSettlement = preparedSnapshot
+            ? buildPreparedCatSettlementPreview({
+                prepared: preparedSnapshot,
+                selfAssessment,
+            })
+            : null;
         try {
+            const currentArticleUrl = typeof article.url === "string" ? article.url.trim() : "";
+            const canUsePreparedSettlement = Boolean(preparedSnapshot);
+            if (optimisticSettlement) {
+                setCatSettlement(optimisticSettlement);
+                setPendingCatSubmission(null);
+            }
             const response = await fetch("/api/ai/cat/session/submit", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
+                    mode: "finalize",
                     sessionId: article.catSessionId,
                     quizCorrect: pendingCatSubmission.correct,
                     quizTotal: pendingCatSubmission.total,
                     readingMs: pendingCatSubmission.readingMs,
-                    responses: pendingCatSubmission.responses,
+                    responses: canUsePreparedSettlement ? undefined : pendingCatSubmission.responses,
                     qualityTier: pendingCatSubmission.qualityTier,
                     selfAssessment: selfAssessment ?? undefined,
                 }),
@@ -503,33 +642,45 @@ function ReadingPageContent() {
                 throw new Error(typeof payload.error === "string" ? payload.error : "CAT submit failed");
             }
 
-            await applyServerProfilePatchToLocal({
-                cat_score: payload?.cat?.score,
-                cat_level: payload?.cat?.level,
-                cat_theta: payload?.cat?.theta,
-                cat_se: payload?.cat?.se,
-                cat_points: payload?.cat?.points,
-                cat_current_band: payload?.cat?.currentBand,
-                cat_updated_at: payload?.cat?.updatedAt ?? new Date().toISOString(),
-                reading_coins: payload?.readingCoins?.balance,
+            const policyUsed = payload?.session?.policyUsed;
+            const correction = Number(payload?.session?.scoreCorrection ?? 0);
+            const correctionSummary = getCatScoreCorrectionSummary({
+                selfAssessment: (payload?.session?.selfAssessment ?? selfAssessment ?? null) as CatSelfAssessment | null,
+                scoreCorrection: correction,
             });
-            try {
-                const profileRow = await db.user_profile.orderBy("id").first();
-                if (profileRow?.id !== undefined) {
-                    await db.user_profile.update(profileRow.id, {
-                        cat_pending_difficulty_signal: Number(payload?.session?.difficultySignal ?? 0),
-                    });
-                }
-                if (article?.url) {
-                    await db.articles.update(article.url, {
-                        catSelfAssessed: selfAssessment !== null,
-                        timestamp: Date.now(),
-                    });
-                }
-            } catch (profilePatchError) {
-                console.error("Failed to persist CAT difficulty signal locally:", profilePatchError);
+            if (payload?.session?.delta !== undefined) {
+                const signedDelta = Number(payload.session.delta);
+                const deltaText = signedDelta >= 0 ? `+${signedDelta}` : `${signedDelta}`;
+                const stopHint = formatCatStopReason({
+                    stopReason: payload?.session?.stopReason,
+                    itemCount: payload?.session?.itemCount,
+                    minItems: policyUsed?.minItems,
+                    maxItems: policyUsed?.maxItems,
+                });
+                const correctionText = selfAssessment
+                    ? ` · ${correctionSummary.label}`
+                    : "";
+                setCatNotice(`CAT 本局结算 ${deltaText} 分${correctionText} · ${stopHint}`);
+                window.setTimeout(() => setCatNotice(null), 4200);
             }
-            setArticle((prev) => prev ? { ...prev, catSelfAssessed: selfAssessment !== null } : prev);
+
+            if (payload?.animationPayload) {
+                const animationPayload = {
+                    ...(payload.animationPayload as CatSettlementPayload),
+                    stopReason: payload?.session?.stopReason,
+                    itemCount: payload?.session?.itemCount,
+                    minItems: policyUsed?.minItems,
+                    maxItems: policyUsed?.maxItems,
+                    alreadyCompleted: Boolean(payload?.alreadyCompleted),
+                    systemAssessment: payload?.session?.systemAssessment ?? null,
+                    selfAssessment: payload?.session?.selfAssessment ?? selfAssessment ?? null,
+                    objectiveDelta: Number(payload?.session?.objectiveDelta ?? payload?.session?.delta ?? 0),
+                    scoreCorrection: Number(payload?.session?.scoreCorrection ?? 0),
+                    difficultySignal: Number(payload?.session?.difficultySignal ?? 0),
+                    isPendingFinalization: false,
+                } as CatSettlementPayload;
+                setCatSettlement(animationPayload);
+            }
 
             if (payload?.readingCoins?.delta > 0) {
                 pushReadingCoinFx({
@@ -539,61 +690,61 @@ function ReadingPageContent() {
                 });
             }
 
-            if (payload?.session?.delta !== undefined) {
-                const signedDelta = Number(payload.session.delta);
-                const deltaText = signedDelta >= 0 ? `+${signedDelta}` : `${signedDelta}`;
-                const policyUsed = payload?.session?.policyUsed;
-                const correction = Number(payload?.session?.scoreCorrection ?? 0);
-                const correctionText = correction === 0
-                    ? ""
-                    : ` · 自评修正 ${correction > 0 ? `+${correction}` : correction}`;
-                const stopHint = formatCatStopReason({
-                    stopReason: payload?.session?.stopReason,
-                    itemCount: payload?.session?.itemCount,
-                    minItems: policyUsed?.minItems,
-                    maxItems: policyUsed?.maxItems,
-                });
-                setCatNotice(`CAT 本局结算 ${deltaText} 分${correctionText} · ${stopHint}`);
-                window.setTimeout(() => setCatNotice(null), 4200);
-            }
-
-            if (payload?.animationPayload) {
-                const policyUsed = payload?.session?.policyUsed;
-                const animationPayload = {
-                    ...(payload.animationPayload as CatSettlementPayload),
-                    stopReason: payload?.session?.stopReason,
-                    itemCount: payload?.session?.itemCount,
-                    minItems: policyUsed?.minItems,
-                    maxItems: policyUsed?.maxItems,
-                    systemAssessment: payload?.session?.systemAssessment ?? null,
-                    selfAssessment: payload?.session?.selfAssessment ?? selfAssessment ?? null,
-                    objectiveDelta: Number(payload?.session?.objectiveDelta ?? payload?.session?.delta ?? 0),
-                    scoreCorrection: Number(payload?.session?.scoreCorrection ?? 0),
-                    difficultySignal: Number(payload?.session?.difficultySignal ?? 0),
-                } as CatSettlementPayload;
-                setCatSettlement(animationPayload);
-            }
-            
-            if (article?.url) {
-                try {
-                    const { db } = await import("@/lib/db");
-                    await db.articles.update(article.url, {
-                        catSelfAssessed: true,
-                    });
-                    setArticle((prev) => prev ? { ...prev, catSelfAssessed: true } : prev);
-                } catch (updateErr) {
-                    console.error("Failed to mark article as self assessed", updateErr);
-                }
-            }
+            setArticle((prev) => prev ? { ...prev, catSelfAssessed: true } : prev);
             setPendingCatSubmission(null);
+            preparedCatSessionIdRef.current = null;
+            preparedCatSettlementRef.current = null;
+
+            void (async () => {
+                try {
+                    await applyServerProfilePatchToLocal({
+                        cat_score: payload?.cat?.score,
+                        cat_level: payload?.cat?.level,
+                        cat_theta: payload?.cat?.theta,
+                        cat_se: payload?.cat?.se,
+                        cat_points: payload?.cat?.points,
+                        cat_current_band: payload?.cat?.currentBand,
+                        cat_updated_at: payload?.cat?.updatedAt ?? new Date().toISOString(),
+                        reading_coins: payload?.readingCoins?.balance,
+                    });
+
+                    const profileRow = await db.user_profile.orderBy("id").first();
+                    if (profileRow?.id !== undefined) {
+                        await db.user_profile.update(profileRow.id, {
+                            cat_pending_difficulty_signal: Number(payload?.session?.difficultySignal ?? 0),
+                        });
+                    }
+                    if (currentArticleUrl) {
+                        await db.articles.update(currentArticleUrl, {
+                            catSelfAssessed: true,
+                            timestamp: Date.now(),
+                        });
+                    }
+                } catch (profilePatchError) {
+                    console.error("Failed to persist CAT difficulty signal locally:", profilePatchError);
+                }
+            })();
         } catch (submitError) {
             console.error(submitError);
+            if (optimisticSettlement) {
+                setCatSettlement(null);
+                setPendingCatSubmission(submissionSnapshot);
+                preparedCatSessionIdRef.current = article.catSessionId;
+                preparedCatSettlementRef.current = preparedSnapshot;
+            }
             setCatNotice(formatCatSubmitErrorMessage(submitError));
             window.setTimeout(() => setCatNotice(null), 4200);
         } finally {
             setIsSubmittingCatAssessment(false);
         }
     }, [article, formatCatStopReason, pendingCatSubmission, pushReadingCoinFx]);
+    useEffect(() => {
+        if (!pendingCatSubmission || !article?.isCatMode || !article.catSessionId) {
+            preparedCatSessionIdRef.current = null;
+            return;
+        }
+        void preparePendingCatSession();
+    }, [article, pendingCatSubmission, preparePendingCatSession]);
     const navEntryInitial = hasRouteEntry
         ? { opacity: 0, y: 16, scale: 0.992, filter: "blur(8px)" }
         : { opacity: 0, y: 10 };
@@ -690,7 +841,7 @@ function ReadingPageContent() {
         await markArticleAsReadCloud(articleUrl, {
             articleKey,
             articleTitle: targetArticle.title,
-            articlePayload: buildArticleCloudPayload(targetArticle, stableTimestamp),
+            articlePayload: buildReadArticleCloudPayload(targetArticle, stableTimestamp),
             readingNotesPayload: noteRows.map(toCloudReadingNote),
             grammarPayload: grammarRows.map((row) => ({
                 key: row.key,
@@ -706,12 +857,13 @@ function ReadingPageContent() {
     }, []);
 
     const scheduleDockHide = useCallback((delay = 1100) => {
+        if (showReadTour) return;
         clearDockHideTimer();
         dockHideTimerRef.current = window.setTimeout(() => {
             setIsDockVisible(false);
             setIsThemeMenuOpen(false);
         }, delay);
-    }, [clearDockHideTimer]);
+    }, [clearDockHideTimer, showReadTour]);
 
     const handleRouteExit = (target: "home" | "battle") => {
         if (routeExitTarget) return;
@@ -1618,6 +1770,7 @@ function ReadingPageContent() {
         if (!article?.isAIGenerated || !article?.difficulty) return null;
         return (
             <button
+                data-tour-target="read-quiz-toggle"
                 onClick={(event) => {
                     event.currentTarget.blur();
                     if (isQuizMode) {
@@ -1745,6 +1898,7 @@ function ReadingPageContent() {
                     <CatSelfAssessmentDialog
                         open
                         isSubmitting={isSubmittingCatAssessment}
+                        isPreparing={isPreparingCatAssessment}
                         onSelect={(value) => {
                             void submitPendingCatSession(value);
                         }}
@@ -1793,8 +1947,15 @@ function ReadingPageContent() {
                                             {catSettlement.rankBefore.primaryLabel} → {catSettlement.rankAfter.primaryLabel}
                                         </p>
                                         <p className="mt-1 text-xs text-slate-500">
-                                            {formatCatStopReason(catSettlement)}
+                                            {catSettlement.alreadyCompleted
+                                                ? "本局此前已完成结算，本次仅回放结果，不重复计分"
+                                                : formatCatStopReason(catSettlement)}
                                         </p>
+                                        {catSettlement.isPendingFinalization && (
+                                            <p className="mt-1 text-[11px] font-medium text-slate-500">
+                                                正在同步最终结算...
+                                            </p>
+                                        )}
                                     </div>
                                     <div className={cn(
                                         "rounded-full border px-4 py-1.5 text-base font-semibold",
@@ -1868,13 +2029,16 @@ function ReadingPageContent() {
                                                     ? CAT_SELF_ASSESSMENT_LABELS[catSettlement.selfAssessment]
                                                     : "未填写自评"}
                                             </p>
+                                            {catSettlement.selfAssessment && catSettlementCorrectionSummary && (
+                                                <p className="mt-1 text-xs text-slate-600">
+                                                    自评倾向 {catSettlementCorrectionSummary.selfSuggestedCorrection > 0 ? "+" : ""}{catSettlementCorrectionSummary.selfSuggestedCorrection} 分
+                                                </p>
+                                            )}
                                         </div>
                                         <div className="rounded-2xl border border-white/70 bg-white/58 px-4 py-3">
                                             <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Correction</p>
                                             <p className="mt-1 text-sm font-semibold text-slate-900">
-                                                {Number(catSettlement.scoreCorrection ?? 0) === 0
-                                                    ? "本局无修正"
-                                                    : `自评修正 ${Number(catSettlement.scoreCorrection ?? 0) > 0 ? "+" : ""}${Number(catSettlement.scoreCorrection ?? 0)}`}
+                                                {catSettlementCorrectionSummary?.label ?? "本局无修正"}
                                             </p>
                                         </div>
                                         <div className="rounded-2xl border border-white/70 bg-white/58 px-4 py-3">
@@ -1952,7 +2116,7 @@ function ReadingPageContent() {
                             <span>返回</span>
                         </button>
 
-                        <div className="ml-auto flex flex-nowrap items-center gap-2">
+                        <div data-tour-target="read-tools" className="ml-auto flex flex-nowrap items-center gap-2">
                             <button
                                 onClick={toggleFocusMode}
                                 className={cn(
@@ -2016,7 +2180,7 @@ function ReadingPageContent() {
                             已读 {Math.round(scrollProgress * 100)}%
                         </div>
 
-                        <div className="hidden items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-active-bg px-3 py-2 text-sm font-black text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] md:flex">
+                        <div data-tour-target="read-coin-balance" className="hidden items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-active-bg px-3 py-2 text-sm font-black text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] md:flex">
                             <span>阅读币</span>
                             <span className="rounded-full border-2 border-theme-border bg-theme-card-bg px-2 py-0.5 text-theme-text">{profile?.reading_coins ?? 0}</span>
                         </div>
@@ -2037,7 +2201,7 @@ function ReadingPageContent() {
                                 DeepSeek IELTS
                             </p>
                         </div>
-                        <div className="relative">
+                        <div data-tour-target="read-tools" className="relative">
                             <button
                                 onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
                                 className={cn(
@@ -2053,7 +2217,7 @@ function ReadingPageContent() {
                                 <AppearanceMenu onClose={() => setIsThemeMenuOpen(false)} />
                             )}
                         </div>
-                        <div className="ml-1 hidden items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-active-bg px-3 py-2 text-sm font-black text-theme-active-text shadow-[0_4px_0_0_var(--theme-shadow)] md:flex">
+                        <div data-tour-target="read-coin-balance" className="ml-1 hidden items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-active-bg px-3 py-2 text-sm font-black text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] md:flex">
                             <span>阅读币</span>
                             <span className="rounded-full bg-theme-card-bg border-2 border-theme-border px-2 py-0.5 text-theme-text">{profile?.reading_coins ?? 0}</span>
                         </div>
@@ -2245,6 +2409,32 @@ function ReadingPageContent() {
                         articleContent={article.textContent || article.content}
                         onClose={() => setIsWritingMode(false)}
                     />
+                )}
+
+                {/* 阅读页全局聚光灯引导 */}
+                {article && !isPretestOverlayOpen && (
+                    <SpotlightTour 
+                        isOpen={showReadTour} 
+                        onClose={handleReadTourComplete} 
+                        onComplete={handleReadTourComplete}
+                        steps={readTourSteps} 
+                    />
+                )}
+
+                {/* 阅读页手动唤起引导触发器 */}
+                {article && !isPretestOverlayOpen && (
+                    <motion.button
+                        initial={{ opacity: 0, scale: 0.8, rotate: -20 }}
+                        animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                        transition={{ delay: 1, type: "spring", stiffness: 300, damping: 20 }}
+                        whileHover={{ scale: 1.1, rotate: 15 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => setShowReadTour(true)}
+                        className="fixed bottom-6 right-6 z-[2800] flex h-14 w-14 items-center justify-center rounded-full border-[3px] border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_6px_0_0_var(--theme-shadow)] active:translate-y-1 active:shadow-[0_2px_0_0_var(--theme-shadow)]"
+                        title="开启阅读向导"
+                    >
+                        <Compass className="h-6 w-6 stroke-[2.5]" />
+                    </motion.button>
                 )}
             </motion.div>
             </div>

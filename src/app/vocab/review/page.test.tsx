@@ -88,6 +88,7 @@ describe("vocab review page", () => {
 
     afterEach(() => {
         document.body.innerHTML = "";
+        vi.useRealTimers();
         vi.unstubAllGlobals();
     });
 
@@ -143,6 +144,58 @@ describe("vocab review page", () => {
         expect(container.textContent).toContain("困难");
         expect(container.textContent).toContain("熟悉");
         expect(container.textContent).toContain("简单");
+
+        await act(async () => {
+            root.unmount();
+        });
+    });
+
+    it("requeues short-interval cards into the current review session after Again", async () => {
+        sortByMock.mockResolvedValue([baseCard]);
+        saveVocabularyMock.mockImplementation(async (item) => item);
+
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        await act(async () => {
+            root.render(<ReviewPage />);
+        });
+
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const revealButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("看看答案"));
+        expect(revealButton).toBeTruthy();
+
+        await act(async () => {
+            revealButton?.click();
+            await new Promise((resolve) => window.setTimeout(resolve, 350));
+        });
+
+        const againButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("重来"));
+        expect(againButton).toBeTruthy();
+
+        vi.useFakeTimers();
+        vi.setSystemTime(Date.now());
+
+        await act(async () => {
+            againButton?.click();
+            await vi.advanceTimersByTimeAsync(200);
+        });
+
+        expect(container.textContent).toContain("短间隔词卡排队中");
+        expect(container.textContent).toContain("01:00");
+        expect(container.textContent).toContain("先关闭本轮");
+        expect(container.textContent).not.toContain("今日已搞定");
+
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(60_000);
+        });
+
+        expect(container.textContent).toContain("relay");
+        expect(container.textContent).not.toContain("短间隔词卡排队中");
 
         await act(async () => {
             root.unmount();

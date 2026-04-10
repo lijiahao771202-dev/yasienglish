@@ -225,6 +225,110 @@ describe("cat session submit route", () => {
         expect(data.session.difficultySignal).toBe(1);
     });
 
+    it("can prepare objective CAT settlement before self-assessment finalization", async () => {
+        const supabase = createSupabaseMock();
+        createServerClientMock.mockResolvedValue(supabase);
+        getServerUserSafelyMock.mockResolvedValue({
+            user: { id: "user-1" },
+            error: null,
+        });
+        rewardReadingCoinsMock.mockResolvedValue({
+            balance: 40,
+            delta: 0,
+            applied: false,
+        });
+
+        const response = await POST(buildRequest({
+            mode: "prepare",
+            sessionId: "session-1",
+            responses: [
+                { itemId: "q1", order: 1, correct: true, latencyMs: 8000, itemDifficulty: -0.2, answer: "A" },
+                { itemId: "q2", order: 2, correct: true, latencyMs: 8500, itemDifficulty: -0.1, answer: "B" },
+                { itemId: "q3", order: 3, correct: false, latencyMs: 9000, itemDifficulty: 0.3, answer: "C" },
+            ],
+            qualityTier: "ok",
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.prepared).toBe(true);
+        expect(data.session.stage).toBe("prepared");
+        expect(typeof data.session.objectiveDelta).toBe("number");
+        expect(typeof data.session.systemAssessment).toBe("string");
+        expect(data.animationPayload.scoreBefore).toBeTypeOf("number");
+        expect(data.animationPayload.scoreAfter).toBeTypeOf("number");
+        expect(supabase.rpc).not.toHaveBeenCalled();
+    });
+
+    it("can finalize from stored objective settlement without re-sending responses", async () => {
+        const supabase = createSupabaseMock({
+            session: {
+                status: "started",
+                session_blueprint: {
+                    settlement: {
+                        prepared: true,
+                        finalized: false,
+                        objectiveDelta: -48,
+                        systemAssessment: "too_hard",
+                        objectiveGrowth: {
+                            performance: 0.4,
+                            delta: -48,
+                            scoreAfter: 1152,
+                            levelAfter: 2,
+                            thetaAfter: -0.4963,
+                            nextBand: 3,
+                            pointsDelta: 5,
+                        },
+                        metrics: {
+                            accuracy: 0.34,
+                            speedScore: 0.82,
+                            stabilityScore: 0.72,
+                            readingMs: 180000,
+                            quizCorrect: 1,
+                            quizTotal: 3,
+                            seBefore: 1.1,
+                            seAfter: 0.61,
+                            targetSe: 0.56,
+                            stopReason: "target_se_reached",
+                            itemCount: 3,
+                            policyUsed: {
+                                minItems: 3,
+                                maxItems: 5,
+                                targetSe: 0.56,
+                            },
+                            qualityTier: "ok",
+                            challengeRatio: 0.33,
+                        },
+                    },
+                },
+            },
+        });
+        createServerClientMock.mockResolvedValue(supabase);
+        getServerUserSafelyMock.mockResolvedValue({
+            user: { id: "user-1" },
+            error: null,
+        });
+        rewardReadingCoinsMock.mockResolvedValue({
+            balance: 46,
+            delta: 6,
+            applied: true,
+        });
+
+        const response = await POST(buildRequest({
+            mode: "finalize",
+            sessionId: "session-1",
+            selfAssessment: "easy",
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.session.objectiveDelta).toBe(-48);
+        expect(data.session.systemAssessment).toBe("too_hard");
+        expect(data.session.selfAssessment).toBe("easy");
+        expect(data.session.scoreCorrection).toBe(6);
+        expect(data.session.delta).toBe(-42);
+    });
+
     it("returns a JSON 500 instead of crashing when an unexpected submit error is thrown", async () => {
         getServerUserSafelyMock.mockRejectedValue(new TypeError("fetch failed"));
 

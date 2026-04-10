@@ -10,6 +10,7 @@ import {
 interface CatSelfAssessmentDialogProps {
     open: boolean;
     isSubmitting: boolean;
+    isPreparing?: boolean;
     onSelect: (value: CatSelfAssessment) => void;
     onClose: () => void;
 }
@@ -43,6 +44,7 @@ const OPTIONS: Array<{
 export function CatSelfAssessmentDialog({
     open,
     isSubmitting,
+    isPreparing = false,
     onSelect,
     onClose,
 }: CatSelfAssessmentDialogProps) {
@@ -77,6 +79,11 @@ export function CatSelfAssessmentDialog({
                             <p className="mt-2 text-sm leading-6 text-slate-600">
                                 系统会先按客观表现结算，再用你的主观体感做一层微调。
                             </p>
+                            {isPreparing && !isSubmitting && (
+                                <p className="mt-2 text-xs font-medium text-slate-500">
+                                    系统原判计算中，你可以先做选择。
+                                </p>
+                            )}
 
                             <div className="mt-5 grid gap-3">
                                 {OPTIONS.map((option) => (

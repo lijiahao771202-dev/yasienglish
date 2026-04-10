@@ -378,6 +378,7 @@ export function VocabReviewEditableCard({
                         {onArchive ? (
                             <button
                                 type="button"
+                                data-tour-target="review-archive-btn"
                                 onClick={handleArchive}
                                 disabled={isSaving || isGraduating}
                                 className="flex h-8 items-center gap-1.5 rounded-full bg-theme-primary-bg border-2 border-theme-border text-theme-primary-text px-3 text-[12px] font-bold shadow-sm transition hover:scale-105 active:scale-95 disabled:opacity-60 disabled:scale-100"
@@ -609,6 +610,7 @@ export function VocabReviewEditableCard({
                                                                     <div className="shrink-0 flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity pt-0.5">
                                                                         <button
                                                                             type="button"
+                                                                            data-tour-target={groupIndex === 0 && index === 0 ? "review-star-btn" : undefined}
                                                                             onClick={() => handleHighlightToggle(meaningObj.text)}
                                                                             className={cn(
                                                                                 "flex h-6 w-6 items-center justify-center rounded-[8px] transition active:scale-95",
@@ -619,6 +621,7 @@ export function VocabReviewEditableCard({
                                                                         </button>
                                                                         <button
                                                                             type="button"
+                                                                            data-tour-target={groupIndex === 0 && index === 0 ? "review-edit-delete" : undefined}
                                                                             onClick={() => handleMeaningRemove(groupIndex, meaningObj.id)}
                                                                             aria-label={`删除释义 ${group.pos} ${index + 1}`}
                                                                             className="flex h-6 w-6 items-center justify-center rounded-[8px] text-red-400 transition hover:bg-red-50 hover:text-red-500 active:scale-95 shadow-sm border border-theme-border bg-theme-base-bg"

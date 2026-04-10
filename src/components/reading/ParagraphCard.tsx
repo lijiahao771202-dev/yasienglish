@@ -2777,8 +2777,9 @@ export function ParagraphCard({
                 </div>
 
                 {/* Inline Actions Bar (Visible on Hover) */}
-                <div className="h-8 flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="h-8 flex items-center gap-3 opacity-0 group-hover:opacity-100 [.read-tour-active_&]:opacity-100 transition-opacity">
                     <button
+                        data-tour-target={index === 0 ? "paragraph-listen" : undefined}
                         onClick={() => setIsSpeakingOpen(!isSpeakingOpen)}
                         className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", isSpeakingOpen ? "bg-red-100 text-red-600" : "text-stone-400 hover:bg-stone-100 hover:text-red-500")}
                     >
@@ -2786,6 +2787,7 @@ export function ParagraphCard({
                     </button>
 
                     <button
+                        data-tour-target={index === 0 ? "paragraph-translate" : undefined}
                         onClick={() => handleTranslate(false)}
                         className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", translation ? "bg-rose-100 text-rose-600" : "text-stone-400 hover:bg-stone-100 hover:text-stone-600")}
                     >
@@ -2794,6 +2796,7 @@ export function ParagraphCard({
                     </button>
 
                     <button
+                        data-tour-target={index === 0 ? "paragraph-grammar" : undefined}
                         onClick={() => handleGrammarAnalysis(false)}
                         className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", grammarAnalysis ? "bg-orange-100 text-orange-600" : "text-stone-400 hover:bg-stone-100 hover:text-orange-500")}
                     >
@@ -2815,6 +2818,7 @@ export function ParagraphCard({
                     </button>
 
                     <button
+                        data-tour-target={index === 0 ? "paragraph-ask" : undefined}
                         onClick={() => setIsAskOpen(!isAskOpen)}
                         className={cn("flex items-center gap-1 text-xs font-medium transition-colors px-2 py-1 rounded-md", isAskOpen ? "bg-blue-100 text-blue-600" : "text-stone-400 hover:bg-stone-100 hover:text-blue-500")}
                     >

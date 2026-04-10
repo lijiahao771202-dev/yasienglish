@@ -3,6 +3,8 @@ import {
     getCatDifficultySignal,
     getCatDifficultyScoreOffset,
     getCatSelfAssessmentScoreCorrection,
+    getCatSelfAssessmentSuggestedCorrection,
+    getCatScoreCorrectionSummary,
     getCatSystemAssessment,
 } from "./cat-self-assessment";
 
@@ -37,9 +39,34 @@ describe("cat self assessment", () => {
     it("uses the agreed score-correction table", () => {
         expect(getCatSelfAssessmentScoreCorrection("too_easy", "easy")).toBe(12);
         expect(getCatSelfAssessmentScoreCorrection("too_easy", "just_right")).toBe(6);
+        expect(getCatSelfAssessmentScoreCorrection("too_easy", "hard")).toBe(-6);
         expect(getCatSelfAssessmentScoreCorrection("matched", "hard")).toBe(-6);
         expect(getCatSelfAssessmentScoreCorrection("too_hard", "hard")).toBe(-12);
-        expect(getCatSelfAssessmentScoreCorrection("too_hard", "easy")).toBe(0);
+        expect(getCatSelfAssessmentScoreCorrection("too_hard", "easy")).toBe(6);
+    });
+
+    it("keeps a visible self-assessment tendency even when the applied correction is zero", () => {
+        expect(getCatSelfAssessmentSuggestedCorrection("easy")).toBe(12);
+        expect(getCatSelfAssessmentSuggestedCorrection("just_right")).toBe(0);
+        expect(getCatSelfAssessmentSuggestedCorrection("hard")).toBe(-12);
+    });
+
+    it("explains zero applied correction when self-assessment conflicts with the system", () => {
+        expect(getCatScoreCorrectionSummary({
+            selfAssessment: "easy",
+            scoreCorrection: 0,
+        })).toEqual({
+            selfSuggestedCorrection: 12,
+            label: "最终修正 0 分（与系统判断冲突）",
+        });
+
+        expect(getCatScoreCorrectionSummary({
+            selfAssessment: "hard",
+            scoreCorrection: -12,
+        })).toEqual({
+            selfSuggestedCorrection: -12,
+            label: "最终修正 -12 分",
+        });
     });
 
     it("weights self 60 and system 40 for next-session difficulty signal", () => {
