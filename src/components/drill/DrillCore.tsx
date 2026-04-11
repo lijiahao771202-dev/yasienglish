@@ -7,12 +7,13 @@ import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import * as Diff from 'diff';
 import confetti from 'canvas-confetti';
+import stringSimilarity from "string-similarity";
 import { WordPopup, PopupState } from "../reading/WordPopup";
-import { ListeningShadowingControls } from "../reading/ListeningShadowingControls";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 import { useIPA } from "@/hooks/useIPA";
 import { db } from "@/lib/db";
 import { getRank } from "@/lib/rankUtils";
+import { requestSemanticGrade } from "@/lib/bge-client";
 import { DeathFX } from "./DeathFX";
 import { BossScoreReveal } from "./BossScoreReveal";
 import { RouletteOverlay } from "./RouletteOverlay";
@@ -158,8 +159,8 @@ interface DrillData {
         cefr: string;
         expectedWordRange: { min: number; max: number };
         actualWordCount: number;
-        isValid: boolean;
-        status: 'TOO_EASY' | 'TOO_HARD' | 'MATCHED';
+        isValid: boolean | null;
+        status: 'TOO_EASY' | 'TOO_HARD' | 'MATCHED' | 'UNVALIDATED';
         aiSelfReport?: {
             tier: string;
             cefr: string;
@@ -681,6 +682,7 @@ interface DrillFeedback {
     transcript?: string;
     summary_cn?: string;
     tips_cn?: string[];
+    _isLocalEvaluation?: boolean;
     engine?: string;
     engine_version?: string;
     word_results?: PronunciationWordResult[];
@@ -1680,6 +1682,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
     const [drillFeedback, setDrillFeedback] = useState<DrillFeedback | null>(null);
     const [rebuildFeedback, setRebuildFeedback] = useState<RebuildFeedbackState | null>(null);
     const [eloSplash, setEloSplash] = useState<{ uid: string, delta: number } | null>(null);
+    const localEloChangeRef = useRef<number>(0);
 
     const [showRebuildTour, setShowRebuildTour] = useState(false);
 
@@ -5129,7 +5132,8 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
         setGuidedRevealReady(false);
     }, [guidedScript]);
 
-    const handleSubmitDrill = async (submittedTranslation?: string) => {
+    const handleSubmitDrill = async (submittedTranslation?: string, forceAI: boolean = false) => {
+        if (!forceAI) localEloChangeRef.current = 0;
         if (showGacha) return;
         const translationToScore = (submittedTranslation ?? userTranslation).trim();
         if (!drillData) return;
@@ -5181,37 +5185,78 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 ? "dictation"
                 : "translation";
             const scoringInputSource = isListeningFamilyMode && !isDictationMode ? "voice" : "keyboard";
-            const response = await fetch("/api/ai/score_translation", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    user_translation: translationToScore,
-                    reference_english: drillData.reference_english,
-                    original_chinese: drillData.chinese,
-                    current_elo: activeElo ?? DEFAULT_BASE_ELO,
-                    mode: scoreMode,
-                    input_source: scoringInputSource,
-                    teaching_mode: teachingMode,
-                }),
-            });
-            const data = await response.json();
+            
+            let data: DrillFeedback | null = null;
+            let responseOk = true;
+
+            // --- HYBRID EVALUATION SYSTEM: LOCAL PASS ---
+            if (scoreMode === "translation" && !forceAI) {
+                const normalizedUserForSim = translationToScore.toLowerCase().replace(/[.,!?;]+$/, '').replace(/\s+/g, ' ').trim();
+                const normalizedRefForSim = drillData.reference_english.toLowerCase().replace(/[.,!?;]+$/, '').replace(/\s+/g, ' ').trim();
+                const rawSimilarity = stringSimilarity.compareTwoStrings(normalizedUserForSim, normalizedRefForSim);
+
+                if (rawSimilarity >= 0.95) {
+                    data = {
+                        score: 10,
+                        judge_reasoning: "完全契合！(极速本地裁判)",
+                        feedback: { translation_tips: ["完美命中考点和语法结构！(0胶囊消耗)"], encouragement: "本地极速评估：10满分！" },
+                        summary_cn: "与标准参考句高度吻合。",
+                        tips_cn: [],
+                        _isLocalEvaluation: true
+                    } as DrillFeedback;
+                } else if (rawSimilarity > 0.05) {
+                    // FLAWED LOCAL SCORE, CAN APPEAL
+                    data = {
+                        score: Number((rawSimilarity * 10).toFixed(1)),
+                        judge_reasoning: `与标准答案偏移，疑似漏词或语法有误 (字面匹配率 ${Math.round(rawSimilarity * 100)}%)。`,
+                        feedback: {
+                            translation_tips: [
+                                "看起来你使用了不同的词汇或句型，或者有明显的语法漏洞。",
+                                "如果这是被误判的正宗同义句，请点 AI 裁判呼叫大模型外援评审！"
+                            ],
+                            encouragement: "觉得自己是对的？点 AI 裁判申诉！"
+                        },
+                        summary_cn: "与原句不匹配，若确认无语法问题请向 AI 申诉。",
+                        tips_cn: [],
+                        _isLocalEvaluation: true
+                    } as DrillFeedback;
+                }
+            }
+
+            if (!data) {
+                const response = await fetch("/api/ai/score_translation", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        user_translation: translationToScore,
+                        reference_english: drillData.reference_english,
+                        original_chinese: drillData.chinese,
+                        current_elo: activeElo ?? DEFAULT_BASE_ELO,
+                        mode: scoreMode,
+                        input_source: scoringInputSource,
+                        teaching_mode: teachingMode,
+                    }),
+                });
+                responseOk = response.ok;
+                data = await response.json();
+            }
 
             // Guard: If API returned an error (no score), show error feedback
-            if (!response.ok || data.error || data.score === undefined || data.score === null) {
-                console.error("[DrillCore] Scoring API failed:", data.error || data.details || "No score returned");
+            if (!responseOk || (data && (data as any).error) || !data || data.score === undefined || data.score === null) {
+                console.error("[DrillCore] Scoring API failed:", (data as any)?.error || (data as any)?.details || "No score returned");
                 setDrillFeedback({
                     score: -1,
                     judge_reasoning: isListeningMode
-                        ? (data.details || "本地发音评分暂时不可用，请重试。")
+                        ? ((data as any)?.details || "本地发音评分暂时不可用，请重试。")
                         : "评分服务暂时不可用，请重试。",
                     feedback: isListeningMode
                         ? {
-                            listening_tips: [data.details || "本地发音评分暂时不可用，请重试。"],
+                            listening_tips: [(data as any)?.details || "本地发音评分暂时不可用，请重试。"],
                             encouragement: "录音会保留，调整后可以重新提交。",
                         }
                         : ["AI 评分接口超时或出错，请再试一次。"],
-                    summary_cn: isListeningMode ? (data.details || "本地发音评分暂时不可用，请重试。") : undefined,
-                    tips_cn: isListeningMode ? [data.details || "本地发音评分暂时不可用，请重试。"] : undefined,
+                    summary_cn: isListeningMode ? ((data as any)?.details || "本地发音评分暂时不可用，请重试。") : undefined,
+                    tips_cn: isListeningMode ? [(data as any)?.details || "本地发音评分暂时不可用，请重试。"] : undefined,
                     improved_version: "",
                     word_results: [],
                     _error: true,
@@ -5256,7 +5301,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
             }
 
             if (data.score !== undefined) {
-                if (hasRatedDrill) {
+                if (hasRatedDrill && !forceAI) {
                     setEloChange(0);
                     return;
                 }
@@ -5324,6 +5369,17 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                 const challengeElo = drillData?._difficultyMeta?.requestedElo ?? activeElo ?? DEFAULT_BASE_ELO;
                 const result = calculateAdvancedElo(activeElo ?? DEFAULT_BASE_ELO, challengeElo, data.score, activeStreak);
                 let change = result.total;
+
+                // --- ELO CORRECTION FOR AI APPEAL ---
+                // If this is an AI Appeal overriding a flawed local evaluation, we mathematically revert the previous local penalty
+                // from the computed net change so the user's Elo correctly reflects the +25 or +30 they deserve for the AI 10/10 victory.
+                if (forceAI && localEloChangeRef.current !== 0) {
+                    change = change - localEloChangeRef.current;
+                    localEloChangeRef.current = 0;
+                } else if (data._isLocalEvaluation && data.score < 9.5) {
+                    localEloChangeRef.current = change;
+                }
+
                 let newStreak = activeStreak;
 
                 // --- GAMBLING LOGIC (Crimson Roulette) ---
@@ -7813,20 +7869,13 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
 
     const handlePredictionRequest = useCallback(() => {
         if (learningSessionActive) return false;
-        if (getItemCount('capsule') <= 0) {
-            setIsHintShake(true);
-            setTimeout(() => setIsHintShake(false), 500);
-            return false;
-        }
-
         return true;
-    }, [getItemCount, learningSessionActive]);
+    }, [learningSessionActive]);
 
     const handlePredictionShown = useCallback(() => {
         if (learningSessionActive) return;
-        applyEconomyPatch({ itemDelta: { capsule: -1 } });
-        pushEconomyFx({ kind: 'item_consume', itemId: 'capsule', amount: 1, message: '已消耗 1 胶囊', source: 'tab' });
-    }, [applyEconomyPatch, learningSessionActive, pushEconomyFx]);
+        // Edge AI Tab prediction is 100% free locally
+    }, [learningSessionActive]);
 
     const handleTranslationReferencePlayback = async () => {
         if (learningSessionActive) return false;
@@ -11486,7 +11535,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                     ? "text-emerald-700/80 hover:bg-emerald-50"
                                                     : drillData._difficultyMeta.status === 'TOO_EASY'
                                                         ? "text-amber-700/80 hover:bg-amber-50"
-                                                        : "text-rose-700/80 hover:bg-rose-50"
+                                                        : drillData._difficultyMeta.status === 'TOO_HARD'
+                                                            ? "text-rose-700/80 hover:bg-rose-50"
+                                                            : "text-slate-600/80 hover:bg-slate-100/70"
                                             )}>
                                                 <span>{drillData._difficultyMeta.actualWordCount}词</span>
                                             </div>
@@ -12378,7 +12429,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                     referenceAnswer={drillData?.reference_english}
                                                                     onPredictionRequest={handlePredictionRequest}
                                                                     onPredictionShown={handlePredictionShown}
-                                                                    predictionCostText="消耗 1 胶囊获取提示"
+                                                                    predictionCostText="Edge AI (0 胶囊)"
                                                                     fullReferenceGhostText={fullReferenceHint.text}
                                                                     fullReferenceGhostVersion={fullReferenceHint.version}
                                                                     disabled={isSubmittingDrill || learningSessionActive}
@@ -12576,7 +12627,17 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                     </motion.div>
                                                                 );
                                                             })()}
-                                                            {eloChange !== null && eloChange !== 0 ? (
+                                                            {currentDrillFeedback._isLocalEvaluation && currentDrillFeedback.score < 9.5 && (
+                                                                <button
+                                                                    onClick={() => void handleSubmitDrill(undefined, true)}
+                                                                    disabled={isSubmittingDrill}
+                                                                    className="flex items-center gap-2 px-4 py-2 mt-4 rounded-xl border border-indigo-200 bg-indigo-50/50 text-indigo-600 hover:bg-indigo-100/50 transition-all font-bold text-sm shadow-sm active:scale-95 z-20"
+                                                                >
+                                                                    <Wand2 className={cn("w-4 h-4", isSubmittingDrill && "animate-spin")} />
+                                                                    {isSubmittingDrill ? "AI 裁判介入中..." : "我不服！🤖 求助 AI 裁判 (消耗1胶囊)"}
+                                                                </button>
+                                                            )}
+                                                            {eloChange !== null ? (
                                                                 <div className="flex flex-col items-center animate-in slide-in-from-bottom-2 fade-in duration-500 delay-150 mt-4 w-full max-w-sm">
                                                                     {/* Rank Progress Bar */}
                                                                     {(() => {
@@ -12622,7 +12683,9 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                                     ? "text-white shadow-lg"
                                                                                     : eloChange > 0
                                                                                         ? "bg-emerald-50 text-emerald-600 border-emerald-100"
-                                                                                        : "bg-rose-50 text-rose-600 border-rose-100"
+                                                                                        : eloChange < 0
+                                                                                            ? "bg-rose-50 text-rose-600 border-rose-100"
+                                                                                            : "bg-stone-50 text-stone-600 border-stone-200"
                                                                             )}
                                                                             style={(eloBreakdown?.streakBonus || (eloChange > 0 && streakTier > 0))
                                                                                 ? {
@@ -12632,7 +12695,7 @@ export function DrillCore({ context, initialMode = "translation", listeningSourc
                                                                                 }
                                                                                 : undefined}
                                                                         >
-                                                                            <TrendingUp className={cn("w-4 h-4", eloChange < 0 && "rotate-180")} />
+                                                                            <TrendingUp className={cn("w-4 h-4", eloChange < 0 && "rotate-180", eloChange === 0 && "rotate-90 opacity-40")} />
                                                                             <span>{eloChange > 0 ? "+" : ""}{eloChange} Elo</span>
 
                                                                             {/* Streak Bonus Fire Effect */}
