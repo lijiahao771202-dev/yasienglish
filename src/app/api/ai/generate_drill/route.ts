@@ -2,14 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { deepseek } from "@/lib/deepseek";
 import {
     buildTranslationDifficultyScale,
-    buildTranslationRetryInstruction,
     countWords,
     getTranslationDifficultyTarget,
-    validateTranslationDifficulty,
 } from "@/lib/translationDifficulty";
 
 type DrillMode = "translation" | "listening";
 type DifficultyStatus = "TOO_EASY" | "TOO_HARD" | "MATCHED";
+type DrillDifficultyStatus = DifficultyStatus | "UNVALIDATED";
 
 type DifficultyExpectation = {
     min: number;
@@ -456,9 +455,9 @@ Output strictly in JSON format:
             `.trim();
         };
 
-        const maxDifficultyAttempts = 3;
+        const maxDifficultyAttempts = isListening ? 3 : 1;
         let lastGeneratedData: Record<string, unknown> | null = null;
-        let lastDifficultyStatus: DifficultyStatus = "MATCHED";
+        let lastDifficultyStatus: DrillDifficultyStatus = "UNVALIDATED";
         let lastActualWordCount = 0;
         let finalExpected: DifficultyExpectation;
         let finalListeningTarget: ListeningFeatureTarget | null = listeningTarget;
@@ -518,32 +517,13 @@ Output strictly in JSON format:
                 continue;
             }
 
-            const validation = validateTranslationDifficulty(generatedText, currentElo);
-            finalExpected = {
-                min: validation.wordRange.min,
-                max: validation.wordRange.max,
-                tier: validation.tier.tier,
-                cefr: validation.tier.cefr,
-            };
-            lastActualWordCount = validation.actualWordCount;
-            lastDifficultyStatus = validation.status;
+            lastActualWordCount = countWords(generatedText);
+            lastDifficultyStatus = "UNVALIDATED";
 
             console.log(`[Difficulty Validation] Elo: ${currentElo}, Mode: ${drillMode}`);
-            console.log(`  Target: ${validation.wordRange.min}-${validation.wordRange.max} words (${finalExpected.tier} / ${finalExpected.cefr})`);
-            console.log(`  Validation: ${validation.validationRange.min}-${validation.validationRange.max} words after tolerance`);
+            console.log(`  Target: ${finalExpected.min}-${finalExpected.max} words (${finalExpected.tier} / ${finalExpected.cefr})`);
             console.log(`  Actual: ${lastActualWordCount} words | Status: ${lastDifficultyStatus}`);
-
-            if (validation.status === "MATCHED" || generationAttempt === maxDifficultyAttempts) {
-                break;
-            }
-
-            retryInstruction = buildTranslationRetryInstruction({
-                attempt: generationAttempt,
-                maxAttempts: maxDifficultyAttempts,
-                actualWordCount: validation.actualWordCount,
-                status: validation.status,
-                target: validation,
-            });
+            break;
         }
 
         if (!lastGeneratedData) {
@@ -581,7 +561,7 @@ Output strictly in JSON format:
                 cefr: finalExpected.cefr,
                 expectedWordRange: { min: finalExpected.min, max: finalExpected.max },
                 actualWordCount: lastActualWordCount,
-                isValid: lastDifficultyStatus === "MATCHED",
+                isValid: isListening ? lastDifficultyStatus === "MATCHED" : null,
                 status: lastDifficultyStatus,
                 aiSelfReport: aiReport ? {
                     tier: aiReport.tier,

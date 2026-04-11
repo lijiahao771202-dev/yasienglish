@@ -59,54 +59,37 @@ describe("generate_drill route", () => {
         vi.restoreAllMocks();
     });
 
-    it("retries translation generation when the first sentence is too short", async () => {
-        createCompletionMock
-            .mockResolvedValueOnce(
-                createCompletionPayload({
-                    chinese: "第一题",
-                    target_english_vocab: ["engine"],
-                    reference_english: "I checked the engine today",
-                    _scenario_topic: "修车",
-                    _ai_difficulty_report: {
-                        tier: "白银",
-                        cefr: "A2+",
-                        word_count: "5",
-                        target_range: "8-10",
-                    },
-                }),
-            )
-            .mockResolvedValueOnce(
-                createCompletionPayload({
-                    chinese: "第二题",
-                    target_english_vocab: ["engine"],
-                    reference_english: "I checked the car engine quite carefully today",
-                    _scenario_topic: "修车",
-                    _ai_difficulty_report: {
-                        tier: "白银",
-                        cefr: "A2+",
-                        word_count: "8",
-                        target_range: "8-10",
-                    },
-                }),
-            );
+    it("returns translation drill on the first generation without post-generation retry validation", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletionPayload({
+                chinese: "第一题",
+                target_english_vocab: ["engine"],
+                reference_english: "I checked the engine today",
+                _scenario_topic: "修车",
+                _ai_difficulty_report: {
+                    tier: "白银",
+                    cefr: "A2+",
+                    word_count: "5",
+                    target_range: "8-10",
+                },
+            }),
+        );
 
         const response = await POST(buildRequest());
         const data = await response.json();
 
-        expect(createCompletionMock).toHaveBeenCalledTimes(2);
+        expect(createCompletionMock).toHaveBeenCalledTimes(1);
         expect(
-            createCompletionMock.mock.calls[1][0].messages[1].content,
-        ).toContain("RETRY FEEDBACK (1/3):");
-        expect(
-            createCompletionMock.mock.calls[1][0].messages[1].content,
-        ).toContain("Previous word count: 5");
-        expect(data._difficultyMeta.status).toBe("MATCHED");
+            createCompletionMock.mock.calls[0][0].messages[1].content,
+        ).not.toContain("RETRY FEEDBACK");
+        expect(data._difficultyMeta.status).toBe("UNVALIDATED");
         expect(data._difficultyMeta.expectedWordRange).toEqual({ min: 8, max: 10 });
-        expect(data._difficultyMeta.actualWordCount).toBe(8);
+        expect(data._difficultyMeta.actualWordCount).toBe(5);
+        expect(data._difficultyMeta.isValid).toBeNull();
     });
 
-    it("stops translation retries after three failed difficulty attempts", async () => {
-        createCompletionMock.mockResolvedValue(
+    it("does not rerun translation generation for out-of-range word counts", async () => {
+        createCompletionMock.mockResolvedValueOnce(
             createCompletionPayload({
                 chinese: "超长题目",
                 target_english_vocab: ["policy"],
@@ -124,15 +107,9 @@ describe("generate_drill route", () => {
         const response = await POST(buildRequest());
         const data = await response.json();
 
-        expect(createCompletionMock).toHaveBeenCalledTimes(3);
-        expect(
-            createCompletionMock.mock.calls[1][0].messages[1].content,
-        ).toContain("Next attempt MUST stay within 7-11 words.");
-        expect(
-            createCompletionMock.mock.calls[1][0].messages[1].content,
-        ).toContain("remove any passive voice, relative clause, or extra modifier");
-        expect(data._difficultyMeta.status).toBe("TOO_HARD");
-        expect(data._difficultyMeta.isValid).toBe(false);
+        expect(createCompletionMock).toHaveBeenCalledTimes(1);
+        expect(data._difficultyMeta.status).toBe("UNVALIDATED");
+        expect(data._difficultyMeta.isValid).toBeNull();
         expect(data._difficultyMeta.actualWordCount).toBe(13);
     });
 
