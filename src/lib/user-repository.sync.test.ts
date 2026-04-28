@@ -59,9 +59,11 @@ function createDbMock() {
             read_articles: {
                 clear: vi.fn(async () => undefined),
                 bulkPut: vi.fn(async () => undefined),
+                delete: vi.fn(async () => undefined),
             },
             articles: {
                 bulkPut: vi.fn(async () => undefined),
+                delete: vi.fn(async () => undefined),
             },
             reading_notes: {
                 clear: vi.fn(async () => undefined),
@@ -107,8 +109,12 @@ function createDbMock() {
                 get: vi.fn(async (key: string) => (key === "active_user_id" ? { value: "user-1" } : undefined)),
                 put: vi.fn(async () => undefined),
             },
-            transaction: vi.fn(async (_mode: string, _tables: unknown, callback: () => Promise<void>) => {
-                await callback();
+            transaction: vi.fn(async (_mode: string, ...args: unknown[]) => {
+                const callback = args.at(-1);
+                if (typeof callback !== "function") {
+                    throw new Error("Missing transaction callback");
+                }
+                await (callback as () => Promise<void>)();
             }),
         },
         userProfileFirst,
@@ -265,5 +271,28 @@ describe("user repository error-ledger sync regressions", () => {
         expect(scheduleSync).toHaveBeenCalledTimes(1);
 
         randomUuidSpy.mockRestore();
+    });
+
+    it("queues generated article deletes in the same transaction as local removal", async () => {
+        const { mod, dbMock, syncState } = await loadUserRepository();
+
+        await mod.deleteReadArticleSnapshot(" https://example.com/generated-lesson ");
+
+        expect(dbMock.db.transaction).toHaveBeenCalledTimes(1);
+        expect(dbMock.db.articles.delete).toHaveBeenCalledWith("https://example.com/generated-lesson");
+        expect(dbMock.db.read_articles.delete).toHaveBeenCalledWith("https://example.com/generated-lesson");
+        expect(dbMock.db.sync_outbox.add).toHaveBeenCalledWith(
+            expect.objectContaining({
+                entity: "read_articles",
+                operation: "delete",
+                record_key: "https://example.com/generated-lesson",
+                payload: {
+                    user_id: "user-1",
+                    url: "https://example.com/generated-lesson",
+                },
+                sync_status: "pending",
+            }),
+        );
+        expect(syncState.setPhase).toHaveBeenCalledWith("syncing");
     });
 });

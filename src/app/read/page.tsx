@@ -55,6 +55,7 @@ import {
     buildPreparedCatSettlementPreview,
     type PreparedCatSettlementSnapshot,
 } from "@/lib/cat-settlement-preview";
+import { AI_PROVIDER_RATE_LIMIT_ERROR_CODE } from "@/lib/ai-provider-errors";
 
 interface ArticleData {
     title: string;
@@ -1511,6 +1512,14 @@ function ReadingPageContent() {
                 });
                 const payload = await response.json().catch(() => ({}));
                 if (!response.ok) {
+                    if (payload?.errorCode === AI_PROVIDER_RATE_LIMIT_ERROR_CODE) {
+                        console.warn("Quiz prefetch delayed:", payload?.error || "AI provider rate limited");
+                        quizPrefetchRef.current[quizCacheKey] = false;
+                        window.setTimeout(() => {
+                            forceBackgroundRefresh((value) => value + 1);
+                        }, 2600);
+                        return;
+                    }
                     throw new Error(payload?.error || "Quiz prefetch failed");
                 }
 

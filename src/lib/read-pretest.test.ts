@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { buildReadPretestBundle, extractReadPretestCandidates } from "./read-pretest";
 
 describe("read-pretest candidates", () => {
+    it("returns no candidates when article text is missing", () => {
+        expect(extractReadPretestCandidates(undefined as unknown as string)).toEqual([]);
+    });
+
     it("extracts stable sentence candidates from article text", () => {
         const text = [
             "Many students face cost-of-living pressures, which force them to rethink daily spending.",
@@ -18,6 +22,17 @@ describe("read-pretest candidates", () => {
 });
 
 describe("read-pretest bundle", () => {
+    it("does not crash while article text is still loading", () => {
+        expect(buildReadPretestBundle({
+            articleText: undefined as unknown as string,
+            articleKey: "article://loading",
+        })).toEqual({
+            listening: [],
+            writing: [],
+            translation: [],
+        });
+    });
+
     it("builds deterministic listening/writing/translation sets by article key", () => {
         const text = [
             "Sentence one is crafted for listening practice in a warm-up test.",

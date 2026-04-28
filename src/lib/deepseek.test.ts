@@ -436,6 +436,80 @@ describe("deepseek provider resolution", () => {
         }));
     });
 
+    it("serializes GitHub Models completions to avoid user-concurrency limits", async () => {
+        vi.resetModules();
+        process.env.GITHUB_MODELS_API_KEY = "github-env-key";
+        cookiesMock.mockResolvedValue(buildCookieStore({
+            yasi_ai_provider: "github",
+            yasi_github_model: "openai/gpt-4.1",
+        }));
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+            },
+        });
+
+        let releaseFirst!: () => void;
+        openAiCreateMock
+            .mockImplementationOnce(async () => {
+                await new Promise<void>((resolve) => {
+                    releaseFirst = resolve;
+                });
+                return { choices: [{ message: { content: "first" } }] };
+            })
+            .mockResolvedValueOnce({ choices: [{ message: { content: "second" } }] });
+
+        const { createDeepSeekClientForCurrentUserWithOverride } = await import("./deepseek");
+        const client = await createDeepSeekClientForCurrentUserWithOverride({});
+
+        const first = client.chat.completions.create({
+            model: "deepseek-chat",
+            messages: [{ role: "user", content: "First" }],
+        } as never);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(openAiCreateMock).toHaveBeenCalledTimes(1);
+
+        const second = client.chat.completions.create({
+            model: "deepseek-chat",
+            messages: [{ role: "user", content: "Second" }],
+        } as never);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(openAiCreateMock).toHaveBeenCalledTimes(1);
+
+        releaseFirst();
+        await Promise.all([first, second]);
+        expect(openAiCreateMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("retries transient GitHub Models 429 responses", async () => {
+        vi.resetModules();
+        process.env.GITHUB_MODELS_API_KEY = "github-env-key";
+        cookiesMock.mockResolvedValue(buildCookieStore({
+            yasi_ai_provider: "github",
+            yasi_github_model: "openai/gpt-4.1",
+        }));
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+            },
+        });
+        openAiCreateMock
+            .mockRejectedValueOnce(Object.assign(new Error("429 Too many requests"), { status: 429 }))
+            .mockResolvedValueOnce({ choices: [{ message: { content: "OK" } }] });
+
+        const { createDeepSeekClientForCurrentUserWithOverride } = await import("./deepseek");
+        const client = await createDeepSeekClientForCurrentUserWithOverride({});
+
+        await client.chat.completions.create({
+            model: "deepseek-chat",
+            messages: [{ role: "user", content: "Ping" }],
+        } as never);
+
+        expect(openAiCreateMock).toHaveBeenCalledTimes(2);
+    });
+
     it("uses disabled thinking for DeepSeek connection tests by default", async () => {
         process.env.DEEPSEEK_API_KEY = "deepseek-env";
         openAiCreateMock.mockResolvedValue({

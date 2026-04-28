@@ -13,13 +13,21 @@ vi.mock("./db", () => ({
     },
 }));
 
-import { requestTtsPayload, requestTtsSegmentsPayload } from "./tts-client";
+import { isRetryableTtsError, requestTtsPayload, requestTtsSegmentsPayload } from "./tts-client";
 
 describe("tts-client", () => {
     afterEach(() => {
         vi.restoreAllMocks();
         vi.unstubAllGlobals();
         firstMock.mockReset();
+    });
+
+    it("classifies transient socket/TLS failures as retryable", () => {
+        expect(isRetryableTtsError(
+            new Error("Client network socket disconnected before secure TLS connection was established"),
+        )).toBe(true);
+        expect(isRetryableTtsError(new Error("Edge TTS request timed out"))).toBe(true);
+        expect(isRetryableTtsError(new Error("Invalid voice id"))).toBe(false);
     });
 
     it("uses the saved profile voice when no explicit voice is provided", async () => {

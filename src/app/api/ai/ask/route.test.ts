@@ -308,4 +308,25 @@ describe("ai ask route", () => {
         expect(data.error).toBe("Text and question are required");
         expect(createCompletionMock).not.toHaveBeenCalled();
     });
+
+    it("returns a retryable 429 payload when the AI provider is concurrency limited", async () => {
+        createCompletionMock.mockRejectedValueOnce(Object.assign(
+            new Error("429 Too many requests: UserConcurrentRequests"),
+            {
+                status: 429,
+                headers: new Headers({ "retry-after": "2" }),
+            },
+        ));
+
+        const response = await POST(buildRequest());
+        const data = await response.json();
+
+        expect(response.status).toBe(429);
+        expect(response.headers.get("Retry-After")).toBe("2");
+        expect(data).toEqual({
+            errorCode: "AI_PROVIDER_RATE_LIMIT",
+            error: "当前 AI 模型正在处理上一个请求，请稍等几秒再试。",
+            retryable: true,
+        });
+    });
 });

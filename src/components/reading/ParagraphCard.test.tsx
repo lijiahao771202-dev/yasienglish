@@ -348,6 +348,29 @@ describe("ParagraphCard", () => {
         expect(container.textContent).toContain("主干结构");
     });
 
+    it("keeps the focus-mode clear button anchored to the right edge", async () => {
+        const onClearFocusLock = vi.fn();
+        const container = await renderCard({
+            isFocusMode: true,
+            isFocusLocked: true,
+            hasActiveFocusLock: true,
+            onSetFocusLock: vi.fn(),
+            onClearFocusLock,
+        });
+
+        const clearButton = container.querySelector<HTMLButtonElement>('button[aria-label="取消当前段落聚焦"]');
+        expect(clearButton).toBeTruthy();
+        expect(clearButton?.className).toContain("!right-4");
+        expect(clearButton?.style.position).toBe("absolute");
+        expect(clearButton?.style.right).toBe("1rem");
+
+        await act(async () => {
+            clearButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onClearFocusLock).toHaveBeenCalledTimes(1);
+    });
+
     it("reuses an existing sentence ask thread without sending the default request again", async () => {
         const text = "Plants need sunlight and water to grow.";
         decodeAskThreadPayloadMock.mockReturnValue({
@@ -396,6 +419,65 @@ describe("ParagraphCard", () => {
         });
 
         expect(fetchMock).not.toHaveBeenCalled();
+        expect(document.body.textContent).toContain("回答模式");
+    });
+
+    it("keeps the selection AskAI dock open when clicking a word in the paragraph", async () => {
+        const text = "Plants need sunlight and water to grow.";
+        decodeAskThreadPayloadMock.mockReturnValue({
+            messages: [
+                { role: "user", content: "请翻译这句话，并解析它的核心语法结构与词汇搭配。", createdAt: 1 },
+                { role: "assistant", content: "这是已有回答。", createdAt: 2 },
+            ],
+        });
+
+        Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+            configurable: true,
+            value: () => new DOMRect(12, 24, 220, 36),
+        });
+
+        const container = await renderCard({
+            text,
+            readingNotes: [
+                {
+                    id: 102,
+                    article_key: "reading::sample",
+                    selected_text: text,
+                    note_text: "encoded-thread",
+                    mark_type: "ask",
+                    start_offset: 0,
+                    end_offset: text.length,
+                    created_at: Date.now(),
+                    updated_at: Date.now(),
+                },
+            ],
+        });
+
+        const layoutButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("排版"));
+        expect(layoutButton).toBeTruthy();
+
+        await act(async () => {
+            layoutButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const sentenceRow = container.querySelector<HTMLElement>('[data-reading-layout-segment="true"]');
+        const sentenceBadge = sentenceRow?.firstElementChild as HTMLElement | null;
+        expect(sentenceRow).toBeTruthy();
+        expect(sentenceBadge).toBeTruthy();
+
+        await act(async () => {
+            sentenceBadge?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(document.body.textContent).toContain("回答模式");
+
+        const paragraphText = container.querySelector<HTMLElement>('[data-paragraph-text="true"]');
+        expect(paragraphText).toBeTruthy();
+
+        await act(async () => {
+            paragraphText?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        });
+
         expect(document.body.textContent).toContain("回答模式");
     });
 

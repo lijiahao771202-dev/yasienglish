@@ -165,6 +165,22 @@ function normalizeTtsRate(input: unknown, fallback = "+0%") {
     return fallback;
 }
 
+function isTransientTtsBackendError(error: unknown) {
+    const normalizedError = error instanceof Error ? error : new Error(String(error || "TTS request failed"));
+    const message = normalizedError.message.toLowerCase();
+    const code = String((error as { code?: unknown } | null)?.code ?? "").toLowerCase();
+
+    return normalizedError.name === "AbortError"
+        || message.includes("timed out")
+        || message.includes("timeout")
+        || message.includes("socket")
+        || message.includes("tls")
+        || message.includes("econnreset")
+        || message.includes("connection was established")
+        || code === "econnreset"
+        || code === "etimedout";
+}
+
 function rateToDurationFactor(rate: string) {
     const parsed = Number.parseFloat(rate.replace("%", "").trim());
     if (!Number.isFinite(parsed)) {
@@ -501,16 +517,22 @@ export async function POST(req: Request) {
 
         return NextResponse.json(payload);
     } catch (error: unknown) {
-        console.error(`[TTS] Error at step ${step}:`, error);
+        const isTransient = isTransientTtsBackendError(error);
+        if (isTransient) {
+            console.warn(`[TTS] Temporary backend failure at step ${step}:`, error);
+        } else {
+            console.error(`[TTS] Error at step ${step}:`, error);
+        }
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorStack = error instanceof Error ? error.stack : undefined;
 
-        // DEBUG LOGGING
-        try {
-            const logMsg = `[${new Date().toISOString()}] Step: ${step} | Error: ${errorMessage} | Stack: ${errorStack ?? "N/A"}\n`;
-            fs.appendFileSync(path.join(process.cwd(), "tts_error.log"), logMsg);
-        } catch (e) {
-            console.error("Failed to write log", e);
+        if (!isTransient) {
+            try {
+                const logMsg = `[${new Date().toISOString()}] Step: ${step} | Error: ${errorMessage} | Stack: ${errorStack ?? "N/A"}\n`;
+                fs.appendFileSync(path.join(process.cwd(), "tts_error.log"), logMsg);
+            } catch (e) {
+                console.error("Failed to write log", e);
+            }
         }
 
         return NextResponse.json({
@@ -518,6 +540,6 @@ export async function POST(req: Request) {
             details: errorMessage || "Unknown error",
             raw: JSON.stringify(error, Object.getOwnPropertyNames(error)),
             stack: errorStack
-        }, { status: 500 });
+        }, { status: isTransient ? 503 : 500 });
     }
 }

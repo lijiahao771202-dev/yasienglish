@@ -450,12 +450,18 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const loadAIGenHistory = useCallback(async () => {
         try {
             const { db } = await import("@/lib/db");
+            const pendingDeleteUrls = new Set(
+                (await db.sync_outbox.toArray())
+                    .filter((item) => item.entity === "read_articles" && item.operation === "delete")
+                    .map((item) => item.record_key),
+            );
             const rows = (await db.articles
                 .toArray() as unknown as AIGenHistoryRecord[])
                 .filter((row) => (
                     Boolean((row as unknown as { isAIGenerated?: boolean }).isAIGenerated)
                     && !Boolean(row.isCatMode)
                     && !row.url.startsWith("cat://")
+                    && !pendingDeleteUrls.has(row.url)
                 ))
                 .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
@@ -490,9 +496,15 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const loadCatHistory = useCallback(async () => {
         try {
             const { db } = await import("@/lib/db");
+            const pendingDeleteUrls = new Set(
+                (await db.sync_outbox.toArray())
+                    .filter((item) => item.entity === "read_articles" && item.operation === "delete")
+                    .map((item) => item.record_key),
+            );
             const rows = (await db.articles
                 .toArray() as unknown as AIGenHistoryRecord[])
                 .filter((row) => Boolean(row.isCatMode) || row.url.startsWith("cat://"))
+                .filter((row) => !pendingDeleteUrls.has(row.url))
                 .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
             const historyItems: ArticleItem[] = rows.map((row) => ({

@@ -18,11 +18,11 @@ const DEFAULT_LISTENING_COUNT = 5;
 const DEFAULT_WRITING_COUNT = 3;
 const DEFAULT_TRANSLATION_COUNT = 3;
 
-function normalizeWhitespace(text: string) {
-    return text.replace(/\s+/g, " ").trim();
+function normalizeWhitespace(text: unknown) {
+    return typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "";
 }
 
-function normalizeIdentity(text: string) {
+function normalizeIdentity(text: unknown) {
     return normalizeWhitespace(text).toLowerCase();
 }
 
