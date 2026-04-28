@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useEffect } from "react";
+import { Suspense, useMemo, useState, useEffect } from "react";
 import confetti from "canvas-confetti";
 import {
     ArrowLeft,
@@ -74,7 +74,7 @@ function scoreSurface(score: number) {
     return "border-[#f8b4c6] bg-[#fff1f4]";
 }
 
-export default function RewriteScorePage() {
+function RewriteScorePageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const scoreId = searchParams.get("id");
@@ -351,5 +351,13 @@ export default function RewriteScorePage() {
                 </section>
             </div>
         </main>
+    );
+}
+
+export default function RewriteScorePage() {
+    return (
+        <Suspense fallback={null}>
+            <RewriteScorePageContent />
+        </Suspense>
     );
 }

@@ -2,8 +2,8 @@ export type GrammarMode = "basic" | "deep";
 
 export const GRAMMAR_BASIC_MODEL = "deepseek-chat";
 export const GRAMMAR_DEEP_MODEL = "deepseek-chat";
-export const GRAMMAR_BASIC_PROMPT_VERSION = "2026-04-02-basic-v4";
-export const GRAMMAR_DEEP_PROMPT_VERSION = "2026-04-02-deep-v3";
+export const GRAMMAR_BASIC_PROMPT_VERSION = "2026-04-26-basic-v8";
+export const GRAMMAR_DEEP_PROMPT_VERSION = "2026-04-26-deep-v5";
 
 export interface GrammarBasicHighlight {
     substring: string;
@@ -117,8 +117,8 @@ function isWeakExplanation(value: string) {
 function enrichBasicExplanation(type: string, substring: string, rawExplanation: string) {
     const normalized = rawExplanation.trim();
     if (!isWeakExplanation(normalized)) return normalized;
-    const safeChunk = substring.trim() || "该片段";
-    return `结构判断：${safeChunk}主要作${type}；句中作用：帮助明确句子主干与语义关系。`;
+    const safeType = type.trim() || "语法点";
+    return `结构判断：这部分属于${safeType}；句中作用：帮助你看清这句话里的意思。`;
 }
 
 function normalizeSegmentTranslation(rawTranslation: string, substring: string) {
@@ -220,21 +220,83 @@ Paragraph:
 OBJECTIVE:
 1. Split the paragraph into individual sentences. You MUST include EVERY sentence.
 2. For EACH sentence, provide a natural Chinese translation.
-3. Analyze sentence structure with high coverage:
+3. Use a clause-first workflow before highlighting:
+   - Identify the main clause first.
+   - Then identify subordinate clauses / relative clauses / adverbial clauses / non-finite structures / parenthetical inserts.
+   - For long sentences, prioritize the real backbone over decorative wording.
+4. Analyze sentence structure with high coverage:
    - Main components: Subject (主语), Predicate/Verb (谓语), Object/Predicative (宾语/表语).
    - Modifiers: Attributive (定语), Adverbial (状语), Complement (补语), Appositive (同位语).
    - Clauses/structures when present.
-4. Every highlight.explanation MUST include:
-   - 结构判断（该片段属于什么结构）
-   - 句中作用（该结构在本句承担什么功能）
-   - Optional 易错点（若容易误判）
-5. Every segment_translation MUST be contextual (in THIS sentence), not dictionary-only.
+5. Every highlight.explanation MUST use very plain Chinese for learners with weak grammar.
+   - Prefer 2 to 3 short parts, not a long paragraph.
+   - Must explain: 这部分是什么结构 + 它在句里干什么.
+   - If a grammar term is hard, immediately explain it in simpler words.
+   - Only add 主干关系 / 理解提醒 when genuinely useful.
+   - Avoid textbook jargon if a simpler wording works.
+6. Every segment_translation MUST be contextual (in THIS sentence), not dictionary-only.
+
+FEW-SHOT EXAMPLE 1:
+Sentence: "When students feel lost, they often look for a checklist."
+Good JSON fragment:
+{
+      "sentence": "When students feel lost, they often look for a checklist.",
+      "translation": "当学生感到迷茫时，他们往往会去找一份清单。",
+      "highlights": [
+        {
+          "substring": "When students feel lost",
+          "type": "状语",
+          "explanation": "结构判断：这是 when 引导的时间状语从句，也就是交代时间的一小句；句中作用：用来说明后面的动作是什么时候发生的；提醒：不要把它看成主句。",
+          "segment_translation": "当学生感到迷茫时"
+        },
+        {
+          "substring": "they",
+          "type": "主语",
+          "explanation": "结构判断：they 是主语，也就是表示“谁”的部分；句中作用：指出是谁在执行 look for 这个动作。",
+          "segment_translation": "他们"
+        },
+        {
+          "substring": "look for a checklist",
+          "type": "谓语",
+          "explanation": "结构判断：这是谓语部分，也就是表示动作的部分；句中作用：说明主语具体做了什么。",
+          "segment_translation": "寻找一份清单"
+        }
+      ]
+}
+
+FEW-SHOT EXAMPLE 2:
+Sentence: "By explicitly rating options according to agreed criteria, individuals decrease the chance of being influenced by transient emotions."
+Good JSON fragment:
+{
+      "sentence": "By explicitly rating options according to agreed criteria, individuals decrease the chance of being influenced by transient emotions.",
+      "translation": "通过按照既定标准明确地给选项打分，人们会降低被短暂情绪影响的可能性。",
+      "highlights": [
+        {
+          "substring": "By explicitly rating options according to agreed criteria",
+          "type": "状语",
+          "explanation": "结构判断：这是 by 引导的方式状语，也就是补充“怎么做”的部分；句中作用：说明后面的动作是通过什么方式实现的。",
+          "segment_translation": "通过按照既定标准明确地给选项打分"
+        },
+        {
+          "substring": "individuals",
+          "type": "主语",
+          "explanation": "结构判断：individuals 是主语，也就是表示“谁”的部分；句中作用：指出是谁在做 decrease 这个动作。",
+          "segment_translation": "人们"
+        },
+        {
+          "substring": "of being influenced by transient emotions",
+          "type": "短语",
+          "explanation": "结构判断：这是 of 后面的一个动作短语；句中作用：补充说明 the chance 具体指什么。",
+          "segment_translation": "被短暂情绪影响"
+        }
+      ]
+}
 
 OUTPUT STRICT JSON ONLY:
 {
   "tags": ["Tag1", "Tag2"],
   "overview": "Brief summary",
-  "difficult_sentences": [
+  "sentences": [
     {
       "sentence": "Exact substring from original text",
       "translation": "Chinese translation",
@@ -252,9 +314,15 @@ OUTPUT STRICT JSON ONLY:
 
 CONSTRAINTS:
 - Keep sentence order exactly as original paragraph.
+- You MUST return one entry for every input sentence. Do not skip short, simple, or summary-like sentences.
 - "sentence" must be an exact substring.
 - "type" must be Simplified Chinese and should prefer: 主语/谓语/宾语/表语/定语/状语/补语/同位语/从句/非谓语/短语/连接成分.
 - Each sentence should contain at least one highlight unless truly trivial.
+- For long sentences, at least one highlight should capture the clause backbone, not only isolated words.
+- Prefer exact clause spans over dictionary-like single-word labels when a clause is doing the real grammar work.
+- Explanations should sound like a teacher speaking to a learner in simple Chinese.
+- Keep each explanation compact and easy to scan.
+- Imagine the learner does not really understand grammar terms yet.
 - Return JSON object only, no markdown, no extra text.
 ${repairBlock}
 `.trim();
@@ -275,6 +343,44 @@ Analyze the deep grammar structure of one English sentence for a Chinese learner
 
 Sentence:
 """${sentence}"""
+
+WORKFLOW:
+1. Identify the main clause first.
+2. Then place subordinate clauses / non-finite phrases / inserted structures under the correct parent.
+3. In analysis_results, explain the real grammatical leverage points, not generic textbook definitions.
+
+FEW-SHOT EXAMPLE:
+Sentence: "When students feel lost, they often look for a checklist that gives them a starting point."
+Good JSON:
+{
+  "sentence": "When students feel lost, they often look for a checklist that gives them a starting point.",
+  "sentence_tree": {
+    "label": "主句",
+    "text": "they often look for a checklist that gives them a starting point",
+    "children": [
+      {
+        "label": "状语从句",
+        "text": "When students feel lost",
+        "children": []
+      },
+      {
+        "label": "定语从句",
+        "text": "that gives them a starting point",
+        "children": []
+      }
+    ]
+  },
+  "analysis_results": [
+    {
+      "point": "时间状语从句",
+      "explanation": "结构判断：When students feel lost 是 when 引导的时间状语从句；句中作用：交代主句动作发生的条件背景；主干关系：它修饰主句 they often look for a checklist。"
+    },
+    {
+      "point": "定语从句修饰先行词",
+      "explanation": "结构判断：that gives them a starting point 是修饰 checklist 的定语从句；句中作用：补充说明 checklist 的具体功能；依附关系：它附着在先行词 checklist 后面，不属于主句主干。"
+    }
+  ]
+}
 
 OUTPUT STRICT JSON ONLY:
 {
@@ -303,6 +409,7 @@ CONSTRAINTS:
 - sentence_tree.label must be Simplified Chinese.
 - analysis_results must be an array (can be empty).
 - Each explanation should be concrete and sentence-specific; avoid vague generic text.
+- For long sentences, explicitly separate the backbone clause from dependent structures.
 - Return JSON object only.
 ${repairBlock}
 `.trim();
@@ -450,11 +557,13 @@ export function sanitizeGrammarBasicPayload(raw: unknown, paragraphText: string)
         issues.push("overview is missing");
     }
 
-    const rawSentenceItems = Array.isArray(payload.difficult_sentences)
-        ? payload.difficult_sentences.map((item) => (item && typeof item === "object" ? item as Record<string, unknown> : {}))
-        : [];
-    if (!Array.isArray(payload.difficult_sentences)) {
-        issues.push("difficult_sentences is missing or not an array");
+    const rawSentenceSource = Array.isArray(payload.sentences)
+        ? payload.sentences
+        : (Array.isArray(payload.difficult_sentences) ? payload.difficult_sentences : []);
+    const rawSentenceItems = rawSentenceSource
+        .map((item) => (item && typeof item === "object" ? item as Record<string, unknown> : {}));
+    if (!Array.isArray(payload.sentences) && !Array.isArray(payload.difficult_sentences)) {
+        issues.push("sentences is missing or not an array");
     }
 
     const used = new Set<number>();
@@ -514,8 +623,8 @@ export function sanitizeGrammarBasicPayload(raw: unknown, paragraphText: string)
     const qualityScore = scoreBasicQuality(data, expectedSentences);
     const sentenceCount = Math.max(1, expectedSentences.length || data.difficult_sentences.length);
     const severeCoverageIssue =
-        missingHighlightSentenceCount > Math.floor(sentenceCount * 0.45)
-        || missingTranslationCount > Math.floor(sentenceCount * 0.45);
+        missingHighlightSentenceCount > 0
+        || missingTranslationCount > 0;
 
     return {
         data,

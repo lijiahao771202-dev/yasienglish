@@ -1,0 +1,1791 @@
+
+ RUN  v4.1.2 /Users/lijiahao/yasi
+
+ ✓ src/lib/vocab-meanings.test.ts > parseMeaningGroups > prefers Chinese translation meanings instead of mixing in English definitions 4ms
+ ✓ src/lib/vocab-meanings.test.ts > pickPreferredMeaningGroups > prefers the fallback groups when they contain more Chinese meaning content 0ms
+ ✓ src/lib/vocab-meanings.test.ts > pickPreferredMeaningGroups > keeps the primary groups when they already carry the richer Chinese meanings 0ms
+ ✓ src/lib/vocab-meanings.test.ts > resolveHighlightedMeaningsFromGroups > maps AI highlighted meanings back onto the actual displayed meaning strings 2ms
+ × src/lib/vocab-meanings.test.ts > resolveHighlightedMeaningsFromGroups > returns no highlight when the AI-provided highlighted meaning does not match any displayed meaning 4ms
+   → expected [ '战役，战争' ] to deeply equal []
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 1 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+completion is: undefined
+
+stderr | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+Listening cabin generation error: TypeError: Cannot read properties of undefined (reading 'choices')
+    at generateDraftJson (/Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.ts:46:32)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at Module.POST (/Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.ts:166:33)
+    at /Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.test.ts:84:26
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:1893:20
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 3 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 5 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+completion is: undefined
+
+stderr | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+Listening cabin generation error: TypeError: Cannot read properties of undefined (reading 'choices')
+    at generateDraftJson (/Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.ts:46:32)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at Module.POST (/Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.ts:166:33)
+    at /Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.test.ts:168:26
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:1893:20
+
+ × src/lib/rebuild-battle-elo.test.ts > rebuild battle elo > follows sentence-style rebuild delta: systemDelta + selfDelta 7ms
+   → expected -21 to be -40 // Object.is equality
+ × src/lib/rebuild-battle-elo.test.ts > rebuild battle elo > applies rebuild clamp limits (-65 ~ +48) 1ms
+   → expected -35 to be -65 // Object.is equality
+ ✓ src/lib/rebuild-battle-elo.test.ts > rebuild battle elo > does not reuse listening streak bonus 1ms
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 7 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 9 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 11 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns generation details when model output is invalid JSON
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns generation details when model output is invalid JSON
+completion is: { choices: [ { message: [Object] } ] }
+
+stderr | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns generation details when model output is invalid JSON
+Listening cabin generation error: Error: Listening cabin generation returned invalid JSON: {"title":"Broken","sentences":[{"english":"hello"
+    at generateDraftJson (/Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.ts:56:15)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at Module.POST (/Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.ts:132:31)
+    at /Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.test.ts:301:26
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:1893:20
+
+ × src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests 22ms
+   → expected 500 to be 200 // Object.is equality
+ × src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep 6ms
+   → expected 502 to be 200 // Object.is equality
+ ✓ src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 400 for empty prompt in manual mode 2ms
+ × src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers 7ms
+   → expected 500 to be 200 // Object.is equality
+ × src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup 2ms
+   → expected 502 to be 200 // Object.is equality
+ × src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output 2ms
+   → expected 502 to be 200 // Object.is equality
+ ✓ src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid 3ms
+ ✓ src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns generation details when model output is invalid JSON 1ms
+ × src/lib/rebuild-passage.test.ts > rebuild passage helpers > derives soft and hard word-count windows from the existing segment range 5ms
+   → expected { min: 12, max: 18, mean: 15, …(5) } to match object { min: 14, max: 22, mean: 18, …(5) }
+ ✓ src/lib/rebuild-passage.test.ts > rebuild passage helpers > scores objective segment performance from rebuild attempt signals 0ms
+ ✓ src/lib/rebuild-passage.test.ts > rebuild passage helpers > uses a single session-level self score and punishes broad skipping much more aggressively 0ms
+ ✓ src/lib/rebuild-passage.test.ts > rebuild passage helpers > aggregates objective and subjective scores evenly across a full session 0ms
+ ✓ src/lib/rebuild-passage.test.ts > rebuild passage helpers > accepts natural segment variance inside the hard 2σ window while rejecting larger drift 0ms
+ ✓ src/hooks/useWritingGuide.test.tsx > useWritingGuide > waits 3 seconds before the first automatic guide request 16ms
+ ✓ src/hooks/useWritingGuide.test.tsx > useWritingGuide > does not escalate feeding hints after a valid alternative or near-finish response 3ms
+ × src/hooks/useWritingGuide.test.tsx > useWritingGuide > sends structured history on the follow-up request and aborts when input changes 8ms
+   → expected "vi.fn()" to be called 2 times, but got 1 times
+stderr | src/components/drill/DrillBottomActions.test.tsx > DrillBottomActions > requires translation self evaluation before next question
+Encountered two children with the same key, ``. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+
+ × src/components/drill/DrillBottomActions.test.tsx > DrillBottomActions > requires translation self evaluation before next question 38ms
+   → expected undefined to be truthy
+ × src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > auto-advances subtitles sentence by sentence using duration fallback timings 24ms
+   → expected false to be true // Object.is equality
+ × src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > keeps the current subtitle through sentence boundary and switches with a small delay 27ms
+   → expected +0 to be 1 // Object.is equality
+ ✓ src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > does not let initial autoplay override a pause while narration is still loading 11ms
+ ✓ src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > allows next-sentence navigation after the narration is ready 7ms
+ ✓ src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > re-seeks the current sentence instead of resuming a stale later timestamp in auto-all mode 9ms
+ ✓ src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > replays the current sentence on play in single-pause mode instead of continuing into the next one 9ms
+ ✓ src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > keeps playback active when jumping to later sentences in single-pause mode 10ms
+ × src/app/api/drill/next/route.test.ts > drill next route > retries rebuild sentence generation and eventually succeeds 7ms
+   → expected "vi.fn()" to be called 2 times, but got 1 times
+ × src/app/api/drill/next/route.test.ts > drill next route > retries rebuild passage generation and returns 500 after exhausting attempts 2ms
+   → expected "vi.fn()" to be called 3 times, but got 1 times
+ ✓ src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > falls back to even timings when segment timings are unreliable in single-pause mode 9ms
+ × src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > applies single-pause mode immediately by replaying the current sentence from start 5ms
+   → expected false to be true // Object.is equality
+ × src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > re-initializes playback correctly under StrictMode remounts 6ms
+   → expected false to be true // Object.is equality
+ × src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > uses segmentTimings in dialogue mode without aggressive early subtitle switching 4ms
+   → expected +0 to be 1 // Object.is equality
+ × src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > progressively corrects segment timing drift so later sentences still advance into the final subtitle 2ms
+   → expected +0 to be 1 // Object.is equality
+ × src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > does not shrink segment timings when browser duration is slightly shorter, avoiding cumulative early switching 5ms
+   → expected +0 to be 1 // Object.is equality
+ ✓ src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > can resume playback after switching between single-pause and repeat modes 8ms
+ × src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > keeps full sentence tail in single-pause mode and only pauses near segment boundary 3ms
+   → expected false to be true // Object.is equality
+ ✓ src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > compensates for backward seek drift in single-pause mode so it does not leak previous audio or cut the current sentence early 7ms
+ × src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > restarts current sentence immediately when switching from auto-all to single-pause 4ms
+   → expected +0 to be 1 // Object.is equality
+ × src/components/auth/AuthForms.test.tsx > auth forms > signs in with email and password, then redirects to home 43ms
+   → expected "vi.fn()" to be called with arguments: [ '/' ]
+
+Number of calls: 0
+
+ ✓ src/components/auth/AuthForms.test.tsx > auth forms > signs up with username metadata and the default avatar preset 19ms
+ ✓ src/components/auth/AuthForms.test.tsx > auth forms > sends password recovery links through the auth callback 8ms
+ ✓ src/components/auth/AuthForms.test.tsx > auth forms > updates the password on the recovery screen and redirects home 11ms
+Not implemented: Window's scrollTo() method
+ × src/components/reading/ReadingQuizPanel.test.tsx > ReadingQuizPanel > uses previous and next controls to review submitted answers after reopening 241ms
+   → expected '阅读理解四级1/2正确率 50%已提交 2 题 · 至少 2 题，精度达标…' to contain 'The students reviewed notes only once…'
+stderr | src/lib/drill-generation-client.test.ts > fetchNextDrillWithRetry > retries transient 500 errors and eventually returns drill data
+[Drill] Retrying generation after API failure (1/3) { status: 500, error: 'Failed to generate rebuild drill.' }
+
+ ✓ src/app/vocab/review/page.test.tsx > vocab review page > renders the review card without mouse tilt styling 85ms
+ ✓ src/lib/user-repository.sync.test.ts > user repository error-ledger sync regressions > includes error_ledger when checking the latest remote update timestamp 148ms
+ ✓ src/lib/user-repository.sync.test.ts > user repository error-ledger sync regressions > pulls error ledger rows once and schedules local vector hydration 4ms
+ ✓ src/lib/user-repository.sync.test.ts > user repository error-ledger sync regressions > saves a black-history entry with outbox sync payload 14ms
+ ✓ src/components/vocab/VocabReviewEditableCard.test.tsx > VocabReviewEditableCard > shows highlighted meanings by default and exposes the archive action 218ms
+ ✓ src/components/vocab/VocabReviewEditableCard.test.tsx > VocabReviewEditableCard > renders the default review layout with tab controls 46ms
+ ✓ src/lib/drill-generation-client.test.ts > fetchNextDrillWithRetry > retries transient 500 errors and eventually returns drill data 481ms
+ ✓ src/lib/drill-generation-client.test.ts > fetchNextDrillWithRetry > does not retry non-retryable 400 errors 1ms
+ ✓ src/lib/drill-generation-client.test.ts > fetchNextDrillWithRetry > does not retry abort errors 0ms
+ ✓ src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > hides both delete buttons when selection has no highlight or underline 33ms
+ ✓ src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > shows only delete highlight button when highlight exists 12ms
+ ✓ src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > shows only delete underline button when underline exists 11ms
+ ✓ src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > opens ask panel and triggers ask callback 25ms
+ ✓ src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > disables send button and shows loading indicator while asking 14ms
+ ✓ src/components/vocab/VocabReviewEditableCard.test.tsx > VocabReviewEditableCard > persists edited phonetic fields after blur 74ms
+ ✓ src/components/vocab/VocabReviewEditableCard.test.tsx > VocabReviewEditableCard > does not persist untouched fields on blur 64ms
+ ✓ src/components/vocab/VocabReviewEditableCard.test.tsx > VocabReviewEditableCard > persists trimmed meaning groups when deleting a meaning 82ms
+ ✓ src/app/api/tts/route.test.ts > tts route > reuses cached synthesis for identical requests 63ms
+ × src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > keeps answers collapsed by default and resets collapsed state after reopen 20ms
+   → expected 'true' to be 'false' // Object.is equality
+ ✓ src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > auto opens ask panel when default-open token is provided 7ms
+ ✓ src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > switches ask answer mode when clicking segmented buttons 12ms
+ × src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > shows ask replay view directly when popup mode is ask-replay 5ms
+   → expected '问题 1 · 这句话想表达什么？收起强调学历是过去求职的重要信号。' to contain 'AI 回答记录'
+ ✓ src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > shows lookup action in normal selection mode and triggers callback 14ms
+ ✓ src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > hides lookup action in ask replay mode 3ms
+ ✓ src/app/api/tts/route.test.ts > tts route > deduplicates concurrent synthesis for identical requests 67ms
+ ✓ src/app/api/tts/route.test.ts > tts route > serves cached mp3 bytes via GET after synthesis 13ms
+ ✓ src/app/api/tts/route.test.ts > tts route > normalizes whitespace and appends terminal punctuation before synthesis 6ms
+ ✓ src/app/api/tts/route.test.ts > tts route > returns stable segmentTimings for mixed-segment synthesis and cache reuse 16ms
+ ✓ src/components/reading/WordPopup.test.tsx > WordPopup > shows saved state immediately while background save is still pending 118ms
+ ✓ src/components/reading/WordPopup.test.tsx > WordPopup > rolls back optimistic saved state when background save fails 26ms
+ ✓ src/components/reading/WordPopup.test.tsx > WordPopup > retries transient save failures before succeeding 57ms
+ ✓ src/components/reading/WordPopup.test.tsx > WordPopup > keeps saved state when the vocab already exists 37ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > provides a curated low-band catalog with band positions 2ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > covers diverse low-band themes without relying on a single template family 0ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > provides a 2000-question mid-high catalog for elo 1200-2399 0ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > provides a 1000-question high-band catalog for elo 2400+ 0ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > keeps at least 100 curated questions in every cefr sub-band 1ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > keeps every seeded item valid for the middle of its elo band 48ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > selects curated questions for representative elo values across every sub-band 6ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > selects a valid bank item for listening elo 0ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > maps low-band elo to entry, mid, and exit positions 1ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > prefers an exact band-position match before falling back 3ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > prefers curated items over draft templates when both exist 2ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > prefers curated items in mid-high bands before generated coverage 2ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > selects curated items in the high bands with the correct sub-band match 2ms
+ ✓ src/lib/listening-drill-bank.test.ts > listening drill bank > builds a drill payload with source metadata 0ms
+ ✓ src/app/vocab/page.test.tsx > vocab page category filters > shows the five category buttons and defaults to recent items capped at 12 177ms
+ ✓ src/app/vocab/review/page.test.tsx > vocab review page > uses a single-card revealed layout with a compact rating bar 624ms
+ ✓ src/app/vocab/page.test.tsx > vocab page category filters > filters due, in-progress, and graduated cards by category 146ms
+ ✓ src/app/vocab/page.test.tsx > vocab page category filters > lets search override the active category and restores the previous filter when cleared 58ms
+ ✓ src/components/profile/UserAvatarMenu.test.tsx > UserAvatarMenu > opens a user menu that shows profile and sync details 218ms
+ ✓ src/components/profile/UserAvatarMenu.test.tsx > UserAvatarMenu > supports the sidebar placement for the home rail account area 17ms
+ ✓ src/components/profile/ProfileSettingsPanel.test.tsx > ProfileSettingsPanel > submits profile edits and password changes through the provided callbacks 570ms
+ ✓ src/lib/deepseek.test.ts > deepseek provider resolution > fails closed when cookie hints nvidia but only DeepSeek env exists 99ms
+ ✓ src/lib/deepseek.test.ts > deepseek provider resolution > uses same-provider fallback env when cookie hints nvidia 1ms
+ ✓ src/lib/deepseek.test.ts > deepseek provider resolution > still falls back to DeepSeek only when no preference exists 1ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > returns battle responses without cards 9ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > does not reveal full answer on ordinary battle follow-ups 2ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > reveals full answer only when unlock is explicitly requested 2ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > repairs collapsed english inside markdown 1ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > repairs collapsed short phrasal verbs and sentence runs from the reference sentence 3ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > repairs long collapsed english runs and mixed chinese-english spacing 1ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > repairs collapsed follow-up collocations 1ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > returns structured example sentences with joined english tokens 1ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > uses the battle prompt without gradual hint wording or cards schema 5ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > recovers with a final payload when battle stream is interrupted 6ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > keeps rebuild floating teacher as its own surface instead of collapsing to score 1ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > uses adaptive simple profile by default for short rebuild questions 1ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > uses forced short profile when rebuild answer mode is simple 1ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts > ask_tutor route > uses forced detailed profile for rebuild score tutor when requested 3ms
+ ✓ src/components/profile/UserAvatarMenu.test.tsx > UserAvatarMenu > opens the voice picker and saves a selected speaker 361ms
+ ✓ src/components/drill/RebuildQuestionPanel.test.tsx > RebuildQuestionPanel > passes the next pending segment index to the composer after a passage segment is submitted 101ms
+ ✓ src/app/vocab/review/page.test.tsx > vocab review page > requeues short-interval cards into the current review session after Again 511ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > normalizes v2 request fields and keeps invalid mode checks for validation 1ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > maps legacy style values to new style set 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > supports podcast mode and normalizes speakers to 2-4 1ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > enforces unique voices in multi-speaker mode and rejects duplicates 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > validates empty prompt for manual topic mode 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > derives word/sentence profile from script length and sentence length 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > supports an ultra-long profile for extended listening sessions 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > provides 2500 de-duplicated random topics per mode 2ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > picks stable random topics for the same seed and mode 1ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > uses ai topic directly in hybrid mode when topicSource is ai 1ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > includes playback rate in the audio cache key 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > builds mixed-voice cache keys with segment data 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > converts playback rate into the edge-tts rate format 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > builds a full narration text from ordered sentences 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > builds per-speaker narration segments in dialogue mode 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > builds per-speaker narration segments in podcast mode 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > canonicalizes generated speaker labels to configured speaker names 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > keeps subtitle playback chunks at one sentence each 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > maps full-audio word marks back to sentence timings 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > returns zeroed timings when marks are missing so the player can apply duration fallback 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > creates a local session with v2 strategy fields 1ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > normalizes sentence emotion and pace with safe defaults 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > asks the model to use rare natural repetition for emotional delivery 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > asks ai-generated topics to stay fresh and mildly unexpected without becoming absurd 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > adds freshness constraints when the topic comes from ai generation 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > picks deterministic ai topic variation hints from a seed 0ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > uses gentler lint thresholds for ultra-long scripts 2ms
+ ✓ src/lib/listening-cabin.test.ts > listening cabin helpers > requires long scripts to stay within the configured sentence-count band 0ms
+ ✓ src/components/drill/AiTeacherConversation.test.tsx > AiTeacherConversation > renders question-first qa blocks without tutor cards 32ms
+ ✓ src/components/drill/AiTeacherConversation.test.tsx > AiTeacherConversation > renders revealed full answer block when unlocked 6ms
+ ✓ src/components/drill/AiTeacherConversation.test.tsx > AiTeacherConversation > renders pending question and fallback answer when there is no thread yet 2ms
+ ✓ src/components/drill/AiTeacherConversation.test.tsx > AiTeacherConversation > renders underline and highlight markup inside tutor markdown 2ms
+ ✓ src/components/reading/CatSelfAssessmentDialog.test.tsx > CatSelfAssessmentDialog > renders the three CAT self-assessment options 48ms
+ ✓ src/components/reading/CatSelfAssessmentDialog.test.tsx > CatSelfAssessmentDialog > invokes onSelect with the chosen self-assessment 11ms
+ ✓ src/components/reading/ArticleDisplay.test.tsx > ArticleDisplay > renders an external source link when the original article URL is available 54ms
+ ✓ src/components/reading/ArticleDisplay.test.tsx > ArticleDisplay > does not render an external source link for local articles 6ms
+ ✓ src/components/reading/ArticleDisplay.test.tsx > ArticleDisplay > opens WordPopup from paragraph selection lookup payload 24ms
+ ✓ src/lib/tts-client.test.ts > tts-client > uses the saved profile voice when no explicit voice is provided 16ms
+ ✓ src/lib/tts-client.test.ts > tts-client > keeps an explicit voice override intact 0ms
+ ✓ src/lib/tts-client.test.ts > tts-client > posts mixed segments with per-segment voices 1ms
+ ✓ src/lib/tts-client.test.ts > tts-client > resolves the saved random english voice preference to a concrete non-IN english voice 0ms
+ ✓ src/lib/tts-client.test.ts > tts-client > uses one resolved random english fallback for all segments in the same payload 0ms
+ ✓ src/lib/translation-scoring.test.ts > Translation Hybrid Scoring > Literal N-Gram Scoring > should return 100 for exact match 1ms
+ ✓ src/lib/translation-scoring.test.ts > Translation Hybrid Scoring > Literal N-Gram Scoring > should penalize changed word order even if words are same 0ms
+ ✓ src/lib/translation-scoring.test.ts > Translation Hybrid Scoring > Literal N-Gram Scoring > should correctly extract NGrams 0ms
+ ✓ src/lib/translation-scoring.test.ts > Translation Hybrid Scoring > NLP Lemma Score > should extract core lemmas and match them regardless of inflection 42ms
+ ✓ src/lib/translation-scoring.test.ts > Translation Hybrid Scoring > NLP Lemma Score > should detect missing crucial information 8ms
+ ✓ src/lib/translation-scoring.test.ts > Translation Hybrid Scoring > Vector Score Fallback > should substitute missing lemmas with high cosine similarity 0ms
+ ✓ src/lib/translation-scoring.test.ts > Translation Hybrid Scoring > Vector Score Fallback > should drop score heavily for unrelated substitutions 0ms
+ ✓ src/lib/translation-scoring.test.ts > Translation Hybrid Scoring > evaluateTranslationHybrid (End-to-End) > returns exact 100 for perfect match 0ms
+ ✓ src/lib/translation-scoring.test.ts > Translation Hybrid Scoring > evaluateTranslationHybrid (End-to-End) > calculates hybrid score appropriately for partial match with synonym 3ms
+ ✓ src/lib/grammarHighlights.test.ts > grammarHighlights > maps repeated substrings to later occurrences in order 4ms
+ ✓ src/lib/grammarHighlights.test.ts > grammarHighlights > reconstructs the original sentence from highlighted and plain segments 1ms
+ ✓ src/lib/grammarHighlights.test.ts > grammarHighlights > falls back to plain text segments when no highlights are available 0ms
+ ✓ src/lib/grammarHighlights.test.ts > grammarHighlights > normalizes highlight metadata with layers and segment translations 1ms
+ ✓ src/lib/grammarHighlights.test.ts > grammarHighlights > keeps only core and structure layers in core display mode 0ms
+ ✓ src/lib/grammarHighlights.test.ts > grammarHighlights > standardizes selected aliases while keeping truly unknown labels as-is 0ms
+ ✓ src/lib/grammarHighlights.test.ts > grammarHighlights > treats verb and modal phrases as core structure in core mode 0ms
+ ✓ src/lib/grammarHighlights.test.ts > grammarHighlights > merges contiguous highlights of the same role across whitespace 0ms
+ ✓ src/lib/grammarHighlights.test.ts > grammarHighlights > standardizes clause aliases into canonical labels 1ms
+ ✓ src/lib/grammarHighlights.test.ts > grammarHighlights > exposes overlap metadata when one fragment has multiple grammar tags 1ms
+ ✓ src/lib/grammarHighlights.test.ts > grammarHighlights > forces sentence boundaries into segments for stable marker linkage 1ms
+ ✓ src/app/api/ai/coach_inline_stream/route.test.ts > coach_inline_stream route > requests structured JSON and streams meta -> text_delta -> done chunks 21ms
+ ✓ src/app/api/ai/coach_inline_stream/route.test.ts > coach_inline_stream route > drops leak-prone replacement fields when the model tries to emit the full reference answer 1ms
+stderr | src/components/reading/ParagraphCard.test.tsx > ParagraphCard > does not render a duplicate rewrite mode action in the paragraph toolbar
+Failed to hydrate paragraph Ask cache: TypeError: Cannot read properties of undefined (reading 'where')
+    at /Users/lijiahao/yasi/src/components/reading/ParagraphCard.tsx:1562:50
+    at /Users/lijiahao/yasi/src/components/reading/ParagraphCard.tsx:1436:5
+    at Object.react_stack_bottom_frame (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+    at commitPassiveMountOnFiber (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+    at flushPassiveEffects (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+
+ ✓ src/components/reading/ParagraphCard.test.tsx > ParagraphCard > does not render a duplicate rewrite mode action in the paragraph toolbar 41ms
+ ✓ src/lib/tts-audio.test.ts > isLikelyPlayableMpegBlob > accepts mp3 frame-sync headers 22ms
+ ✓ src/lib/tts-audio.test.ts > isLikelyPlayableMpegBlob > rejects obvious non-audio payloads 0ms
+ ✓ src/lib/content-topic-pool.test.ts > content topic pool > avoids exact recent CAT topics from persistent history 9ms
+ ✓ src/lib/content-topic-pool.test.ts > content topic pool > rotates CAT domains and subtopics across consecutive picks 8ms
+ ✓ src/components/drill/GachaOverlay.test.tsx > GachaOverlay > renders the draw intro and hidden cards 23ms
+ ✓ src/components/drill/TranslationAnalysisJourney.test.tsx > TranslationAnalysisJourney > renders the step-based flow with a manual grammar trigger by default 17ms
+ ✓ src/components/drill/TranslationAnalysisJourney.test.tsx > TranslationAnalysisJourney > shows grammar mode controls and full analysis content once generated 2ms
+ ✓ src/contexts/ReadingSettingsContext.test.tsx > ReadingSettingsProvider > renders stable defaults during SSR even when local storage has user settings 40ms
+ ✓ src/contexts/ReadingSettingsContext.test.tsx > ReadingSettingsProvider > hydrates client settings from local storage after mount 9ms
+ ✓ src/components/debug/DrillDebug.test.tsx > DrillDebug > opens the panel and triggers the gacha preview action 34ms
+ ✓ src/components/shared/InlineGrammarHighlights.test.tsx > InlineGrammarHighlights > renders tooltip text with grammar type, explanation, and segment translation 18ms
+ ✓ src/components/shared/InlineGrammarHighlights.test.tsx > InlineGrammarHighlights > filters modifier highlights out of core mode and keeps them in full mode 5ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > builds a template-style fallback script instead of chunk cards 2ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > keeps every word as its own slot instead of merging phrase-style expressions 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > arms manual reveal instead of auto-filling after three wrong attempts when no rescue choices exist 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > opens multiple-choice rescue after the third wrong attempt on a hard word 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > reveals the answer after the learner still misses the rescue choice 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > accepts valid slot answers and builds the sentence template tokens 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > treats every slot as a single editable word in sequence 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > does not return local realtime feedback now that hints are AI-generated on demand 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > builds micro-lesson hint lines instead of one long prompt block 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > escalates teacher hints as attempts increase 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > switches teacher hints immediately to the next slot after a correct fill 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > accepts contraction answers even when the learner omits the apostrophe 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > keeps the initial teacher prompt guidance-only instead of leaking the answer 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > recommends opening rescue choices after a long idle period 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > creates a guided cloze with some words shown and some blanks left 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > advances through cloze blanks and keeps non-blank words visible 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > keeps the current cloze blank active after three wrong attempts until the learner chooses reveal 0ms
+ ✓ src/lib/guidedLearning.test.ts > guidedLearning template flow > builds gestalt-style cloze hints from visible context instead of teacher slot hints 0ms
+ ✓ src/lib/guidedLearning.test.ts > shouldBypassBattleRewards > bypasses score and economy updates during a learning session 0ms
+ ✓ src/lib/guidedLearning.test.ts > shouldBypassBattleRewards > keeps normal battle rewards outside guided learning 0ms
+ ✓ src/app/api/ai/listening-cabin/random-topic/route.test.ts > listening cabin random topic route > returns ai-generated topic with normalized mode 5ms
+ ✓ src/app/api/ai/listening-cabin/random-topic/route.test.ts > listening cabin random topic route > maps legacy style values before building prompt 1ms
+ ✓ src/app/api/ai/listening-cabin/random-topic/route.test.ts > listening cabin random topic route > returns 502 when ai topic payload is empty 1ms
+ ✓ src/app/api/ai/grammar/route.test.ts > ai grammar route > runs basic analysis through compatibility route 6ms
+ ✓ src/app/api/ai/grammar/route.test.ts > ai grammar route > routes deep mode to deep sentence analysis and deep billing 1ms
+ ✓ src/app/api/ai/grammar/route.test.ts > ai grammar route > returns 400 when text is missing 0ms
+ ✓ src/lib/translation-quickmatch-topics.test.ts > translation quickmatch topics > builds more than ten thousand compatible theme-scene-style combinations overall 3ms
+ ✓ src/lib/translation-quickmatch-topics.test.ts > translation quickmatch topics > keeps low-elo style options grounded 3ms
+ ✓ src/lib/translation-quickmatch-topics.test.ts > translation quickmatch topics > produces a large mid-elo pool for diversity 4ms
+ ✓ src/lib/translation-quickmatch-topics.test.ts > translation quickmatch topics > avoids recently used themes, scenes, and styles when alternatives exist 2ms
+ ✓ src/lib/translation-quickmatch-topics.test.ts > translation quickmatch topics > resolves the random sentinel into a structured context 1ms
+ ✓ src/app/api/ai/ask/route.test.ts > ai ask route > uses short profile when answerMode is short 15ms
+ ✓ src/app/api/ai/ask/route.test.ts > ai ask route > uses detailed profile when answerMode is detailed 1ms
+ ✓ src/app/api/ai/ask/route.test.ts > ai ask route > routes default mode to adaptive simple for simple questions 0ms
+ ✓ src/app/api/ai/ask/route.test.ts > ai ask route > routes default mode to adaptive complex for complex questions 0ms
+ ✓ src/app/api/ai/ask/route.test.ts > ai ask route > returns 400 when text or question is empty 1ms
+ ✓ src/app/api/profile/settle/route.test.ts > profile settle route > returns 401 when the user is not authenticated 4ms
+ ✓ src/app/api/profile/settle/route.test.ts > profile settle route > forwards an authenticated settlement to the rpc function 2ms
+ ✓ src/app/api/profile/settle/route.test.ts > profile settle route > forwards rebuild settlements to the same rpc function 1ms
+ ✓ src/app/api/profile/settle/route.test.ts > profile settle route > forwards dictation settlements to the same rpc function 1ms
+ ✓ src/lib/ghost-completion.test.ts > isSelectionAtTextEnd > returns true when the caret text prefix reaches the full answer tail 2ms
+ ✓ src/lib/ghost-completion.test.ts > isSelectionAtTextEnd > returns false when the caret is in the middle of the answer 0ms
+ ✓ src/lib/ghost-completion.test.ts > buildGhostEmbeddingSource > rebuilds the vector source key when the allowed alternative count changes 0ms
+ ✓ src/lib/ghost-completion.test.ts > buildGhostEmbeddingSource > rebuilds the vector source key when alternatives change under the same reference answer 0ms
+ ✓ src/lib/ghost-completion.test.ts > isGhostCompletionResultStale > treats queued completions from an old partial input as stale after a full hint is accepted 0ms
+ ✓ src/lib/ghost-completion.test.ts > isGhostCompletionResultStale > keeps the completion when the input has not changed 0ms
+ ✓ src/lib/ghost-completion.test.ts > resolveAsyncGhostCompletionAction > ignores stale async results produced for an older input 0ms
+ ✓ src/lib/ghost-completion.test.ts > resolveAsyncGhostCompletionAction > applies a fresh async result for the current input 0ms
+ ✓ src/lib/ghost-completion.test.ts > resolveAsyncGhostCompletionAction > clears the ghost only when the async miss belongs to the current input 0ms
+stderr | src/app/api/ai/cat/session/start/route.test.ts > cat session start route > returns a JSON error payload when article generation throws
+CAT session start failed: Error: provider unavailable
+    at /Users/lijiahao/yasi/src/app/api/ai/cat/session/start/route.test.ts:263:50
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:1893:26
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2316:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2313:10)
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2295:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2262:10)
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2945:64
+
+ ✓ src/app/api/ai/cat/session/start/route.test.ts > cat session start route > returns single-passage CAT blueprint and defers quiz generation 10ms
+ ✓ src/app/api/ai/cat/session/start/route.test.ts > cat session start route > builds article prompts from rank targets instead of short-passage scaling 1ms
+ ✓ src/app/api/ai/cat/session/start/route.test.ts > cat session start route > returns a JSON error payload when article generation throws 6ms
+ ✓ src/app/api/ai/cat/session/start/route.test.ts > cat session start route > applies a one-shot difficulty signal hint to the next CAT passage targets 2ms
+ ✓ src/app/read/rewrite/page.test.tsx > RewritePracticePage > guides users to the full test rewrite practice instead of the removed paragraph toolbar entry 29ms
+ ✓ src/lib/drill-question-transition.test.ts > drill-question-transition > hydrates passage drills while preserving mode metadata 2ms
+ ✓ src/lib/drill-question-transition.test.ts > drill-question-transition > resets generation ui before requesting a fresh drill 1ms
+ ✓ src/lib/drill-question-transition.test.ts > drill-question-transition > consumes a prefetched drill and clears stale question state 1ms
+ ✓ src/lib/cat-score.test.ts > cat score model > keeps exactly 17 rank tiers 2ms
+ ✓ src/lib/cat-score.test.ts > cat score model > keeps exactly 17 lexical tiers 2ms
+ ✓ src/lib/cat-score.test.ts > cat score model > maps boundary scores to expected ranks 0ms
+ ✓ src/lib/cat-score.test.ts > cat score model > maps score to lexical profile by tier boundary 0ms
+ ✓ src/lib/cat-score.test.ts > cat score model > maps score to three-axis article targets by boundary 2ms
+ ✓ src/lib/cat-score.test.ts > cat score model > returns score distance to next rank 0ms
+ ✓ src/lib/cat-score.test.ts > cat score model > maps dynamic CAT session policy by score bands 1ms
+ ✓ src/lib/cat-score.test.ts > cat score model > uses max items as CAT quiz pool size 1ms
+ ✓ src/lib/cat-score.test.ts > cat score model > removes multiple_select in low score segments and enables it in high segments 1ms
+ ✓ src/lib/cat-score.test.ts > cat score model > validates lexical audit independently 0ms
+ ✓ src/lib/cat-score.test.ts > cat score model > validates article difficulty with structure failure 0ms
+ ✓ src/lib/cat-score.test.ts > cat score model > validates article difficulty with lexical failure 3ms
+ ✓ src/lib/cat-score.test.ts > cat score model > validates article difficulty when both stages pass 1ms
+ ✓ src/lib/cat-score.test.ts > cat score model > validates three-axis targets with detailed pass/fail reasons 4ms
+stderr | src/app/api/ai/cat/session/submit/route.test.ts > cat session submit route > returns a JSON 500 instead of crashing when an unexpected submit error is thrown
+CAT session submit failed: TypeError: fetch failed
+    at /Users/lijiahao/yasi/src/app/api/ai/cat/session/submit/route.test.ts:333:51
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:1893:26
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2316:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2313:10)
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2295:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2262:10)
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2945:64
+
+ ✓ src/app/api/ai/cat/session/submit/route.test.ts > cat session submit route > supports rasch responses payload and returns animation/session metadata 10ms
+ ✓ src/app/api/ai/cat/session/submit/route.test.ts > cat session submit route > applies CAT self-assessment correction and returns assessment metadata 1ms
+ ✓ src/app/api/ai/cat/session/submit/route.test.ts > cat session submit route > can prepare objective CAT settlement before self-assessment finalization 1ms
+ ✓ src/app/api/ai/cat/session/submit/route.test.ts > cat session submit route > can finalize from stored objective settlement without re-sending responses 0ms
+ ✓ src/app/api/ai/cat/session/submit/route.test.ts > cat session submit route > returns a JSON 500 instead of crashing when an unexpected submit error is thrown 2ms
+ ✓ src/app/api/ai/cat/session/submit/route.test.ts > cat session submit route > returns stored settlement metadata when a completed session is retried 0ms
+ ✓ src/lib/battle-quickmatch-topics.test.ts > resolveBattleScenarioTopic > passes through explicit topics unchanged 1ms
+ ✓ src/lib/battle-quickmatch-topics.test.ts > resolveBattleScenarioTopic > treats the random sentinel as a quickmatch request 1ms
+ ✓ src/lib/battle-quickmatch-topics.test.ts > resolveBattleScenarioTopic > builds a structured prompt for quickmatch scenarios 0ms
+ ✓ src/lib/battle-quickmatch-topics.test.ts > pickBattleQuickMatchTopic > avoids recently used topics and domains when possible 1ms
+ ✓ src/lib/battle-quickmatch-topics.test.ts > pickBattleQuickMatchTopic > falls back cleanly when the history has exhausted the pool 0ms
+ ✓ src/lib/battle-quickmatch-topics.test.ts > getBattleQuickMatchPoolSize > creates a large enough pool for diverse quickmatch rounds 0ms
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts translation drill on the first generation when word count is in range
+[API] Final Elo: 820, bossType: undefined
+[API] Generating drill for Elo 820
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts translation drill on the first generation when word count is in range
+[Difficulty] Elo: 820, Target: 6-9 words, Actual: 8 words, Status: MATCHED
+[Difficulty Result] Elo: 820, Mode: translation
+  Expected: 6-9 words (白银 / A2+)
+  Actual: 8 words | AI Reported: 8 | Status: MATCHED
+  AI Self-Report: Tier=白银, CEFR=A2+, Range=6-9
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > flags inaccurate AI self-reported word counts
+[API] Final Elo: 820, bossType: undefined
+[API] Generating drill for Elo 820
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > flags inaccurate AI self-reported word counts
+[Difficulty] Elo: 820, Target: 6-9 words, Actual: 8 words, Status: MATCHED
+[Difficulty Result] Elo: 820, Mode: translation
+  Expected: 6-9 words (白银 / A2+)
+  Actual: 8 words | AI Reported: 99 | Status: MATCHED
+  AI Self-Report: Tier=白银, CEFR=A2+, Range=8-10
+  ⚠️ AI WORD COUNT MISMATCH: Reported 99 but actual is 8
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > caps translation alternatives at two even if the model returns more
+[API] Final Elo: 820, bossType: undefined
+[API] Generating drill for Elo 820
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > caps translation alternatives at two even if the model returns more
+[Difficulty] Elo: 820, Target: 6-9 words, Actual: 8 words, Status: MATCHED
+[Difficulty Result] Elo: 820, Mode: translation
+  Expected: 6-9 words (白银 / A2+)
+  Actual: 8 words | AI Reported: 8 | Status: MATCHED
+  AI Self-Report: Tier=白银, CEFR=A2+, Range=8-10
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts slight translation length drift within tolerance without retrying
+[API] Final Elo: 820, bossType: undefined
+[API] Generating drill for Elo 820
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts slight translation length drift within tolerance without retrying
+[Difficulty] Elo: 820, Target: 6-9 words, Actual: 10 words, Status: MATCHED
+[Difficulty Result] Elo: 820, Mode: translation
+  Expected: 6-9 words (白银 / A2+)
+  Actual: 10 words | AI Reported: 11 | Status: MATCHED
+  AI Self-Report: Tier=白银, CEFR=A2+, Range=8-10
+  ⚠️ AI WORD COUNT MISMATCH: Reported 11 but actual is 10
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > treats the topic as background direction instead of forcing explicit topic words
+[API] Final Elo: 820, bossType: undefined
+[API] Generating drill for Elo 820
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > treats the topic as background direction instead of forcing explicit topic words
+[Difficulty] Elo: 820, Target: 6-9 words, Actual: 7 words, Status: MATCHED
+[Difficulty Result] Elo: 820, Mode: translation
+  Expected: 6-9 words (白银 / A2+)
+  Actual: 7 words | AI Reported: 7 | Status: MATCHED
+  AI Self-Report: Tier=白银, CEFR=A2+, Range=7-11
+
+ ✓ src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts translation drill on the first generation when word count is in range 9ms
+ ✓ src/app/api/ai/generate_drill/route.test.ts > generate_drill route > flags inaccurate AI self-reported word counts 1ms
+ ✓ src/app/api/ai/generate_drill/route.test.ts > generate_drill route > caps translation alternatives at two even if the model returns more 0ms
+ ✓ src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts slight translation length drift within tolerance without retrying 0ms
+ ✓ src/app/api/ai/generate_drill/route.test.ts > generate_drill route > treats the topic as background direction instead of forcing explicit topic words 1ms
+ ✓ src/app/api/ai/writing_guide/route.test.ts > writing_guide route > instructs the model to accept natural alternative answers and protect unfinished fragments 5ms
+ ✓ src/app/api/ai/writing_guide/route.test.ts > writing_guide route > replays structured history context instead of only label and hint 1ms
+ ✓ src/app/api/ai/writing_guide/route.test.ts > writing_guide route > normalizes non-blocking states so they never hard-stop the learner 1ms
+ ✓ src/lib/rebuild-rewards.test.ts > rebuild rewards > gives sentence rebuild a 5-coin floor even for weak attempts 1ms
+ ✓ src/lib/rebuild-rewards.test.ts > rebuild rewards > rewards sentence rebuild correctness and clean execution without using a >8 threshold 0ms
+ ✓ src/lib/rebuild-rewards.test.ts > rebuild rewards > gives passage rebuild a 5-coin floor and uses objective score bands plus streak 0ms
+ ✓ src/lib/rebuild-rewards.test.ts > rebuild rewards > rewards a strong no-skip passage session from objective score only 0ms
+ ✓ src/lib/rebuild-rewards.test.ts > rebuild rewards > triggers sentence rebuild gacha only for clean correct answers 0ms
+ ✓ src/lib/rebuild-rewards.test.ts > rebuild rewards > triggers passage rebuild gacha only for strong no-skip sessions 0ms
+ ✓ src/lib/rebuild-rewards.test.ts > rebuild rewards > rolls rebuild drop rewards as capsule or coins 0ms
+ ✓ src/lib/rebuild-rewards.test.ts > rebuild rewards > does not roll a drop reward when the rebuild attempt is not eligible 0ms
+ ✓ src/lib/speech-audio.test.ts > speech-audio > concatenates PCM chunks in order 2ms
+ ✓ src/lib/speech-audio.test.ts > speech-audio > encodes captured PCM chunks into a 16k wav payload 1ms
+ ✓ src/app/api/ai/task-split/route.test.ts > task split route > normalizes legacy reading and listening outputs into the new task modules 4ms
+ ✓ src/app/api/ai/task-split/route.test.ts > task split route > rejects empty normalized output 1ms
+ ✓ src/app/api/ai/guided_script/route.test.ts > guided_script route > returns a normalized template guided script with aligned slots 5ms
+ ✓ src/app/api/ai/guided_script/route.test.ts > guided_script route > returns 502 when model output is malformed instead of using a local fallback 0ms
+ ✓ src/lib/user-sync.test.ts > user sync helpers > normalizes word keys for cross-device upserts 1ms
+ ✓ src/lib/user-sync.test.ts > user sync helpers > creates a default local profile with inventory-derived hints 4ms
+ ✓ src/lib/user-sync.test.ts > user sync helpers > resets only translate elo fields to the 200 baseline 0ms
+ ✓ src/lib/user-sync.test.ts > user sync helpers > maps a remote profile snapshot into the local Dexie shape 1ms
+ ✓ src/lib/user-sync.test.ts > user sync helpers > creates a profile patch without overwriting unrelated fields 0ms
+ ✓ src/lib/user-sync.test.ts > user sync helpers > creates a local vocab mirror item with sync metadata 0ms
+ ✓ src/lib/user-sync.test.ts > user sync helpers > round-trips daily plans with source metadata across remote sync helpers 0ms
+ ✓ src/lib/user-sync.test.ts > user sync helpers > preserves vocab source metadata across local and remote mappings 2ms
+ ✓ src/lib/user-sync.test.ts > user sync helpers > maps dictation elo history rows to remote payloads 1ms
+ ✓ src/lib/user-sync.test.ts > user sync helpers > preserves read article snapshot payloads for cloud round-trip 0ms
+ ✓ src/app/api/ai/rewrite-practice/route.test.ts > rewrite-practice route > returns 400 when paragraphText is missing for generate 6ms
+ ✓ src/app/api/ai/rewrite-practice/route.test.ts > rewrite-practice route > respects excludedSentences when generating rewrite prompt 1ms
+ ✓ src/app/api/ai/rewrite-practice/route.test.ts > rewrite-practice route > falls back to candidate pool sentence when model returns non-candidate 1ms
+ ✓ src/app/api/ai/rewrite-practice/route.test.ts > rewrite-practice route > retries generate when inspiration prompt looks like literal translation 0ms
+ ✓ src/app/api/ai/rewrite-practice/route.test.ts > rewrite-practice route > returns 400 when required score fields are missing 2ms
+ ✓ src/app/api/ai/rewrite-practice/route.test.ts > rewrite-practice route > applies copy penalty on highly similar rewrite 2ms
+ ✓ src/app/api/ai/rewrite-practice/route.test.ts > rewrite-practice route > does not over-penalize semantics in non-strict mode when sentence quality is good 2ms
+ ✓ src/app/api/ai/rewrite-practice/route.test.ts > rewrite-practice route > filters out unlocatable or non-error corrections 3ms
+ ✓ src/lib/battleUiState.test.ts > shouldRefreshBattleChart > does not refresh on the initial null state 1ms
+ ✓ src/lib/battleUiState.test.ts > shouldRefreshBattleChart > refreshes only after a drill closes 0ms
+ ✓ src/lib/battleUiState.test.ts > shouldRefreshBattleChart > does not refresh while a drill is opening 1ms
+ ✓ src/lib/battleUiState.test.ts > getDrillSurfacePhase > keeps the drill in bootstrap mode until the profile finishes loading 0ms
+ ✓ src/lib/battleUiState.test.ts > getDrillSurfacePhase > shows loading instead of an empty shell while the first drill is still being prepared 0ms
+ ✓ src/lib/battleUiState.test.ts > getDrillSurfacePhase > switches to ready once drill data exists 0ms
+ ✓ src/lib/battleUiState.test.ts > shouldResetQuickMatchTopic > does not reset before any drill has been generated 0ms
+ ✓ src/lib/battleUiState.test.ts > shouldResetQuickMatchTopic > keeps the current theme before the configured interval is reached 0ms
+ ✓ src/lib/battleUiState.test.ts > shouldResetQuickMatchTopic > rotates the topic pool exactly on the interval boundary 0ms
+ ✓ src/lib/battleUiState.test.ts > shouldExpandShopInventoryDock > keeps the inventory collapsed on desktop until the shop is hovered 0ms
+ ✓ src/lib/battleUiState.test.ts > shouldExpandShopInventoryDock > expands the inventory on desktop while the shop area is hovered 0ms
+ ✓ src/lib/battleUiState.test.ts > shouldExpandShopInventoryDock > keeps the inventory visible on touch devices without hover 0ms
+ ✓ src/lib/drill-generation-plan.test.ts > drill-generation-plan > rotates to the random translation pool at the quick match boundary 2ms
+ ✓ src/lib/drill-generation-plan.test.ts > drill-generation-plan > keeps the active topic prompt when quick match stays on the same topic 0ms
+ ✓ src/lib/drill-generation-plan.test.ts > drill-generation-plan > rolls a listening prefetch boss only inside the 2 percent window 0ms
+ ✓ src/lib/drill-generation-plan.test.ts > drill-generation-plan > resolves a gamble event when the listening roll lands in the gamble band 0ms
+ ✓ src/lib/drill-generation-plan.test.ts > drill-generation-plan > can force a roulette boss state without consuming prefetched drills 0ms
+ ✓ src/lib/drill-generation-plan.test.ts > drill-generation-plan > builds the next-drill request payload with translation metadata intact 0ms
+ ✓ src/lib/drill-generation-plan.test.ts > drill-generation-plan > checks prefetched drill compatibility before instant consumption 0ms
+ ✓ src/lib/drill-generation-plan.test.ts > drill-generation-plan > matches the quick match topic reset helper used by generation and prefetch 0ms
+ ✓ src/lib/client-retry.test.ts > client-retry > retries transient client errors until success 4ms
+ ✓ src/lib/client-retry.test.ts > client-retry > does not retry abort errors 1ms
+ ✓ src/lib/client-retry.test.ts > client-retry > treats retryable response status as transient 0ms
+ ✓ src/lib/drill-rebuild-helpers.test.ts > drill-rebuild-helpers > tracks repeat indexes and distractor origins when building token instances 1ms
+ ✓ src/lib/drill-rebuild-helpers.test.ts > drill-rebuild-helpers > creates a fresh passage draft state from the segment bank 1ms
+ ✓ src/lib/drill-rebuild-helpers.test.ts > drill-rebuild-helpers > prefers the candidate that best matches the expected reference token 0ms
+ ✓ src/lib/drill-rebuild-helpers.test.ts > drill-rebuild-helpers > builds guided-script keys and content keys from normalized topic data 0ms
+ ✓ src/lib/drill-rebuild-helpers.test.ts > drill-rebuild-helpers > detects equal token orders and builds IPA liaison when consonants meet vowels 0ms
+ ✓ src/lib/translationDifficulty.test.ts > translation difficulty targets > uses the new single-sentence ranges at representative Elo breakpoints 2ms
+ ✓ src/lib/translationDifficulty.test.ts > translation difficulty targets > keeps passage targets on the previous wider ranges 0ms
+ ✓ src/lib/translationDifficulty.test.ts > translation difficulty targets > uses grammar-focused prompts instead of long-sentence prompts for sentence mode 0ms
+ ✓ src/lib/translationDifficulty.test.ts > translation difficulty validation > uses the tighter single-sentence range for sentence mode 0ms
+ ✓ src/lib/translationDifficulty.test.ts > translation difficulty validation > rejects semicolon-joined pseudo double sentences in sentence mode 0ms
+ ✓ src/lib/translationDifficulty.test.ts > translation difficulty validation > rejects multiple sentence endings in sentence mode 0ms
+ ✓ src/lib/translationDifficulty.test.ts > translation difficulty validation > builds a hard-limit retry instruction when a sentence is too long 0ms
+ ✓ src/app/api/profile/nvidia-models/route.test.ts > profile nvidia-models route > returns 401 when unauthenticated 2ms
+ ✓ src/app/api/profile/nvidia-models/route.test.ts > profile nvidia-models route > returns model ids from the helper 2ms
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > rounds dictation scores to integers
+[score_translation] Request received: {
+  mode: 'dictation',
+  user_translation: '我昨天去了超市',
+  current_elo: 860,
+  force_cloud: false
+}
+[score_translation] ☁️ Calling DeepSeek API...
+[score_translation] API Attempt 1/3 (Teaching Mode: false)
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > rounds dictation scores to integers
+[score_translation] Response received (via deepseek-cloud)
+[score_translation] Success: { score: 9, teaching_mode: false }
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > forces punctuation-only dictation differences to score 10
+[score_translation] Request received: {
+  mode: 'dictation',
+  user_translation: '我昨天去了超市',
+  current_elo: 860,
+  force_cloud: false
+}
+[score_translation] ☁️ Calling DeepSeek API...
+[score_translation] API Attempt 1/3 (Teaching Mode: false)
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > forces punctuation-only dictation differences to score 10
+[score_translation] Response received (via deepseek-cloud)
+[score_translation] Success: { score: 10, teaching_mode: false }
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > normalizes translation score to 0-10 when model returns 100
+[score_translation] Request received: {
+  mode: 'translation',
+  user_translation: '我昨天去了超市',
+  current_elo: 860,
+  force_cloud: false
+}
+[score_translation] ☁️ Calling DeepSeek API...
+[score_translation] API Attempt 1/3 (Teaching Mode: false)
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > normalizes translation score to 0-10 when model returns 100
+[score_translation] Response received (via deepseek-cloud)
+[score_translation] Success: { score: 10, teaching_mode: false }
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > caps reverse translation score when answer is not Chinese
+[score_translation] Request received: {
+  mode: 'translation',
+  user_translation: 'asdf qwer random text',
+  current_elo: 860,
+  force_cloud: false
+}
+[score_translation] ☁️ Calling DeepSeek API...
+[score_translation] API Attempt 1/3 (Teaching Mode: false)
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > caps reverse translation score when answer is not Chinese
+[score_translation] Response received (via deepseek-cloud)
+[score_translation] Success: { score: 2, teaching_mode: false }
+
+ ✓ src/app/api/ai/score_translation/route.test.ts > score_translation route > rounds dictation scores to integers 6ms
+ ✓ src/app/api/ai/score_translation/route.test.ts > score_translation route > forces punctuation-only dictation differences to score 10 1ms
+ ✓ src/app/api/ai/score_translation/route.test.ts > score_translation route > normalizes translation score to 0-10 when model returns 100 1ms
+ ✓ src/app/api/ai/score_translation/route.test.ts > score_translation route > caps reverse translation score when answer is not Chinese 1ms
+ ✓ src/app/auth/callback/route.test.ts > auth callback route > redirects exchanged code sessions to the new home page 2ms
+ ✓ src/app/auth/callback/route.test.ts > auth callback route > verifies recovery links and routes them to reset-password 1ms
+ ✓ src/lib/guidedHintClient.test.ts > guidedHintClient > builds a stable cache key from slot context 1ms
+ ✓ src/lib/guidedHintClient.test.ts > guidedHintClient > changes cache key when the manual AI hint is requested again 0ms
+ ✓ src/lib/guidedHintClient.test.ts > guidedHintClient > retries transient failures and eventually returns the hint 0ms
+ ✓ src/lib/guidedHintClient.test.ts > guidedHintClient > does not retry abort errors 1ms
+ ✓ src/app/api/ai/analyze_drill/route.test.ts > analyze_drill route > asks translation analysis for concrete phrase-level coaching instead of generic praise 3ms
+ ✓ src/app/api/ai/analyze_drill/route.test.ts > analyze_drill route > keeps basic analysis lightweight when detail_level is basic 1ms
+ ✓ src/app/api/ai/analyze_drill/route.test.ts > analyze_drill route > keeps teaching-mode extras while adding the richer translation fields 1ms
+ ✓ src/app/api/profile/test-ai-provider/route.test.ts > profile test-ai-provider route > returns 401 when unauthenticated 4ms
+ ✓ src/app/api/profile/test-ai-provider/route.test.ts > profile test-ai-provider route > returns 400 for unsupported provider 2ms
+ ✓ src/app/api/profile/test-ai-provider/route.test.ts > profile test-ai-provider route > tests the current provider payload and returns a success message 1ms
+ ✓ src/components/drill/gacha.test.ts > shouldTriggerGacha > triggers only for translation drills above 8.0 with a passing roll 1ms
+ ✓ src/components/drill/gacha.test.ts > shouldTriggerGacha > does not trigger for score 8.0 or lower, non-translation, or learning sessions 0ms
+ ✓ src/components/drill/gacha.test.ts > buildGachaPack > builds five cards with exactly one high-value card and four normal cards 2ms
+ ✓ src/components/drill/gacha.test.ts > buildGachaPack > only produces configured normal and high-value rewards 0ms
+ ✓ src/components/drill/gacha.test.ts > getGachaRewardEconomy > maps coin rewards to coin deltas and reward FX 1ms
+ ✓ src/components/drill/gacha.test.ts > getGachaRewardEconomy > maps item rewards to inventory deltas without coin gain 1ms
+ ✓ src/components/drill/gacha.test.ts > isHighValueGachaCard > recognizes high-value cards by tier 1ms
+ ✓ src/app/api/ai/guided_hint/route.test.ts > guided_hint route > returns compact AI hint lines 7ms
+ ✓ src/app/api/ai/guided_hint/route.test.ts > guided_hint route > returns 502 when AI output misses primary 1ms
+ ✓ src/lib/cat-rasch.test.ts > cat rasch > normalizes score to theta across 0-3200 and beyond 1ms
+ ✓ src/lib/cat-rasch.test.ts > cat rasch > increases theta and score on strong responses with challenge items 0ms
+ ✓ src/lib/cat-rasch.test.ts > cat rasch > drops score on weak responses against easy items 0ms
+ ✓ src/lib/cat-rasch.test.ts > cat rasch > applies low-confidence quality scaling 0ms
+ ✓ src/lib/cat-rasch.test.ts > cat rasch > does not stop before minItems=2 and can stop at second item when precision reached 0ms
+ ✓ src/lib/fsrs.test.ts > official fsrs adapter > matches ts-fsrs for a new card preview 1ms
+ ✓ src/lib/fsrs.test.ts > official fsrs adapter > matches ts-fsrs for a review lapse 1ms
+ ✓ src/lib/fsrs.test.ts > vocabulary scheduling resets > fully resets scheduling fields while preserving word content 0ms
+ ✓ src/lib/fsrs.test.ts > manual archive helpers > archives a card without rewriting scheduling fields 0ms
+ ✓ src/lib/listening-elo.test.ts > listening elo > uses band-specific normalization thresholds 1ms
+ ✓ src/lib/listening-elo.test.ts > listening elo > maps elo ranges to the intended bands and k-factors 0ms
+ ✓ src/lib/listening-elo.test.ts > listening elo > makes same-difficulty low-band scores around 6.0 roughly break even 0ms
+ ✓ src/lib/listening-elo.test.ts > listening elo > makes same-difficulty mid and high bands stricter 0ms
+ ✓ src/lib/listening-elo.test.ts > listening elo > does not let mid/high bands spike too hard on higher-difficulty 6.x scores 0ms
+ ✓ src/lib/listening-elo.test.ts > listening elo > applies only a +1 streak bonus on positive results 0ms
+ ✓ src/components/home/home-data.test.ts > home-data > marks today, active days, and recent streak days in the monthly calendar 2ms
+ ✓ src/components/home/home-data.test.ts > home-data > builds the dashboard view model from local mirror data 1ms
+ ✓ src/lib/daily-drill-progress.test.ts > daily drill progress > creates a local date key 2ms
+ ✓ src/lib/daily-drill-progress.test.ts > daily drill progress > resets stale day data 0ms
+ ✓ src/lib/daily-drill-progress.test.ts > daily drill progress > increments completed count on the active day 0ms
+ ✓ src/lib/daily-drill-progress.test.ts > daily drill progress > sanitizes invalid counts and goals 0ms
+ ✓ src/lib/daily-drill-progress.test.ts > daily drill progress > persists sync, increment, and goal changes in storage 0ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > tokenizes listening sentences with punctuation attached 2ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > builds distractors without duplicating answer tokens 1ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > creates a token bank with answer and distractor tokens 1ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > evaluates correct rebuild answers exactly 1ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > marks distractors and missing words on incorrect rebuild answers 0ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > tracks content words and tail coverage separately 1ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > builds an inline repaired display sentence for incorrect answers 1ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > keeps downstream tokens correct when one token is missing 0ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > computes hidden difficulty deltas from self-eval and rich system signals 1ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > penalizes hard, incomplete, slow, skipped attempts 6ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > treats partial, low-quality submissions as harder even without skip 2ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > keeps medium-quality attempts roughly matched 1ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > maps practice tiers by hidden elo 0ms
+ ✓ src/lib/rebuild-mode.test.ts > rebuild mode helpers > uses more generous soft time limits by elo band 0ms
+ ✓ src/lib/cat-growth.test.ts > cat growth > maps band ranges to difficulty 2ms
+ ✓ src/lib/cat-growth.test.ts > cat growth > derives level from score baseline 0ms
+ ✓ src/lib/cat-growth.test.ts > cat growth > increases score and next band on strong performance 0ms
+ ✓ src/lib/cat-growth.test.ts > cat growth > applies soft rollback without immediate level downgrade 0ms
+ ✓ src/lib/cat-growth.test.ts > cat growth > recommends level and performance badges 1ms
+ ✓ src/lib/auth-routing.test.ts > auth routing > treats the full account system pages as public auth paths 1ms
+ ✓ src/lib/auth-routing.test.ts > auth routing > keeps reset-password accessible even for authenticated recovery sessions 0ms
+ ✓ src/lib/auth-routing.test.ts > auth routing > protects the new home shell and profile pages 0ms
+ ✓ src/lib/db-schema.test.ts > Dexie schema regressions > keeps the ai_cache compound key+type index for analysis cache lookups 2ms
+ ✓ src/lib/db-schema.test.ts > Dexie schema regressions > keeps the generated rebuild bank table available for local draft storage 0ms
+ ✓ src/lib/db-schema.test.ts > Dexie schema regressions > keeps the due index on vocabulary for review queries 0ms
+ ✓ src/lib/db-schema.test.ts > Dexie schema regressions > keeps the timestamp index on writing_history for ordered loads 0ms
+ ✓ src/lib/db-schema.test.ts > Dexie schema regressions > keeps reading_notes indexes for per-article annotation lookups 0ms
+ ✓ src/lib/db-schema.test.ts > Dexie schema regressions > keeps the listening_cabin_sessions table indexed for local history lookups 0ms
+ ✓ src/lib/dailyArticle.test.ts > resolveDailyArticleCandidate > falls through to the next parseable feed item when the first item fails 2ms
+ ✓ src/lib/dailyArticle.test.ts > resolveDailyArticleCandidate > returns an existing cached article without reparsing it 0ms
+ ✓ src/lib/dailyArticle.test.ts > resolveDailyArticleCandidate > skips feed items without usable urls and returns null when none succeed 0ms
+ ✓ src/lib/quiz-scoring.test.ts > quiz scoring > normalizes letter and text answers 1ms
+ ✓ src/lib/quiz-scoring.test.ts > quiz scoring > extracts multi-select answers from array and text fallback 0ms
+ ✓ src/lib/quiz-scoring.test.ts > quiz scoring > applies all-or-nothing for multiple_select 0ms
+ ✓ src/lib/quiz-scoring.test.ts > quiz scoring > scores mixed objective quiz 0ms
+ ✓ src/lib/cat-self-assessment.test.ts > cat self assessment > classifies strong positive objective sessions as too easy 1ms
+ ✓ src/lib/cat-self-assessment.test.ts > cat self assessment > classifies strong negative objective sessions as too hard 0ms
+ ✓ src/lib/cat-self-assessment.test.ts > cat self assessment > classifies mid-range sessions as matched 0ms
+ ✓ src/lib/cat-self-assessment.test.ts > cat self assessment > uses the agreed score-correction table 0ms
+ ✓ src/lib/cat-self-assessment.test.ts > cat self assessment > keeps a visible self-assessment tendency even when the applied correction is zero 0ms
+ ✓ src/lib/cat-self-assessment.test.ts > cat self assessment > explains zero applied correction when self-assessment conflicts with the system 0ms
+ ✓ src/lib/cat-self-assessment.test.ts > cat self assessment > weights self 60 and system 40 for next-session difficulty signal 0ms
+ ✓ src/lib/cat-self-assessment.test.ts > cat self assessment > turns difficulty signal into a one-shot score offset for the next CAT passage 0ms
+ ✓ src/lib/read-speaking.test.ts > read-speaking segmentation > builds contiguous sentence units without overlap 3ms
+ ✓ src/lib/read-speaking.test.ts > read-speaking segmentation > shifts one boundary in word-aligned steps 0ms
+ ✓ src/lib/read-speaking.test.ts > read-speaking mark alignment > maps repeated word tokens to matching mark indices in order 0ms
+ ✓ src/lib/inline-coach-stream.test.ts > consumeInlineCoachBuffer > parses complete newline-delimited chunks and preserves the trailing partial fragment 3ms
+ ✓ src/lib/inline-coach-stream.test.ts > applyInlineCoachChunk > accumulates text deltas and exposes structured meta fields for the UI 1ms
+ ✓ src/lib/drill-interactive-word.test.ts > getBattleInteractiveWordClassName > keeps karaoke highlighting disabled by default 1ms
+ ✓ src/lib/drill-interactive-word.test.ts > getBattleInteractiveWordClassName > keeps the active word highlight unchanged 0ms
+ ✓ src/app/api/ai/generate-quiz/route.test.ts > generate quiz route helpers > builds CET-4 instructions with exam-specific guidance 1ms
+ ✓ src/app/api/ai/generate-quiz/route.test.ts > generate quiz route helpers > builds CAT instructions with learner-band guidance 0ms
+ ✓ src/app/api/ai/generate-quiz/route.test.ts > generate quiz route helpers > normalizes valid generated questions and backfills difficulty 1ms
+ ✓ src/app/api/ai/generate-quiz/route.test.ts > generate quiz route helpers > keeps provided difficulty but clamps out-of-range values 0ms
+ ✓ src/lib/rebuild-shadowing-state.test.ts > rebuild shadowing state helpers > updates sentence shadowing entry 1ms
+ ✓ src/lib/rebuild-shadowing-state.test.ts > rebuild shadowing state helpers > stores and overwrites segment shadowing entry by index 0ms
+ ✓ src/lib/rebuild-shadowing-state.test.ts > rebuild shadowing state helpers > keeps segment buckets isolated 0ms
+ ✓ src/lib/rebuild-shadowing-state.test.ts > rebuild shadowing state helpers > marks rebuild shadowing as training-only (no Elo impact) 0ms
+ ✓ src/lib/translation-elo.test.ts > translation too-hard penalty > applies the fixed -25 elo penalty by default 1ms
+ ✓ src/lib/translation-elo.test.ts > translation too-hard penalty > floors elo at 0 0ms
+ ✓ src/lib/grammar-analysis.test.ts > grammar analysis helpers > builds stable cache key from normalized text and request dimensions 1ms
+ ✓ src/lib/grammar-analysis.test.ts > grammar analysis helpers > sanitizes partial basic payload with sentence-level fallback 1ms
+ ✓ src/lib/grammar-analysis.test.ts > grammar analysis helpers > returns fallback deep payload when tree is missing 0ms
+ ✓ src/lib/grammar-analysis.test.ts > grammar analysis helpers > upgrades weak highlight explanations and contextual segment meaning 0ms
+ ✓ src/lib/grammar-analysis.test.ts > grammar analysis helpers > contains stronger generation constraints in prompts 0ms
+ ✓ src/lib/drill-elo.test.ts > resolveNextDrillEffectiveElo > uses the settled current elo for normal next-question generation 1ms
+ ✓ src/lib/drill-elo.test.ts > resolveNextDrillEffectiveElo > respects a forced elo override when provided 0ms
+ ✓ src/lib/drill-elo.test.ts > resolveNextDrillEffectiveElo > never returns a negative elo 0ms
+ ✓ src/lib/ai-coach-history.test.ts > ai-coach-history > normalizes casing and whitespace before comparing history context 1ms
+ ✓ src/lib/ai-coach-history.test.ts > ai-coach-history > keeps history when the learner is only extending the same draft 0ms
+ ✓ src/lib/ai-coach-history.test.ts > ai-coach-history > resets history when the learner rewrites into a materially different sentence 0ms
+ ✓ src/lib/supabase/env.test.ts > supabase env helpers > reads next public supabase variables when present 1ms
+ ✓ src/lib/supabase/env.test.ts > supabase env helpers > falls back to server-side supabase variables when public ones are missing 0ms
+ ✓ src/lib/supabase/env.test.ts > supabase env helpers > falls back to anon key for compatibility 0ms
+ ✓ src/lib/translation-diff.test.ts > buildTranslationHighlights > ignores punctuation-only and capitalization-only differences 4ms
+ ✓ src/lib/translation-diff.test.ts > buildTranslationHighlights > keeps real wording differences 1ms
+ ✓ src/lib/translation-diff.test.ts > buildTranslationHighlights > reports missing content after normalization 1ms
+ ✓ src/lib/guided-learning-session.test.ts > guided-learning-session > resolves the current teacher-guided slot with nearest left and right context 2ms
+ ✓ src/lib/guided-learning-session.test.ts > guided-learning-session > promotes the teacher-guided attempt to rescue mode when choices are revealed 0ms
+ ✓ src/lib/guided-learning-session.test.ts > guided-learning-session > uses the active cloze blank and cloze progress when resolving hint context 0ms
+ ✓ src/lib/pronunciation-scoring.test.ts > pronunciation scoring helpers > caps the overall score when coverage is too low 1ms
+ ✓ src/lib/pronunciation-scoring.test.ts > pronunciation scoring helpers > generates actionable fallback tips from word results 0ms
+ ✓ src/lib/pronunciation-scoring.test.ts > pronunciation scoring helpers > normalizes raw service payloads into the app contract 0ms
+ ✓ src/lib/read-pretest.test.ts > read-pretest candidates > extracts stable sentence candidates from article text 1ms
+ ✓ src/lib/read-pretest.test.ts > read-pretest bundle > builds deterministic listening/writing/translation sets by article key 1ms
+ ✓ src/lib/read-pretest.test.ts > read-pretest bundle > falls back gracefully for short text 0ms
+ ✓ src/lib/reading-economy.test.ts > reading economy > exports insufficient code for business handling 2ms
+ ✓ src/lib/reading-economy.test.ts > reading economy > returns expected costs and rewards 1ms
+ ✓ src/lib/reading-economy.test.ts > reading economy > builds stable dedupe keys 0ms
+ ✓ src/lib/coach-input.test.ts > resolveCoachCurrentInput > prefers the live editor text over a stale fallback snapshot 2ms
+ ✓ src/lib/coach-input.test.ts > resolveCoachCurrentInput > falls back to the stored answer when live editor text is unavailable 0ms
+ ✓ src/lib/coach-input.test.ts > buildCoachDrawerUserMessage > injects the current answer text into the freeform coach prompt 0ms
+ ✓ src/lib/dictation-guardrails.test.ts > dictation guardrails > rounds dictation scores to integers and clamps them 1ms
+ ✓ src/lib/dictation-guardrails.test.ts > dictation guardrails > forces punctuation-only differences to the top score 1ms
+ ✓ src/lib/dictation-guardrails.test.ts > dictation guardrails > filters punctuation-only dictation errors while keeping semantic ones 0ms
+ ✓ src/components/reading/selection-helpers.test.ts > hasMeaningfulTextSelection > returns false for collapsed selection 2ms
+ ✓ src/components/reading/selection-helpers.test.ts > hasMeaningfulTextSelection > returns false for whitespace-only selection 0ms
+ ✓ src/components/reading/selection-helpers.test.ts > hasMeaningfulTextSelection > returns true for non-empty text selection 0ms
+ ✓ src/lib/read-article-snapshot.test.ts > buildReadArticleCloudPayload > preserves CAT completion flags in the cloud snapshot payload 2ms
+ ✓ src/lib/read-article-snapshot.test.ts > buildReadArticleCloudPayload > preserves video metadata and structured quiz questions 0ms
+ ✓ src/lib/ask-thread.test.ts > ask-thread > returns empty thread for invalid json 2ms
+ ✓ src/lib/ask-thread.test.ts > ask-thread > sanitizes malformed messages 1ms
+ ✓ src/lib/ask-thread.test.ts > ask-thread > encodes and decodes messages 0ms
+ ✓ src/lib/ask-thread.test.ts > ask-thread > builds qa pairs from threaded messages with streaming tail 1ms
+ ✓ src/lib/translation-self-eval.test.ts > translation self evaluation > maps self evaluation to direct elo deltas 1ms
+ ✓ src/lib/translation-self-eval.test.ts > translation self evaluation > ignores system elo and uses self evaluation only for translation difficulty 0ms
+ ✓ src/lib/rebuild-rag.test.ts > rebuild-rag > maps rebuild elo to the expected system vocabulary targets 4ms
+ ✓ src/lib/rebuild-rag.test.ts > rebuild-rag > queries only system vocabulary and merges deduped matches by score 1ms
+ ✓ src/lib/rebuild-rag.test.ts > rebuild-rag > returns an empty list when the vector engine is unavailable 1ms
+ ✓ src/lib/bge-client.test.ts > syncMissingErrorLedgerVectors > vectorizes only pulled black-history entries that are still missing locally 2ms
+ ✓ src/lib/listening-shadowing.test.ts > listening-shadowing tolerance > treats common ASR near-homophones as equivalent for correction alignment 2ms
+ ✓ src/lib/listening-shadowing.test.ts > listening-shadowing tolerance > does not cascade to all-following words when one middle word is omitted 0ms
+ ✓ src/lib/auth-errors.test.ts > getAuthPageErrorMessage > maps supported auth error codes to user-facing messages 1ms
+ ✓ src/lib/auth-errors.test.ts > getAuthPageErrorMessage > returns null for unknown auth error codes 0ms
+ ✓ src/lib/cat-settlement-preview.test.ts > cat settlement preview > applies self-assessment correction immediately on top of the prepared objective delta 1ms
+ ✓ src/lib/background-preferences.test.ts > background themes > exposes the extended cool-tone theme ids 1ms
+ ✓ src/lib/profile-settings.test.ts > profile settings > defaults rebuild shadowing auto-open to enabled 1ms
+ ✓ src/lib/profile-settings.test.ts > profile settings > preserves an explicit rebuild shadowing auto-open preference 0ms
+ ✓ src/lib/profile-settings.test.ts > profile settings > preserves the random english voice preference 0ms
+ ✓ src/lib/profile-settings.test.ts > profile settings > resolves the random english voice preference without picking zh-CN or en-IN voices 0ms
+ ✓ src/lib/profile-settings.test.ts > profile settings > normalizes the nvidia AI provider 0ms
+ ✓ src/lib/user-repository.test.ts > assertSupabaseMutationSucceeded > throws when Supabase returns an application error 1ms
+ ✓ src/lib/user-repository.test.ts > assertSupabaseMutationSucceeded > does nothing when the mutation succeeded 0ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 26 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > auto-advances subtitles sentence by sentence using duration fallback timings
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:260:52
+    258|         }
+    259|
+    260|         expect(latestPlayer.playerState.isPlaying).toBe(true);
+       |                                                    ^
+    261|
+    262|         await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/26]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > keeps the current subtitle through sentence boundary and switches with a small delay
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:316:63
+    314|             latestAudio.dispatch("timeupdate");
+    315|         });
+    316|         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+       |                                                               ^
+    317|     });
+    318|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/26]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > applies single-pause mode immediately by replaying the current sentence from start
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:599:52
+    597|
+    598|         expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
+    599|         expect(latestPlayer.playerState.isPlaying).toBe(true);
+       |                                                    ^
+    600|
+    601|         await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/26]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > re-initializes playback correctly under StrictMode remounts
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:638:52
+    636|
+    637|         expect(latestAudio.src).toBe("mock://narration");
+    638|         expect(latestPlayer.playerState.isPlaying).toBe(true);
+       |                                                    ^
+    639|
+    640|         await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/26]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > uses segmentTimings in dialogue mode without aggressive early subtitle switching
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:696:63
+    694|             latestAudio.dispatch("timeupdate");
+    695|         });
+    696|         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+       |                                                               ^
+    697|     });
+    698|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/26]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > progressively corrects segment timing drift so later sentences still advance into the final subtitle
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:735:63
+    733|             latestAudio.dispatch("timeupdate");
+    734|         });
+    735|         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+       |                                                               ^
+    736|
+    737|         await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/26]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > does not shrink segment timings when browser duration is slightly shorter, avoiding cumulative early switching
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:780:63
+    778|             latestAudio.dispatch("timeupdate");
+    779|         });
+    780|         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+       |                                                               ^
+    781|
+    782|         await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/26]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > keeps full sentence tail in single-pause mode and only pauses near segment boundary
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:879:52
+    877|             latestAudio.dispatch("timeupdate");
+    878|         });
+    879|         expect(latestPlayer.playerState.isPlaying).toBe(true);
+       |                                                    ^
+    880|
+    881|         await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/26]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > restarts current sentence immediately when switching from auto-all to single-pause
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:988:63
+    986|             latestAudio.dispatch("timeupdate");
+    987|         });
+    988|         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+       |                                                               ^
+    989|         expect(latestPlayer.playerState.isPlaying).toBe(true);
+    990|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/26]⎯
+
+ FAIL  src/hooks/useWritingGuide.test.tsx > useWritingGuide > sends structured history on the follow-up request and aborts when input changes
+AssertionError: expected "vi.fn()" to be called 2 times, but got 1 times
+ ❯ src/hooks/useWritingGuide.test.tsx:212:27
+    210|         });
+    211|
+    212|         expect(fetchMock).toHaveBeenCalledTimes(2);
+       |                           ^
+    213|         const secondCallBody = JSON.parse(fetchMock.mock.calls[1][1].b…
+    214|             history: Array<{ state: string; focus: string; nextAction:…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/26]⎯
+
+ FAIL  src/lib/rebuild-battle-elo.test.ts > rebuild battle elo > follows sentence-style rebuild delta: systemDelta + selfDelta
+AssertionError: expected -21 to be -40 // Object.is equality
+
+- Expected
++ Received
+
+- -40
++ -21
+
+ ❯ src/lib/rebuild-battle-elo.test.ts:14:30
+     12|         });
+     13|
+     14|         expect(result.total).toBe(-40);
+       |                              ^
+     15|         expect(result.breakdown.systemDelta).toBe(-18);
+     16|         expect(result.breakdown.selfDelta).toBe(-22);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/26]⎯
+
+ FAIL  src/lib/rebuild-battle-elo.test.ts > rebuild battle elo > applies rebuild clamp limits (-65 ~ +48)
+AssertionError: expected -35 to be -65 // Object.is equality
+
+- Expected
++ Received
+
+- -65
++ -35
+
+ ❯ src/lib/rebuild-battle-elo.test.ts:34:30
+     32|         });
+     33|
+     34|         expect(tooLow.total).toBe(-65);
+       |                              ^
+     35|         expect(tooHigh.total).toBe(48);
+     36|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/26]⎯
+
+ FAIL  src/lib/rebuild-passage.test.ts > rebuild passage helpers > derives soft and hard word-count windows from the existing segment range
+AssertionError: expected { min: 12, max: 18, mean: 15, …(5) } to match object { min: 14, max: 22, mean: 18, …(5) }
+
+- Expected
++ Received
+
+  {
+-   "hardMax": 22,
+-   "hardMin": 14,
+-   "max": 22,
+-   "mean": 18,
+-   "min": 14,
+-   "sigma": 2,
+-   "softMax": 20,
+-   "softMin": 16,
++   "hardMax": 18,
++   "hardMin": 12,
++   "max": 18,
++   "mean": 15,
++   "min": 12,
++   "sigma": 1.5,
++   "softMax": 16.5,
++   "softMin": 13.5,
+  }
+
+ ❯ src/lib/rebuild-passage.test.ts:17:46
+     15|         expect(profile.segmentCount).toBe(3);
+     16|         expect(profile.practiceTier.cefr).toBe("B1");
+     17|         expect(profile.perSegmentWordWindow).toMatchObject({
+       |                                              ^
+     18|             min: 14,
+     19|             max: 22,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/26]⎯
+
+ FAIL  src/lib/vocab-meanings.test.ts > resolveHighlightedMeaningsFromGroups > returns no highlight when the AI-provided highlighted meaning does not match any displayed meaning
+AssertionError: expected [ '战役，战争' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "战役，战争",
++ ]
+
+ ❯ src/lib/vocab-meanings.test.ts:57:11
+     55|                 ["A military fight between armed forces"],
+     56|             ),
+     57|         ).toEqual([]);
+       |           ^
+     58|     });
+     59| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/26]⎯
+
+ FAIL  src/components/auth/AuthForms.test.tsx > auth forms > signs in with email and password, then redirects to home
+AssertionError: expected "vi.fn()" to be called with arguments: [ '/' ]
+
+Number of calls: 0
+
+ ❯ src/components/auth/AuthForms.test.tsx:123:29
+    121|             refresh_token: "refresh-token",
+    122|         });
+    123|         expect(replaceMock).toHaveBeenCalledWith("/");
+       |                             ^
+    124|
+    125|         await view.cleanup();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/26]⎯
+
+ FAIL  src/components/drill/DrillBottomActions.test.tsx > DrillBottomActions > requires translation self evaluation before next question
+AssertionError: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ src/components/drill/DrillBottomActions.test.tsx:82:28
+     80|         const nextButton = Array.from(container.querySelectorAll("butt…
+     81|             .find((button) => button.textContent?.includes("Next Quest…
+     82|         expect(nextButton).toBeTruthy();
+       |                            ^
+     83|         expect(nextButton?.hasAttribute("disabled")).toBe(true);
+     84|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/26]⎯
+
+ FAIL  src/components/reading/ReadingQuizPanel.test.tsx > ReadingQuizPanel > uses previous and next controls to review submitted answers after reopening
+AssertionError: expected '阅读理解四级1/2正确率 50%已提交 2 题 · 至少 2 题，精度达标…' to contain 'The students reviewed notes only once…'
+
+Expected: "The students reviewed notes only once a month."
+Received: "阅读理解四级1/2正确率 50%已提交 2 题 · 至少 2 题，精度达标自动收卷（上限 2 题，目标SE ≤ 0.56）1选择What is the main idea?A. Memory grows with reviewB. Sleep is optionalC. Exams should be removedD. Notes are useless✓ 正确The passage focuses on review and memory.复盘第 2 / 2 题上一题下一题"
+
+ ❯ src/components/reading/ReadingQuizPanel.test.tsx:111:39
+    109|         });
+    110|
+    111|         expect(container.textContent).toContain("The students reviewed…
+       |                                       ^
+    112|     });
+    113| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/26]⎯
+
+ FAIL  src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > keeps answers collapsed by default and resets collapsed state after reopen
+AssertionError: expected 'true' to be 'false' // Object.is equality
+
+Expected: "false"
+Received: "true"
+
+ ❯ src/components/reading/SelectionActionPopup.test.tsx:197:71
+    195|         const reopenedQuestionButton = Array.from(container.querySelec…
+    196|             .find((button) => button.textContent?.includes("问题 1"));
+    197|         expect(reopenedQuestionButton?.getAttribute("aria-expanded")).…
+       |                                                                       ^
+    198|         expect(container.textContent).not.toContain("这里是在描述进行中的状态。");
+    199|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/26]⎯
+
+ FAIL  src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > shows ask replay view directly when popup mode is ask-replay
+AssertionError: expected '问题 1 · 这句话想表达什么？收起强调学历是过去求职的重要信号。' to contain 'AI 回答记录'
+
+Expected: "AI 回答记录"
+Received: "问题 1 · 这句话想表达什么？收起强调学历是过去求职的重要信号。"
+
+ ❯ src/components/reading/SelectionActionPopup.test.tsx:246:39
+    244|         });
+    245|
+    246|         expect(container.textContent).toContain("AI 回答记录");
+       |                                       ^
+    247|         expect(container.textContent).toContain("强调学历是过去求职的重要信号。");
+    248|         expect(container.textContent).not.toContain("向AI提问");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/26]⎯
+
+ FAIL  src/app/api/drill/next/route.test.ts > drill next route > retries rebuild sentence generation and eventually succeeds
+AssertionError: expected "vi.fn()" to be called 2 times, but got 1 times
+ ❯ src/app/api/drill/next/route.test.ts:64:44
+     62|         const data = await response.json();
+     63|
+     64|         expect(generateRebuildAiDrillMock).toHaveBeenCalledTimes(2);
+       |                                            ^
+     65|         expect(generateRebuildAiDrillMock).toHaveBeenLastCalledWith({
+     66|             topic: "test topic",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/26]⎯
+
+ FAIL  src/app/api/drill/next/route.test.ts > drill next route > retries rebuild passage generation and returns 500 after exhausting attempts
+AssertionError: expected "vi.fn()" to be called 3 times, but got 1 times
+ ❯ src/app/api/drill/next/route.test.ts:88:51
+     86|         const data = await response.json();
+     87|
+     88|         expect(generateRebuildPassageAiDrillMock).toHaveBeenCalledTime…
+       |                                                   ^
+     89|         expect(generateRebuildPassageAiDrillMock).toHaveBeenLastCalled…
+     90|             topic: "test topic",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/26]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+AssertionError: expected 500 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 500
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:87:33
+     85|         const data = await response.json();
+     86|
+     87|         expect(response.status).toBe(200);
+       |                                 ^
+     88|         expect(data.title).toBe("Morning Briefing Practice");
+     89|         expect(data.sourcePrompt).toBe("做一个工作晨会口播");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/26]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+AssertionError: expected 502 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 502
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:135:33
+    133|         const data = await response.json();
+    134|
+    135|         expect(response.status).toBe(200);
+       |                                 ^
+    136|         expect(data.meta.model).toBe("deepseek-reasoner");
+    137|         expect(createCompletionMock).toHaveBeenCalledWith(expect.objec…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/26]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+AssertionError: expected 500 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 500
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:186:33
+    184|         const data = await response.json();
+    185|
+    186|         expect(response.status).toBe(200);
+       |                                 ^
+    187|         expect(data.meta).toEqual(expect.objectContaining({
+    188|             scriptMode: "podcast",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/26]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+AssertionError: expected 502 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 502
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:236:33
+    234|         const data = await response.json();
+    235|
+    236|         expect(response.status).toBe(200);
+       |                                 ^
+    237|         expect(data.meta).toEqual(expect.objectContaining({
+    238|             scriptMode: "podcast",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/26]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+AssertionError: expected 502 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 502
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:266:33
+    264|         const data = await response.json();
+    265|
+    266|         expect(response.status).toBe(200);
+       |                                 ^
+    267|         expect(data.title).toBe("Better Spoken Draft");
+    268|         expect(createCompletionMock).toHaveBeenCalledTimes(2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[26/26]⎯
+
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 5 unhandled errors during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: element.scrollIntoView is not a function
+ ❯ Timeout._onTimeout src/components/ui/SpotlightTour.tsx:86:29
+     84|             if (rect.top < 80 || rect.bottom > viewportHeight - 80) {
+     85|                 setTimeout(() => {
+     86|                     element.scrollIntoView({ behavior: 'smooth', block…
+       |                             ^
+     87|                 }, 50);
+     88|             }
+ ❯ listOnTimeout node:internal/timers:594:17
+ ❯ processTimers node:internal/timers:529:7
+
+This error originated in "src/app/vocab/review/page.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "uses a single-card revealed layout with a compact rating bar". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: element.scrollIntoView is not a function
+ ❯ Timeout._onTimeout src/components/ui/SpotlightTour.tsx:86:29
+     84|             if (rect.top < 80 || rect.bottom > viewportHeight - 80) {
+     85|                 setTimeout(() => {
+     86|                     element.scrollIntoView({ behavior: 'smooth', block…
+       |                             ^
+     87|                 }, 50);
+     88|             }
+ ❯ listOnTimeout node:internal/timers:594:17
+ ❯ processTimers node:internal/timers:529:7
+
+This error originated in "src/app/vocab/review/page.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "uses a single-card revealed layout with a compact rating bar". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: element.scrollIntoView is not a function
+ ❯ Timeout._onTimeout src/components/ui/SpotlightTour.tsx:86:29
+     84|             if (rect.top < 80 || rect.bottom > viewportHeight - 80) {
+     85|                 setTimeout(() => {
+     86|                     element.scrollIntoView({ behavior: 'smooth', block…
+       |                             ^
+     87|                 }, 50);
+     88|             }
+ ❯ listOnTimeout node:internal/timers:594:17
+ ❯ processTimers node:internal/timers:529:7
+
+This error originated in "src/app/vocab/review/page.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "uses a single-card revealed layout with a compact rating bar". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: element.scrollIntoView is not a function
+ ❯ Timeout._onTimeout src/components/ui/SpotlightTour.tsx:86:29
+     84|             if (rect.top < 80 || rect.bottom > viewportHeight - 80) {
+     85|                 setTimeout(() => {
+     86|                     element.scrollIntoView({ behavior: 'smooth', block…
+       |                             ^
+     87|                 }, 50);
+     88|             }
+ ❯ listOnTimeout node:internal/timers:594:17
+ ❯ processTimers node:internal/timers:529:7
+
+This error originated in "src/app/vocab/review/page.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "requeues short-interval cards into the current review session after Again". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: element.scrollIntoView is not a function
+ ❯ Timeout._onTimeout src/components/ui/SpotlightTour.tsx:86:29
+     84|             if (rect.top < 80 || rect.bottom > viewportHeight - 80) {
+     85|                 setTimeout(() => {
+     86|                     element.scrollIntoView({ behavior: 'smooth', block…
+       |                             ^
+     87|                 }, 50);
+     88|             }
+ ❯ listOnTimeout node:internal/timers:594:17
+ ❯ processTimers node:internal/timers:529:7
+
+This error originated in "src/app/vocab/review/page.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "requeues short-interval cards into the current review session after Again". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+
+ Test Files  11 failed | 104 passed (115)
+      Tests  26 failed | 503 passed (529)
+     Errors  5 errors
+   Start at  00:19:41
+   Duration  5.02s (transform 5.50s, setup 0ms, import 15.15s, tests 6.42s, environment 8.14s)
+

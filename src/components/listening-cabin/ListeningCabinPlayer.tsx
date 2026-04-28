@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, useSpring, useTransform, useMotionValue, useAnimationFrame, animate } from "framer-motion";
+import { AnimatePresence, motion, useSpring, useTransform, useMotionValue, useAnimationFrame, animate, type Variants } from "framer-motion";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import confetti from "canvas-confetti";
 import {
@@ -152,8 +152,8 @@ function AppleKaraokeWord({
                     animate(filterBlur, 0, { duration: 0.1 });
                     animate(glow, 0, { duration: 0.1 });
                 } else if (karaokeVariant === "pop") {
-                    animate(scale, isActive ? 0.9 : 0.8, { type: "spring", stiffness: 300, damping: 20 });
-                    animate(opacity, isActive ? 0.8 : 0.2, { type: "spring", stiffness: 300, damping: 20 });
+                    animate(scale, isActive ? 0.9 : 0.8, { type: "spring" as const, stiffness: 300, damping: 20 });
+                    animate(opacity, isActive ? 0.8 : 0.2, { type: "spring" as const, stiffness: 300, damping: 20 });
                     animate(filterBlur, 0, { duration: 0 });
                     animate(glow, 0, { duration: 0 });
                 } else if (karaokeVariant === "ghost") {
@@ -163,14 +163,14 @@ function AppleKaraokeWord({
                     animate(glow, 0, { duration: 0 });
                 } else if (karaokeVariant === "neon") {
                     animate(scale, 1, { duration: 0 });
-                    animate(opacity, isActive ? 0.4 : 0.1, { type: "spring", stiffness: 200, damping: 25 });
+                    animate(opacity, isActive ? 0.4 : 0.1, { type: "spring" as const, stiffness: 200, damping: 25 });
                     animate(filterBlur, 0, { duration: 0 });
-                    animate(glow, isActive ? 0.2 : 0, { type: "spring", stiffness: 200, damping: 25 });
+                    animate(glow, isActive ? 0.2 : 0, { type: "spring" as const, stiffness: 200, damping: 25 });
                 } else {
-                    animate(scale, isActive ? 1 : 0.96, { type: "spring", stiffness: 250, damping: 25 });
-                    animate(opacity, isActive ? 0.9 : 0.4, { type: "spring", stiffness: 250, damping: 25 });
-                    animate(filterBlur, isActive ? 0 : 1.5, { type: "spring", stiffness: 250, damping: 25 });
-                    animate(glow, 0, { type: "spring", stiffness: 250, damping: 25 });
+                    animate(scale, isActive ? 1 : 0.96, { type: "spring" as const, stiffness: 250, damping: 25 });
+                    animate(opacity, isActive ? 0.9 : 0.4, { type: "spring" as const, stiffness: 250, damping: 25 });
+                    animate(filterBlur, isActive ? 0 : 1.5, { type: "spring" as const, stiffness: 250, damping: 25 });
+                    animate(glow, 0, { type: "spring" as const, stiffness: 250, damping: 25 });
                 }
             }
             return;
@@ -203,8 +203,8 @@ function AppleKaraokeWord({
                     animate(filterBlur, 0, { duration: 0.1 });
                     animate(glow, 0, { duration: 0.1 });
                 } else if (karaokeVariant === "pop") {
-                    animate(scale, 0.8, { type: "spring", stiffness: 400, damping: 25 });
-                    animate(opacity, 0.2, { type: "spring", stiffness: 400, damping: 25 });
+                    animate(scale, 0.8, { type: "spring" as const, stiffness: 400, damping: 25 });
+                    animate(opacity, 0.2, { type: "spring" as const, stiffness: 400, damping: 25 });
                     animate(filterBlur, 0, { duration: 0 });
                     animate(glow, 0, { duration: 0 });
                 } else if (karaokeVariant === "ghost") {
@@ -218,10 +218,10 @@ function AppleKaraokeWord({
                     animate(filterBlur, 0, { duration: 0.1 });
                     animate(glow, 0, { duration: 0.1 });
                 } else {
-                    animate(scale, 0.96, { type: "spring", stiffness: 200, damping: 25 });
-                    animate(opacity, 0.4, { type: "spring", stiffness: 200, damping: 25 });
-                    animate(filterBlur, 1.5, { type: "spring", stiffness: 200, damping: 25 });
-                    animate(glow, 0, { type: "spring", stiffness: 200, damping: 25 });
+                    animate(scale, 0.96, { type: "spring" as const, stiffness: 200, damping: 25 });
+                    animate(opacity, 0.4, { type: "spring" as const, stiffness: 200, damping: 25 });
+                    animate(filterBlur, 1.5, { type: "spring" as const, stiffness: 200, damping: 25 });
+                    animate(glow, 0, { type: "spring" as const, stiffness: 200, damping: 25 });
                 }
             } else if (targetState === "active") {
                 if (karaokeVariant === "pure") {
@@ -230,25 +230,25 @@ function AppleKaraokeWord({
                     animate(filterBlur, 0, { duration: 0.1 });
                     animate(glow, 0.3, { duration: 0.1 }); // Exceedingly soft glow for pure text
                 } else if (karaokeVariant === "pop") {
-                    animate(scale, 1.25, { type: "spring", stiffness: 500, damping: 15 }); // Big snappy pop!
-                    animate(opacity, 1.0, { type: "spring", stiffness: 500, damping: 15 });
+                    animate(scale, 1.25, { type: "spring" as const, stiffness: 500, damping: 15 }); // Big snappy pop!
+                    animate(opacity, 1.0, { type: "spring" as const, stiffness: 500, damping: 15 });
                     animate(filterBlur, 0, { duration: 0 });
-                    animate(glow, 1.5, { type: "spring", stiffness: 500, damping: 15 });
+                    animate(glow, 1.5, { type: "spring" as const, stiffness: 500, damping: 15 });
                 } else if (karaokeVariant === "ghost") {
                     animate(scale, 1, { duration: 0 });
                     animate(opacity, 1.0, { duration: 0.2 }); // materialize quickly
                     animate(filterBlur, 0, { duration: 0.2 });
                     animate(glow, 0.8, { duration: 0.2 });
                 } else if (karaokeVariant === "neon") {
-                    animate(scale, 1.05, { type: "spring", stiffness: 300, damping: 20 });
+                    animate(scale, 1.05, { type: "spring" as const, stiffness: 300, damping: 20 });
                     animate(opacity, 1.0, { duration: 0.1 });
                     animate(filterBlur, 0, { duration: 0.1 });
                     animate(glow, 2, { duration: 0.1 }); // intense cyberpunk glow
                 } else {
-                    animate(scale, 1.10, { type: "spring", stiffness: 450, damping: 20 });
-                    animate(opacity, 1.0, { type: "spring", stiffness: 450, damping: 20 });
-                    animate(filterBlur, 0, { type: "spring", stiffness: 450, damping: 20 });
-                    animate(glow, 1, { type: "spring", stiffness: 450, damping: 20 });
+                    animate(scale, 1.10, { type: "spring" as const, stiffness: 450, damping: 20 });
+                    animate(opacity, 1.0, { type: "spring" as const, stiffness: 450, damping: 20 });
+                    animate(filterBlur, 0, { type: "spring" as const, stiffness: 450, damping: 20 });
+                    animate(glow, 1, { type: "spring" as const, stiffness: 450, damping: 20 });
                 }
             } else if (targetState === "past") {
                 if (karaokeVariant === "pure") {
@@ -257,8 +257,8 @@ function AppleKaraokeWord({
                     animate(filterBlur, 0, { duration: 0.3 });
                     animate(glow, 0, { duration: 0.3 });
                 } else if (karaokeVariant === "pop") {
-                    animate(scale, 0.9, { type: "spring", stiffness: 300, damping: 25 }); // shrinks down
-                    animate(opacity, 0.6, { type: "spring", stiffness: 300, damping: 25 });
+                    animate(scale, 0.9, { type: "spring" as const, stiffness: 300, damping: 25 }); // shrinks down
+                    animate(opacity, 0.6, { type: "spring" as const, stiffness: 300, damping: 25 });
                     animate(filterBlur, 0, { duration: 0 });
                     animate(glow, 0, { duration: 0 });
                 } else if (karaokeVariant === "ghost") {
@@ -267,15 +267,15 @@ function AppleKaraokeWord({
                     animate(filterBlur, 4, { duration: 0.8 });
                     animate(glow, 0, { duration: 0.8 });
                 } else if (karaokeVariant === "neon") {
-                    animate(scale, 1, { type: "spring", stiffness: 200, damping: 25 });
+                    animate(scale, 1, { type: "spring" as const, stiffness: 200, damping: 25 });
                     animate(opacity, 0.4, { duration: 0.3 });
                     animate(filterBlur, 0, { duration: 0.3 });
                     animate(glow, 0.2, { duration: 0.3 }); 
                 } else {
-                    animate(scale, 1.0, { type: "spring", stiffness: 350, damping: 25 });
-                    animate(opacity, 0.85, { type: "spring", stiffness: 350, damping: 25 });
-                    animate(filterBlur, 0, { type: "spring", stiffness: 350, damping: 25 });
-                    animate(glow, 0, { type: "spring", stiffness: 350, damping: 25 });
+                    animate(scale, 1.0, { type: "spring" as const, stiffness: 350, damping: 25 });
+                    animate(opacity, 0.85, { type: "spring" as const, stiffness: 350, damping: 25 });
+                    animate(filterBlur, 0, { type: "spring" as const, stiffness: 350, damping: 25 });
+                    animate(glow, 0, { type: "spring" as const, stiffness: 350, damping: 25 });
                 }
             }
         }
@@ -386,7 +386,7 @@ function renderSubtitleBlock(
         const styleConfig = getStyleConfig();
 
         // Block-Level Container Variants
-        const containerVariants = {
+        const containerVariants: Variants = {
             hidden: { opacity: 0 },
             visible: {
                 opacity: 1,
@@ -465,7 +465,7 @@ function renderSubtitleBlock(
                                         hidden: { opacity: 0, y: 12 },
                                         visible: {
                                             opacity: 1, y: 0,
-                                            transition: { type: "spring", stiffness: 120, damping: 28, mass: 1 }
+                                            transition: { type: "spring" as const, stiffness: 120, damping: 28, mass: 1 }
                                         },
                                         exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
                                     }}
@@ -523,12 +523,12 @@ function renderSubtitleBlock(
             });
         };
 
-        const blockVariants = {
+        const blockVariants: Variants = {
             hidden: transitionStyle === "mist" ? { opacity: 0, filter: "blur(20px) scale(0.98)" } :
                 transitionStyle === "classic" ? { opacity: 0 } : {},
             visible: transitionStyle === "mist" ? {
                 opacity: 1, scale: 1,
-                transition: { duration: 0.9, ease: [0.22, 1, 0.36, 1] }
+                transition: { duration: 0.9, ease: [0.22, 1, 0.36, 1] as const }
             } :
                 transitionStyle === "classic" ? {
                     opacity: 1, transition: { duration: 0.5 }
@@ -1174,7 +1174,7 @@ function ListeningCabinPlayerView({
         <motion.main
             initial={{ opacity: 0, scale: 0.98, filter: "blur(10px)" }}
             animate={isExiting ? { opacity: 0, scale: 0.98, filter: "blur(10px)" } : { opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as const }}
             className="relative min-h-screen overflow-hidden bg-[#f8f9fa] text-[#202325]"
             onMouseMove={(event) => {
                 const viewportHeight = window.innerHeight || 0;
@@ -1223,7 +1223,7 @@ function ListeningCabinPlayerView({
                             top: "0%", left: "0%",
                             opacity: 1
                         }}
-                        transition={{ duration: 3.5, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 3.5, ease: [0.22, 1, 0.36, 1] as const }}
                         className="absolute top-0 left-0 w-[45vw] h-[45vh] -translate-x-[20%] -translate-y-[20%]"
                     >
                         <motion.div
@@ -1251,7 +1251,7 @@ function ListeningCabinPlayerView({
                             bottom: "0%", right: "0%",
                             opacity: 1
                         }}
-                        transition={{ duration: 3.8, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
+                        transition={{ duration: 3.8, ease: [0.22, 1, 0.36, 1] as const, delay: 0.1 }}
                         className="absolute bottom-0 right-0 w-[40vw] h-[40vh] translate-x-[20%] translate-y-[20%]"
                     >
                         <motion.div
@@ -1279,12 +1279,12 @@ function ListeningCabinPlayerView({
                             top: "50%", right: "0%",
                             opacity: 0.75
                         }}
-                        transition={{ duration: 4.2, ease: [0.22, 1, 0.36, 1], delay: 0.2 }}
+                        transition={{ duration: 4.2, ease: [0.22, 1, 0.36, 1] as const, delay: 0.2 }}
                         className="absolute top-1/2 right-0 w-[35vw] h-[55vh] translate-x-[30%] -translate-y-1/2"
                     >
                         <motion.div
                             animate={{
-                                background: `radial-gradient(circle at center, ${activeMistTheme[2]} 0%, transparent 75%)`,
+                                background: `radial-gradient(circle at center, ${activeMistTheme[1]} 0%, transparent 75%)`,
                                 opacity: [0.3, 0.7, 0.3],
                                 x: ["0%", "-12%", "4%", "0%"],
                                 y: ["-5%", "10%", "-5%"]
@@ -1605,7 +1605,7 @@ function ListeningCabinPlayerView({
                                                         filter: isActive ? `saturate(${1 + (vocalHeat * 0.25)}) brightness(${1 + (vocalHeat * 0.08)})` : "none"
                                                     }}
                                                     transition={{
-                                                        type: "spring",
+                                                        type: "spring" as const,
                                                         stiffness: isActive ? 90 : 120,
                                                         damping: 30,
                                                         mass: 1.2,
@@ -1663,7 +1663,7 @@ function ListeningCabinPlayerView({
                                                                 background: `linear-gradient(135deg, ${theme[0]}, ${theme[1]})`,
                                                                 boxShadow: `0 0 ${10 + (audioEnergy * 20) + (vocalHeat * 10)}px ${theme[0].replace('0.45', '0.6')}, 6px 0 ${15 + (audioEnergy * 15) + (vocalHeat * 10)}px ${theme[1].replace('0.35', '0.4')}`
                                                             }}
-                                                            transition={{ type: "spring", stiffness: 100, damping: 22 }}
+                                                            transition={{ type: "spring" as const, stiffness: 100, damping: 22 }}
                                                             className={cn(
                                                                 "w-1.5 h-1.5 rounded-full ring-2 ring-white transition-opacity duration-300",
                                                                 isActive ? "opacity-100" : "opacity-25"
@@ -1707,7 +1707,7 @@ function ListeningCabinPlayerView({
                                                 opacity: 1,
                                                 y: 0,
                                                 filter: "blur(0px)",
-                                                transition: { delay: 0.35, duration: 0.8, ease: [0.22, 1, 0.36, 1] as any }
+                                                transition: { delay: 0.35, duration: 0.8, ease: [0.22, 1, 0.36, 1] as const as any }
                                             },
                                             exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
                                         }}
@@ -1732,7 +1732,9 @@ function ListeningCabinPlayerView({
                                 <div className="absolute inset-0 pointer-events-none z-10">
                                     {session.sentences.map((s, idx) => {
                                         const totalDuration = audioRef.current?.duration || 1;
-                                        const pos = (s.startTime / 1000) / totalDuration;
+                                        const timing = getSentenceTiming?.(idx);
+                                        if (!timing) return null;
+                                        const pos = (timing.startMs / 1000) / totalDuration;
                                         if (pos <= 0 || pos >= 1) return null;
                                         return (
                                             <div
@@ -1834,7 +1836,7 @@ function ListeningCabinPlayerView({
                                         <motion.div
                                             initial={{ scale: 0.8, y: 40, opacity: 0 }}
                                             animate={{ scale: 1, y: 0, opacity: 1 }}
-                                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                                            transition={{ type: "spring" as const, damping: 25, stiffness: 200 }}
                                             className="relative w-full max-w-lg p-12 rounded-[4rem] bg-white border border-white shadow-[0_64px_128px_-32px_rgba(0,0,0,0.4)] flex flex-col items-center text-center gap-10 overflow-hidden"
                                         >
                                             {/* Decorative Background Elements */}
@@ -1852,7 +1854,7 @@ function ListeningCabinPlayerView({
                                                 <motion.div
                                                     initial={{ rotate: -20, scale: 0.5 }}
                                                     animate={{ rotate: 0, scale: 1 }}
-                                                    transition={{ delay: 0.2, type: "spring" }}
+                                                    transition={{ delay: 0.2, type: "spring" as const }}
                                                     className="w-28 h-28 bg-gradient-to-br from-amber-400 to-orange-500 rounded-[2.5rem] shadow-[0_20px_40px_rgba(245,158,11,0.4)] flex items-center justify-center mx-auto mb-8"
                                                 >
                                                     <Trophy size={56} className="text-white" strokeWidth={2.5} />
@@ -1932,7 +1934,7 @@ function ListeningCabinPlayerView({
                                 : { opacity: 0, y: 32, pointerEvents: "none" }
                         }
                         style={{ backdropFilter: "blur(40px) saturate(1.2)" }}
-                        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] as const }}
                         onMouseMove={revealControls}
                         onMouseEnter={revealControls}
                         onMouseLeave={scheduleHideControls}
@@ -2005,7 +2007,7 @@ function ListeningCabinPlayerView({
                                     }}
                                     whileHover={{ scale: 1.05 }}
                                     whileTap={{ scale: 0.88, y: 3 }}
-                                    transition={{ type: "spring", stiffness: 450, damping: 20 }}
+                                    transition={{ type: "spring" as const, stiffness: 450, damping: 20 }}
                                     className="group relative flex h-[76px] w-[76px] items-center justify-center rounded-full bg-gradient-to-br from-white/90 to-slate-200/50 shadow-[0_12px_28px_rgba(0,0,0,0.06),inset_0_2px_8px_rgba(255,255,255,0.8),inset_0_-4px_12px_rgba(0,0,0,0.02)] transition-shadow duration-300 overflow-hidden outline-none hover:shadow-[0_20px_40px_rgba(0,0,0,0.1),inset_0_2px_8px_rgba(255,255,255,1),inset_0_-4px_12px_rgba(0,0,0,0.02)]"
                                     aria-label={playerState.isPlaying ? "暂停播放" : "开始播放"}
                                 >
@@ -2113,7 +2115,7 @@ function ListeningCabinPlayerView({
                         transition={{
                             y: { duration: 4, repeat: Infinity, ease: "easeInOut" },
                             opacity: { duration: 0.3 },
-                            scale: { type: "spring", stiffness: 300, damping: 25 }
+                            scale: { type: "spring" as const, stiffness: 300, damping: 25 }
                         }}
                     >
                         <motion.button
@@ -2178,7 +2180,7 @@ function ListeningCabinPlayerView({
                                 animate={{ scale: 1, opacity: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
                                 transition={{
-                                    type: "spring", stiffness: 100, damping: 15, mass: 1.5,
+                                    type: "spring" as const, stiffness: 100, damping: 15, mass: 1.5,
                                     opacity: { duration: 0.5 }
                                 }}
                                 className="relative z-10 flex flex-col items-center"
@@ -2211,7 +2213,7 @@ function ListeningCabinPlayerView({
             <motion.button
                 initial={{ opacity: 0, scale: 0.8, rotate: -20 }}
                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                transition={{ delay: 1, type: "spring", stiffness: 300, damping: 20 }}
+                transition={{ delay: 1, type: "spring" as const, stiffness: 300, damping: 20 }}
                 whileHover={{ scale: 1.1, rotate: 15 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => {

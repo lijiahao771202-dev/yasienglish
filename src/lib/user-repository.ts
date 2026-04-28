@@ -32,6 +32,7 @@ import {
     DEFAULT_PROFILE_USERNAME,
     DEFAULT_READING_COINS,
     DEFAULT_STARTING_COINS,
+    DEFAULT_TRANSLATION_ELO,
     normalizeInventory,
     normalizeWordKey,
     type RemoteProfileRow,
@@ -42,15 +43,19 @@ import {
     toLocalReadArticle,
     toLocalVocabularyItem,
     toLocalWritingEntry,
+    toLocalErrorLedgerItem,
     toRemoteDailyPlanRow,
     toRemoteEloHistoryRow,
     toRemoteReadArticle,
     toRemoteVocabularyRow,
     toRemoteWritingEntry,
+    toRemoteErrorLedgerRow,
     upsertLocalProfile,
     normalizeAvatarPreset,
     normalizeLearningPreferences,
     normalizeProfileBio,
+    normalizeProfileGlmModel,
+    normalizeProfileGlmThinkingMode,
     normalizeProfileUsername,
     type RemoteEloHistoryRow,
     type RemoteReadArticleRow,
@@ -58,7 +63,7 @@ import {
     type RemoteWritingHistoryRow,
 } from "@/lib/user-sync";
 
-type SyncEntity = "profile" | "vocabulary" | "writing_history" | "read_articles" | "elo_history";
+type SyncEntity = "profile" | "vocabulary" | "writing_history" | "read_articles" | "elo_history" | "error_ledger";
 
 interface OutboxPayload {
     entity: SyncEntity;
@@ -215,7 +220,7 @@ async function setActiveUserId(userId: string) {
 async function clearCoreTables() {
     await db.transaction(
         "rw",
-        [db.user_profile, db.vocabulary, db.writing_history, db.read_articles, db.articles, db.reading_notes, db.ai_cache, db.elo_history, db.daily_plans, db.sync_outbox],
+        [db.user_profile, db.vocabulary, db.writing_history, db.read_articles, db.articles, db.reading_notes, db.ai_cache, db.elo_history, db.daily_plans, db.error_ledger, db.rag_vectors, db.sync_outbox],
         async () => {
             await db.user_profile.clear();
             await db.vocabulary.clear();
@@ -226,6 +231,8 @@ async function clearCoreTables() {
             await db.ai_cache.clear();
             await db.elo_history.clear();
             await db.daily_plans.clear();
+            await db.error_ledger.clear();
+            await db.rag_vectors.clear();
             await db.sync_outbox.clear();
         },
     );
@@ -252,7 +259,7 @@ export async function hasUsableLocalCache(userId: string) {
     return hasLegacyLocalData();
 }
 
-async function getRemoteLatestUpdatedAt(userId: string) {
+export async function getRemoteLatestUpdatedAt(userId: string) {
     const supabase = createBrowserClientSingleton();
     const responses = await Promise.all([
         supabase.from("profiles").select("updated_at").eq("user_id", userId).single(),
@@ -261,6 +268,7 @@ async function getRemoteLatestUpdatedAt(userId: string) {
         supabase.from("read_articles").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("elo_history").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("daily_plans").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
+        supabase.from("error_ledger").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
     const timestamps = responses.flatMap((response) => {
@@ -338,6 +346,14 @@ async function markLocalOutboxItemSynced(item: Pick<SyncOutboxItem, "entity" | "
         if (history?.id) {
             await db.elo_history.update(history.id, syncedPatch);
         }
+        return;
+    }
+
+    if (item.entity === "error_ledger") {
+        const errorLedger = await db.error_ledger.where("remote_id").equals(item.record_key).first();
+        if (errorLedger?.id) {
+            await db.error_ledger.update(errorLedger.id, syncedPatch);
+        }
     }
 }
 
@@ -381,7 +397,16 @@ async function ensureRemoteProfile(userId: string) {
             username: normalizeProfileUsername(localProfile.username ?? (typeof metadata.username === "string" ? metadata.username : DEFAULT_PROFILE_USERNAME)),
             avatar_preset: normalizeAvatarPreset(localProfile.avatar_preset ?? (typeof metadata.avatar_preset === "string" ? metadata.avatar_preset : DEFAULT_AVATAR_PRESET)),
             bio: normalizeProfileBio(localProfile.bio),
+            ai_provider: localProfile.ai_provider ?? "deepseek",
             deepseek_api_key: localProfile.deepseek_api_key ?? "",
+            deepseek_model: localProfile.deepseek_model ?? "deepseek-v4-flash",
+            deepseek_thinking_mode: localProfile.deepseek_thinking_mode ?? "off",
+            deepseek_reasoning_effort: localProfile.deepseek_reasoning_effort ?? "high",
+            glm_api_key: localProfile.glm_api_key ?? "",
+            nvidia_api_key: localProfile.nvidia_api_key ?? "",
+            nvidia_model: localProfile.nvidia_model ?? "z-ai/glm5",
+            github_api_key: localProfile.github_api_key ?? "",
+            github_model: localProfile.github_model ?? "openai/gpt-4.1",
             learning_preferences: normalizeLearningPreferences(localProfile.learning_preferences ?? DEFAULT_LEARNING_PREFERENCES),
             reading_coins: localProfile.reading_coins ?? DEFAULT_READING_COINS,
             reading_streak: localProfile.reading_streak ?? 0,
@@ -402,7 +427,7 @@ async function ensureRemoteProfile(userId: string) {
         }
         : {
             user_id: userId,
-            translation_elo: DEFAULT_BASE_ELO,
+            translation_elo: DEFAULT_TRANSLATION_ELO,
             listening_elo: DEFAULT_BASE_ELO,
             rebuild_hidden_elo: DEFAULT_BASE_ELO,
             rebuild_elo: DEFAULT_BASE_ELO,
@@ -411,7 +436,7 @@ async function ensureRemoteProfile(userId: string) {
             listening_streak: 0,
             rebuild_streak: 0,
             dictation_streak: 0,
-            max_translation_elo: DEFAULT_BASE_ELO,
+            max_translation_elo: DEFAULT_TRANSLATION_ELO,
             max_listening_elo: DEFAULT_BASE_ELO,
             rebuild_max_elo: DEFAULT_BASE_ELO,
             dictation_max_elo: DEFAULT_BASE_ELO,
@@ -422,7 +447,16 @@ async function ensureRemoteProfile(userId: string) {
             username: normalizeProfileUsername(typeof metadata.username === "string" ? metadata.username : DEFAULT_PROFILE_USERNAME),
             avatar_preset: normalizeAvatarPreset(typeof metadata.avatar_preset === "string" ? metadata.avatar_preset : DEFAULT_AVATAR_PRESET),
             bio: "",
+            ai_provider: "deepseek",
             deepseek_api_key: "",
+            deepseek_model: "deepseek-v4-flash",
+            deepseek_thinking_mode: "off",
+            deepseek_reasoning_effort: "high",
+            glm_api_key: "",
+            nvidia_api_key: "",
+            nvidia_model: "z-ai/glm5",
+            github_api_key: "",
+            github_model: "openai/gpt-4.1",
             learning_preferences: DEFAULT_LEARNING_PREFERENCES,
             reading_coins: DEFAULT_READING_COINS,
             reading_streak: 0,
@@ -486,7 +520,16 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
                 username: normalizeProfileUsername(localProfile.username),
                 avatar_preset: normalizeAvatarPreset(localProfile.avatar_preset),
                 bio: normalizeProfileBio(localProfile.bio),
+                ai_provider: localProfile.ai_provider ?? "deepseek",
                 deepseek_api_key: localProfile.deepseek_api_key ?? "",
+                deepseek_model: localProfile.deepseek_model ?? "deepseek-v4-flash",
+                deepseek_thinking_mode: localProfile.deepseek_thinking_mode ?? "off",
+                deepseek_reasoning_effort: localProfile.deepseek_reasoning_effort ?? "high",
+                glm_api_key: localProfile.glm_api_key ?? "",
+                nvidia_api_key: localProfile.nvidia_api_key ?? "",
+                nvidia_model: localProfile.nvidia_model ?? "z-ai/glm5",
+                github_api_key: localProfile.github_api_key ?? "",
+                github_model: localProfile.github_model ?? "openai/gpt-4.1",
                 learning_preferences: normalizeLearningPreferences(localProfile.learning_preferences ?? DEFAULT_LEARNING_PREFERENCES),
                 reading_coins: localProfile.reading_coins ?? DEFAULT_READING_COINS,
                 reading_streak: localProfile.reading_streak ?? 0,
@@ -690,9 +733,52 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
             sync_status: "synced",
         });
     }
+
+    const [localErrorLedger, remoteErrorLedgerRes] = await Promise.all([
+        db.error_ledger.toArray(),
+        supabase
+            .from("error_ledger")
+            .select("id, updated_at")
+            .eq("user_id", userId),
+    ]);
+    if (remoteErrorLedgerRes.error) throw remoteErrorLedgerRes.error;
+    const remoteErrorLedgerById = new Map<string, Pick<import("./user-sync").RemoteErrorLedgerRow, "id" | "updated_at">>();
+    for (const row of (remoteErrorLedgerRes.data ?? []) as Array<Pick<import("./user-sync").RemoteErrorLedgerRow, "id" | "updated_at">>) {
+        remoteErrorLedgerById.set(row.id, row);
+    }
+
+    for (const item of localErrorLedger) {
+        if (!item.id) continue;
+        const remoteId = item.remote_id || crypto.randomUUID();
+        const remote = remoteErrorLedgerById.get(remoteId);
+        if (!shouldPushLocalRecord(item.updated_at, remote?.updated_at, item.sync_status)) {
+            continue;
+        }
+
+        const updatedAt = item.updated_at || nowIso();
+        const payload = toRemoteErrorLedgerRow(userId, {
+            ...item,
+            remote_id: remoteId,
+            user_id: userId,
+            updated_at: updatedAt,
+            sync_status: "pending",
+        });
+        const errorLedgerResult = await supabase
+            .from("error_ledger")
+            .upsert(payload);
+        assertSupabaseMutationSucceeded(errorLedgerResult, "error_ledger push-newer");
+
+        await db.error_ledger.update(item.id, {
+            user_id: userId,
+            remote_id: remoteId,
+            updated_at: updatedAt,
+            sync_status: "synced",
+        });
+    }
 }
 
-async function queueOutboxItem({ entity, operation, recordKey, payload }: OutboxPayload) {
+
+export async function queueOutboxItem({ entity, operation, recordKey, payload }: OutboxPayload) {
     const existing = await db.sync_outbox
         .where("[entity+record_key]")
         .equals([entity, recordKey] as [string, string])
@@ -774,7 +860,9 @@ async function syncDailyPlanMirror(userId: string) {
     }
 }
 
-async function pullRemoteSnapshot(userId: string) {
+export async function pullRemoteSnapshot(
+    userId: string,
+) {
     const supabase = createBrowserClientSingleton();
     const existingLocalProfile = await db.user_profile.orderBy("id").first();
     const pendingReadArticleDeletes = new Set(
@@ -790,6 +878,7 @@ async function pullRemoteSnapshot(userId: string) {
         readRes,
         eloRes,
         dailyPlansRes,
+        errorLedgerRes,
     ] = await Promise.all([
         supabase.from("profiles").select("*").eq("user_id", userId).single(),
         supabase.from("vocabulary").select("*").eq("user_id", userId).order("updated_at", { ascending: false }),
@@ -797,6 +886,7 @@ async function pullRemoteSnapshot(userId: string) {
         supabase.from("read_articles").select("*").eq("user_id", userId).order("timestamp_ms", { ascending: false }),
         supabase.from("elo_history").select("*").eq("user_id", userId).order("timestamp_ms", { ascending: true }),
         supabase.from("daily_plans").select("user_id,date,items,updated_at,created_at").eq("user_id", userId).order("date", { ascending: true }),
+        supabase.from("error_ledger").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
     ]);
 
     if (profileRes.error) throw profileRes.error;
@@ -805,6 +895,7 @@ async function pullRemoteSnapshot(userId: string) {
     if (readRes.error) throw readRes.error;
     if (eloRes.error) throw eloRes.error;
     if (dailyPlansRes.error) throw dailyPlansRes.error;
+    if (errorLedgerRes.error) throw errorLedgerRes.error;
 
     const remoteProfileRow = profileRes.data as RemoteProfileRow & Record<string, unknown>;
     const remoteLocalProfile = toLocalProfile(profileRes.data as RemoteProfileRow);
@@ -847,6 +938,7 @@ async function pullRemoteSnapshot(userId: string) {
         .map(toLocalReadArticle)
         .filter((item) => !pendingReadArticleDeletes.has(item.url));
     const localElo = (eloRes.data as RemoteEloHistoryRow[]).map(toLocalEloHistoryItem);
+    const localErrorLedger = (errorLedgerRes.data as import("./user-sync").RemoteErrorLedgerRow[]).map(toLocalErrorLedgerItem);
     const restoredArticlesByUrl = new Map<string, CachedArticle>();
     const restoredNotesByKey = new Map<string, Omit<ReadingNoteItem, "id">>();
     const restoredGrammarCacheByKey = new Map<string, AICacheItem>();
@@ -949,7 +1041,7 @@ async function pullRemoteSnapshot(userId: string) {
 
     await db.transaction(
         "rw",
-        [db.user_profile, db.vocabulary, db.writing_history, db.read_articles, db.articles, db.reading_notes, db.ai_cache, db.elo_history, db.daily_plans],
+        [db.user_profile, db.vocabulary, db.writing_history, db.read_articles, db.articles, db.reading_notes, db.ai_cache, db.elo_history, db.daily_plans, db.error_ledger, db.rag_vectors],
         async () => {
             await db.user_profile.clear();
             await db.vocabulary.clear();
@@ -958,12 +1050,16 @@ async function pullRemoteSnapshot(userId: string) {
             await db.reading_notes.clear();
             await db.elo_history.clear();
             await db.daily_plans.clear();
+            await db.error_ledger.clear();
+            await db.rag_vectors.where("source").equals("error_ledger").delete();
 
             await db.user_profile.add(effectiveLocalProfile);
             if (effectiveDailyPlans.length) await db.daily_plans.bulkPut(effectiveDailyPlans);
             if (localVocabulary.length) await db.vocabulary.bulkPut(localVocabulary);
             if (localWriting.length) await db.writing_history.bulkAdd(localWriting);
             if (localRead.length) await db.read_articles.bulkPut(localRead);
+            if (localElo.length) await db.elo_history.bulkAdd(localElo);
+            if (localErrorLedger.length) await db.error_ledger.bulkAdd(localErrorLedger);
             if (restoredArticlesByUrl.size > 0) {
                 await db.articles.bulkPut(Array.from(restoredArticlesByUrl.values()));
             }
@@ -984,21 +1080,22 @@ async function pullRemoteSnapshot(userId: string) {
                     id: existing?.id,
                 });
             }
-            if (localElo.length) await db.elo_history.bulkAdd(localElo);
         },
     );
+
 }
 
 async function migrateLegacyData(userId: string) {
     const supabase = createBrowserClientSingleton();
     await ensureRemoteProfile(userId);
 
-    const [profile, vocabulary, writingHistory, readArticles, eloHistory] = await Promise.all([
+    const [profile, vocabulary, writingHistory, readArticles, eloHistory, errorLedger] = await Promise.all([
         db.user_profile.orderBy("id").first(),
         db.vocabulary.toArray(),
         db.writing_history.toArray(),
         db.read_articles.toArray(),
         db.elo_history.toArray(),
+        db.error_ledger.toArray(),
     ]);
 
     if (profile) {
@@ -1017,7 +1114,16 @@ async function migrateLegacyData(userId: string) {
             username: profile.username,
             avatar_preset: profile.avatar_preset,
             bio: profile.bio,
+            ai_provider: profile.ai_provider,
             deepseek_api_key: profile.deepseek_api_key,
+            deepseek_model: profile.deepseek_model,
+            deepseek_thinking_mode: profile.deepseek_thinking_mode,
+            deepseek_reasoning_effort: profile.deepseek_reasoning_effort,
+            glm_api_key: profile.glm_api_key,
+            nvidia_api_key: profile.nvidia_api_key,
+            nvidia_model: profile.nvidia_model,
+            github_api_key: profile.github_api_key,
+            github_model: profile.github_model,
             learning_preferences: profile.learning_preferences,
             reading_coins: profile.reading_coins,
             reading_streak: profile.reading_streak,
@@ -1132,6 +1238,29 @@ async function migrateLegacyData(userId: string) {
                 sync_status: "pending",
             }));
         assertSupabaseMutationSucceeded(eloResult, "elo_history migration");
+    }
+
+    for (const item of errorLedger) {
+        const remoteId = item.remote_id || crypto.randomUUID();
+        if (item.id) {
+            await db.error_ledger.update(item.id, {
+                ...item,
+                remote_id: remoteId,
+                user_id: userId,
+                updated_at: item.updated_at || nowIso(),
+                sync_status: "pending",
+            });
+        }
+        const errorLedgerResult = await supabase
+            .from("error_ledger")
+            .upsert(toRemoteErrorLedgerRow(userId, {
+                ...item,
+                remote_id: remoteId,
+                user_id: userId,
+                updated_at: item.updated_at || nowIso(),
+                sync_status: "pending",
+            }));
+        assertSupabaseMutationSucceeded(errorLedgerResult, "error_ledger migration");
     }
 
     await db.sync_meta.put({
@@ -1291,6 +1420,13 @@ export async function flushOutbox() {
             if (item.entity === "elo_history") {
                 const { error } = await supabase
                     .from("elo_history")
+                    .upsert(item.payload);
+                if (error) throw error;
+            }
+
+            if (item.entity === "error_ledger") {
+                const { error } = await supabase
+                    .from("error_ledger")
                     .upsert(item.payload);
                 if (error) throw error;
             }
@@ -1625,6 +1761,51 @@ export async function saveWritingHistory(entry: WritingEntry) {
     void scheduleBackgroundSync();
 }
 
+export async function saveErrorLedgerEntry(
+    entry: {
+        text: string;
+        tag?: string;
+        created_at?: number;
+    },
+    options: {
+        scheduleSync?: () => unknown;
+    } = {},
+) {
+    const text = entry.text.trim();
+    if (!text) {
+        throw new Error("Missing error ledger text.");
+    }
+
+    const userId = await getActiveUserId();
+    const remoteId = crypto.randomUUID();
+    const updatedAt = nowIso();
+    const createdAt = entry.created_at ?? Date.now();
+    const nextEntry = {
+        remote_id: remoteId,
+        user_id: userId || undefined,
+        text,
+        tag: entry.tag,
+        created_at: createdAt,
+        updated_at: updatedAt,
+        sync_status: "pending" as const,
+    };
+
+    await db.error_ledger.put(nextEntry);
+
+    if (userId) {
+        await queueOutboxItem({
+            entity: "error_ledger",
+            operation: "upsert",
+            recordKey: remoteId,
+            payload: toRemoteErrorLedgerRow(userId, nextEntry),
+        });
+        useSyncStatusStore.getState().setPhase("syncing");
+        void Promise.resolve((options.scheduleSync ?? scheduleBackgroundSync)());
+    }
+
+    return nextEntry;
+}
+
 export async function markArticleAsRead(url: string, metadata?: ReadArticleSnapshotMetadata) {
     const userId = await getActiveUserId();
     if (!userId) throw new Error("Missing active user.");
@@ -1737,7 +1918,7 @@ export async function saveProfilePatch(
         Pick<
             LocalUserProfile,
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
-            | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
+            | "ai_provider" | "deepseek_api_key" | "deepseek_model" | "deepseek_thinking_mode" | "deepseek_reasoning_effort" | "glm_api_key" | "glm_model" | "glm_thinking_mode" | "nvidia_api_key" | "nvidia_model" | "github_api_key" | "github_model" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
             | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
             | "rebuild_hidden_elo" | "rebuild_elo" | "rebuild_streak" | "rebuild_max_elo"
@@ -1756,6 +1937,8 @@ export async function saveProfilePatch(
         : profile.last_practice;
     await db.user_profile.update(profile.id, {
         ...nextPatch,
+        glm_model: patch.glm_model !== undefined ? normalizeProfileGlmModel(patch.glm_model) : profile.glm_model,
+        glm_thinking_mode: patch.glm_thinking_mode !== undefined ? normalizeProfileGlmThinkingMode(patch.glm_thinking_mode) : profile.glm_thinking_mode,
         hints: patch.inventory?.capsule ?? profile.hints,
         last_practice: Number.isFinite(nextLastPractice) ? nextLastPractice : profile.last_practice,
         updated_at: nowIso(),
@@ -1768,6 +1951,24 @@ export async function saveProfilePatch(
         recordKey: "profile",
         payload: nextPatch,
     });
+    if (typeof document !== "undefined") {
+        const nextAiProvider = String(nextPatch.ai_provider ?? profile.ai_provider ?? "deepseek");
+        const nextDeepSeekModel = String(nextPatch.deepseek_model ?? profile.deepseek_model ?? "deepseek-v4-flash");
+        const nextDeepSeekThinkingMode = String(nextPatch.deepseek_thinking_mode ?? profile.deepseek_thinking_mode ?? "off");
+        const nextDeepSeekReasoningEffort = String(nextPatch.deepseek_reasoning_effort ?? profile.deepseek_reasoning_effort ?? "high");
+        const nextGlmModel = String(patch.glm_model !== undefined ? normalizeProfileGlmModel(patch.glm_model) : (profile.glm_model ?? "glm-5.1"));
+        const nextGlmThinkingMode = String(patch.glm_thinking_mode !== undefined ? normalizeProfileGlmThinkingMode(patch.glm_thinking_mode) : (profile.glm_thinking_mode ?? "off"));
+        const nextNvidiaModel = String(nextPatch.nvidia_model ?? profile.nvidia_model ?? "z-ai/glm5");
+        const nextGithubModel = String(nextPatch.github_model ?? profile.github_model ?? "openai/gpt-4.1");
+        document.cookie = `yasi_ai_provider=${encodeURIComponent(nextAiProvider)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_deepseek_model=${encodeURIComponent(nextDeepSeekModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_deepseek_thinking_mode=${encodeURIComponent(nextDeepSeekThinkingMode)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_deepseek_reasoning_effort=${encodeURIComponent(nextDeepSeekReasoningEffort)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_glm_model=${encodeURIComponent(nextGlmModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_glm_thinking_mode=${encodeURIComponent(nextGlmThinkingMode)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_nvidia_model=${encodeURIComponent(nextNvidiaModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_github_model=${encodeURIComponent(nextGithubModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    }
     useSyncStatusStore.getState().setPhase("syncing");
     void scheduleBackgroundSync();
 }
@@ -1777,7 +1978,7 @@ export async function applyServerProfilePatchToLocal(
         Pick<
             LocalUserProfile,
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
-            | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
+            | "ai_provider" | "deepseek_api_key" | "deepseek_model" | "deepseek_thinking_mode" | "deepseek_reasoning_effort" | "glm_api_key" | "glm_model" | "glm_thinking_mode" | "nvidia_api_key" | "nvidia_model" | "github_api_key" | "github_model" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
             | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
             | "rebuild_hidden_elo" | "rebuild_elo" | "rebuild_streak" | "rebuild_max_elo"
@@ -1795,11 +1996,31 @@ export async function applyServerProfilePatchToLocal(
         : profile.last_practice;
     await db.user_profile.update(profile.id, {
         ...normalized,
+        glm_model: patch.glm_model !== undefined ? normalizeProfileGlmModel(patch.glm_model) : profile.glm_model,
+        glm_thinking_mode: patch.glm_thinking_mode !== undefined ? normalizeProfileGlmThinkingMode(patch.glm_thinking_mode) : profile.glm_thinking_mode,
         hints: patch.inventory?.capsule ?? profile.hints,
         last_practice: Number.isFinite(nextLastPractice) ? nextLastPractice : profile.last_practice,
         updated_at: nowIso(),
         sync_status: "synced",
     });
+    if (typeof document !== "undefined") {
+        const nextAiProvider = String(normalized.ai_provider ?? profile.ai_provider ?? "deepseek");
+        const nextDeepSeekModel = String(normalized.deepseek_model ?? profile.deepseek_model ?? "deepseek-v4-flash");
+        const nextDeepSeekThinkingMode = String(normalized.deepseek_thinking_mode ?? profile.deepseek_thinking_mode ?? "off");
+        const nextDeepSeekReasoningEffort = String(normalized.deepseek_reasoning_effort ?? profile.deepseek_reasoning_effort ?? "high");
+        const nextGlmModel = String(patch.glm_model !== undefined ? normalizeProfileGlmModel(patch.glm_model) : (profile.glm_model ?? "glm-5.1"));
+        const nextGlmThinkingMode = String(patch.glm_thinking_mode !== undefined ? normalizeProfileGlmThinkingMode(patch.glm_thinking_mode) : (profile.glm_thinking_mode ?? "off"));
+        const nextNvidiaModel = String(normalized.nvidia_model ?? profile.nvidia_model ?? "z-ai/glm5");
+        const nextGithubModel = String(normalized.github_model ?? profile.github_model ?? "openai/gpt-4.1");
+        document.cookie = `yasi_ai_provider=${encodeURIComponent(nextAiProvider)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_deepseek_model=${encodeURIComponent(nextDeepSeekModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_deepseek_thinking_mode=${encodeURIComponent(nextDeepSeekThinkingMode)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_deepseek_reasoning_effort=${encodeURIComponent(nextDeepSeekReasoningEffort)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_glm_model=${encodeURIComponent(nextGlmModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_glm_thinking_mode=${encodeURIComponent(nextGlmThinkingMode)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_nvidia_model=${encodeURIComponent(nextNvidiaModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_github_model=${encodeURIComponent(nextGithubModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    }
 }
 
 export async function settleBattle(payload: {

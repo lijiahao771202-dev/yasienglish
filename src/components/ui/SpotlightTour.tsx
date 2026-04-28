@@ -9,7 +9,7 @@ export interface TourStep {
     targetId: string;
     title: string;
     content: string;
-    placement?: "top" | "bottom" | "left" | "right";
+    placement?: "top" | "bottom" | "left" | "right" | "center";
     customModal?: React.ReactNode;
     onEnter?: () => void;
     nextDisabled?: boolean;
@@ -270,7 +270,7 @@ export function SpotlightTour({ steps, isOpen, onClose, onComplete }: SpotlightT
                         initial={{ opacity: 0, scale: 0.9, x: xOffset, y: `calc(${yOffset} + 15px)` }}
                         animate={{ opacity: 1, scale: 1, x: xOffset, y: yOffset }}
                         exit={{ opacity: 0, scale: 0.95, x: xOffset, y: `calc(${yOffset} - 10px)` }}
-                        transition={{ type: "spring", stiffness: 350, damping: 25, delay: 0.15 }}
+                        transition={{ type: "spring" as const, stiffness: 350, damping: 25, delay: 0.15 }}
                         style={{
                             position: "absolute",
                             left: tooltipX,

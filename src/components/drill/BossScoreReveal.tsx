@@ -86,7 +86,7 @@ export function BossScoreReveal({ score, drift, type, onNext, onRetry }: BossSco
                 className="relative p-12 rounded-3xl backdrop-blur-xl bg-white/5 border border-white/10 shadow-2xl flex flex-col items-center justify-center overflow-hidden"
                 initial={{ scale: 0.8, opacity: 0, rotateX: 20 }}
                 animate={{ scale: 1, opacity: 1, rotateX: 0 }}
-                transition={{ type: "spring", bounce: 0.4, delay: 0.2 }}
+                transition={{ type: "spring" as const, bounce: 0.4, delay: 0.2 }}
                 style={{
                     boxShadow: `0 0 60px -20px var(--tw-shadow-color)`
                 }}
@@ -102,7 +102,7 @@ export function BossScoreReveal({ score, drift, type, onNext, onRetry }: BossSco
                 <motion.div
                     initial={{ scale: 5, opacity: 0, rotate: 45 }}
                     animate={{ scale: 1, opacity: 1, rotate: -15 }}
-                    transition={{ delay: 1.0, type: "spring", stiffness: 200, damping: 15 }}
+                    transition={{ delay: 1.0, type: "spring" as const, stiffness: 200, damping: 15 }}
                     className={cn(
                         "absolute top-6 -right-6 px-6 py-2 border-4 rounded-xl text-3xl font-black uppercase tracking-widest bg-black/80 backdrop-blur-md shadow-xl z-20",
                         isPass ? "border-emerald-500 text-emerald-500 shadow-emerald-500/20" : "border-stone-500 text-stone-500"

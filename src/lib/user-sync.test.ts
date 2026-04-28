@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+    applyTranslationEloReset,
     buildProfilePatch,
     createDefaultLocalProfile,
     createLocalVocabularyItem,
@@ -8,6 +9,7 @@ import {
     DEFAULT_AVATAR_PRESET,
     DEFAULT_LEARNING_PREFERENCES,
     DEFAULT_PROFILE_USERNAME,
+    DEFAULT_TRANSLATION_ELO,
     normalizeWordKey,
     toLocalDailyPlanRecord,
     toLocalProfile,
@@ -28,12 +30,12 @@ describe("user sync helpers", () => {
         const profile = createDefaultLocalProfile("user-1");
 
         expect(profile.user_id).toBe("user-1");
-        expect(profile.elo_rating).toBe(400);
+        expect(profile.elo_rating).toBe(DEFAULT_TRANSLATION_ELO);
         expect(profile.listening_elo).toBe(400);
         expect(profile.rebuild_hidden_elo).toBe(400);
         expect(profile.rebuild_elo).toBe(400);
         expect(profile.dictation_elo).toBe(400);
-        expect(profile.max_elo).toBe(400);
+        expect(profile.max_elo).toBe(DEFAULT_TRANSLATION_ELO);
         expect(profile.listening_scoring_version).toBe(2);
         expect(profile.listening_max_elo).toBe(400);
         expect(profile.rebuild_max_elo).toBe(400);
@@ -51,9 +53,30 @@ describe("user sync helpers", () => {
         expect(profile.hints).toBe(profile.inventory?.capsule);
         expect(profile.username).toBe(DEFAULT_PROFILE_USERNAME);
         expect(profile.avatar_preset).toBe(DEFAULT_AVATAR_PRESET);
+        expect(profile.deepseek_model).toBe("deepseek-v4-flash");
+        expect(profile.deepseek_thinking_mode).toBe("off");
+        expect(profile.deepseek_reasoning_effort).toBe("high");
+        expect(profile.nvidia_api_key).toBe("");
+        expect(profile.nvidia_model).toBe("z-ai/glm5");
+        expect(profile.github_api_key).toBe("");
+        expect(profile.github_model).toBe("openai/gpt-4.1");
         expect(profile.learning_preferences).toEqual(DEFAULT_LEARNING_PREFERENCES);
         expect(profile.daily_plan_snapshots).toEqual([]);
         expect(profile.sync_status).toBe("pending");
+    });
+
+    it("resets only translate elo fields to the 200 baseline", () => {
+        const nextProfile = applyTranslationEloReset({
+            elo_rating: 1380,
+            max_elo: 1640,
+            listening_elo: 920,
+            listening_max_elo: 1080,
+        });
+
+        expect(nextProfile.elo_rating).toBe(DEFAULT_TRANSLATION_ELO);
+        expect(nextProfile.max_elo).toBe(DEFAULT_TRANSLATION_ELO);
+        expect(nextProfile.listening_elo).toBe(920);
+        expect(nextProfile.listening_max_elo).toBe(1080);
     });
 
     it("maps a remote profile snapshot into the local Dexie shape", () => {
@@ -85,6 +108,11 @@ describe("user sync helpers", () => {
             username: "Luna",
             avatar_preset: "peach-spark",
             bio: "Practice makes flow.",
+            deepseek_model: "deepseek-v4-pro",
+            deepseek_thinking_mode: "on",
+            deepseek_reasoning_effort: "max",
+            github_api_key: "github-key",
+            github_model: "gpt-4o-mini",
             learning_preferences: {
                 target_mode: "battle",
                 english_level: "B2",
@@ -126,6 +154,11 @@ describe("user sync helpers", () => {
         expect(localProfile.username).toBe("Luna");
         expect(localProfile.avatar_preset).toBe("peach-spark");
         expect(localProfile.bio).toBe("Practice makes flow.");
+        expect(localProfile.deepseek_model).toBe("deepseek-v4-pro");
+        expect(localProfile.deepseek_thinking_mode).toBe("on");
+        expect(localProfile.deepseek_reasoning_effort).toBe("max");
+        expect(localProfile.github_api_key).toBe("github-key");
+        expect(localProfile.github_model).toBe("gpt-4o-mini");
         expect(localProfile.learning_preferences?.target_mode).toBe("battle");
         expect(localProfile.learning_preferences?.tts_voice).toBe("en-US-AriaNeural");
         expect(localProfile.daily_plan_snapshots).toEqual([
@@ -155,6 +188,14 @@ describe("user sync helpers", () => {
             username: "Nova",
             avatar_preset: "mint-orbit",
             bio: "Focused and playful.",
+            ai_provider: "nvidia",
+            deepseek_model: "deepseek-v4-pro",
+            deepseek_thinking_mode: "enabled",
+            deepseek_reasoning_effort: "max",
+            nvidia_api_key: "nvapi-123",
+            nvidia_model: "z-ai/glm5",
+            github_api_key: " github-key ",
+            github_model: " gpt-4o-mini ",
             rebuild_hidden_elo: 588,
             rebuild_elo: 640,
             rebuild_streak: 3,
@@ -190,6 +231,14 @@ describe("user sync helpers", () => {
             username: "Nova",
             avatar_preset: "mint-orbit",
             bio: "Focused and playful.",
+            ai_provider: "nvidia",
+            deepseek_model: "deepseek-v4-pro",
+            deepseek_thinking_mode: "on",
+            deepseek_reasoning_effort: "max",
+            nvidia_api_key: "nvapi-123",
+            nvidia_model: "z-ai/glm5",
+            github_api_key: "github-key",
+            github_model: "gpt-4o-mini",
             rebuild_hidden_elo: 588,
             rebuild_elo: 640,
             rebuild_streak: 3,

@@ -37,7 +37,7 @@ export function ProfilePageClient() {
     return (
         <main className="font-welcome-ui min-h-screen bg-theme-base-bg px-4 py-12 sm:px-6 lg:px-8 overflow-hidden relative transition-colors duration-300">
             <div className="absolute inset-0 bg-gradient-to-br from-white/30 to-transparent pointer-events-none" />
-            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: "spring", stiffness: 300, damping: 25 }} className="mx-auto max-w-5xl space-y-8 relative z-10">
+            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: "spring" as const, stiffness: 300, damping: 25 }} className="mx-auto max-w-5xl space-y-8 relative z-10">
                 <div className="flex flex-wrap items-center justify-between gap-4">
                     <div className="space-y-2">
                         <motion.div whileHover={{ scale: 1.05 }} className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-primary-bg px-4 py-1.5 text-xs font-black uppercase tracking-wider text-theme-primary-text shadow-[0_4px_0_0_var(--theme-shadow)] cursor-default transition-colors">
@@ -93,7 +93,6 @@ export function ProfilePageClient() {
                             username: profile.username || DEFAULT_PROFILE_USERNAME,
                             avatar_preset: profile.avatar_preset || DEFAULT_AVATAR_PRESET,
                             bio: profile.bio || "",
-                            deepseek_api_key: profile.deepseek_api_key || "",
                             learning_preferences: normalizeLearningPreferences(profile.learning_preferences),
                         }}
                         onSave={async (payload) => {

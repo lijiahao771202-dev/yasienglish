@@ -56,7 +56,7 @@ export function CatSelfAssessmentDialog({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] as const }}
                 >
                     <div
                         className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.48),rgba(15,23,42,0.62))] backdrop-blur-[10px]"
@@ -69,7 +69,7 @@ export function CatSelfAssessmentDialog({
                             initial={{ opacity: 0, y: 20, scale: 0.96 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                            transition={{ duration: 0.38, ease: [0.2, 1, 0.3, 1] }}
+                            transition={{ duration: 0.38, ease: [0.2, 1, 0.3, 1] as const }}
                             className="w-full max-w-xl rounded-[28px] border border-white/70 bg-white/85 p-5 shadow-[0_30px_90px_-38px_rgba(15,23,42,0.85)] backdrop-blur-2xl md:p-6"
                         >
                             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">CAT Calibration</p>

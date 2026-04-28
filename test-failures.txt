@@ -1,0 +1,1470 @@
+
+ RUN  v4.1.2 /Users/lijiahao/yasi
+
+ ❯ src/app/api/ai/generate_drill/route.test.ts (8 tests | 8 failed) 28ms
+     × accepts translation drill on the first generation when word count is in range 10ms
+     × retries translation generation for out-of-range word counts 2ms
+     × flags inaccurate AI self-reported word counts 1ms
+     × caps translation alternatives at two even if the model returns more 2ms
+     × accepts slight translation length drift within tolerance without retrying 2ms
+     × retries listening generation when cefr and listening feature targets do not match 3ms
+     × keeps the CEFR tier but softens listening features after repeated listening misses 3ms
+     × treats the topic as background direction instead of forcing explicit topic words 2ms
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 1 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+completion is: undefined
+
+stderr | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+Listening cabin generation error: TypeError: Cannot read properties of undefined (reading 'choices')
+    at generateDraftJson (/Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.ts:46:32)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at Module.POST (/Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.ts:166:33)
+    at /Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.test.ts:84:26
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:1893:20
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 3 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 5 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+completion is: undefined
+
+stderr | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+Listening cabin generation error: TypeError: Cannot read properties of undefined (reading 'choices')
+    at generateDraftJson (/Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.ts:46:32)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at Module.POST (/Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.ts:166:33)
+    at /Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.test.ts:168:26
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:1893:20
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 7 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 9 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 11 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns generation details when model output is invalid JSON
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns generation details when model output is invalid JSON
+completion is: { choices: [ { message: [Object] } ] }
+
+stderr | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns generation details when model output is invalid JSON
+Listening cabin generation error: Error: Listening cabin generation returned invalid JSON: {"title":"Broken","sentences":[{"english":"hello"
+    at generateDraftJson (/Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.ts:56:15)
+    at processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at Module.POST (/Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.ts:132:31)
+    at /Users/lijiahao/yasi/src/app/api/ai/listening-cabin/generate/route.test.ts:301:26
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:1893:20
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts (8 tests | 5 failed) 46ms
+     × returns a normalized spoken script payload for valid requests 27ms
+     × switches to deepseek-reasoner when thinkingMode is deep 2ms
+     ✓ returns 400 for empty prompt in manual mode 1ms
+     × supports podcast mode with 2-4 speakers 4ms
+     × repairs podcast drafts that omit configured speakers in a four-person setup 3ms
+     × runs repair once when draft fails lint and returns repaired output 1ms
+     ✓ returns 502 when both draft and repair stay invalid 1ms
+     ✓ returns generation details when model output is invalid JSON 2ms
+ ❯ src/app/api/drill/next/route.test.ts (2 tests | 2 failed) 8ms
+     × retries rebuild sentence generation and eventually succeeds 6ms
+     × retries rebuild passage generation and returns 500 after exhausting attempts 1ms
+ ❯ src/lib/vocab-meanings.test.ts (5 tests | 1 failed) 16ms
+     ✓ prefers Chinese translation meanings instead of mixing in English definitions 4ms
+     ✓ prefers the fallback groups when they contain more Chinese meaning content 1ms
+     ✓ keeps the primary groups when they already carry the richer Chinese meanings 0ms
+     ✓ maps AI highlighted meanings back onto the actual displayed meaning strings 2ms
+     × returns no highlight when the AI-provided highlighted meaning does not match any displayed meaning 7ms
+ ❯ src/lib/rebuild-battle-elo.test.ts (3 tests | 2 failed) 10ms
+     × follows sentence-style rebuild delta: systemDelta + selfDelta 8ms
+     × applies rebuild clamp limits (-65 ~ +48) 1ms
+     ✓ does not reuse listening streak bonus 0ms
+ ❯ src/lib/rebuild-passage.test.ts (5 tests | 1 failed) 9ms
+     × derives soft and hard word-count windows from the existing segment range 7ms
+     ✓ scores objective segment performance from rebuild attempt signals 0ms
+     ✓ uses a single session-level self score and punishes broad skipping much more aggressively 0ms
+     ✓ aggregates objective and subjective scores evenly across a full session 0ms
+     ✓ accepts natural segment variance inside the hard 2σ window while rejecting larger drift 0ms
+ ❯ src/hooks/useWritingGuide.test.tsx (3 tests | 1 failed) 36ms
+     ✓ waits 3 seconds before the first automatic guide request 17ms
+     ✓ does not escalate feeding hints after a valid alternative or near-finish response 6ms
+     × sends structured history on the follow-up request and aborts when input changes 11ms
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx (17 tests | 9 failed) 232ms
+     × auto-advances subtitles sentence by sentence using duration fallback timings 42ms
+     × keeps the current subtitle through sentence boundary and switches with a small delay 10ms
+     ✓ does not let initial autoplay override a pause while narration is still loading 7ms
+     ✓ allows next-sentence navigation after the narration is ready 5ms
+     ✓ re-seeks the current sentence instead of resuming a stale later timestamp in auto-all mode 19ms
+     ✓ replays the current sentence on play in single-pause mode instead of continuing into the next one 4ms
+     ✓ keeps playback active when jumping to later sentences in single-pause mode 5ms
+     ✓ falls back to even timings when segment timings are unreliable in single-pause mode 5ms
+     × applies single-pause mode immediately by replaying the current sentence from start 20ms
+     × re-initializes playback correctly under StrictMode remounts 20ms
+     × uses segmentTimings in dialogue mode without aggressive early subtitle switching 11ms
+     × progressively corrects segment timing drift so later sentences still advance into the final subtitle 5ms
+     × does not shrink segment timings when browser duration is slightly shorter, avoiding cumulative early switching 5ms
+     ✓ can resume playback after switching between single-pause and repeat modes 12ms
+     × keeps full sentence tail in single-pause mode and only pauses near segment boundary 5ms
+     ✓ compensates for backward seek drift in single-pause mode so it does not leak previous audio or cut the current sentence early 14ms
+     × restarts current sentence immediately when switching from auto-all to single-pause 26ms
+stderr | src/components/drill/DrillBottomActions.test.tsx > DrillBottomActions > requires translation self evaluation before next question
+Encountered two children with the same key, ``. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+
+ ❯ src/components/drill/DrillBottomActions.test.tsx (1 test | 1 failed) 61ms
+     × requires translation self evaluation before next question 60ms
+ ❯ src/components/auth/AuthForms.test.tsx (4 tests | 1 failed) 196ms
+     × signs in with email and password, then redirects to home 142ms
+     ✓ signs up with username metadata and the default avatar preset 24ms
+     ✓ sends password recovery links through the auth callback 19ms
+     ✓ updates the password on the recovery screen and redirects home 7ms
+Not implemented: Window's scrollTo() method
+ ❯ src/components/reading/ReadingQuizPanel.test.tsx (1 test | 1 failed) 229ms
+     × uses previous and next controls to review submitted answers after reopening 228ms
+stderr | src/lib/drill-generation-client.test.ts > fetchNextDrillWithRetry > retries transient 500 errors and eventually returns drill data
+[Drill] Retrying generation after API failure (1/3) { status: 500, error: 'Failed to generate rebuild drill.' }
+
+ ✓ src/app/api/tts/route.test.ts (5 tests) 161ms
+ ✓ src/lib/drill-generation-client.test.ts (3 tests) 475ms
+     ✓ retries transient 500 errors and eventually returns drill data  473ms
+ ✓ src/lib/listening-drill-bank.test.ts (14 tests) 85ms
+ ❯ src/components/reading/SelectionActionPopup.test.tsx (11 tests | 2 failed) 249ms
+     ✓ hides both delete buttons when selection has no highlight or underline 36ms
+     ✓ shows only delete highlight button when highlight exists 12ms
+     ✓ shows only delete underline button when underline exists 10ms
+     ✓ opens ask panel and triggers ask callback 35ms
+     ✓ disables send button and shows loading indicator while asking 18ms
+     × keeps answers collapsed by default and resets collapsed state after reopen 78ms
+     ✓ auto opens ask panel when default-open token is provided 14ms
+     ✓ switches ask answer mode when clicking segmented buttons 19ms
+     × shows ask replay view directly when popup mode is ask-replay 9ms
+     ✓ shows lookup action in normal selection mode and triggers callback 12ms
+     ✓ hides lookup action in ask replay mode 3ms
+ ✓ src/lib/user-repository.sync.test.ts (3 tests) 141ms
+ ✓ src/app/vocab/page.test.tsx (3 tests) 579ms
+ ✓ src/components/reading/WordPopup.test.tsx (4 tests) 393ms
+ ✓ src/components/vocab/VocabReviewEditableCard.test.tsx (5 tests) 918ms
+ ✓ src/lib/deepseek.test.ts (3 tests) 66ms
+ ✓ src/components/profile/UserAvatarMenu.test.tsx (3 tests) 907ms
+     ✓ opens the voice picker and saves a selected speaker  736ms
+ ✓ src/lib/translation-scoring.test.ts (9 tests) 105ms
+ ✓ src/components/profile/ProfileSettingsPanel.test.tsx (1 test) 1030ms
+     ✓ submits profile edits and password changes through the provided callbacks  1029ms
+ ✓ src/components/drill/RebuildQuestionPanel.test.tsx (1 test) 130ms
+ ✓ src/app/vocab/review/page.test.tsx (3 tests) 1527ms
+     ✓ uses a single-card revealed layout with a compact rating bar  867ms
+     ✓ requeues short-interval cards into the current review session after Again  547ms
+ ✓ src/app/api/ai/ask_tutor/route.test.ts (14 tests) 81ms
+ ✓ src/components/drill/AiTeacherConversation.test.tsx (4 tests) 63ms
+ ✓ src/components/shared/InlineGrammarHighlights.test.tsx (2 tests) 19ms
+ ✓ src/components/reading/ArticleDisplay.test.tsx (3 tests) 128ms
+ ✓ src/components/drill/TranslationAnalysisJourney.test.tsx (2 tests) 18ms
+ ✓ src/components/reading/CatSelfAssessmentDialog.test.tsx (2 tests) 75ms
+ ✓ src/app/api/ai/ask/route.test.ts (5 tests) 25ms
+ ✓ src/lib/tts-client.test.ts (5 tests) 29ms
+ ✓ src/app/api/ai/coach_inline_stream/route.test.ts (2 tests) 22ms
+ ✓ src/contexts/ReadingSettingsContext.test.tsx (2 tests) 27ms
+stderr | src/app/api/ai/cat/session/start/route.test.ts > cat session start route > returns a JSON error payload when article generation throws
+CAT session start failed: Error: provider unavailable
+    at /Users/lijiahao/yasi/src/app/api/ai/cat/session/start/route.test.ts:256:50
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:1893:26
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2316:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2313:10)
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2295:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2262:10)
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2945:64
+
+ ✓ src/app/api/ai/cat/session/start/route.test.ts (4 tests) 21ms
+stderr | src/components/reading/ParagraphCard.test.tsx > ParagraphCard > does not render a duplicate rewrite mode action in the paragraph toolbar
+Failed to hydrate paragraph Ask cache: TypeError: Cannot read properties of undefined (reading 'where')
+    at /Users/lijiahao/yasi/src/components/reading/ParagraphCard.tsx:1562:50
+    at /Users/lijiahao/yasi/src/components/reading/ParagraphCard.tsx:1436:5
+    at Object.react_stack_bottom_frame (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+    at commitPassiveMountOnFiber (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:15519:11)
+    at flushPassiveEffects (/Users/lijiahao/yasi/node_modules/react-dom/cjs/react-dom-client.development.js:18432:9)
+
+ ✓ src/components/reading/ParagraphCard.test.tsx (1 test) 50ms
+ ✓ src/components/drill/GachaOverlay.test.tsx (1 test) 31ms
+ ✓ src/lib/translation-quickmatch-topics.test.ts (5 tests) 13ms
+ ✓ src/app/read/rewrite/page.test.tsx (1 test) 27ms
+ ✓ src/lib/tts-audio.test.ts (2 tests) 26ms
+ ✓ src/app/api/profile/test-ai-provider/route.test.ts (3 tests) 9ms
+stderr | src/app/api/ai/cat/session/submit/route.test.ts > cat session submit route > returns a JSON 500 instead of crashing when an unexpected submit error is thrown
+CAT session submit failed: TypeError: fetch failed
+    at /Users/lijiahao/yasi/src/app/api/ai/cat/session/submit/route.test.ts:333:51
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:1893:26
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2316:20
+    at new Promise (<anonymous>)
+    at runWithCancel (file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2313:10)
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2295:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2262:10)
+    at file:///Users/lijiahao/yasi/node_modules/@vitest/runner/dist/chunk-artifact.js:2945:64
+
+ ✓ src/app/api/ai/cat/session/submit/route.test.ts (6 tests) 26ms
+ ✓ src/components/debug/DrillDebug.test.tsx (1 test) 42ms
+ ✓ src/lib/guidedLearning.test.ts (20 tests) 13ms
+ ✓ src/app/api/ai/rewrite-practice/route.test.ts (8 tests) 11ms
+ ✓ src/app/api/ai/grammar/route.test.ts (3 tests) 16ms
+ ✓ src/app/api/ai/writing_guide/route.test.ts (3 tests) 9ms
+ ✓ src/app/api/ai/listening-cabin/random-topic/route.test.ts (3 tests) 12ms
+ ✓ src/lib/listening-cabin.test.ts (28 tests) 20ms
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > rounds dictation scores to integers
+[score_translation] Request received: {
+  mode: 'dictation',
+  user_translation: '我昨天去了超市',
+  current_elo: 860,
+  force_cloud: false
+}
+[score_translation] ☁️ Calling DeepSeek API...
+[score_translation] API Attempt 1/3 (Teaching Mode: false)
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > rounds dictation scores to integers
+[score_translation] Response received (via deepseek-cloud)
+[score_translation] Success: { score: 9, teaching_mode: false }
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > forces punctuation-only dictation differences to score 10
+[score_translation] Request received: {
+  mode: 'dictation',
+  user_translation: '我昨天去了超市',
+  current_elo: 860,
+  force_cloud: false
+}
+[score_translation] ☁️ Calling DeepSeek API...
+[score_translation] API Attempt 1/3 (Teaching Mode: false)
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > forces punctuation-only dictation differences to score 10
+[score_translation] Response received (via deepseek-cloud)
+[score_translation] Success: { score: 10, teaching_mode: false }
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > normalizes translation score to 0-10 when model returns 100
+[score_translation] Request received: {
+  mode: 'translation',
+  user_translation: '我昨天去了超市',
+  current_elo: 860,
+  force_cloud: false
+}
+[score_translation] ☁️ Calling DeepSeek API...
+[score_translation] API Attempt 1/3 (Teaching Mode: false)
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > normalizes translation score to 0-10 when model returns 100
+[score_translation] Response received (via deepseek-cloud)
+[score_translation] Success: { score: 10, teaching_mode: false }
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > caps reverse translation score when answer is not Chinese
+[score_translation] Request received: {
+  mode: 'translation',
+  user_translation: 'asdf qwer random text',
+  current_elo: 860,
+  force_cloud: false
+}
+[score_translation] ☁️ Calling DeepSeek API...
+[score_translation] API Attempt 1/3 (Teaching Mode: false)
+
+stdout | src/app/api/ai/score_translation/route.test.ts > score_translation route > caps reverse translation score when answer is not Chinese
+[score_translation] Response received (via deepseek-cloud)
+[score_translation] Success: { score: 2, teaching_mode: false }
+
+ ✓ src/app/api/ai/score_translation/route.test.ts (4 tests) 14ms
+ ✓ src/lib/cat-score.test.ts (14 tests) 14ms
+ ✓ src/lib/rebuild-mode.test.ts (14 tests) 7ms
+ ✓ src/app/api/ai/guided_script/route.test.ts (2 tests) 8ms
+ ✓ src/lib/content-topic-pool.test.ts (2 tests) 12ms
+ ✓ src/app/api/ai/analyze_drill/route.test.ts (3 tests) 6ms
+ ✓ src/lib/fsrs.test.ts (4 tests) 8ms
+ ✓ src/app/api/profile/settle/route.test.ts (4 tests) 9ms
+ ✓ src/lib/db-schema.test.ts (6 tests) 5ms
+ ✓ src/lib/grammarHighlights.test.ts (11 tests) 12ms
+ ✓ src/app/api/profile/nvidia-models/route.test.ts (2 tests) 5ms
+ ✓ src/lib/user-sync.test.ts (10 tests) 31ms
+ ✓ src/lib/battle-quickmatch-topics.test.ts (6 tests) 5ms
+ ✓ src/components/home/home-data.test.ts (2 tests) 5ms
+ ✓ src/lib/guidedHintClient.test.ts (4 tests) 4ms
+ ✓ src/lib/battleUiState.test.ts (12 tests) 7ms
+ ✓ src/lib/drill-generation-plan.test.ts (8 tests) 8ms
+ ✓ src/lib/read-pretest.test.ts (3 tests) 5ms
+ ✓ src/lib/dictation-guardrails.test.ts (3 tests) 2ms
+ ✓ src/lib/translation-diff.test.ts (3 tests) 9ms
+ ✓ src/lib/rebuild-rewards.test.ts (8 tests) 4ms
+ ✓ src/app/api/ai/task-split/route.test.ts (2 tests) 6ms
+ ✓ src/lib/ask-thread.test.ts (4 tests) 9ms
+ ✓ src/lib/cat-growth.test.ts (5 tests) 6ms
+ ✓ src/lib/daily-drill-progress.test.ts (5 tests) 8ms
+ ✓ src/lib/inline-coach-stream.test.ts (2 tests) 3ms
+ ✓ src/lib/cat-rasch.test.ts (5 tests) 3ms
+ ✓ src/lib/profile-settings.test.ts (5 tests) 3ms
+ ✓ src/lib/drill-rebuild-helpers.test.ts (5 tests) 6ms
+ ✓ src/lib/client-retry.test.ts (3 tests) 6ms
+ ✓ src/app/auth/callback/route.test.ts (2 tests) 4ms
+ ✓ src/lib/ghost-completion.test.ts (9 tests) 6ms
+ ✓ src/lib/rebuild-rag.test.ts (3 tests) 3ms
+ ✓ src/lib/translationDifficulty.test.ts (7 tests) 9ms
+ ✓ src/app/api/ai/generate-quiz/route.test.ts (4 tests) 3ms
+ ✓ src/lib/dailyArticle.test.ts (3 tests) 5ms
+ ✓ src/lib/listening-shadowing.test.ts (2 tests) 3ms
+ ✓ src/lib/speech-audio.test.ts (2 tests) 3ms
+ ✓ src/app/api/ai/guided_hint/route.test.ts (2 tests) 7ms
+ ✓ src/lib/drill-question-transition.test.ts (3 tests) 6ms
+ ✓ src/lib/ai-coach-history.test.ts (3 tests) 4ms
+ ✓ src/lib/quiz-scoring.test.ts (4 tests) 5ms
+ ✓ src/lib/read-speaking.test.ts (3 tests) 15ms
+ ✓ src/lib/cat-self-assessment.test.ts (8 tests) 5ms
+ ✓ src/lib/auth-routing.test.ts (3 tests) 4ms
+ ✓ src/lib/listening-elo.test.ts (6 tests) 3ms
+ ✓ src/lib/bge-client.test.ts (1 test) 2ms
+ ✓ src/lib/supabase/env.test.ts (3 tests) 4ms
+ ✓ src/lib/pronunciation-scoring.test.ts (3 tests) 3ms
+ ✓ src/lib/guided-learning-session.test.ts (3 tests) 4ms
+ ✓ src/lib/translation-self-eval.test.ts (2 tests) 4ms
+ ✓ src/lib/drill-elo.test.ts (3 tests) 4ms
+ ✓ src/lib/grammar-analysis.test.ts (5 tests) 6ms
+ ✓ src/components/drill/gacha.test.ts (7 tests) 5ms
+ ✓ src/components/reading/selection-helpers.test.ts (3 tests) 2ms
+ ✓ src/lib/reading-economy.test.ts (3 tests) 7ms
+ ✓ src/lib/rebuild-shadowing-state.test.ts (4 tests) 2ms
+ ✓ src/lib/translation-elo.test.ts (2 tests) 2ms
+ ✓ src/lib/drill-interactive-word.test.ts (2 tests) 2ms
+ ✓ src/lib/read-article-snapshot.test.ts (2 tests) 3ms
+ ✓ src/lib/auth-errors.test.ts (2 tests) 2ms
+ ✓ src/lib/cat-settlement-preview.test.ts (1 test) 2ms
+ ✓ src/lib/background-preferences.test.ts (1 test) 2ms
+ ✓ src/lib/coach-input.test.ts (3 tests) 3ms
+ ✓ src/lib/user-repository.test.ts (2 tests) 2ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 34 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > auto-advances subtitles sentence by sentence using duration fallback timings
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:260:52
+    258|         }
+    259|
+    260|         expect(latestPlayer.playerState.isPlaying).toBe(true);
+       |                                                    ^
+    261|
+    262|         await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/34]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > keeps the current subtitle through sentence boundary and switches with a small delay
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:316:63
+    314|             latestAudio.dispatch("timeupdate");
+    315|         });
+    316|         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+       |                                                               ^
+    317|     });
+    318|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/34]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > applies single-pause mode immediately by replaying the current sentence from start
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:599:52
+    597|
+    598|         expect(latestPlayer.playerState.currentSentenceIndex).toBe(0);
+    599|         expect(latestPlayer.playerState.isPlaying).toBe(true);
+       |                                                    ^
+    600|
+    601|         await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/34]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > re-initializes playback correctly under StrictMode remounts
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:638:52
+    636|
+    637|         expect(latestAudio.src).toBe("mock://narration");
+    638|         expect(latestPlayer.playerState.isPlaying).toBe(true);
+       |                                                    ^
+    639|
+    640|         await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/34]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > uses segmentTimings in dialogue mode without aggressive early subtitle switching
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:696:63
+    694|             latestAudio.dispatch("timeupdate");
+    695|         });
+    696|         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+       |                                                               ^
+    697|     });
+    698|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/34]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > progressively corrects segment timing drift so later sentences still advance into the final subtitle
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:735:63
+    733|             latestAudio.dispatch("timeupdate");
+    734|         });
+    735|         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+       |                                                               ^
+    736|
+    737|         await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/34]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > does not shrink segment timings when browser duration is slightly shorter, avoiding cumulative early switching
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:780:63
+    778|             latestAudio.dispatch("timeupdate");
+    779|         });
+    780|         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+       |                                                               ^
+    781|
+    782|         await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/34]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > keeps full sentence tail in single-pause mode and only pauses near segment boundary
+AssertionError: expected false to be true // Object.is equality
+
+- Expected
++ Received
+
+- true
++ false
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:879:52
+    877|             latestAudio.dispatch("timeupdate");
+    878|         });
+    879|         expect(latestPlayer.playerState.isPlaying).toBe(true);
+       |                                                    ^
+    880|
+    881|         await act(async () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/34]⎯
+
+ FAIL  src/hooks/useListeningCabinPlayer.test.tsx > useListeningCabinPlayer > restarts current sentence immediately when switching from auto-all to single-pause
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ src/hooks/useListeningCabinPlayer.test.tsx:988:63
+    986|             latestAudio.dispatch("timeupdate");
+    987|         });
+    988|         expect(latestPlayer.playerState.currentSentenceIndex).toBe(1);
+       |                                                               ^
+    989|         expect(latestPlayer.playerState.isPlaying).toBe(true);
+    990|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/34]⎯
+
+ FAIL  src/hooks/useWritingGuide.test.tsx > useWritingGuide > sends structured history on the follow-up request and aborts when input changes
+AssertionError: expected "vi.fn()" to be called 2 times, but got 1 times
+ ❯ src/hooks/useWritingGuide.test.tsx:212:27
+    210|         });
+    211|
+    212|         expect(fetchMock).toHaveBeenCalledTimes(2);
+       |                           ^
+    213|         const secondCallBody = JSON.parse(fetchMock.mock.calls[1][1].b…
+    214|             history: Array<{ state: string; focus: string; nextAction:…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/34]⎯
+
+ FAIL  src/lib/rebuild-battle-elo.test.ts > rebuild battle elo > follows sentence-style rebuild delta: systemDelta + selfDelta
+AssertionError: expected -21 to be -40 // Object.is equality
+
+- Expected
++ Received
+
+- -40
++ -21
+
+ ❯ src/lib/rebuild-battle-elo.test.ts:14:30
+     12|         });
+     13|
+     14|         expect(result.total).toBe(-40);
+       |                              ^
+     15|         expect(result.breakdown.systemDelta).toBe(-18);
+     16|         expect(result.breakdown.selfDelta).toBe(-22);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/34]⎯
+
+ FAIL  src/lib/rebuild-battle-elo.test.ts > rebuild battle elo > applies rebuild clamp limits (-65 ~ +48)
+AssertionError: expected -35 to be -65 // Object.is equality
+
+- Expected
++ Received
+
+- -65
++ -35
+
+ ❯ src/lib/rebuild-battle-elo.test.ts:34:30
+     32|         });
+     33|
+     34|         expect(tooLow.total).toBe(-65);
+       |                              ^
+     35|         expect(tooHigh.total).toBe(48);
+     36|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/34]⎯
+
+ FAIL  src/lib/rebuild-passage.test.ts > rebuild passage helpers > derives soft and hard word-count windows from the existing segment range
+AssertionError: expected { min: 12, max: 18, mean: 15, …(5) } to match object { min: 14, max: 22, mean: 18, …(5) }
+
+- Expected
++ Received
+
+  {
+-   "hardMax": 22,
+-   "hardMin": 14,
+-   "max": 22,
+-   "mean": 18,
+-   "min": 14,
+-   "sigma": 2,
+-   "softMax": 20,
+-   "softMin": 16,
++   "hardMax": 18,
++   "hardMin": 12,
++   "max": 18,
++   "mean": 15,
++   "min": 12,
++   "sigma": 1.5,
++   "softMax": 16.5,
++   "softMin": 13.5,
+  }
+
+ ❯ src/lib/rebuild-passage.test.ts:17:46
+     15|         expect(profile.segmentCount).toBe(3);
+     16|         expect(profile.practiceTier.cefr).toBe("B1");
+     17|         expect(profile.perSegmentWordWindow).toMatchObject({
+       |                                              ^
+     18|             min: 14,
+     19|             max: 22,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/34]⎯
+
+ FAIL  src/lib/vocab-meanings.test.ts > resolveHighlightedMeaningsFromGroups > returns no highlight when the AI-provided highlighted meaning does not match any displayed meaning
+AssertionError: expected [ '战役，战争' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "战役，战争",
++ ]
+
+ ❯ src/lib/vocab-meanings.test.ts:57:11
+     55|                 ["A military fight between armed forces"],
+     56|             ),
+     57|         ).toEqual([]);
+       |           ^
+     58|     });
+     59| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/34]⎯
+
+ FAIL  src/components/auth/AuthForms.test.tsx > auth forms > signs in with email and password, then redirects to home
+AssertionError: expected "vi.fn()" to be called with arguments: [ '/' ]
+
+Number of calls: 0
+
+ ❯ src/components/auth/AuthForms.test.tsx:123:29
+    121|             refresh_token: "refresh-token",
+    122|         });
+    123|         expect(replaceMock).toHaveBeenCalledWith("/");
+       |                             ^
+    124|
+    125|         await view.cleanup();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/34]⎯
+
+ FAIL  src/components/drill/DrillBottomActions.test.tsx > DrillBottomActions > requires translation self evaluation before next question
+AssertionError: expected undefined to be truthy
+
+- Expected:
+true
+
++ Received:
+undefined
+
+ ❯ src/components/drill/DrillBottomActions.test.tsx:82:28
+     80|         const nextButton = Array.from(container.querySelectorAll("butt…
+     81|             .find((button) => button.textContent?.includes("Next Quest…
+     82|         expect(nextButton).toBeTruthy();
+       |                            ^
+     83|         expect(nextButton?.hasAttribute("disabled")).toBe(true);
+     84|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/34]⎯
+
+ FAIL  src/components/reading/ReadingQuizPanel.test.tsx > ReadingQuizPanel > uses previous and next controls to review submitted answers after reopening
+AssertionError: expected '阅读理解四级1/2正确率 50%已提交 2 题 · 至少 2 题，精度达标…' to contain 'The students reviewed notes only once…'
+
+Expected: "The students reviewed notes only once a month."
+Received: "阅读理解四级1/2正确率 50%已提交 2 题 · 至少 2 题，精度达标自动收卷（上限 2 题，目标SE ≤ 0.56）1选择What is the main idea?A. Memory grows with reviewB. Sleep is optionalC. Exams should be removedD. Notes are useless✓ 正确The passage focuses on review and memory.复盘第 2 / 2 题上一题下一题"
+
+ ❯ src/components/reading/ReadingQuizPanel.test.tsx:111:39
+    109|         });
+    110|
+    111|         expect(container.textContent).toContain("The students reviewed…
+       |                                       ^
+    112|     });
+    113| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/34]⎯
+
+ FAIL  src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > keeps answers collapsed by default and resets collapsed state after reopen
+AssertionError: expected 'true' to be 'false' // Object.is equality
+
+Expected: "false"
+Received: "true"
+
+ ❯ src/components/reading/SelectionActionPopup.test.tsx:197:71
+    195|         const reopenedQuestionButton = Array.from(container.querySelec…
+    196|             .find((button) => button.textContent?.includes("问题 1"));
+    197|         expect(reopenedQuestionButton?.getAttribute("aria-expanded")).…
+       |                                                                       ^
+    198|         expect(container.textContent).not.toContain("这里是在描述进行中的状态。");
+    199|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/34]⎯
+
+ FAIL  src/components/reading/SelectionActionPopup.test.tsx > SelectionActionPopup > shows ask replay view directly when popup mode is ask-replay
+AssertionError: expected '问题 1 · 这句话想表达什么？收起强调学历是过去求职的重要信号。' to contain 'AI 回答记录'
+
+Expected: "AI 回答记录"
+Received: "问题 1 · 这句话想表达什么？收起强调学历是过去求职的重要信号。"
+
+ ❯ src/components/reading/SelectionActionPopup.test.tsx:246:39
+    244|         });
+    245|
+    246|         expect(container.textContent).toContain("AI 回答记录");
+       |                                       ^
+    247|         expect(container.textContent).toContain("强调学历是过去求职的重要信号。");
+    248|         expect(container.textContent).not.toContain("向AI提问");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/34]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts translation drill on the first generation when word count is in range
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ src/app/api/ai/generate_drill/route.test.ts:81:38
+     79|         const data = await response.json();
+     80|
+     81|         expect(createCompletionMock).toHaveBeenCalledTimes(1);
+       |                                      ^
+     82|         expect(
+     83|             createCompletionMock.mock.calls[0][0].messages[1].content,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/34]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > retries translation generation for out-of-range word counts
+AssertionError: expected "vi.fn()" to be called 2 times, but got 0 times
+ ❯ src/app/api/ai/generate_drill/route.test.ts:129:38
+    127|         const data = await response.json();
+    128|
+    129|         expect(createCompletionMock).toHaveBeenCalledTimes(2);
+       |                                      ^
+    130|         expect(createCompletionMock.mock.calls[1][0].messages[1].conte…
+    131|         expect(createCompletionMock.mock.calls[1][0].messages[1].conte…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/34]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > flags inaccurate AI self-reported word counts
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ src/app/api/ai/generate_drill/route.test.ts:156:38
+    154|         const data = await response.json();
+    155|
+    156|         expect(createCompletionMock).toHaveBeenCalledTimes(1);
+       |                                      ^
+    157|         expect(data._difficultyMeta.aiSelfReport).toMatchObject({
+    158|             wordCount: 99,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/34]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > caps translation alternatives at two even if the model returns more
+AssertionError: expected undefined to deeply equal [ 'Alternative one.', …(1) ]
+
+- Expected:
+[
+  "Alternative one.",
+  "Alternative two.",
+]
+
++ Received:
+undefined
+
+ ❯ src/app/api/ai/generate_drill/route.test.ts:187:53
+    185|         const data = await response.json();
+    186|
+    187|         expect(data.reference_english_alternatives).toEqual([
+       |                                                     ^
+    188|             "Alternative one.",
+    189|             "Alternative two.",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/34]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts slight translation length drift within tolerance without retrying
+AssertionError: expected "vi.fn()" to be called 1 times, but got 0 times
+ ❯ src/app/api/ai/generate_drill/route.test.ts:212:38
+    210|         const data = await response.json();
+    211|
+    212|         expect(createCompletionMock).toHaveBeenCalledTimes(1);
+       |                                      ^
+    213|         expect(data._difficultyMeta.status).toBe("MATCHED");
+    214|         expect(data._difficultyMeta.isValid).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/34]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > retries listening generation when cefr and listening feature targets do not match
+AssertionError: expected "vi.fn()" to be called 3 times, but got 0 times
+ ❯ src/app/api/ai/generate_drill/route.test.ts:289:38
+    287|         const data = await response.json();
+    288|
+    289|         expect(createCompletionMock).toHaveBeenCalledTimes(3);
+       |                                      ^
+    290|         expect(createCompletionMock.mock.calls[1][0].messages[1].conte…
+    291|         expect(createCompletionMock.mock.calls[1][0].messages[1].conte…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/34]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > keeps the CEFR tier but softens listening features after repeated listening misses
+AssertionError: expected "vi.fn()" to be called 3 times, but got 0 times
+ ❯ src/app/api/ai/generate_drill/route.test.ts:328:38
+    326|         const data = await response.json();
+    327|
+    328|         expect(createCompletionMock).toHaveBeenCalledTimes(3);
+       |                                      ^
+    329|         expect(data._difficultyMeta.cefr).toBe("B2");
+    330|         expect(data._difficultyMeta.listeningFeatures).toMatchObject({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[26/34]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > treats the topic as background direction instead of forcing explicit topic words
+TypeError: Cannot read properties of undefined (reading '0')
+ ❯ src/app/api/ai/generate_drill/route.test.ts:357:56
+    355|         await POST(buildRequest({ articleTitle: "环球旅行", articleContent…
+    356|
+    357|         const prompt = createCompletionMock.mock.calls[0][0].messages[…
+       |                                                        ^
+    358|         expect(prompt).toContain("Treat the topic as background direct…
+    359|         expect(prompt).toContain("Do NOT explicitly repeat the topic l…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[27/34]⎯
+
+ FAIL  src/app/api/drill/next/route.test.ts > drill next route > retries rebuild sentence generation and eventually succeeds
+AssertionError: expected "vi.fn()" to be called 2 times, but got 1 times
+ ❯ src/app/api/drill/next/route.test.ts:64:44
+     62|         const data = await response.json();
+     63|
+     64|         expect(generateRebuildAiDrillMock).toHaveBeenCalledTimes(2);
+       |                                            ^
+     65|         expect(generateRebuildAiDrillMock).toHaveBeenLastCalledWith({
+     66|             topic: "test topic",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[28/34]⎯
+
+ FAIL  src/app/api/drill/next/route.test.ts > drill next route > retries rebuild passage generation and returns 500 after exhausting attempts
+AssertionError: expected "vi.fn()" to be called 3 times, but got 1 times
+ ❯ src/app/api/drill/next/route.test.ts:88:51
+     86|         const data = await response.json();
+     87|
+     88|         expect(generateRebuildPassageAiDrillMock).toHaveBeenCalledTime…
+       |                                                   ^
+     89|         expect(generateRebuildPassageAiDrillMock).toHaveBeenLastCalled…
+     90|             topic: "test topic",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[29/34]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+AssertionError: expected 500 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 500
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:87:33
+     85|         const data = await response.json();
+     86|
+     87|         expect(response.status).toBe(200);
+       |                                 ^
+     88|         expect(data.title).toBe("Morning Briefing Practice");
+     89|         expect(data.sourcePrompt).toBe("做一个工作晨会口播");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[30/34]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+AssertionError: expected 502 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 502
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:135:33
+    133|         const data = await response.json();
+    134|
+    135|         expect(response.status).toBe(200);
+       |                                 ^
+    136|         expect(data.meta.model).toBe("deepseek-reasoner");
+    137|         expect(createCompletionMock).toHaveBeenCalledWith(expect.objec…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[31/34]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+AssertionError: expected 500 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 500
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:186:33
+    184|         const data = await response.json();
+    185|
+    186|         expect(response.status).toBe(200);
+       |                                 ^
+    187|         expect(data.meta).toEqual(expect.objectContaining({
+    188|             scriptMode: "podcast",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[32/34]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+AssertionError: expected 502 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 502
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:236:33
+    234|         const data = await response.json();
+    235|
+    236|         expect(response.status).toBe(200);
+       |                                 ^
+    237|         expect(data.meta).toEqual(expect.objectContaining({
+    238|             scriptMode: "podcast",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[33/34]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+AssertionError: expected 502 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 502
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:266:33
+    264|         const data = await response.json();
+    265|
+    266|         expect(response.status).toBe(200);
+       |                                 ^
+    267|         expect(data.title).toBe("Better Spoken Draft");
+    268|         expect(createCompletionMock).toHaveBeenCalledTimes(2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[34/34]⎯
+
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 5 unhandled errors during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: element.scrollIntoView is not a function
+ ❯ Timeout._onTimeout src/components/ui/SpotlightTour.tsx:86:29
+     84|             if (rect.top < 80 || rect.bottom > viewportHeight - 80) {
+     85|                 setTimeout(() => {
+     86|                     element.scrollIntoView({ behavior: 'smooth', block…
+       |                             ^
+     87|                 }, 50);
+     88|             }
+ ❯ listOnTimeout node:internal/timers:594:17
+ ❯ processTimers node:internal/timers:529:7
+
+This error originated in "src/app/vocab/review/page.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "uses a single-card revealed layout with a compact rating bar". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: element.scrollIntoView is not a function
+ ❯ Timeout._onTimeout src/components/ui/SpotlightTour.tsx:86:29
+     84|             if (rect.top < 80 || rect.bottom > viewportHeight - 80) {
+     85|                 setTimeout(() => {
+     86|                     element.scrollIntoView({ behavior: 'smooth', block…
+       |                             ^
+     87|                 }, 50);
+     88|             }
+ ❯ listOnTimeout node:internal/timers:594:17
+ ❯ processTimers node:internal/timers:529:7
+
+This error originated in "src/app/vocab/review/page.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "uses a single-card revealed layout with a compact rating bar". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: element.scrollIntoView is not a function
+ ❯ Timeout._onTimeout src/components/ui/SpotlightTour.tsx:86:29
+     84|             if (rect.top < 80 || rect.bottom > viewportHeight - 80) {
+     85|                 setTimeout(() => {
+     86|                     element.scrollIntoView({ behavior: 'smooth', block…
+       |                             ^
+     87|                 }, 50);
+     88|             }
+ ❯ listOnTimeout node:internal/timers:594:17
+ ❯ processTimers node:internal/timers:529:7
+
+This error originated in "src/app/vocab/review/page.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "uses a single-card revealed layout with a compact rating bar". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: element.scrollIntoView is not a function
+ ❯ Timeout._onTimeout src/components/ui/SpotlightTour.tsx:86:29
+     84|             if (rect.top < 80 || rect.bottom > viewportHeight - 80) {
+     85|                 setTimeout(() => {
+     86|                     element.scrollIntoView({ behavior: 'smooth', block…
+       |                             ^
+     87|                 }, 50);
+     88|             }
+ ❯ listOnTimeout node:internal/timers:594:17
+ ❯ processTimers node:internal/timers:529:7
+
+This error originated in "src/app/vocab/review/page.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "requeues short-interval cards into the current review session after Again". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+
+⎯⎯⎯⎯⎯ Uncaught Exception ⎯⎯⎯⎯⎯
+TypeError: element.scrollIntoView is not a function
+ ❯ Timeout._onTimeout src/components/ui/SpotlightTour.tsx:86:29
+     84|             if (rect.top < 80 || rect.bottom > viewportHeight - 80) {
+     85|                 setTimeout(() => {
+     86|                     element.scrollIntoView({ behavior: 'smooth', block…
+       |                             ^
+     87|                 }, 50);
+     88|             }
+ ❯ listOnTimeout node:internal/timers:594:17
+ ❯ processTimers node:internal/timers:529:7
+
+This error originated in "src/app/vocab/review/page.test.tsx" test file. It doesn't mean the error was thrown inside the file itself, but while it was running.
+The latest test that might've caused the error is "requeues short-interval cards into the current review session after Again". It might mean one of the following:
+- The error was thrown, while Vitest was running this test.
+- If the error occurred after the test had been completed, this was the last documented test before it was thrown.
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+
+ Test Files  12 failed | 103 passed (115)
+      Tests  34 failed | 498 passed (532)
+     Errors  5 errors
+   Start at  00:03:03
+   Duration  5.87s (transform 5.19s, setup 0ms, import 16.19s, tests 8.82s, environment 10.58s)
+

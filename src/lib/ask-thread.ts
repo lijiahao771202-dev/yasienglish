@@ -4,6 +4,7 @@ export interface AskThreadMessage {
     role: AskRole;
     content: string;
     createdAt: number;
+    reasoningContent?: string;
 }
 
 export interface AskThreadPayload {
@@ -17,7 +18,9 @@ export interface AskQaPair {
     id: number;
     question: string;
     answer: string;
+    reasoningContent: string;
     isStreaming: boolean;
+    isReasoningStreaming: boolean;
 }
 
 const ASK_THREAD_VERSION = 1 as const;
@@ -34,6 +37,7 @@ export function sanitizeAskThreadMessages(input: unknown): AskThreadMessage[] {
             if (!item || typeof item !== "object") return null;
             const role = (item as { role?: unknown }).role;
             const content = (item as { content?: unknown }).content;
+            const reasoningContent = (item as { reasoningContent?: unknown }).reasoningContent;
             const createdAt = Number((item as { createdAt?: unknown }).createdAt);
             if (!isAskRole(role)) return null;
             if (typeof content !== "string" || !content.trim()) return null;
@@ -42,6 +46,9 @@ export function sanitizeAskThreadMessages(input: unknown): AskThreadMessage[] {
                 role,
                 content: content.trim(),
                 createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Date.now(),
+                ...(typeof reasoningContent === "string" && reasoningContent.trim()
+                    ? { reasoningContent: reasoningContent.trim() }
+                    : {}),
             };
         })
         .filter((item): item is AskThreadMessage => item !== null);
@@ -94,9 +101,10 @@ export function encodeAskThreadPayload(messages: AskThreadMessage[], summary?: s
 }
 
 export function buildAskQaPairs(
-    messages: ReadonlyArray<{ role: AskRole; content: string }>,
+    messages: ReadonlyArray<{ role: AskRole; content: string; reasoningContent?: string }>,
     streamingContent = "",
     isLoading = false,
+    streamingReasoningContent = "",
 ): AskQaPair[] {
     const pairs: AskQaPair[] = [];
     let pendingQuestion: string | null = null;
@@ -105,17 +113,38 @@ export function buildAskQaPairs(
     for (const msg of messages) {
         if (msg.role === "user") {
             if (pendingQuestion) {
-                pairs.push({ id: idx++, question: pendingQuestion, answer: "", isStreaming: false });
+                pairs.push({
+                    id: idx++,
+                    question: pendingQuestion,
+                    answer: "",
+                    reasoningContent: "",
+                    isStreaming: false,
+                    isReasoningStreaming: false,
+                });
             }
             pendingQuestion = msg.content;
             continue;
         }
 
         if (pendingQuestion) {
-            pairs.push({ id: idx++, question: pendingQuestion, answer: msg.content, isStreaming: false });
+            pairs.push({
+                id: idx++,
+                question: pendingQuestion,
+                answer: msg.content,
+                reasoningContent: "reasoningContent" in msg && typeof msg.reasoningContent === "string" ? msg.reasoningContent : "",
+                isStreaming: false,
+                isReasoningStreaming: false,
+            });
             pendingQuestion = null;
         } else {
-            pairs.push({ id: idx++, question: "", answer: msg.content, isStreaming: false });
+            pairs.push({
+                id: idx++,
+                question: "",
+                answer: msg.content,
+                reasoningContent: "reasoningContent" in msg && typeof msg.reasoningContent === "string" ? msg.reasoningContent : "",
+                isStreaming: false,
+                isReasoningStreaming: false,
+            });
         }
     }
 
@@ -124,13 +153,44 @@ export function buildAskQaPairs(
             id: idx++,
             question: pendingQuestion,
             answer: streamingContent,
+            reasoningContent: streamingReasoningContent,
             isStreaming: isLoading || Boolean(streamingContent),
+            isReasoningStreaming: isLoading && Boolean(streamingReasoningContent) && !streamingContent,
         });
     } else if (streamingContent) {
-        pairs.push({ id: idx++, question: "", answer: streamingContent, isStreaming: true });
+        pairs.push({
+            id: idx++,
+            question: "",
+            answer: streamingContent,
+            reasoningContent: streamingReasoningContent,
+            isStreaming: true,
+            isReasoningStreaming: false,
+        });
     }
 
     return pairs;
+}
+
+export function resolveAskAssistantMessageParts(
+    answerContent: string,
+    reasoningContent: string,
+    fallbackContent = "抱歉，暂无可展示回答。",
+): { content: string; reasoningContent?: string } {
+    const answer = answerContent.trim();
+    const reasoning = reasoningContent.trim();
+
+    if (answer) {
+        return {
+            content: answer,
+            ...(reasoning ? { reasoningContent: reasoning } : {}),
+        };
+    }
+
+    if (reasoning) {
+        return { content: reasoning };
+    }
+
+    return { content: fallbackContent };
 }
 
 export function buildAskThreadPreview(payload: AskThreadPayload): string {

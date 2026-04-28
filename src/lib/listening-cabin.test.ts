@@ -70,7 +70,7 @@ describe("listening cabin helpers", () => {
                     { speaker: "Guest 1", voice: "en-US-BrianNeural" },
                     { speaker: "Guest 2", voice: "en-US-EmmaNeural" },
                     { speaker: "Guest 3", voice: "en-US-AndrewNeural" },
-                    { speaker: "Guest 4", voice: "en-US-DavisNeural" },
+                    { speaker: "Guest 4", voice: "en-US-GuyNeural" },
                 ],
             },
         });

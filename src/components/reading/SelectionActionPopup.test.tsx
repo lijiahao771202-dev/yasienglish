@@ -43,6 +43,8 @@ const createBaseProps = (): React.ComponentProps<typeof SelectionActionPopup> =>
     onAskAnswerModeChange: vi.fn(),
     isAskLoading: false,
     onAsk: vi.fn(),
+    onOpenAskComposer: vi.fn(),
+    onReturnToSelection: vi.fn(),
     renderAskMarkdown: renderMarkdown,
     onClose: vi.fn(),
 });
@@ -104,11 +106,10 @@ describe("SelectionActionPopup", () => {
         expect(container.textContent).toContain("删除下划线");
     });
 
-    it("opens ask panel and triggers ask callback", async () => {
-        const onAsk = vi.fn();
+    it("requests ask composer mode when clicking ask action", async () => {
+        const onOpenAskComposer = vi.fn();
         const { container } = await renderPopup({
-            question: "怎么理解这个短语？",
-            onAsk,
+            onOpenAskComposer,
         });
 
         const askToggleButton = Array.from(container.querySelectorAll("button"))
@@ -117,6 +118,17 @@ describe("SelectionActionPopup", () => {
 
         await act(async () => {
             askToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onOpenAskComposer).toHaveBeenCalledTimes(1);
+    });
+
+    it("only sends when clicking the send button in ask mode", async () => {
+        const onAsk = vi.fn();
+        const { container } = await renderPopup({
+            popupMode: "ask",
+            question: "怎么理解这个短语？",
+            onAsk,
         });
 
         const input = container.querySelector<HTMLInputElement>('input[placeholder="针对选中文本提问..."]');
@@ -130,21 +142,20 @@ describe("SelectionActionPopup", () => {
             input?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
         });
 
+        expect(onAsk).toHaveBeenCalledTimes(0);
+
+        await act(async () => {
+            sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
         expect(onAsk).toHaveBeenCalledTimes(1);
     });
 
     it("disables send button and shows loading indicator while asking", async () => {
         const { container } = await renderPopup({
+            popupMode: "ask",
             question: "解释一下",
             isAskLoading: true,
-        });
-
-        const askToggleButton = Array.from(container.querySelectorAll("button"))
-            .find((button) => button.textContent?.includes("向AI提问"));
-        expect(askToggleButton).toBeTruthy();
-
-        await act(async () => {
-            askToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
         const input = container.querySelector<HTMLInputElement>('input[placeholder="针对选中文本提问..."]');
@@ -156,11 +167,30 @@ describe("SelectionActionPopup", () => {
         expect(sendButton?.querySelector(".animate-spin")).toBeTruthy();
     });
 
-    it("keeps answers collapsed by default and resets collapsed state after reopen", async () => {
-        const { container } = await renderPopup({
-            qaPairs: [
-                { id: 1, question: "为什么用ing", answer: "这里是在描述进行中的状态。", isStreaming: false },
-            ],
+    it("resets expanded answers when reopening the ask composer", async () => {
+        const Wrapper = () => {
+            const [popupMode, setPopupMode] = React.useState<"selection" | "ask">("selection");
+            return (
+                <SelectionActionPopup
+                    {...createBaseProps()}
+                    popupMode={popupMode}
+                    qaPairs={[
+                        { id: 1, question: "为什么用ing", answer: "这里是在描述进行中的状态。", isStreaming: false },
+                    ]}
+                    onOpenAskComposer={() => setPopupMode("ask")}
+                    onReturnToSelection={() => setPopupMode("selection")}
+                />
+            );
+        };
+
+        globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        mountedRoots.push(root);
+
+        await act(async () => {
+            root.render(<Wrapper />);
         });
 
         const askToggleButton = Array.from(container.querySelectorAll("button"))
@@ -171,25 +201,35 @@ describe("SelectionActionPopup", () => {
             askToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        expect(container.textContent).not.toContain("这里是在描述进行中的状态。");
-
-        const questionButton = Array.from(container.querySelectorAll("button"))
+        let questionButton = Array.from(container.querySelectorAll("button"))
             .find((button) => button.textContent?.includes("问题 1"));
         expect(questionButton).toBeTruthy();
         expect(questionButton?.getAttribute("aria-expanded")).toBe("false");
+        expect(container.textContent).not.toContain("这里是在描述进行中的状态。");
 
         await act(async () => {
             questionButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        expect(container.textContent).toContain("这里是在描述进行中的状态。");
+        questionButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("问题 1"));
         expect(questionButton?.getAttribute("aria-expanded")).toBe("true");
+        expect(container.textContent).toContain("这里是在描述进行中的状态。");
+
+        const backButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.querySelector("svg"));
+        expect(backButton).toBeTruthy();
 
         await act(async () => {
-            askToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            backButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
+
+        const reopenedAskToggleButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("向AI提问"));
+        expect(reopenedAskToggleButton).toBeTruthy();
+
         await act(async () => {
-            askToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            reopenedAskToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
         const reopenedQuestionButton = Array.from(container.querySelectorAll("button"))
@@ -212,15 +252,8 @@ describe("SelectionActionPopup", () => {
     it("switches ask answer mode when clicking segmented buttons", async () => {
         const onAskAnswerModeChange = vi.fn();
         const { container } = await renderPopup({
+            popupMode: "ask",
             onAskAnswerModeChange,
-        });
-
-        const askToggleButton = Array.from(container.querySelectorAll("button"))
-            .find((button) => button.textContent?.includes("向AI提问"));
-        expect(askToggleButton).toBeTruthy();
-
-        await act(async () => {
-            askToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
         const shortModeButton = Array.from(container.querySelectorAll("button"))
@@ -243,7 +276,7 @@ describe("SelectionActionPopup", () => {
             askPanelDefaultOpenToken: 1,
         });
 
-        expect(container.textContent).toContain("AI 回答记录");
+        expect(container.textContent).toContain("强调学历是过去求职的重要信号。");
         expect(container.textContent).toContain("强调学历是过去求职的重要信号。");
         expect(container.textContent).not.toContain("向AI提问");
         expect(container.textContent).not.toContain("高亮");

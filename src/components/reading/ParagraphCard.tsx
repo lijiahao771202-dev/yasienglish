@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useMemo, useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { useLiveQuery } from "dexie-react-hooks";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft, Layers } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -16,15 +17,13 @@ import { PretextTextarea } from "@/components/ui/PretextTextarea";
 import { type GrammarDisplayMode, type GrammarSentenceAnalysis } from "@/lib/grammarHighlights";
 import {
     buildGrammarCacheKey,
-    GRAMMAR_BASIC_MODEL,
     GRAMMAR_BASIC_PROMPT_VERSION,
-    GRAMMAR_DEEP_MODEL,
     GRAMMAR_DEEP_PROMPT_VERSION,
+    sanitizeGrammarBasicPayload,
+    sanitizeGrammarDeepSentencePayload,
     sentenceIdentity,
     type GrammarDeepSentenceResult,
 } from "@/lib/grammar-analysis";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { getReadingCoinCost, INSUFFICIENT_READING_COINS, type ReadingEconomyAction } from "@/lib/reading-economy";
@@ -36,6 +35,7 @@ import {
     buildAskThreadPreview,
     decodeAskThreadPayload,
     encodeAskThreadPayload,
+    resolveAskAssistantMessageParts,
     type AskQaPair,
     type AskThreadMessage,
 } from "@/lib/ask-thread";
@@ -46,9 +46,13 @@ import {
     extractWordTokens,
     type TtsWordMark,
 } from "@/lib/read-speaking";
+import { queryAskRelevantVocabulary } from "@/lib/ask-vocab-memory";
 import type { PopupState } from "./WordPopup";
 import { hasMeaningfulTextSelection } from "./selection-helpers";
 import { getPressableStyle, getPressableTap } from "@/lib/pressable";
+import { dispatchReadSelectionAskDockEvent } from "@/lib/read-selection-ask-dock";
+import { AiRichMarkdown } from "@/components/shared/AiRichMarkdown";
+import { readAskSseStream } from "@/lib/ask-sse";
 
 interface ParagraphCardProps {
     text: string;
@@ -89,7 +93,8 @@ interface ParagraphCardProps {
     isFocusMode?: boolean;
     isFocusLocked?: boolean;
     hasActiveFocusLock?: boolean;
-    onToggleFocusLock?: () => void;
+    onSetFocusLock?: () => void;
+    onClearFocusLock?: () => void;
     highlightSnippet?: string;
 }
 
@@ -144,7 +149,7 @@ interface SentenceAudioCacheEntry {
     objectUrl?: string;
 }
 
-type SelectionPopupMode = "selection" | "ask-replay";
+type SelectionPopupMode = "selection" | "ask" | "ask-replay";
 type AskAnswerMode = "default" | "short" | "detailed";
 
 interface WordLayoutToken {
@@ -186,6 +191,7 @@ const normalizeAskThreadMessages = (raw: unknown): AskThreadMessage[] => {
             if (!item || typeof item !== "object") return null;
             const role = (item as { role?: unknown }).role;
             const content = (item as { content?: unknown }).content;
+            const reasoningContent = (item as { reasoningContent?: unknown }).reasoningContent;
             const createdAt = (item as { createdAt?: unknown }).createdAt;
             if ((role !== "user" && role !== "assistant") || typeof content !== "string") {
                 return null;
@@ -194,6 +200,9 @@ const normalizeAskThreadMessages = (raw: unknown): AskThreadMessage[] => {
                 role,
                 content,
                 createdAt: Number.isFinite(createdAt) ? Number(createdAt) : Date.now(),
+                ...(typeof reasoningContent === "string" && reasoningContent.trim()
+                    ? { reasoningContent: reasoningContent.trim() }
+                    : {}),
             } as AskThreadMessage;
         })
         .filter((item): item is AskThreadMessage => Boolean(item));
@@ -207,6 +216,26 @@ const normalizeHighlightColor = (rawColor: string | undefined) => {
 const isRangeOverlapping = (startA: number, endA: number, startB: number, endB: number) => (
     startA < endB && startB < endA
 );
+
+function AskReasoningBlock({ content, isStreaming = false }: { content: string; isStreaming?: boolean }) {
+    const normalized = content.trim();
+    if (!normalized) return null;
+
+    return (
+        <details className="group mb-3 overflow-hidden rounded-[14px] border border-indigo-200/50 bg-indigo-50/45 text-indigo-950 shadow-sm" open={isStreaming}>
+            <summary className="flex cursor-pointer select-none items-center justify-between gap-3 px-3 py-2 text-[12px] font-black">
+                <span className="inline-flex min-w-0 items-center gap-2">
+                    {isStreaming ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-indigo-500" /> : <Lightbulb className="h-3.5 w-3.5 shrink-0 text-indigo-500" />}
+                    <span>{isStreaming ? "正在思考" : "思考过程"}</span>
+                </span>
+                <span className="text-[10px] font-bold text-indigo-400">展开</span>
+            </summary>
+            <div className="whitespace-pre-wrap border-t border-indigo-200/50 px-3 py-2.5 text-[12px] leading-6 text-indigo-900/85">
+                {normalized}
+            </div>
+        </details>
+    );
+}
 
 export function ParagraphCard({
     text,
@@ -231,23 +260,50 @@ export function ParagraphCard({
     isFocusMode,
     isFocusLocked,
     hasActiveFocusLock,
-    onToggleFocusLock,
+    onSetFocusLock,
+    onClearFocusLock,
     highlightSnippet,
 }: ParagraphCardProps) {
     const router = useRouter();
     const sessionUser = useAuthSessionUser();
     const { fontSizeClass, isBionicMode } = useReadingSettings();
+    const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
+    const grammarExecutionSignature = useMemo(() => {
+        const provider = profile?.ai_provider ?? "deepseek";
+        if (provider === "github") {
+            return `${provider}:${profile?.github_model ?? "openai/gpt-4.1"}`;
+        }
+        if (provider === "nvidia") {
+            return `${provider}:${profile?.nvidia_model ?? "z-ai/glm5"}`;
+        }
+        if (provider === "glm") {
+            return provider;
+        }
+        const deepSeekModel = profile?.deepseek_model ?? "deepseek-v4-flash";
+        const deepSeekThinkingMode = profile?.deepseek_thinking_mode ?? "off";
+        const deepSeekReasoningEffort = deepSeekThinkingMode === "on"
+            ? (profile?.deepseek_reasoning_effort ?? "high")
+            : "off";
+        return `${provider}:${deepSeekModel}:thinking=${deepSeekThinkingMode}:reasoning=${deepSeekReasoningEffort}`;
+    }, [
+        profile?.ai_provider,
+        profile?.deepseek_model,
+        profile?.deepseek_reasoning_effort,
+        profile?.deepseek_thinking_mode,
+        profile?.github_model,
+        profile?.nvidia_model,
+    ]);
     const grammarBasicCacheKey = buildGrammarCacheKey({
         text,
         mode: "basic",
         promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
-        model: GRAMMAR_BASIC_MODEL,
+        model: grammarExecutionSignature,
     });
     const grammarDeepCacheKey = buildGrammarCacheKey({
         text,
         mode: "deep",
         promptVersion: GRAMMAR_DEEP_PROMPT_VERSION,
-        model: GRAMMAR_DEEP_MODEL,
+        model: `${grammarExecutionSignature}:deep`,
     });
     const {
         translations, setTranslation: setStoreTranslation,
@@ -271,7 +327,7 @@ export function ParagraphCard({
 
     // Load from DB on mount
     useEffect(() => {
-        loadFromDB(text, grammarBasicCacheKey, text);
+        loadFromDB(text, grammarBasicCacheKey);
     }, [text, grammarBasicCacheKey, loadFromDB]);
     useEffect(() => {
         loadGrammarFromDB(grammarDeepCacheKey);
@@ -279,17 +335,30 @@ export function ParagraphCard({
 
     // Derived data from store
     const translation = translations[text];
-    const grammarAnalysis = (grammarAnalyses[grammarBasicCacheKey] ?? grammarAnalyses[text]) as GrammarBasicCachePayload | undefined;
+    const grammarAnalysis = grammarAnalyses[grammarBasicCacheKey] as GrammarBasicCachePayload | undefined;
+    const grammarAssessment = useMemo(
+        () => sanitizeGrammarBasicPayload(grammarAnalysis ?? null, text),
+        [grammarAnalysis, text],
+    );
+    const hasUsableGrammarAnalysis = !grammarAssessment.retryRecommended
+        && grammarAssessment.data.difficult_sentences.length > 0;
     const grammarHighlightSentences = useMemo(() => (
-        Array.isArray(grammarAnalysis?.difficult_sentences)
-            ? grammarAnalysis.difficult_sentences
+        hasUsableGrammarAnalysis
+            ? grammarAssessment.data.difficult_sentences
             : []
-    ), [grammarAnalysis?.difficult_sentences]);
+    ), [grammarAssessment.data.difficult_sentences, hasUsableGrammarAnalysis]);
     const grammarDeepCachePayload = grammarAnalyses[grammarDeepCacheKey] as {
         mode?: "deep";
         bySentence?: Record<string, GrammarDeepSentenceResult>;
     } | undefined;
-    const deepBySentence = grammarDeepCachePayload?.bySentence ?? {};
+    const deepBySentence = useMemo(() => {
+        const cached = grammarDeepCachePayload?.bySentence ?? {};
+        const entries = Object.entries(cached).filter(([, value]) => {
+            if (!value?.sentence) return false;
+            return !sanitizeGrammarDeepSentencePayload(value, value.sentence).retryRecommended;
+        });
+        return Object.fromEntries(entries) as Record<string, GrammarDeepSentenceResult>;
+    }, [grammarDeepCachePayload?.bySentence]);
     const paragraphAskCacheKey = useMemo(() => {
         const normalizedUrl = typeof articleUrl === "string" ? articleUrl.trim() : "";
         const normalizedTitle = typeof articleTitle === "string" ? articleTitle.trim().toLowerCase() : "";
@@ -304,11 +373,12 @@ export function ParagraphCard({
     const [messages, setMessages] = useState<AskThreadMessage[]>([]);
     const [isAskLoading, setIsAskLoading] = useState(false);
     const [streamingContent, setStreamingContent] = useState("");
+    const [streamingReasoningContent, setStreamingReasoningContent] = useState("");
     const qaPairs = useMemo(
-        () => buildAskQaPairs(messages, streamingContent, isAskLoading),
-        [isAskLoading, messages, streamingContent],
+        () => buildAskQaPairs(messages, streamingContent, isAskLoading, streamingReasoningContent),
+        [isAskLoading, messages, streamingContent, streamingReasoningContent],
     );
-    const [expandedAskQaIds, setExpandedAskQaIds] = useState<string[]>(() => 
+    const [expandedAskQaIds, setExpandedAskQaIds] = useState<number[]>(() => 
         qaPairs.length > 0 ? [qaPairs[qaPairs.length - 1].id] : []
     );
     const previousAskQaCountRef = useRef(qaPairs.length);
@@ -352,6 +422,7 @@ export function ParagraphCard({
     const [selectionAskQuestion, setSelectionAskQuestion] = useState("");
     const [selectionAskMessages, setSelectionAskMessages] = useState<AskThreadMessage[]>([]);
     const [selectionAskStreamingContent, setSelectionAskStreamingContent] = useState("");
+    const [selectionAskStreamingReasoningContent, setSelectionAskStreamingReasoningContent] = useState("");
     const [isSelectionAskLoading, setIsSelectionAskLoading] = useState(false);
     const [selectionAskAutoOpenToken, setSelectionAskAutoOpenToken] = useState(0);
     const [selectionPopupMode, setSelectionPopupMode] = useState<SelectionPopupMode>("selection");
@@ -365,6 +436,7 @@ export function ParagraphCard({
         x: number;
         anchorTop: number;
         anchorBottom: number;
+        analyzeData?: any;
     } | null>(null);
     const [hoveredNoteId, setHoveredNoteId] = useState<number | null>(null);
     const [pressedAskNoteId, setPressedAskNoteId] = useState<number | null>(null);
@@ -778,6 +850,18 @@ export function ParagraphCard({
     }, [showGrammar]);
 
     useEffect(() => {
+        const shouldDockSelectionAsk = Boolean(selectionRect) && (
+            selectionPopupMode === "ask" || selectionPopupMode === "ask-replay"
+        );
+        dispatchReadSelectionAskDockEvent(shouldDockSelectionAsk);
+        return () => {
+            if (shouldDockSelectionAsk) {
+                dispatchReadSelectionAskDockEvent(false);
+            }
+        };
+    }, [selectionPopupMode, selectionRect]);
+
+    useEffect(() => {
         if (!showGrammar) {
             setIsGrammarLayoutMode(false);
         }
@@ -1084,7 +1168,7 @@ export function ParagraphCard({
         const markers: Array<{
             start: number;
             end: number;
-            type: "highlight" | "underline" | "note" | "ask" | "locate";
+            type: "highlight" | "underline" | "note" | "ask" | "locate" | "analyze";
             noteText?: string;
             id?: number;
             markColor?: string;
@@ -1098,6 +1182,10 @@ export function ParagraphCard({
             const overlapStart = Math.max(textStart, note.start_offset);
             const overlapEnd = Math.min(textEnd, note.end_offset);
             if (overlapEnd <= overlapStart) continue;
+
+            // Ignore sentence-level ask marks so they don't render a background highlight over the text
+            const isSentenceLevelAsk = note.mark_type === "ask" && sentenceUnits.some(u => u.start === note.start_offset && u.end === note.end_offset);
+            if (isSentenceLevelAsk) continue;
 
             const askThread = note.mark_type === "ask"
                 ? decodeAskThreadPayload(note.note_text)
@@ -1164,14 +1252,17 @@ export function ParagraphCard({
                     const hasUnderline = active.some((marker) => marker.type === "underline");
                     const noteMarker = active.find((marker) => marker.type === "note");
                     const askMarker = active.find((marker) => marker.type === "ask");
+                    const analyzeMarker = active.find((marker) => marker.type === "analyze");
                     const hasLocate = active.some((marker) => marker.type === "locate");
                     const showLocateVisual = hasLocate;
                     const showNoteVisual = Boolean(noteMarker && !showLocateVisual);
                     const showAskVisual = Boolean(askMarker && !showLocateVisual && !showNoteVisual);
-                    const hasUnderlineVisible = hasUnderline && !showNoteVisual && !showLocateVisual && !showAskVisual;
-                    const showHighlightVisual = hasHighlight && !showLocateVisual && !showNoteVisual && !showAskVisual;
+                    const showAnalyzeVisual = Boolean(analyzeMarker && !showLocateVisual && !showNoteVisual && !showAskVisual);
+                    const hasUnderlineVisible = hasUnderline && !showNoteVisual && !showLocateVisual && !showAskVisual && !showAnalyzeVisual;
+                    const showHighlightVisual = hasHighlight && !showLocateVisual && !showNoteVisual && !showAskVisual && !showAnalyzeVisual;
                     const isNoteHovered = Boolean(showNoteVisual && noteMarker?.id && hoveredNoteId === noteMarker.id);
                     const isAskHovered = Boolean(showAskVisual && askMarker?.id && hoveredNoteId === askMarker.id);
+                    const isAnalyzeHovered = Boolean(showAnalyzeVisual && analyzeMarker?.id && hoveredNoteId === analyzeMarker.id);
                     const markStyle: React.CSSProperties | undefined = showHighlightVisual
                         ? { backgroundColor: highlightColor }
                         : undefined;
@@ -1186,13 +1277,14 @@ export function ParagraphCard({
                                 showNoteVisual && "relative cursor-pointer select-text box-decoration-clone text-inherit px-[4px] py-[1px] bg-amber-200/80 dark:bg-amber-600/40 rounded-md rounded-tl-xl rounded-br-lg rounded-tr-sm rounded-bl-sm [text-shadow:0_1px_2px_rgba(180,83,0,0.3)] dark:[text-shadow:0_1px_2px_rgba(0,0,0,0.8)] transition-all duration-75 ease-out top-0 hover:-top-[1px] hover:bg-amber-300/90 dark:hover:bg-amber-600/60 hover:[text-shadow:0_3px_4px_rgba(180,83,0,0.4)] dark:hover:[text-shadow:0_3px_4px_rgba(0,0,0,0.9)] active:top-[1px] active:bg-amber-400 dark:active:bg-amber-700/60 active:[text-shadow:none]",
                                 showAskVisual && "relative cursor-pointer select-text box-decoration-clone text-inherit px-[4px] py-[1px] bg-sky-200/80 dark:bg-sky-600/40 rounded-md rounded-tl-sm rounded-br-sm rounded-tr-xl rounded-bl-lg [text-shadow:0_1px_2px_rgba(3,105,161,0.3)] dark:[text-shadow:0_1px_2px_rgba(0,0,0,0.8)] transition-all duration-75 ease-out top-0 hover:-top-[1px] hover:bg-sky-300/90 dark:hover:bg-sky-600/60 hover:[text-shadow:0_3px_4px_rgba(3,105,161,0.4)] dark:hover:[text-shadow:0_3px_4px_rgba(0,0,0,0.9)] active:top-[1px] active:bg-sky-400 dark:active:bg-sky-700/60 active:[text-shadow:none]",
                                 showAskVisual && askMarker?.id === pressedAskNoteId && "top-[1px] bg-sky-400 dark:bg-sky-700/60 [text-shadow:none]",
+                                showAnalyzeVisual && "relative cursor-pointer select-text box-decoration-clone text-inherit px-[4px] py-[1px] bg-fuchsia-200/80 dark:bg-fuchsia-600/40 rounded-md rounded-tl-sm rounded-br-sm rounded-tr-xl rounded-bl-lg [text-shadow:0_1px_2px_rgba(192,38,211,0.3)] dark:[text-shadow:0_1px_2px_rgba(0,0,0,0.8)] transition-all duration-75 ease-out top-0 hover:-top-[1px] hover:bg-fuchsia-300/90 dark:hover:bg-fuchsia-600/60 hover:[text-shadow:0_3px_4px_rgba(192,38,211,0.4)] dark:hover:[text-shadow:0_3px_4px_rgba(0,0,0,0.9)] active:top-[1px] active:bg-fuchsia-400 dark:active:bg-fuchsia-700/60 active:[text-shadow:none]",
                                 showLocateVisual && "cursor-text select-text box-decoration-clone text-inherit px-[4px] py-[1px] bg-rose-200/80 dark:bg-rose-600/40 rounded-md rounded-tl-lg rounded-br-md rounded-tr-lg rounded-bl-md [text-shadow:0_1px_2px_rgba(159,18,57,0.3)] dark:[text-shadow:0_1px_2px_rgba(0,0,0,0.8)] transition-all duration-150",
                             )}
                             style={markStyle}
-                            data-reading-note-id={showNoteVisual ? noteMarker?.id : askMarker?.id}
-                            title={showNoteVisual ? "点击可编辑标注" : showAskVisual ? "点击查看AI问答记录" : undefined}
-                            onMouseEnter={showNoteVisual && noteMarker?.noteText
-                                ? (event) => {
+                            data-reading-note-id={showNoteVisual ? noteMarker?.id : showAskVisual ? askMarker?.id : showAnalyzeVisual ? analyzeMarker?.id : undefined}
+                            title={showNoteVisual ? "点击可编辑标注" : showAskVisual ? "点击查看AI问答记录" : showAnalyzeVisual ? "点击查看AI解读" : undefined}
+                            onMouseEnter={(event) => {
+                                if (showNoteVisual && noteMarker?.noteText) {
                                     if (noteMarker.id) setHoveredNoteId(noteMarker.id);
                                     const rect = event.currentTarget.getBoundingClientRect();
                                     setHoveredReadingNote({
@@ -1201,20 +1293,33 @@ export function ParagraphCard({
                                         anchorTop: rect.top,
                                         anchorBottom: rect.bottom,
                                     });
-                                }
-                                : showAskVisual
-                                    ? (event) => {
-                                        if (askMarker?.id) setHoveredNoteId(askMarker.id);
-                                        const rect = event.currentTarget.getBoundingClientRect();
+                                } else if (showAskVisual) {
+                                    if (askMarker?.id) setHoveredNoteId(askMarker.id);
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    setHoveredReadingNote({
+                                        text: askMarker?.askPreview || "AI问答记录",
+                                        x: rect.left + rect.width / 2,
+                                        anchorTop: rect.top,
+                                        anchorBottom: rect.bottom,
+                                    });
+                                } else if (showAnalyzeVisual && analyzeMarker?.noteText) {
+                                    if (analyzeMarker.id) setHoveredNoteId(analyzeMarker.id);
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    try {
+                                        const data = JSON.parse(analyzeMarker.noteText);
                                         setHoveredReadingNote({
-                                            text: askMarker?.askPreview || "AI问答记录",
+                                            text: "AI解读内容",
+                                            analyzeData: data,
                                             x: rect.left + rect.width / 2,
                                             anchorTop: rect.top,
                                             anchorBottom: rect.bottom,
                                         });
+                                    } catch (e) {
+                                        // Ignore parse error
                                     }
-                                : undefined}
-                            onMouseMove={(showNoteVisual && noteMarker?.noteText) || showAskVisual
+                                }
+                            }}
+                            onMouseMove={(showNoteVisual && noteMarker?.noteText) || showAskVisual || (showAnalyzeVisual && analyzeMarker?.noteText)
                                 ? (event) => {
                                     setHoveredReadingNote((prev) => prev ? {
                                         ...prev,
@@ -1222,7 +1327,7 @@ export function ParagraphCard({
                                     } : prev);
                                 }
                                 : undefined}
-                            onMouseLeave={(showNoteVisual && noteMarker?.noteText) || showAskVisual
+                            onMouseLeave={(showNoteVisual && noteMarker?.noteText) || showAskVisual || (showAnalyzeVisual && analyzeMarker?.noteText)
                                 ? () => {
                                     setHoveredReadingNote(null);
                                     setHoveredNoteId(null);
@@ -1255,6 +1360,28 @@ export function ParagraphCard({
                                         const targetAskNote = normalizedReadingNotes.find((note) => note.id === askMarker.id && note.mark_type === "ask");
                                         if (!targetAskNote) return;
                                         triggerAskReplayFromMarker(targetAskNote, event.currentTarget.getBoundingClientRect());
+                                    }
+                                : showAnalyzeVisual && analyzeMarker?.id
+                                    ? (event) => {
+                                        if (hasMeaningfulTextSelection(window.getSelection())) return;
+                                        event.stopPropagation();
+                                        const targetAnalyzeNote = normalizedReadingNotes.find((note) => note.id === analyzeMarker.id && note.mark_type === "analyze");
+                                        if (!targetAnalyzeNote || !targetAnalyzeNote.note_text) return;
+                                        try {
+                                            const data = JSON.parse(targetAnalyzeNote.note_text);
+                                            setSelectionRect(event.currentTarget.getBoundingClientRect());
+                                            setSelectedText(targetAnalyzeNote.selected_text || text.slice(targetAnalyzeNote.start_offset, targetAnalyzeNote.end_offset));
+                                            setSelectionOffsets({
+                                                startOffset: targetAnalyzeNote.start_offset,
+                                                endOffset: targetAnalyzeNote.end_offset,
+                                            });
+                                            setSelectionPopupMode("selection");
+                                            setPhraseAnalysis(data);
+                                            setIsNoteComposerOpen(false);
+                                            setHoveredReadingNote(null);
+                                        } catch (e) {
+                                            // fallback
+                                        }
                                     }
                                 : undefined}
                         >
@@ -1290,7 +1417,11 @@ export function ParagraphCard({
                 }}
                 className="flex flex-col gap-4 py-2"
             >
-                {sentenceUnits.map((unit, i) => (
+                {sentenceUnits.map((unit, i) => {
+                    const hasAskNote = normalizedReadingNotes.some(
+                        (note) => note.mark_type === "ask" && note.start_offset === unit.start && note.end_offset === unit.end
+                    );
+                    return (
                     <motion.div
                         key={`reading-layout-${unit.start}-${unit.end}`}
                         variants={{
@@ -1298,20 +1429,35 @@ export function ParagraphCard({
                             visible: { opacity: 1, x: 0, y: 0, filter: "blur(0px)" },
                             exit: { opacity: 0, x: -5, filter: "blur(2px)" }
                         }}
-                        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] as const }}
                         className="relative flex items-start gap-3 group/layout-item pl-1"
+                        data-reading-layout-segment="true"
+                        data-segment-start={unit.start}
                     >
                         {/* Premium Soft Badge Indicator */}
-                        <div className="mt-[2px] flex h-5 min-w-[20px] shrink-0 select-none items-center justify-center rounded bg-theme-surface/80 border border-theme-border/20 text-[9px] font-black text-theme-text-muted/70 shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-all duration-300 ease-out group-hover/layout-item:scale-105 group-hover/layout-item:bg-indigo-500/5 group-hover/layout-item:border-indigo-500/20 group-hover/layout-item:text-indigo-500">
+                        <div 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleSegmentNumberClick(i);
+                            }}
+                            title="点击整句向 AI 提问"
+                            className={cn(
+                                "mt-[2px] flex h-5 min-w-[20px] cursor-pointer shrink-0 select-none items-center justify-center rounded border text-[9px] font-black shadow-[0_1px_2px_rgba(0,0,0,0.02)] transition-all duration-300 ease-out group-hover/layout-item:scale-105",
+                                hasAskNote
+                                    ? "bg-indigo-100/80 border-indigo-200/50 text-indigo-500 shadow-sm dark:bg-indigo-500/20 dark:border-indigo-500/30 dark:text-indigo-400"
+                                    : "bg-theme-surface/80 border-theme-border/20 text-theme-text-muted/70 hover:bg-indigo-500/10 hover:border-indigo-500/30 hover:text-indigo-600 group-hover/layout-item:bg-indigo-500/5 group-hover/layout-item:border-indigo-500/20 group-hover/layout-item:text-indigo-500"
+                            )}
+                        >
                             {i + 1}
                         </div>
 
                         {/* Content Block */}
-                        <div className="leading-[1.7] text-[15px] tracking-[0.015em] relative flex-1 text-theme-text">
+                        <div data-segment-content="true" className="leading-[1.7] text-[15px] tracking-[0.015em] relative flex-1 text-theme-text">
                             {renderTextWithReadingMarks(unit.text, undefined, unit.start, locateMarkerRange)}
                         </div>
                     </motion.div>
-                ))}
+                    );
+                })}
             </motion.div>
         );
     };
@@ -1393,51 +1539,7 @@ export function ParagraphCard({
     }, [grammarDisplayMode, grammarHighlightSentences, grammarLayoutLines, text]);
 
     const renderAskMarkdown = (content: string) => (
-        <div className="prose prose-sm max-w-none text-inherit leading-relaxed prose-p:my-2 prose-ol:my-3 prose-ol:space-y-2 prose-ul:my-3 prose-ul:space-y-1.5 marker:text-stone-400">
-            <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                    h1: ({ children }) => <h1 className="mb-3 mt-5 text-[16px] font-black tracking-tight text-stone-800">{children}</h1>,
-                    h2: ({ children }) => <h2 className="mb-2.5 mt-4 border-b border-stone-200/60 pb-1 text-[15px] font-bold text-stone-800">{children}</h2>,
-                    h3: ({ children }) => <h3 className="mb-2 mt-4 text-[14px] font-bold text-stone-800">{children}</h3>,
-                    h4: ({ children }) => <h4 className="mb-1.5 mt-3 text-[13px] font-bold text-stone-700">{children}</h4>,
-                    p: ({ children }) => <p className="my-2 leading-7 text-stone-700">{children}</p>,
-                    ol: ({ children }) => <ol className="my-3 list-decimal space-y-2.5 pl-6 marker:font-bold marker:text-indigo-500">{children}</ol>,
-                    ul: ({ children }) => <ul className="my-3 list-disc space-y-2 pl-6 marker:text-stone-400">{children}</ul>,
-                    li: ({ children }) => <li className="my-1 leading-7 text-stone-700">{children}</li>,
-                    blockquote: ({ children }) => (
-                        <blockquote className="my-3 rounded-r-xl border-l-4 border-indigo-400 bg-indigo-50/50 px-4 py-2.5 text-indigo-900 shadow-sm [&>p]:m-0">
-                            {children}
-                        </blockquote>
-                    ),
-                    strong: ({ children }) => (
-                        <strong className="font-bold text-stone-900 shadow-[inset_0_-4px_0_rgba(199,210,254,0.6)]">
-                            {children}
-                        </strong>
-                    ),
-                    code: ({ children, className: codeClassName, ...props }) => {
-                        const isInline = !String(codeClassName || "").includes("language-");
-                        if (isInline) {
-                            return (
-                                <code className="rounded-md border border-stone-200/60 bg-stone-100/80 px-1.5 py-0.5 text-[0.9em] font-medium text-pink-600">
-                                    {children}
-                                </code>
-                            );
-                        }
-                        return (
-                            <div className="my-3 overflow-hidden rounded-xl border border-stone-200/60 shadow-sm">
-                                <div className="bg-stone-100/50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-500">Code</div>
-                                <code className={cn("block overflow-x-auto bg-stone-50 p-3 text-[12px] leading-relaxed text-stone-800", codeClassName)} {...props}>
-                                    {children}
-                                </code>
-                            </div>
-                        );
-                    },
-                }}
-            >
-                {content}
-            </ReactMarkdown>
-        </div>
+        <AiRichMarkdown content={content} />
     );
 
     const syncReadingBalance = async (payload: unknown, fallbackAction?: ReadingEconomyAction) => {
@@ -1519,8 +1621,13 @@ export function ParagraphCard({
     ), [readingNotes]);
 
     const selectionQaPairs = useMemo(
-        () => buildAskQaPairs(selectionAskMessages, selectionAskStreamingContent, isSelectionAskLoading),
-        [isSelectionAskLoading, selectionAskMessages, selectionAskStreamingContent],
+        () => buildAskQaPairs(
+            selectionAskMessages,
+            selectionAskStreamingContent,
+            isSelectionAskLoading,
+            selectionAskStreamingReasoningContent,
+        ),
+        [isSelectionAskLoading, selectionAskMessages, selectionAskStreamingContent, selectionAskStreamingReasoningContent],
     );
 
     const findAskNoteByOffsets = useCallback((startOffset: number, endOffset: number) => (
@@ -1621,6 +1728,10 @@ export function ParagraphCard({
         if (!pRef.current) return null;
         if (!pRef.current.contains(range.commonAncestorContainer)) return null;
 
+        let startOffset = 0;
+        let endOffset = 0;
+        let selectedTextContent = "";
+
         if (isReadingLayoutMode) {
             const resolveSegmentBoundary = (
                 segmentEl: HTMLElement,
@@ -1628,21 +1739,23 @@ export function ParagraphCard({
                 boundaryOffset: number,
                 edge: "start" | "end",
             ) => {
-                const segmentTextLength = (segmentEl.textContent || "").length;
+                const contentEl = segmentEl.querySelector("[data-segment-content='true']") as HTMLElement | null;
+                const targetNode = contentEl || segmentEl;
+                const segmentTextLength = (targetNode.textContent || "").length;
 
-                if (!segmentEl.contains(boundaryContainer)) {
+                if (!targetNode.contains(boundaryContainer)) {
                     return edge === "start" ? 0 : segmentTextLength;
                 }
 
                 const localRange = document.createRange();
-                localRange.selectNodeContents(segmentEl);
+                localRange.selectNodeContents(targetNode);
                 try {
                     localRange.setEnd(boundaryContainer, boundaryOffset);
                 } catch {
                     return edge === "start" ? 0 : segmentTextLength;
                 }
 
-                const localOffset = localRange.toString().length;
+                const localOffset = localRange.cloneContents().textContent?.length || 0;
                 return Math.max(0, Math.min(segmentTextLength, localOffset));
             };
 
@@ -1664,23 +1777,40 @@ export function ParagraphCard({
                     const startLocal = resolveSegmentBoundary(startSegment, range.startContainer, range.startOffset, "start");
                     const endLocal = resolveSegmentBoundary(endSegment, range.endContainer, range.endOffset, "end");
 
-                    const startOffset = startBase + startLocal;
-                    const endOffset = endBase + endLocal;
-
-                    if (endOffset > startOffset) {
-                        return { startOffset, endOffset };
+                    startOffset = startBase + startLocal;
+                    endOffset = endBase + endLocal;
+                    
+                    if (endOffset > startOffset && text) {
+                        selectedTextContent = text.substring(startOffset, endOffset);
                     }
                 }
             }
+        } 
+        
+        // If not reading layout mode, or if reading layout mode resolution failed
+        if (endOffset <= startOffset) {
+            const prefixRange = range.cloneRange();
+            prefixRange.selectNodeContents(pRef.current);
+            prefixRange.setEnd(range.startContainer, range.startOffset);
+            
+            startOffset = prefixRange.cloneContents().textContent?.length || 0;
+            selectedTextContent = range.cloneContents().textContent || "";
+            endOffset = startOffset + selectedTextContent.length;
         }
 
-        const prefixRange = range.cloneRange();
-        prefixRange.selectNodeContents(pRef.current);
-        prefixRange.setEnd(range.startContainer, range.startOffset);
-        const startOffset = prefixRange.toString().length;
-        const selected = range.toString();
-        const endOffset = startOffset + selected.length;
-        if (!selected.trim() || endOffset <= startOffset) return null;
+        // Trim leading and trailing whitespace from the selection offsets bounds
+        const matchLeading = selectedTextContent.match(/^\s+/);
+        const matchTrailing = selectedTextContent.match(/\s+$/);
+        const coreLength = selectedTextContent.trim().length;
+
+        if (matchLeading && coreLength > 0) {
+            startOffset += matchLeading[0].length;
+        }
+        if (matchTrailing && coreLength > 0) {
+            endOffset -= matchTrailing[0].length;
+        }
+
+        if (coreLength === 0 || endOffset <= startOffset) return null;
 
         return { startOffset, endOffset };
     };
@@ -1709,7 +1839,7 @@ export function ParagraphCard({
         }
     };
 
-    const handleDeleteReadingMark = async (markType: "highlight" | "underline" | "note") => {
+    const handleDeleteReadingMark = async (markType: any) => {
         if (showGrammar) return;
         if (!onDeleteReadingMarks || !selectionOffsets) return;
 
@@ -1798,6 +1928,15 @@ export function ParagraphCard({
             }
             await syncReadingBalance(data, "analyze_phrase");
             setPhraseAnalysis(data); // Store the full JSON object
+            
+            // Persist the analysis as a Reading Mark
+            if (onCreateReadingNote && selectedText && selectionOffsets) {
+                try {
+                    await handleCreateReadingMark("analyze" as any, JSON.stringify(data));
+                } catch (e) {
+                    console.error("Failed to automatically save analysis:", e);
+                }
+            }
         } catch (err) {
             console.error(err);
             setPhraseAnalysis({ translation: "Failed to analyze. Please try again." });
@@ -2104,17 +2243,19 @@ export function ParagraphCard({
             onSnapshotDirty?.();
         } catch (err) {
             console.error(err);
+            setReadingCoinHint(err instanceof Error ? err.message : "深度语法分析暂时不可用，请稍后重试。");
         } finally {
             setIsAnalyzingDeepGrammar(false);
         }
     };
 
     const handleGrammarAnalysis = async (forceRegenerate = false) => {
-        if (!forceRegenerate && grammarAnalysis) {
+        if (!forceRegenerate && hasUsableGrammarAnalysis) {
             const nextShowGrammar = !showGrammar;
             setShowGrammar(nextShowGrammar);
             if (nextShowGrammar) {
                 setGrammarDisplayMode("core");
+                setIsGrammarLayoutMode(true);
             } else {
                 setShowDeepAnalysis(false);
             }
@@ -2129,6 +2270,7 @@ export function ParagraphCard({
 
         setShowGrammar(true);
         setGrammarDisplayMode("core");
+        setIsGrammarLayoutMode(true);
 
         setIsAnalyzingGrammar(true);
         setReadingCoinHint(null);
@@ -2148,14 +2290,20 @@ export function ParagraphCard({
                 setShowGrammar(false);
                 return;
             }
+            if (!res.ok) {
+                throw new Error(data?.error || "语法分析暂时不可用");
+            }
             await syncReadingBalance(data, "grammar_basic");
 
             setStoreGrammarAnalysis(grammarBasicCacheKey, data);
             setActiveGrammarSentenceIndex(0);
             setShowDeepAnalysis(false);
+            setIsGrammarLayoutMode(true);
             onSnapshotDirty?.();
         } catch (err) {
             console.error(err);
+            setReadingCoinHint(err instanceof Error ? err.message : "语法分析暂时不可用，请稍后重试。");
+            setShowGrammar(false);
         } finally {
             setIsAnalyzingGrammar(false);
         }
@@ -2176,6 +2324,20 @@ export function ParagraphCard({
         ? deepBySentence[sentenceIdentity(activeGrammarSentence)]
         : null;
     const shouldRenderGrammarLayer = showGrammar && !highlightSnippet;
+    const recallAskVocabulary = useCallback(async (questionText: string, selectionText: string) => {
+        try {
+            const result = await queryAskRelevantVocabulary({
+                paragraph: text,
+                question: questionText,
+                selection: selectionText,
+            });
+            return result.vocabulary;
+        } catch (error) {
+            console.warn("Failed to recall ask vocab memory", error);
+            return [];
+        }
+    }, [text]);
+
     const handleAskAI = async (overrideQuestion?: string) => {
         const userMessage = (overrideQuestion ?? question).trim();
         if (!userMessage) return;
@@ -2188,6 +2350,7 @@ export function ParagraphCard({
         setQuestion(""); // Clear input immediately
         setIsAskLoading(true);
         setStreamingContent("");
+        setStreamingReasoningContent("");
         setReadingCoinHint(null);
 
         try {
@@ -2197,13 +2360,17 @@ export function ParagraphCard({
         }
 
         try {
+            const selectionText = selectedText ?? "";
+            const retrievedVocab = await recallAskVocabulary(userMessage, selectionText);
             const res = await fetch("/api/ai/ask", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     text,
                     question: userMessage,
-                    selection: selectedText,
+                    messages: optimisticMessages.map(m => ({ role: m.role, content: m.content })),
+                    selection: selectionText,
+                    retrievedVocab,
                     answerMode: askAnswerMode,
                     economyContext: readEconomyContext("ask_ai"),
                 }),
@@ -2242,42 +2409,35 @@ export function ParagraphCard({
             }
 
             const reader = res.body?.getReader();
-            const decoder = new TextDecoder();
             let fullContent = "";
+            let fullReasoningContent = "";
 
             if (reader) {
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split("\n");
-
-                    for (const line of lines) {
-                        if (line.startsWith("data: ")) {
-                            const data = line.slice(6);
-                            if (data === "[DONE]") break;
-                            try {
-                                const parsed = JSON.parse(data);
-                                if (parsed.content) {
-                                    fullContent += parsed.content;
-                                    setStreamingContent(fullContent);
-                                }
-                            } catch {
-                                // Ignore parse errors for incomplete chunks
-                            }
-                        }
-                    }
-                }
+                await readAskSseStream(reader, {
+                    onContent: (content) => {
+                        fullContent += content;
+                        setStreamingContent(fullContent);
+                    },
+                    onReasoningContent: (content) => {
+                        fullReasoningContent += content;
+                        setStreamingReasoningContent(fullReasoningContent);
+                    },
+                });
             }
 
             // Add completed message to history
+            const assistantMessageParts = resolveAskAssistantMessageParts(fullContent, fullReasoningContent);
             const finalizedMessages: AskThreadMessage[] = [
                 ...optimisticMessages,
-                { role: "assistant", content: fullContent || "抱歉，暂无可展示回答。", createdAt: Date.now() },
+                {
+                    role: "assistant",
+                    ...assistantMessageParts,
+                    createdAt: Date.now(),
+                },
             ];
             setMessages(finalizedMessages);
             setStreamingContent("");
+            setStreamingReasoningContent("");
             await persistParagraphAskThread(finalizedMessages);
         } catch (err) {
             console.error(err);
@@ -2286,6 +2446,8 @@ export function ParagraphCard({
                 { role: "assistant", content: "抱歉，出错了。请再试一次。", createdAt: Date.now() },
             ];
             setMessages(failureMessages);
+            setStreamingContent("");
+            setStreamingReasoningContent("");
             try {
                 await persistParagraphAskThread(failureMessages);
             } catch (persistError) {
@@ -2296,17 +2458,70 @@ export function ParagraphCard({
         }
     };
 
-    const handleSelectionAskAI = async () => {
-        const userMessage = selectionAskQuestion.trim();
+    const handleSegmentNumberClick = (index: number) => {
+        const targetUnit = sentenceUnits[index];
+        if (!targetUnit || !pRef.current) return;
+        
+        const layoutSegments = pRef.current.querySelectorAll('[data-reading-layout-segment="true"]');
+        const targetSegment = layoutSegments[index];
+        if (!targetSegment) return;
+        const contentNode = targetSegment.querySelector('[data-segment-content="true"]');
+        if (!contentNode) return;
+        
+        const range = document.createRange();
+        range.selectNodeContents(contentNode);
+        window.getSelection()?.removeAllRanges();
+        
+        const rect = range.getBoundingClientRect();
+        const textStr = targetUnit.text.trim();
+        const offsets = { startOffset: targetUnit.start, endOffset: targetUnit.end };
+        
+        setSelectedText(textStr);
+        setSelectionOffsets(offsets);
+        setSelectionRect(rect);
+
+        const existingAskNote = findAskNoteByOffsets(offsets.startOffset, offsets.endOffset);
+        const existingAskThread = decodeAskThreadPayload(existingAskNote?.note_text);
+        const existingMessages = existingAskThread?.messages ?? [];
+
+        setSelectionPopupMode("ask");
+        setPhraseAnalysis(null);
+        setSelectionAskQuestion("");
+        setSelectionAskStreamingContent("");
+        setSelectionAskStreamingReasoningContent("");
+        setSelectionAskMessages(existingMessages);
+        setIsSelectionAskLoading(false);
+        setReadingCoinHint(null);
+        setSelectionAskAutoOpenToken(Date.now());
+
+        if (existingMessages.length > 0) {
+            return;
+        }
+
+        const autoQuestion = "请翻译这句话，并解析它的核心语法结构与词汇搭配。";
+        void handleSelectionAskAI(autoQuestion, textStr, offsets, existingMessages);
+    };
+
+    const handleSelectionAskAI = async (
+        overrideMessage?: string,
+        overrideText?: string,
+        overrideOffsets?: { startOffset: number; endOffset: number },
+        overrideMessages?: AskThreadMessage[]
+    ) => {
+        const userMessage = (overrideMessage !== undefined ? overrideMessage : selectionAskQuestion).trim();
         if (!userMessage) return;
 
-        if (!selectedText || !selectionOffsets) {
+        const targetText = overrideText ?? selectedText;
+        const targetOffsets = overrideOffsets ?? selectionOffsets;
+        const baseMessages = overrideMessages ?? selectionAskMessages;
+
+        if (!targetText || !targetOffsets) {
             await handleAskAI(userMessage);
             return;
         }
 
         const optimisticMessages: AskThreadMessage[] = [
-            ...selectionAskMessages,
+            ...baseMessages,
             { role: "user", content: userMessage, createdAt: Date.now() },
         ];
 
@@ -2314,24 +2529,28 @@ export function ParagraphCard({
         setSelectionAskQuestion("");
         setIsSelectionAskLoading(true);
         setSelectionAskStreamingContent("");
+        setSelectionAskStreamingReasoningContent("");
         setReadingCoinHint(null);
 
         try {
-            await persistAskThreadForSelection(optimisticMessages, selectionOffsets, selectedText);
+            await persistAskThreadForSelection(optimisticMessages, targetOffsets, targetText);
         } catch (error) {
             console.error("Failed to persist ask user message:", error);
         }
 
         try {
+            const retrievedVocab = await recallAskVocabulary(userMessage, targetText);
             const res = await fetch("/api/ai/ask", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     text,
                     question: userMessage,
-                    selection: selectedText,
+                    messages: optimisticMessages.map(m => ({ role: m.role, content: m.content })),
+                    selection: targetText,
+                    retrievedVocab,
                     answerMode: askAnswerMode,
-                    economyContext: readEconomyContext("ask_ai"),
+                    economyContext: readEconomyContext("ask_ai", targetText.slice(0, 42).toLowerCase()),
                 }),
             });
 
@@ -2346,7 +2565,7 @@ export function ParagraphCard({
                     const insufficientMessages = [...optimisticMessages, insufficientMessage];
                     setReadingCoinHint("阅读币不足，当前无法 Ask AI。");
                     setSelectionAskMessages(insufficientMessages);
-                    await persistAskThreadForSelection(insufficientMessages, selectionOffsets, selectedText);
+                    await persistAskThreadForSelection(insufficientMessages, targetOffsets, targetText);
                     return;
                 }
                 throw new Error("API Error");
@@ -2370,44 +2589,36 @@ export function ParagraphCard({
             }
 
             const reader = res.body?.getReader();
-            const decoder = new TextDecoder();
             let fullContent = "";
+            let fullReasoningContent = "";
 
             if (reader) {
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    const chunk = decoder.decode(value, { stream: true });
-                    const lines = chunk.split("\n");
-
-                    for (const line of lines) {
-                        if (line.startsWith("data: ")) {
-                            const data = line.slice(6);
-                            if (data === "[DONE]") break;
-                            try {
-                                const parsed = JSON.parse(data);
-                                if (parsed.content) {
-                                    fullContent += parsed.content;
-                                    setSelectionAskStreamingContent(fullContent);
-                                }
-                            } catch {
-                                // Ignore parse errors for incomplete chunks.
-                            }
-                        }
-                    }
-                }
+                await readAskSseStream(reader, {
+                    onContent: (content) => {
+                        fullContent += content;
+                        setSelectionAskStreamingContent(fullContent);
+                    },
+                    onReasoningContent: (content) => {
+                        fullReasoningContent += content;
+                        setSelectionAskStreamingReasoningContent(fullReasoningContent);
+                    },
+                });
             }
 
-            const resolvedAssistantContent = fullContent.trim() || "抱歉，暂无可展示回答。";
+            const assistantMessageParts = resolveAskAssistantMessageParts(fullContent, fullReasoningContent);
             const finalizedMessages: AskThreadMessage[] = [
                 ...optimisticMessages,
-                { role: "assistant", content: resolvedAssistantContent, createdAt: Date.now() },
+                {
+                    role: "assistant",
+                    ...assistantMessageParts,
+                    createdAt: Date.now(),
+                },
             ];
 
             setSelectionAskMessages(finalizedMessages);
             setSelectionAskStreamingContent("");
-            await persistAskThreadForSelection(finalizedMessages, selectionOffsets, selectedText);
+            setSelectionAskStreamingReasoningContent("");
+            await persistAskThreadForSelection(finalizedMessages, targetOffsets, targetText);
         } catch (error) {
             console.error(error);
             const failureMessages: AskThreadMessage[] = [
@@ -2416,8 +2627,9 @@ export function ParagraphCard({
             ];
             setSelectionAskMessages(failureMessages);
             setSelectionAskStreamingContent("");
+            setSelectionAskStreamingReasoningContent("");
             try {
-                await persistAskThreadForSelection(failureMessages, selectionOffsets, selectedText);
+                await persistAskThreadForSelection(failureMessages, targetOffsets, targetText);
             } catch (persistError) {
                 console.error("Failed to persist ask failure message:", persistError);
             }
@@ -2514,24 +2726,17 @@ export function ParagraphCard({
             // Default behavior (Focus Mode OFF)
             return isVideoActive
                 ? "bg-red-50/40 rounded-lg -mx-4 px-4 py-3 shadow-sm ring-1 ring-red-100"
-                : "rounded-lg -mx-4 px-4 py-1 transition-colors hover:bg-white/45";
+                : "transition-colors";
         }
 
-        // Focus Mode ON
         if (hasActiveFocusLock) {
             if (isFocusLocked) {
-                // LIGHT ON: The active paragraph needs to pop out
-                // User requested NO magnification. Removed scale-[1.02].
                 return "opacity-100 bg-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.12)] ring-1 ring-white/50 backdrop-blur-sm rounded-xl -mx-6 px-6 py-6 z-20 my-4";
-            } else {
-                // LIGHT OFF: Deep fade for background paragraphs
-                return "opacity-20 blur-[1px] grayscale transition-all duration-700 pointer-events-none";
             }
-        } else {
-            // Focus Mode ON (Idle): Everything is slightly dimmed until hovered
-            // User requested NO magnification. Removed hover:scale-[1.005].
-            return "opacity-60 hover:opacity-100 hover:bg-white/40 transition-all duration-500 rounded-lg -mx-4 px-4 py-2";
+            return "opacity-20 blur-[1px] grayscale transition-all duration-700 pointer-events-none";
         }
+
+        return "opacity-60 hover:opacity-100 transition-all duration-500 py-2";
     }
 
     return (
@@ -2555,15 +2760,28 @@ export function ParagraphCard({
                     return;
                 }
 
-                // Toggle Focus Lock on Click
-                if (onToggleFocusLock && isFocusMode) {
-                    onToggleFocusLock();
+                if (onSetFocusLock && isFocusMode && !isFocusLocked) {
+                    onSetFocusLock();
                 }
 
                 if (onSeekToTime) handleVideoSeek();
             }}
-            style={{ cursor: isFocusMode ? 'pointer' : (onSeekToTime ? 'pointer' : undefined) }}
+            style={{ cursor: isFocusMode || onSeekToTime ? 'pointer' : undefined }}
         >
+            {isFocusMode && isFocusLocked && onClearFocusLock ? (
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        onClearFocusLock();
+                    }}
+                    aria-label="取消当前段落聚焦"
+                    title="取消当前段落聚焦"
+                    className="ui-pressable absolute right-3 top-3 z-30 inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-stone-300 bg-white/92 text-stone-600 shadow-[0_3px_0_rgba(28,25,23,0.18)] transition hover:border-stone-500 hover:text-stone-950 active:translate-y-[1px] active:shadow-none"
+                >
+                    <X className="h-4 w-4" />
+                </button>
+            ) : null}
             {/* Margin Marker Visualization */}
             <div className={cn(
                 "absolute -left-6 top-3 w-1.5 h-1.5 rounded-full transition-all duration-300",
@@ -2695,7 +2913,7 @@ export function ParagraphCard({
                     {isEditMode ? null : (
                         <AnimatePresence mode="wait">
                             {shouldRenderGrammarLayer ? (
-                                grammarAnalysis ? (
+                                hasUsableGrammarAnalysis ? (
                                     <motion.div key="grammar-layer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
                                         {isGrammarLayoutMode ? (
                                             renderGrammarLayoutList()
@@ -2930,7 +3148,7 @@ export function ParagraphCard({
                 }
 
                 <AnimatePresence>
-                    {showGrammar && grammarAnalysis && (
+                    {showGrammar && hasUsableGrammarAnalysis && (
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: "auto" }}
@@ -3159,6 +3377,7 @@ export function ParagraphCard({
                                                     </button>
                                                     {isExpanded ? (
                                                         <div className="px-5 py-4 text-[13px] leading-relaxed text-theme-text">
+                                                            <AskReasoningBlock content={pair.reasoningContent} isStreaming={pair.isReasoningStreaming} />
                                                             {pair.answer ? (
                                                                 <div className="prose prose-sm prose-stone max-w-none text-theme-text">
                                                                     {renderAskMarkdown(pair.answer)}
@@ -3496,6 +3715,8 @@ export function ParagraphCard({
                     onAskAnswerModeChange={setAskAnswerMode}
                     isAskLoading={isSelectionAskLoading}
                     onAsk={() => void handleSelectionAskAI()}
+                    onOpenAskComposer={() => setSelectionPopupMode("ask")}
+                    onReturnToSelection={() => setSelectionPopupMode("selection")}
                     askPanelDefaultOpenToken={selectionAskAutoOpenToken}
                     renderAskMarkdown={renderAskMarkdown}
                     onClose={closePhraseAnalysis}
@@ -3518,15 +3739,55 @@ export function ParagraphCard({
                             if (canPlaceRight) return `${hoveredReadingNote.x + horizontalGap}px`;
                             return `${Math.max(viewportPadding, hoveredReadingNote.x - horizontalGap - tooltipMaxWidth)}px`;
                         })(),
-                        top: hoveredReadingNote.anchorTop > 88
-                            ? `${hoveredReadingNote.anchorTop - 10}px`
-                            : `${hoveredReadingNote.anchorBottom + 10}px`,
-                        transform: hoveredReadingNote.anchorTop > 88
-                            ? "translateY(-100%)"
-                            : "translateY(0)",
+                        top: hoveredReadingNote.analyzeData
+                            ? `${hoveredReadingNote.anchorBottom + 12}px`
+                            : (hoveredReadingNote.anchorTop > 88
+                                ? `${hoveredReadingNote.anchorTop - 10}px`
+                                : `${hoveredReadingNote.anchorBottom + 10}px`),
+                        transform: hoveredReadingNote.analyzeData
+                            ? "translateY(0)"
+                            : (hoveredReadingNote.anchorTop > 88
+                                ? "translateY(-100%)"
+                                : "translateY(0)"),
                     }}
                 >
                     {(() => {
+                        if (hoveredReadingNote.analyzeData) {
+                            const data = hoveredReadingNote.analyzeData;
+                            return (
+                                <div className="flex flex-col">
+                                    <div className="flex items-center gap-1.5 border-b border-theme-border/20 bg-theme-surface/50 px-3 py-1.5 text-[10px] font-black tracking-wider text-fuchsia-500">
+                                        <Globe className="h-3 w-3" />
+                                        AI 解读
+                                    </div>
+                                    <div className="flex max-h-[300px] flex-col overflow-y-auto px-3 py-2.5 text-xs">
+                                        {data.translation && (
+                                            <p className="mb-2 font-semibold text-stone-800">{data.translation}</p>
+                                        )}
+                                        {data.grammar_point && (
+                                            <p className="mb-2 leading-relaxed text-stone-600">{data.grammar_point}</p>
+                                        )}
+                                        {data.nuance && (
+                                            <div className="mb-2 rounded border border-amber-100 bg-amber-50/70 p-2 italic text-amber-800">
+                                                {data.nuance}
+                                            </div>
+                                        )}
+                                        {Array.isArray(data.vocabulary) && data.vocabulary.length > 0 && (
+                                            <div className="mb-2 mt-1 space-y-1 border-t border-stone-100/50 pt-2">
+                                                <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400">核心词汇</div>
+                                                <div className="space-y-1">
+                                                    {data.vocabulary.map((item: any, idx: number) => (
+                                                        <div key={`${item.word || "word"}-${idx}`} className="text-xs text-stone-600">
+                                                            <span className="font-semibold text-stone-800">{item.word || "词汇"}:</span> {item.definition || ""}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        }
                         const txt = hoveredReadingNote.text || "";
                         if (txt.startsWith("AI问答")) {
                             const [header, ...bodyParts] = txt.split("\n");
@@ -3603,6 +3864,8 @@ interface SelectionActionPopupProps {
     onAskAnswerModeChange: (mode: AskAnswerMode) => void;
     isAskLoading: boolean;
     onAsk: () => void;
+    onOpenAskComposer: () => void;
+    onReturnToSelection: () => void;
     askPanelDefaultOpenToken?: number;
     renderAskMarkdown: (content: string) => React.ReactNode;
     onClose: () => void;
@@ -3642,6 +3905,8 @@ export function SelectionActionPopup({
     onAskAnswerModeChange,
     isAskLoading,
     onAsk,
+    onOpenAskComposer,
+    onReturnToSelection,
     askPanelDefaultOpenToken,
     renderAskMarkdown,
     onClose,
@@ -3659,9 +3924,8 @@ export function SelectionActionPopup({
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
     const [measuredHeight, setMeasuredHeight] = useState(240);
     const isAskReplayMode = popupMode === "ask-replay";
-    const [isAskComposerOpen, setIsAskComposerOpen] = useState(() => (
-        isAskReplayMode || Boolean(askPanelDefaultOpenToken)
-    ));
+    const isAskDockMode = popupMode === "ask" || isAskReplayMode;
+    const isAskComposerOpen = isAskDockMode || Boolean(askPanelDefaultOpenToken);
     const [expandedQaIds, setExpandedQaIds] = useState<number[]>(() => (
         isAskReplayMode
             ? (qaPairs.length > 0 ? [qaPairs[qaPairs.length - 1].id] : [])
@@ -3678,6 +3942,7 @@ export function SelectionActionPopup({
     }, [qaPairs]);
 
     useEffect(() => {
+        if (isAskDockMode) return;
         const handleClickOutside = (event: MouseEvent) => {
             if (ref.current && !ref.current.contains(event.target as Node)) {
                 onClose();
@@ -3685,7 +3950,7 @@ export function SelectionActionPopup({
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, [onClose]);
+    }, [isAskDockMode, onClose]);
 
     useLayoutEffect(() => {
         if (!ref.current) return;
@@ -3709,7 +3974,7 @@ export function SelectionActionPopup({
     const deleteActionCount = Number(canDeleteHighlight) + Number(canDeleteUnderline);
 
     const viewportPadding = 16;
-    const popupWidth = 330;
+    const popupWidth = isAskDockMode ? 400 : 330;
     const popupHeight = Math.min(measuredHeight || 240, window.innerHeight - viewportPadding * 2);
     const preferredTop = selectionRect.bottom + 10 + dragOffset.y;
     const flippedTop = selectionRect.top - popupHeight - 10 + dragOffset.y;
@@ -3725,6 +3990,21 @@ export function SelectionActionPopup({
         Math.max(viewportPadding, baseLeft),
         Math.max(viewportPadding, window.innerWidth - popupWidth - viewportPadding),
     );
+    const popupStyle = isAskDockMode
+        ? {
+            top: "112px",
+            right: "40px",
+            width: `${popupWidth}px`,
+            maxWidth: `${popupWidth}px`,
+            minWidth: `${popupWidth}px`,
+        }
+        : {
+            top: `${clampedTop}px`,
+            left: `${clampedLeft}px`,
+            width: "auto",
+            maxWidth: `${popupWidth}px`,
+            minWidth: "260px",
+        };
 
     const handleDragStart = (event: React.PointerEvent<HTMLDivElement>) => {
         const target = event.target as HTMLElement;
@@ -3759,53 +4039,63 @@ export function SelectionActionPopup({
         }
     };
 
+    const popupContainerClassName = cn(
+        "relative overflow-hidden rounded-[1.25rem] border border-theme-border/30 bg-theme-base-bg shadow-2xl backdrop-blur-2xl",
+        isAskDockMode
+            ? "flex h-[min(760px,calc(100vh-9rem))] flex-col"
+            : "max-h-[min(560px,calc(100vh-2rem))] overflow-y-auto",
+        isAskReplayMode ? "p-2" : "p-3.5",
+    );
+    const askBodyClassName = cn(
+        "overflow-y-auto px-1 -mx-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-theme-border/50 [&::-webkit-scrollbar-track]:bg-transparent",
+        isAskReplayMode
+            ? (isAskDockMode ? "flex-1 min-h-0" : "max-h-[min(500px,calc(100vh-4rem))]")
+            : (isAskDockMode ? "flex-1 min-h-0" : "max-h-56"),
+        qaPairs.length > 0 && !isAskReplayMode ? "py-2 space-y-3" : "py-0 space-y-3",
+    );
+
     return (
         <div
             ref={ref}
             className="fixed z-[9999] animate-in fade-in zoom-in-95 duration-200"
-            style={{
-                top: `${clampedTop}px`,
-                left: `${clampedLeft}px`,
-                width: 'auto',
-                maxWidth: `${popupWidth}px`,
-                minWidth: '260px'
-            }}
+            style={popupStyle}
             onMouseDown={(e) => e.stopPropagation()}
         >
-            <div className={cn("relative max-h-[min(560px,calc(100vh-2rem))] overflow-y-auto rounded-[1.25rem] border border-theme-border/30 bg-theme-base-bg shadow-2xl backdrop-blur-2xl", isAskReplayMode ? "p-2" : "p-3.5")}>
-                {!isAskReplayMode && (
-                    <div
-                        className="relative mb-3 flex items-start justify-between gap-3 cursor-grab active:cursor-grabbing border-b border-theme-border/20 pb-3"
-                        onPointerDown={handleDragStart}
-                        onPointerMove={handleDragMove}
-                        onPointerUp={handleDragEnd}
-                        onPointerCancel={handleDragEnd}
-                    >
-                        <div className="min-w-0 flex items-center gap-1">
-                            {isAskComposerOpen && (
-                                <motion.button
-                                    type="button"
-                                    onClick={() => setIsAskComposerOpen(false)}
-                                    whileTap={{ scale: 0.95 }}
-                                    className="shrink-0 rounded-full p-1.5 text-theme-text-muted hover:text-theme-text hover:bg-theme-active-hover transition-colors -ml-1.5"
-                                >
-                                    <ChevronLeft className="h-4 w-4" />
-                                </motion.button>
-                            )}
-                            <h3 className="line-clamp-2 text-[15px] font-bold leading-tight text-theme-text tracking-tight">
-                                {selectedText || "选中文本"}
-                            </h3>
-                        </div>
-                        <motion.button
-                            type="button"
-                            onClick={onClose}
-                            whileTap={{ scale: 0.95 }}
-                            className="shrink-0 rounded-full border border-theme-border/50 bg-theme-surface p-1.5 text-theme-text shadow-sm transition-colors hover:bg-theme-active-hover"
-                        >
-                            <X className="h-4 w-4" />
-                        </motion.button>
+            <div className={popupContainerClassName}>
+                <div
+                    className={cn(
+                        "relative mb-3 flex items-start justify-between gap-3 border-b border-theme-border/20 pb-3",
+                        isAskDockMode || isAskReplayMode ? "" : "cursor-grab active:cursor-grabbing",
+                    )}
+                    onPointerDown={isAskDockMode || isAskReplayMode ? undefined : handleDragStart}
+                    onPointerMove={isAskDockMode || isAskReplayMode ? undefined : handleDragMove}
+                    onPointerUp={isAskDockMode || isAskReplayMode ? undefined : handleDragEnd}
+                    onPointerCancel={isAskDockMode || isAskReplayMode ? undefined : handleDragEnd}
+                >
+                    <div className="min-w-0 flex items-center gap-1">
+                        {popupMode === "ask" ? (
+                            <motion.button
+                                type="button"
+                                onClick={onReturnToSelection}
+                                whileTap={{ scale: 0.95 }}
+                                className="shrink-0 rounded-full p-1.5 text-theme-text-muted hover:text-theme-text hover:bg-theme-active-hover transition-colors -ml-1.5"
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </motion.button>
+                        ) : null}
+                        <h3 className="line-clamp-2 text-[15px] font-bold leading-tight text-theme-text tracking-tight">
+                            {selectedText || "选中文本"}
+                        </h3>
                     </div>
-                )}
+                    <motion.button
+                        type="button"
+                        onClick={onClose}
+                        whileTap={{ scale: 0.95 }}
+                        className="shrink-0 rounded-full border border-theme-border/50 bg-theme-surface p-1.5 text-theme-text shadow-sm transition-colors hover:bg-theme-active-hover"
+                    >
+                        <X className="h-4 w-4" />
+                    </motion.button>
+                </div>
 
                 {(!isAskReplayMode && !isAskComposerOpen) ? (
                     <>
@@ -3902,7 +4192,7 @@ export function SelectionActionPopup({
                             type="button"
                             onClick={() => {
                                 setExpandedQaIds([]);
-                                setIsAskComposerOpen(true);
+                                onOpenAskComposer();
                             }}
                             whileTap={{ scale: 0.98 }}
                             className="inline-flex w-full items-center justify-center gap-1.5 rounded-[14px] border border-indigo-500/30 bg-indigo-500/10 px-2 py-2 text-[12px] font-black text-indigo-600 shadow-sm transition-all hover:bg-indigo-500/15"
@@ -3915,13 +4205,13 @@ export function SelectionActionPopup({
 
                 {isAskReplayMode || isAskComposerOpen ? (
                     <div 
-                        className={cn("flex flex-col cursor-grab active:cursor-grabbing", !isAskReplayMode && "mt-2")}
-                        onPointerDown={isAskReplayMode ? handleDragStart : undefined}
-                        onPointerMove={isAskReplayMode ? handleDragMove : undefined}
-                        onPointerUp={isAskReplayMode ? handleDragEnd : undefined}
-                        onPointerCancel={isAskReplayMode ? handleDragEnd : undefined}
+                        className={cn("flex flex-col", isAskDockMode && "flex-1 min-h-0", !isAskReplayMode && "mt-2", !isAskDockMode && isAskReplayMode && "cursor-grab active:cursor-grabbing")}
+                        onPointerDown={!isAskDockMode && isAskReplayMode ? handleDragStart : undefined}
+                        onPointerMove={!isAskDockMode && isAskReplayMode ? handleDragMove : undefined}
+                        onPointerUp={!isAskDockMode && isAskReplayMode ? handleDragEnd : undefined}
+                        onPointerCancel={!isAskDockMode && isAskReplayMode ? handleDragEnd : undefined}
                     >
-                        <div className={cn("overflow-y-auto px-1 -mx-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-theme-border/50 [&::-webkit-scrollbar-track]:bg-transparent", isAskReplayMode ? "max-h-[min(500px,calc(100vh-4rem))]" : "max-h-56", qaPairs.length > 0 && !isAskReplayMode ? "py-2 space-y-3" : "py-0 space-y-3")}>
+                        <div className={askBodyClassName}>
                             {qaPairs.length > 0 && (
                                 <>
                                     {qaPairs.map((pair, index) => {
@@ -3954,6 +4244,7 @@ export function SelectionActionPopup({
                                                 </motion.button>
                                                 {isExpanded ? (
                                                     <div className="px-3 py-2.5 text-xs leading-6 text-theme-text-muted">
+                                                        <AskReasoningBlock content={pair.reasoningContent} isStreaming={pair.isReasoningStreaming} />
                                                         {pair.answer
                                                             ? renderAskMarkdown(pair.answer)
                                                             : <div className="opacity-70">等待回答…</div>}
@@ -3999,7 +4290,7 @@ export function SelectionActionPopup({
                                         onKeyDown={(event) => {
                                             if (event.key === "Enter") {
                                                 event.preventDefault();
-                                                onAsk();
+                                                event.stopPropagation();
                                             }
                                         }}
                                         placeholder={selectedText ? "针对选中文本提问..." : "输入你的问题..."}

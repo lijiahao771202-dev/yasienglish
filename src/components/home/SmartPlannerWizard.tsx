@@ -151,7 +151,7 @@ export function SmartPlannerWizard({ isOpen, onClose, onSave, onBatchSave, examT
                         initial={{ opacity: 0, scale: 0.95, y: 20 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                        transition={{ type: "spring" as const, damping: 25, stiffness: 300 }}
                         className="relative w-full max-w-lg bg-theme-base-bg border-4 border-[color:var(--theme-border)] rounded-[2.5rem] p-6 shadow-2xl flex flex-col gap-6"
                     >
                         {/* Header */}

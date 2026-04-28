@@ -142,23 +142,8 @@ function addLeadingSpaceIfNeeded(currentInput: string, suggestion: string) {
     return ` ${suggestion}`;
 }
 
-function surfTokens(referenceTokens: Array<{ raw: string, normalized: string }>, startIndex: number, maxSurfs = 4) {
-    let surfStr = "";
-    let i = startIndex + 1;
-    let surfs = 0;
-    while (i < referenceTokens.length && surfs < maxSurfs) {
-        const t = referenceTokens[i];
-        // Surf over stopwords or grammatical particles
-        if (STOPWORDS.has(t.normalized) || (t.normalized.length <= 2 && t.normalized.length > 0) || EDGE_PUNCTUATION.test(t.raw)) {
-            surfStr += (surfStr && !EDGE_PUNCTUATION.test(t.raw) ? " " : "") + t.raw;
-            i++;
-            surfs++;
-        } else {
-            break;
-        }
-    }
-    return surfStr;
-}
+// surfTokens() removed — it greedily absorbed stopwords beyond
+// the requested word count, causing spoiler leakage.
 
 function hasUsefulShortSuffixMatch(tokens: Array<{ normalized: string }>) {
     if (tokens.length < 2) return false;
@@ -195,7 +180,6 @@ export function getSuffixAlignedPrediction(currentInput: string, referenceAnswer
     for (let windowSize = maxWindow; windowSize >= minWindow; windowSize -= 1) {
         const suffix = currentTokens.slice(-windowSize);
         if (windowSize === 2 && !hasUsefulShortSuffixMatch(suffix)) continue;
-        if (windowSize === 1 && currentTokens.length > 1) continue; // Only allow 1-word window if it's the very first word typed
 
         const matches: number[] = [];
         let isPartialLastToken = false;
@@ -262,41 +246,61 @@ export function getSuffixAlignedPrediction(currentInput: string, referenceAnswer
             }
             
             const nextTokens = nextTokensArray.join(" ");
+            const remainingCurrentWord = refRaw.slice(userPartialToken.raw.length);
             let suggestion = remainingCurrentWord;
             if (nextTokens) suggestion += (!EDGE_PUNCTUATION.test(nextTokens[0]) && suggestion ? " " : "") + nextTokens;
             
             const isStrictPrefix = refRaw.slice(0, userPartialToken.raw.length).toLowerCase() === userPartialToken.raw.toLowerCase();
             
+            // If NOT a strict prefix (typo/case mismatch), don't attempt correction
+            // → Let Gemma 4 AI handle smart corrections instead
+            if (!isStrictPrefix) return null;
+            
             return {
                 append: suggestion,
-                replaceLen: isStrictPrefix ? 0 : userPartialToken.raw.length,
-                replaceStr: isStrictPrefix ? "" : refRaw.slice(0, userPartialToken.raw.length)
+                replaceLen: 0,
+                replaceStr: ""
             };
         }
 
+        // Current word is COMPLETE. Only show phrasal connectors (stopwords/particles).
+        // e.g., "due" → " to", "because" → " of" ✓
+        // e.g., "recent" → " contributions" ✗ (content word = spoiler!)
         const nextIndex = rawTokenIndex + 1;
         if (nextIndex >= fullRefTokens.length) return null;
 
         const CLAUSE_BOUNDARIES = new Set(["but", "and", "because", "so", "although", "however", "if", "when", "while", "then", "or", "as", "since", "unless"]);
         
-        const nextTokensArray: string[] = [];
+        // Only trail stopwords/particles that form phrasal units
+        const phrasalTrail: string[] = [];
         for (let j = nextIndex; j < fullRefTokens.length; j++) {
             const peekToken = fullRefTokens[j];
             
+            // Punctuation: include it then stop
             if (EDGE_PUNCTUATION.test(peekToken.raw)) {
-                nextTokensArray.push(peekToken.raw);
+                phrasalTrail.push(peekToken.raw);
                 break;
             }
             
+            // Clause boundary: hard stop
             if (CLAUSE_BOUNDARIES.has(peekToken.normalized)) {
                 break;
             }
             
-            nextTokensArray.push(peekToken.raw);
-            if (nextTokensArray.length >= wordCount) break;
+            // Only allow stopwords/particles (short function words)
+            if (STOPWORDS.has(peekToken.normalized) || peekToken.normalized.length <= 2) {
+                phrasalTrail.push(peekToken.raw);
+            } else {
+                // Hit a content word → stop, don't spoil
+                break;
+            }
+            
+            if (phrasalTrail.length >= wordCount) break;
         }
         
-        let finalSuggestion = nextTokensArray.join(" ");
+        if (phrasalTrail.length === 0) return null;
+        
+        let finalSuggestion = phrasalTrail.join(" ");
         
         return {
             append: addLeadingSpaceIfNeeded(currentInput, finalSuggestion),
@@ -346,12 +350,10 @@ export function getBagOfWordsSpellingPrediction(currentInput: string, referenceA
         const candidateToken = candidates[0];
         const rawTokenIndex = fullRefTokens.findIndex(t => t.index === candidateToken.index);
         const rawMatch = fullRefTokens[rawTokenIndex].raw;
-        const surfed = disableChunking ? "" : surfTokens(fullRefTokens, rawTokenIndex);
         const replaceStr = rawMatch.slice(0, spellingStr.length);
         const isStrictPrefix = replaceStr.toLowerCase() === spellingStr.toLowerCase();
         
-        let appendStr = rawMatch.slice(spellingStr.length);
-        if (surfed) appendStr += (!EDGE_PUNCTUATION.test(surfed[0]) && appendStr ? " " : "") + surfed;
+        const appendStr = rawMatch.slice(spellingStr.length);
         
         return {
             append: appendStr,
@@ -409,12 +411,10 @@ export function getBagOfWordsSpellingPrediction(currentInput: string, referenceA
         if (bestCandidate && !tieExists) {
             const rawTokenIndex = fullRefTokens.findIndex(t => t.index === bestCandidate!.index);
             const rawMatch = fullRefTokens[rawTokenIndex].raw;
-            const surfed = disableChunking ? "" : surfTokens(fullRefTokens, rawTokenIndex);
             const replaceStr = rawMatch.slice(0, spellingStr.length);
             const isStrictPrefix = replaceStr.toLowerCase() === spellingStr.toLowerCase();
             
-            let appendStr = rawMatch.slice(spellingStr.length);
-            if (surfed) appendStr += (!EDGE_PUNCTUATION.test(surfed[0]) && appendStr ? " " : "") + surfed;
+            const appendStr = rawMatch.slice(spellingStr.length);
             
             return {
                 append: appendStr,
@@ -435,6 +435,90 @@ export function getDeterministicPrediction(currentInput: string, referenceAnswer
     );
 }
 
+// ── Levenshtein Distance (for typo correction) ──
+export function levenshteinDistance(a: string, b: string): number {
+    const n = a.length, m = b.length;
+    if (n === 0) return m;
+    if (m === 0) return n;
+    
+    const dp: number[][] = Array(n + 1).fill(null).map(() => Array(m + 1).fill(0));
+    for (let i = 0; i <= n; i++) dp[i][0] = i;
+    for (let j = 0; j <= m; j++) dp[0][j] = j;
+    
+    for (let i = 1; i <= n; i++) {
+        for (let j = 1; j <= m; j++) {
+            dp[i][j] = Math.min(
+                dp[i-1][j] + 1,
+                dp[i][j-1] + 1,
+                dp[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1)
+            );
+        }
+    }
+    return dp[n][m];
+}
+
+/**
+ * Spelling correction: when the user's completed word has no prefix match,
+ * find the closest reference word by edit distance.
+ * Returns the corrected word as a replacement suggestion.
+ */
+export function getSpellingCorrection(currentInput: string, referenceAnswer?: string): GhostPrediction | null {
+    if (!referenceAnswer) return null;
+    
+    // Extract the last word (must be completed — followed by space or be the final word with 3+ chars)
+    const wordMatch = currentInput.match(/([a-zA-Z']{3,})\s*$/);
+    if (!wordMatch) return null;
+    
+    const userWord = wordMatch[1].toLowerCase();
+    const trailingSpace = currentInput.endsWith(' ');
+    
+    // Only trigger on completed words (space after) or words >= 4 chars while typing
+    if (!trailingSpace && userWord.length < 4) return null;
+    
+    const refWords = [...new Set(
+        referenceAnswer.toLowerCase()
+            .replace(/[^a-z'\s-]/g, '')
+            .split(/\s+/)
+            .filter(w => w.length > 2)
+    )];
+    
+    // Check if userWord is already a valid reference word
+    if (refWords.includes(userWord)) return null;
+    
+    // Check words already used by the student
+    const usedWords = new Set(
+        currentInput.toLowerCase()
+            .replace(/[^a-z'\s-]/g, '')
+            .split(/\s+/)
+            .filter(w => w.length > 2)
+    );
+    
+    let bestWord = '';
+    let bestDist = Infinity;
+    const maxDist = userWord.length >= 6 ? 2 : 1;
+    
+    for (const refWord of refWords) {
+        if (usedWords.has(refWord) && refWord !== userWord) continue;
+        // First letter must match for UX (avoids wild corrections)
+        if (refWord[0] !== userWord[0]) continue;
+        
+        const dist = levenshteinDistance(userWord, refWord);
+        if (dist > 0 && dist <= maxDist && dist < bestDist) {
+            bestDist = dist;
+            bestWord = refWord;
+        }
+    }
+    
+    if (!bestWord) return null;
+    
+    // Return as replacement: swap userWord → bestWord
+    return {
+        append: '',
+        replaceLen: wordMatch[1].length + (trailingSpace ? 1 : 0),
+        replaceStr: bestWord + (trailingSpace ? ' ' : ''),
+    };
+}
+
 export function shouldUseRemotePrediction(currentInput: string) {
     const normalizedInput = currentInput.trim();
     if (!normalizedInput || /[.!?]\s*$/.test(normalizedInput)) {
@@ -447,3 +531,4 @@ export function shouldUseRemotePrediction(currentInput: string) {
     const contentTokens = tokens.filter(token => token.normalized.length >= 4 && !STOPWORDS.has(token.normalized));
     return tokens.length >= 2 || contentTokens.length >= 1;
 }
+

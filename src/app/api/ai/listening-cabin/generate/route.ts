@@ -30,6 +30,7 @@ function resolveListeningCabinGenerationModel(thinkingMode: ListeningCabinGenera
 }
 
 async function generateDraftJson(prompt: string, model: string) {
+    console.log("CREATE FUNC:", deepseek.chat.completions.create);
     const completion = await deepseek.chat.completions.create({
         model,
         messages: [
@@ -40,6 +41,7 @@ async function generateDraftJson(prompt: string, model: string) {
         ],
         response_format: { type: "json_object" },
     });
+    console.log("completion is:", completion);
 
     const content = completion.choices[0]?.message?.content;
     if (!content) {

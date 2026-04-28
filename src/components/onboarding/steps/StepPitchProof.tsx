@@ -40,7 +40,7 @@ export function StepPitchProof() {
                             key={i}
                             initial={{ opacity: 0, x: -20, scale: 0.8 }}
                             animate={{ opacity: 1, x: 0, scale: 1 }}
-                            transition={{ delay: 0.8 + (i * 0.1), type: "spring", stiffness: 200, damping: 20 }}
+                            transition={{ delay: 0.8 + (i * 0.1), type: "spring" as const, stiffness: 200, damping: 20 }}
                             className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold shadow-[0_0_15px_rgba(0,0,0,0.5)] ring-2 ring-[#020202] ${avatar.bg} z-[${10 - i}] hover:-translate-y-2 hover:scale-110 transition-transform cursor-pointer`}
                         >
                             {avatar.initial}

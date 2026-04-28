@@ -27,7 +27,7 @@ type PosGroupDraft = {
 };
 
 type WindowWithPersistDraftTimer = Window & typeof globalThis & {
-    __persistDraftTimer?: ReturnType<typeof window.setTimeout>;
+    __persistDraftTimer?: any;
 };
 
 interface VocabReviewEditableCardProps {

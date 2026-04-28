@@ -846,7 +846,7 @@ export default function ListeningCabinDashboard() {
                                     data-tour-target="wizard-forge"
                                     initial={{ opacity: 0, scale: 0.95 }}
                                     animate={{ opacity: 1, scale: 1 }}
-                                    transition={{ type: "spring", damping: 20, stiffness: 100 }}
+                                    transition={{ type: "spring" as const, damping: 20, stiffness: 100 }}
                                     className="relative group w-full max-w-4xl"
                                 >
                                     <button
@@ -856,7 +856,7 @@ export default function ListeningCabinDashboard() {
                                         <div className="relative z-10 flex flex-col items-center gap-8">
                                             <motion.div 
                                                 whileHover={{ rotate: [0, -15, 15, 0], scale: 1.15 }}
-                                                transition={{ type: "spring", stiffness: 400, damping: 12 }}
+                                                transition={{ type: "spring" as const, stiffness: 400, damping: 12 }}
                                                 className="w-20 h-20 rounded-[1.75rem] bg-white flex items-center justify-center shadow-[0_16px_32px_-8px_rgba(255,165,0,0.15)] border-2 border-orange-50 group-hover:border-orange-100 transition-colors"
                                             >
                                                 <div className="text-4xl">🪄</div>
@@ -1121,7 +1121,7 @@ export default function ListeningCabinDashboard() {
                                             scale: isImmersiveMode ? 0.96 : 1,
                                             filter: isImmersiveMode ? "blur(24px)" : "blur(0px)"
                                         }}
-                                        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+                                        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] as const }}
                                         className="w-full"
                                     >
                                         <div className="grid gap-6 mb-20 px-4 lg:px-0">
@@ -1254,7 +1254,7 @@ export default function ListeningCabinDashboard() {
                                                     initial={{ scale: 0.9, y: 40, opacity: 0 }}
                                                     animate={{ scale: 1, y: 0, opacity: 1 }}
                                                     exit={{ scale: 0.9, y: 40, opacity: 0 }}
-                                                    transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                                                    transition={{ type: "spring" as const, damping: 25, stiffness: 200 }}
                                                     className="relative w-full max-w-2xl z-10"
                                                 >
                                                     {/* Header Strip: Clean & Minimalist */}
@@ -1319,7 +1319,7 @@ export default function ListeningCabinDashboard() {
                                                                     initial={{ opacity: 0, scale: 0.95, y: 30 }}
                                                                     animate={{ opacity: 1, scale: 1, y: 0 }}
                                                                     exit={{ opacity: 0, scale: 1.05, y: -30 }}
-                                                                    transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                                                                    transition={{ type: "spring" as const, damping: 25, stiffness: 200 }}
                                                                     className="p-14 sm:p-16 rounded-[4.5rem] bg-white border border-white/60 shadow-[0_64px_128px_-32px_rgba(0,0,0,0.3)] flex flex-col items-center text-center gap-10 relative overflow-hidden backdrop-blur-md group"
                                                                 >
                                                                     {/* Ambient Decors */}
@@ -1475,7 +1475,7 @@ export default function ListeningCabinDashboard() {
                             initial={{ opacity: 0, scale: 0.9, y: 20 }} 
                             animate={{ opacity: 1, scale: 1, y: 0 }} 
                             exit={{ opacity: 0, scale: 0.9, y: 20 }} 
-                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                            transition={{ type: "spring" as const, damping: 25, stiffness: 200 }}
                             className="relative w-full max-w-xl rounded-[3.5rem] bg-white/95 border border-white shadow-[0_32px_80px_-16px_rgba(0,0,0,0.25)] flex flex-col max-h-[85vh] overflow-hidden"
                         >
                             {/* Decorative Head Gloss */}
@@ -2072,7 +2072,7 @@ export default function ListeningCabinDashboard() {
             <motion.button
                 initial={{ opacity: 0, scale: 0.8, rotate: -20 }}
                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                transition={{ delay: 1, type: "spring", stiffness: 300, damping: 20 }}
+                transition={{ delay: 1, type: "spring" as const, stiffness: 300, damping: 20 }}
                 whileHover={{ scale: 1.1, rotate: 15 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setShowCabinTour(true)}

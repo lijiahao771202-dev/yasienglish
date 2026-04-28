@@ -1,0 +1,853 @@
+
+ RUN  v4.1.2 /Users/lijiahao/yasi
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts translation drill on the first generation when word count is in range
+[API] Final Elo: 820, bossType: undefined
+[API] Generating drill for Elo 820
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts translation drill on the first generation when word count is in range
+CLIENT IS: { chat: { completions: { create: [Function] } } }
+CLIENT CHAT IS: {
+  completions: {
+    create: [Function: Mock] {
+      _isMockFunction: true,
+      getMockImplementation: [Function (anonymous)],
+      mock: [Object],
+      mockImplementation: [Function: mockImplementation],
+      mockImplementationOnce: [Function: mockImplementationOnce],
+      withImplementation: [Function: withImplementation],
+      mockReturnThis: [Function: mockReturnThis],
+      mockReturnValue: [Function: mockReturnValue],
+      mockReturnValueOnce: [Function: mockReturnValueOnce],
+      mockThrow: [Function: mockThrow],
+      mockThrowOnce: [Function: mockThrowOnce],
+      mockResolvedValue: [Function: mockResolvedValue],
+      mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+      mockRejectedValue: [Function: mockRejectedValue],
+      mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+      mockClear: [Function: mockClear],
+      mockReset: [Function: mockReset],
+      mockRestore: [Function: mockRestore],
+      mockName: [Function: mockName],
+      getMockName: [Function: getMockName],
+      [Symbol(nodejs.dispose)]: [Function (anonymous)]
+    }
+  }
+}
+CLIENT CHAT COMPLETIONS IS: {
+  create: [Function: Mock] {
+    _isMockFunction: true,
+    getMockImplementation: [Function (anonymous)],
+    mock: {
+      calls: [],
+      contexts: [],
+      instances: [],
+      invocationCallOrder: [],
+      settledResults: [],
+      results: [],
+      lastCall: [Getter]
+    },
+    mockImplementation: [Function: mockImplementation],
+    mockImplementationOnce: [Function: mockImplementationOnce],
+    withImplementation: [Function: withImplementation],
+    mockReturnThis: [Function: mockReturnThis],
+    mockReturnValue: [Function: mockReturnValue],
+    mockReturnValueOnce: [Function: mockReturnValueOnce],
+    mockThrow: [Function: mockThrow],
+    mockThrowOnce: [Function: mockThrowOnce],
+    mockResolvedValue: [Function: mockResolvedValue],
+    mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+    mockRejectedValue: [Function: mockRejectedValue],
+    mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+    mockClear: [Function: mockClear],
+    mockReset: [Function: mockReset],
+    mockRestore: [Function: mockRestore],
+    mockName: [Function: mockName],
+    getMockName: [Function: getMockName],
+    [Symbol(nodejs.dispose)]: [Function (anonymous)]
+  }
+}
+[API] Transport attempt 1/3 via deepseek
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts translation drill on the first generation when word count is in range
+[Difficulty] Elo: 820, Target: 6-9 words, Actual: 8 words, Status: MATCHED
+[Difficulty Result] Elo: 820, Mode: translation
+  Expected: 6-9 words (白银 / A2+)
+  Actual: 8 words | AI Reported: 8 | Status: MATCHED
+  AI Self-Report: Tier=白银, CEFR=A2+, Range=8-10
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts translation drill on the first generation when word count is in range
+TEST DATA: {
+  chinese: '第一题',
+  target_english_vocab: [ 'engine' ],
+  reference_english: 'I checked the car engine quite carefully today',
+  _scenario_topic: '修车',
+  _ai_difficulty_report: { tier: '白银', cefr: 'A2+', word_count: '8', target_range: '8-10' },
+  reference_english_alternatives: [],
+  _topicMeta: {
+    topic: 'Battle Test Topic',
+    subTopic: '修车',
+    isScenario: true,
+    provider: 'deepseek'
+  },
+  _difficultyMeta: {
+    requestedElo: 820,
+    tier: '白银',
+    cefr: 'A2+',
+    expectedWordRange: { min: 6, max: 9 },
+    actualWordCount: 8,
+    isValid: true,
+    status: 'MATCHED',
+    aiSelfReport: {
+      tier: '白银',
+      cefr: 'A2+',
+      wordCount: 8,
+      targetRange: '8-10',
+      wordCountAccurate: true
+    },
+    translationValidation: {
+      validationRange: [Object],
+      tolerance: 1,
+      variant: 'sentence',
+      issues: []
+    }
+  }
+}
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > retries translation generation for out-of-range word counts
+[API] Final Elo: 820, bossType: undefined
+[API] Generating drill for Elo 820
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > retries translation generation for out-of-range word counts
+CLIENT IS: { chat: { completions: { create: [Function] } } }
+CLIENT CHAT IS: {
+  completions: {
+    create: [Function: Mock] {
+      _isMockFunction: true,
+      getMockImplementation: [Function (anonymous)],
+      mock: [Object],
+      mockImplementation: [Function: mockImplementation],
+      mockImplementationOnce: [Function: mockImplementationOnce],
+      withImplementation: [Function: withImplementation],
+      mockReturnThis: [Function: mockReturnThis],
+      mockReturnValue: [Function: mockReturnValue],
+      mockReturnValueOnce: [Function: mockReturnValueOnce],
+      mockThrow: [Function: mockThrow],
+      mockThrowOnce: [Function: mockThrowOnce],
+      mockResolvedValue: [Function: mockResolvedValue],
+      mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+      mockRejectedValue: [Function: mockRejectedValue],
+      mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+      mockClear: [Function: mockClear],
+      mockReset: [Function: mockReset],
+      mockRestore: [Function: mockRestore],
+      mockName: [Function: mockName],
+      getMockName: [Function: getMockName],
+      [Symbol(nodejs.dispose)]: [Function (anonymous)]
+    }
+  }
+}
+CLIENT CHAT COMPLETIONS IS: {
+  create: [Function: Mock] {
+    _isMockFunction: true,
+    getMockImplementation: [Function (anonymous)],
+    mock: {
+      calls: [],
+      contexts: [],
+      instances: [],
+      invocationCallOrder: [],
+      settledResults: [],
+      results: [],
+      lastCall: [Getter]
+    },
+    mockImplementation: [Function: mockImplementation],
+    mockImplementationOnce: [Function: mockImplementationOnce],
+    withImplementation: [Function: withImplementation],
+    mockReturnThis: [Function: mockReturnThis],
+    mockReturnValue: [Function: mockReturnValue],
+    mockReturnValueOnce: [Function: mockReturnValueOnce],
+    mockThrow: [Function: mockThrow],
+    mockThrowOnce: [Function: mockThrowOnce],
+    mockResolvedValue: [Function: mockResolvedValue],
+    mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+    mockRejectedValue: [Function: mockRejectedValue],
+    mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+    mockClear: [Function: mockClear],
+    mockReset: [Function: mockReset],
+    mockRestore: [Function: mockRestore],
+    mockName: [Function: mockName],
+    getMockName: [Function: getMockName],
+    [Symbol(nodejs.dispose)]: [Function (anonymous)]
+  }
+}
+[API] Transport attempt 1/3 via deepseek
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > retries translation generation for out-of-range word counts
+[Difficulty] Elo: 820, Target: 6-9 words, Actual: 13 words, Status: TOO_HARD
+[Difficulty Result] Elo: 820, Mode: translation
+  Expected: 6-9 words (白银 / A2+)
+  Actual: 13 words | AI Reported: 13 | Status: TOO_HARD
+  AI Self-Report: Tier=白银, CEFR=A2+, Range=8-10
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > flags inaccurate AI self-reported word counts
+[API] Final Elo: 820, bossType: undefined
+[API] Generating drill for Elo 820
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > flags inaccurate AI self-reported word counts
+CLIENT IS: { chat: { completions: { create: [Function] } } }
+CLIENT CHAT IS: {
+  completions: {
+    create: [Function: Mock] {
+      _isMockFunction: true,
+      getMockImplementation: [Function (anonymous)],
+      mock: [Object],
+      mockImplementation: [Function: mockImplementation],
+      mockImplementationOnce: [Function: mockImplementationOnce],
+      withImplementation: [Function: withImplementation],
+      mockReturnThis: [Function: mockReturnThis],
+      mockReturnValue: [Function: mockReturnValue],
+      mockReturnValueOnce: [Function: mockReturnValueOnce],
+      mockThrow: [Function: mockThrow],
+      mockThrowOnce: [Function: mockThrowOnce],
+      mockResolvedValue: [Function: mockResolvedValue],
+      mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+      mockRejectedValue: [Function: mockRejectedValue],
+      mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+      mockClear: [Function: mockClear],
+      mockReset: [Function: mockReset],
+      mockRestore: [Function: mockRestore],
+      mockName: [Function: mockName],
+      getMockName: [Function: getMockName],
+      [Symbol(nodejs.dispose)]: [Function (anonymous)]
+    }
+  }
+}
+CLIENT CHAT COMPLETIONS IS: {
+  create: [Function: Mock] {
+    _isMockFunction: true,
+    getMockImplementation: [Function (anonymous)],
+    mock: {
+      calls: [],
+      contexts: [],
+      instances: [],
+      invocationCallOrder: [],
+      settledResults: [],
+      results: [],
+      lastCall: [Getter]
+    },
+    mockImplementation: [Function: mockImplementation],
+    mockImplementationOnce: [Function: mockImplementationOnce],
+    withImplementation: [Function: withImplementation],
+    mockReturnThis: [Function: mockReturnThis],
+    mockReturnValue: [Function: mockReturnValue],
+    mockReturnValueOnce: [Function: mockReturnValueOnce],
+    mockThrow: [Function: mockThrow],
+    mockThrowOnce: [Function: mockThrowOnce],
+    mockResolvedValue: [Function: mockResolvedValue],
+    mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+    mockRejectedValue: [Function: mockRejectedValue],
+    mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+    mockClear: [Function: mockClear],
+    mockReset: [Function: mockReset],
+    mockRestore: [Function: mockRestore],
+    mockName: [Function: mockName],
+    getMockName: [Function: getMockName],
+    [Symbol(nodejs.dispose)]: [Function (anonymous)]
+  }
+}
+[API] Transport attempt 1/3 via deepseek
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > flags inaccurate AI self-reported word counts
+[Difficulty] Elo: 820, Target: 6-9 words, Actual: 8 words, Status: MATCHED
+[Difficulty Result] Elo: 820, Mode: translation
+  Expected: 6-9 words (白银 / A2+)
+  Actual: 8 words | AI Reported: 99 | Status: MATCHED
+  AI Self-Report: Tier=白银, CEFR=A2+, Range=8-10
+  ⚠️ AI WORD COUNT MISMATCH: Reported 99 but actual is 8
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > caps translation alternatives at two even if the model returns more
+[API] Final Elo: 820, bossType: undefined
+[API] Generating drill for Elo 820
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > caps translation alternatives at two even if the model returns more
+CLIENT IS: { chat: { completions: { create: [Function] } } }
+CLIENT CHAT IS: {
+  completions: {
+    create: [Function: Mock] {
+      _isMockFunction: true,
+      getMockImplementation: [Function (anonymous)],
+      mock: [Object],
+      mockImplementation: [Function: mockImplementation],
+      mockImplementationOnce: [Function: mockImplementationOnce],
+      withImplementation: [Function: withImplementation],
+      mockReturnThis: [Function: mockReturnThis],
+      mockReturnValue: [Function: mockReturnValue],
+      mockReturnValueOnce: [Function: mockReturnValueOnce],
+      mockThrow: [Function: mockThrow],
+      mockThrowOnce: [Function: mockThrowOnce],
+      mockResolvedValue: [Function: mockResolvedValue],
+      mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+      mockRejectedValue: [Function: mockRejectedValue],
+      mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+      mockClear: [Function: mockClear],
+      mockReset: [Function: mockReset],
+      mockRestore: [Function: mockRestore],
+      mockName: [Function: mockName],
+      getMockName: [Function: getMockName],
+      [Symbol(nodejs.dispose)]: [Function (anonymous)]
+    }
+  }
+}
+CLIENT CHAT COMPLETIONS IS: {
+  create: [Function: Mock] {
+    _isMockFunction: true,
+    getMockImplementation: [Function (anonymous)],
+    mock: {
+      calls: [],
+      contexts: [],
+      instances: [],
+      invocationCallOrder: [],
+      settledResults: [],
+      results: [],
+      lastCall: [Getter]
+    },
+    mockImplementation: [Function: mockImplementation],
+    mockImplementationOnce: [Function: mockImplementationOnce],
+    withImplementation: [Function: withImplementation],
+    mockReturnThis: [Function: mockReturnThis],
+    mockReturnValue: [Function: mockReturnValue],
+    mockReturnValueOnce: [Function: mockReturnValueOnce],
+    mockThrow: [Function: mockThrow],
+    mockThrowOnce: [Function: mockThrowOnce],
+    mockResolvedValue: [Function: mockResolvedValue],
+    mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+    mockRejectedValue: [Function: mockRejectedValue],
+    mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+    mockClear: [Function: mockClear],
+    mockReset: [Function: mockReset],
+    mockRestore: [Function: mockRestore],
+    mockName: [Function: mockName],
+    getMockName: [Function: getMockName],
+    [Symbol(nodejs.dispose)]: [Function (anonymous)]
+  }
+}
+[API] Transport attempt 1/3 via deepseek
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > caps translation alternatives at two even if the model returns more
+[Difficulty] Elo: 820, Target: 6-9 words, Actual: 8 words, Status: MATCHED
+[Difficulty Result] Elo: 820, Mode: translation
+  Expected: 6-9 words (白银 / A2+)
+  Actual: 8 words | AI Reported: 8 | Status: MATCHED
+  AI Self-Report: Tier=白银, CEFR=A2+, Range=8-10
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts slight translation length drift within tolerance without retrying
+[API] Final Elo: 820, bossType: undefined
+[API] Generating drill for Elo 820
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts slight translation length drift within tolerance without retrying
+CLIENT IS: { chat: { completions: { create: [Function] } } }
+CLIENT CHAT IS: {
+  completions: {
+    create: [Function: Mock] {
+      _isMockFunction: true,
+      getMockImplementation: [Function (anonymous)],
+      mock: [Object],
+      mockImplementation: [Function: mockImplementation],
+      mockImplementationOnce: [Function: mockImplementationOnce],
+      withImplementation: [Function: withImplementation],
+      mockReturnThis: [Function: mockReturnThis],
+      mockReturnValue: [Function: mockReturnValue],
+      mockReturnValueOnce: [Function: mockReturnValueOnce],
+      mockThrow: [Function: mockThrow],
+      mockThrowOnce: [Function: mockThrowOnce],
+      mockResolvedValue: [Function: mockResolvedValue],
+      mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+      mockRejectedValue: [Function: mockRejectedValue],
+      mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+      mockClear: [Function: mockClear],
+      mockReset: [Function: mockReset],
+      mockRestore: [Function: mockRestore],
+      mockName: [Function: mockName],
+      getMockName: [Function: getMockName],
+      [Symbol(nodejs.dispose)]: [Function (anonymous)]
+    }
+  }
+}
+CLIENT CHAT COMPLETIONS IS: {
+  create: [Function: Mock] {
+    _isMockFunction: true,
+    getMockImplementation: [Function (anonymous)],
+    mock: {
+      calls: [],
+      contexts: [],
+      instances: [],
+      invocationCallOrder: [],
+      settledResults: [],
+      results: [],
+      lastCall: [Getter]
+    },
+    mockImplementation: [Function: mockImplementation],
+    mockImplementationOnce: [Function: mockImplementationOnce],
+    withImplementation: [Function: withImplementation],
+    mockReturnThis: [Function: mockReturnThis],
+    mockReturnValue: [Function: mockReturnValue],
+    mockReturnValueOnce: [Function: mockReturnValueOnce],
+    mockThrow: [Function: mockThrow],
+    mockThrowOnce: [Function: mockThrowOnce],
+    mockResolvedValue: [Function: mockResolvedValue],
+    mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+    mockRejectedValue: [Function: mockRejectedValue],
+    mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+    mockClear: [Function: mockClear],
+    mockReset: [Function: mockReset],
+    mockRestore: [Function: mockRestore],
+    mockName: [Function: mockName],
+    getMockName: [Function: getMockName],
+    [Symbol(nodejs.dispose)]: [Function (anonymous)]
+  }
+}
+[API] Transport attempt 1/3 via deepseek
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts slight translation length drift within tolerance without retrying
+[Difficulty] Elo: 820, Target: 6-9 words, Actual: 10 words, Status: MATCHED
+[Difficulty Result] Elo: 820, Mode: translation
+  Expected: 6-9 words (白银 / A2+)
+  Actual: 10 words | AI Reported: 11 | Status: MATCHED
+  AI Self-Report: Tier=白银, CEFR=A2+, Range=8-10
+  ⚠️ AI WORD COUNT MISMATCH: Reported 11 but actual is 10
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > retries listening generation when cefr and listening feature targets do not match
+[API] Final Elo: 600, bossType: undefined
+[API] Generating drill for Elo 600
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > retries listening generation when cefr and listening feature targets do not match
+CLIENT IS: { chat: { completions: { create: [Function] } } }
+CLIENT CHAT IS: {
+  completions: {
+    create: [Function: Mock] {
+      _isMockFunction: true,
+      getMockImplementation: [Function (anonymous)],
+      mock: [Object],
+      mockImplementation: [Function: mockImplementation],
+      mockImplementationOnce: [Function: mockImplementationOnce],
+      withImplementation: [Function: withImplementation],
+      mockReturnThis: [Function: mockReturnThis],
+      mockReturnValue: [Function: mockReturnValue],
+      mockReturnValueOnce: [Function: mockReturnValueOnce],
+      mockThrow: [Function: mockThrow],
+      mockThrowOnce: [Function: mockThrowOnce],
+      mockResolvedValue: [Function: mockResolvedValue],
+      mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+      mockRejectedValue: [Function: mockRejectedValue],
+      mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+      mockClear: [Function: mockClear],
+      mockReset: [Function: mockReset],
+      mockRestore: [Function: mockRestore],
+      mockName: [Function: mockName],
+      getMockName: [Function: getMockName],
+      [Symbol(nodejs.dispose)]: [Function (anonymous)]
+    }
+  }
+}
+CLIENT CHAT COMPLETIONS IS: {
+  create: [Function: Mock] {
+    _isMockFunction: true,
+    getMockImplementation: [Function (anonymous)],
+    mock: {
+      calls: [],
+      contexts: [],
+      instances: [],
+      invocationCallOrder: [],
+      settledResults: [],
+      results: [],
+      lastCall: [Getter]
+    },
+    mockImplementation: [Function: mockImplementation],
+    mockImplementationOnce: [Function: mockImplementationOnce],
+    withImplementation: [Function: withImplementation],
+    mockReturnThis: [Function: mockReturnThis],
+    mockReturnValue: [Function: mockReturnValue],
+    mockReturnValueOnce: [Function: mockReturnValueOnce],
+    mockThrow: [Function: mockThrow],
+    mockThrowOnce: [Function: mockThrowOnce],
+    mockResolvedValue: [Function: mockResolvedValue],
+    mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+    mockRejectedValue: [Function: mockRejectedValue],
+    mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+    mockClear: [Function: mockClear],
+    mockReset: [Function: mockReset],
+    mockRestore: [Function: mockRestore],
+    mockName: [Function: mockName],
+    getMockName: [Function: getMockName],
+    [Symbol(nodejs.dispose)]: [Function (anonymous)]
+  }
+}
+[API] Transport attempt 1/3 via deepseek
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > retries listening generation when cefr and listening feature targets do not match
+[Listening Difficulty] Target CEFR=A2-, range=8-12, status=TOO_EASY
+[Difficulty Result] Elo: 600, Mode: listening
+  Expected: 8-12 words (青铜 / A2-)
+  Actual: 6 words | AI Reported: 6 | Status: TOO_EASY
+  AI Self-Report: Tier=黄金, CEFR=B1, Range=8-12
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > keeps the CEFR tier but softens listening features after repeated listening misses
+[API] Final Elo: 1700, bossType: undefined
+[API] Generating drill for Elo 1700
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > keeps the CEFR tier but softens listening features after repeated listening misses
+CLIENT IS: { chat: { completions: { create: [Function] } } }
+CLIENT CHAT IS: {
+  completions: {
+    create: [Function: Mock] {
+      _isMockFunction: true,
+      getMockImplementation: [Function (anonymous)],
+      mock: [Object],
+      mockImplementation: [Function: mockImplementation],
+      mockImplementationOnce: [Function: mockImplementationOnce],
+      withImplementation: [Function: withImplementation],
+      mockReturnThis: [Function: mockReturnThis],
+      mockReturnValue: [Function: mockReturnValue],
+      mockReturnValueOnce: [Function: mockReturnValueOnce],
+      mockThrow: [Function: mockThrow],
+      mockThrowOnce: [Function: mockThrowOnce],
+      mockResolvedValue: [Function: mockResolvedValue],
+      mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+      mockRejectedValue: [Function: mockRejectedValue],
+      mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+      mockClear: [Function: mockClear],
+      mockReset: [Function: mockReset],
+      mockRestore: [Function: mockRestore],
+      mockName: [Function: mockName],
+      getMockName: [Function: getMockName],
+      [Symbol(nodejs.dispose)]: [Function (anonymous)]
+    }
+  }
+}
+CLIENT CHAT COMPLETIONS IS: {
+  create: [Function: Mock] {
+    _isMockFunction: true,
+    getMockImplementation: [Function (anonymous)],
+    mock: {
+      calls: [],
+      contexts: [],
+      instances: [],
+      invocationCallOrder: [],
+      settledResults: [],
+      results: [],
+      lastCall: [Getter]
+    },
+    mockImplementation: [Function: mockImplementation],
+    mockImplementationOnce: [Function: mockImplementationOnce],
+    withImplementation: [Function: withImplementation],
+    mockReturnThis: [Function: mockReturnThis],
+    mockReturnValue: [Function: mockReturnValue],
+    mockReturnValueOnce: [Function: mockReturnValueOnce],
+    mockThrow: [Function: mockThrow],
+    mockThrowOnce: [Function: mockThrowOnce],
+    mockResolvedValue: [Function: mockResolvedValue],
+    mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+    mockRejectedValue: [Function: mockRejectedValue],
+    mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+    mockClear: [Function: mockClear],
+    mockReset: [Function: mockReset],
+    mockRestore: [Function: mockRestore],
+    mockName: [Function: mockName],
+    getMockName: [Function: getMockName],
+    [Symbol(nodejs.dispose)]: [Function (anonymous)]
+  }
+}
+[API] Transport attempt 1/3 via deepseek
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > keeps the CEFR tier but softens listening features after repeated listening misses
+[Listening Difficulty] Target CEFR=B2, range=14-22, status=TOO_EASY
+[Difficulty Result] Elo: 1700, Mode: listening
+  Expected: 14-22 words (铂金 / B2)
+  Actual: 7 words | AI Reported: 7 | Status: TOO_EASY
+  AI Self-Report: Tier=铂金, CEFR=B2, Range=14-22
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > treats the topic as background direction instead of forcing explicit topic words
+[API] Final Elo: 820, bossType: undefined
+[API] Generating drill for Elo 820
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > treats the topic as background direction instead of forcing explicit topic words
+CLIENT IS: { chat: { completions: { create: [Function] } } }
+CLIENT CHAT IS: {
+  completions: {
+    create: [Function: Mock] {
+      _isMockFunction: true,
+      getMockImplementation: [Function (anonymous)],
+      mock: [Object],
+      mockImplementation: [Function: mockImplementation],
+      mockImplementationOnce: [Function: mockImplementationOnce],
+      withImplementation: [Function: withImplementation],
+      mockReturnThis: [Function: mockReturnThis],
+      mockReturnValue: [Function: mockReturnValue],
+      mockReturnValueOnce: [Function: mockReturnValueOnce],
+      mockThrow: [Function: mockThrow],
+      mockThrowOnce: [Function: mockThrowOnce],
+      mockResolvedValue: [Function: mockResolvedValue],
+      mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+      mockRejectedValue: [Function: mockRejectedValue],
+      mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+      mockClear: [Function: mockClear],
+      mockReset: [Function: mockReset],
+      mockRestore: [Function: mockRestore],
+      mockName: [Function: mockName],
+      getMockName: [Function: getMockName],
+      [Symbol(nodejs.dispose)]: [Function (anonymous)]
+    }
+  }
+}
+CLIENT CHAT COMPLETIONS IS: {
+  create: [Function: Mock] {
+    _isMockFunction: true,
+    getMockImplementation: [Function (anonymous)],
+    mock: {
+      calls: [],
+      contexts: [],
+      instances: [],
+      invocationCallOrder: [],
+      settledResults: [],
+      results: [],
+      lastCall: [Getter]
+    },
+    mockImplementation: [Function: mockImplementation],
+    mockImplementationOnce: [Function: mockImplementationOnce],
+    withImplementation: [Function: withImplementation],
+    mockReturnThis: [Function: mockReturnThis],
+    mockReturnValue: [Function: mockReturnValue],
+    mockReturnValueOnce: [Function: mockReturnValueOnce],
+    mockThrow: [Function: mockThrow],
+    mockThrowOnce: [Function: mockThrowOnce],
+    mockResolvedValue: [Function: mockResolvedValue],
+    mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+    mockRejectedValue: [Function: mockRejectedValue],
+    mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+    mockClear: [Function: mockClear],
+    mockReset: [Function: mockReset],
+    mockRestore: [Function: mockRestore],
+    mockName: [Function: mockName],
+    getMockName: [Function: getMockName],
+    [Symbol(nodejs.dispose)]: [Function (anonymous)]
+  }
+}
+[API] Transport attempt 1/3 via deepseek
+
+stdout | src/app/api/ai/generate_drill/route.test.ts > generate_drill route > treats the topic as background direction instead of forcing explicit topic words
+[Difficulty] Elo: 820, Target: 6-9 words, Actual: 7 words, Status: MATCHED
+[Difficulty Result] Elo: 820, Mode: translation
+  Expected: 6-9 words (白银 / A2+)
+  Actual: 7 words | AI Reported: 7 | Status: MATCHED
+  AI Self-Report: Tier=白银, CEFR=A2+, Range=7-11
+
+ ❯ src/app/api/ai/generate_drill/route.test.ts (8 tests | 6 failed) 17ms
+     × accepts translation drill on the first generation when word count is in range 8ms
+     × retries translation generation for out-of-range word counts 1ms
+     ✓ flags inaccurate AI self-reported word counts 1ms
+     ✓ caps translation alternatives at two even if the model returns more 1ms
+     × accepts slight translation length drift within tolerance without retrying 2ms
+     × retries listening generation when cefr and listening feature targets do not match 1ms
+     × keeps the CEFR tier but softens listening features after repeated listening misses 0ms
+     × treats the topic as background direction instead of forcing explicit topic words 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts translation drill on the first generation when word count is in range
+AssertionError: expected { min: 6, max: 9 } to deeply equal { min: 8, max: 10 }
+
+- Expected
++ Received
+
+  {
+-   "max": 10,
+-   "min": 8,
++   "max": 9,
++   "min": 6,
+  }
+
+ ❯ src/app/api/ai/generate_drill/route.test.ts:92:56
+     90|         ).not.toContain("RETRY FEEDBACK");
+     91|         expect(data._difficultyMeta.status).toBe("MATCHED");
+     92|         expect(data._difficultyMeta.expectedWordRange).toEqual({ min: …
+       |                                                        ^
+     93|         expect(data._difficultyMeta.actualWordCount).toBe(8);
+     94|         expect(data._difficultyMeta.isValid).toBe(true);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > retries translation generation for out-of-range word counts
+AssertionError: expected "vi.fn()" to be called 2 times, but got 1 times
+ ❯ src/app/api/ai/generate_drill/route.test.ts:135:38
+    133|         const data = await response.json();
+    134|
+    135|         expect(createCompletionMock).toHaveBeenCalledTimes(2);
+       |                                      ^
+    136|         expect(createCompletionMock.mock.calls[1][0].messages[1].conte…
+    137|         expect(createCompletionMock.mock.calls[1][0].messages[1].conte…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > accepts slight translation length drift within tolerance without retrying
+AssertionError: expected { …(4) } to match object { Object (validationRange) }
+(3 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "validationRange": {
+-     "max": 11,
+-     "min": 7,
++     "max": 10,
++     "min": 5,
+    },
+  }
+
+ ❯ src/app/api/ai/generate_drill/route.test.ts:221:60
+    219|         expect(data._difficultyMeta.status).toBe("MATCHED");
+    220|         expect(data._difficultyMeta.isValid).toBe(true);
+    221|         expect(data._difficultyMeta.translationValidation).toMatchObje…
+       |                                                            ^
+    222|             validationRange: { min: 7, max: 11 },
+    223|         });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > retries listening generation when cefr and listening feature targets do not match
+AssertionError: expected "vi.fn()" to be called 3 times, but got 1 times
+ ❯ src/app/api/ai/generate_drill/route.test.ts:295:38
+    293|         const data = await response.json();
+    294|
+    295|         expect(createCompletionMock).toHaveBeenCalledTimes(3);
+       |                                      ^
+    296|         expect(createCompletionMock.mock.calls[1][0].messages[1].conte…
+    297|         expect(createCompletionMock.mock.calls[1][0].messages[1].conte…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > keeps the CEFR tier but softens listening features after repeated listening misses
+AssertionError: expected "vi.fn()" to be called 3 times, but got 1 times
+ ❯ src/app/api/ai/generate_drill/route.test.ts:334:38
+    332|         const data = await response.json();
+    333|
+    334|         expect(createCompletionMock).toHaveBeenCalledTimes(3);
+       |                                      ^
+    335|         expect(data._difficultyMeta.cefr).toBe("B2");
+    336|         expect(data._difficultyMeta.listeningFeatures).toMatchObject({
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  src/app/api/ai/generate_drill/route.test.ts > generate_drill route > treats the topic as background direction instead of forcing explicit topic words
+AssertionError: expected '[SCENARIO MODE | DIVERSITY SEED: ch5r…' to contain 'Avoid the most obvious keywords'
+
+- Expected
++ Received
+
+- Avoid the most obvious keywords
++ [SCENARIO MODE | DIVERSITY SEED: ch5rb4]
++ You are an expert English coach.
++
++ Topic: "环球旅行"
++ Specific Situation: "getting pulled over by police"
++
++ Task:
++ 1. Invent a specific, realistic "Micro-Scenario" regarding this Topic.
++ 2. Build a sentence piece-by-piece using syntax chunks for a translation puzzle.
++ 3. Ensure the target English line matches Elo 820.
++ 4. Provide exactly 2 ADDITIONAL valid English translations/expressions for the same meaning in 'reference_english_alternatives'. They should use different vocabulary, sentence structures, or phrasing while conveying the same core meaning. All must match the same Elo tier. Return exactly 2 strings in that array, no more and no less.
++
++ Topic handling rules:
++ - Treat the topic as background direction, not as a keyword that must appear in the sentence.
++ - Do NOT explicitly repeat the topic label unless it is naturally necessary.
++ - For translation drills, 'reference_english_alternatives' must contain exactly 2 items. Never output 3 or more.
++
++ Tone & Language Guidelines:
++ - TRANSLATION TONE: The Chinese translation MUST absolutely be everyday, spoken colloquial Chinese (口语化、大白话). NEVER use highly formal, academic, or dramatic "translationese" (e.g., instead of "以期在不显防备的情况下...", use "不想搞得像是在防备一样..."). Imagine a real person speaking naturally.
++ - KEYWORD EXTRACTION: In syntax_chunks, extract 1-2 KEY VOCABULARY, GRAMMAR HINTS, or FIXED COLLOCATIONS (e.g. "not only", "living on", "suggest that"). STRICT RULE: DO NOT extract entire phrases that give away the whole answer like "outsource the tutoring". Provide hints, avoid full spoilers!
++
++ Constraint: ███████████████████████████████████████████████████████
++ ██  MANDATORY TARGET: ELO 820 → TIER: 白银  ██
++ ███████████████████████████████████████████████████████
++
++ TIER: 白银 (A2+). CURRENT TARGET RANGE: 6-9 words. WORD COUNT: 6-9 words. Keep ONE single English sentence. Use at most ONE light structure such as a comparative or a there-be pattern. No passive voice or relative clauses. HARD RULE: Output exactly one genuine sentence. No semicolons, no sentence stitching, no second full stop.
++
++ TRANSLATION SCALE (Single-Sentence Grammar) - 400 Elo per tier:
++ - 0-400 (A1 新手): One ultra-short single sentence with only a basic subject-verb core. 4-6 words on entry, 4-6 words near promotion.
++ - 400-800 (A2- 青铜): A single short sentence with negation or a time/place adverbial. 5-7 words on entry, 5-7 words near promotion.
++ - 800-1200 (A2+ 白银): Single sentence with one light grammar move such as a comparative or there-be pattern. 6-9 words on entry, 6-9 words near promotion.
++ - 1200-1600 (B1 黄金): A single sentence with one medium grammar frame, still compact and readable. 7-11 words on entry, 7-11 words near promotion.
++ - 1600-2000 (B2 铂金): A single sentence with one embedded structure, but still one main sentence spine. 8-13 words on entry, 8-13 words near promotion.
++ - 2000-2400 (C1 钻石): Single sentence with one high-level grammar move such as inversion or subjunctive. 9-15 words on entry, 9-15 words near promotion.
++ - 2400+ (C2 大师): Dense advanced single sentence, still capped in length and built around one core proposition. 10-18 words on entry, 10-18 words near promotion.
++
++ ⚠️ CRITICAL: You MUST generate content for 白银 tier (Elo 820).
++ ⚠️ DO NOT generate content for a lower tier.
++ ⚠️ COUNT YOUR WORDS before finalizing output.
++
++ Context: The user is in a 'Battle Mode'.
++ Style: Witty Comment
++
++ 【Adaptive Syntactic Chunking Guidelines】
++ MANDATORY: You MUST break the reference English sentence into 3-to-6 chunks. Do NOT blindly chop sentences into atomic word-by-word fragments, nor leave them as massive unreadable blocks. Instead, intelligently select a chunking strategy based on the sentence's grammatical focus:
++
++ STRATEGY 1: FIXED COLLOCATION & IDIOM PRESERVATION 
++ - If a sentence relies on a strong set phrase or idiom (e.g., "take for granted", "due to"), KEEP the phrase intact in a single chunk. Do NOT atomize it.
++
++ STRATEGY 2: CLAUSE-DRIVEN CHUNKING (For Inversions & Complex Syntax)
++ - If the sentence features inversions, subjunctives, or conditional clauses (e.g., "Were it not for...", "Not only have I..."), chunk by the logical clause boundaries so the user learns the structural skeleton.
++
++ STRATEGY 3: HEAVY-MODIFIER ISOLATION (For Dense Noun/Verb Phrases)
++ - If a sentence has a heavy core (long subject or complex verb chain), split the core from its trailing modifiers (infinitive phrases, participial phrases, prepositional phrases).
++ - e.g. "What he proposed" (Chunk 1) + "during the meeting" (Chunk 2) + "left everyone" (Chunk 3) + "completely speechless." (Chunk 4).
++
++ RULES FOR ALL STRATEGIES:
++ 1. MAX LENGTH: A chunk should rarely exceed 5 words unless it is an unbreakable idiom.
++ 2. NATIVE COLLOQUIAL CHINESE (说人话、拒绝直译腔): NEVER do literal word-for-word translation. Paraphrase (意译) the chunks so that when they are concatenated, they form extremely natural, spoken Chinese (大白话). 
++   -> Terrible (Literal): "让他退缩的是我们变得多么公开" (What made him pull back / is how public we became)
++   -> Excellent (Paraphrased): "真正让他打退堂鼓的原因，/ 是我们俩太高调了"
++ 3. KEYWORD ANCHORS: Extract 1-2 KEY VOCABULARY or GRAMMAR HINTS (e.g., "Were it not for", "intervention"). Focus on the structural glue of the chunk.
++
++ Output strictly in JSON format:
++ {
++   
++   "target_english_vocab": ["Keyword1", "Keyword2"],
++   "syntax_chunks": [
++     {"role": "状语从句", "english": "Although his parents wanted", "chinese": "尽管他的父母想", "keywords": ["Although", "parents"]},
++     {"role": "谓语复合结构", "english": "to outsource the tutoring,", "chinese": "把辅导外包，", "keywords": ["outsource"]}
++   ],
++   
++   "reference_english_alternatives": ["Alternative translation 1", "Alternative translation 2"],
++   "_scenario_topic": "The specific micro-topic you invented",
++   "_ai_difficulty_report": {
++     "tier": "Your target tier name",
++     "cefr": "Your target CEFR level",
++     "word_count": "Number of words in your reference_english",
++     "target_range": "Expected word range for this tier"
++   },
++   "_listening_features": {
++     "word_count": 0,
++     "clause_count": 0,
++     "memory_load": "low | medium | high",
++     "spoken_naturalness": "low | medium | high",
++     "reduced_forms_presence": "minimal | some | frequent"
++   },
++   "_writing_guide_skip": true
++ }
+
+ ❯ src/app/api/ai/generate_drill/route.test.ts:366:24
+    364|         expect(prompt).toContain("Treat the topic as background direct…
+    365|         expect(prompt).toContain("Do NOT explicitly repeat the topic l…
+    366|         expect(prompt).toContain("Avoid the most obvious keywords");
+       |                        ^
+    367|     });
+    368| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  6 failed | 2 passed (8)
+   Start at  00:10:51
+   Duration  190ms (transform 53ms, setup 0ms, import 90ms, tests 17ms, environment 0ms)
+

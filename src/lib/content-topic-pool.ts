@@ -410,6 +410,22 @@ export function pickCatTopicSeed(params: {
     return pickRandomFromDomains(catDomainIdsByScore(params.score), "cat", params.recentTopicLines);
 }
 
+export function getAvailableCatSlotItems(score: number) {
+    const domainIds = catDomainIdsByScore(score);
+    const domainSet = new Set(domainIds);
+    const validDomains = TOPIC_DOMAINS.filter((d) => domainSet.has(d.id));
+
+    const domains = validDomains.map((d) => d.label);
+    const subtopics = validDomains.flatMap((d) => d.subtopics.map((st) => st.label));
+    const angles = validDomains.flatMap((d) => d.subtopics.flatMap((st) => st.angles));
+
+    return {
+        col1: domains,
+        col2: Array.from(new Set(subtopics)),
+        col3: Array.from(new Set(angles)),
+    };
+}
+
 export function __resetTopicHistoryForTests() {
     (["ai_gen", "cat"] as const).forEach((channel) => {
         RECENT_TOPIC_HISTORY[channel].comboKeys.length = 0;

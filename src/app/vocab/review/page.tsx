@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { db, VocabItem } from '@/lib/db';
-import { archiveVocabularyCard, getRatingEtaLabel, isVocabularyArchived, Rating, scheduleCard } from '@/lib/fsrs';
+import { archiveVocabularyCard, getRatingEtaLabel, isVocabularyArchived, Rating, scheduleCard, VOCAB_REVIEW_BATCH_SIZE } from '@/lib/fsrs';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { ArrowLeft, Loader2, HelpCircle } from 'lucide-react';
 import confetti from 'canvas-confetti';
@@ -342,6 +342,7 @@ export default function ReviewPage() {
     const [countdownNow, setCountdownNow] = useState(() => Date.now());
     const [isRevealed, setIsRevealed] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [totalDueCount, setTotalDueCount] = useState(0);
     const [dictionaryPosMap, setDictionaryPosMap] = useState<Record<string, PosGroup[]>>({});
     const [expandedPosGroups, setExpandedPosGroups] = useState<Record<string, boolean>>({});
     const [ghostInput, setGhostInput] = useState("");
@@ -416,7 +417,9 @@ export default function ReviewPage() {
                 .belowOrEqual(now)
                 .sortBy('due');
 
-            setQueue(dueCards.filter((item) => !isVocabularyArchived(item)).slice(0, 25));
+            const eligibleDueCards = dueCards.filter((item) => !isVocabularyArchived(item));
+            setTotalDueCount(eligibleDueCards.length);
+            setQueue(eligibleDueCards.slice(0, VOCAB_REVIEW_BATCH_SIZE));
             setIsLoading(false);
         };
 
@@ -440,6 +443,7 @@ export default function ReviewPage() {
         : [];
     const dictPosGroups = currentCard ? (dictionaryPosMap[currentCard.word.toLowerCase()] ?? []) : [];
     const displayPosGroups = pickPreferredMeaningGroups(localPosGroups, dictPosGroups);
+    const totalReviewRounds = totalDueCount > 0 ? Math.ceil(totalDueCount / VOCAB_REVIEW_BATCH_SIZE) : 0;
 
     const ghostTargetNormalized = currentCard ? normalizeGhostWord(currentCard.word) : "";
     const ghostInputNormalized = normalizeGhostWord(ghostInput);
@@ -648,7 +652,7 @@ export default function ReviewPage() {
                 scale: [1, 1 + (0.01 * intensity), 1],
                 rotate: [0, (Math.random() - 0.5) * intensity, 0],
                 filter: [`brightness(1) drop-shadow(0 0 0px rgba(0,0,0,0))`, `brightness(1.1) drop-shadow(0 0 ${10 + intensity * 5}px rgba(${nextCombo > 4 ? '192,132,252' : '52,211,153'}, ${0.3 + intensity * 0.05}))`, `brightness(1) drop-shadow(0 0 0px rgba(0,0,0,0))`],
-                transition: { duration: 0.7, type: "tween", ease: "easeInOut" }
+                transition: { duration: 0.7, type: "tween" as const, ease: "easeInOut" }
             });
 
             setShowComboAnimation(true);
@@ -814,7 +818,7 @@ export default function ReviewPage() {
                     colors: ['#26ccff', '#a25afd', '#ff5e7e', '#88ff5a', '#fcff42', '#ffa62d', '#ff36ff'],
                     startVelocity: randomInRange(40, 70), // More explosive velocity
                     gravity: 0.6,
-                    shapes: ['square', 'circle', 'star']
+                    shapes: ['square', 'circle', 'star'] as Array<'square' | 'circle' | 'star'>
                 }));
             }, 180); // trigger more frequently
             
@@ -937,6 +941,11 @@ export default function ReviewPage() {
                             {currentIndex + 1} / {queue.length}
                         </span>
                     </div>
+                    <p className="mt-2 text-center text-[11px] font-bold text-theme-text-muted">
+                        {totalDueCount > 0
+                            ? `本轮最多 ${VOCAB_REVIEW_BATCH_SIZE} 个，共 ${totalReviewRounds} 轮，总计 ${totalDueCount} 个`
+                            : `本轮最多 ${VOCAB_REVIEW_BATCH_SIZE} 个`}
+                    </p>
                 </div>
 
                 <div className="flex-1 overflow-y-auto px-1 pb-24 w-full flex justify-center pretty-scroll">
@@ -950,7 +959,7 @@ export default function ReviewPage() {
                                     initial={{ scale: 0.8, opacity: 0, y: 10, rotate: -5 }}
                                     animate={{ scale: 1, opacity: 1, y: 0, rotate: 0 }}
                                     exit={{ scale: 0.9, opacity: 0, y: -10 }}
-                                    transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                                    transition={{ type: "spring" as const, stiffness: 400, damping: 20 }}
                                     className="absolute z-50 -right-2 top-2 pointer-events-none"
                                 >
                                     <div className="flex items-center gap-1.5 rounded-2xl border-[3px] border-theme-border bg-theme-base-bg px-3 py-1.5 shadow-[4px_4px_0_var(--theme-shadow)]">

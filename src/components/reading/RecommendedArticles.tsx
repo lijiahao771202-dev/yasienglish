@@ -14,6 +14,8 @@ import { applyServerProfilePatchToLocal, deleteReadArticleSnapshot } from "@/lib
 import { CAT_RANK_TIERS, getCatRankIconByTierId, getCatRankTier, getCatScoreToNextRank, getLegacyBandFromScore } from "@/lib/cat-score";
 import { CatGrowthChart } from "@/components/reading/CatGrowthChart";
 import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
+import { GenerationOverlay, type GenerationProgressState } from "./GenerationOverlay";
+import { TranslationSlotMachine } from "@/components/battle/TranslationSlotMachine";
 
 export interface ArticleItem {
     title: string;
@@ -246,6 +248,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const [catStartError, setCatStartError] = useState<string | null>(null);
     const [isCatRankOverviewOpen, setIsCatRankOverviewOpen] = useState(false);
     const [showHubTour, setShowHubTour] = useState(false);
+    const [showCatSlotMachine, setShowCatSlotMachine] = useState(false);
+    const [genProgress, setGenProgress] = useState<GenerationProgressState>({
+        step: 'idle',
+        topic: '',
+        retrievedWords: { core: [], lower: [], stretch: [] },
+        logs: []
+    });
 
     useEffect(() => {
         if (category === "cat_mode") {
@@ -361,7 +370,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             opacity: 1,
             scale: 1,
             y: 0,
-            transition: { type: "spring", stiffness: 220, damping: 24, mass: 1 },
+            transition: { type: "spring" as const, stiffness: 220, damping: 24, mass: 1 },
         },
     };
 
@@ -625,14 +634,55 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         setIsGenerating(true);
         try {
             const normalizedTopic = genTopic.trim();
+            const { pickCatTopicSeed } = await import('@/lib/content-topic-pool');
+            const queryTopic = normalizedTopic || pickCatTopicSeed({ score: 1000, userTopic: "", recentTopicLines: [] }).topicLine;
+            
+            setGenProgress({ step: 'topic_established', topic: queryTopic, retrievedWords: { core: [], lower: [], stretch: [] }, logs: [`Topic established: [${queryTopic}]...`] });
+            await new Promise(r => setTimeout(r, 2200));
+
+            setGenProgress(prev => ({ ...prev, step: 'rag_searching', logs: [...prev.logs, 'Scanning local IndexedDB vector space...'] }));
+            await new Promise(r => setTimeout(r, 1500));
+
+            let injectedVocabulary: string[] = [];
+
+            try {
+                const { requestRagQuery, ensureBGEReady } = await import('@/lib/bge-client');
+                
+                // Boot Neural Engine if sleeping
+                const isReady = await ensureBGEReady();
+                if (!isReady) throw new Error("BGE Matrix failed to boot.");
+
+                // Single-track RAG for Sandbox (namespace=undefined to search both vocab and system)
+                // Lowered threshold to 0.1 because BGE word-to-phrase cosine similarity can sometimes be around 0.3-0.4
+                const ragResults = await requestRagQuery(queryTopic, 40, 0.1, undefined, { level: genDifficulty });
+                injectedVocabulary = ragResults.map(r => r.text);
+                
+                if (injectedVocabulary.length > 0) {
+                     setGenProgress(prev => ({ ...prev, step: 'rag_found', retrievedWords: { ...prev.retrievedWords, core: injectedVocabulary }, logs: [...prev.logs, `Intercepted ${injectedVocabulary.length} semantic matches for ${genDifficulty}`] }));
+                     await new Promise(r => setTimeout(r, 4500));
+                } else {
+                     setGenProgress(prev => ({ ...prev, logs: [...prev.logs, `0 matches found for level '${genDifficulty}'. Vector DB might be empty. Engaging default zero-shot generation...`] }));
+                     await new Promise(r => setTimeout(r, 1500));
+                }
+            } catch (ragErr) {
+                console.warn("RAG single-track retrieval failed, falling back to pure generation", ragErr);
+            }
+
+            setGenProgress(prev => ({ ...prev, step: 'payload_compiling', logs: [...prev.logs, 'Compiling semantic payload...'] }));
+            await new Promise(r => setTimeout(r, 1800));
+
+            setGenProgress(prev => ({ ...prev, step: 'ai_generating', logs: [...prev.logs, 'Payload injected. Handshake with AI matrix...'] }));
+
             const res = await fetch("/api/ai/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     topic: normalizedTopic || undefined,
                     difficulty: genDifficulty,
+                    injectedVocabulary: injectedVocabulary.length > 0 ? injectedVocabulary : undefined,
                 }),
             });
+            setGenProgress(prev => ({ ...prev, step: 'finishing', logs: [...prev.logs, 'Stream acquired. Decrypting...'] }));
             const data = await res.json();
             const articleUrl = `ai-gen://${genDifficulty}/${Date.now()}`;
             data.url = articleUrl;
@@ -687,6 +737,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             console.error("Generation error:", error);
         } finally {
             setIsGenerating(false);
+            setGenProgress(prev => ({ ...prev, step: 'idle' }));
         }
     };
 
@@ -701,20 +752,77 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         await refreshStandardFeed(category, { baseArticles: articles });
     };
 
-    const handleStartCatSession = async () => {
+    const handleStartCatSession = async (explicitTopic?: string) => {
         if (isStartingCat) return;
         setIsStartingCat(true);
         setCatStartError(null);
         try {
+            const normalizedTopic = explicitTopic?.trim() || catTopic.trim();
+            let requestedTopic = normalizedTopic;
+            if (!requestedTopic) {
+                const { pickCatTopicSeed } = await import('@/lib/content-topic-pool');
+                const seed = pickCatTopicSeed({ score: catScore, userTopic: "", recentTopicLines: [] });
+                requestedTopic = seed.topicLine;
+            }
+
+            setGenProgress({ step: 'topic_established', topic: requestedTopic, retrievedWords: { core: [], lower: [], stretch: [] }, logs: [`Topic established: [${requestedTopic}]...`] });
+            await new Promise(r => setTimeout(r, 2200));
+
+            setGenProgress(prev => ({ ...prev, step: 'rag_searching', logs: [...prev.logs, 'Initiating precise multi-track CAT matrix scan...'] }));
+            await new Promise(r => setTimeout(r, 1500));
+            
+            let injectedVocabulary: { core: string[], lower: string[], stretch: string[] } | undefined = undefined;
+
+            try {
+                const { requestRagQuery, ensureBGEReady } = await import('@/lib/bge-client');
+                const { getCatArticleTargets } = await import('@/lib/cat-score');
+                
+                // Boot Neural Engine if sleeping
+                const isReady = await ensureBGEReady();
+                if (!isReady) throw new Error("BGE Matrix failed to boot.");
+
+                const difficultyTargets = getCatArticleTargets(catScore);
+                const { lexicalTarget } = difficultyTargets;
+                setGenProgress(prev => ({ ...prev, logs: [...prev.logs, `Aligning IRT parameters: Core(${lexicalTarget.coreTierLabel}), Stretch(${lexicalTarget.stretchTierLabel})`]}));
+                
+                // Lowered threshold to 0.1 to allow fluid lexical flow even when semantic correlation to topic is weak
+                const [coreRes, lowerRes, stretchRes] = await Promise.all([
+                    requestRagQuery(requestedTopic, 20, 0.1, undefined, { level: lexicalTarget.coreTier }),
+                    lexicalTarget.lowerTier ? requestRagQuery(requestedTopic, 15, 0.1, undefined, { level: lexicalTarget.lowerTier }) : Promise.resolve([]),
+                    requestRagQuery(requestedTopic, 10, 0.1, undefined, { level: lexicalTarget.stretchTier })
+                ]);
+                injectedVocabulary = {
+                    core: coreRes.map(r => r.text),
+                    lower: lowerRes.map(r => r.text),
+                    stretch: stretchRes.map(r => r.text)
+                };
+                if (coreRes.length > 0 || stretchRes.length > 0) {
+                     setGenProgress(prev => ({ ...prev, step: 'rag_found', retrievedWords: injectedVocabulary!, logs: [...prev.logs, `Synchronized ${coreRes.length + lowerRes.length + stretchRes.length} RAG entities.`] }));
+                     await new Promise(r => setTimeout(r, 4500));
+                } else {
+                     setGenProgress(prev => ({ ...prev, logs: [...prev.logs, `Vector scan complete: 0 existing entities mapped to current rank. DeepSeek will rely on latent linguistic nodes.`] }));
+                     await new Promise(r => setTimeout(r, 1500));
+                }
+            } catch (ragErr) {
+                console.warn("RAG multi-track parallel retrieval failed, falling back", ragErr);
+            }
+
+            setGenProgress(prev => ({ ...prev, step: 'payload_compiling', logs: [...prev.logs, 'Compiling semantic payload...'] }));
+            await new Promise(r => setTimeout(r, 1800));
+
+            setGenProgress(prev => ({ ...prev, step: 'ai_generating', logs: [...prev.logs, 'Launching deep semantic weave via DeepSeek API...'] }));
+
             const response = await fetch("/api/ai/cat/session/start", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    topic: catTopic.trim() || undefined,
+                    topic: normalizedTopic || undefined,
                     band: catBand,
                     difficultySignalHint: catPendingDifficultySignal || undefined,
+                    injectedVocabulary
                 }),
             });
+            setGenProgress(prev => ({ ...prev, step: 'finishing', logs: [...prev.logs, 'Decoding CAT Blueprint...'] }));
             const payload = await safeParseResponsePayload(response);
             if (!response.ok) {
                 const message = payload && typeof payload.error === "string"
@@ -726,13 +834,14 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 throw new Error("启动 CAT 训练失败：服务器返回了空响应。");
             }
 
+            const catProfile = payload.catProfile as Record<string, unknown> | undefined;
             await applyServerProfilePatchToLocal({
-                cat_score: (payload.catProfile as Record<string, unknown> | undefined)?.score,
-                cat_level: (payload.catProfile as Record<string, unknown> | undefined)?.level,
-                cat_theta: (payload.catProfile as Record<string, unknown> | undefined)?.theta,
-                cat_se: (payload.catProfile as Record<string, unknown> | undefined)?.se,
-                cat_points: (payload.catProfile as Record<string, unknown> | undefined)?.points,
-                cat_current_band: (payload.catProfile as Record<string, unknown> | undefined)?.currentBand,
+                cat_score: typeof catProfile?.score === "number" ? catProfile.score : undefined,
+                cat_level: typeof catProfile?.level === "number" ? catProfile.level : undefined,
+                cat_theta: typeof catProfile?.theta === "number" ? catProfile.theta : undefined,
+                cat_se: typeof catProfile?.se === "number" ? catProfile.se : undefined,
+                cat_points: typeof catProfile?.points === "number" ? catProfile.points : undefined,
+                cat_current_band: typeof catProfile?.currentBand === "number" ? catProfile.currentBand : undefined,
             });
             if (profile?.id !== undefined && catPendingDifficultySignal !== 0) {
                 await db.user_profile.update(profile.id, {
@@ -752,6 +861,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             setCatStartError(error instanceof Error ? error.message : "启动 CAT 训练失败。");
         } finally {
             setIsStartingCat(false);
+            setGenProgress(prev => ({ ...prev, step: 'idle' }));
         }
     };
 
@@ -812,7 +922,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
 
     const blockEntryVariants = {
         hidden: { opacity: 0, y: 25, scale: 0.98 },
-        show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring", stiffness: 220, damping: 24, mass: 1 } },
+        show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring" as const, stiffness: 220, damping: 24, mass: 1 } },
         exit: { opacity: 0, y: -15, scale: 0.98, transition: { duration: 0.2 } }
     };
 
@@ -826,6 +936,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 show: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.02 } }
             }}
         >
+            <GenerationOverlay progress={genProgress} />
             <motion.div
                 layout
                 variants={prefersReducedMotion ? undefined : blockEntryVariants}
@@ -1307,7 +1418,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         />
                                         <button
                                             type="button"
-                                            onClick={handleStartCatSession}
+                                            onClick={() => {
+                                                if (!catTopic.trim()) {
+                                                    setShowCatSlotMachine(true);
+                                                } else {
+                                                    handleStartCatSession();
+                                                }
+                                            }}
                                             disabled={isStartingCat}
                                             className="ui-pressable inline-flex items-center justify-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-active-bg px-5 py-3 text-sm font-black text-theme-active-text disabled:opacity-50 disabled:shadow-none"
                                             style={getPressableStyle("var(--theme-shadow)", 6)}
@@ -1326,7 +1443,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         initial={{ opacity: 0, height: 0, y: -8 }}
                                         animate={{ opacity: 1, height: "auto", y: 0 }}
                                         exit={{ opacity: 0, height: 0, y: -8 }}
-                                        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                                        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] as const }}
                                         className="overflow-hidden"
                                     >
                                         <div data-tour-target="hub-cat-tiers" className={cn(insetCardClass, "mt-4 p-3")}>
@@ -1474,7 +1591,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                         initial={{ opacity: 0, y: 20, scale: 0.9 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 20, scale: 0.9 }}
-                        transition={{ type: "spring", bounce: 0.3, duration: 0.5 }}
+                        transition={{ type: "spring" as const, bounce: 0.3, duration: 0.5 }}
                         className="fixed bottom-8 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-full border-4 border-[#d8d3cb] bg-white px-5 py-2.5 text-sm font-black tracking-wide text-slate-800 shadow-[0_8px_0_0_#d8d3cb]"
                     >
                         {notification.type === 'success' ? (
@@ -1497,7 +1614,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             <motion.button
                 initial={{ opacity: 0, scale: 0.8, rotate: -20 }}
                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                transition={{ delay: 1, type: "spring", stiffness: 300, damping: 20 }}
+                transition={{ delay: 1, type: "spring" as const, stiffness: 300, damping: 20 }}
                 whileHover={{ scale: 1.1, rotate: 15 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => {
@@ -1514,6 +1631,19 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             >
                 <Compass className="h-6 w-6 stroke-[2.5]" />
             </motion.button>
+            <AnimatePresence>
+                {showCatSlotMachine && (
+                    <TranslationSlotMachine
+                        elo={catScore}
+                        mode="cat"
+                        onComplete={(topic) => {
+                            setTimeout(() => setShowCatSlotMachine(false), 800);
+                            handleStartCatSession(topic.topicLine);
+                        }}
+                        onCancel={() => setShowCatSlotMachine(false)}
+                    />
+                )}
+            </AnimatePresence>
         </motion.div>
     );
 }

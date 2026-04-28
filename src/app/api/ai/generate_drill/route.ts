@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deepseek } from "@/lib/deepseek";
+import { createDeepSeekClientForCurrentUserWithOverride } from "@/lib/deepseek";
 import {
+    buildTranslationRetryInstruction,
     buildTranslationDifficultyScale,
     countWords,
     getTranslationDifficultyTarget,
+    validateTranslationDifficulty,
 } from "@/lib/translationDifficulty";
 
 type DrillMode = "translation" | "listening";
@@ -227,28 +229,43 @@ function getListeningSpecificInstruction(elo: number) {
     return { tier: "处决", cefr: "PUNISHMENT", instruction: "WORD COUNT: 50+ words MINIMUM. Extremely fast, obscure idioms." };
 }
 
-async function requestCompletion(prompt: string, maxRetries: number) {
-    let lastError: Error | null = null;
+export type DrillAiProvider = "deepseek" | "glm" | "nvidia" | "github";
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-            console.log(`[API] Transport attempt ${attempt}/${maxRetries}`);
-            return await deepseek.chat.completions.create({
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are a strict English drill generator. You MUST:
+const DRILL_SYSTEM_PROMPT = `You are a strict English drill generator. You MUST:
 1. Follow the EXACT word count specified in the prompt.
 2. Match the specified tier.
 3. Report your tier and word count accurately in _ai_difficulty_report.
 4. CRITICAL: NEVER use or translate the example sentences provided in the prompt. Create your OWN original sentence based on the topic.
-DO NOT generate content for a lower difficulty tier than requested.`
-                    },
+DO NOT generate content for a lower difficulty tier than requested.`;
+
+async function requestCompletion(
+    prompt: string,
+    maxRetries: number,
+    provider?: DrillAiProvider,
+    nvidiaModel?: string,
+) {
+    let lastError: Error | null = null;
+    const client = await createDeepSeekClientForCurrentUserWithOverride(
+        provider
+            ? {
+                provider,
+                nvidiaModel,
+            }
+            : {
+                nvidiaModel,
+            },
+    );
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            return await client.chat.completions.create({
+                messages: [
+                    { role: "system", content: DRILL_SYSTEM_PROMPT },
                     { role: "user", content: prompt }
                 ],
                 model: "deepseek-chat",
                 response_format: { type: "json_object" },
-                temperature: 0.95,
+                temperature: 0.85,
             });
         } catch (error) {
             lastError = error as Error;
@@ -264,9 +281,24 @@ DO NOT generate content for a lower difficulty tier than requested.`
 
 export async function POST(req: NextRequest) {
     try {
-        const { articleTitle, articleContent, difficulty, eloRating, mode = "translation", bossType } = await req.json();
+        const {
+            articleTitle,
+            articleContent,
+            difficulty,
+            eloRating,
+            mode = "translation",
+            bossType,
+            provider: rawProvider,
+            topicPrompt,
+            nvidiaModel,
+            translationVariant,
+        } = await req.json();
         const drillMode = mode as DrillMode;
         const isListening = drillMode === "listening";
+        const effectiveTranslationVariant = translationVariant === "passage" ? "passage" : "sentence";
+        const provider: DrillAiProvider | undefined = rawProvider === "glm" || rawProvider === "nvidia" || rawProvider === "github" || rawProvider === "deepseek"
+            ? rawProvider
+            : undefined;
 
         const isScenario = !articleContent || articleContent.length < 50;
         if (!articleTitle && !isScenario) {
@@ -283,13 +315,13 @@ export async function POST(req: NextRequest) {
 
         console.log(`[API] Final Elo: ${currentElo}, bossType: ${bossType}`);
 
-        const translationTarget = !isListening ? getTranslationDifficultyTarget(currentElo) : null;
+        const translationTarget = !isListening ? getTranslationDifficultyTarget(currentElo, effectiveTranslationVariant) : null;
         const listeningInstruction = isListening ? getListeningSpecificInstruction(currentElo) : null;
         const listeningTarget = isListening ? getListeningDifficultyExpectation(currentElo) : null;
 
         const difficultyScale = isListening
             ? getListeningDifficultyScale()
-            : `TRANSLATION SCALE (Focus on Grammar/Reading) - 400 Elo per tier:\n${buildTranslationDifficultyScale()}`;
+            : `TRANSLATION SCALE (${effectiveTranslationVariant === "sentence" ? "Single-Sentence Grammar" : "Focus on Grammar/Reading"}) - 400 Elo per tier:\n${buildTranslationDifficultyScale(effectiveTranslationVariant)}`;
 
         const targetTier = isListening ? listeningInstruction!.tier : translationTarget!.tier.tier;
         const specificInstruction = isListening
@@ -301,7 +333,7 @@ LISTENING FEATURE TARGETS:
 - Spoken naturalness must be ${listeningTarget!.spokenNaturalness}
 - Reduced forms presence must be ${listeningTarget!.reducedFormsPresence}
 - Training focus: ${listeningTarget!.trainingFocus}`
-            : `TIER: ${translationTarget!.tier.tier} (${translationTarget!.tier.cefr}). CURRENT TARGET RANGE: ${translationTarget!.wordRange.min}-${translationTarget!.wordRange.max} words. ${translationTarget!.syntaxBand.promptInstruction}`;
+            : `TIER: ${translationTarget!.tier.tier} (${translationTarget!.tier.cefr}). CURRENT TARGET RANGE: ${translationTarget!.wordRange.min}-${translationTarget!.wordRange.max} words. ${translationTarget!.syntaxBand.promptInstruction}${effectiveTranslationVariant === "sentence" ? " HARD RULE: Output exactly one genuine sentence. No semicolons, no sentence stitching, no second full stop." : ""}`;
 
         const difficultyPrompt = `
 ███████████████████████████████████████████████████████
@@ -356,38 +388,70 @@ ${difficultyScale}
             }
         }
 
+        const chunkingRules = isListening ? "" : `
+【Adaptive Syntactic Chunking Guidelines】
+MANDATORY: You MUST break the reference English sentence into 3-to-6 chunks. Do NOT blindly chop sentences into atomic word-by-word fragments, nor leave them as massive unreadable blocks. Instead, intelligently select a chunking strategy based on the sentence's grammatical focus:
+
+STRATEGY 1: FIXED COLLOCATION & IDIOM PRESERVATION 
+- If a sentence relies on a strong set phrase or idiom (e.g., "take for granted", "due to"), KEEP the phrase intact in a single chunk. Do NOT atomize it.
+
+STRATEGY 2: CLAUSE-DRIVEN CHUNKING (For Inversions & Complex Syntax)
+- If the sentence features inversions, subjunctives, or conditional clauses (e.g., "Were it not for...", "Not only have I..."), chunk by the logical clause boundaries so the user learns the structural skeleton.
+
+STRATEGY 3: HEAVY-MODIFIER ISOLATION (For Dense Noun/Verb Phrases)
+- If a sentence has a heavy core (long subject or complex verb chain), split the core from its trailing modifiers (infinitive phrases, participial phrases, prepositional phrases).
+- e.g. "What he proposed" (Chunk 1) + "during the meeting" (Chunk 2) + "left everyone" (Chunk 3) + "completely speechless." (Chunk 4).
+
+RULES FOR ALL STRATEGIES:
+1. MAX LENGTH: A chunk should rarely exceed 5 words unless it is an unbreakable idiom.
+2. NATIVE COLLOQUIAL CHINESE (说人话、拒绝直译腔): NEVER do literal word-for-word translation. Paraphrase (意译) the chunks so that when they are concatenated, they form extremely natural, spoken Chinese (大白话). 
+  -> Terrible (Literal): "让他退缩的是我们变得多么公开" (What made him pull back / is how public we became)
+  -> Excellent (Paraphrased): "真正让他打退堂鼓的原因，/ 是我们俩太高调了"
+3. KEYWORD ANCHORS: Extract 1-2 KEY VOCABULARY or GRAMMAR HINTS (e.g., "Were it not for", "intervention"). Focus on the structural glue of the chunk.
+`;
+
         const buildPrompt = (retryInstruction?: string) => {
             if (isScenario) {
                 return `
 [SCENARIO MODE | DIVERSITY SEED: ${randomSeed}]
 You are an expert English coach.
 
-Topic: "${articleTitle}"
-Specific Situation: "${hyperSpecificTopic}"
+${topicPrompt ? `=== CUSTOM TOPIC OVERRIDE ===\n${topicPrompt}\n==============================` : `Topic: "${articleTitle}"\nSpecific Situation: "${hyperSpecificTopic}"`}
 
 Task:
-1. Invent a specific, realistic "Micro-Scenario" regarding this Topic and Specific Situation.
+${topicPrompt ? "1. strictly follow the CUSTOM TOPIC OVERRIDE criteria to invent your scenario." : "1. Invent a specific, realistic \"Micro-Scenario\" regarding this Topic."}
 2. ${isListening
                         ? `Create a challenging English line someone would say in this context (for listening dictation).`
-                        : `Create a Chinese source sentence for the user to translate into English.`}
+                        : `Build a sentence piece-by-piece using syntax chunks for a translation puzzle.`}
 3. Ensure the target English line matches Elo ${currentElo}.
+4. ${isListening
+                        ? "Provide 3 DIFFERENT valid English translations/expressions for the same Chinese meaning. They should use different vocabulary, sentence structures, or phrasing while conveying the same core meaning. All must match the same Elo tier."
+                        : "Provide exactly 2 ADDITIONAL valid English translations/expressions for the same meaning in 'reference_english_alternatives'. They should use different vocabulary, sentence structures, or phrasing while conveying the same core meaning. All must match the same Elo tier. Return exactly 2 strings in that array, no more and no less."}
 
 Topic handling rules:
 - Treat the topic as background direction, not as a keyword that must appear in the sentence.
 - Do NOT explicitly repeat the topic label unless it is naturally necessary.
 - Avoid the most obvious keywords normally associated with the topic when possible.
-- Stay within the topic range by choosing a believable sub-situation, not by naming the topic itself.
+- For translation drills, 'reference_english_alternatives' must contain exactly 2 items. Never output 3 or more.
+
+Tone & Language Guidelines:
+- TRANSLATION TONE: The Chinese translation MUST absolutely be everyday, spoken colloquial Chinese (口语化、大白话). NEVER use highly formal, academic, or dramatic "translationese" (e.g., instead of "以期在不显防备的情况下...", use "不想搞得像是在防备一样..."). Imagine a real person speaking naturally.
+- KEYWORD EXTRACTION: In syntax_chunks, extract 1-2 KEY VOCABULARY, GRAMMAR HINTS, or FIXED COLLOCATIONS (e.g. "not only", "living on", "suggest that"). STRICT RULE: DO NOT extract entire phrases that give away the whole answer like "outsource the tutoring". Provide hints, avoid full spoilers!
 
 Constraint: ${difficultyPrompt}
 ${retryInstruction ? `\n${retryInstruction}\n` : ""}
 Context: ${scenarioContext}
 Style: ${scenarioStyleInstruction}
-
+${chunkingRules}
 Output strictly in JSON format:
 {
-  "chinese": "${isListening ? "Direct Chinese translation of the English sentence" : "The Chinese sentence to translate"}",
+  ${isListening ? '"natural_chinese_context": "Direct Chinese translation of the audio",' : ''}
   "target_english_vocab": ["Keyword1", "Keyword2"],
-  "reference_english": "The ideal English sentence matching the scenario.",
+  "syntax_chunks": ${isListening ? '[]' : '[\n    {"role": "状语从句", "english": "Although his parents wanted", "chinese": "尽管他的父母想", "keywords": ["Although", "parents"]},\n    {"role": "谓语复合结构", "english": "to outsource the tutoring,", "chinese": "把辅导外包，", "keywords": ["outsource"]}\n  ]'},
+  ${isListening ? '"reference_english": "The exact english audio transcript",' : ''}
+  "reference_english_alternatives": ${isListening
+                        ? '["Alternative translation 1", "Alternative translation 2", "Alternative translation 3"]'
+                        : '["Alternative translation 1", "Alternative translation 2"]'},
   "_scenario_topic": "The specific micro-topic you invented",
   "_ai_difficulty_report": {
     "tier": "Your target tier name",
@@ -401,7 +465,8 @@ Output strictly in JSON format:
     "memory_load": "low | medium | high",
     "spoken_naturalness": "low | medium | high",
     "reduced_forms_presence": "minimal | some | frequent"
-  }
+  },
+  ${isListening ? `"_writing_guide_skip": true` : `"_writing_guide_skip": true`}
 }
                 `.trim();
             }
@@ -429,15 +494,20 @@ Task:
 1. Identify the core theme and 2-3 vocabulary words.
 ${isListening
                     ? `2. Create a meaningful English sentence that reflects the theme. It should be challenging to listen to.
-3. Provide the exact transcript as 'reference_english'.`
-                    : `2. Create a meaningful Chinese sentence that reflects the theme.
-3. Provide a 'Golden' English translation.`}
-
+3. Provide the exact transcript as 'reference_english'.
+4. Provide 3 alternative valid English expressions for the same meaning in 'reference_english_alternatives'.`
+                    : `2. Build a sentence piece-by-piece using syntax chunks for a translation puzzle. It must reflect the theme.
+3. Provide exactly 2 ADDITIONAL DIFFERENT valid English translations for the same meaning in 'reference_english_alternatives'. Use different vocabulary, sentence structures, or phrasing. All must match the same Elo tier. Return exactly 2 strings in that array, no more and no less.`}
+${chunkingRules}
 Output strictly in JSON format:
 {
-  "chinese": "${isListening ? "某个相关的中文提示/翻译" : "The Chinese sentence challenge"}",
+  ${isListening ? '"natural_chinese_context": "Direct Chinese translation of the audio",' : ''}
   "target_english_vocab": ["EnglishWord1", "EnglishWord2"],
-  "reference_english": "The ideal English translation",
+  "syntax_chunks": ${isListening ? '[]' : '[\n    {"role": "状语从句", "english": "Although his parents wanted", "chinese": "尽管他的父母想", "keywords": ["Although", "parents"]},\n    {"role": "谓语复合结构", "english": "to outsource the tutoring,", "chinese": "把辅导外包，", "keywords": ["outsource"]}\n  ] (MANDATORY: Follow Chunking Guidelines. For keywords, extract 1-2 KEY VOCABULARY, GRAMMAR HINTS, or FIXED COLLOCATIONS (e.g. "not only", "living on", "suggest that"). STRICT RULE: DO NOT extract entire phrases that give away the whole answer like "outsource the tutoring" or "chose the dull report". Provide hints, avoid full spoilers!)'},
+  ${isListening ? '"reference_english": "The exact english audio transcript",' : ''}
+  "reference_english_alternatives": ${isListening
+                    ? '["Alternative translation 1", "Alternative translation 2", "Alternative translation 3"]'
+                    : '["Alternative translation 1", "Alternative translation 2"]'},
   "_ai_difficulty_report": {
     "tier": "Your target tier name",
     "cefr": "Your target CEFR level",
@@ -450,18 +520,19 @@ Output strictly in JSON format:
     "memory_load": "low | medium | high",
     "spoken_naturalness": "low | medium | high",
     "reduced_forms_presence": "minimal | some | frequent"
-  }
+  },
+  ${isListening ? `"_writing_guide_skip": true` : `"_writing_guide_skip": true`}
 }
             `.trim();
         };
 
-        const maxDifficultyAttempts = isListening ? 3 : 1;
         let lastGeneratedData: Record<string, unknown> | null = null;
         let lastDifficultyStatus: DrillDifficultyStatus = "UNVALIDATED";
         let lastActualWordCount = 0;
         let finalExpected: DifficultyExpectation;
         let finalListeningTarget: ListeningFeatureTarget | null = listeningTarget;
         let lastListeningValidation: ListeningValidation | null = null;
+        let lastTranslationValidation: ReturnType<typeof validateTranslationDifficulty> | null = null;
 
         if (isListening) {
             finalExpected = getListeningDifficultyExpectation(currentElo);
@@ -474,56 +545,64 @@ Output strictly in JSON format:
             };
         }
 
-        let retryInstruction = "";
-        let activeListeningTarget = listeningTarget;
+        // Single attempt — no difficulty retry loop
+        console.log(`[API] Generating drill for Elo ${currentElo}`);
+        const completion = await requestCompletion(buildPrompt(), 3, provider, typeof nvidiaModel === "string" ? nvidiaModel : undefined);
+        let content = completion.choices[0].message.content;
+        if (!content) {
+            throw new Error("No content generated");
+        }
 
-        for (let generationAttempt = 1; generationAttempt <= maxDifficultyAttempts; generationAttempt++) {
-            console.log(`[API] Difficulty attempt ${generationAttempt}/${maxDifficultyAttempts} for Elo ${currentElo}`);
-            const completion = await requestCompletion(buildPrompt(retryInstruction), 3);
-            const content = completion.choices[0].message.content;
-            if (!content) {
-                throw new Error("No content generated");
-            }
+        // Clean up markdown wrapping (Gemma may wrap JSON in ```json...```)
+        content = content.trim()
+            .replace(/^```(?:json)?\s*/i, "")
+            .replace(/```\s*$/i, "")
+            .trim();
 
-            const data = JSON.parse(content);
-            const generatedText = data.reference_english || "";
-            lastGeneratedData = data;
+        const data = JSON.parse(content) as {
+            chinese?: string;
+            natural_chinese_context?: string;
+            reference_english?: string;
+            syntax_chunks?: Array<{
+                chinese?: string;
+                english?: string;
+            }>;
+            [key: string]: unknown;
+        };
+        
+        // Unify standard keys from the new schema
+        if (!isListening && Array.isArray(data.syntax_chunks) && data.syntax_chunks.length > 0) {
+            // The absolute source of truth for the reference sentence MUST be the exact concatenation of the chunks.
+            // This prevents the AI from hallucinating a "global" translation that slightly differs from its chunk-level translations,
+            // which causes massive cognitive dissonance on the frontend.
+            data.chinese = data.syntax_chunks.map((chunk) => chunk.chinese || "").join("");
+        } else if (data.natural_chinese_context && !data.chinese) {
+            data.chinese = data.natural_chinese_context;
+        }
+        if (!data.reference_english && Array.isArray(data.syntax_chunks) && data.syntax_chunks.length > 0) {
+            // Reconstruct the reference english by perfectly sticking the syntax blocks together
+            data.reference_english = data.syntax_chunks.map((chunk) => chunk.english || "").join(" ").replace(/\s+([.,!?])/g, "$1");
+        }
 
-            if (isListening) {
-                const validation = validateListeningDifficulty(data, activeListeningTarget!);
-                lastListeningValidation = validation;
-                lastActualWordCount = validation.actualWordCount;
-                lastDifficultyStatus = validation.status;
-                finalExpected = activeListeningTarget!;
-                finalListeningTarget = activeListeningTarget!;
+        lastGeneratedData = data;
 
-                console.log(`[Listening Difficulty] Target CEFR=${activeListeningTarget!.cefr}, range=${activeListeningTarget!.min}-${activeListeningTarget!.max}, status=${validation.status}`);
-
-                if (validation.isValid || generationAttempt === maxDifficultyAttempts) {
-                    break;
-                }
-
-                if (generationAttempt === maxDifficultyAttempts - 1) {
-                    activeListeningTarget = downgradeListeningDifficultyTarget(listeningTarget!);
-                    finalListeningTarget = activeListeningTarget;
-                }
-
-                retryInstruction = buildListeningRetryInstruction({
-                    attempt: generationAttempt,
-                    maxAttempts: maxDifficultyAttempts,
-                    validation,
-                    target: activeListeningTarget!,
-                });
-                continue;
-            }
-
-            lastActualWordCount = countWords(generatedText);
-            lastDifficultyStatus = "UNVALIDATED";
-
-            console.log(`[Difficulty Validation] Elo: ${currentElo}, Mode: ${drillMode}`);
-            console.log(`  Target: ${finalExpected.min}-${finalExpected.max} words (${finalExpected.tier} / ${finalExpected.cefr})`);
-            console.log(`  Actual: ${lastActualWordCount} words | Status: ${lastDifficultyStatus}`);
-            break;
+        if (isListening) {
+            const validation = validateListeningDifficulty(data, listeningTarget!);
+            lastListeningValidation = validation;
+            lastActualWordCount = validation.actualWordCount;
+            lastDifficultyStatus = validation.status;
+            finalListeningTarget = listeningTarget!;
+            console.log(`[Listening Difficulty] Target CEFR=${listeningTarget!.cefr}, range=${listeningTarget!.min}-${listeningTarget!.max}, status=${validation.status}`);
+        } else {
+            const translationValidation = validateTranslationDifficulty(
+                data.reference_english || "",
+                currentElo,
+                effectiveTranslationVariant,
+            );
+            lastTranslationValidation = translationValidation;
+            lastActualWordCount = translationValidation.actualWordCount;
+            lastDifficultyStatus = translationValidation.status;
+            console.log(`[Difficulty] Elo: ${currentElo}, Target: ${finalExpected.min}-${finalExpected.max} words, Actual: ${lastActualWordCount} words, Status: ${lastDifficultyStatus}`);
         }
 
         if (!lastGeneratedData) {
@@ -550,10 +629,17 @@ Output strictly in JSON format:
 
         return NextResponse.json({
             ...lastGeneratedData,
+            // Ensure alternatives are always an array (some models skip this field)
+            reference_english_alternatives: Array.isArray(lastGeneratedData.reference_english_alternatives)
+                ? lastGeneratedData.reference_english_alternatives
+                    .filter((a: unknown) => typeof a === 'string' && a.trim())
+                    .slice(0, isListening ? 3 : 2)
+                : [],
             _topicMeta: {
                 topic: articleTitle || "随机场景",
                 subTopic: lastGeneratedData._scenario_topic || null,
                 isScenario,
+                provider,
             },
             _difficultyMeta: {
                 requestedElo: currentElo,
@@ -561,7 +647,9 @@ Output strictly in JSON format:
                 cefr: finalExpected.cefr,
                 expectedWordRange: { min: finalExpected.min, max: finalExpected.max },
                 actualWordCount: lastActualWordCount,
-                isValid: isListening ? lastDifficultyStatus === "MATCHED" : null,
+                isValid: isListening
+                    ? lastDifficultyStatus === "MATCHED"
+                    : lastTranslationValidation?.isValid ?? null,
                 status: lastDifficultyStatus,
                 aiSelfReport: aiReport ? {
                     tier: aiReport.tier,
@@ -584,7 +672,14 @@ Output strictly in JSON format:
                         issues: lastListeningValidation.issues,
                         featureReport: lastListeningValidation.featureReport,
                     } : null,
-                } : {}),
+                } : {
+                    translationValidation: lastTranslationValidation ? {
+                        validationRange: lastTranslationValidation.validationRange,
+                        tolerance: lastTranslationValidation.tolerance,
+                        variant: effectiveTranslationVariant,
+                        issues: lastTranslationValidation.issues,
+                    } : null,
+                }),
             }
         });
     } catch (error) {

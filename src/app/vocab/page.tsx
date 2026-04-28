@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { createEmptyCard, isVocabularyArchived, State } from "@/lib/fsrs";
+import { createEmptyCard, isVocabularyArchived, State, VOCAB_REVIEW_BATCH_SIZE } from "@/lib/fsrs";
 import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 import { VocabEditDialog } from "@/components/vocab/VocabEditDialog";
 import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
@@ -423,8 +423,9 @@ function VocabDashboardContent() {
     const activeFilterMeta = VOCAB_FILTERS.find((filter) => filter.key === activeFilter) ?? VOCAB_FILTERS[1];
 
     const totalWords = vocab.length;
-    const dueWords = vocab.filter((item) => item.due <= now).length;
+    const dueWords = vocab.filter((item) => item.due <= now && !isVocabularyArchived(item)).length;
     const masteredWords = vocab.filter((item) => isVocabularyArchived(item)).length;
+    const dueReviewRounds = dueWords > 0 ? Math.ceil(dueWords / VOCAB_REVIEW_BATCH_SIZE) : 0;
 
     const handleRouteExit = (target: "home" | "review") => {
         if (routeExitTarget) return;
@@ -558,7 +559,7 @@ function VocabDashboardContent() {
                             className="absolute inset-0 bg-[linear-gradient(180deg,rgba(246,239,223,0.74),rgba(250,245,232,0.92))] backdrop-blur-[10px]"
                             initial={{ scale: 1.04, filter: "blur(18px)" }}
                             animate={{ scale: 1, filter: "blur(0px)" }}
-                            transition={{ duration: reducedMotion ? 0.18 : 0.52, ease: [0.18, 1, 0.3, 1] }}
+                            transition={{ duration: reducedMotion ? 0.18 : 0.52, ease: [0.18, 1, 0.3, 1] as const }}
                         />
                     </motion.div>
                 )}
@@ -643,24 +644,34 @@ function VocabDashboardContent() {
                             </div>
                         </motion.div>
 
-                        <motion.button
-                            data-tour-target="vocab-review-button"
-                            type="button"
+                        <motion.div
                             {...getBlockEnterProps(reducedMotion, 0.14)}
-                            whileTap={getPressableTap(reducedMotion, 4, 0.98)}
-                            className={cn(
-                                "ui-pressable inline-flex h-14 items-center justify-center gap-2 rounded-[1.1rem] border-[3px] border-theme-border px-8 text-[16px] font-black transition-colors",
-                                dueWords > 0
-                                    ? "bg-theme-primary-bg text-theme-primary-text hover:bg-theme-active-bg"
-                                    : "cursor-not-allowed bg-theme-base-bg text-theme-text-muted shadow-none opacity-50 border-theme-border/50",
-                            )}
-                            style={getPressableStyle("var(--theme-shadow)", 4)}
-                            onClick={() => handleRouteExit("review")}
-                            disabled={dueWords === 0 || Boolean(routeExitTarget)}
+                            className="flex flex-col items-start gap-2 lg:items-end"
                         >
-                            <Brain className="h-5 w-5" />
-                            开始复习
-                        </motion.button>
+                            <motion.button
+                                data-tour-target="vocab-review-button"
+                                type="button"
+                                whileTap={getPressableTap(reducedMotion, 4, 0.98)}
+                                className={cn(
+                                    "ui-pressable inline-flex h-14 items-center justify-center gap-2 rounded-[1.1rem] border-[3px] border-theme-border px-8 text-[16px] font-black transition-colors",
+                                    dueWords > 0
+                                        ? "bg-theme-primary-bg text-theme-primary-text hover:bg-theme-active-bg"
+                                        : "cursor-not-allowed bg-theme-base-bg text-theme-text-muted shadow-none opacity-50 border-theme-border/50",
+                                )}
+                                style={getPressableStyle("var(--theme-shadow)", 4)}
+                                onClick={() => handleRouteExit("review")}
+                                disabled={dueWords === 0 || Boolean(routeExitTarget)}
+                            >
+                                <Brain className="h-5 w-5" />
+                                开始复习
+                            </motion.button>
+
+                            <p className="text-[12px] font-bold text-theme-text-muted lg:text-right">
+                                {dueWords > 0
+                                    ? `每轮 ${VOCAB_REVIEW_BATCH_SIZE} 个，共 ${dueReviewRounds} 轮，总计 ${dueWords} 个待复习`
+                                    : `每轮 ${VOCAB_REVIEW_BATCH_SIZE} 个，当前 0 个待复习`}
+                            </p>
+                        </motion.div>
                     </div>
 
                     <motion.section

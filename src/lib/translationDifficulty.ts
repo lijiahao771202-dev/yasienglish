@@ -1,4 +1,5 @@
 export type DifficultyStatus = 'TOO_EASY' | 'TOO_HARD' | 'MATCHED';
+export type TranslationVariant = "sentence" | "passage";
 
 export interface WordRange {
     min: number;
@@ -33,12 +34,191 @@ export interface TranslationDifficultyTarget {
     wordRange: WordRange;
     tolerance: number;
     syntaxBand: TranslationSyntaxBand;
+    variant: TranslationVariant;
 }
 
 const lerp = (start: number, end: number, progress: number) => start + (end - start) * progress;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-export const TRANSLATION_DIFFICULTY_TIERS: TranslationDifficultyTier[] = [
+const SENTENCE_TRANSLATION_DIFFICULTY_TIERS: TranslationDifficultyTier[] = [
+    {
+        level: "Level 1",
+        tier: "新手",
+        cefr: "A1",
+        minElo: 0,
+        maxElo: 399,
+        desc: "基础主干句",
+        entryWordRange: { min: 4, max: 6 },
+        exitWordRange: { min: 4, max: 6 },
+        tolerance: 1,
+        syntaxBands: {
+            entry: {
+                scaleSummary: "One ultra-short single sentence with only a basic subject-verb core.",
+                promptInstruction: "WORD COUNT: 4-6 words. Write ONE single English sentence. Use only a plain SVO or SVC pattern. Practice simple present or simple past. No clauses, no passive voice, no infinitive or gerund phrases.",
+            },
+            mid: {
+                scaleSummary: "Still one single sentence, but allow one very small modifier.",
+                promptInstruction: "WORD COUNT: 4-6 words. Keep ONE single English sentence. Allow one basic adjective or adverb, but keep a plain subject-verb core. No clauses, no passive voice.",
+            },
+            exit: {
+                scaleSummary: "Single short sentence with clean control over articles, plurals, and prepositions.",
+                promptInstruction: "WORD COUNT: 4-6 words. Keep ONE single English sentence with a clean subject-verb-object or subject-verb-complement spine. Focus on articles, plurals, and basic prepositions.",
+            },
+        },
+    },
+    {
+        level: "Level 2",
+        tier: "青铜",
+        cefr: "A2-",
+        minElo: 400,
+        maxElo: 799,
+        desc: "否定、疑问、情态",
+        entryWordRange: { min: 5, max: 7 },
+        exitWordRange: { min: 5, max: 7 },
+        tolerance: 1,
+        syntaxBands: {
+            entry: {
+                scaleSummary: "A single short sentence with negation or a time/place adverbial.",
+                promptInstruction: "WORD COUNT: 5-7 words. Keep ONE single English sentence. Practice negation or a time/place adverbial. No subordinate clauses, no passive voice.",
+            },
+            mid: {
+                scaleSummary: "Still a short sentence, now allowing one modal verb or question pattern.",
+                promptInstruction: "WORD COUNT: 5-7 words. Keep ONE single English sentence. You may use ONE modal verb or one simple question pattern. Do not add a second clause.",
+            },
+            exit: {
+                scaleSummary: "Short sentence with one basic coordinating move inside the same sentence spine.",
+                promptInstruction: "WORD COUNT: 5-7 words. Keep ONE single English sentence. You may use one short coordinating move or a simple subject-complement pattern, but do not turn it into two clauses.",
+            },
+        },
+    },
+    {
+        level: "Level 3",
+        tier: "白银",
+        cefr: "A2+",
+        minElo: 800,
+        maxElo: 1199,
+        desc: "轻结构变形",
+        entryWordRange: { min: 6, max: 9 },
+        exitWordRange: { min: 6, max: 9 },
+        tolerance: 1,
+        syntaxBands: {
+            entry: {
+                scaleSummary: "Single sentence with one light grammar move such as a comparative or there-be pattern.",
+                promptInstruction: "WORD COUNT: 6-9 words. Keep ONE single English sentence. Use at most ONE light structure such as a comparative or a there-be pattern. No passive voice or relative clauses.",
+            },
+            mid: {
+                scaleSummary: "Single sentence with one infinitive or gerund phrase, while staying compact.",
+                promptInstruction: "WORD COUNT: 6-9 words. Keep ONE single English sentence. You may use ONE infinitive or gerund phrase, but do not stack structures.",
+            },
+            exit: {
+                scaleSummary: "Single sentence with one simple reason/condition move, but still one clear core.",
+                promptInstruction: "WORD COUNT: 6-9 words. Keep ONE single English sentence. You may use ONE simple because/if/when structure, but the sentence must stay short and linear.",
+            },
+        },
+    },
+    {
+        level: "Level 4",
+        tier: "黄金",
+        cefr: "B1",
+        minElo: 1200,
+        maxElo: 1599,
+        desc: "被动、形式主语、宾语从句",
+        entryWordRange: { min: 7, max: 11 },
+        exitWordRange: { min: 7, max: 11 },
+        tolerance: 1,
+        syntaxBands: {
+            entry: {
+                scaleSummary: "A single sentence with one medium grammar frame, still compact and readable.",
+                promptInstruction: "WORD COUNT: 7-11 words. Keep ONE single English sentence. You may use ONE medium structure such as passive voice or a formal subject pattern. Do not stack clauses.",
+            },
+            mid: {
+                scaleSummary: "Single sentence using one passive voice, formal subject, or short object clause.",
+                promptInstruction: "WORD COUNT: 7-11 words. Keep ONE single English sentence. You may use ONE passive voice, one formal subject pattern, or one short object clause. Only one advanced move is allowed.",
+            },
+            exit: {
+                scaleSummary: "Single sentence with one fixed B1 frame, but still concise.",
+                promptInstruction: "WORD COUNT: 7-11 words. Keep ONE single English sentence. Use one well-controlled passive voice, formal subject, or object clause pattern, and keep the sentence concise.",
+            },
+        },
+    },
+    {
+        level: "Level 5",
+        tier: "铂金",
+        cefr: "B2",
+        minElo: 1600,
+        maxElo: 1999,
+        desc: "嵌入与压缩",
+        entryWordRange: { min: 8, max: 13 },
+        exitWordRange: { min: 8, max: 13 },
+        tolerance: 1,
+        syntaxBands: {
+            entry: {
+                scaleSummary: "A single sentence with one embedded structure, but still one main sentence spine.",
+                promptInstruction: "WORD COUNT: 8-13 words. Keep ONE single English sentence. You may use ONE relative clause, one non-finite adverbial, or one nominalized phrase, but not more than one.",
+            },
+            mid: {
+                scaleSummary: "Single sentence that compresses logic through one concession, result, or embedded phrase.",
+                promptInstruction: "WORD COUNT: 8-13 words. Keep ONE single English sentence. Use at most ONE embedded structure such as a relative clause, a non-finite phrase, or a short result/concession pattern.",
+            },
+            exit: {
+                scaleSummary: "Compact B2 sentence with one deliberate compression move.",
+                promptInstruction: "WORD COUNT: 8-13 words. Keep ONE single English sentence. Compress information through ONE relative clause, non-finite phrase, or nominalized expression, but avoid clause stacking.",
+            },
+        },
+    },
+    {
+        level: "Level 6",
+        tier: "钻石",
+        cefr: "C1",
+        minElo: 2000,
+        maxElo: 2399,
+        desc: "高阶语法动作",
+        entryWordRange: { min: 9, max: 15 },
+        exitWordRange: { min: 9, max: 15 },
+        tolerance: 1,
+        syntaxBands: {
+            entry: {
+                scaleSummary: "Single sentence with one high-level grammar move such as inversion or subjunctive.",
+                promptInstruction: "WORD COUNT: 9-15 words. Keep ONE single English sentence. Use at most ONE high-level move such as inversion, subjunctive mood, or a subject clause. Do not pile techniques together.",
+            },
+            mid: {
+                scaleSummary: "Single sentence with one advanced rhetorical or clause-level pattern.",
+                promptInstruction: "WORD COUNT: 9-15 words. Keep ONE single English sentence. You may use ONE inversion, one subjunctive pattern, or one subject/predicative clause. Maintain one clear sentence core.",
+            },
+            exit: {
+                scaleSummary: "Compact C1 sentence that stays controlled despite one advanced grammar move.",
+                promptInstruction: "WORD COUNT: 9-15 words. Keep ONE single English sentence. Use one advanced move such as inversion or subjunctive, but keep the sentence compact and readable.",
+            },
+        },
+    },
+    {
+        level: "Level 7",
+        tier: "大师",
+        cefr: "C2",
+        minElo: 2400,
+        maxElo: null,
+        desc: "高密度高级单句",
+        entryWordRange: { min: 10, max: 18 },
+        exitWordRange: { min: 10, max: 18 },
+        tolerance: 1,
+        syntaxBands: {
+            entry: {
+                scaleSummary: "Dense advanced single sentence, still capped in length and built around one core proposition.",
+                promptInstruction: "WORD COUNT: 10-18 words. Keep ONE genuinely single English sentence. Make it dense and advanced, but do not exceed one clear sentence core or turn it into a stitched long sentence.",
+            },
+            mid: {
+                scaleSummary: "High-density single sentence with advanced diction and one deliberate structural move.",
+                promptInstruction: "WORD COUNT: 10-18 words. Keep ONE genuinely single English sentence. Use advanced diction and one deliberate structural move, but avoid semicolons, multi-sentence stitching, or clause overload.",
+            },
+            exit: {
+                scaleSummary: "Maximum sentence-mode density while remaining one controlled sentence.",
+                promptInstruction: "WORD COUNT: 10-18 words. Keep ONE genuinely single English sentence. Maximize precision and density, but keep it controlled, concise, and unmistakably a single sentence.",
+            },
+        },
+    },
+];
+
+const PASSAGE_TRANSLATION_DIFFICULTY_TIERS: TranslationDifficultyTier[] = [
     {
         level: 'Level 1',
         tier: '新手',
@@ -266,21 +446,27 @@ export const TRANSLATION_DIFFICULTY_TIERS: TranslationDifficultyTier[] = [
     },
 ];
 
-export function getTranslationDifficultyTier(elo: number): TranslationDifficultyTier {
-    return TRANSLATION_DIFFICULTY_TIERS.find((tier) => {
-        if (tier.maxElo === null) return elo >= tier.minElo;
-        return elo >= tier.minElo && elo <= tier.maxElo;
-    }) || TRANSLATION_DIFFICULTY_TIERS[0];
+function getTranslationDifficultyTiers(variant: TranslationVariant) {
+    return variant === "passage"
+        ? PASSAGE_TRANSLATION_DIFFICULTY_TIERS
+        : SENTENCE_TRANSLATION_DIFFICULTY_TIERS;
 }
 
-export function getTranslationTierProgress(elo: number, tier = getTranslationDifficultyTier(elo)) {
+export function getTranslationDifficultyTier(elo: number, variant: TranslationVariant = "sentence"): TranslationDifficultyTier {
+    return getTranslationDifficultyTiers(variant).find((tier) => {
+        if (tier.maxElo === null) return elo >= tier.minElo;
+        return elo >= tier.minElo && elo <= tier.maxElo;
+    }) || getTranslationDifficultyTiers(variant)[0];
+}
+
+export function getTranslationTierProgress(elo: number, tier = getTranslationDifficultyTier(elo, "sentence")) {
     const upperBound = tier.maxElo ?? (tier.minElo + 399);
     const span = Math.max(1, upperBound - tier.minElo);
     return clamp((elo - tier.minElo) / span, 0, 1);
 }
 
-export function getTranslationDifficultyTarget(elo: number): TranslationDifficultyTarget {
-    const tier = getTranslationDifficultyTier(elo);
+export function getTranslationDifficultyTarget(elo: number, variant: TranslationVariant = "sentence"): TranslationDifficultyTarget {
+    const tier = getTranslationDifficultyTier(elo, variant);
     const progress = getTranslationTierProgress(elo, tier);
     const wordRange = {
         min: Math.round(lerp(tier.entryWordRange.min, tier.exitWordRange.min, progress)),
@@ -297,11 +483,12 @@ export function getTranslationDifficultyTarget(elo: number): TranslationDifficul
         wordRange,
         tolerance: tier.tolerance,
         syntaxBand,
+        variant,
     };
 }
 
-export function buildTranslationDifficultyScale(): string {
-    return TRANSLATION_DIFFICULTY_TIERS.map((tier) => {
+export function buildTranslationDifficultyScale(variant: TranslationVariant = "sentence"): string {
+    return getTranslationDifficultyTiers(variant).map((tier) => {
         const eloRange = tier.maxElo === null
             ? `${tier.minElo}+`
             : `${tier.minElo}-${tier.maxElo + 1}`;
@@ -314,23 +501,52 @@ export function countWords(text: string): number {
     return text.trim().split(/\s+/).filter((word) => word.length > 0).length;
 }
 
-export function validateTranslationDifficulty(text: string, elo: number) {
-    const target = getTranslationDifficultyTarget(elo);
+function getSentenceModeStructureIssues(text: string) {
+    const trimmed = text.trim();
+    const issues: string[] = [];
+
+    if (/[;:]/.test(trimmed)) {
+        issues.push("sentence mode forbids semicolons or colons");
+    }
+
+    const sentenceFragments = trimmed
+        .split(/[.!?]+/)
+        .map((fragment) => fragment.trim())
+        .filter(Boolean);
+
+    if (sentenceFragments.length > 1) {
+        issues.push("sentence mode requires exactly one independent sentence");
+    }
+
+    return issues;
+}
+
+export function validateTranslationDifficulty(text: string, elo: number, variant: TranslationVariant = "sentence") {
+    const target = getTranslationDifficultyTarget(elo, variant);
     const actualWordCount = countWords(text);
     const min = Math.max(1, target.wordRange.min - target.tolerance);
     const max = target.wordRange.max + target.tolerance;
-    const status: DifficultyStatus = actualWordCount < min
+    let status: DifficultyStatus = actualWordCount < min
         ? 'TOO_EASY'
         : actualWordCount > max
             ? 'TOO_HARD'
             : 'MATCHED';
+    const issues: string[] = [];
+
+    if (variant === "sentence") {
+        issues.push(...getSentenceModeStructureIssues(text));
+        if (issues.length > 0) {
+            status = "TOO_HARD";
+        }
+    }
 
     return {
         ...target,
         actualWordCount,
         validationRange: { min, max },
         status,
-        isValid: status === 'MATCHED',
+        issues,
+        isValid: status === 'MATCHED' && issues.length === 0,
     };
 }
 
@@ -346,8 +562,10 @@ export function buildTranslationRetryInstruction(params: {
     const validationMin = Math.max(1, target.wordRange.min - target.tolerance);
     const validationMax = target.wordRange.max + target.tolerance;
     const correctiveInstruction = status === 'TOO_EASY'
-        ? `- Next attempt MUST stay within ${validationMin}-${validationMax} words.\n- Add one short detail or connector, but keep ONE clear sentence.`
-        : `- Next attempt MUST stay within ${validationMin}-${validationMax} words.\n- To shorten it, remove any passive voice, relative clause, or extra modifier.\n- Prefer a direct, linear sentence over a more elaborate structure.`;
+        ? `- Next attempt MUST stay within ${validationMin}-${validationMax} words.\n- Add one short detail or one targeted grammar move, but keep ONE clear sentence.`
+        : target.variant === "sentence"
+            ? `- Next attempt MUST stay within ${validationMin}-${validationMax} words.\n- To shorten it, remove any semicolon, second clause, or extra modifier.\n- Keep it as ONE genuine sentence instead of a stitched sentence pair.`
+            : `- Next attempt MUST stay within ${validationMin}-${validationMax} words.\n- To shorten it, remove any passive voice, relative clause, or extra modifier.\n- Prefer a direct, linear sentence over a more elaborate structure.`;
 
     return `
 RETRY FEEDBACK (${attempt}/${maxAttempts}):

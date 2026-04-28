@@ -383,7 +383,7 @@ export function GlobalSmartTracker() {
                         initial={{ opacity: 0, backdropFilter: 'blur(0px)' }} 
                         animate={{ opacity: 1, backdropFilter: 'blur(12px)' }} 
                         exit={{ opacity: 0, backdropFilter: 'blur(0px)' }} 
-                        transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] as const }}
                         className="fixed inset-0 bg-black/60 z-[9998] pointer-events-auto"
                     />
                 )}
@@ -395,7 +395,7 @@ export function GlobalSmartTracker() {
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
-                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] as const }}
                         className="fixed inset-0 z-[9999] pointer-events-auto flex flex-col items-center justify-center gap-8"
                     >
                         <AnimatePresence mode="wait">
@@ -439,7 +439,7 @@ export function GlobalSmartTracker() {
                                                 key="chunked"
                                                 initial={{ opacity: 0, scale: 0.5, y: 20 }}
                                                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                transition={{ type: "spring", stiffness: 450, damping: 25 }}
+                                                transition={{ type: "spring" as const, stiffness: 450, damping: 25 }}
                                                 className="flex flex-col items-center gap-4"
                                             >
                                                 <div className={`w-20 h-20 border-4 border-theme-border rounded-[2rem] flex items-center justify-center shadow-[6px_6px_0_0_var(--theme-shadow)] relative overflow-hidden ${
@@ -511,7 +511,7 @@ export function GlobalSmartTracker() {
                                             initial={{ opacity: 0, scale: 0.8, x: 50 }}
                                             animate={{ opacity: 1, scale: 1, x: 0 }}
                                             exit={{ opacity: 0, scale: 0.8, x: 50 }}
-                                            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                            transition={{ type: "spring" as const, stiffness: 300, damping: 20 }}
                                             className="flex items-center rounded-[3rem] border-[5px] w-[400px] p-4 gap-5 shadow-2xl scale-105 bg-theme-base-bg border-theme-border text-theme-text"
                                         >
                                             <div className="shrink-0 rounded-full flex items-center justify-center border-[3px] w-16 h-16 bg-theme-active-bg border-theme-border text-theme-active-text">
@@ -564,7 +564,7 @@ export function GlobalSmartTracker() {
                         initial={{ opacity: 0, scale: 0.8, y: 50 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.8, y: 50 }}
-                        transition={{ duration: 0.5, type: "spring", stiffness: 300, damping: 25 }}
+                        transition={{ duration: 0.5, type: "spring" as const, stiffness: 300, damping: 25 }}
                         className="fixed bottom-6 right-6 z-[999] pointer-events-auto"
                         drag
                         dragMomentum={false}
@@ -649,9 +649,9 @@ export function GlobalSmartTracker() {
                                     rotate: isInc ? [0, -3, 3, -1.5, 0] : 0,
                                 }}
                                 transition={{ 
-                                    default: { type: "spring", stiffness: 300, damping: 20 },
-                                    scale: { type: "tween", duration: 0.5 },
-                                    rotate: { type: "tween", duration: 0.5 }
+                                    default: { type: "spring" as const, stiffness: 300, damping: 20 },
+                                    scale: { type: "tween" as const, duration: 0.5 },
+                                    rotate: { type: "tween" as const, duration: 0.5 }
                                 }}
                                 exit={{ opacity: 0, scale: 0.8, x: 50 }}
                                 className={`flex items-center rounded-[3rem] border-[5px] cursor-grab relative transition-all duration-1000 ease-[cubic-bezier(0.22,1,0.36,1)] ${
@@ -715,7 +715,7 @@ export function GlobalSmartTracker() {
                                                     <motion.span
                                                         initial={{ opacity: 0, scale: 0, x: -20 }}
                                                         animate={{ opacity: 1, scale: 1, x: 0 }}
-                                                        transition={{ type: "spring", stiffness: 300, damping: 15, delay: 0.1 }}
+                                                        transition={{ type: "spring" as const, stiffness: 300, damping: 15, delay: 0.1 }}
                                                         className={`px-1.5 py-0.5 rounded border overflow-hidden font-black uppercase tracking-wider shrink-0 shadow-sm transition-all duration-1000 ${
                                                             isHeroOverlay ? 'text-[10px]' : 'text-[8px]'
                                                         } ${

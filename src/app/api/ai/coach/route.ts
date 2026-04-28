@@ -1,55 +1,60 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createDeepSeekClientForCurrentUser } from "@/lib/deepseek";
+import { NextRequest, NextResponse } from "next/server";
+import { deepseek } from "@/lib/deepseek";
 
+const COACH_PROMPT = `你是专业英语写作教练，学生正在实时翻译中文到英文。你的任务是给出一句精准的写作指导。
+
+【绝对禁止】以下类型的回复直接扣分：
+- 任何关于"缺少XX词"的提示（系统已有关键词检测）
+- "继续""加油""不错""注意语法"等废话
+- 重复参考答案中的原文
+
+【你只关注这3件事】
+1. 语法错误 → 指出具体错在哪（时态/主谓一致/介词/冠词）
+2. 表达升级 → 当前用词太口语化或不够地道，暗示更好的表达方式
+3. 句式问题 → 句子结构是否自然、是否符合英文表达习惯
+
+【输出格式】一句中文，不超过18字，不带引号和标点格式。
+如果句子写得很好没什么可改的，只输出：准确，提交吧
+
+【示例】
+学生写 "I want to talk with you" → talk with不够正式，试试discuss
+学生写 "She have been there" → have应改为has，注意主谓一致
+学生写 "The problem about noise" → about换成of或regarding更地道
+学生写 "I am grateful for their contributions" → 准确，提交吧`;
+
+/**
+ * POST /api/ai/coach
+ * 
+ * Real-time AI coaching. Supports switching between DeepSeek (cloud) and Qwen (local).
+ * Pass `model: "qwen"` in body to use local Qwen model.
+ */
 export async function POST(req: NextRequest) {
     try {
-        const { originalText, transcript } = await req.json();
+        const { systemPrompt, history = [], userMessage } = await req.json();
 
-        if (!originalText || !transcript) {
-            return NextResponse.json({ error: 'Missing text or transcript' }, { status: 400 });
+        if (!userMessage || !systemPrompt) {
+            return NextResponse.json({ tip: null });
         }
 
-        const prompt = `
-        Role: You are an expert English pronunciation coach.
-        Task: Analyze the user's speech transcript against the original text.
-        
-        Original Text: "${originalText}"
-        User Transcript: "${transcript}"
-        
-        Instructions:
-        1. Compare the transcript to the original text.
-        2. Identify specific pronunciation issues (e.g., missing words, wrong words, linking errors).
-        3. Provide 3 concise, actionable tips to improve.
-        4. Keep the tone encouraging but professional.
-        5. Output ONLY JSON in the following format (ensure all values are in Chinese):
-        {
-            "issues": ["问题 1", "问题 2"],
-            "tips": ["建议 1", "建议 2", "建议 3"],
-            "encouragement": "Short encouraging phrase in Chinese"
-        }
-        `;
+        const messages: any[] = [
+            { role: "system", content: systemPrompt },
+            ...history,
+            { role: "user", content: userMessage }
+        ];
 
-        const deepseek = await createDeepSeekClientForCurrentUser();
         const completion = await deepseek.chat.completions.create({
             model: "deepseek-chat",
-            messages: [
-                { role: "system", content: "You are a helpful AI English coach." },
-                { role: "user", content: prompt },
-            ],
-            temperature: 0.7,
-            response_format: { type: "json_object" },
+            messages,
+            temperature: 0.15,
+            max_tokens: 250,
+            response_format: { type: "json_object" }
         });
 
-        const content = completion.choices[0].message.content;
-        if (!content) {
-            throw new Error("No content received from DeepSeek");
-        }
-        const feedback = JSON.parse(content);
+        const tip = completion.choices[0]?.message?.content?.trim() || null;
 
-        return NextResponse.json(feedback);
-
-    } catch (error: any) {
-        console.error('AI Coach Error:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ tip });
+    } catch (error) {
+        console.error("[coach] Error:", (error as Error).message);
+        return NextResponse.json({ tip: null });
     }
 }

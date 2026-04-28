@@ -83,7 +83,7 @@ export function StepPitchFeature_Cabin() {
                                         scale: isActive ? 1.1 : 1,
                                         opacity: isActive ? 1 : 0.4
                                     }}
-                                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                                    transition={{ type: "spring" as const, stiffness: 300, damping: 20 }}
                                     className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white shadow-lg ${avatar.color} ${isActive ? avatar.shadow + ' shadow-[0_0_20px_var(--tw-shadow-color)] ring-2 ring-white/50' : 'grayscale-[50%]'}`}
                                 >
                                     {avatar.label[0]}

@@ -1759,7 +1759,7 @@ export function ReadPretestOverlay({
                     initial={prefersReducedMotion ? false : { opacity: 0, y: 24, scale: 0.98 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 14, scale: 0.98 }}
-                    transition={{ duration: prefersReducedMotion ? 0.16 : 0.28, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: prefersReducedMotion ? 0.16 : 0.28, ease: [0.22, 1, 0.36, 1] as const }}
                     className={cn(
                         "relative z-[1] w-full overflow-hidden rounded-[2rem] border-[3px] border-[#17120d] bg-[#fff8ef] text-[#2f2a26] shadow-[0_12px_0_rgba(23,18,13,0.12)]",
                         stage === "runner" ? "max-w-4xl" : "max-w-3xl",
@@ -1985,7 +1985,7 @@ export function ReadPretestOverlay({
                                                             }
                                                     }
                                                     exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -8, scale: 0.95 }}
-                                                    transition={{ duration: prefersReducedMotion ? 0.12 : 0.52, ease: [0.22, 1, 0.36, 1] }}
+                                                    transition={{ duration: prefersReducedMotion ? 0.12 : 0.52, ease: [0.22, 1, 0.36, 1] as const }}
                                                     className={cn(
                                                         "relative w-full overflow-hidden rounded-[1rem] border-[3px] px-3 py-2.5 shadow-[0_10px_0_rgba(19,14,10,0.09),0_20px_28px_rgba(0,0,0,0.08)]",
                                                         listeningScoreFx.tier === "excellent"
@@ -2116,7 +2116,7 @@ export function ReadPretestOverlay({
                                                 }
                                         }
                                         exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -12, scale: 0.94 }}
-                                        transition={{ duration: prefersReducedMotion ? 0.14 : 0.62, ease: [0.2, 1, 0.32, 1] }}
+                                        transition={{ duration: prefersReducedMotion ? 0.14 : 0.62, ease: [0.2, 1, 0.32, 1] as const }}
                                         className={cn(
                                             "relative mt-3 overflow-hidden rounded-[1rem] border-[3px] px-3 py-2.5 shadow-[0_12px_0_rgba(19,14,10,0.11),0_20px_30px_rgba(0,0,0,0.1)]",
                                             submitScoreFx.module === "writing"

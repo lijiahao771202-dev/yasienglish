@@ -15,13 +15,21 @@ const {
 }));
 
 vi.mock("@/lib/deepseek", () => ({
-    deepseek: {
+    createDeepSeekClientForCurrentUser: async () => ({
         chat: {
             completions: {
                 create: createCompletionMock,
             },
         },
-    },
+    }),
+    getCurrentAiExecutionFingerprintForCurrentUser: async () => ({
+        provider: "deepseek",
+        providerLabel: "DeepSeek",
+        model: "deepseek-v4-flash",
+        deepseekThinkingMode: "off",
+        deepseekReasoningEffort: undefined,
+        cacheSignature: "deepseek:deepseek-v4-flash:thinking=off:reasoning=off",
+    }),
 }));
 
 vi.mock("@/lib/reading-economy-server", () => ({
@@ -196,6 +204,78 @@ describe("ai grammar route", () => {
         const completionParams = createCompletionMock.mock.calls[0][0];
         expect(completionParams.model).toBe("deepseek-chat");
         expect(completionParams.messages[0].content).toContain("\"sentence_tree\"");
+    });
+
+    it("recovers within the server retry budget before surfacing a failure", async () => {
+        createCompletionMock
+            .mockResolvedValueOnce(createCompletionPayload({}))
+            .mockResolvedValueOnce(createCompletionPayload({
+                tags: ["结构"],
+                overview: "句子结构分析。",
+                difficult_sentences: [],
+            }))
+            .mockResolvedValueOnce(
+                createCompletionPayload({
+                    tags: ["主语", "谓语"],
+                    overview: "句子结构清晰，主干完整。",
+                    difficult_sentences: [
+                        {
+                            sentence: "Scientists compared old records and noticed an unusual warming trend.",
+                            translation: "科学家对比了旧记录，并注意到一个异常升温趋势。",
+                            highlights: [
+                                {
+                                    substring: "Scientists",
+                                    type: "主语",
+                                    explanation: "结构判断：Scientists 作主语；句中作用：发出 compared 和 noticed 两个动作。",
+                                    segment_translation: "科学家",
+                                },
+                            ],
+                        },
+                    ],
+                }),
+            );
+
+        const response = await POST(buildRequest({ mode: "basic" }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.mode).toBe("basic");
+        expect(createCompletionMock).toHaveBeenCalledTimes(3);
+        expect(rewardReadingCoinsMock).not.toHaveBeenCalled();
+    });
+
+    it("returns a retryable error and refunds coins when grammar quality stays unusable", async () => {
+        createCompletionMock.mockResolvedValue(createCompletionPayload({}));
+
+        const response = await POST(buildRequest({ mode: "basic" }));
+        const data = await response.json();
+
+        expect(response.status).toBe(502);
+        expect(data.errorCode).toBe("LOW_QUALITY_GRAMMAR_ANALYSIS");
+        expect(createCompletionMock).toHaveBeenCalledTimes(3);
+        expect(rewardReadingCoinsMock).toHaveBeenCalledWith(expect.objectContaining({
+            action: "grammar_basic",
+            delta: 2,
+        }));
+    });
+
+    it("surfaces provider rate limits instead of collapsing them into a 500", async () => {
+        const rateLimitHeaders = new Headers({ "retry-after": "60" });
+        createCompletionMock.mockRejectedValue(Object.assign(
+            new Error("429 Too many requests"),
+            { status: 429, headers: rateLimitHeaders },
+        ));
+
+        const response = await POST(buildRequest({ mode: "basic" }));
+        const data = await response.json();
+
+        expect(response.status).toBe(429);
+        expect(data.errorCode).toBe("AI_PROVIDER_RATE_LIMITED");
+        expect(data.retryAfter).toBe(60);
+        expect(rewardReadingCoinsMock).toHaveBeenCalledWith(expect.objectContaining({
+            action: "grammar_basic",
+            delta: 2,
+        }));
     });
 
     it("returns 400 when text is missing", async () => {

@@ -1,6 +1,18 @@
 export type LearningTargetMode = "read" | "battle" | "vocab";
 export type EnglishLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 export type UiThemePreference = "bubblegum_pop" | "starlight_arcade" | "peach_glow";
+export type AiProvider = "deepseek" | "glm" | "nvidia" | "github";
+export type DeepSeekModel = "deepseek-v4-flash" | "deepseek-v4-pro";
+export type DeepSeekReasoningEffort = "high" | "max";
+export type DeepSeekThinkingMode = "off" | "on";
+export type GlmThinkingMode = "off" | "on";
+export const DEFAULT_DEEPSEEK_MODEL: DeepSeekModel = "deepseek-v4-flash";
+export const DEFAULT_DEEPSEEK_THINKING_MODE: DeepSeekThinkingMode = "off";
+export const DEFAULT_DEEPSEEK_REASONING_EFFORT: DeepSeekReasoningEffort = "high";
+export const DEFAULT_GLM_MODEL = "glm-5.1";
+export const DEFAULT_GLM_THINKING_MODE: GlmThinkingMode = "off";
+export const DEFAULT_NVIDIA_MODEL = "z-ai/glm5";
+export const DEFAULT_GITHUB_MODEL = "openai/gpt-4.1";
 export const RANDOM_ENGLISH_TTS_VOICE = "random-en-voice-excluding-in" as const;
 export type TtsVoice =
     | "en-AU-NatashaNeural"
@@ -391,6 +403,59 @@ export function normalizeProfileBio(bio?: string | null) {
 
 export function normalizeProfileDeepSeekApiKey(apiKey?: string | null) {
     return apiKey?.trim().slice(0, 200) ?? "";
+}
+
+export function normalizeProfileDeepSeekModel(model?: string | null): DeepSeekModel {
+    return model === "deepseek-v4-pro" ? "deepseek-v4-pro" : DEFAULT_DEEPSEEK_MODEL;
+}
+
+export function normalizeProfileDeepSeekThinkingMode(mode?: string | boolean | null): DeepSeekThinkingMode {
+    if (mode === true || mode === "on" || mode === "enabled" || mode === "true") {
+        return "on";
+    }
+    return DEFAULT_DEEPSEEK_THINKING_MODE;
+}
+
+export function normalizeProfileDeepSeekReasoningEffort(effort?: string | null): DeepSeekReasoningEffort {
+    return effort === "max" ? "max" : DEFAULT_DEEPSEEK_REASONING_EFFORT;
+}
+
+export function normalizeProfileGlmApiKey(apiKey?: string | null) {
+    return apiKey?.trim().slice(0, 200) ?? "";
+}
+
+export function normalizeProfileGlmModel(model?: string | null) {
+    return model?.trim().slice(0, 120) || DEFAULT_GLM_MODEL;
+}
+
+export function normalizeProfileGlmThinkingMode(mode?: string | boolean | null): GlmThinkingMode {
+    if (mode === true || mode === "on" || mode === "enabled" || mode === "true") {
+        return "on";
+    }
+    return DEFAULT_GLM_THINKING_MODE;
+}
+
+export function normalizeProfileNvidiaApiKey(apiKey?: string | null) {
+    return apiKey?.trim().slice(0, 240) ?? "";
+}
+
+export function normalizeProfileNvidiaModel(model?: string | null) {
+    return model?.trim().slice(0, 120) || DEFAULT_NVIDIA_MODEL;
+}
+
+export function normalizeProfileGithubApiKey(apiKey?: string | null) {
+    return apiKey?.trim().slice(0, 240) ?? "";
+}
+
+export function normalizeProfileGithubModel(model?: string | null) {
+    return model?.trim().slice(0, 120) || DEFAULT_GITHUB_MODEL;
+}
+
+export function normalizeAiProvider(provider?: string | null): AiProvider {
+    if (provider === "glm" || provider === "nvidia" || provider === "github") {
+        return provider;
+    }
+    return "deepseek";
 }
 
 export function normalizeTtsVoice(voice?: string | null): TtsVoice {

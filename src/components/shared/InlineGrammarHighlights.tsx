@@ -1,5 +1,4 @@
 import React, { type CSSProperties, useState } from "react";
-import { BookOpen } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -58,15 +57,20 @@ function buildExplanationBlocks(explanation: string): ExplanationBlock[] {
     const text = normalizeExplanationText(explanation);
     if (!text) return [];
 
-    const structure = extractExplanationSegment(text, "结构判断", ["句中作用", "易错点"]);
-    const role = extractExplanationSegment(text, "句中作用", ["易错点"]);
+    const structure = extractExplanationSegment(text, "结构判断", ["句中作用", "主干关系", "依附关系", "理解提醒", "易错点"]);
+    const role = extractExplanationSegment(text, "句中作用", ["主干关系", "依附关系", "理解提醒", "易错点"]);
+    const relation = extractExplanationSegment(text, "主干关系", ["依附关系", "理解提醒", "易错点"])
+        || extractExplanationSegment(text, "依附关系", ["理解提醒", "易错点"]);
+    const learningCue = extractExplanationSegment(text, "理解提醒", ["易错点"]);
     const pitfalls = extractExplanationSegment(text, "易错点", []);
 
     const parsedBlocks: ExplanationBlock[] = [];
-    if (structure) parsedBlocks.push({ label: "结构", content: structure });
-    if (role) parsedBlocks.push({ label: "作用", content: role });
-    if (pitfalls) parsedBlocks.push({ label: "易错", content: pitfalls });
-    if (parsedBlocks.length > 0) return parsedBlocks;
+    if (structure) parsedBlocks.push({ label: "这部分", content: structure });
+    if (role) parsedBlocks.push({ label: "放在这里", content: role });
+    if (relation) parsedBlocks.push({ label: "它连着", content: relation });
+    if (learningCue) parsedBlocks.push({ label: "提醒", content: learningCue });
+    if (pitfalls) parsedBlocks.push({ label: "别看错", content: pitfalls });
+    if (parsedBlocks.length > 0) return parsedBlocks.slice(0, 3);
 
     const fallback = text
         .split(/[；。]/)
@@ -75,7 +79,57 @@ function buildExplanationBlocks(explanation: string): ExplanationBlock[] {
         .slice(0, 3);
 
     if (fallback.length <= 1) return [{ label: "说明", content: text }];
-    return fallback.map((content, index) => ({ label: `说明${index + 1}`, content }));
+    return fallback.slice(0, 3).map((content, index) => ({ label: index === 0 ? "说明" : "补充", content }));
+}
+
+function makeLearnerFriendlyText(text: string) {
+    return text
+        .replace(/时间状语从句/g, "交代时间的一小句")
+        .replace(/时间状语/g, "补充时间的部分")
+        .replace(/地点状语/g, "补充地点的部分")
+        .replace(/方式状语/g, "补充方式的部分")
+        .replace(/原因状语从句/g, "交代原因的一小句")
+        .replace(/条件状语从句/g, "交代条件的一小句")
+        .replace(/定语从句/g, "补充说明前面名词的一小句")
+        .replace(/名词性从句/g, "像名词一样使用的一小句")
+        .replace(/主句主语/g, "主句里表示谁或什么的部分")
+        .replace(/主语/g, "表示谁或什么的部分")
+        .replace(/主句谓语部分/g, "主句里表示动作或状态的部分")
+        .replace(/谓语/g, "表示动作或状态的部分")
+        .replace(/宾语/g, "动作对应的对象")
+        .replace(/表语/g, "补充说明状态的部分")
+        .replace(/介词短语/g, "补充说明的一小段")
+        .replace(/动名词短语/g, "一个动作短语")
+        .replace(/先行词/g, "前面的名词")
+        .replace(/修饰/g, "补充说明")
+        .replace(/主句骨架|主句主干/g, "主句最核心的部分")
+        .replace(/不属于主句骨架/g, "不属于主句最核心的部分")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function makeLearnerFriendlyBlock(block: ExplanationBlock): ExplanationBlock {
+    let content = makeLearnerFriendlyText(block.content);
+
+    if (block.label === "放在这里") {
+        content = content
+            .replace(/^说明/, "用来说明")
+            .replace(/^指出/, "用来指出")
+            .replace(/^交代/, "用来交代")
+            .replace(/^补充说明/, "用来补充说明");
+    }
+
+    if (block.label === "它连着") {
+        content = content
+            .replace(/^和/, "它和")
+            .replace(/^它/, "这部分")
+            .replace(/^后接在/, "它接在");
+    }
+
+    return {
+        label: block.label,
+        content,
+    };
 }
 
 function toRgbaWithAlpha(color: string, alpha: number, fallback: string) {
@@ -171,7 +225,8 @@ export function InlineGrammarHighlights({
                         });
                         const popupTheme = getPopupThemeFromPalette(palette);
                         const overlapCount = segment.highlight.overlapCount ?? 0;
-                        const explanationBlocks = buildExplanationBlocks(segment.highlight.explanation);
+                        const explanationBlocks = buildExplanationBlocks(segment.highlight.explanation)
+                            .map(makeLearnerFriendlyBlock);
                         const rangeKey = `${segment.start}-${segment.end}`;
                         const handleActivate = () => {
                             setActiveSentenceStart(segment.highlight?.sentenceStart ?? segmentSentenceStart);
@@ -225,105 +280,66 @@ export function InlineGrammarHighlights({
                                 {segment.text}
                                 <span
                                     className={cn(
-                                        "pointer-events-none absolute bottom-full z-[100] mb-3 w-[min(20rem,calc(100vw-2rem))] rounded-[22px] border p-3 opacity-0 shadow-[0_18px_44px_rgba(28,25,23,0.16)] ring-1 ring-white/70 transition-opacity duration-150 ease-out group-hover/highlight:opacity-100 group-focus/highlight:opacity-100",
-                                                popupAlign === "left" && "left-0",
-                                                popupAlign === "right" && "right-0",
-                                                popupAlign === "center" && "left-1/2 -translate-x-1/2"
-                                            )}
+                                        "pointer-events-none absolute bottom-full z-[100] mb-2 w-[min(15rem,calc(100vw-2rem))] rounded-2xl border px-3 py-2.5 opacity-0 shadow-[0_14px_30px_rgba(28,25,23,0.12)] transition-opacity duration-150 ease-out group-hover/highlight:opacity-100 group-focus/highlight:opacity-100",
+                                        popupAlign === "left" && "left-0",
+                                        popupAlign === "right" && "right-0",
+                                        popupAlign === "center" && "left-1/2 -translate-x-1/2",
+                                    )}
                                     style={{
                                         borderColor: popupTheme.cardBorder,
-                                        backgroundColor: "rgba(255,253,248,0.985)",
-                                        backgroundImage: `linear-gradient(180deg, ${popupTheme.cardTopTint} 0%, ${popupTheme.cardBottomTint} 100%)`,
+                                        backgroundColor: "rgba(255,255,255,0.97)",
+                                        backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.98) 0%, ${popupTheme.cardBottomTint} 100%)`,
                                     }}
                                 >
-                                    <span className="mb-2 flex items-center gap-2 border-b pb-2" style={{ borderColor: popupTheme.sectionBorder }}>
+                                    <span className="mb-2 flex items-center gap-2">
                                         <span
-                                            className="flex h-7 w-7 items-center justify-center rounded-full border border-white/70 shadow-sm"
-                                            style={{ backgroundColor: palette.markerBase, color: palette.toneClassName === "text-stone-700" ? "#57534e" : undefined }}
+                                            className={cn(
+                                                "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-none",
+                                                palette.toneClassName,
+                                            )}
+                                            style={{ borderColor: popupTheme.sectionBorder, backgroundColor: "rgba(255,255,255,0.86)" }}
                                         >
-                                            <BookOpen className={cn("h-3.5 w-3.5", palette.toneClassName)} />
+                                            {segment.highlight.translatedLabel}
                                         </span>
-                                        <span className="min-w-0">
-                                            <span className="block text-[10px] font-semibold uppercase tracking-[0.24em] text-stone-400">
-                                                Grammar Note
-                                            </span>
-                                            <span className="block font-sans text-sm font-semibold text-stone-900">
-                                                {segment.highlight.translatedLabel}
-                                            </span>
+                                        <span className="text-[10px] font-medium text-stone-400">
+                                            语法提示
                                         </span>
                                     </span>
-                                    <span className="space-y-2.5 font-sans">
-                                        <span
-                                            className="block rounded-2xl border px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]"
-                                            style={{
-                                                borderColor: popupTheme.sectionBorder,
-                                                backgroundColor: "rgba(255,255,255,0.92)",
-                                                backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.92) 0%, ${popupTheme.sectionTint} 100%)`,
-                                            }}
-                                        >
-                                            <span className={cn("mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em]", palette.toneClassName)}>
-                                                语法功能
+                                    <span className="block space-y-1.5 font-sans text-[12px] leading-5 text-stone-700">
+                                        {explanationBlocks.map((item, index) => (
+                                            <span key={`${item.label}-${index}`} className="flex items-start gap-2">
+                                                <span
+                                                    className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full"
+                                                    style={{ backgroundColor: palette.border }}
+                                                />
+                                                <span className="min-w-0 flex-1">
+                                                    <span className="font-medium text-stone-900">{item.label}</span>
+                                                    <span className="text-stone-600"> {item.content}</span>
+                                                </span>
                                             </span>
-                                            <span className="block space-y-1.5">
-                                                {explanationBlocks.map((item, index) => (
-                                                    <span key={`${item.label}-${index}`} className="flex items-start gap-1.5 text-xs leading-5 text-stone-700">
-                                                        <span
-                                                            className={cn(
-                                                                "mt-0.5 inline-flex min-w-10 items-center justify-center rounded-md border px-1.5 py-0.5 text-[10px] font-semibold leading-none",
-                                                                palette.toneClassName,
-                                                            )}
-                                                            style={{ borderColor: popupTheme.sectionBorder, backgroundColor: "rgba(255,255,255,0.82)" }}
-                                                        >
-                                                            {item.label}
-                                                        </span>
-                                                        <span className="min-w-0 flex-1">{item.content}</span>
-                                                    </span>
-                                                ))}
+                                        ))}
+                                    </span>
+                                    {showSegmentTranslation && segment.highlight.segmentTranslation ? (
+                                        <span
+                                            className="mt-2 block border-t pt-2 font-sans"
+                                            style={{ borderColor: popupTheme.sectionBorder }}
+                                        >
+                                            <span className="block text-[10px] font-medium text-stone-400">
+                                                片段义
+                                            </span>
+                                            <span className="block text-[11px] leading-5 text-stone-600">
+                                                {segment.highlight.segmentTranslation}
                                             </span>
                                         </span>
-                                        {showSegmentTranslation && segment.highlight.segmentTranslation ? (
-                                            <span
-                                                className="block rounded-2xl border px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]"
-                                                style={{
-                                                    borderColor: popupTheme.sectionBorder,
-                                                    backgroundColor: "rgba(255,255,255,0.9)",
-                                                    backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.9) 0%, ${popupTheme.subtleTint} 100%)`,
-                                                }}
-                                            >
-                                                <span className={cn("mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em]", palette.toneClassName)}>
-                                                    片段义
-                                                </span>
-                                                <span className="block text-xs leading-5 text-stone-700">
-                                                    {segment.highlight.segmentTranslation}
-                                                </span>
-                                            </span>
-                                        ) : null}
-                                        {Array.isArray(segment.highlight.alternatives) && segment.highlight.alternatives.length > 0 ? (
-                                            <span
-                                                className="block rounded-2xl border px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]"
-                                                style={{
-                                                    borderColor: popupTheme.sectionBorder,
-                                                    backgroundColor: "rgba(255,255,255,0.9)",
-                                                    backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.9) 0%, ${popupTheme.subtleTint} 100%)`,
-                                                }}
-                                            >
-                                                <span className={cn("mb-1 block text-[10px] font-semibold uppercase tracking-[0.2em]", palette.toneClassName)}>
-                                                    重叠标签
-                                                </span>
-                                                <span className="block text-xs leading-5 text-stone-700">
-                                                    {segment.highlight.alternatives.slice(0, 3).map((item) => `${item.translatedLabel}：${item.explanation}`).join("；")}
-                                                </span>
-                                            </span>
-                                        ) : null}
-                                    </span>
+                                    ) : null}
                                     <span
                                         className={cn(
-                                            "absolute top-full -mt-[1px] h-3.5 w-3.5 rotate-45 rounded-[3px] border-b border-r",
+                                            "absolute top-full -mt-[1px] h-3 w-3 rotate-45 rounded-[2px] border-b border-r",
                                             popupAlign === "left" && "left-4",
                                             popupAlign === "right" && "right-4",
                                             popupAlign === "center" && "left-1/2 -translate-x-1/2"
                                         )}
-                                        style={{ borderColor: popupTheme.cardBorder, backgroundColor: "rgba(255,251,244,0.96)" }}
+                                        style={{ borderColor: popupTheme.cardBorder, backgroundColor: "rgba(255,255,255,0.96)" }}
                                     />
                                 </span>
                             </span>

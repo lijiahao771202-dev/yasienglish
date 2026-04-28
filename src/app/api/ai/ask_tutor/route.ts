@@ -91,6 +91,7 @@ interface PayloadBuildContext {
     answerMode: TutorAnswerMode;
     questionComplexity: TutorQuestionComplexity;
     responseProfile: TutorResponseProfile;
+    persona?: string;
 }
 
 const ERROR_TAG_SET = new Set(["word_choice", "word_order", "grammar", "register", "collocation", "tense"]);
@@ -1083,6 +1084,7 @@ function buildPrompt(params: {
     questionComplexity: TutorQuestionComplexity;
     responseProfile: TutorResponseProfile;
     repairMode: boolean;
+    persona?: string;
 }): string {
     const {
         question,
@@ -1107,6 +1109,7 @@ function buildPrompt(params: {
         questionComplexity,
         responseProfile,
         repairMode,
+        persona,
     } = params;
 
     const roleInstruction = intent === "rebuild"
@@ -1260,6 +1263,15 @@ ${baseContext}
 ## 对话阶段
 ${sessionHint}
 
+## 特权人格系统覆盖指令 (Persona Override)
+${persona === 'strict' ? "!!!你此刻是【阅卷暴君】!!! 第一句开场绝对不能友好！必须带嘲讽或严厉纠错的语气，如'这点基础都搞不懂？'。只挑骨头，不带废话！" : 
+persona === 'tsundere' ? "!!!你此刻是【傲娇师匠】!!! 第一句开场必须极其嘴硬/无奈/嫌弃，如'哼！笨蛋！看了半天还是不懂？'。然后再别别扭扭地把正确干货讲出来。" : 
+persona === 'socratic' ? "!!!你此刻是【苏格拉底】!!! 绝对禁止直接输出答案！你要用强烈的连环反问逼迫学生自己去推断和思索！" : 
+persona === 'ielts_veteran' ? "!!!你此刻是【雅思老油条】!!! 极其鄙视低级词汇，开场必须用考官的口吻对低分结构进行降维嘲讽，然后掏出地道的高分词汇拍到他脸上。" : 
+persona === 'ancient' ? "!!!你此刻是【老夫子】!!! 放下身段，通篇用带有古风/半文言文的酸腐语气进行长篇大论，感叹'孺子不可教也'，再细细详解英文规则。" : 
+persona === 'chinglish' ? "!!!你此刻是【装逼海归】!!! 必须在一开始带有一股高阶打工人或留学生的做派，中英夹杂（Make sense, tricky等）嘲弄对方的直白翻译！" : 
+persona === 'encouraging' ? "!!!你此刻是【知心大姐姐】!!! 你需要疯狂提供情绪价值，第一句话永远是极度温柔的夸赞或者鼓励，包容他的所有低级错误，再软语纠正。" : ""}
+
 ${lengthControlInstructions}
 
 ## 输出格式规则（严格按需，不堆格式）
@@ -1391,6 +1403,7 @@ export async function POST(req: NextRequest) {
             sessionBootstrapped,
             thinkingMode,
             answerMode,
+            persona,
         } = await req.json();
 
         if (!query || !drillContext) {
@@ -1414,6 +1427,7 @@ export async function POST(req: NextRequest) {
         const normalizedAnswerMode = normalizeAnswerMode(answerMode);
         const normalizedFocusSpan = safeString(focusSpan);
         const normalizedDrillInput = safeString(drillInput);
+        const normalizedPersona = safeString(persona);
         const turns = normalizeTurns(recentTurns ?? conversation);
         const normalizedRecentMastery = normalizeRecentMastery(recentMastery);
         const normalizedSessionBootstrapped = sessionBootstrapped === true;
@@ -1499,6 +1513,7 @@ export async function POST(req: NextRequest) {
             questionComplexity,
             responseProfile,
             repairMode,
+            persona: normalizedPersona,
         });
 
         if (!isStreaming) {
@@ -1580,7 +1595,7 @@ export async function POST(req: NextRequest) {
                             return;
                         }
 
-                        const repairedContent = await runNonStreamModel(makePrompt(true), normalizedThinkingMode);
+                        const repairedContent = await runNonStreamModel(makePrompt(true), normalizedThinkingMode, maxTokens);
                         const repairedResult = buildValidatedPayload(repairedContent);
                         controller.enqueue(encoder.encode(sseChunk("final", repairedResult.payload)));
                         controller.enqueue(encoder.encode("data: [DONE]\n\n"));

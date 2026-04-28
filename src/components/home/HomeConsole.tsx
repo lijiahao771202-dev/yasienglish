@@ -117,13 +117,13 @@ export function HomeConsole({ passwordUpdated = false }: HomeConsoleProps) {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] as const }}
                     >
                         <motion.div
                             className={`absolute inset-0 backdrop-blur-[8px] ${backgroundSpec.transitionFilm}`}
                             initial={{ scale: 1.08, filter: "blur(22px)" }}
                             animate={{ scale: 1, filter: "blur(0px)" }}
-                            transition={{ duration: 0.76, ease: [0.18, 1, 0.3, 1] }}
+                            transition={{ duration: 0.76, ease: [0.18, 1, 0.3, 1] as const }}
                         />
                     </motion.div>
                 )}
@@ -139,12 +139,12 @@ export function HomeConsole({ passwordUpdated = false }: HomeConsoleProps) {
                 animate={routeTransitionTarget
                     ? { opacity: 0, y: 16, scale: 0.985, filter: "blur(8px)" }
                     : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                transition={{ duration: 0.58, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.58, ease: [0.22, 1, 0.36, 1] as const }}
             >
                 <motion.div
                     initial={fromBattle ? { opacity: 0, y: 28, scale: 0.98, filter: "blur(12px)" } : { opacity: 0, y: 18 }}
                     animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                    transition={{ duration: fromBattle ? 0.92 : 0.72, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: fromBattle ? 0.92 : 0.72, ease: [0.22, 1, 0.36, 1] as const }}
                 >
                     <GlassCard
                         breathe
@@ -205,7 +205,7 @@ export function HomeConsole({ passwordUpdated = false }: HomeConsoleProps) {
                 <motion.div
                     initial={fromBattle ? { opacity: 0, y: 34, scale: 0.985, filter: "blur(14px)" } : { opacity: 0, y: 22 }}
                     animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                    transition={{ delay: fromBattle ? 0.1 : 0.08, duration: fromBattle ? 1.02 : 0.78, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ delay: fromBattle ? 0.1 : 0.08, duration: fromBattle ? 1.02 : 0.78, ease: [0.22, 1, 0.36, 1] as const }}
                 >
                     <GlassCard className="liquid-glass-no-frame liquid-glass-apple-radius p-0 bg-transparent">
                         <HomeDashboardPanels

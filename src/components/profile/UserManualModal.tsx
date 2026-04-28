@@ -254,7 +254,7 @@ export function UserManualModal({ isOpen, onClose }: UserManualModalProps) {
                         initial={{ opacity: 0, scale: 0.95, y: 30 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: 30 }}
-                        transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                        transition={{ type: "spring" as const, stiffness: 350, damping: 25 }}
                         className="relative flex w-full max-w-5xl h-[85vh] md:h-[75vh] flex-col md:flex-row overflow-hidden rounded-[2rem] border-4 border-theme-border bg-theme-base-bg shadow-[0_16px_40px_rgba(30,27,75,0.4)]"
                         onClick={(event) => event.stopPropagation()}
                     >

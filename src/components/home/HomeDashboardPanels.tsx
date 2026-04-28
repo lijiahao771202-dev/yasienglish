@@ -206,7 +206,7 @@ function SummaryChip({
         <motion.div
             initial={{ opacity: 0, scale: 0.994, filter: "blur(8px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] as const }}
             className={`rounded-[1.4rem] border px-4 py-3 ${
                 tone === "dark"
                     ? "border-[#2c2f3a] bg-[linear-gradient(145deg,rgba(29,31,40,0.96),rgba(43,47,58,0.92))] text-white shadow-[0_24px_42px_-30px_rgba(27,28,36,0.88)]"
@@ -262,7 +262,7 @@ function BattleGlowCard({
         <motion.section
             initial={{ opacity: 0, scale: 0.994, filter: "blur(10px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 0.86, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.86, ease: [0.22, 1, 0.36, 1] as const }}
             className="liquid-glass-interactive relative overflow-hidden rounded-[2.3rem] border border-white/76 bg-[linear-gradient(135deg,rgba(255,255,255,0.44),rgba(241,236,228,0.2))] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_26px_46px_-30px_rgba(15,23,42,0.42)] backdrop-blur-[22px]"
         >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(255,255,255,0.76),transparent_20%),radial-gradient(circle_at_72%_24%,rgba(255,231,169,0.34),transparent_22%),radial-gradient(circle_at_74%_74%,rgba(226,180,125,0.16),transparent_30%)]" />
@@ -420,7 +420,7 @@ function LearningCalendarCard({
         <motion.section
             initial={{ opacity: 0, scale: 0.994, filter: "blur(10px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 0.88, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.88, delay: 0.06, ease: [0.22, 1, 0.36, 1] as const }}
             className="liquid-glass-interactive relative overflow-hidden rounded-[2.5rem] border border-white/24 bg-[linear-gradient(180deg,rgba(54,64,108,0.34)_0%,rgba(64,48,92,0.32)_44%,rgba(44,36,78,0.3)_100%)] p-6 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.26),inset_0_-1px_0_rgba(185,203,255,0.12),0_28px_52px_-34px_rgba(18,20,42,0.72)] backdrop-blur-[52px] backdrop-saturate-[170%]"
         >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(84%_54%_at_12%_10%,rgba(255,255,255,0.18),transparent_62%),radial-gradient(64%_40%_at_88%_14%,rgba(255,157,206,0.18),transparent_66%),radial-gradient(110%_72%_at_50%_100%,rgba(130,166,255,0.14),transparent_76%)]" />
@@ -455,7 +455,7 @@ function LearningCalendarCard({
                             className="flex justify-center"
                             initial={{ opacity: 0, scale: 0.94, filter: "blur(6px)" }}
                             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-                            transition={{ delay: 0.12 + (index * 0.012), duration: 0.46, ease: [0.22, 1, 0.36, 1] }}
+                            transition={{ delay: 0.12 + (index * 0.012), duration: 0.46, ease: [0.22, 1, 0.36, 1] as const }}
                         >
                             <div
                                 className={`flex h-12 w-12 items-center justify-center rounded-full border text-[1.03rem] font-semibold transition ${getCalendarDayTone(day)}`}
@@ -494,7 +494,7 @@ function GoalCard({
         <motion.section
             initial={{ opacity: 0, scale: 0.994, filter: "blur(8px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 0.78, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.78, delay: 0.1, ease: [0.22, 1, 0.36, 1] as const }}
             className="liquid-glass-interactive rounded-[2rem] border border-[#f7d4e4] bg-[linear-gradient(180deg,#fff7fa_0%,#feeef5_100%)] p-5 shadow-[0_24px_42px_-30px_rgba(43,18,32,0.26)]"
         >
             <p className="text-[0.76rem] font-semibold uppercase tracking-[0.34em] text-[#9c6c82]">
@@ -546,7 +546,7 @@ function GrowthCard({
         <motion.section
             initial={{ opacity: 0, scale: 0.994, filter: "blur(8px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 0.78, delay: 0.14, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.78, delay: 0.14, ease: [0.22, 1, 0.36, 1] as const }}
             className="liquid-glass-interactive rounded-[2rem] border border-[#f7d4e4] bg-[linear-gradient(180deg,#fff7fa_0%,#feeef5_100%)] p-5 shadow-[0_24px_42px_-30px_rgba(43,18,32,0.26)]"
         >
             <div className="flex items-start justify-between gap-4">
@@ -659,7 +659,7 @@ function LearningLanesCard({
         <motion.section
             initial={{ opacity: 0, scale: 0.994, filter: "blur(8px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 0.82, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.82, delay: 0.18, ease: [0.22, 1, 0.36, 1] as const }}
             className="liquid-glass-interactive rounded-[2rem] border border-[#f7d4e4] bg-[linear-gradient(180deg,#fff7fa_0%,#feeef5_100%)] p-5 shadow-[0_24px_42px_-30px_rgba(43,18,32,0.26)]"
         >
             <div className="flex items-start justify-between gap-4">
@@ -736,7 +736,7 @@ export function HomeDashboardPanels({
         <motion.section
             initial={{ opacity: 0, scale: 0.996, filter: "blur(10px)" }}
             animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-            transition={{ duration: 0.86, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.86, ease: [0.22, 1, 0.36, 1] as const }}
             className="relative flex min-w-0 flex-col gap-5 overflow-hidden rounded-[2.75rem] border border-white/18 bg-[linear-gradient(180deg,rgba(255,251,254,0.1)_0%,rgba(252,240,248,0.05)_100%)] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.34),0_20px_46px_-40px_rgba(28,22,38,0.22)] backdrop-blur-[58px] backdrop-saturate-[200%] lg:p-7"
         >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_55%_at_12%_8%,rgba(255,255,255,0.16),transparent_62%),radial-gradient(65%_44%_at_84%_20%,rgba(255,219,240,0.1),transparent_66%)]" />

@@ -31,7 +31,12 @@ export type BackgroundThemeId =
     | "tuscan-sun"
     | "vintage-leather"
     | "lilac-cloud"
-    | "neon-tokyo";
+    | "neon-tokyo"
+    | "crystal-frost"
+    | "arctic-ocean"
+    | "polar-aurora"
+    | "sapphire-lake"
+    | "winter-breeze";
 
 export interface BackgroundThemeSpec {
     id: BackgroundThemeId;

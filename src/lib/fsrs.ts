@@ -15,6 +15,8 @@ export type { Card as FSRSCard } from "ts-fsrs";
 const officialFsrs = createOfficialFsrs();
 const MS_PER_DAY = 1000 * 60 * 60 * 24;
 
+export const VOCAB_REVIEW_BATCH_SIZE = 25;
+
 type SchedulingFields = Pick<VocabItem, "stability" | "difficulty" | "elapsed_days" | "scheduled_days" | "reps" | "lapses" | "learning_steps" | "state" | "last_review" | "due">;
 
 export interface FSRSReviewLog {

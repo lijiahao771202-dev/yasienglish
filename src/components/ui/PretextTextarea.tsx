@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, type FormEvent, type TextareaHTMLAttributes, useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { forwardRef, type InputEvent, type TextareaHTMLAttributes, useCallback, useEffect, useLayoutEffect, useRef } from "react";
 
 import { cn } from "@/lib/utils";
 import {
@@ -108,7 +108,7 @@ export const PretextTextarea = forwardRef<HTMLTextAreaElement, PretextTextareaPr
         return () => observer.disconnect();
     }, [autoResize, syncHeight]);
 
-    const handleInput = (event: FormEvent<HTMLTextAreaElement>) => {
+    const handleInput = (event: InputEvent<HTMLTextAreaElement>) => {
         onInput?.(event);
         if (!autoResize) return;
         requestAnimationFrame(() => {

@@ -46,6 +46,12 @@ function isMissingRpcFunction(message: string, functionName: string) {
     return lower.includes("schema cache") && message.includes(`public.${functionName}`);
 }
 
+function shouldFallbackReadingCoinRpc(message: string) {
+    const lower = message.toLowerCase();
+    return isMissingRpcFunction(message, "apply_reading_coin_event")
+        || (lower.includes("column reference") && lower.includes("delta") && lower.includes("ambiguous"));
+}
+
 function normalizeRpcResult(data: unknown): ReadingCoinRpcRow {
     const row = Array.isArray(data) ? data[0] : data;
     return {
@@ -252,7 +258,7 @@ async function runReadingCoinEvent(params: {
 
     if (error) {
         const message = error.message || "apply_reading_coin_event failed";
-        if (isMissingRpcFunction(message, "apply_reading_coin_event")) {
+        if (shouldFallbackReadingCoinRpc(message)) {
             return runFallbackReadingCoinEvent(supabase, params);
         }
         throw new Error(message);

@@ -1,8 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Mail, ShieldCheck, Sparkles } from "lucide-react";
-import { motion } from "framer-motion";
+import { Mail, ShieldCheck } from "lucide-react";
 
 import { PresetAvatar } from "@/components/profile/PresetAvatar";
 import { PretextTextarea } from "@/components/ui/PretextTextarea";
@@ -15,14 +14,12 @@ interface ProfileSettingsPanelProps {
         username: string;
         avatar_preset: string;
         bio: string;
-        deepseek_api_key: string;
         learning_preferences: LearningPreferences;
     };
     onSave: (payload: {
         username: string;
         avatar_preset: string;
         bio: string;
-        deepseek_api_key: string;
         learning_preferences: LearningPreferences;
     }) => Promise<void>;
     onChangePassword: (password: string) => Promise<void>;
@@ -37,7 +34,6 @@ export function ProfileSettingsPanel({
     const [username, setUsername] = useState(initialProfile.username);
     const [avatarPreset, setAvatarPreset] = useState(initialProfile.avatar_preset);
     const [bio, setBio] = useState(initialProfile.bio);
-    const [deepSeekApiKey, setDeepSeekApiKey] = useState(initialProfile.deepseek_api_key);
     const [targetMode, setTargetMode] = useState(initialProfile.learning_preferences.target_mode);
     const [englishLevel, setEnglishLevel] = useState(initialProfile.learning_preferences.english_level);
     const [dailyGoal, setDailyGoal] = useState(String(initialProfile.learning_preferences.daily_goal_minutes));
@@ -45,12 +41,12 @@ export function ProfileSettingsPanel({
     const [rebuildShadowingAutoOpen, setRebuildShadowingAutoOpen] = useState(
         initialProfile.learning_preferences.rebuild_auto_open_shadowing_prompt ?? true,
     );
+    const [profileBusy, setProfileBusy] = useState(false);
+    const [profileMessage, setProfileMessage] = useState<string | null>(null);
+    const [passwordBusy, setPasswordBusy] = useState(false);
+    const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
-    const [profileMessage, setProfileMessage] = useState<string | null>(null);
-    const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
-    const [profileBusy, setProfileBusy] = useState(false);
-    const [passwordBusy, setPasswordBusy] = useState(false);
 
     const handleSave = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -62,7 +58,6 @@ export function ProfileSettingsPanel({
                 username,
                 avatar_preset: avatarPreset,
                 bio,
-                deepseek_api_key: deepSeekApiKey,
                 learning_preferences: {
                     ...initialProfile.learning_preferences,
                     target_mode: targetMode,
@@ -104,267 +99,261 @@ export function ProfileSettingsPanel({
     };
 
     return (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_360px]">
-            <form data-form="profile" onSubmit={handleSave} className="space-y-6 rounded-[2rem] border-4 border-theme-border bg-theme-card-bg p-6 shadow-[0_8px_0_0_var(--theme-shadow)] transition-colors">
-                <div className="space-y-2">
-                    <motion.div whileHover={{ scale: 1.05 }} className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-active-bg px-4 py-1.5 text-xs font-black uppercase tracking-wider text-theme-active-text shadow-[0_4px_0_0_var(--theme-shadow)] cursor-default transition-colors">
-                        <Sparkles className="h-4 w-4" />
-                        Profile Settings
-                    </motion.div>
-                    <h2 className="text-3xl font-black tracking-tight text-theme-text transition-colors">
-                        基本设置偏好
-                    </h2>
-                    <p className="mt-2 text-sm font-bold leading-6 text-theme-text-muted transition-colors">
-                        管理您的个人资料和学习偏好。头像也会同步更新。
-                    </p>
-                </div>
+        <div className="space-y-8">
+            <form data-form="profile" onSubmit={handleSave} className="space-y-8">
+                <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+                    <div className="rounded-[2rem] border-4 border-theme-border bg-theme-base-bg p-6 shadow-[0_6px_0_0_var(--theme-shadow)]">
+                        <div className="space-y-5">
+                            <div className="space-y-2">
+                                <div className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-card-bg px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.25em] text-theme-text-muted shadow-[0_2px_0_0_var(--theme-shadow)]">
+                                    <Mail className="h-3.5 w-3.5" />
+                                    Account
+                                </div>
+                                <h2 className="font-welcome-display text-3xl tracking-[-0.04em] text-theme-text">
+                                    基础资料
+                                </h2>
+                                <p className="text-sm font-bold leading-6 text-theme-text-muted">
+                                    这里只负责你的个人资料和学习偏好。AI 模型统一在头像菜单里的 AI 模型配置管理。
+                                </p>
+                            </div>
 
-                <div className="grid gap-5 md:grid-cols-2">
-                    <div className="space-y-2 md:col-span-2">
-                        <label htmlFor="username" className="text-sm font-black text-theme-text ml-1 transition-colors">
-                            用户名
-                        </label>
-                        <input
-                            id="username"
-                            value={username}
-                            onChange={(event) => setUsername(event.target.value)}
-                            className="block w-full rounded-[1rem] border-4 border-theme-border bg-theme-base-bg px-4 py-3 font-semibold text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_var(--theme-shadow)]"
-                        />
+                            <label className="block space-y-2">
+                                <span className="text-xs font-black uppercase tracking-[0.25em] text-theme-text-muted">邮箱</span>
+                                <div className="rounded-[1.25rem] border-4 border-theme-border bg-theme-card-bg px-4 py-3 text-sm font-black text-theme-text shadow-[0_3px_0_0_var(--theme-shadow)]">
+                                    {email}
+                                </div>
+                            </label>
+
+                            <label className="block space-y-2">
+                                <span className="text-xs font-black uppercase tracking-[0.25em] text-theme-text-muted">用户名</span>
+                                <input
+                                    id="username"
+                                    value={username}
+                                    onChange={(event) => setUsername(event.target.value)}
+                                    placeholder="给自己起个顺口的名字"
+                                    className="w-full rounded-[1.25rem] border-4 border-theme-border bg-theme-card-bg px-4 py-3 text-sm font-black text-theme-text shadow-[0_3px_0_0_var(--theme-shadow)] outline-none transition focus:bg-theme-base-bg"
+                                />
+                            </label>
+
+                            <label className="block space-y-2">
+                                <span className="text-xs font-black uppercase tracking-[0.25em] text-theme-text-muted">简介</span>
+                                <PretextTextarea
+                                    id="bio"
+                                    value={bio}
+                                    onChange={(event) => setBio(event.target.value)}
+                                    placeholder="写一句会让未来的你看了也想继续学英语的话。"
+                                    minRows={4}
+                                    className="min-h-[136px] w-full rounded-[1.25rem] border-4 border-theme-border bg-theme-card-bg px-4 py-3 text-sm font-bold leading-6 text-theme-text shadow-[0_3px_0_0_var(--theme-shadow)] outline-none transition placeholder:text-theme-text-muted/60 focus:bg-theme-base-bg"
+                                />
+                            </label>
+                        </div>
                     </div>
 
-                    <div className="space-y-2 md:col-span-2">
-                        <label htmlFor="bio" className="text-sm font-black text-theme-text ml-1 transition-colors">
-                            个人简介
-                        </label>
-                        <PretextTextarea
-                            id="bio"
-                            value={bio}
-                            onChange={(event) => setBio(event.target.value)}
-                            rows={4}
-                            minRows={4}
-                            maxRows={10}
-                            className="block w-full rounded-[1rem] border-4 border-theme-border bg-theme-base-bg px-4 py-3 font-semibold text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_var(--theme-shadow)]"
-                        />
-                    </div>
+                    <div className="rounded-[2rem] border-4 border-theme-border bg-theme-base-bg p-6 shadow-[0_6px_0_0_var(--theme-shadow)]">
+                        <div className="space-y-5">
+                            <div className="space-y-2">
+                                <h2 className="font-welcome-display text-3xl tracking-[-0.04em] text-theme-text">
+                                    头像搭配
+                                </h2>
+                                <p className="text-sm font-bold leading-6 text-theme-text-muted">
+                                    选一个你一眼就认得出来的小形象。
+                                </p>
+                            </div>
 
-                    <div className="space-y-2 md:col-span-2">
-                        <label htmlFor="deepseek-api-key" className="text-sm font-black text-theme-text ml-1 transition-colors">
-                            DeepSeek API Key
-                        </label>
-                        <input
-                            id="deepseek-api-key"
-                            type="password"
-                            autoComplete="off"
-                            spellCheck={false}
-                            value={deepSeekApiKey}
-                            onChange={(event) => setDeepSeekApiKey(event.target.value)}
-                            placeholder="sk-..."
-                            className="block w-full rounded-[1rem] border-4 border-theme-border bg-theme-base-bg px-4 py-3 font-semibold text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_var(--theme-shadow)]"
-                        />
-                        <p className="mt-2 text-xs font-bold text-theme-text-muted ml-1 transition-colors">
-                            填你自己的 DeepSeek key 后，AI 讲解和评分会优先走你的额度。留空则继续使用系统默认配置。
-                        </p>
-                    </div>
+                            <div className="flex items-center gap-4 rounded-[1.5rem] border-4 border-theme-border bg-theme-card-bg p-4 shadow-[0_3px_0_0_var(--theme-shadow)]">
+                                <PresetAvatar presetId={avatarPreset} size={72} />
+                                <div className="min-w-0">
+                                    <div className="text-xs font-black uppercase tracking-[0.25em] text-theme-text-muted">
+                                        Current
+                                    </div>
+                                    <div className="mt-1 text-lg font-black text-theme-text">
+                                        {AVATAR_PRESETS.find((preset) => preset.id === avatarPreset)?.name ?? "Custom"}
+                                    </div>
+                                </div>
+                            </div>
 
-                    <div className="space-y-2">
-                        <label htmlFor="target-mode" className="text-sm font-black text-theme-text ml-1 transition-colors">
-                            目标模式
-                        </label>
-                        <select
-                            id="target-mode"
-                            value={targetMode}
-                            onChange={(event) => setTargetMode(event.target.value as LearningPreferences["target_mode"])}
-                            className="block w-full rounded-[1rem] border-4 border-theme-border bg-theme-base-bg px-4 py-3 font-semibold text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_var(--theme-shadow)]"
-                        >
-                            <option value="read">阅读</option>
-                            <option value="battle">Battle</option>
-                            <option value="vocab">词汇</option>
-                        </select>
+                            <div className="grid grid-cols-4 gap-3 sm:grid-cols-4">
+                                {AVATAR_PRESETS.map((preset) => {
+                                    const active = avatarPreset === preset.id;
+                                    return (
+                                        <button
+                                            key={preset.id}
+                                            type="button"
+                                            data-avatar-id={preset.id}
+                                            onClick={() => setAvatarPreset(preset.id)}
+                                            className={`flex flex-col items-center gap-2 rounded-[1.25rem] border-4 px-2 py-3 text-center shadow-[0_3px_0_0_var(--theme-shadow)] transition ${
+                                                active
+                                                    ? "border-theme-border bg-theme-primary-bg text-theme-primary-text"
+                                                    : "border-theme-border bg-theme-card-bg text-theme-text hover:bg-theme-base-bg"
+                                            }`}
+                                        >
+                                            <PresetAvatar presetId={preset.id} size={48} className="shadow-none" />
+                                            <span className="text-[11px] font-black leading-4">{preset.name}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
+                </section>
 
-                    <div className="space-y-2">
-                        <label htmlFor="english-level" className="text-sm font-black text-theme-text ml-1 transition-colors">
-                            当前水平
-                        </label>
-                        <select
-                            id="english-level"
-                            value={englishLevel}
-                            onChange={(event) => setEnglishLevel(event.target.value as LearningPreferences["english_level"])}
-                            className="block w-full rounded-[1rem] border-4 border-theme-border bg-theme-base-bg px-4 py-3 font-semibold text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_var(--theme-shadow)]"
-                        >
-                            {["A1", "A2", "B1", "B2", "C1", "C2"].map((level) => (
-                                <option key={level} value={level}>{level}</option>
-                            ))}
-                        </select>
-                    </div>
+                <section className="rounded-[2rem] border-4 border-theme-border bg-theme-base-bg p-6 shadow-[0_6px_0_0_var(--theme-shadow)]">
+                    <div className="space-y-5">
+                        <div className="space-y-2">
+                            <h2 className="font-welcome-display text-3xl tracking-[-0.04em] text-theme-text">
+                                学习偏好
+                            </h2>
+                            <p className="text-sm font-bold leading-6 text-theme-text-muted">
+                                这些设置会决定默认训练氛围和提示方式。
+                            </p>
+                        </div>
 
-                    <div className="space-y-2">
-                        <label htmlFor="daily-goal" className="text-sm font-black text-theme-text ml-1 transition-colors">
-                            每日目标分钟
-                        </label>
-                        <input
-                            id="daily-goal"
-                            type="number"
-                            min={10}
-                            max={180}
-                            value={dailyGoal}
-                            onChange={(event) => setDailyGoal(event.target.value)}
-                            className="block w-full rounded-[1rem] border-4 border-theme-border bg-theme-base-bg px-4 py-3 font-semibold text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_var(--theme-shadow)]"
-                        />
-                    </div>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <label className="block space-y-2">
+                                <span className="text-xs font-black uppercase tracking-[0.25em] text-theme-text-muted">主模式</span>
+                                <select
+                                    id="target-mode"
+                                    value={targetMode}
+                                    onChange={(event) => setTargetMode(event.target.value as LearningPreferences["target_mode"])}
+                                    className="w-full rounded-[1.25rem] border-4 border-theme-border bg-theme-card-bg px-4 py-3 text-sm font-black text-theme-text shadow-[0_3px_0_0_var(--theme-shadow)] outline-none"
+                                >
+                                    <option value="read">Read</option>
+                                    <option value="battle">Battle</option>
+                                    <option value="vocab">Vocab</option>
+                                </select>
+                            </label>
 
-                    <div className="space-y-2">
-                        <label htmlFor="ui-theme" className="text-sm font-black text-theme-text ml-1 transition-colors">
-                            UI 偏好
-                        </label>
-                        <select
-                            id="ui-theme"
-                            value={uiTheme}
-                            onChange={(event) => setUiTheme(event.target.value as LearningPreferences["ui_theme_preference"])}
-                            className="block w-full rounded-[1rem] border-4 border-theme-border bg-theme-base-bg px-4 py-3 font-semibold text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_var(--theme-shadow)]"
-                        >
-                            <option value="bubblegum_pop">Bubblegum Pop</option>
-                            <option value="starlight_arcade">Starlight Arcade</option>
-                            <option value="peach_glow">Peach Glow</option>
-                        </select>
-                    </div>
+                            <label className="block space-y-2">
+                                <span className="text-xs font-black uppercase tracking-[0.25em] text-theme-text-muted">英语等级</span>
+                                <select
+                                    id="english-level"
+                                    value={englishLevel}
+                                    onChange={(event) => setEnglishLevel(event.target.value as LearningPreferences["english_level"])}
+                                    className="w-full rounded-[1.25rem] border-4 border-theme-border bg-theme-card-bg px-4 py-3 text-sm font-black text-theme-text shadow-[0_3px_0_0_var(--theme-shadow)] outline-none"
+                                >
+                                    <option value="A1">A1</option>
+                                    <option value="A2">A2</option>
+                                    <option value="B1">B1</option>
+                                    <option value="B2">B2</option>
+                                    <option value="C1">C1</option>
+                                    <option value="C2">C2</option>
+                                </select>
+                            </label>
 
-                    <div className="space-y-2 md:col-span-2">
-                        <label
-                            htmlFor="rebuild-shadowing-auto-open"
-                            className="flex cursor-pointer items-start gap-3 rounded-[1rem] border-4 border-theme-border bg-theme-base-bg px-4 py-3 shadow-[0_4px_0_0_var(--theme-shadow)] transition-transform hover:-translate-y-0.5"
-                        >
+                            <label className="block space-y-2">
+                                <span className="text-xs font-black uppercase tracking-[0.25em] text-theme-text-muted">每日目标</span>
+                                <input
+                                    id="daily-goal"
+                                    type="number"
+                                    min={5}
+                                    step={5}
+                                    value={dailyGoal}
+                                    onChange={(event) => setDailyGoal(event.target.value)}
+                                    className="w-full rounded-[1.25rem] border-4 border-theme-border bg-theme-card-bg px-4 py-3 text-sm font-black text-theme-text shadow-[0_3px_0_0_var(--theme-shadow)] outline-none"
+                                />
+                            </label>
+
+                            <label className="block space-y-2">
+                                <span className="text-xs font-black uppercase tracking-[0.25em] text-theme-text-muted">界面主题</span>
+                                <select
+                                    id="ui-theme"
+                                    value={uiTheme}
+                                    onChange={(event) => setUiTheme(event.target.value as LearningPreferences["ui_theme_preference"])}
+                                    className="w-full rounded-[1.25rem] border-4 border-theme-border bg-theme-card-bg px-4 py-3 text-sm font-black text-theme-text shadow-[0_3px_0_0_var(--theme-shadow)] outline-none"
+                                >
+                                    <option value="bubblegum_pop">Bubblegum Pop</option>
+                                    <option value="starlight_arcade">Starlight Arcade</option>
+                                    <option value="peach_glow">Peach Glow</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <label className="flex items-center justify-between gap-4 rounded-[1.5rem] border-4 border-theme-border bg-theme-card-bg px-4 py-4 shadow-[0_3px_0_0_var(--theme-shadow)]">
+                            <div>
+                                <div className="text-sm font-black text-theme-text">完成后自动弹出 shadowing 提示</div>
+                                <div className="mt-1 text-xs font-bold leading-5 text-theme-text-muted">
+                                    保持训练节奏，不用每次再手动点开。
+                                </div>
+                            </div>
                             <input
                                 id="rebuild-shadowing-auto-open"
                                 type="checkbox"
                                 checked={rebuildShadowingAutoOpen}
                                 onChange={(event) => setRebuildShadowingAutoOpen(event.target.checked)}
-                                className="mt-1 h-4 w-4 rounded border-2 border-theme-border"
+                                className="h-5 w-5 shrink-0 accent-theme-primary-bg"
                             />
-                            <span className="space-y-1">
-                                <span className="block text-sm font-black text-theme-text transition-colors">
-                                    Rebuild 提交后自动弹出 Shadowing 引导
-                                </span>
-                                <span className="block text-xs font-bold leading-5 text-theme-text-muted transition-colors">
-                                    关闭后，提交单句 Rebuild 会直接进入评分页；需要时再手动开始 Shadowing。
-                                </span>
-                            </span>
                         </label>
                     </div>
-                </div>
+                </section>
 
-                <div className="space-y-3">
-                    <p className="text-sm font-black text-theme-text ml-1 transition-colors">专属卡通头套</p>
-                    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6 rounded-[1.5rem] border-4 border-theme-border p-3 bg-theme-base-bg transition-colors">
-                        {AVATAR_PRESETS.map((preset) => {
-                            const selected = avatarPreset === preset.id;
-                            return (
-                                <motion.button
-                                    whileTap={{ scale: 0.85 }}
-                                    whileHover={{ scale: 1.05, y: -2 }}
-                                    key={preset.id}
-                                    type="button"
-                                    data-avatar-id={preset.id}
-                                    onClick={() => setAvatarPreset(preset.id)}
-                                    className={`relative flex flex-col items-center gap-3 rounded-[1rem] p-3 text-[11px] font-black transition-colors ${
-                                        selected 
-                                            ? "bg-theme-primary-hover border-top-4 border-theme-border text-theme-text" 
-                                            : "hover:bg-theme-card-bg border-transparent text-theme-text-muted"
-                                    }`}
-                                >
-                                    {selected && (
-                                        <div className="absolute inset-0 rounded-[1rem] border-4 border-theme-border shadow-[0_4px_0_0_var(--theme-shadow)] pointer-events-none" />
-                                    )}
-                                    <PresetAvatar presetId={preset.id} size={54} />
-                                    <span className={selected ? "text-[#92400e]" : "text-slate-600"}>{preset.name}</span>
-                                </motion.button>
-                            );
-                        })}
-                    </div>
+                <div className="flex flex-wrap items-center gap-3">
+                    <button
+                        type="submit"
+                        disabled={profileBusy}
+                        className="rounded-[1.25rem] border-4 border-theme-border bg-theme-primary-bg px-5 py-3 text-sm font-black text-theme-primary-text shadow-[0_4px_0_0_var(--theme-shadow)] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                        {profileBusy ? "保存中..." : "保存资料"}
+                    </button>
+                    {profileMessage ? (
+                        <p className="text-sm font-black text-theme-text-muted">{profileMessage}</p>
+                    ) : null}
                 </div>
-
-                <motion.button
-                    whileTap={{ scale: 0.95 }}
-                    whileHover={{ y: -2 }}
-                    type="submit"
-                    disabled={profileBusy}
-                    className="flex h-14 w-full cursor-pointer items-center justify-center rounded-[1.4rem] border-4 border-theme-border bg-theme-primary-bg text-[15px] font-black text-theme-primary-text shadow-[0_6px_0_0_var(--theme-shadow)] transition-all hover:bg-theme-primary-hover hover:shadow-[0_8px_0_0_var(--theme-shadow)] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                    {profileBusy ? "Saving..." : "保存资料"}
-                </motion.button>
-                {profileMessage ? (
-                    <p className={`text-sm font-bold ${profileMessage.includes("失败") ? "text-red-500" : "text-green-500"}`}>
-                        {profileMessage}
-                    </p>
-                ) : null}
             </form>
 
-            <div className="space-y-6">
-                <div className="rounded-[2rem] border-4 border-theme-border bg-theme-card-bg p-6 shadow-[0_8px_0_0_var(--theme-shadow)] transition-colors">
-                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
-                        <PresetAvatar presetId={avatarPreset} size={80} />
-                        <div className="mt-2 sm:mt-0">
-                            <p className="font-welcome-display text-4xl text-theme-text transition-colors">{username}</p>
-                            <p className="text-sm font-bold text-theme-text-muted mt-1.5 transition-colors">{email}</p>
+            <form
+                data-form="password"
+                onSubmit={handlePasswordChange}
+                className="rounded-[2rem] border-4 border-theme-border bg-theme-base-bg p-6 shadow-[0_6px_0_0_var(--theme-shadow)]"
+            >
+                <div className="space-y-5">
+                    <div className="space-y-2">
+                        <div className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-card-bg px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.25em] text-theme-text-muted shadow-[0_2px_0_0_var(--theme-shadow)]">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            Security
                         </div>
+                        <h2 className="font-welcome-display text-3xl tracking-[-0.04em] text-theme-text">
+                            修改密码
+                        </h2>
                     </div>
-                    <div className="mt-6 rounded-[1.2rem] border-4 border-theme-border bg-theme-active-bg px-5 py-4 text-sm font-bold text-theme-active-text shadow-[0_4px_0_0_var(--theme-shadow)] transition-colors">
-                        <div className="flex items-center justify-center sm:justify-start gap-2 text-theme-active-text transition-colors">
-                            <Mail className="h-5 w-5" />
-                            登录邮箱
-                        </div>
-                        <p className="mt-2 text-base break-all text-center sm:text-left">{email}</p>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <label className="block space-y-2">
+                            <span className="text-xs font-black uppercase tracking-[0.25em] text-theme-text-muted">新密码</span>
+                            <input
+                                id="password"
+                                type="password"
+                                value={password}
+                                onChange={(event) => setPassword(event.target.value)}
+                                className="w-full rounded-[1.25rem] border-4 border-theme-border bg-theme-card-bg px-4 py-3 text-sm font-black text-theme-text shadow-[0_3px_0_0_var(--theme-shadow)] outline-none"
+                            />
+                        </label>
+
+                        <label className="block space-y-2">
+                            <span className="text-xs font-black uppercase tracking-[0.25em] text-theme-text-muted">确认密码</span>
+                            <input
+                                id="confirm-password"
+                                type="password"
+                                value={confirmPassword}
+                                onChange={(event) => setConfirmPassword(event.target.value)}
+                                className="w-full rounded-[1.25rem] border-4 border-theme-border bg-theme-card-bg px-4 py-3 text-sm font-black text-theme-text shadow-[0_3px_0_0_var(--theme-shadow)] outline-none"
+                            />
+                        </label>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button
+                            type="submit"
+                            disabled={passwordBusy}
+                            className="rounded-[1.25rem] border-4 border-theme-border bg-theme-card-bg px-5 py-3 text-sm font-black text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                            {passwordBusy ? "更新中..." : "更新密码"}
+                        </button>
+                        {passwordMessage ? (
+                            <p className="text-sm font-black text-theme-text-muted">{passwordMessage}</p>
+                        ) : null}
                     </div>
                 </div>
-
-                <form data-form="password" onSubmit={handlePasswordChange} className="space-y-5 rounded-[2rem] border-4 border-theme-border bg-theme-card-bg p-6 shadow-[0_8px_0_0_var(--theme-shadow)] transition-colors">
-                    <div>
-                        <motion.div whileHover={{ scale: 1.05 }} className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-primary-bg px-4 py-1.5 text-xs font-black uppercase tracking-wider text-theme-primary-text shadow-[0_4px_0_0_var(--theme-shadow)] cursor-default transition-colors">
-                            <ShieldCheck className="h-4 w-4" />
-                            Security Password
-                        </motion.div>
-                        <h3 className="mt-4 text-xl font-black text-theme-text transition-colors">修改密码</h3>
-                    </div>
-                    <div className="space-y-2">
-                        <label htmlFor="password" className="text-sm font-black text-theme-text ml-1 transition-colors">
-                            新密码
-                        </label>
-                        <input
-                            id="password"
-                            type="password"
-                            value={password}
-                            onChange={(event) => setPassword(event.target.value)}
-                            className="block w-full rounded-[1rem] border-4 border-theme-border bg-theme-base-bg px-4 py-3 font-semibold text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_var(--theme-shadow)]"
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <label htmlFor="confirm-password" className="text-sm font-black text-theme-text ml-1 transition-colors">
-                            确认新密码
-                        </label>
-                        <input
-                            id="confirm-password"
-                            type="password"
-                            value={confirmPassword}
-                            onChange={(event) => setConfirmPassword(event.target.value)}
-                            className="block w-full rounded-[1rem] border-4 border-theme-border bg-theme-base-bg px-4 py-3 font-semibold text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] outline-none transition-transform focus:-translate-y-1 focus:shadow-[0_6px_0_0_var(--theme-shadow)]"
-                        />
-                    </div>
-                    <motion.button
-                        whileTap={{ scale: 0.95 }}
-                        whileHover={{ y: -2 }}
-                        type="submit"
-                        disabled={passwordBusy}
-                        className="mt-3 flex h-14 w-full cursor-pointer items-center justify-center rounded-[1.4rem] border-4 border-theme-border bg-theme-primary-bg text-[15px] font-black text-theme-primary-text shadow-[0_6px_0_0_var(--theme-shadow)] transition-all hover:bg-theme-primary-hover hover:shadow-[0_8px_0_0_var(--theme-shadow)] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                        {passwordBusy ? "Updating..." : "更新密码"}
-                    </motion.button>
-                    {passwordMessage ? (
-                        <p className={`text-sm font-bold ${passwordMessage.includes("失败") || passwordMessage.includes("不一致") ? "text-red-500" : "text-green-500"}`}>
-                            {passwordMessage}
-                        </p>
-                    ) : null}
-                </form>
-            </div>
+            </form>
         </div>
     );
 }

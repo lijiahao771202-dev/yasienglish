@@ -1,8 +1,9 @@
 import { pipeline, FeatureExtractionPipeline, env } from '@huggingface/transformers';
+import { db } from '../lib/db';
 
 // Optimization for Domestic Network
 env.allowLocalModels = false;
-env.remoteHost = 'https://hf-mirror.com';
+env.remoteHost = self.location.origin + '/api/models';
 
 let generator: FeatureExtractionPipeline | null = null;
 let isInitializing = false;
@@ -52,6 +53,14 @@ self.addEventListener('message', async (e) => {
     if (type === 'init') {
         const { modelId } = payload;
         try {
+            // Migration check: if the model changes, vectors dimensions will be incompatible
+            const metaKey = await db.sync_meta.get('vector_model_id');
+            if (metaKey?.value !== modelId) {
+                console.log(`[AI Worker] Upgrading vector engine to ${modelId}. Wiping obsolete vector dimension cache...`);
+                await db.rag_vectors.clear();
+                await db.sync_meta.put({ key: 'vector_model_id', value: modelId, updated_at: Date.now() });
+            }
+
             await initModel(modelId, (progress) => {
                 self.postMessage({ id, type: 'init_progress', payload: progress });
             });
@@ -142,6 +151,108 @@ self.addEventListener('message', async (e) => {
             self.postMessage({ id, type: 'grade_done', payload: sim });
         } catch(error: any) {
             self.postMessage({ id, type: 'grade_error', payload: error.message || String(error) });
+        }
+    }
+    else if (type === 'embed') {
+        const { inputs } = payload;
+        if (!generator) {
+            self.postMessage({ id, type: 'embed_error', payload: "Model not initialized" });
+            return;
+        }
+        try {
+            if (!inputs || !inputs.length) {
+                self.postMessage({ id, type: 'embed_done', payload: [] });
+                return;
+            }
+            const embeddings: number[][] = [];
+            for (const input of inputs) {
+                const out = await generator(input, { pooling: 'cls', normalize: true }) as any;
+                embeddings.push(Array.from(out.data));
+            }
+            self.postMessage({ id, type: 'embed_done', payload: embeddings });
+        } catch(error: any) {
+            self.postMessage({ id, type: 'embed_error', payload: error.message || String(error) });
+        }
+    }
+    else if (type === 'rag_store') {
+        const { text, source, metadata } = payload;
+        if (!generator) {
+            self.postMessage({ id, type: 'rag_store_error', payload: "Model not initialized" });
+            return;
+        }
+        try {
+            if (!text || !text.trim()) {
+                self.postMessage({ id, type: 'rag_store_done', payload: false });
+                return;
+            }
+            const out = await generator(text.trim(), { pooling: 'cls', normalize: true }) as any;
+            const floatArray = out.data; // Float32Array
+            
+            await db.rag_vectors.put({
+                id: crypto.randomUUID(),
+                text: text.trim(),
+                embedding: Array.from(floatArray),
+                source: source || 'chunk',
+                metadata,
+                created_at: Date.now()
+            });
+            
+            self.postMessage({ id, type: 'rag_store_done', payload: true });
+        } catch(error: any) {
+            self.postMessage({ id, type: 'rag_store_error', payload: error.message || String(error) });
+        }
+    }
+    else if (type === 'rag_query') {
+        const { query, topK = 3, threshold = 0.85, namespace, metadataFilter } = payload;
+        if (!generator) {
+            self.postMessage({ id, type: 'rag_query_error', payload: "Model not initialized" });
+            return;
+        }
+        try {
+            if (!query || !query.trim()) {
+                self.postMessage({ id, type: 'rag_query_done', payload: [] });
+                return;
+            }
+            const out = await generator(query.trim(), { pooling: 'cls', normalize: true }) as any;
+            const queryVector = out.data;
+            
+            let allRecords = await db.rag_vectors.toArray();
+            if (namespace) {
+                allRecords = allRecords.filter(doc => doc.source === namespace);
+            }
+
+            if (metadataFilter && typeof metadataFilter === 'object') {
+                allRecords = allRecords.filter(doc => {
+                    if (!doc.metadata) return false;
+                    for (const [key, value] of Object.entries(metadataFilter)) {
+                        if (doc.metadata[key] !== value) {
+                            return false;
+                        }
+                    }
+                    return true;
+                });
+            }
+            
+            const scored = allRecords.map(doc => ({
+                ...doc,
+                score: cosineSimilarity(queryVector, doc.embedding)
+            }));
+            
+            const filtered = scored.filter(d => d.score >= threshold);
+            filtered.sort((a, b) => b.score - a.score);
+            
+            // Remove the raw embeddings to save message serialization bandwidth
+            const results = filtered.slice(0, topK).map(d => ({
+                id: d.id,
+                text: d.text,
+                score: d.score,
+                source: d.source,
+                metadata: d.metadata
+            }));
+            
+            self.postMessage({ id, type: 'rag_query_done', payload: results });
+        } catch(error: any) {
+            self.postMessage({ id, type: 'rag_query_error', payload: error.message || String(error) });
         }
     }
 });

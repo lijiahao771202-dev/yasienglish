@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Lora:ital,wght@0,400..700;1,400..700&family=Montserrat:ital,wght@0,100..900;1,100..900&family=Outfit:wght@100..900&family=Cormorant+Garamond:ital,wght@0,300..700;1,300..700&family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Noto+Sans+SC:wght@100..900&family=Noto+Serif+SC:wght@200..900&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Long+Cang&family=Liu+Jian+Mao+Cao&family=ZCOOL+QingKe+HuangYou&display=swap');
 @import "tailwindcss";
+@import "mind-elixir/style.css";
 
 /* Phase 24: The Typographic Atelier - High-End Font Library */
 
@@ -250,6 +251,208 @@
   }
 }
 
+@keyframes sweep {
+  0% {
+    transform: translateX(-150%) skewX(-15deg);
+  }
+  100% {
+    transform: translateX(150%) skewX(-15deg);
+  }
+}
+
+.animate-sweep::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-150%) skewX(-15deg);
+  animation: sweep 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+}
+
+@keyframes jellyPop {
+  0% {
+    transform: scale(0.6) translateY(10px);
+    opacity: 0;
+    filter: blur(8px);
+  }
+  40% {
+    transform: scale(1.15) translateY(0);
+    opacity: 1;
+    filter: blur(0);
+  }
+  70% {
+    transform: scale(0.95);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
+.animate-jelly-pop {
+  animation: jellyPop 0.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes slideFlip {
+  0% { transform: translateY(15px) rotateX(-90deg); opacity: 0; filter: blur(8px); }
+  50% { transform: translateY(-3px) rotateX(20deg); opacity: 1; filter: blur(0); }
+  75% { transform: translateY(0) rotateX(-10deg); }
+  100% { transform: translateY(0) rotateX(0deg); opacity: 1; filter: blur(0); }
+}
+
+.animate-slide-flip {
+  animation: slideFlip 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  transform-origin: top;
+}
+
+@keyframes rubberSqueeze {
+  0% { transform: scaleX(0.5) scaleY(1.5) translateY(10px); opacity: 0; filter: blur(8px); }
+  40% { transform: scaleX(1.1) scaleY(0.85) translateY(0); opacity: 1; filter: blur(0); }
+  70% { transform: scaleX(0.95) scaleY(1.05); }
+  100% { transform: scaleX(1) scaleY(1); opacity: 1; filter: blur(0); }
+}
+
+.animate-rubber-squeeze {
+  animation: rubberSqueeze 0.4s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  transform-origin: center;
+}
+
+@keyframes popSpin {
+  0% { transform: scale(0.5) rotate(-15deg); opacity: 0; filter: blur(8px); }
+  40% { transform: scale(1.1) rotate(8deg); opacity: 1; filter: blur(0); }
+  70% { transform: scale(0.95) rotate(-3deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; filter: blur(0); }
+}
+
+.animate-pop-spin {
+  animation: popSpin 0.45s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  transform-origin: center;
+}
+
+@keyframes cyberGlitch {
+  0% { transform: scaleX(1.3) skewX(20deg) translateX(10px); opacity: 0; filter: blur(8px); }
+  50% { transform: scaleX(0.9) skewX(-10deg) translateX(-2px); opacity: 1; filter: blur(0); }
+  100% { transform: scaleX(1) skewX(0deg) translateX(0); opacity: 1; filter: blur(0); }
+}
+
+.animate-cyber-glitch {
+  animation: cyberGlitch 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  transform-origin: left;
+}
+
+@keyframes floatDrop {
+  0% { transform: translateY(-20px) scale(0.8); opacity: 0; filter: blur(8px); }
+  60% { transform: translateY(4px) scale(1.05); opacity: 1; filter: blur(0); }
+  80% { transform: translateY(-2px); }
+  100% { transform: translateY(0) scale(1); opacity: 1; filter: blur(0); }
+}
+
+.animate-float-drop {
+  animation: floatDrop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  transform-origin: bottom;
+}
+
+@keyframes foldOut {
+  0% { transform: perspective(400px) rotateX(-90deg); opacity: 0; filter: blur(8px); }
+  60% { transform: perspective(400px) rotateX(15deg); opacity: 1; filter: blur(0); }
+  100% { transform: perspective(400px) rotateX(0deg); opacity: 1; filter: blur(0); }
+}
+
+.animate-fold-out {
+  animation: foldOut 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  transform-origin: top;
+}
+
+@keyframes swingIn {
+  0% { transform: perspective(400px) rotateY(-90deg) scale(0.8); opacity: 0; filter: blur(8px); }
+  60% { transform: perspective(400px) rotateY(15deg) scale(1.05); opacity: 1; filter: blur(0); }
+  100% { transform: perspective(400px) rotateY(0deg) scale(1); opacity: 1; filter: blur(0); }
+}
+
+.animate-swing-in {
+  animation: swingIn 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  transform-origin: center;
+}
+
+@keyframes letterPop {
+  0% {
+    transform: scale(0.4) translateY(4px) rotateX(-20deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.15) translateY(-1px) rotateX(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-letter-pop {
+  animation: letterPop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  display: inline-block;
+  white-space: pre;
+}
+
+@keyframes letterStrike {
+  0% { transform: translateY(-8px) scaleY(1.5); opacity: 0; }
+  50% { transform: translateY(2px) scaleY(0.9); opacity: 1; }
+  100% { transform: translateY(0) scaleY(1); opacity: 1; }
+}
+
+.animate-letter-strike {
+  animation: letterStrike 0.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  display: inline-block;
+  white-space: pre;
+}
+
+@keyframes letterBounce {
+  0% { transform: translateY(6px) scale(0.8); opacity: 0; }
+  50% { transform: translateY(-2px) scale(1.1); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.animate-letter-bounce {
+  animation: letterBounce 0.25s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  display: inline-block;
+  white-space: pre;
+}
+
+@keyframes letterGlitch {
+  0% { transform: translateX(6px) skewX(-20deg); opacity: 0; }
+  50% { transform: translateX(-2px) skewX(10deg); opacity: 1; }
+  100% { transform: translateX(0) skewX(0); opacity: 1; }
+}
+
+.animate-letter-glitch {
+  animation: letterGlitch 0.2s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  display: inline-block;
+  white-space: pre;
+}
+
+@keyframes letterFlip {
+  0% { transform: perspective(200px) rotateY(90deg); opacity: 0; }
+  60% { transform: perspective(200px) rotateY(-15deg); opacity: 1; }
+  100% { transform: perspective(200px) rotateY(0deg); opacity: 1; }
+}
+
+.animate-letter-flip {
+  animation: letterFlip 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  display: inline-block;
+  white-space: pre;
+}
+
 .animate-shake {
   animation: shake 0.4s cubic-bezier(.36, .07, .19, .97) both;
   will-change: transform;
@@ -292,8 +495,11 @@
 }
 
 @keyframes shimmer {
+  0% {
+    transform: translateX(-300%);
+  }
   100% {
-    transform: translateX(150%);
+    transform: translateX(300%);
   }
 }
 
@@ -1921,4 +2127,26 @@ html[data-hydrated="0"] .liquid-glass-panel .liquid-glass-sheen {
     --module-vocab-bg: rgba(147, 197, 253, 0.15);
     --module-daily-bd: #cbd5e1;
     --module-daily-bg: rgba(203, 213, 225, 0.2);
+}
+
+.mind-elixir-readonly .map-container {
+    background: transparent;
+}
+
+.mind-elixir-readonly .map-canvas {
+    min-width: 100%;
+    min-height: 100%;
+}
+
+.mind-elixir-readonly .map-canvas me-nodes {
+    padding: 42px 56px;
+}
+
+.mind-elixir-readonly me-root me-tpc {
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+.mind-elixir-readonly me-main > me-wrapper > me-parent > me-tpc,
+.mind-elixir-readonly me-parent me-tpc {
+    border-radius: 14px;
 }

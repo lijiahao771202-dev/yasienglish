@@ -40,6 +40,8 @@ export interface GrammarHighlightRange {
     translatedLabel: string;
     explanation: string;
     segmentTranslation?: string;
+    sentenceText: string;
+    sentenceTranslation?: string;
     layer: GrammarLayer;
     displayPriority: number;
     overlapCount?: number;
@@ -470,6 +472,8 @@ export function buildGrammarHighlightRanges(
                 translatedLabel: typeMeta.translatedLabel,
                 explanation: highlight.explanation,
                 segmentTranslation: highlight.segment_translation?.trim() || undefined,
+                sentenceText,
+                sentenceTranslation: sentence.translation?.trim() || undefined,
                 layer: typeMeta.layer,
                 displayPriority: typeMeta.displayPriority,
             });

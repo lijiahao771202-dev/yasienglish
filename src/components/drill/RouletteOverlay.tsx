@@ -506,7 +506,7 @@ export function RouletteOverlay({ onComplete, onCancel }: RouletteOverlayProps) 
 
         // DRAMATIC SLOWDOWN: Very low stiffness, high damping for agonizing crawl
         stopAnimationRef.current = animate(rotation, snapTarget, {
-            type: "spring",
+            type: "spring" as const,
             damping: 35,        // Higher = slower deceleration
             stiffness: 15,      // Lower = much slower movement
             restDelta: 0.01,

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 import { PretextTextarea } from "@/components/ui/PretextTextarea";
+import { DEFAULT_TRANSLATION_ELO } from "@/lib/translation-elo-reset";
 
 interface AdminUserRow {
     user_id: string;
@@ -71,7 +72,7 @@ export function AdminDashboard({ adminEmail }: AdminDashboardProps) {
                 const next = { ...prev };
                 for (const user of nextUsers as AdminUserRow[]) {
                     next[user.user_id] = {
-                        translation: String(user.translation_elo ?? 400),
+                        translation: String(user.translation_elo ?? DEFAULT_TRANSLATION_ELO),
                         listening: String(user.listening_elo ?? 400),
                     };
                 }
@@ -125,7 +126,7 @@ export function AdminDashboard({ adminEmail }: AdminDashboardProps) {
                 updateUserRow(userId, {
                     coins: row.coins ?? 0,
                     reading_coins: row.reading_coins ?? 0,
-                    translation_elo: row.translation_elo ?? 400,
+                    translation_elo: row.translation_elo ?? DEFAULT_TRANSLATION_ELO,
                     listening_elo: row.listening_elo ?? 400,
                     cat_score: row.cat_score ?? 1000,
                     cat_level: row.cat_level ?? 1,
@@ -138,7 +139,7 @@ export function AdminDashboard({ adminEmail }: AdminDashboardProps) {
                 setEloInputs((prev) => ({
                     ...prev,
                     [userId]: {
-                        translation: String(row.translation_elo ?? 400),
+                        translation: String(row.translation_elo ?? DEFAULT_TRANSLATION_ELO),
                         listening: String(row.listening_elo ?? 400),
                     },
                 }));
@@ -451,7 +452,7 @@ export function AdminDashboard({ adminEmail }: AdminDashboardProps) {
                                                 <td className="px-3 py-3 font-semibold text-sky-300">{user.reading_coins ?? 0}</td>
                                                 <td className="px-3 py-3 text-[#e2e8f0]">
                                                     <div className="space-y-1 text-xs">
-                                                        <p>翻译 {user.translation_elo ?? 400}</p>
+                                                        <p>翻译 {user.translation_elo ?? DEFAULT_TRANSLATION_ELO}</p>
                                                         <p>听力 {user.listening_elo ?? 400}</p>
                                                     </div>
                                                 </td>
@@ -559,7 +560,7 @@ export function AdminDashboard({ adminEmail }: AdminDashboardProps) {
                                                             onChange={(event) => setEloInputs((prev) => ({
                                                                 ...prev,
                                                                 [user.user_id]: {
-                                                                    translation: prev[user.user_id]?.translation ?? String(user.translation_elo ?? 400),
+                                                                    translation: prev[user.user_id]?.translation ?? String(user.translation_elo ?? DEFAULT_TRANSLATION_ELO),
                                                                     listening: event.target.value,
                                                                 },
                                                             }))}

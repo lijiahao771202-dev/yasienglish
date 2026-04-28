@@ -85,7 +85,7 @@ function KnowledgeGraph() {
                                 animate={{ scale: 1, opacity: 1 }}
                                 transition={{ 
                                     delay: isCenter ? 0.8 : 2 + (i * 0.4), 
-                                    type: "spring", stiffness: 200, damping: 15 
+                                    type: "spring" as const, stiffness: 200, damping: 15 
                                 }}
                                 style={{
                                     filter: isCenter ? "drop-shadow(0 0 15px rgba(244,63,94,0.6))" : "none"

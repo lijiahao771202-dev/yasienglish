@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 import { deepseek } from "@/lib/deepseek";
 import { levelFromScore } from "@/lib/cat-growth";
@@ -29,6 +28,7 @@ interface StartCatPayload {
     topic?: string;
     band?: number;
     difficultySignalHint?: number;
+    injectedVocabulary?: { core: string[]; lower: string[]; stretch: string[] };
 }
 
 type ObjectiveQuestionType =
@@ -355,14 +355,26 @@ export function buildArticlePrompt(params: {
     topicSelection: TopicSelection;
     targets: CatArticleTargets;
     generationTheme: CatGenerationTheme;
+    injectedVocabulary?: { core: string[]; lower: string[]; stretch: string[] };
 }) {
-    const { topicSelection, targets, generationTheme } = params;
+    const { topicSelection, targets, generationTheme, injectedVocabulary } = params;
     const { lexicalTarget, lengthTarget, syntaxTarget, rankTarget, contentTarget, score } = targets;
     const clauseMarkers =
         "because, although, though, while, whereas, which, that, who, whose, whom, if, when, unless, whether, since, after, before, until, once, provided, despite, where, as";
     const paragraphGuidance = getParagraphGuidance(lengthTarget.wordCountMax);
     const relativeDifficulty = getRelativeDifficultyLines(score);
     const adjacentRanks = getAdjacentRankLines(score);
+
+    const hasInjectedVocab = injectedVocabulary && (injectedVocabulary.core.length > 0 || injectedVocabulary.lower.length > 0 || injectedVocabulary.stretch.length > 0);
+    const injectedVocabLines = hasInjectedVocab ? [
+        "REFERENCE LEXICAL POOL (HIGHLY RECOMMENDED REFERENCE):",
+        "To ensure authentic difficulty for this specific CAT Rank, you are provided with a Reference Lexical Pool retrieved from validated corpus.",
+        "You should draw from this pool whenever natural to build your [LexicalEvidence] lists. This is a HIGHLY RECOMMENDED reference, not a strict mandatory checklist out of context. Pick the ones that fit your sentence structure naturally:",
+        injectedVocabulary.core.length > 0 ? `- Core Reference Pool (${lexicalTarget.coreTierLabel}): ${injectedVocabulary.core.join(", ")}.` : "",
+        injectedVocabulary.lower.length > 0 ? `- Lower Reference Pool (${lexicalTarget.lowerTierLabel}): ${injectedVocabulary.lower.join(", ")}.` : "",
+        injectedVocabulary.stretch.length > 0 ? `- Stretch Reference Pool (${lexicalTarget.stretchTierLabel}): ${injectedVocabulary.stretch.join(", ")}.` : "",
+        ""
+    ].filter(Boolean) : [];
 
     return [
         "Task: Generate ONE CAT adaptive reading passage for a Chinese learner.",
@@ -420,6 +432,7 @@ export function buildArticlePrompt(params: {
         "- The passage will later be turned into objective questions, so preserve evidence traceability.",
         "- Make sure key claims, contrasts, causes, and details can be located in specific sentences or paragraphs.",
         "",
+        ...injectedVocabLines,
         "THREE-AXIS HARD TARGETS (all required):",
         `1) Lexical ratio (decimal 0-1, not %): core=${lexicalTarget.coreTierLabel} ${Math.round(lexicalTarget.ratios.core[0] * 100)}%-${Math.round(lexicalTarget.ratios.core[1] * 100)}%; lower=${lexicalTarget.lowerTierLabel ?? "None"} ${Math.round(lexicalTarget.ratios.lower[0] * 100)}%-${Math.round(lexicalTarget.ratios.lower[1] * 100)}%; stretch=${lexicalTarget.stretchTierLabel} ${Math.round(lexicalTarget.ratios.stretch[0] * 100)}%-${Math.round(lexicalTarget.ratios.stretch[1] * 100)}%; overlevel<=${Math.round(lexicalTarget.overlevelMax * 100)}%.`,
         `2) Length: wordCount ${lengthTarget.wordCountMin}-${lengthTarget.wordCountMax} (english tokens).`,
@@ -490,7 +503,7 @@ async function getRecentCatTopicLines(params: {
     dbClient: Awaited<ReturnType<typeof createServerClient>> | ReturnType<typeof createClient>;
     userId: string;
 }) {
-    const { data } = await params.dbClient
+    const { data } = await (params.dbClient as any)
         .from("cat_sessions")
         .select("topic")
         .eq("user_id", params.userId)
@@ -588,22 +601,7 @@ async function generateDraft(params: {
         max_tokens: 2400,
     };
 
-    const completion = await (async () => {
-        if (params.useSharedKey) {
-            const sharedKey = process.env.DEEPSEEK_API_KEY?.trim();
-            if (!sharedKey) {
-                throw new Error("Missing shared DeepSeek API key for single-shot mode.");
-            }
-
-            const sharedClient = new OpenAI({
-                apiKey: sharedKey,
-                baseURL: process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com",
-            });
-            return sharedClient.chat.completions.create(baseRequest);
-        }
-
-        return deepseek.chat.completions.create(baseRequest);
-    })();
+    const completion = await deepseek.chat.completions.create(baseRequest);
 
     const message = completion.choices[0]?.message as
         | {
@@ -628,12 +626,14 @@ async function generateValidatedArticle(params: {
     topicSelection: TopicSelection;
     generationTheme: CatGenerationTheme;
     useSharedKey?: boolean;
+    injectedVocabulary?: { core: string[]; lower: string[]; stretch: string[] };
 }) {
     const difficultyTargets = getCatArticleTargets(params.score);
     const prompt = buildArticlePrompt({
         topicSelection: params.topicSelection,
         targets: difficultyTargets,
         generationTheme: params.generationTheme,
+        injectedVocabulary: params.injectedVocabulary,
     });
 
     const generated = await generateDraft({
@@ -735,6 +735,7 @@ export async function POST(request: Request) {
             topicSelection: topicSeed,
             generationTheme,
             useSharedKey: true,
+            injectedVocabulary: body.injectedVocabulary,
         });
 
         if (!passageOneResult.draft) {
