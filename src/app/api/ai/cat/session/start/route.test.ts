@@ -25,6 +25,13 @@ vi.mock("@/lib/deepseek", () => ({
             },
         },
     },
+    createDeepSeekClientForCurrentUserWithOverride: async () => ({
+        chat: {
+            completions: {
+                create: deepseekCreateMock,
+            },
+        },
+    }),
 }));
 
 vi.mock("openai", () => ({
@@ -155,7 +162,7 @@ describe("cat session start route", () => {
             error: null,
         });
 
-        openaiCreateMock.mockResolvedValueOnce({
+        deepseekCreateMock.mockResolvedValueOnce({
             choices: [
                 {
                     message: {
@@ -173,8 +180,8 @@ describe("cat session start route", () => {
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(openaiCreateMock).toHaveBeenCalledTimes(1);
-        expect(deepseekCreateMock).not.toHaveBeenCalled();
+        expect(openaiCreateMock).not.toHaveBeenCalled();
+        expect(deepseekCreateMock).toHaveBeenCalledTimes(1);
         expect(data.model).toBe("deepseek-chat");
         expect(data.article.isCatMode).toBe(true);
         expect(data.article.catSessionBlueprint).toBeTruthy();
@@ -253,7 +260,7 @@ describe("cat session start route", () => {
             error: null,
         });
 
-        openaiCreateMock.mockRejectedValueOnce(new Error("provider unavailable"));
+        deepseekCreateMock.mockRejectedValueOnce(new Error("provider unavailable"));
 
         const response = await POST(buildRequest({ topic: "memory and study" }));
         const data = await response.json();
@@ -270,7 +277,7 @@ describe("cat session start route", () => {
             error: null,
         });
 
-        openaiCreateMock.mockResolvedValueOnce({
+        deepseekCreateMock.mockResolvedValueOnce({
             choices: [
                 {
                     message: {

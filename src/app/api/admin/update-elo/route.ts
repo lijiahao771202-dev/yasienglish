@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdminUser } from "@/lib/admin-auth";
+import { DEFAULT_TRANSLATION_ELO } from "@/lib/translation-elo-reset";
 
 interface UpdateEloPayload {
     userId?: string;
@@ -51,9 +52,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: existingError?.message || "User not found" }, { status: 404 });
     }
 
-    const nextTranslationElo = translationElo ?? existing.translation_elo ?? 400;
+    const nextTranslationElo = translationElo ?? existing.translation_elo ?? DEFAULT_TRANSLATION_ELO;
     const nextListeningElo = listeningElo ?? existing.listening_elo ?? 400;
-    const nextMaxTranslationElo = Math.max(existing.max_translation_elo ?? 400, nextTranslationElo);
+    const nextMaxTranslationElo = Math.max(existing.max_translation_elo ?? DEFAULT_TRANSLATION_ELO, nextTranslationElo);
     const nextMaxListeningElo = Math.max(existing.max_listening_elo ?? 400, nextListeningElo);
 
     const { data, error } = await supabase
@@ -74,4 +75,3 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ profile: data });
 }
-

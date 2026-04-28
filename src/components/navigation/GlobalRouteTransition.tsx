@@ -83,26 +83,26 @@ export function GlobalRouteTransition() {
                     exit={{ opacity: 0 }}
                     transition={{
                         duration: phase === "exiting" ? EXIT_MS / 1000 : ENTER_MS / 1000,
-                        ease: [0.22, 1, 0.36, 1],
+                        ease: [0.22, 1, 0.36, 1] as const,
                     }}
                 >
                     <motion.div
                         className="absolute inset-0 bg-white/8"
                         initial={{ opacity: phase === "exiting" ? 0 : 0.9 }}
                         animate={{ opacity: phase === "exiting" ? 1 : 0 }}
-                        transition={{ duration: phase === "exiting" ? EXIT_MS / 1000 : ENTER_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: phase === "exiting" ? EXIT_MS / 1000 : ENTER_MS / 1000, ease: [0.22, 1, 0.36, 1] as const }}
                     />
                     <motion.div
                         className="absolute inset-0 bg-[radial-gradient(120%_90%_at_50%_50%,rgba(255,255,255,0.12),rgba(255,255,255,0.04)_52%,rgba(12,18,30,0.12)_100%)]"
                         initial={{ opacity: phase === "exiting" ? 0 : 0.8, scale: 1.01 }}
                         animate={{ opacity: phase === "exiting" ? 1 : 0, scale: 1 }}
-                        transition={{ duration: phase === "exiting" ? EXIT_MS / 1000 : ENTER_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: phase === "exiting" ? EXIT_MS / 1000 : ENTER_MS / 1000, ease: [0.22, 1, 0.36, 1] as const }}
                     />
                     <motion.div
                         className="absolute inset-0 bg-[linear-gradient(112deg,rgba(255,255,255,0)_28%,rgba(255,255,255,0.22)_48%,rgba(255,255,255,0)_68%)]"
                         initial={{ opacity: phase === "exiting" ? 0.35 : 0.18, x: phase === "exiting" ? "-18%" : "8%" }}
                         animate={{ opacity: phase === "exiting" ? 0.22 : 0, x: phase === "exiting" ? "12%" : "18%" }}
-                        transition={{ duration: phase === "exiting" ? EXIT_MS / 1000 : ENTER_MS / 1000, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: phase === "exiting" ? EXIT_MS / 1000 : ENTER_MS / 1000, ease: [0.22, 1, 0.36, 1] as const }}
                     />
                 </motion.div>
             )}

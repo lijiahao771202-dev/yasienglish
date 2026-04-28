@@ -4,6 +4,7 @@ import {
     buildAskQaPairs,
     decodeAskThreadPayload,
     encodeAskThreadPayload,
+    resolveAskAssistantMessageParts,
     sanitizeAskThreadMessages,
 } from "./ask-thread";
 
@@ -30,12 +31,13 @@ describe("ask-thread", () => {
     it("encodes and decodes messages", () => {
         const raw = encodeAskThreadPayload([
             { role: "user", content: "why?", createdAt: 1 },
-            { role: "assistant", content: "because", createdAt: 2 },
+            { role: "assistant", content: "because", reasoningContent: "thinking first", createdAt: 2 },
         ]);
         const decoded = decodeAskThreadPayload(raw);
         expect(decoded.messages).toHaveLength(2);
         expect(decoded.messages[0].role).toBe("user");
         expect(decoded.messages[1].content).toBe("because");
+        expect(decoded.messages[1].reasoningContent).toBe("thinking first");
     });
 
     it("builds qa pairs from threaded messages with streaming tail", () => {
@@ -52,5 +54,43 @@ describe("ask-thread", () => {
         expect(pairs).toHaveLength(2);
         expect(pairs[0]).toMatchObject({ question: "Q1", answer: "A1", isStreaming: false });
         expect(pairs[1]).toMatchObject({ question: "Q2", answer: "typing", isStreaming: true });
+    });
+
+    it("builds qa pairs with saved and streaming reasoning content", () => {
+        const pairs = buildAskQaPairs(
+            [
+                { role: "user", content: "Q1" },
+                { role: "assistant", content: "A1", reasoningContent: "R1" },
+                { role: "user", content: "Q2" },
+            ],
+            "",
+            true,
+            "R2",
+        );
+
+        expect(pairs).toHaveLength(2);
+        expect(pairs[0]).toMatchObject({
+            question: "Q1",
+            answer: "A1",
+            reasoningContent: "R1",
+            isReasoningStreaming: false,
+        });
+        expect(pairs[1]).toMatchObject({
+            question: "Q2",
+            answer: "",
+            reasoningContent: "R2",
+            isStreaming: true,
+            isReasoningStreaming: true,
+        });
+    });
+
+    it("uses reasoning as the visible answer when providers never emit final content", () => {
+        expect(resolveAskAssistantMessageParts("", "reasoning-only answer")).toEqual({
+            content: "reasoning-only answer",
+        });
+        expect(resolveAskAssistantMessageParts("final answer", "thinking draft")).toEqual({
+            content: "final answer",
+            reasoningContent: "thinking draft",
+        });
     });
 });

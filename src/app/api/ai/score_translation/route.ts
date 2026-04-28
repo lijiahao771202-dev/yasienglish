@@ -116,8 +116,11 @@ function applyTranslationSanityGuard(params: {
 
 export async function POST(req: NextRequest) {
     try {
-        const { user_translation, reference_english, original_chinese, current_elo, mode = "translation", is_reverse = false, input_source = 'keyboard', teaching_mode = false } = await req.json();
-        console.log("[score_translation] Request received:", { mode, user_translation: user_translation?.substring(0, 30), current_elo });
+        const { user_translation, reference_english, reference_english_alternatives = [], original_chinese, current_elo, mode = "translation", is_reverse = false, input_source = 'keyboard', teaching_mode = false, force_cloud = false, appeal_provider = 'deepseek' } = await req.json();
+        const validAlternatives: string[] = Array.isArray(reference_english_alternatives)
+            ? reference_english_alternatives.filter((a: unknown) => typeof a === "string" && a.trim())
+            : [];
+        console.log("[score_translation] Request received:", { mode, user_translation: user_translation?.substring(0, 30), current_elo, force_cloud });
 
         // Base Elo (Default to 1200 if undefined)
         const userElo = current_elo || 1200;
@@ -178,77 +181,98 @@ export async function POST(req: NextRequest) {
             }
             `;
         } else {
-            // Translation Mode Prompt (Smart Elo)
-            // Translation Mode Prompt (Written Elo)
-            const taskDescription = is_reverse ? "Translate English to Chinese (Written)." : "Translate Chinese to English (Written).";
+            // Translation Mode Prompt — Comprehensive Rewrite for Gemma 4
+            const taskDescription = is_reverse ? "Translate English → Chinese." : "Translate Chinese → English.";
             const sourceText = is_reverse ? reference_english : original_chinese;
             const goldenText = is_reverse ? original_chinese : reference_english;
 
-            // Dynamic K-Factor Grading (Anti-Inflation Logic)
+            let eloTierName = "";
             let gradingStandard = "";
             if (userElo < 1600) {
-                // BEGINNER MODE: Encouragement (High Reward, Low Risk)
-                gradingStandard = `
-                 Elo Grading Standards (Beginner Mode - Be Encouraging):
-                 - **Excellent (+25 to +30)**: Correct meaning and structure. Minor errors ok.
-                 - **Good (+10 to +15)**: Understandable with minor grammar errors.
-                 - **Fair (+5)**: Meaning is mostly clear but grammar is shaky.
-                 - **Askew (-5)**: Meaning is wrong or completely off-topic.
-                 IMPORTANT: Be generous! If the meaning is correct, give at least 7/10.
-                 `;
+                eloTierName = "初学者 (Beginner, Elo < 1600)";
+                gradingStandard = `评分标准 — 初学者模式（宽松鼓励）:
+- 10分: 意思完全正确，语法结构无误。
+- 8-9分: 意思正确，仅有轻微语法或拼写瑕疵。
+- 6-7分: 核心意思对了，但存在明显语法错误或漏掉了关键信息。
+- 4-5分: 意思基本能猜到，但句子结构混乱或关键词汇错误。
+- 1-3分: 严重偏题或几乎无法理解。
+- 0分: 完全空白或与题目无关。
+重要：此阶段以鼓励为主！只要核心含义传达正确，至少给 6 分。`;
             } else if (userElo < 2200) {
-                // INTERMEDIATE MODE: Fair Game (Symmetric)
-                gradingStandard = `
-                 Elo Grading Standards (Intermediate Mode):
-                 - **Sophisticated (+20)**: Native-like phrasing using B2+ vocabulary.
-                 - **Accurate (+10)**: Correct grammar and meaning. Standard.
-                 - **Clumsy (-5)**: Awkward phrasing or unnatural expression.
-                 - **Error (-15)**: Grammatical faults or wrong meaning.
-                 `;
+                eloTierName = "中级 (Intermediate, Elo 1600-2200)";
+                gradingStandard = `评分标准 — 中级模式（公平对等）:
+- 10分: 地道流畅，表达自然，像母语者写的。
+- 8-9分: 语法正确，意思完整，表达通顺但稍显课本化。
+- 6-7分: 意思正确但表达不自然，或有 1-2 处语法错误。
+- 4-5分: 存在多处语法错误，或遗漏重要信息。
+- 1-3分: 句子结构严重混乱，或意思偏离原文。
+- 0分: 完全空白或与题目无关。`;
             } else {
-                // ADVANCED MODE: Hardcore (Low Reward, High Risk) - The Gauntlet
-                gradingStandard = `
-                 Elo Grading Standards (Advanced C1/C2 Mode):
-                 - **Mastery (+10)**: Flawless, nuanced, native-level expression.
-                 - **Pass (+5)**: Correct but dry/textbook style.
-                 - **Unnatural (-10)**: Non-native phrasing (even if grammatically valid).
-                 - **Error (-30)**: Any grammatical error is unacceptable at this level.
-                 `;
+                eloTierName = "高级 (Advanced C1/C2, Elo > 2200)";
+                gradingStandard = `评分标准 — 高级模式（严苛精修）:
+- 10分: 无可挑剔，措辞精准且有文采，媲美 native speaker。
+- 8-9分: 语法无误，意思完整，但表达略显普通。
+- 6-7分: 基本正确，但用词不够精准或搭配不地道。
+- 4-5分: 有语法错误，在此水平不可接受。
+- 1-3分: 多处错误，严重不符合该水平预期。
+- 0分: 完全空白或与题目无关。
+重要：此阶段对用词的精准度和地道程度有极高要求。`;
             }
 
-            prompt = `
-             Act as an IELTS Writing Examiner.
-             
-             Context:
-             - User Elo: ${userElo}
-             - Task: ${taskDescription}
-             - Source: "${sourceText}"
-             - Golden: "${goldenText}"
-             - User: "${user_translation}"
- 
-             ${voiceInstruction}
- 
-             ${gradingStandard}
-  
-             **LANGUAGE REQUIREMENT**:
-             - You MUST output 'judge_reasoning' in **Simplified Chinese (简体中文)**.
-             - Keep 'judge_reasoning' to one short sentence.
-  
-             Output JSON:
-             {
-                 "score": 0-10,
-                 "judge_reasoning": "一句简短评分结论"
-             }
-             `;
+            prompt = `你是一位专业的英语翻译评分官。请根据以下信息对用户的翻译进行评分。
+
+## 题目信息
+- 任务: ${taskDescription}
+- 原文: "${sourceText}"
+- 标准参考译文: "${goldenText}"${validAlternatives.length > 0 ? `\n- 补充参考译文（均为正确答案）:\n${validAlternatives.map((alt: string, i: number) => `  ${i + 1}. "${alt}"`).join("\n")}` : ""}
+- 用户提交的译文: "${user_translation}"
+
+## 用户水平
+- 当前 Elo 等级分: ${userElo}
+- 对应段位: ${eloTierName}
+
+${gradingStandard}
+
+## 评分规则（必须严格遵守）
+
+### 不扣分项（以下差异完全忽略）:
+1. 大小写差异: "i understand" 和 "I understand" 视为完全等价，绝不扣分。
+2. 标点符号差异: 缺少句号、逗号、感叹号等一律不扣分。
+3. 缩写差异: "don't" 和 "do not"、"I'm" 和 "I am" 视为等价。
+4. 英美拼写差异: "colour/color"、"realise/realize" 视为等价。
+
+### 可接受项（不应扣分或仅轻微扣分）:
+1. 同义替换: 用不同但含义正确的词汇或句型，只要语义完全覆盖原文，应给高分。例如 "We intended to throw a surprise party" 和 "We planned a surprise party" 含义等价。
+2. 语序微调: 只要不改变含义，语序的轻微调整不扣分。
+3. 合理的时态选择: 只要时态前后一致且合理，不同时态选择不严厉扣分。
+
+### 必须扣分项:
+1. 关键信息遗漏: 漏掉原文中的重要含义（否定、数量、因果关系等）。
+2. 语法错误: 主谓不一致、时态混乱、介词误用等。
+3. 词汇误用: 使用错误的词导致含义改变。
+4. 语义偏离: 翻译含义与原文不符。
+
+${voiceInstruction}
+
+## 输出要求
+请直接输出 JSON，不要包含 markdown 代码块标记:
+{
+  "score": <0到10的整数或一位小数>,
+  "judge_reasoning": "<一句简短的中文评语，说明给分理由>"
+}
+`;
         }
 
-        console.log("[score_translation] Calling DeepSeek API...");
-        const MAX_RETRIES = 3;
         const maxTokens = mode === "dictation"
             ? DICTATION_MAX_TOKENS
             : TRANSLATION_MAX_TOKENS;
-        let lastError: Error | null = null;
         let completion: ScoreCompletion | null = null;
+        let scoringProvider = "unknown";
+
+        // ===== CLOUD ONLY: DeepSeek =====
+        console.log("[score_translation] ☁️ Calling DeepSeek API...");
+        const MAX_RETRIES = 3;
+        let lastError: Error | null = null;
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
@@ -263,7 +287,8 @@ export async function POST(req: NextRequest) {
                     temperature: SCORING_TEMPERATURE,
                     max_tokens: maxTokens,
                 });
-                break; // Success, exit retry loop
+                scoringProvider = "deepseek-cloud";
+                break;
             } catch (error) {
                 lastError = error as Error;
                 console.log(`[score_translation] Attempt ${attempt} failed: ${lastError.message}`);
@@ -277,11 +302,14 @@ export async function POST(req: NextRequest) {
             console.error(`[score_translation] All ${MAX_RETRIES} attempts failed:`, lastError);
             throw lastError || new Error("Failed after retries");
         }
-        console.log("[score_translation] DeepSeek API response received");
+        
+        console.log(`[score_translation] Response received (via ${scoringProvider})`);
 
-        const content = completion.choices[0].message.content;
-        if (!content) throw new Error("No content generated");
+        const rawContent = completion.choices[0].message.content;
+        if (!rawContent) throw new Error("No content generated");
 
+        // Strip markdown code fences that local models (Gemma) sometimes wrap around JSON
+        const content = rawContent.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
         const data = JSON.parse(content) as Record<string, unknown>;
 
         if (mode === "dictation") {

@@ -6,10 +6,11 @@ import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { BookOpen, Check, ChevronRight, CloudUpload, Image as ImageIcon, Loader2, LogOut, Mail, Play, RefreshCw, Search, Settings2, Volume2, X } from "lucide-react";
+import { BookOpen, Check, ChevronRight, CloudUpload, Image as ImageIcon, Loader2, LogOut, Mail, Play, RefreshCw, Search, Settings2, Volume2, X, BrainCircuit, Cpu } from "lucide-react";
 
 import { PresetAvatar } from "@/components/profile/PresetAvatar";
 import { UserManualModal } from "@/components/profile/UserManualModal";
+import { AiModelSettingsModal } from "@/components/profile/AiModelSettingsModal";
 import { db } from "@/lib/db";
 import { getUserFacingSyncError, saveProfilePatch, syncNow } from "@/lib/user-repository";
 import {
@@ -134,6 +135,7 @@ export function UserAvatarMenu({
     const [backgroundOpen, setBackgroundOpen] = useState(false);
     const [ttsVoiceOpen, setTtsVoiceOpen] = useState(false);
     const [manualOpen, setManualOpen] = useState(false);
+    const [aiModelOpen, setAiModelOpen] = useState(false);
     const [ttsVoiceBusy, setTtsVoiceBusy] = useState(false);
     const [previewVoice, setPreviewVoice] = useState<LearningPreferenceTtsVoice | null>(null);
     const [voiceFilter, setVoiceFilter] = useState<VoiceFilter>("all");
@@ -184,7 +186,8 @@ export function UserAvatarMenu({
         const handlePointerDown = (event: MouseEvent) => {
             if (
                 !containerRef.current?.contains(event.target as Node) &&
-                !voiceModalRef.current?.contains(event.target as Node)
+                !voiceModalRef.current?.contains(event.target as Node) &&
+                !aiModelOpen
             ) {
                 setOpen(false);
                 setMailboxOpen(false);
@@ -200,18 +203,19 @@ export function UserAvatarMenu({
     }, []);
 
     useEffect(() => {
-        if (!mailboxOpen && !backgroundOpen && !ttsVoiceOpen && !manualOpen) return;
+        if (!mailboxOpen && !backgroundOpen && !ttsVoiceOpen && !manualOpen && !aiModelOpen) return;
         const onKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Escape") {
                 setMailboxOpen(false);
                 setBackgroundOpen(false);
                 setTtsVoiceOpen(false);
                 setManualOpen(false);
+                setAiModelOpen(false);
             }
         };
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [backgroundOpen, mailboxOpen, ttsVoiceOpen, manualOpen]);
+    }, [backgroundOpen, mailboxOpen, ttsVoiceOpen, manualOpen, aiModelOpen]);
 
     useEffect(() => {
         setSelectedVoice(normalizeLearningPreferenceTtsVoice(learningPreferences.tts_voice));
@@ -301,7 +305,7 @@ export function UserAvatarMenu({
                 animate={!open ? { y: [0, -3, 0], rotate: [0, 1, -1, 0] } : { y: 0, rotate: 0 }}
                 whileTap={{ scale: 0.93 }}
                 transition={{ 
-                    type: "spring", stiffness: 400, damping: 25,
+                    type: "spring" as const, stiffness: 400, damping: 25,
                     y: { repeat: Infinity, duration: 3, ease: "easeInOut" },
                     rotate: { repeat: Infinity, duration: 4, ease: "easeInOut" }
                 }}
@@ -333,7 +337,7 @@ export function UserAvatarMenu({
                         initial={{ opacity: 0, scale: 0.9, y: isSidebar ? 15 : -15, filter: "blur(4px)" }}
                         animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
                         exit={{ opacity: 0, scale: 0.95, y: isSidebar ? 10 : -10, filter: "blur(2px)" }}
-                        transition={{ type: "spring", stiffness: 450, damping: 25 }}
+                        transition={{ type: "spring" as const, stiffness: 450, damping: 25 }}
                         className={isSidebar
                             ? "absolute bottom-full left-0 mb-2 w-72 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-4rem)] overflow-y-auto rounded-[1.2rem] border-[3px] border-theme-border bg-theme-base-bg p-2 shadow-[0_6px_0_0_var(--theme-shadow)]"
                             : "absolute right-0 mt-2 w-72 max-w-[calc(100vw-2rem)] max-h-[calc(100vh-4rem)] overflow-y-auto rounded-[1.2rem] border-[3px] border-theme-border bg-theme-base-bg p-2 shadow-[0_6px_0_0_var(--theme-shadow)]"}
@@ -413,6 +417,18 @@ export function UserAvatarMenu({
                     </button>
                     
                     <div className="mt-2 space-y-2">
+                        <Link href="/rag" prefetch={false} onClick={() => setOpen(false)} className="flex w-full cursor-pointer items-center justify-between rounded-[0.8rem] px-3 py-2 text-sm font-bold text-indigo-600 hover:bg-indigo-50 border-2 border-transparent hover:border-indigo-200 transition-colors">
+                            <span className="flex items-center gap-2.5"><BrainCircuit className="h-4 w-4" />私人记忆大脑腔</span>
+                        </Link>
+                        
+                        <button
+                            type="button"
+                            onClick={() => { setAiModelOpen(true); setOpen(false); }}
+                            className="flex w-full cursor-pointer items-center justify-between rounded-[0.8rem] px-3 py-2 text-sm font-bold text-theme-text hover:bg-theme-card-bg border-2 border-transparent hover:border-theme-border transition-colors"
+                        >
+                            <span className="flex items-center gap-2.5"><Cpu className="h-4 w-4" />AI 模型</span>
+                        </button>
+
                         <Link href="/profile" prefetch={false} className="flex cursor-pointer items-center justify-between rounded-[0.8rem] px-3 py-2 text-sm font-bold text-theme-text hover:bg-theme-card-bg border-2 border-transparent hover:border-theme-border transition-colors">
                             <span className="flex items-center gap-2.5"><Settings2 className="h-4 w-4" />个人资料</span>
                         </Link>
@@ -445,7 +461,7 @@ export function UserAvatarMenu({
                             initial={{ opacity: 0, scale: 0.95, y: 20 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                            transition={{ type: "spring" as const, stiffness: 350, damping: 25 }}
                             className="relative flex w-full max-w-3xl max-h-[85vh] flex-col overflow-hidden rounded-[2rem] border-[3px] border-theme-border bg-theme-base-bg shadow-[0_12px_0_0_var(--theme-shadow)]"
                             onClick={(event) => event.stopPropagation()}
                         >
@@ -631,7 +647,7 @@ export function UserAvatarMenu({
                                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                                transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                                transition={{ type: "spring" as const, stiffness: 350, damping: 25 }}
                                 className="relative flex w-full max-w-4xl max-h-[90vh] flex-col overflow-hidden rounded-[2rem] border-4 border-theme-border bg-theme-base-bg shadow-[0_12px_0_0_var(--theme-shadow)]"
                                 onClick={(event) => event.stopPropagation()}
                             >
@@ -654,6 +670,10 @@ export function UserAvatarMenu({
             )}
             {typeof window !== "undefined" && createPortal(
                 <UserManualModal isOpen={manualOpen} onClose={() => setManualOpen(false)} />,
+                document.body
+            )}
+            {typeof window !== "undefined" && createPortal(
+                <AiModelSettingsModal isOpen={aiModelOpen} onClose={() => setAiModelOpen(false)} />,
                 document.body
             )}
             {typeof window !== "undefined" && createPortal(

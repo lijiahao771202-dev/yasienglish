@@ -6,6 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOSTNAME="${HOSTNAME:-0.0.0.0}"
 PORT="${PORT:-3000}"
 REBUILD="${REBUILD:-0}"
+NODE_ENV="${NODE_ENV:-production}"
 
 print_help() {
   cat <<'EOF'
@@ -82,14 +83,32 @@ build_if_needed() {
   fi
 }
 
+load_env_file() {
+  local file="$1"
+  if [[ -f "$file" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$file"
+    set +a
+  fi
+}
+
+load_runtime_env() {
+  load_env_file ".env"
+  load_env_file ".env.production"
+  load_env_file ".env.local"
+  load_env_file ".env.production.local"
+}
+
 sync_static_assets() {
   mkdir -p ".next/standalone/.next/static"
   rsync -a --delete ".next/static/" ".next/standalone/.next/static/"
 }
 
+load_runtime_env
 build_if_needed
 sync_static_assets
 stop_existing_listener
 
 echo "Starting production server on http://${HOSTNAME}:${PORT}"
-exec env HOSTNAME="$HOSTNAME" PORT="$PORT" node ".next/standalone/server.js"
+exec env NODE_ENV="$NODE_ENV" HOSTNAME="$HOSTNAME" PORT="$PORT" node ".next/standalone/server.js"

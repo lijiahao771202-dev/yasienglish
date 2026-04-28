@@ -1,0 +1,584 @@
+
+ RUN  v4.1.2 /Users/lijiahao/yasi
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 1 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+completion is: undefined
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 4 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 6 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+completion is: undefined
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 9 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 11 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [ [Array] ],
+    contexts: [ [Object] ],
+    instances: [ [Object] ],
+    invocationCallOrder: [ 13 ],
+    settledResults: [ [Object] ],
+    results: [ [Object] ],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns 502 when both draft and repair stay invalid
+completion is: { choices: [ { message: [Object] } ] }
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns generation details when model output is invalid JSON
+CREATE FUNC: [Function: Mock] {
+  _isMockFunction: true,
+  getMockImplementation: [Function (anonymous)],
+  mock: {
+    calls: [],
+    contexts: [],
+    instances: [],
+    invocationCallOrder: [],
+    settledResults: [],
+    results: [],
+    lastCall: [Getter]
+  },
+  mockImplementation: [Function: mockImplementation],
+  mockImplementationOnce: [Function: mockImplementationOnce],
+  withImplementation: [Function: withImplementation],
+  mockReturnThis: [Function: mockReturnThis],
+  mockReturnValue: [Function: mockReturnValue],
+  mockReturnValueOnce: [Function: mockReturnValueOnce],
+  mockThrow: [Function: mockThrow],
+  mockThrowOnce: [Function: mockThrowOnce],
+  mockResolvedValue: [Function: mockResolvedValue],
+  mockResolvedValueOnce: [Function: mockResolvedValueOnce],
+  mockRejectedValue: [Function: mockRejectedValue],
+  mockRejectedValueOnce: [Function: mockRejectedValueOnce],
+  mockClear: [Function: mockClear],
+  mockReset: [Function: mockReset],
+  mockRestore: [Function: mockRestore],
+  mockName: [Function: mockName],
+  getMockName: [Function: getMockName],
+  [Symbol(nodejs.dispose)]: [Function (anonymous)]
+}
+
+stdout | src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns generation details when model output is invalid JSON
+completion is: { choices: [ { message: [Object] } ] }
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts (8 tests | 5 failed) 15ms
+     × returns a normalized spoken script payload for valid requests 8ms
+     × switches to deepseek-reasoner when thinkingMode is deep 1ms
+     ✓ returns 400 for empty prompt in manual mode 1ms
+     × supports podcast mode with 2-4 speakers 2ms
+     × repairs podcast drafts that omit configured speakers in a four-person setup 1ms
+     × runs repair once when draft fails lint and returns repaired output 1ms
+     ✓ returns 502 when both draft and repair stay invalid 1ms
+     ✓ returns generation details when model output is invalid JSON 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > returns a normalized spoken script payload for valid requests
+AssertionError: expected 500 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 500
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:88:33
+     86|         const data = await response.json();
+     87|
+     88|         expect(response.status).toBe(200);
+       |                                 ^
+     89|         expect(data.title).toBe("Morning Briefing Practice");
+     90|         expect(data.sourcePrompt).toBe("做一个工作晨会口播");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > switches to deepseek-reasoner when thinkingMode is deep
+AssertionError: expected 502 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 502
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:136:33
+    134|         const data = await response.json();
+    135|
+    136|         expect(response.status).toBe(200);
+       |                                 ^
+    137|         expect(data.meta.model).toBe("deepseek-reasoner");
+    138|         expect(createCompletionMock).toHaveBeenCalledWith(expect.objec…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > supports podcast mode with 2-4 speakers
+AssertionError: expected 500 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 500
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:187:33
+    185|         const data = await response.json();
+    186|
+    187|         expect(response.status).toBe(200);
+       |                                 ^
+    188|         expect(data.meta).toEqual(expect.objectContaining({
+    189|             scriptMode: "podcast",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > repairs podcast drafts that omit configured speakers in a four-person setup
+AssertionError: expected 502 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 502
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:237:33
+    235|         const data = await response.json();
+    236|
+    237|         expect(response.status).toBe(200);
+       |                                 ^
+    238|         expect(data.meta).toEqual(expect.objectContaining({
+    239|             scriptMode: "podcast",
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  src/app/api/ai/listening-cabin/generate/route.test.ts > listening cabin generate route > runs repair once when draft fails lint and returns repaired output
+AssertionError: expected 502 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 502
+
+ ❯ src/app/api/ai/listening-cabin/generate/route.test.ts:267:33
+    265|         const data = await response.json();
+    266|
+    267|         expect(response.status).toBe(200);
+       |                                 ^
+    268|         expect(data.title).toBe("Better Spoken Draft");
+    269|         expect(createCompletionMock).toHaveBeenCalledTimes(2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 3 passed (8)
+   Start at  00:26:10
+   Duration  175ms (transform 50ms, setup 0ms, import 84ms, tests 15ms, environment 0ms)
+

@@ -362,7 +362,7 @@ export async function POST(request: Request) {
         && storedSettlement.objectiveGrowth
         && storedSettlement.metrics
     );
-    const preparedSettlement = canReusePreparedSettlement
+    const preparedSettlement: StoredSettlementMeta = canReusePreparedSettlement && storedSettlement
         ? storedSettlement
         : buildPreparedSettlement({
             scoreBeforeSnapshot,
@@ -374,10 +374,13 @@ export async function POST(request: Request) {
             body,
             normalizedResponses,
         });
+    const objectiveGrowth = preparedSettlement.objectiveGrowth;
+    const preparedMetrics = preparedSettlement.metrics;
+    if (!objectiveGrowth || !preparedMetrics) {
+        return NextResponse.json({ error: "CAT objective settlement is missing." }, { status: 400 });
+    }
 
     if (mode === "prepare") {
-        const objectiveState = preparedSettlement.objectiveGrowth!;
-        const preparedMetrics = preparedSettlement.metrics!;
         try {
             await supabase
                 .from("cat_sessions")
@@ -388,7 +391,7 @@ export async function POST(request: Request) {
                             ...preparedSettlement,
                             prepared: true,
                             finalized: false,
-                            objectiveDelta: objectiveState.delta,
+                            objectiveDelta: objectiveGrowth.delta,
                             selfAssessment: null,
                             scoreCorrection: 0,
                             difficultySignal: 0,
@@ -408,7 +411,7 @@ export async function POST(request: Request) {
                 id: session.id,
                 stage: "prepared",
                 mode: preparedSettlement.mode ?? "legacy",
-                objectiveDelta: objectiveState.delta,
+                objectiveDelta: objectiveGrowth.delta,
                 systemAssessment: preparedSettlement.systemAssessment ?? null,
                 scoreCorrection: 0,
                 difficultySignal: 0,
@@ -420,20 +423,14 @@ export async function POST(request: Request) {
             },
             animationPayload: {
                 scoreBefore: scoreBeforeSnapshot,
-                scoreAfter: objectiveState.scoreAfter,
-                delta: objectiveState.delta,
+                scoreAfter: objectiveGrowth.scoreAfter,
+                delta: objectiveGrowth.delta,
                 rankBefore,
-                rankAfter: getCatRankTier(objectiveState.scoreAfter),
-                isRankUp: getCatRankTier(objectiveState.scoreAfter).index > rankBefore.index,
-                isRankDown: getCatRankTier(objectiveState.scoreAfter).index < rankBefore.index,
+                rankAfter: getCatRankTier(objectiveGrowth.scoreAfter),
+                isRankUp: getCatRankTier(objectiveGrowth.scoreAfter).index > rankBefore.index,
+                isRankDown: getCatRankTier(objectiveGrowth.scoreAfter).index < rankBefore.index,
             },
         });
-    }
-
-    const objectiveGrowth = preparedSettlement.objectiveGrowth;
-    const preparedMetrics = preparedSettlement.metrics;
-    if (!objectiveGrowth || !preparedMetrics) {
-        return NextResponse.json({ error: "CAT objective settlement is missing." }, { status: 400 });
     }
 
     const useRaschMode = (preparedSettlement.mode ?? "legacy") === "rasch";

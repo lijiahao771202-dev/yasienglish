@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import {
     ArrowLeft,
     CheckCircle2,
@@ -68,7 +68,7 @@ type RewriteScoreNavigationPayload = {
     score: RewritePracticeScore;
 };
 
-export default function RewritePracticePage() {
+function RewritePracticePageContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const rewriteId = searchParams.get("id");
@@ -412,5 +412,13 @@ export default function RewritePracticePage() {
                 </section>
             </div>
         </main>
+    );
+}
+
+export default function RewritePracticePage() {
+    return (
+        <Suspense fallback={null}>
+            <RewritePracticePageContent />
+        </Suspense>
     );
 }

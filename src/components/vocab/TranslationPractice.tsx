@@ -495,8 +495,9 @@ function DiffView({ original, revised }: { original: string, revised: string }) 
 export default function TranslationPractice() {
     const [loading, setLoading] = useState(false);
     const [chinese, setChinese] = useState<string | null>(null);
+    const [english, setEnglish] = useState<string | null>(null);
     const [translation, setTranslation] = useState('');
-    const [result, setResult] = useState<{ score: number; feedback: string; revised_text?: string } | null>(null);
+    const [result, setResult] = useState<{ score: number; feedback: string; revised_text?: string; nlpScore?: number; literalScore?: number; vectorScore?: number } | null>(null);
 
     // Modes
     const [mode, setMode] = useState<PracticeMode>('INPUT');
@@ -510,6 +511,7 @@ export default function TranslationPractice() {
         try {
             const response = await axios.post('/api/ai/translation', { action: 'generate' });
             setChinese(response.data.chinese);
+            setEnglish(response.data.english);
         } catch (error) {
             console.error('Failed to generate sentence', error);
         } finally {
@@ -518,12 +520,13 @@ export default function TranslationPractice() {
     };
 
     const submitTranslation = async () => {
-        if (!chinese || !translation) return;
+        if (!chinese || !english || !translation) return;
         setLoading(true);
         try {
             const response = await axios.post('/api/ai/translation', {
                 action: 'score',
                 text: translation,
+                reference: english,
                 context: chinese,
             });
             setResult(response.data);
@@ -674,6 +677,14 @@ export default function TranslationPractice() {
                                         </div>
                                         <div className="p-4 bg-slate-50/80 rounded-2xl text-slate-600 text-sm leading-relaxed flex-1 border border-slate-100">
                                             {result.feedback}
+                                            {/* Render New Tri-Factor Scores */}
+                                            {(result.nlpScore !== undefined && result.literalScore !== undefined) && (
+                                                <div className="mt-3 flex gap-2 pt-3 border-t border-slate-200/50 flex-wrap">
+                                                    <span className="text-xs font-semibold bg-indigo-100 text-indigo-700 px-2 py-1 rounded">NLP 核心词: {result.nlpScore} 分</span>
+                                                    <span className="text-xs font-semibold bg-purple-100 text-purple-700 px-2 py-1 rounded">字面搭配: {result.literalScore} 分</span>
+                                                    <span className="text-xs font-semibold bg-cyan-100 text-cyan-700 px-2 py-1 rounded">语义覆盖: {result.vectorScore} 分</span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 

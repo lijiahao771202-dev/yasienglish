@@ -443,3 +443,16 @@ export function getBattleQuickMatchPoolSize(elo = 1000) {
 export function getBattleQuickMatchDomainById(domainId: string) {
     return QUICKMATCH_DOMAIN_MAP.get(domainId) ?? null;
 }
+
+export function getAvailableBattleSlotItems(elo: number) {
+    const roleFrames = getRoleFramePoolForElo(elo).map((r) => r.label);
+    const domains = QUICKMATCH_DOMAINS.map((d) => d.label);
+    const scenarios = QUICKMATCH_SCENARIOS.map((s) => s.label);
+    
+    // We map generic slot column names returning { col1, col2, col3 } to avoid domain-specific namings
+    return {
+        col1: domains,
+        col2: scenarios,
+        col3: roleFrames.length > 0 ? roleFrames : ["通用发起方"],
+    };
+}

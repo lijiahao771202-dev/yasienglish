@@ -4,20 +4,23 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useEffect, useCallback, type ComponentType } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { DrillCore } from "@/components/drill/DrillCore";
-import { Zap, ChevronRight, Lock, House, Sword, CircleHelp, X, BookOpen, Feather, Gauge, Coins, Gift, Blocks, Compass, Target } from "lucide-react";
+import { Zap, ChevronRight, House, Sword, CircleHelp, X, BookOpen, Feather, Gauge, Coins, Gift, Blocks, Compass, Target, Brain } from "lucide-react";
 import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 import { cn } from "@/lib/utils";
 import { getRank } from "@/lib/rankUtils";
 import { db } from "@/lib/db";
 import { EloChart } from "@/components/battle/EloChart";
 import { BattleDrillSelection, shouldRefreshBattleChart } from "@/lib/battleUiState";
-import { TOPICS } from "@/lib/battle-topics";
 import { RANDOM_SCENARIO_TOPIC } from "@/lib/battle-quickmatch-topics";
+import { TranslationSlotMachine } from "@/components/battle/TranslationSlotMachine";
 import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getRebuildPracticeTier } from "@/lib/rebuild-mode";
+import { saveProfilePatch } from "@/lib/user-repository";
+import type { AiProvider } from "@/lib/profile-settings";
+import { DEFAULT_TRANSLATION_ELO } from "@/lib/translation-elo-reset";
 
 type GuideSectionId = "overview" | "elo" | "dictation" | "translation" | "items" | "drops";
 
@@ -303,11 +306,26 @@ function BattlePageContent() {
     const [battleMode, setBattleMode] = useState<BattleMode>('rebuild');
     const [rebuildVariant, setRebuildVariant] = useState<"sentence" | "passage">("sentence");
     const [rebuildSegmentCount, setRebuildSegmentCount] = useState<2 | 3 | 5>(3);
+    const [translateVariant, setTranslateVariant] = useState<"sentence" | "passage">("sentence");
+    const [translateSegmentCount, setTranslateSegmentCount] = useState<2 | 3 | 5>(3);
     const [showGuide, setShowGuide] = useState(false);
+    const [showTranslationSlotMachine, setShowTranslationSlotMachine] = useState(false);
     const [activeGuideSection, setActiveGuideSection] = useState<GuideSectionId>("overview");
     const [refreshCount, setRefreshCount] = useState(0);
     const [navTransition, setNavTransition] = useState<"home" | "read" | null>(null);
     const [showBattleTour, setShowBattleTour] = useState(false);
+    const [drillAiProvider, setDrillAiProvider] = useState<AiProvider>("deepseek");
+    const [drillNvidiaModel, setDrillNvidiaModel] = useState("z-ai/glm5");
+
+    const toggleDrillProvider = useCallback(() => {
+        setDrillAiProvider(prev => {
+            const providerCycle: AiProvider[] = ["deepseek", "glm", "nvidia", "github"];
+            const currentIndex = providerCycle.indexOf(prev);
+            const next = providerCycle[(currentIndex + 1) % providerCycle.length];
+            void saveProfilePatch({ ai_provider: next });
+            return next;
+        });
+    }, []);
 
     const activeModeDifficultyElo = battleMode === "translation"
         ? eloRating
@@ -474,10 +492,20 @@ function BattlePageContent() {
     const loadProfile = useCallback(() => {
         db.user_profile.orderBy('id').first().then(async (profile) => {
             if (profile) {
-                setEloRating(profile.elo_rating || 400);
+                setEloRating(profile.elo_rating ?? DEFAULT_TRANSLATION_ELO);
                 setDictationElo(profile.dictation_elo ?? profile.listening_elo ?? 400);
                 setRebuildBattleElo(profile.rebuild_elo ?? profile.rebuild_hidden_elo ?? profile.listening_elo ?? 400);
                 setRebuildBattleStreak(profile.rebuild_streak ?? 0);
+                setDrillAiProvider(
+                    profile.ai_provider === "glm" || profile.ai_provider === "nvidia" || profile.ai_provider === "github"
+                        ? profile.ai_provider
+                        : "deepseek",
+                );
+                setDrillNvidiaModel(
+                    typeof profile.nvidia_model === "string" && profile.nvidia_model.trim()
+                        ? profile.nvidia_model.trim()
+                        : "z-ai/glm5",
+                );
                 const activeUserMeta = await db.sync_meta.get("active_user_id");
                 const activeUserId = typeof activeUserMeta?.value === "string" ? activeUserMeta.value : "local";
                 const hiddenMeta = await db.sync_meta.get(`rebuild_hidden_elo::${activeUserId}`);
@@ -524,11 +552,26 @@ function BattlePageContent() {
                 rebuildVariant,
                 segmentCount: rebuildVariant === "passage" ? rebuildSegmentCount : 3,
             }
+            : battleMode === "translation"
+            ? {
+                type: "scenario",
+                topic,
+                translationVariant: translateVariant,
+                segmentCount: translateVariant === "passage" ? translateSegmentCount : 3,
+            }
             : {
                 type: "scenario",
                 topic,
             }
-    ), [battleMode, rebuildSegmentCount, rebuildVariant]);
+    ), [battleMode, rebuildSegmentCount, rebuildVariant, translateSegmentCount, translateVariant]);
+
+    const handleQuickMatchClick = useCallback(() => {
+        if (battleMode === "rebuild" || battleMode === "translation") {
+            setShowTranslationSlotMachine(true);
+        } else {
+            setActiveDrill(buildBattleSelection(RANDOM_SCENARIO_TOPIC));
+        }
+    }, [battleMode, buildBattleSelection]);
     const sectionByMode: Record<BattleMode, GuideSectionId> = {
         rebuild: "overview",
         dictation: "dictation",
@@ -542,18 +585,6 @@ function BattlePageContent() {
     ];
     const activeBattleModeIndex = battleModeTabs.findIndex((item) => item.key === battleMode);
     const modeOpacity = (targetMode: BattleMode) => (battleMode === targetMode ? 1 : 0);
-    const glassTone = {
-        soft: "",
-        pill: "",
-        active: "",
-        hero: "",
-        badge: "",
-        icon: "",
-        marker: "",
-        chevron: "text-theme-text",
-        textTag: "",
-    };
-
     const cuteTone = {
         cardTint: "bg-theme-card-bg",
         softTint: "bg-theme-base-bg",
@@ -589,17 +620,17 @@ function BattlePageContent() {
                 <motion.div
                     className="absolute inset-0 bg-[radial-gradient(90%_72%_at_50%_0%,rgba(45,212,191,0.12),rgba(20,184,166,0.04)_42%,transparent_74%)]"
                     animate={{ opacity: modeOpacity("rebuild") }}
-                    transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
+                    transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] as const }}
                 />
                 <motion.div
                     className="absolute inset-0 bg-[radial-gradient(85%_66%_at_50%_0%,rgba(196,181,253,0.12),rgba(168,85,247,0.04)_44%,transparent_74%)]"
                     animate={{ opacity: modeOpacity("dictation") }}
-                    transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
+                    transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] as const }}
                 />
                 <motion.div
                     className="absolute inset-0 bg-[radial-gradient(90%_70%_at_85%_0%,rgba(255,190,116,0.12),rgba(255,138,37,0.03)_42%,transparent_72%)]"
                     animate={{ opacity: modeOpacity("translation") }}
-                    transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] }}
+                    transition={{ duration: 1.25, ease: [0.19, 1, 0.22, 1] as const }}
                 />
             </div>
 
@@ -610,13 +641,13 @@ function BattlePageContent() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] as const }}
                     >
                         <motion.div
                             className="absolute inset-0 bg-theme-base-bg/80 backdrop-blur-[10px]"
                             initial={{ scale: 1.08, filter: "blur(22px)" }}
                             animate={{ scale: 1, filter: "blur(0px)" }}
-                            transition={{ duration: 0.76, ease: [0.18, 1, 0.3, 1] }}
+                            transition={{ duration: 0.76, ease: [0.18, 1, 0.3, 1] as const }}
                         />
                     </motion.div>
                 )}
@@ -642,7 +673,7 @@ function BattlePageContent() {
                         <motion.button
                             initial={{ opacity: 0, y: 22, scale: 0.92, filter: "blur(6px)" }}
                             animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                            transition={{ delay: 0.02, duration: 0.86, ease: [0.16, 1, 0.3, 1] }}
+                            transition={{ delay: 0.02, duration: 0.86, ease: [0.16, 1, 0.3, 1] as const }}
                             onClick={() => handleNavigateWithCard("home")}
                             className="ui-pressable inline-flex h-14 w-14 items-center justify-center rounded-[1.35rem] border-4 border-theme-border bg-theme-primary-bg text-theme-primary-text hover:bg-theme-active-bg hover:text-theme-active-text"
                             style={getPressableStyle("var(--theme-shadow)", 6)}
@@ -696,10 +727,10 @@ function BattlePageContent() {
                                     className={cn("absolute top-2 h-[calc(100%-16px)] rounded-[1.15rem] border-4", cuteTone.activeTab)}
                                     initial={false}
                                     animate={{
-                                        left: `calc(${activeBattleModeIndex} * ((100% - 16px) / 3) + 8px)`,
-                                        width: "calc((100% - 16px) / 3)",
+                                        left: `calc(${activeBattleModeIndex} * ((100% - 16px) / ${battleModeTabs.length}) + 8px)`,
+                                        width: `calc((100% - 16px) / ${battleModeTabs.length})`,
                                     }}
-                                    transition={{ type: "spring", stiffness: 210, damping: 24, mass: 0.84 }}
+                                    transition={{ type: "spring" as const, stiffness: 210, damping: 24, mass: 0.84 }}
                                 />
                                 {battleModeTabs.map((tab) => (
                                     <button
@@ -731,10 +762,31 @@ function BattlePageContent() {
                                                 : "当前模式继续走 AI 生成。"}
                                         </p>
                                     </div>
-                                    <div className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-base-bg px-4 py-2 text-sm font-black text-theme-text-muted shadow-[0_4px_0_var(--theme-shadow)]">
-                                        <Blocks className="h-4 w-4" />
-                                        AI Only
-                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={toggleDrillProvider}
+                                        className={cn(
+                                            "ui-pressable inline-flex items-center gap-2 rounded-full border-4 px-4 py-2 text-sm font-black transition-colors",
+                                            drillAiProvider !== "deepseek"
+                                                ? "border-purple-300 bg-purple-50 text-purple-700 shadow-[0_4px_0_rgba(168,85,247,0.25)]"
+                                                : "border-theme-border bg-theme-base-bg text-theme-text-muted shadow-[0_4px_0_var(--theme-shadow)]"
+                                        )}
+                                        style={getPressableStyle(
+                                            drillAiProvider !== "deepseek" ? "rgba(168,85,247,0.25)" : "var(--theme-shadow)",
+                                            4
+                                        )}
+                                    >
+                                        {drillAiProvider === "glm" ? (
+                                            <Brain className="h-4 w-4" />
+                                        ) : drillAiProvider === "nvidia" ? (
+                                            <Brain className="h-4 w-4" />
+                                        ) : drillAiProvider === "github" ? (
+                                            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10019 0 0022 12.017C22 6.484 17.522 2 12 2z" /></svg>
+                                        ) : (
+                                            <Blocks className="h-4 w-4" />
+                                        )}
+                                        {drillAiProvider === "glm" ? "GLM" : drillAiProvider === "nvidia" ? "NVIDIA" : drillAiProvider === "github" ? "GitHub" : "DeepSeek"}
+                                    </button>
                                 </div>
                                 {battleMode === "rebuild" ? (
                                     <div data-tour-target="battle-rebuild-variants" className="mt-4 space-y-4 border-t-2 border-theme-border/30 pt-4">
@@ -800,11 +852,75 @@ function BattlePageContent() {
                                         ) : null}
                                     </div>
                                 ) : null}
+                                {battleMode === "translation" ? (
+                                    <div className="mt-4 space-y-4 border-t-2 border-theme-border/30 pt-4">
+                                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                            <div>
+                                                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-theme-text-muted">Translation Branch</p>
+                                                <p className="mt-1 text-sm leading-7 text-theme-text opacity-90">单句训练表达准度，短文训练承上启下和代词指代。</p>
+                                            </div>
+                                            <div className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-base-bg p-1.5 shadow-[0_4px_0_var(--theme-shadow)]">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTranslateVariant("sentence")}
+                                                    className={cn(
+                                                        "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition-colors",
+                                                        translateVariant === "sentence"
+                                                            ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                            : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text"
+                                                    )}
+                                                    style={translateVariant === "sentence" ? getPressableStyle("var(--theme-shadow)", 4) : undefined}
+                                                >
+                                                    单句
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setTranslateVariant("passage")}
+                                                    className={cn(
+                                                        "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition-colors",
+                                                        translateVariant === "passage"
+                                                            ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                            : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text"
+                                                    )}
+                                                    style={translateVariant === "passage" ? getPressableStyle("var(--theme-shadow)", 4) : undefined}
+                                                >
+                                                    连贯短篇
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {translateVariant === "passage" ? (
+                                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                                <div>
+                                                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-theme-text-muted">Segments</p>
+                                                    <p className="mt-1 text-sm leading-7 text-theme-text opacity-90">全篇将切分为数段，段段相扣，沉浸挑战。</p>
+                                                </div>
+                                                <div className="inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-base-bg p-1.5 shadow-[0_4px_0_var(--theme-shadow)]">
+                                                    {([2, 3, 5] as const).map((count) => (
+                                                        <button
+                                                            key={count}
+                                                            type="button"
+                                                            onClick={() => setTranslateSegmentCount(count)}
+                                                            className={cn(
+                                                                "ui-pressable rounded-full border-4 px-4 py-2 text-sm font-black transition-colors",
+                                                                translateSegmentCount === count
+                                                                    ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                                    : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text"
+                                                            )}
+                                                            style={translateSegmentCount === count ? getPressableStyle("var(--theme-shadow)", 4) : undefined}
+                                                        >
+                                                            {count} 段
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                ) : null}
                             </div>
 
                             <button
                                 data-tour-target="battle-quick"
-                                onClick={() => setActiveDrill(buildBattleSelection(RANDOM_SCENARIO_TOPIC))}
+                                onClick={handleQuickMatchClick}
                                 className={cn("ui-pressable group relative w-full overflow-hidden rounded-[1.6rem] border-4 border-theme-border p-6 text-left transition-all md:p-8", cuteTone.cardTint)}
                                 style={getPressableStyle("var(--theme-shadow)", 6)}
                             >
@@ -838,7 +954,7 @@ function BattlePageContent() {
                             initial={{ opacity: 0, y: 14, scale: 0.985, filter: "blur(8px)" }}
                             animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
                             exit={{ opacity: 0, y: -10, scale: 0.99, filter: "blur(6px)" }}
-                            transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
+                            transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] as const }}
                         >
                             {battleMode === "rebuild" ? (
                                 rebuildVariant === "passage" ? (
@@ -900,66 +1016,6 @@ function BattlePageContent() {
                     </AnimatePresence>
                 </div>
 
-                {/* Topic Grid */}
-                <div data-tour-target="battle-topics" className={cn("p-5 md:p-6", chunkySurface)}>
-                    <div className="mb-8 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                        <div>
-                            <h3 className="flex items-center gap-3 text-2xl font-black text-stone-900">
-                                <span className={cn("h-8 w-2 rounded-full", cuteTone.marker)} />
-                                训练主题
-                            </h3>
-                            <p className="mt-2 text-sm leading-7 text-stone-600">每张卡片就是一局可爱的 battle 场景，按当前模式和 Elo 自适应难度。</p>
-                        </div>
-                        <div className={cn("inline-flex items-center gap-2 rounded-full border-4 px-4 py-2 text-sm font-black", cuteTone.badge)}>
-                            <Gift className="h-4 w-4" />
-                            Topic Academy
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-                        {TOPICS.map((topic, i) => {
-                            const isLocked = activeModeDifficultyElo < topic.minElo;
-                            return (
-                                <motion.div
-                                    key={topic.id}
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ delay: 0.4 + (i * 0.1) }}
-                                >
-                                    <button
-                                        onClick={() => !isLocked && setActiveDrill(buildBattleSelection(topic.title))}
-                                        disabled={isLocked}
-                                        className={cn(
-                                            "ui-pressable group relative h-full w-full overflow-hidden rounded-[1.8rem] border-4 p-6 text-left transition-all duration-300 disabled:shadow-none",
-                                            isLocked
-                                                ? "cursor-not-allowed border-theme-border/50 bg-theme-base-bg opacity-75"
-                                                : cn("border-theme-border bg-theme-card-bg", cuteTone.softTint)
-                                        )}
-                                        style={getPressableStyle("var(--theme-shadow)", 6)}
-                                    >
-                                        {!isLocked ? <div className={cn("absolute inset-0 opacity-60", cuteTone.heroGlow)} /> : null}
-                                        <div className={cn("relative z-10 mb-4 inline-flex rounded-[1.25rem] border-4 border-white p-3 shadow-[0_8px_18px_rgba(0,0,0,0.1)] transition-transform group-hover:scale-110", topic.color)}>
-                                            <topic.icon className="w-6 h-6" />
-                                        </div>
-
-                                        <h4 className="relative z-10 mb-1 text-xl font-black text-stone-900">{topic.title}</h4>
-                                        <p className="relative z-10 mb-4 text-sm font-medium leading-7 text-stone-600">{topic.description}</p>
-
-                                        {isLocked ? (
-                                            <div className="relative z-10 inline-flex items-center gap-2 rounded-full border-4 border-theme-border bg-theme-base-bg px-3 py-1.5 text-xs font-black text-theme-text-muted">
-                                                <Lock className="w-3 h-3" /> Requires {topic.minElo} Elo
-                                            </div>
-                                        ) : (
-                                            <div className={cn("absolute bottom-6 right-6 opacity-0 -translate-x-2 transition-all group-hover:translate-x-0 group-hover:opacity-100", glassTone.chevron)}>
-                                                <ChevronRight className="w-6 h-6" />
-                                            </div>
-                                        )}
-                                    </button>
-                                </motion.div>
-                            );
-                        })}
-                    </div>
-                </div>
-
             </motion.div>
 
             <AnimatePresence>
@@ -975,7 +1031,7 @@ function BattlePageContent() {
                             initial={{ y: 22, scale: 0.98, opacity: 0 }}
                             animate={{ y: 0, scale: 1, opacity: 1 }}
                             exit={{ y: 12, scale: 0.985, opacity: 0 }}
-                            transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
+                            transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] as const }}
                             onClick={(event) => event.stopPropagation()}
                             className="mx-auto flex h-full w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] border-4 border-theme-border bg-theme-base-bg shadow-[0_35px_100px_rgba(15,23,42,0.18),10px_10px_0_var(--theme-shadow)]"
                         >
@@ -1295,13 +1351,15 @@ function BattlePageContent() {
                         initial={{ opacity: 0, y: 16, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 16, scale: 0.98 }}
-                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] as const }}
                         className="fixed inset-0 z-[100] isolate pointer-events-auto"
                     >
                         <DrillCore
                             context={activeDrill}
                             onClose={handleCloseDrill}
                             initialMode={battleMode}
+                            aiProvider={drillAiProvider}
+                            nvidiaModel={drillNvidiaModel}
                         />
                     </motion.div>
                 )}
@@ -1333,6 +1391,35 @@ function BattlePageContent() {
                 onClose={() => setShowBattleTour(false)}
                 steps={battleTourSteps}
             />
+
+            {/* Translation Slot Machine Modal */}
+            <AnimatePresence>
+                {showTranslationSlotMachine && (
+                    <TranslationSlotMachine
+                        key={[
+                            battleMode,
+                            eloRating,
+                            translateVariant,
+                        ].join("::")}
+                        elo={eloRating}
+                        mode={battleMode === "translation" ? "translation" : "battle"}
+                        translationVariant={battleMode === "translation" ? translateVariant : undefined}
+                        onComplete={(topic) => {
+                            setTimeout(() => {
+                                setShowTranslationSlotMachine(false);
+                            }, 800);
+                            const baseSelection = buildBattleSelection(topic.topicLine);
+                            setActiveDrill({
+                                ...baseSelection,
+                                topicLine: topic.topicLine,
+                                topicPrompt: topic.topicPrompt,
+                                isQuickMatch: true,
+                            });
+                        }}
+                        onCancel={() => setShowTranslationSlotMachine(false)}
+                    />
+                )}
+            </AnimatePresence>
         </div>
     );
 }

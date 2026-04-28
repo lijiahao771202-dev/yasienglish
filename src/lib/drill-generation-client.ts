@@ -1,14 +1,20 @@
-type DrillGenerationRequestBody = {
+import type { AiProvider } from "@/lib/profile-settings";
+
+export type DrillGenerationRequestBody = {
     articleTitle: string;
     topicPrompt?: string;
     articleContent: string;
     difficulty: string;
+    injectedVocabulary?: string[];
     eloRating: number;
     mode: "translation" | "listening" | "rebuild";
     sourceMode: string;
     excludeBankIds?: string[];
     rebuildVariant?: "sentence" | "passage";
+    translationVariant?: "sentence" | "passage";
     segmentCount?: 2 | 3 | 5;
+    provider?: AiProvider;
+    nvidiaModel?: string;
     bossType?: string;
     _t: number;
 };

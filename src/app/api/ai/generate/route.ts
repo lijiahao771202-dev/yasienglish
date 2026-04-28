@@ -104,7 +104,7 @@ function pickRandomGenerationTheme() {
 
 export async function POST(req: Request) {
     try {
-        const { topic, difficulty = "ielts" } = await req.json();
+        const { topic, difficulty = "ielts", injectedVocabulary = [] } = await req.json();
 
         const diff = (difficulty as string).toLowerCase();
         const config =
@@ -117,6 +117,13 @@ export async function POST(req: Request) {
         });
         const generationTheme = pickRandomGenerationTheme();
         const diversitySeed = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+
+        const injectedVocabSection = Array.isArray(injectedVocabulary) && injectedVocabulary.length > 0
+            ? `\nREFERENCE LEXICAL POOL (HIGHLY RECOMMENDED REFERENCE):
+To ensure authentic difficulty for this specific CEFR level, you are provided with a Reference Lexical Pool retrieved from validated corpus.
+You should draw from this pool whenever natural. This is a HIGHLY RECOMMENDED reference, not a strict mandatory checklist out of context. Pick the ones that fit your sentence structure naturally:
+- Reference Pool: ${injectedVocabulary.slice(0, 50).join(", ")}\n`
+            : "";
 
         const prompt = `
 You are an expert English content writer specializing in exam-level reading materials.
@@ -138,7 +145,7 @@ RANDOMIZED THEME INJECTION (must apply this generation):
 - Writing lens: ${generationTheme.lens}
 - Constraint: ${generationTheme.narrativeConstraint}
 - Diversity seed: ${diversitySeed}
-
+${injectedVocabSection}
 CONTENT GUIDELINES:
 - The article must be factually grounded and intellectually stimulating.
 - Use varied paragraph lengths for natural reading rhythm.

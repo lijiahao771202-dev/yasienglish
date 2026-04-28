@@ -1,6 +1,7 @@
 import type { EloHistoryItem, LocalUserProfile, ReadArticleItem, VocabItem, WritingEntry } from "@/lib/db";
 import type { ListeningCabinSession } from "@/lib/listening-cabin";
 import { DEFAULT_LEARNING_PREFERENCES, DEFAULT_PROFILE_USERNAME } from "@/lib/profile-settings";
+import { DEFAULT_TRANSLATION_ELO } from "@/lib/translation-elo-reset";
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "long" });
 
@@ -237,8 +238,8 @@ export function buildHomeDashboardModel({
     const resolvedReadCount = typeof readCount === "number" ? readCount : readArticles.length;
     const resolvedVocabularyCount = typeof vocabularyCount === "number" ? vocabularyCount : vocabulary.length;
     const resolvedWritingCount = typeof writingCount === "number" ? writingCount : writingEntries.length;
-    const eloRating = profile?.elo_rating ?? 400;
-    const maxElo = Math.max(profile?.max_elo ?? 400, eloRating, 400);
+    const eloRating = profile?.elo_rating ?? DEFAULT_TRANSLATION_ELO;
+    const maxElo = Math.max(profile?.max_elo ?? DEFAULT_TRANSLATION_ELO, eloRating, DEFAULT_TRANSLATION_ELO);
     const recentBattleCount = eloHistory.length;
 
     const todayStart = startOfDay(now).getTime();

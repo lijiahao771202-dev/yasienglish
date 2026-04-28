@@ -1,8 +1,12 @@
 export interface BattleDrillSelection {
     type: "scenario";
     topic: string;
+    topicLine?: string;
+    topicPrompt?: string;
     rebuildVariant?: "sentence" | "passage";
     segmentCount?: 2 | 3 | 5;
+    translationVariant?: "sentence" | "passage";
+    isQuickMatch?: boolean;
 }
 
 export interface DrillSurfacePhaseInput {
@@ -17,6 +21,17 @@ export interface ShopInventoryDockInput {
 }
 
 export type DrillSurfacePhase = "bootstrap" | "loading" | "ready";
+
+export function shouldResetQuickMatchTopic(
+    generatedDrillCount: number,
+    topicResetInterval: number,
+): boolean {
+    if (generatedDrillCount <= 0 || topicResetInterval <= 0) {
+        return false;
+    }
+
+    return generatedDrillCount % topicResetInterval === 0;
+}
 
 export function shouldRefreshBattleChart(
     previousActiveDrill: BattleDrillSelection | null,

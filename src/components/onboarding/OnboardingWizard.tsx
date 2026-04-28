@@ -35,7 +35,7 @@ interface OnboardingWizardProps {
 }
 
 const TOTAL_STEPS = 23;
-export const LUXURY_MOTION = { ease: [0.22, 1, 0.36, 1] }; 
+export const LUXURY_MOTION = { ease: [0.22, 1, 0.36, 1] as const };
 
 export function OnboardingWizard({ onClose, onStartTrial }: OnboardingWizardProps) {
     const [currentStep, setCurrentStep] = useState(0);

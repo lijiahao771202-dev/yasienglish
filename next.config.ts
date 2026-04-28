@@ -17,6 +17,14 @@ const nextConfig: NextConfig = {
       "./node_modules/sherpa-onnx-win-x64/**/*",
     ],
   },
+  async rewrites() {
+    return [
+      {
+        source: '/models/:modelId/resolve/main/:path*',
+        destination: '/models/:modelId/:path*',
+      },
+    ];
+  },
 };
 
 export default nextConfig;

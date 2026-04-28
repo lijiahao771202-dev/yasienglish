@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { X, Sparkles, Zap, BrainCircuit, Mic2 } from "lucide-react";
 import { SubscriptionCard } from "./SubscriptionCard";
 import { cn } from "@/lib/utils";
@@ -28,7 +28,7 @@ export function PremiumOnboarding({ onClose, onStartTrial }: PremiumOnboardingPr
         return () => clearTimeout(timer);
     }, []);
 
-    const containerVariants = {
+    const containerVariants: Variants = {
         hidden: { opacity: 0 },
         visible: {
             opacity: 1,
@@ -36,13 +36,13 @@ export function PremiumOnboarding({ onClose, onStartTrial }: PremiumOnboardingPr
         }
     };
 
-    const itemVariants = {
+    const itemVariants: Variants = {
         hidden: { opacity: 0, y: 30, filter: "blur(8px)" },
         visible: {
             opacity: 1,
             y: 0,
             filter: "blur(0px)",
-            transition: { type: "spring", stiffness: 200, damping: 25, mass: 1 }
+            transition: { type: "spring" as const, stiffness: 200, damping: 25, mass: 1 }
         }
     };
 

@@ -10,7 +10,7 @@ export async function POST(req: Request) {
             const completion = await openai.chat.completions.create({
                 model: "deepseek-chat",
                 messages: [
-                    { role: "system", content: "You are a helpful language tutor. Generate a random Chinese sentence for a student to translate into English. The sentence should be suitable for an intermediate learner. Return ONLY the JSON object: { \"chinese\": \"生成的中文句子\" }" },
+                    { role: "system", content: "You are a helpful language tutor. Generate a random Chinese sentence for an intermediate student to translate into English. Return ONLY the JSON object: { \"chinese\": \"生成的中文句子\", \"english\": \"The perfect English translation\" }" },
                 ],
                 response_format: { type: "json_object" }
             });
@@ -19,16 +19,33 @@ export async function POST(req: Request) {
         }
 
         if (action === 'score') {
-            const completion = await openai.chat.completions.create({
-                model: "deepseek-chat",
-                messages: [
-                    { role: "system", content: "You are a helpful language tutor. Evaluate the student's English translation of the given Chinese sentence. Return ONLY the JSON object: { \"score\": 0-100, \"feedback\": \"Concise feedback in CHINESE (中文) explaining the score and offering corrections if needed.\", \"revised_text\": \"The perfect/corrected English translation\" }" },
-                    { role: "user", content: `Chinese: ${context}\nStudent Translation: ${text}` }
-                ],
-                response_format: { type: "json_object" }
+            const { reference } = await req.json(); // Front-end must pass the target english string now as 'reference'
+            
+            const { evaluateTranslationHybrid } = await import('@/lib/translation-scoring');
+            const scores = await evaluateTranslationHybrid({
+                userSentence: text,
+                referenceSentence: reference || ""
             });
-            const result = JSON.parse(completion.choices[0].message.content || "{}");
-            return NextResponse.json(result);
+
+            // Local generated feedback based on score
+            let feedback = '';
+            if (scores.totalScore >= 95) feedback = "完美无瑕！无论是核心短语还是时态处理都非常地道。";
+            else if (scores.totalScore >= 80) feedback = "翻译得相当不错！基本盘很稳，语义清晰。";
+            else if (scores.totalScore >= 50) {
+                feedback = "方向是对的，但是遗漏或替换了一些关键核心词，对比一下原句感受一下不同的表达吧！";
+                if (scores.details.missingLemmas.length > 0) {
+                    feedback += " (缺失的核心概念: " + scores.details.missingLemmas.join(", ") + ")";
+                }
+            } else feedback = "貌似有些跑题哦，请看标准答案是怎么转换这句话的。点击【AI答疑】让 DeepSeek 帮你详细分析哪里可以改进吧。";
+
+            return NextResponse.json({
+                score: Math.round(scores.totalScore),
+                nlpScore: Math.round(scores.nlpRecallScore),
+                literalScore: Math.round(scores.literalNgramScore),
+                vectorScore: Math.round(scores.vectorScore),
+                feedback: feedback,
+                revised_text: reference
+            });
         }
 
         if (action === 'chat') {

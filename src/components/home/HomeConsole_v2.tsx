@@ -11,7 +11,7 @@ import { HomeDashboardPanels_v2 } from "@/components/home/HomeDashboardPanels_v2
 import { buildHomeDashboardModel } from "@/components/home/home-data";
 import { db } from "@/lib/db";
 import { saveProfilePatch } from "@/lib/user-repository";
-import { RANDOM_ENGLISH_TTS_VOICE } from "@/lib/profile-settings";
+import { normalizeLearningPreferences, RANDOM_ENGLISH_TTS_VOICE } from "@/lib/profile-settings";
 import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 import { Volume2, CloudUpload, Loader2, Check } from "lucide-react";
 
@@ -166,10 +166,10 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
         setSettingVoice(true);
         try {
             await saveProfilePatch({
-                learning_preferences: {
+                learning_preferences: normalizeLearningPreferences({
                     ...(profile?.learning_preferences || {}),
                     tts_voice: RANDOM_ENGLISH_TTS_VOICE,
-                },
+                }),
             });
             setVoiceSet(true);
         } catch (e) {
@@ -227,7 +227,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] as const }}
                     />
                 )}
             </AnimatePresence>
@@ -248,8 +248,8 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                             initial={{ opacity: 0, y: 26, scale: 0.92, rotate: -1.5 }}
                             animate={{ opacity: 1, y: 0, scale: 1, rotate: 0 }}
                             exit={{ opacity: 0, y: 16, scale: 0.94, rotate: 1 }}
-                            transition={{ type: "spring", stiffness: 320, damping: 24 }}
-                            className="relative w-full max-w-[440px] rounded-[2.4rem] border-4 border-[#111827] bg-[#fffaf0] p-5 shadow-[0_14px_0_0_#111827]"
+                            transition={{ type: "spring" as const, stiffness: 320, damping: 24 }}
+                            className="relative w-full max-w-[440px] rounded-[2.4rem] border-4 border-theme-border bg-theme-card-bg p-5 shadow-[0_14px_0_0_var(--theme-shadow)]"
                         >
                             <button
                                 type="button"
@@ -258,25 +258,25 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                     setShowReviewReminder(false);
                                     setReviewReminderDismissed(true);
                                 }}
-                                className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border-4 border-[#111827] bg-white text-[#6b7280] shadow-[0_4px_0_0_#111827] transition-transform hover:-translate-y-0.5"
+                                className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border-4 border-theme-border bg-theme-base-bg text-theme-text shadow-[0_4px_0_0_var(--theme-shadow)] transition-transform hover:-translate-y-0.5"
                             >
                                 <X className="h-4 w-4" />
                             </button>
 
                             <div className="space-y-4">
                                 <div className="flex flex-wrap items-center gap-2 pr-12">
-                                    <span className="inline-flex items-center gap-1 rounded-full border-2 border-[#111827] bg-[#fde68a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-[#92400e] shadow-[0_3px_0_0_#111827]">
+                                    <span className="inline-flex items-center gap-1 rounded-full border-2 border-theme-border bg-[#fde68a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] text-[#92400e] shadow-[0_3px_0_0_var(--theme-shadow)]">
                                         <Stars className="h-3.5 w-3.5" />
                                         review ping
                                     </span>
-                                    <span className="inline-flex items-center gap-1 rounded-full border-2 border-[#111827] bg-[#dcfce7] px-3 py-1 text-[11px] font-black text-[#166534] shadow-[0_3px_0_0_#111827]">
+                                    <span className="inline-flex items-center gap-1 rounded-full border-2 border-theme-border bg-[#dcfce7] px-3 py-1 text-[11px] font-black text-[#166534] shadow-[0_3px_0_0_var(--theme-shadow)]">
                                         <Clock3 className="h-3.5 w-3.5" />
                                         待复习 {dueWordCount}
                                     </span>
                                 </div>
 
                                 <div>
-                                    <p className="font-welcome-display text-[2.2rem] leading-[0.92] tracking-[-0.05em] text-[#111827]">
+                                    <p className="font-welcome-display text-[2.2rem] leading-[0.92] tracking-[-0.05em] text-theme-text">
                                         生词本在等你翻牌
                                     </p>
                                     <p className="mt-2 text-[15px] font-bold leading-6 text-[#6b7280]">
@@ -285,7 +285,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                 </div>
 
                                 {dueWords.length > 0 && (
-                                    <div className="rounded-[1.8rem] border-4 border-[#111827] bg-white p-4 shadow-[0_6px_0_0_#111827]">
+                                    <div className="rounded-[1.8rem] border-4 border-theme-border bg-theme-base-bg p-4 shadow-[0_6px_0_0_var(--theme-shadow)]">
                                         <p className="text-[12px] font-black uppercase tracking-[0.18em] text-[#9ca3af]">
                                             first up
                                         </p>
@@ -293,13 +293,13 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                             {dueWords.map((word) => (
                                                 <span
                                                     key={word}
-                                                    className="inline-flex items-center rounded-full border-2 border-[#111827] bg-[#f5f3ff] px-3 py-1.5 text-sm font-black text-[#6d28d9] shadow-[0_3px_0_0_#111827]"
+                                                    className="inline-flex items-center rounded-full border-2 border-theme-border bg-[#f5f3ff] px-3 py-1.5 text-sm font-black text-[#6d28d9] shadow-[0_3px_0_0_var(--theme-shadow)]"
                                                 >
                                                     {word}
                                                 </span>
                                             ))}
                                             {dueWordCount > dueWords.length && (
-                                                <span className="inline-flex items-center rounded-full border-2 border-[#111827] bg-[#ffedd5] px-3 py-1.5 text-sm font-black text-[#c2410c] shadow-[0_3px_0_0_#111827]">
+                                                <span className="inline-flex items-center rounded-full border-2 border-theme-border bg-[#ffedd5] px-3 py-1.5 text-sm font-black text-[#c2410c] shadow-[0_3px_0_0_var(--theme-shadow)]">
                                                     +{dueWordCount - dueWords.length}
                                                 </span>
                                             )}
@@ -317,7 +317,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                             setShowReviewReminder(false);
                                             setReviewReminderDismissed(true);
                                         }}
-                                        className="flex-1 rounded-[1.7rem] border-4 border-[#111827] bg-white px-5 py-3 text-[15px] font-black text-[#6b7280] shadow-[0_6px_0_0_#111827] active:translate-y-1 active:shadow-[0_2px_0_0_#111827]"
+                                        className="flex-1 rounded-[1.7rem] border-4 border-theme-border bg-theme-base-bg px-5 py-3 text-[15px] font-black text-theme-text shadow-[0_6px_0_0_var(--theme-shadow)] active:translate-y-1 active:shadow-[0_2px_0_0_var(--theme-shadow)]"
                                     >
                                         稍后再说
                                     </motion.button>
@@ -331,7 +331,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                             setReviewReminderDismissed(true);
                                             handleNavigateFromHome("review");
                                         }}
-                                        className="flex-1 rounded-[1.7rem] border-4 border-[#111827] bg-[#facc15] px-5 py-3 text-[15px] font-black text-[#111827] shadow-[0_6px_0_0_#111827] active:translate-y-1 active:shadow-[0_2px_0_0_#111827]"
+                                        className="flex-1 rounded-[1.7rem] border-4 border-theme-border bg-[#facc15] px-5 py-3 text-[15px] font-black text-[#111827] shadow-[0_6px_0_0_var(--theme-shadow)] active:translate-y-1 active:shadow-[0_2px_0_0_var(--theme-shadow)]"
                                     >
                                         立即复习
                                     </motion.button>
@@ -347,13 +347,13 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                 animate={routeTransitionTarget
                     ? { opacity: 0, y: 16, scale: 0.985, filter: "blur(8px)" }
                     : { opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                transition={{ duration: 0.58, ease: [0.22, 1, 0.36, 1] }}
+                transition={{ duration: 0.58, ease: [0.22, 1, 0.36, 1] as const }}
             >
                 {/* Hero / Entry Buttons Row */}
                 <motion.div
                     initial={fromBattle ? { opacity: 0, y: 28, scale: 0.98, filter: "blur(12px)" } : { opacity: 0, y: 18 }}
                     animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                    transition={{ duration: fromBattle ? 0.92 : 0.72, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: fromBattle ? 0.92 : 0.72, ease: [0.22, 1, 0.36, 1] as const }}
                     className="flex-shrink-0"
                 >
                     <div className="bg-theme-card-bg backdrop-blur-xl rounded-[2.5rem] p-6 lg:p-8 flex flex-col justify-between border-4 border-theme-border shadow-[0_12px_0_0_var(--theme-shadow)]">
@@ -374,7 +374,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                     transition={springTransition}
                                     type="button"
                                     onClick={() => handleNavigateFromHome("cabin")}
-                                    className="flex w-full md:w-auto min-w-[170px] items-center justify-between gap-3 rounded-[2rem] bg-[color:var(--module-listen-bg)] border-4 border-[color:var(--module-listen-bd)] px-6 py-4 shadow-[0_8px_0_0_var(--module-listen-bd)] text-theme-text group active:shadow-[0_0px_0_0_var(--module-listen-bd)] active:translate-y-2 transition-all duration-75"
+                                    className="flex w-full md:w-auto min-w-[170px] items-center justify-between gap-3 rounded-[2rem] bg-[color:var(--module-listen-bg)] border border-theme-border px-6 py-4 shadow-sm text-theme-text group active:shadow-none active:translate-y-1 transition-all duration-75"
                                 >
                                     <span className="flex items-center gap-2 text-[16px] font-black">
                                         <BookAudio className="h-6 w-6 text-[color:var(--module-listen-bd)]" />听力舱
@@ -387,7 +387,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                     transition={springTransition}
                                     type="button"
                                     onClick={() => handleNavigateFromHome("read")}
-                                    className="flex w-full md:w-auto min-w-[150px] items-center justify-between gap-3 rounded-[2rem] bg-[color:var(--module-read-bg)] border-4 border-[color:var(--module-read-bd)] px-6 py-4 shadow-[0_8px_0_0_var(--module-read-bd)] text-theme-text group active:shadow-[0_0px_0_0_var(--module-read-bd)] active:translate-y-2 transition-all duration-75"
+                                    className="flex w-full md:w-auto min-w-[150px] items-center justify-between gap-3 rounded-[2rem] bg-[color:var(--module-read-bg)] border border-theme-border px-6 py-4 shadow-sm text-theme-text group active:shadow-none active:translate-y-1 transition-all duration-75"
                                 >
                                     <span className="flex items-center gap-2 text-[16px] font-black">
                                         <BookOpenText className="h-6 w-6 text-[color:var(--module-read-bd)]" />阅读
@@ -400,7 +400,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                     transition={springTransition}
                                     type="button"
                                     onClick={() => handleNavigateFromHome("battle")}
-                                    className="flex w-full md:w-auto min-w-[150px] items-center justify-between gap-3 rounded-[2rem] bg-[color:var(--module-battle-bg)] border-4 border-[color:var(--module-battle-bd)] px-6 py-4 shadow-[0_8px_0_0_var(--module-battle-bd)] text-theme-text group active:shadow-[0_0px_0_0_var(--module-battle-bd)] active:translate-y-2 transition-all duration-75"
+                                    className="flex w-full md:w-auto min-w-[150px] items-center justify-between gap-3 rounded-[2rem] bg-[color:var(--module-battle-bg)] border border-theme-border px-6 py-4 shadow-sm text-theme-text group active:shadow-none active:translate-y-1 transition-all duration-75"
                                 >
                                     <span className="flex items-center gap-2 text-[16px] font-black">
                                         <Swords className="h-6 w-6 text-[color:var(--module-battle-bd)]" />对战
@@ -413,7 +413,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                                     transition={springTransition}
                                     type="button"
                                     onClick={() => handleNavigateFromHome("vocab")}
-                                    className="flex w-full md:w-auto min-w-[150px] items-center justify-between gap-3 rounded-[2rem] bg-[color:var(--module-vocab-bg)] border-4 border-[color:var(--module-vocab-bd)] px-6 py-4 shadow-[0_8px_0_0_var(--module-vocab-bd)] text-theme-text group active:shadow-[0_0px_0_0_var(--module-vocab-bd)] active:translate-y-2 transition-all duration-75"
+                                    className="flex w-full md:w-auto min-w-[150px] items-center justify-between gap-3 rounded-[2rem] bg-[color:var(--module-vocab-bg)] border border-theme-border px-6 py-4 shadow-sm text-theme-text group active:shadow-none active:translate-y-1 transition-all duration-75"
                                 >
                                     <span className="flex items-center gap-2 text-[16px] font-black">
                                         <BrainCircuit className="h-6 w-6 text-[color:var(--module-vocab-bd)]" />生词本
@@ -430,7 +430,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
                     className="flex-1 min-h-0"
                     initial={fromBattle ? { opacity: 0, y: 34, scale: 0.985, filter: "blur(14px)" } : { opacity: 0, y: 22 }}
                     animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                    transition={{ delay: fromBattle ? 0.1 : 0.08, duration: fromBattle ? 1.02 : 0.78, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ delay: fromBattle ? 0.1 : 0.08, duration: fromBattle ? 1.02 : 0.78, ease: [0.22, 1, 0.36, 1] as const }}
                 >
                     <div className="h-full w-full rounded-[2.75rem] p-5 lg:p-7 bg-theme-card-bg backdrop-blur-xl border-4 border-theme-border shadow-[0_12px_0_0_var(--theme-shadow)] overflow-y-auto overflow-x-hidden __hide-scrollbars">
                         <HomeDashboardPanels_v2
@@ -447,7 +447,7 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
             <motion.button
                 initial={{ opacity: 0, scale: 0.8, rotate: -20 }}
                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                transition={{ delay: 1, type: "spring", stiffness: 300, damping: 20 }}
+                transition={{ delay: 1, type: "spring" as const, stiffness: 300, damping: 20 }}
                 whileHover={{ scale: 1.1, rotate: 15 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setShowHomeTour(true)}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
     getDrillSurfacePhase,
+    shouldResetQuickMatchTopic,
     shouldExpandShopInventoryDock,
     shouldRefreshBattleChart,
 } from "./battleUiState";
@@ -59,6 +60,22 @@ describe("getDrillSurfacePhase", () => {
                 hasDrillData: true,
             }),
         ).toBe("ready");
+    });
+});
+
+describe("shouldResetQuickMatchTopic", () => {
+    it("does not reset before any drill has been generated", () => {
+        expect(shouldResetQuickMatchTopic(0, 3)).toBe(false);
+    });
+
+    it("keeps the current theme before the configured interval is reached", () => {
+        expect(shouldResetQuickMatchTopic(1, 3)).toBe(false);
+        expect(shouldResetQuickMatchTopic(2, 3)).toBe(false);
+    });
+
+    it("rotates the topic pool exactly on the interval boundary", () => {
+        expect(shouldResetQuickMatchTopic(3, 3)).toBe(true);
+        expect(shouldResetQuickMatchTopic(6, 3)).toBe(true);
     });
 });
 

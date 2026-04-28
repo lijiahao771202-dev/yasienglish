@@ -1,8 +1,10 @@
 import Dexie, { Table } from 'dexie';
 import type { LearningPreferences } from "@/lib/profile-settings";
+import type { AiProvider } from "@/lib/profile-settings";
 import type { ListeningCabinSession } from "@/lib/listening-cabin";
 import type { MeaningGroup } from "@/lib/vocab-meanings";
 import { resetVocabularySchedulingState } from "@/lib/fsrs";
+import { applyTranslationEloReset } from "@/lib/translation-elo-reset";
 
 export type SyncStatus = 'synced' | 'pending' | 'error';
 
@@ -123,6 +125,7 @@ export interface CachedArticle {
     textContent: string;
     byline?: string;
     siteName?: string;
+    videoUrl?: string | null;
     blocks?: any[];
     image?: string | null;
     timestamp: number;
@@ -141,7 +144,7 @@ export interface CachedArticle {
     quizCorrect?: number;
     quizTotal?: number;
     quizScorePercent?: number;
-    quizQuestions?: Record<string, unknown>[];
+    quizQuestions?: CachedQuizQuestion[];
     quizAnswers?: Record<number, string | string[]>;
     quizResponses?: Array<{
         itemId: string;
@@ -155,7 +158,29 @@ export interface CachedArticle {
     quizQualityTier?: "ok" | "low_confidence";
 }
 
-export type ReadingMarkType = 'highlight' | 'underline' | 'note' | 'ask';
+export interface CachedQuizQuestion {
+    id: number;
+    itemId?: string;
+    type: "multiple_choice" | "multiple_select" | "short_answer" | "true_false_ng" | "matching" | "fill_blank" | "fill_blank_choice";
+    question: string;
+    options?: string[];
+    answer?: string;
+    answers?: string[];
+    explanation: string | {
+        summary?: string;
+        evidence?: string;
+        reasoning?: string;
+        trap?: string;
+    };
+    sourceParagraph?: string;
+    evidence?: string;
+    reasoning?: string;
+    trap?: string;
+    itemDifficulty?: number;
+    passageIndex?: number;
+}
+
+export type ReadingMarkType = 'highlight' | 'underline' | 'note' | 'ask' | 'analyze';
 
 export type SmartPlanExamTrack = 'cet4' | 'cet6' | 'ielts';
 export type SmartPlanTaskType =
@@ -267,6 +292,15 @@ export interface ReadingNoteItem {
     updated_at: number;
 }
 
+export interface ErrorLedgerItem extends SyncTracked {
+    id?: string;
+    text: string;
+    tag?: string;
+    created_at: number;
+    updated_at?: string;
+    sync_status?: SyncStatus;
+}
+
 export interface EloHistoryItem {
     id?: number;
     remote_id?: string;
@@ -278,6 +312,15 @@ export interface EloHistoryItem {
     source?: string;
     updated_at?: string;
     sync_status?: SyncStatus;
+}
+
+export interface VectorMemoryItem {
+    id?: string;
+    text: string;
+    embedding: Float32Array | number[];
+    source: 'vocab' | 'chunk' | 'note' | 'system' | 'error_ledger';
+    metadata?: any;
+    created_at: number;
 }
 
 export interface LocalCatSessionRecord {
@@ -345,7 +388,18 @@ export interface LocalUserProfile extends SyncTracked {
     username?: string;
     avatar_preset?: string;
     bio?: string;
+    ai_provider?: AiProvider;
     deepseek_api_key?: string;
+    deepseek_model?: "deepseek-v4-flash" | "deepseek-v4-pro";
+    deepseek_thinking_mode?: "off" | "on";
+    deepseek_reasoning_effort?: "high" | "max";
+    glm_api_key?: string;
+    glm_model?: string;
+    glm_thinking_mode?: "off" | "on";
+    nvidia_api_key?: string;
+    nvidia_model?: string;
+    github_api_key?: string;
+    github_model?: string;
     learning_preferences?: LearningPreferences;
     reading_coins?: number;
     reading_streak?: number;
@@ -366,7 +420,7 @@ export interface LocalUserProfile extends SyncTracked {
 
 export interface SyncOutboxItem {
     id?: number;
-    entity: 'profile' | 'vocabulary' | 'writing_history' | 'read_articles' | 'elo_history';
+    entity: 'profile' | 'vocabulary' | 'writing_history' | 'read_articles' | 'elo_history' | 'error_ledger';
     operation: 'upsert' | 'delete' | 'settle';
     payload: any;
     record_key: string;
@@ -399,6 +453,8 @@ export class YasiDB extends Dexie {
     sync_meta!: Table<SyncMetaItem, string>;
     listening_cabin_sessions!: Table<ListeningCabinSession, string>;
     daily_plans!: Table<DailyPlanRecord, string>;
+    rag_vectors!: Table<VectorMemoryItem, string>;
+    error_ledger!: Table<ErrorLedgerItem, string>;
 
     constructor() {
         super('YasiDB');
@@ -1259,6 +1315,281 @@ export class YasiDB extends Dexie {
                 key: 'migration:vocabulary_fsrs_reset',
                 value: resetAt,
                 updated_at: resetAt,
+            });
+        });
+
+        // Version 41: Add local vector memory for decentralized RAG (initial flawed id)
+        this.version(41).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, archived_at, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+            daily_plans: '&date, updated_at',
+            vector_memory: '++id, text, source, created_at',
+        });
+
+        // Version 42: Fix vector_memory schema to use &id instead of ++id
+        this.version(42).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, archived_at, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+            daily_plans: '&date, updated_at',
+            vector_memory: '++id, text, source, created_at',
+            rag_vectors: '&id, text, source, created_at',
+        });
+
+        // Version 43: Add error_ledger table independent of volatile vector embeddings.
+        this.version(43).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, archived_at, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+            daily_plans: '&date, updated_at',
+            vector_memory: '++id, text, source, created_at',
+            rag_vectors: '&id, text, source, created_at',
+            error_ledger: '++id, text, tag, created_at, sync_status'
+        }).upgrade(async tx => {
+            // Migrate existing error_ledger items from the volatile rag_vectors table
+            const oldVectors = await tx.table('rag_vectors').where('source').equals('error_ledger').toArray();
+            for (const item of oldVectors) {
+                await tx.table('error_ledger').put({
+                    text: item.text,
+                    tag: item.metadata?.tag || '',
+                    created_at: item.created_at || Date.now(),
+                    sync_status: 'pending'
+                });
+            }
+        });
+
+        // Version 44: Add remote_id indexing for error_ledger sync
+        this.version(44).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, archived_at, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+            daily_plans: '&date, updated_at',
+            vector_memory: '++id, text, source, created_at',
+            rag_vectors: '&id, text, source, created_at',
+            error_ledger: '++id, remote_id, text, tag, created_at, sync_status'
+        });
+
+        // Version 45: Add per-user global AI provider + GLM API key storage.
+        this.version(45).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, archived_at, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+            daily_plans: '&date, updated_at',
+            vector_memory: '++id, text, source, created_at',
+            rag_vectors: '&id, text, source, created_at',
+            error_ledger: '++id, remote_id, text, tag, created_at, sync_status'
+        }).upgrade(async tx => {
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                if (profile.ai_provider !== "glm" && profile.ai_provider !== "deepseek") {
+                    profile.ai_provider = "deepseek";
+                }
+                if (typeof profile.glm_api_key !== "string") {
+                    profile.glm_api_key = "";
+                }
+                if (typeof profile.deepseek_api_key !== "string") {
+                    profile.deepseek_api_key = "";
+                }
+            });
+        });
+
+        // Version 46: Add per-user NVIDIA API key + model storage.
+        this.version(46).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, archived_at, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+            daily_plans: '&date, updated_at',
+            vector_memory: '++id, text, source, created_at',
+            rag_vectors: '&id, text, source, created_at',
+            error_ledger: '++id, remote_id, text, tag, created_at, sync_status'
+        }).upgrade(async tx => {
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                if (profile.ai_provider !== "glm" && profile.ai_provider !== "deepseek" && profile.ai_provider !== "nvidia" && profile.ai_provider !== "github") {
+                    profile.ai_provider = "deepseek";
+                }
+                if (typeof profile.glm_api_key !== "string") {
+                    profile.glm_api_key = "";
+                }
+                if (typeof profile.deepseek_api_key !== "string") {
+                    profile.deepseek_api_key = "";
+                }
+                if (typeof profile.nvidia_api_key !== "string") {
+                    profile.nvidia_api_key = "";
+                }
+                if (typeof profile.nvidia_model !== "string" || !profile.nvidia_model.trim()) {
+                    profile.nvidia_model = "z-ai/glm5";
+                }
+                
+                if (typeof profile.github_api_key !== "string") {
+                    profile.github_api_key = "";
+                }
+                
+                if (typeof profile.github_model !== "string" || !profile.github_model.trim()) {
+                    profile.github_model = "openai/gpt-4.1";
+                }
+            });
+        });
+
+        // Version 47: Reset translation Elo baseline to 200 without affecting other modes.
+        this.version(47).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, archived_at, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+            daily_plans: '&date, updated_at',
+            vector_memory: '++id, text, source, created_at',
+            rag_vectors: '&id, text, source, created_at',
+            error_ledger: '++id, remote_id, text, tag, created_at, sync_status'
+        }).upgrade(async tx => {
+            const nowIso = new Date().toISOString();
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                applyTranslationEloReset(profile);
+                profile.updated_at = nowIso;
+                profile.sync_status = 'pending';
+            });
+        });
+
+        // Version 48: Add DeepSeek V4 model preferences.
+        this.version(48).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, archived_at, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+            daily_plans: '&date, updated_at',
+            vector_memory: '++id, text, source, created_at',
+            rag_vectors: '&id, text, source, created_at',
+            error_ledger: '++id, remote_id, text, tag, created_at, sync_status'
+        }).upgrade(async tx => {
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                if (typeof profile.deepseek_api_key !== "string") {
+                    profile.deepseek_api_key = "";
+                }
+                if (profile.deepseek_model !== "deepseek-v4-pro" && profile.deepseek_model !== "deepseek-v4-flash") {
+                    profile.deepseek_model = "deepseek-v4-flash";
+                }
+                if (profile.deepseek_thinking_mode !== "on" && profile.deepseek_thinking_mode !== "off") {
+                    profile.deepseek_thinking_mode = "off";
+                }
+                if (profile.deepseek_reasoning_effort !== "max" && profile.deepseek_reasoning_effort !== "high") {
+                    profile.deepseek_reasoning_effort = "high";
+                }
+            });
+        });
+
+        // Version 49: Add local GLM model + thinking preferences without touching cloud schema yet.
+        this.version(49).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, archived_at, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+            daily_plans: '&date, updated_at',
+            vector_memory: '++id, text, source, created_at',
+            rag_vectors: '&id, text, source, created_at',
+            error_ledger: '++id, remote_id, text, tag, created_at, sync_status'
+        }).upgrade(async tx => {
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                if (typeof profile.glm_model !== "string" || !profile.glm_model.trim()) {
+                    profile.glm_model = "glm-5.1";
+                }
+                if (profile.glm_thinking_mode !== "on" && profile.glm_thinking_mode !== "off") {
+                    profile.glm_thinking_mode = "off";
+                }
             });
         });
     }

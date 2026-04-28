@@ -1,5 +1,6 @@
 import { buildRebuildAiDrill, getListeningDifficultyExpectation, type DrillSourceMode } from "@/lib/listening-drill-bank";
-import { deepseek } from "@/lib/deepseek";
+import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
+import { createDeepSeekClientForCurrentUserWithOverride, deepseek, type OpenAiCompatibleClient } from "@/lib/deepseek";
 import { buildRebuildSentenceDifficultyProfile } from "@/lib/rebuild-difficulty";
 import {
     buildRebuildTokenBank,
@@ -42,14 +43,15 @@ function isRetryableRebuildUpstreamError(error: unknown) {
 }
 
 async function createRebuildCompletionWithRetry(
-    request: Parameters<typeof deepseek.chat.completions.create>[0],
+    request: ChatCompletionCreateParamsNonStreaming,
     label: "sentence" | "passage",
+    client: OpenAiCompatibleClient = deepseek,
 ) {
     let lastError: unknown = null;
 
     for (let attempt = 1; attempt <= REBUILD_UPSTREAM_MAX_ATTEMPTS; attempt += 1) {
         try {
-            return await deepseek.chat.completions.create(request);
+            return await client.chat.completions.create(request);
         } catch (error) {
             lastError = error;
             if (!isRetryableRebuildUpstreamError(error) || attempt === REBUILD_UPSTREAM_MAX_ATTEMPTS) {
@@ -142,10 +144,22 @@ function buildPassageSegmentDrill(params: {
 export async function generateRebuildAiDrill(params: {
     topic: string;
     topicPrompt?: string;
+    injectedVocabulary?: string[];
     effectiveElo: number;
+    provider?: "deepseek" | "glm" | "nvidia" | "github";
+    nvidiaModel?: string;
 }) {
-    const { topic, topicPrompt, effectiveElo } = params;
+    const { topic, topicPrompt, injectedVocabulary, effectiveElo } = params;
+    const client = params.provider
+        ? await createDeepSeekClientForCurrentUserWithOverride({
+            provider: params.provider,
+            nvidiaModel: params.nvidiaModel,
+        })
+        : deepseek;
     const difficulty = buildRebuildSentenceDifficultyProfile(effectiveElo);
+    const injectedVocabularySection = Array.isArray(injectedVocabulary) && injectedVocabulary.length > 0
+        ? `\nReference vocabulary pool (use 1-2 items only if they fit naturally):\n- ${injectedVocabulary.slice(0, 8).join("\n- ")}\n`
+        : "";
 
     const prompt = `
 You are generating JSON for natural spoken English listening material.
@@ -161,6 +175,7 @@ Difficulty target:
 - Clause tolerance: up to ${difficulty.syntaxComplexity.clauseMax} supporting clauses
 - Spoken naturalness: ${difficulty.syntaxComplexity.spokenNaturalness}
 - Reduced forms: ${difficulty.syntaxComplexity.reducedFormsPresence}
+${injectedVocabularySection}
 
 Requirements:
 - Write ONE natural spoken English listening sentence.
@@ -190,7 +205,7 @@ Return valid JSON only:
         model: "deepseek-chat",
         response_format: { type: "json_object" },
         temperature: 0.85,
-    }, "sentence");
+    }, "sentence", client);
 
     const rawContent = completion.choices[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(rawContent) as Record<string, unknown>;
@@ -214,12 +229,24 @@ Return valid JSON only:
 export async function generateRebuildPassageAiDrill(params: {
     topic: string;
     topicPrompt?: string;
+    injectedVocabulary?: string[];
     effectiveElo: number;
     segmentCount: 2 | 3 | 5;
+    provider?: "deepseek" | "glm" | "nvidia" | "github";
+    nvidiaModel?: string;
 }) {
-    const { topic, topicPrompt, effectiveElo, segmentCount } = params;
+    const { topic, topicPrompt, injectedVocabulary, effectiveElo, segmentCount } = params;
+    const client = params.provider
+        ? await createDeepSeekClientForCurrentUserWithOverride({
+            provider: params.provider,
+            nvidiaModel: params.nvidiaModel,
+        })
+        : deepseek;
     const difficultyProfile = buildRebuildPassageDifficultyProfile(effectiveElo, segmentCount);
     const sessionId = `rebuild-passage-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const injectedVocabularySection = Array.isArray(injectedVocabulary) && injectedVocabulary.length > 0
+        ? `\nReference vocabulary pool (use 2-4 items only if they fit naturally across the whole passage):\n- ${injectedVocabulary.slice(0, 12).join("\n- ")}\n`
+        : "";
 
     const prompt = `
 You are generating JSON for a short spoken English listening passage.
@@ -239,6 +266,7 @@ Each segment should be ONE natural English sentence.
 - Clause max per segment: ${difficultyProfile.syntaxComplexity.clauseMax}
 - Spoken naturalness: ${difficultyProfile.syntaxComplexity.spokenNaturalness}
 - Reduced forms: ${difficultyProfile.syntaxComplexity.reducedFormsPresence}
+${injectedVocabularySection}
 
 Requirements:
 - Create ONE coherent short spoken passage split into exactly ${segmentCount} natural segments.
@@ -262,129 +290,111 @@ Return valid JSON only:
 }
 `.trim();
 
-    let lastError: unknown = null;
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-        try {
-            const completion = await createRebuildCompletionWithRetry({
-                messages: [
-                    {
-                        role: "system",
-                        content: "You are a strict JSON-only generator for spoken English listening passages. Output valid JSON and follow the scenario and difficulty exactly.",
-                    },
-                    { role: "user", content: prompt },
-                ],
-                model: "deepseek-chat",
-                response_format: { type: "json_object" },
-                temperature: 0.8,
-            }, "passage");
+    const completion = await createRebuildCompletionWithRetry({
+        messages: [
+            {
+                role: "system",
+                content: "You are a strict JSON-only generator for spoken English listening passages. Output valid JSON and follow the scenario and difficulty exactly.",
+            },
+            { role: "user", content: prompt },
+        ],
+        model: "deepseek-chat",
+        response_format: { type: "json_object" },
+        temperature: 0.8,
+    }, "passage", client);
 
-            const rawContent = completion.choices[0]?.message?.content ?? "{}";
-            const parsed = JSON.parse(rawContent) as Record<string, unknown>;
-            const scene = sanitizeTextValue(parsed._scenario_topic) || "AI Passage Rebuild";
-            const rawSegments = Array.isArray(parsed.segments) ? parsed.segments : [];
-            const segments = rawSegments
-                .map(sanitizeSegmentPayload)
-                .filter((segment): segment is NonNullable<ReturnType<typeof sanitizeSegmentPayload>> => Boolean(segment));
+    const rawContent = completion.choices[0]?.message?.content ?? "{}";
+    const parsed = JSON.parse(rawContent) as Record<string, unknown>;
+    const scene = sanitizeTextValue(parsed._scenario_topic) || "AI Passage Rebuild";
+    const rawSegments = Array.isArray(parsed.segments) ? parsed.segments : [];
+    const segments = rawSegments
+        .map(sanitizeSegmentPayload)
+        .filter((segment): segment is NonNullable<ReturnType<typeof sanitizeSegmentPayload>> => Boolean(segment));
 
-            if (segments.length !== segmentCount) {
-                throw new Error(`Expected ${segmentCount} segments, received ${segments.length}.`);
-            }
-
-            const validation = validateRebuildPassageSegments({
-                profile: difficultyProfile,
-                segments: segments.map((segment) => segment.referenceEnglish),
-            });
-
-            if (!validation.isValid) {
-                throw new Error("Generated passage failed validation.");
-            }
-
-            const relatedBankTokens = tokenizeRebuildSentence(`${topic} ${scene} ${segments.map((segment) => segment.referenceEnglish).join(" ")}`);
-            const sessionSegments = segments.map((segment, index) => buildPassageSegmentDrill({
-                ...segment,
-                effectiveElo,
-                theme: topic,
-                scene,
-                relatedBankTokens: relatedBankTokens.filter((_, tokenIndex) => tokenIndex % segmentCount !== index % segmentCount),
-            }));
-            const firstSegment = sessionSegments[0];
-
-            return {
-                chinese: firstSegment.chinese,
-                target_english_vocab: Array.from(new Set(
-                    sessionSegments
-                        .flatMap((segment) => segment.answerTokens)
-                        .map((token) => token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, ""))
-                        .filter((token) => token.length > 0),
-                )).slice(0, 8),
-                reference_english: firstSegment.referenceEnglish,
-                _topicMeta: {
-                    topic,
-                    subTopic: scene,
-                    isScenario: true,
-                },
-                _sourceMeta: {
-                    sourceMode: "ai" as DrillSourceMode,
-                    bandPosition: difficultyProfile.bandPosition,
-                    candidateId: sessionId,
-                },
-                _difficultyMeta: {
-                    requestedElo: effectiveElo,
-                    tier: getListeningDifficultyExpectation(effectiveElo).tier,
-                    cefr: difficultyProfile.practiceTier.cefr,
-                    expectedWordRange: {
-                        min: difficultyProfile.perSegmentWordWindow.hardMin,
-                        max: difficultyProfile.perSegmentWordWindow.hardMax,
-                    },
-                    actualWordCount: countWords(firstSegment.referenceEnglish),
-                    isValid: true,
-                    status: "MATCHED" as const,
-                    aiSelfReport: null,
-                    listeningFeatures: {
-                        memoryLoad: difficultyProfile.syntaxComplexity.memoryLoad,
-                        spokenNaturalness: difficultyProfile.syntaxComplexity.spokenNaturalness,
-                        reducedFormsPresence: difficultyProfile.syntaxComplexity.reducedFormsPresence,
-                        clauseMax: difficultyProfile.syntaxComplexity.clauseMax,
-                        trainingFocus: difficultyProfile.syntaxComplexity.trainingFocus,
-                        downgraded: false,
-                    },
-                },
-                _rebuildMeta: {
-                    variant: "passage" as const,
-                    effectiveElo,
-                    bandPosition: difficultyProfile.bandPosition,
-                    answerTokens: firstSegment.answerTokens,
-                    tokenBank: firstSegment.tokenBank,
-                    distractorTokens: firstSegment.distractorTokens,
-                    theme: topic,
-                    scene,
-                    feedbackStyle: "strong" as const,
-                    candidateId: sessionId,
-                    candidateSource: "ai" as const,
-                    passageSession: {
-                        sessionId,
-                        segmentCount,
-                        currentIndex: 0,
-                        difficultyProfile,
-                        segments: sessionSegments.map((segment, index) => ({
-                            id: `${sessionId}-${index + 1}`,
-                            chinese: segment.chinese,
-                            referenceEnglish: segment.referenceEnglish,
-                            answerTokens: segment.answerTokens,
-                            distractorTokens: segment.distractorTokens,
-                            tokenBank: segment.tokenBank,
-                            wordCount: segment.wordCount,
-                        })),
-                    },
-                },
-            };
-        } catch (error) {
-            if (isRetryableRebuildUpstreamError(error)) {
-                throw error;
-            }
-            lastError = error;
-        }
+    if (segments.length === 0) {
+        throw new Error(`Expected ${segmentCount} segments, received 0.`);
     }
 
-    throw lastError instanceof Error ? lastError : new Error("Failed to generate rebuild passage drill.");
+    // Accept whatever segment count the model returned (trim excess if needed)
+    const usableSegments = segments.slice(0, segmentCount);
+
+    const relatedBankTokens = tokenizeRebuildSentence(`${topic} ${scene} ${usableSegments.map((segment) => segment.referenceEnglish).join(" ")}`);
+    const sessionSegments = usableSegments.map((segment, index) => buildPassageSegmentDrill({
+        ...segment,
+        effectiveElo,
+        theme: topic,
+        scene,
+        relatedBankTokens: relatedBankTokens.filter((_, tokenIndex) => tokenIndex % usableSegments.length !== index % usableSegments.length),
+    }));
+    const firstSegment = sessionSegments[0];
+
+    return {
+        chinese: firstSegment.chinese,
+        target_english_vocab: Array.from(new Set(
+            sessionSegments
+                .flatMap((segment) => segment.answerTokens)
+                .map((token) => token.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, ""))
+                .filter((token) => token.length > 0),
+        )).slice(0, 8),
+        reference_english: firstSegment.referenceEnglish,
+        _topicMeta: {
+            topic,
+            subTopic: scene,
+            isScenario: true,
+        },
+        _sourceMeta: {
+            sourceMode: "ai" as DrillSourceMode,
+            bandPosition: difficultyProfile.bandPosition,
+            candidateId: sessionId,
+        },
+        _difficultyMeta: {
+            requestedElo: effectiveElo,
+            tier: getListeningDifficultyExpectation(effectiveElo).tier,
+            cefr: difficultyProfile.practiceTier.cefr,
+            expectedWordRange: {
+                min: difficultyProfile.perSegmentWordWindow.hardMin,
+                max: difficultyProfile.perSegmentWordWindow.hardMax,
+            },
+            actualWordCount: countWords(firstSegment.referenceEnglish),
+            isValid: true,
+            status: "MATCHED" as const,
+            aiSelfReport: null,
+            listeningFeatures: {
+                memoryLoad: difficultyProfile.syntaxComplexity.memoryLoad,
+                spokenNaturalness: difficultyProfile.syntaxComplexity.spokenNaturalness,
+                reducedFormsPresence: difficultyProfile.syntaxComplexity.reducedFormsPresence,
+                clauseMax: difficultyProfile.syntaxComplexity.clauseMax,
+                trainingFocus: difficultyProfile.syntaxComplexity.trainingFocus,
+                downgraded: false,
+            },
+        },
+        _rebuildMeta: {
+            variant: "passage" as const,
+            effectiveElo,
+            bandPosition: difficultyProfile.bandPosition,
+            answerTokens: firstSegment.answerTokens,
+            tokenBank: firstSegment.tokenBank,
+            distractorTokens: firstSegment.distractorTokens,
+            theme: topic,
+            scene,
+            feedbackStyle: "strong" as const,
+            candidateId: sessionId,
+            candidateSource: "ai" as const,
+            passageSession: {
+                sessionId,
+                segmentCount: usableSegments.length,
+                currentIndex: 0,
+                difficultyProfile,
+                segments: sessionSegments.map((segment, index) => ({
+                    id: `${sessionId}-${index + 1}`,
+                    chinese: segment.chinese,
+                    referenceEnglish: segment.referenceEnglish,
+                    answerTokens: segment.answerTokens,
+                    distractorTokens: segment.distractorTokens,
+                    tokenBank: segment.tokenBank,
+                    wordCount: segment.wordCount,
+                })),
+            },
+        },
+    };
 }

@@ -5,18 +5,19 @@ import { describe, expect, it } from "vitest";
 import { InlineGrammarHighlights } from "./InlineGrammarHighlights";
 
 describe("InlineGrammarHighlights", () => {
-    it("renders tooltip text with grammar type, explanation, and segment translation", () => {
+    it("renders a compact tooltip with plain grammar explanation", () => {
         const html = renderToStaticMarkup(
             <InlineGrammarHighlights
                 text="She will leave soon."
                 sentences={[
                     {
                         sentence: "She will leave soon.",
+                        translation: "她很快就会离开。",
                         highlights: [
                             {
                                 substring: "will leave",
                                 type: "谓语",
-                                explanation: "这里是核心动作。",
+                                explanation: "结构判断：这里是核心动作；句中作用：说明主语接下来会做什么；主干关系：和 She 一起构成主句骨架。",
                                 segment_translation: "将离开",
                             },
                         ],
@@ -27,10 +28,14 @@ describe("InlineGrammarHighlights", () => {
         );
 
         expect(html).toContain("谓语");
-        expect(html).toContain("语法功能");
-        expect(html).toContain("这里是核心动作。");
+        expect(html).toContain("语法提示");
+        expect(html).toContain("这里是核心动作");
+        expect(html).toContain("说明主语接下来会做什么");
+        expect(html).toContain("主句骨架");
         expect(html).toContain("片段义");
         expect(html).toContain("将离开");
+        expect(html).not.toContain("所在句");
+        expect(html).not.toContain("整句义");
         expect(html).toContain("tabindex=\"0\"");
     });
 
@@ -80,7 +85,7 @@ describe("InlineGrammarHighlights", () => {
 
         expect(coreHtml).toContain("She");
         expect(coreHtml).toContain("left");
-        expect(coreHtml).not.toContain("迅速地");
-        expect(fullHtml).toContain("迅速地");
+        expect(coreHtml).not.toContain("aria-label=\"状语：补充动作方式\"");
+        expect(fullHtml).toContain("aria-label=\"状语：补充动作方式\"");
     });
 });

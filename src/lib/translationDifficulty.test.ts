@@ -7,75 +7,65 @@ import {
 } from "./translationDifficulty";
 
 describe("translation difficulty targets", () => {
-    it("matches the new lower targets at representative Elo breakpoints", () => {
+    it("uses the new single-sentence ranges at representative Elo breakpoints", () => {
         const cases = [
-            { elo: 400, range: { min: 6, max: 7 }, tier: "青铜" },
-            { elo: 799, range: { min: 8, max: 10 }, tier: "青铜" },
-            { elo: 800, range: { min: 8, max: 10 }, tier: "白银" },
-            { elo: 1040, range: { min: 10, max: 12 }, tier: "白银" },
-            { elo: 1199, range: { min: 11, max: 13 }, tier: "白银" },
-            { elo: 1200, range: { min: 11, max: 13 }, tier: "黄金" },
-            { elo: 1599, range: { min: 15, max: 18 }, tier: "黄金" },
-            { elo: 1600, range: { min: 15, max: 18 }, tier: "铂金" },
+            { elo: 0, range: { min: 4, max: 6 }, tier: "新手" },
+            { elo: 400, range: { min: 5, max: 7 }, tier: "青铜" },
+            { elo: 800, range: { min: 6, max: 9 }, tier: "白银" },
+            { elo: 1200, range: { min: 7, max: 11 }, tier: "黄金" },
+            { elo: 1600, range: { min: 8, max: 13 }, tier: "铂金" },
+            { elo: 2000, range: { min: 9, max: 15 }, tier: "钻石" },
+            { elo: 2400, range: { min: 10, max: 18 }, tier: "大师" },
+            { elo: 3200, range: { min: 10, max: 18 }, tier: "大师" },
         ];
 
         for (const testCase of cases) {
-            const target = getTranslationDifficultyTarget(testCase.elo);
+            const target = getTranslationDifficultyTarget(testCase.elo, "sentence");
             expect(target.tier.tier).toBe(testCase.tier);
             expect(target.wordRange).toEqual(testCase.range);
         }
     });
 
-    it("increases target ranges monotonically inside a tier", () => {
-        const sampleElos = [800, 860, 920, 980, 1040, 1100, 1160, 1199];
-        let previousMin = 0;
-        let previousMax = 0;
+    it("keeps passage targets on the previous wider ranges", () => {
+        const target = getTranslationDifficultyTarget(820, "passage");
 
-        for (const elo of sampleElos) {
-            const target = getTranslationDifficultyTarget(elo);
-            expect(target.wordRange.min).toBeGreaterThanOrEqual(previousMin);
-            expect(target.wordRange.max).toBeGreaterThanOrEqual(previousMax);
-            previousMin = target.wordRange.min;
-            previousMax = target.wordRange.max;
-        }
+        expect(target.tier.tier).toBe("白银");
+        expect(target.wordRange).toEqual({ min: 8, max: 10 });
     });
 
-    it("keeps the 1199 to 1200 handoff smooth", () => {
-        const beforePromotion = getTranslationDifficultyTarget(1199);
-        const afterPromotion = getTranslationDifficultyTarget(1200);
+    it("uses grammar-focused prompts instead of long-sentence prompts for sentence mode", () => {
+        const target = getTranslationDifficultyTarget(1400, "sentence");
 
-        expect(Math.abs(afterPromotion.wordRange.min - beforePromotion.wordRange.min)).toBeLessThanOrEqual(2);
-        expect(Math.abs(afterPromotion.wordRange.max - beforePromotion.wordRange.max)).toBeLessThanOrEqual(2);
-    });
-
-    it("keeps the 1400 band structurally conservative despite the higher target range", () => {
-        const target = getTranslationDifficultyTarget(1400);
-
-        expect(target.wordRange).toEqual({ min: 13, max: 16 });
-        expect(target.syntaxBand.promptInstruction).toContain("Keep ONE main sentence");
-        expect(target.syntaxBand.promptInstruction).toContain("Do NOT use passive voice");
-        expect(target.syntaxBand.promptInstruction).toContain("Do NOT use relative clauses");
+        expect(target.wordRange).toEqual({ min: 7, max: 11 });
+        expect(target.syntaxBand.promptInstruction).toContain("single English sentence");
+        expect(target.syntaxBand.promptInstruction).toContain("passive voice");
+        expect(target.syntaxBand.promptInstruction).toContain("object clause");
     });
 });
 
 describe("translation difficulty validation", () => {
-    it("uses ±1 tolerance for lower tiers", () => {
-        const validation = validateTranslationDifficulty("I checked the car engine carefully today", 820);
+    it("uses the tighter single-sentence range for sentence mode", () => {
+        const validation = validateTranslationDifficulty("I checked the car engine carefully today", 820, "sentence");
 
-        expect(validation.wordRange).toEqual({ min: 8, max: 10 });
-        expect(validation.validationRange).toEqual({ min: 7, max: 11 });
+        expect(validation.wordRange).toEqual({ min: 6, max: 9 });
+        expect(validation.validationRange).toEqual({ min: 5, max: 10 });
         expect(validation.status).toBe("MATCHED");
     });
 
-    it("uses ±2 tolerance for higher tiers", () => {
-        const validation = validateTranslationDifficulty(
-            "Had I known the policy would change so abruptly, I would have postponed the entire proposal until every stakeholder had reviewed the revised terms.",
-            2000,
-        );
+    it("rejects semicolon-joined pseudo double sentences in sentence mode", () => {
+        const validation = validateTranslationDifficulty("He left early; she stayed behind.", 1400, "sentence");
 
-        expect(validation.wordRange).toEqual({ min: 20, max: 24 });
-        expect(validation.validationRange).toEqual({ min: 18, max: 26 });
-        expect(validation.status).toBe("MATCHED");
+        expect(validation.status).toBe("TOO_HARD");
+        expect(validation.isValid).toBe(false);
+        expect(validation.issues).toContain("sentence mode forbids semicolons or colons");
+    });
+
+    it("rejects multiple sentence endings in sentence mode", () => {
+        const validation = validateTranslationDifficulty("He apologized. She forgave him.", 1400, "sentence");
+
+        expect(validation.status).toBe("TOO_HARD");
+        expect(validation.isValid).toBe(false);
+        expect(validation.issues).toContain("sentence mode requires exactly one independent sentence");
     });
 
     it("builds a hard-limit retry instruction when a sentence is too long", () => {
@@ -84,11 +74,11 @@ describe("translation difficulty validation", () => {
             maxAttempts: 3,
             actualWordCount: 19,
             status: "TOO_HARD",
-            target: getTranslationDifficultyTarget(1400),
+            target: getTranslationDifficultyTarget(1400, "sentence"),
         });
 
         expect(retryInstruction).toContain("Previous attempt was too long / too hard.");
-        expect(retryInstruction).toContain("Next attempt MUST stay within 12-17 words.");
-        expect(retryInstruction).toContain("remove any passive voice, relative clause, or extra modifier");
+        expect(retryInstruction).toContain("Next attempt MUST stay within 6-12 words.");
+        expect(retryInstruction).toContain("remove any semicolon, second clause, or extra modifier");
     });
 });

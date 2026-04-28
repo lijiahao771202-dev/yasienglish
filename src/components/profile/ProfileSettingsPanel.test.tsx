@@ -15,6 +15,7 @@ function setInputValue(element: HTMLInputElement | HTMLTextAreaElement | HTMLSel
 
 describe("ProfileSettingsPanel", () => {
     afterEach(() => {
+        vi.useRealTimers();
         vi.unstubAllGlobals();
         document.body.innerHTML = "";
     });
@@ -35,7 +36,6 @@ describe("ProfileSettingsPanel", () => {
                         username: "Luna",
                         avatar_preset: "bubble-bear",
                         bio: "Practice makes flow.",
-                        deepseek_api_key: "",
                         learning_preferences: {
                             target_mode: "read",
                             english_level: "B1",
@@ -53,7 +53,6 @@ describe("ProfileSettingsPanel", () => {
 
         const username = container.querySelector<HTMLInputElement>("input#username");
         const bio = container.querySelector<HTMLTextAreaElement>("textarea#bio");
-        const deepSeekApiKey = container.querySelector<HTMLInputElement>("input#deepseek-api-key");
         const targetMode = container.querySelector<HTMLSelectElement>("select#target-mode");
         const englishLevel = container.querySelector<HTMLSelectElement>("select#english-level");
         const dailyGoal = container.querySelector<HTMLInputElement>("input#daily-goal");
@@ -62,9 +61,12 @@ describe("ProfileSettingsPanel", () => {
         const avatar = container.querySelector<HTMLButtonElement>('button[data-avatar-id="mint-frog"]');
         const profileForm = container.querySelector<HTMLFormElement>('form[data-form="profile"]');
 
+        expect(container.textContent).toContain("AI 模型统一在头像菜单里的 AI 模型配置管理。");
+        expect(container.textContent).not.toContain("GitHub Models");
+        expect(container.querySelector<HTMLInputElement>("input#github-api-key")).toBeNull();
+        expect(container.querySelector<HTMLInputElement>("input#deepseek-api-key")).toBeNull();
         expect(username).toBeTruthy();
         expect(bio).toBeTruthy();
-        expect(deepSeekApiKey).toBeTruthy();
         expect(targetMode).toBeTruthy();
         expect(englishLevel).toBeTruthy();
         expect(dailyGoal).toBeTruthy();
@@ -73,14 +75,13 @@ describe("ProfileSettingsPanel", () => {
         expect(avatar).toBeTruthy();
         expect(profileForm).toBeTruthy();
 
-        if (!username || !bio || !deepSeekApiKey || !targetMode || !englishLevel || !dailyGoal || !uiTheme || !rebuildShadowingAutoOpen || !avatar || !profileForm) {
+        if (!username || !bio || !targetMode || !englishLevel || !dailyGoal || !uiTheme || !rebuildShadowingAutoOpen || !avatar || !profileForm) {
             throw new Error("Missing profile inputs after render");
         }
 
         await act(async () => {
             setInputValue(username, "Nova");
             setInputValue(bio, "A sweeter dashboard helps me stay with it.");
-            setInputValue(deepSeekApiKey, "sk-user-123");
             setInputValue(targetMode, "battle");
             setInputValue(englishLevel, "C1");
             setInputValue(dailyGoal, "45");
@@ -97,7 +98,6 @@ describe("ProfileSettingsPanel", () => {
             username: "Nova",
             avatar_preset: "mint-frog",
             bio: "A sweeter dashboard helps me stay with it.",
-            deepseek_api_key: "sk-user-123",
             learning_preferences: {
                 target_mode: "battle",
                 english_level: "C1",

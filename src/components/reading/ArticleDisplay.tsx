@@ -96,11 +96,11 @@ export function ArticleDisplay({
     const { fontClass, isFocusMode } = useReadingSettings();
     const [lockedFocusIndex, setLockedFocusIndex] = useState<number | null>(null);
 
-    // Reset lock when focus mode is toggled off
     useEffect(() => {
-        if (!isFocusMode) setLockedFocusIndex(null);
+        if (!isFocusMode) {
+            setLockedFocusIndex(null);
+        }
     }, [isFocusMode]);
-
     const isTED = siteName === 'TED' || siteName === 'YouTube';
 
     useEffect(() => {
@@ -455,7 +455,7 @@ export function ArticleDisplay({
             opacity: 1, 
             y: 0, 
             scale: 1,
-            transition: { type: "spring", stiffness: 180, damping: 24, mass: 1 } 
+            transition: { type: "spring" as const, stiffness: 180, damping: 24, mass: 1 } 
         }
     };
 
@@ -574,7 +574,8 @@ export function ArticleDisplay({
                                             isFocusMode={isFocusMode}
                                             isFocusLocked={lockedFocusIndex === index}
                                             hasActiveFocusLock={lockedFocusIndex !== null}
-                                            onToggleFocusLock={() => setLockedFocusIndex(prev => prev === index ? null : index)}
+                                            onSetFocusLock={() => setLockedFocusIndex(index)}
+                                            onClearFocusLock={() => setLockedFocusIndex(null)}
                                             highlightSnippet={isLocatedParagraph ? (highlightedSnippet || undefined) : undefined}
                                         />
                                     </motion.div>

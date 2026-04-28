@@ -62,7 +62,7 @@ export function DeathFX({ type, onComplete }: DeathFXProps) {
                     <motion.div
                         initial={{ x: 0, y: 0, rotate: 0 }}
                         animate={{ x: -20, y: 20 }}
-                        transition={{ delay: 0.1, duration: 1.5, type: "spring", bounce: 0.5 }}
+                        transition={{ delay: 0.1, duration: 1.5, type: "spring" as const, bounce: 0.5 }}
                         className="absolute inset-0 bg-black/90 clip-path-polygon-[0_0,_100%_0,_0_100%] origin-top-left z-30 flex items-center justify-center backdrop-grayscale"
                     >
                         <h1 className="text-9xl font-black text-stone-800 rotate-45 opacity-50">DEATH</h1>
@@ -70,7 +70,7 @@ export function DeathFX({ type, onComplete }: DeathFXProps) {
                     <motion.div
                         initial={{ x: 0, y: 0, rotate: 0 }}
                         animate={{ x: 20, y: -20 }}
-                        transition={{ delay: 0.1, duration: 1.5, type: "spring", bounce: 0.5 }}
+                        transition={{ delay: 0.1, duration: 1.5, type: "spring" as const, bounce: 0.5 }}
                         className="absolute inset-0 bg-black/95 clip-path-polygon-[100%_0,_100%_100%,_0_100%] origin-bottom-right z-30"
                     />
 
@@ -117,7 +117,7 @@ export function DeathFX({ type, onComplete }: DeathFXProps) {
                     <motion.div
                         initial={{ scale: 3, opacity: 0, rotate: -20 }}
                         animate={{ scale: 1, opacity: 1, rotate: -15 }}
-                        transition={{ type: "spring", bounce: 0.3 }}
+                        transition={{ type: "spring" as const, bounce: 0.3 }}
                         className="relative z-50 border-[10px] border-red-600 p-8 rounded-xl"
                     >
                         <div className="text-9xl font-black text-red-600 tracking-tighter uppercase font-mono" style={{ textShadow: "0 0 20px rgba(220,38,38,0.5)" }}>

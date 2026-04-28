@@ -349,7 +349,7 @@ function normalizeSegmentsInput(rawSegments: unknown, fallbackVoice: string, fal
 
     return rawSegments
         .map((item) => {
-            const text = normalizeTtsText((item as { text?: unknown })?.text ?? "");
+            const text = normalizeTtsText(String((item as { text?: unknown })?.text ?? ""));
             const voice = typeof (item as { voice?: unknown })?.voice === "string"
                 ? (item as { voice?: string }).voice ?? fallbackVoice
                 : fallbackVoice;

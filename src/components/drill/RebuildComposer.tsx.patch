@@ -1,0 +1,175 @@
+--- src/components/drill/RebuildComposer.tsx
++++ src/components/drill/RebuildComposer.tsx
+@@ -134,16 +134,18 @@
+     };
+ 
+-    const rebuildLedgerClass = isVerdantRebuild
+-        ? "bg-[#eef6f1]/94 border-emerald-200/80 shadow-[0_10px_24px_rgba(2,44,34,0.12)]"
+-        : activeCosmeticUi.ledgerClass;
+-    const rebuildInputShellClass = isVerdantRebuild
+-        ? "bg-[#f4faf6] border-emerald-200/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]"
+-        : activeCosmeticUi.inputShellClass;
++    const dockContainerClass = isVerdantRebuild
++        ? "bg-gradient-to-b from-white/95 to-[#f6fbf8]/95 backdrop-blur-2xl border border-emerald-100 shadow-[0_12px_40px_-8px_rgba(2,44,34,0.06),inset_0_1px_0_rgba(255,255,255,1)]"
++        : "bg-gradient-to-b from-white/90 to-white/70 backdrop-blur-3xl border border-white/80 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.05),inset_0_1px_0_rgba(255,255,255,0.9)]";
++
++    const dockInnerWellClass = isVerdantRebuild
++        ? "bg-[#eef6f1]/60 border border-emerald-100/50 shadow-[inset_0_2px_8px_rgba(2,44,34,0.02)]"
++        : "bg-white/40 border border-black/[0.03] shadow-[inset_0_2px_8px_rgba(0,0,0,0.02)]";
++
+     const rebuildToggleClass = isVerdantRebuild
+-        ? "rounded-full px-2.5 py-0.5 text-[10px] font-bold border bg-white/92 shadow-[0_2px_10px_rgba(2,44,34,0.08)] transition-all"
+-        : "rounded-full px-2.5 py-0.5 text-[10px] font-bold shadow-[inset_0_1px_0_rgba(255,255,255,1)] border backdrop-blur-sm transition-all";
++        ? "rounded-full px-3 py-1 text-[11px] font-bold text-emerald-700/80 hover:text-emerald-800 hover:bg-emerald-100/40 transition-colors"
++        : "rounded-full px-3 py-1 text-[11px] font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100/50 transition-colors";
+     const rebuildTokenDividerClass = isVerdantRebuild
+-        ? "mt-2 border-t border-emerald-200/70 pt-2"
+-        : "mt-2 border-t border-white/60 pt-2";
++        ? "mt-3 border-t border-emerald-900/5 pt-3"
++        : "mt-3 border-t border-black/5 pt-3";
+     const rebuildKeywordChipClass = isVerdantRebuild
+         ? "inline-flex min-h-[38px] min-w-0 max-w-full items-start gap-1.5 rounded-full border border-emerald-200/85 bg-[#ecf8f0] px-4 py-1.5 text-[14px] font-semibold text-emerald-800 shadow-[0_3px_10px_rgba(2,44,34,0.08)] transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-[#e3f4e9] whitespace-normal break-all"
+@@ -267,23 +269,18 @@
+         <div
+             data-tour-target="rebuild-drill-atelier"
+-            className="min-w-0 w-full mt-2"
++            className={cn("min-w-0 w-full mt-6 rounded-[1.75rem] p-3 sm:p-4 transition-all duration-500", dockContainerClass)}
+         >
+-            <div className="mb-1.5 flex items-center px-1">
+-                <div className="hidden">
+-                    <Sparkles className={cn("h-4 w-4", activeCosmeticTheme.mutedClass)} />
+-                    <div className={cn("font-source-serif text-[13px] font-semibold tracking-[0.08em]", activeCosmeticTheme.textClass)}>
+-                        Rebuild Atelier
+-                    </div>
+-                </div>
+-                <div data-tour-target="rebuild-drill-controls" className="flex w-full flex-wrap justify-end items-center gap-1.5">
++            <div className="flex items-center px-2 pb-3 mb-2 border-b border-black-[0.03]">
++                <div data-tour-target="rebuild-drill-controls" className="flex w-full flex-wrap justify-start items-center gap-1.5">
+                     <div className="relative inline-block">
+                         <button
+                             type="button"
+                             className={cn(
+                                 rebuildToggleClass,
+                                 "relative overflow-hidden",
+-                                isVerdantRebuild ? "border-emerald-200/80 bg-white/92 text-emerald-700" : activeCosmeticUi.iconButtonClass,
++                                isVerdantRebuild ? "" : "",
+                             )}
+                             title="打字音效设置"
+                         >
+                             <span className="inline-flex items-center gap-1">
+-                                <Music className="h-3 w-3" />
++                                <Music className="h-[14px] w-[14px]" />
+                                 音效
+                             </span>
+@@ -310,5 +307,4 @@
+                             className={cn(
+                                 rebuildToggleClass,
+-                                isVerdantRebuild ? "border-emerald-200/80 bg-white/92 text-emerald-700" : activeCosmeticUi.iconButtonClass,
+                             )}
+                             title="重新查看操作向导"
+@@ -316,5 +312,5 @@
+                         <span className="inline-flex items-center gap-1">
+-                            <Compass className="h-3 w-3" />
++                            <Compass className="h-[14px] w-[14px]" />
+                             向导
+                         </span>
+@@ -327,8 +323,6 @@
+                                 showSentenceChinese
+                                     ? (isVerdantRebuild
+-                                        ? "border-emerald-300/80 bg-emerald-50/90 text-emerald-800"
+-                                        : activeCosmeticUi.audioUnlockedClass)
+-                                    : (isVerdantRebuild
+-                                        ? "border-emerald-200/80 bg-white/92 text-emerald-700"
+-                                        : activeCosmeticUi.iconButtonClass),
++                                        ? "bg-emerald-100/50 text-emerald-800 font-black"
++                                        : "bg-slate-200/50 text-slate-800 font-black")
++                                    : "",
+                             )}
+                         >
+@@ -336,5 +330,5 @@
+-                                <Globe className="h-3 w-3" />
++                                <Globe className="h-[14px] w-[14px]" />
+                                 中文
+                             </span>
+                         </button>
+@@ -348,8 +342,6 @@
+                                 rebuildAutocorrect
+                                     ? (isVerdantRebuild
+-                                        ? "border-emerald-300/80 bg-emerald-100/80 text-emerald-800"
+-                                        : activeCosmeticUi.audioUnlockedClass)
+-                                    : (isVerdantRebuild
+-                                        ? "border-emerald-200/80 bg-white/92 text-emerald-700"
+-                                        : activeCosmeticUi.iconButtonClass),
++                                        ? "bg-emerald-100/50 text-emerald-800 font-black"
++                                        : "bg-slate-200/50 text-slate-800 font-black")
++                                    : "",
+                             )}
+                         >
+@@ -357,5 +349,5 @@
+-                                <Wand2 className="h-3 w-3" />
++                                <Wand2 className="h-[14px] w-[14px]" />
+                                 纠正
+                             </span>
+                         </button>
+@@ -367,8 +359,6 @@
+                                 rebuildHideTokens
+                                     ? (isVerdantRebuild
+-                                        ? "border-emerald-300/80 bg-emerald-50/90 text-emerald-800"
+-                                        : activeCosmeticUi.audioLockedClass)
+-                                    : (isVerdantRebuild
+-                                        ? "border-emerald-200/80 bg-white/92 text-emerald-700"
+-                                        : activeCosmeticUi.iconButtonClass),
++                                        ? "bg-emerald-100/50 text-emerald-800 font-black"
++                                        : "bg-slate-200/50 text-slate-800 font-black")
++                                    : "",
+                             )}
+                         >
+@@ -376,5 +366,5 @@
+-                            {rebuildHideTokens ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
++                            {rebuildHideTokens ? <EyeOff className="h-[14px] w-[14px]" /> : <Eye className="h-[14px] w-[14px]" />}
+                             隐藏词
+                         </span>
+@@ -382,14 +372,8 @@
+                 </div>
+             </div>
+ 
+-            <div className="min-w-0 w-full transition-colors duration-500 ease-in-out mt-1">
++            <div className="min-w-0 w-full transition-colors duration-500 ease-in-out">
+                 <div
+                     className={cn(
+-                        "relative rounded-[1rem] border px-3 py-2",
+-                        isVerdantRebuild
+-                            ? (compact
+-                                ? "min-h-[64px] border-emerald-200/80 bg-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]"
+-                                : "min-h-[72px] border-emerald-200/80 bg-white/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]")
+-                            : (compact
+-                                ? "min-h-[64px] border-white/60 bg-white/88"
+-                                : "min-h-[72px] border-white/60 bg-white/86"),
++                        "relative rounded-[1.25rem] px-4 py-3 min-h-[82px] transition-all",
++                        dockInnerWellClass
+                     )}
+                 >
+@@ -499,6 +483,6 @@
+                         className={cn(
+                             "transition-all duration-500 ease-in-out",
+-                            rebuildHideTokens ? "pointer-events-none mt-0 h-0 max-h-0 opacity-0 overflow-hidden" : "mt-2 max-h-[500px] opacity-100",
++                            rebuildHideTokens ? "pointer-events-none mt-0 h-0 max-h-0 opacity-0 overflow-hidden" : "mt-1 max-h-[500px] opacity-100",
+                         )}
+                     >
+-                        <div className={cn("mb-2 flex items-center gap-4 text-[11px] font-semibold", activeCosmeticTheme.mutedClass, rebuildTokenDividerClass)}>
++                        <div className={cn("mb-3 flex items-center gap-4 text-[11px] font-semibold ml-2", activeCosmeticTheme.mutedClass, rebuildTokenDividerClass)}>
+                             空格选词 · Backspace 撤回 · Enter 提交
+                         </div>
+@@ -616,11 +600,10 @@
+-                <div data-tour-target="rebuild-drill-submit" className="mt-3 flex gap-3 px-1">
++                <div data-tour-target="rebuild-drill-submit" className="mt-4 flex gap-3 px-1">
+                     <button
+                         type="button"
+                         onClick={onSkip}
+                         className={cn(
+-                            "group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full border px-4 text-[15px] font-semibold transition-all active:scale-[0.98]",
+-                            compact ? activeCosmeticUi.iconButtonClass : activeCosmeticUi.hintButtonClass,
++                            "group inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full border border-black/5 bg-black/[0.02] hover:bg-black/[0.05] px-4 text-[15px] font-bold text-slate-500 transition-all active:scale-[0.98]"
+                         )}
+                     >
+                         <SkipForward className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />

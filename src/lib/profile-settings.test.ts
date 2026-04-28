@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
     DEFAULT_LEARNING_PREFERENCES,
+    normalizeAiProvider,
     normalizeLearningPreferences,
     RANDOM_ENGLISH_TTS_VOICE,
     resolveLearningPreferenceTtsVoice,
@@ -32,5 +33,10 @@ describe("profile settings", () => {
 
         expect(resolved.startsWith("en-")).toBe(true);
         expect(resolved.startsWith("en-IN-")).toBe(false);
+    });
+
+    it("normalizes the nvidia AI provider", () => {
+        expect(normalizeAiProvider("nvidia")).toBe("nvidia");
+        expect(normalizeAiProvider("unknown")).toBe("deepseek");
     });
 });

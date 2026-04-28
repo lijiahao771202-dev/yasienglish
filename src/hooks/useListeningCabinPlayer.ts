@@ -817,10 +817,11 @@ export function useListeningCabinPlayer({
             let capturedData = false;
 
             if (analyserRef.current && dataArrayRef.current) {
-                analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+                const frequencyData = dataArrayRef.current as Uint8Array<ArrayBuffer>;
+                analyserRef.current.getByteFrequencyData(frequencyData);
                 let sum = 0;
                 // Focus on human speech frequencies
-                const voiceRange = dataArrayRef.current.slice(0, Math.floor(dataArrayRef.current.length * 0.6));
+                const voiceRange = frequencyData.slice(0, Math.floor(frequencyData.length * 0.6));
                 for (let i = 0; i < voiceRange.length; i++) {
                     sum += voiceRange[i];
                 }

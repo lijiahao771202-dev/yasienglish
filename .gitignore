@@ -56,3 +56,11 @@ services/pronunciation/.venv-pronunciation/
 /.cache/
 /public/sherpa/
 *.onnx
+
+# Python and AI model caches
+.venv/
+.hf_cache/
+public/models/
+scratch.*
+test_github_*.mjs
+test_models.js

@@ -21,6 +21,7 @@ import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { applyBackgroundThemeToDocument, BACKGROUND_CHANGED_EVENT, getBackgroundThemeSpec, getSavedBackgroundTheme } from "@/lib/background-preferences";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, type ReadingMarkType, type ReadingNoteItem } from "@/lib/db";
+import { READ_SELECTION_ASK_DOCK_EVENT } from "@/lib/read-selection-ask-dock";
 import {
     buildDailyLoginDedupeKey,
     buildQuizCompleteDedupeKey,
@@ -177,17 +178,60 @@ interface PendingCatSubmission {
     qualityTier?: QuizSubmitPayload["qualityTier"];
 }
 
+interface CatSessionPolicyPayload {
+    minItems?: number;
+    maxItems?: number;
+    targetSe?: number;
+}
+
+interface CatSessionResponsePayload {
+    objectiveDelta?: number;
+    systemAssessment?: CatSystemAssessment | null;
+    stopReason?: string | null;
+    itemCount?: number | null;
+    policyUsed?: CatSessionPolicyPayload | null;
+    selfAssessment?: CatSelfAssessment | null;
+    scoreCorrection?: number;
+    difficultySignal?: number | null;
+    delta?: number;
+}
+
+interface CatProgressResponsePayload {
+    score?: number;
+    level?: number;
+    theta?: number;
+    se?: number | null;
+    points?: number;
+    currentBand?: number;
+    updatedAt?: string;
+}
+
+interface ReadingCoinsResponsePayload {
+    delta?: number;
+    applied?: boolean;
+    balance?: number;
+}
+
+interface CatSubmitResponsePayload {
+    error?: string;
+    session?: CatSessionResponsePayload;
+    animationPayload?: Partial<CatSettlementPayload>;
+    readingCoins?: ReadingCoinsResponsePayload;
+    cat?: CatProgressResponsePayload;
+    alreadyCompleted?: boolean;
+}
+
 const buildReadingArticleKey = (article: Pick<ArticleData, "title" | "url">) => {
     const normalizedUrl = typeof article.url === "string" ? article.url.trim() : "";
     if (normalizedUrl) return normalizedUrl;
     return `title:${(article.title || "untitled").trim().toLowerCase()}`;
 };
 
-async function parseJsonResponseSafely(response: Response) {
+async function parseJsonResponseSafely<T>(response: Response): Promise<T> {
     const raw = await response.text();
-    if (!raw.trim()) return {} as Record<string, unknown>;
+    if (!raw.trim()) return {} as T;
     try {
-        return JSON.parse(raw) as Record<string, unknown>;
+        return JSON.parse(raw) as T;
     } catch {
         if (response.ok) {
             throw new Error("CAT 结算返回了无效响应");
@@ -408,6 +452,7 @@ function ReadingPageContent() {
     const [isWideViewport, setIsWideViewport] = useState(false);
     const [isQuizPanelDragging, setIsQuizPanelDragging] = useState(false);
     const [quizPanelOffset, setQuizPanelOffset] = useState({ x: 0, y: 0 });
+    const [showSelectionAskDock, setShowSelectionAskDock] = useState(false);
     const [, forceBackgroundRefresh] = useState(0);
     const { loadUserData, markArticleAsRead: markReadArticleInStore } = useUserStore();
     const activeArticleKey = article ? buildReadingArticleKey(article) : null;
@@ -549,12 +594,16 @@ function ReadingPageContent() {
         const promise = (async () => {
             setIsPreparingCatAssessment(true);
             try {
+                const catSessionId = article.catSessionId;
+                if (!catSessionId) {
+                    throw new Error("CAT session is missing.");
+                }
                 const response = await fetch("/api/ai/cat/session/submit", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
                         mode: "prepare",
-                        sessionId: article.catSessionId,
+                        sessionId: catSessionId,
                         quizCorrect: pendingCatSubmission.correct,
                         quizTotal: pendingCatSubmission.total,
                         readingMs: pendingCatSubmission.readingMs,
@@ -562,18 +611,18 @@ function ReadingPageContent() {
                         qualityTier: pendingCatSubmission.qualityTier,
                     }),
                 });
-                const payload = await parseJsonResponseSafely(response);
+                const payload = await parseJsonResponseSafely<CatSubmitResponsePayload>(response);
                 if (!response.ok) {
                     throw new Error(typeof payload.error === "string" ? payload.error : "CAT prepare failed");
                 }
-                preparedCatSessionIdRef.current = article.catSessionId;
-                if (payload?.animationPayload && payload?.session) {
-                    const animation = payload.animationPayload as Record<string, unknown>;
+                preparedCatSessionIdRef.current = catSessionId;
+                if (payload.animationPayload && payload.session) {
+                    const animation = payload.animationPayload;
                     preparedCatSettlementRef.current = {
-                        sessionId: article.catSessionId,
+                        sessionId: catSessionId,
                         objectiveDelta: Number(payload.session.objectiveDelta ?? animation.delta ?? 0),
-                        systemAssessment: (payload.session.systemAssessment ?? null) as CatSystemAssessment | null,
-                        stopReason: (payload.session.stopReason ?? null) as string | null,
+                        systemAssessment: payload.session.systemAssessment ?? null,
+                        stopReason: payload.session.stopReason ?? null,
                         itemCount: Number(payload.session.itemCount ?? 0) || null,
                         minItems: Number(payload.session.policyUsed?.minItems ?? 0) || null,
                         maxItems: Number(payload.session.policyUsed?.maxItems ?? 0) || null,
@@ -637,23 +686,23 @@ function ReadingPageContent() {
                     selfAssessment: selfAssessment ?? undefined,
                 }),
             });
-            const payload = await parseJsonResponseSafely(response);
+            const payload = await parseJsonResponseSafely<CatSubmitResponsePayload>(response);
             if (!response.ok) {
                 throw new Error(typeof payload.error === "string" ? payload.error : "CAT submit failed");
             }
 
-            const policyUsed = payload?.session?.policyUsed;
-            const correction = Number(payload?.session?.scoreCorrection ?? 0);
+            const policyUsed = payload.session?.policyUsed;
+            const correction = Number(payload.session?.scoreCorrection ?? 0);
             const correctionSummary = getCatScoreCorrectionSummary({
-                selfAssessment: (payload?.session?.selfAssessment ?? selfAssessment ?? null) as CatSelfAssessment | null,
+                selfAssessment: payload.session?.selfAssessment ?? selfAssessment ?? null,
                 scoreCorrection: correction,
             });
-            if (payload?.session?.delta !== undefined) {
+            if (payload.session?.delta !== undefined) {
                 const signedDelta = Number(payload.session.delta);
                 const deltaText = signedDelta >= 0 ? `+${signedDelta}` : `${signedDelta}`;
                 const stopHint = formatCatStopReason({
-                    stopReason: payload?.session?.stopReason,
-                    itemCount: payload?.session?.itemCount,
+                    stopReason: payload.session.stopReason,
+                    itemCount: payload.session.itemCount,
                     minItems: policyUsed?.minItems,
                     maxItems: policyUsed?.maxItems,
                 });
@@ -664,29 +713,29 @@ function ReadingPageContent() {
                 window.setTimeout(() => setCatNotice(null), 4200);
             }
 
-            if (payload?.animationPayload) {
+            if (payload.animationPayload) {
                 const animationPayload = {
-                    ...(payload.animationPayload as CatSettlementPayload),
-                    stopReason: payload?.session?.stopReason,
-                    itemCount: payload?.session?.itemCount,
+                    ...payload.animationPayload,
+                    stopReason: payload.session?.stopReason,
+                    itemCount: payload.session?.itemCount,
                     minItems: policyUsed?.minItems,
                     maxItems: policyUsed?.maxItems,
-                    alreadyCompleted: Boolean(payload?.alreadyCompleted),
-                    systemAssessment: payload?.session?.systemAssessment ?? null,
-                    selfAssessment: payload?.session?.selfAssessment ?? selfAssessment ?? null,
-                    objectiveDelta: Number(payload?.session?.objectiveDelta ?? payload?.session?.delta ?? 0),
-                    scoreCorrection: Number(payload?.session?.scoreCorrection ?? 0),
-                    difficultySignal: Number(payload?.session?.difficultySignal ?? 0),
+                    alreadyCompleted: Boolean(payload.alreadyCompleted),
+                    systemAssessment: payload.session?.systemAssessment ?? null,
+                    selfAssessment: payload.session?.selfAssessment ?? selfAssessment ?? null,
+                    objectiveDelta: Number(payload.session?.objectiveDelta ?? payload.session?.delta ?? 0),
+                    scoreCorrection: Number(payload.session?.scoreCorrection ?? 0),
+                    difficultySignal: Number(payload.session?.difficultySignal ?? 0),
                     isPendingFinalization: false,
                 } as CatSettlementPayload;
                 setCatSettlement(animationPayload);
             }
 
-            if (payload?.readingCoins?.delta > 0) {
+            if (Number(payload.readingCoins?.delta ?? 0) > 0) {
                 pushReadingCoinFx({
                     action: "quiz_complete",
-                    delta: payload.readingCoins.delta,
-                    applied: payload?.readingCoins?.applied !== false,
+                    delta: Number(payload.readingCoins?.delta ?? 0),
+                    applied: payload.readingCoins?.applied !== false,
                 });
             }
 
@@ -698,20 +747,20 @@ function ReadingPageContent() {
             void (async () => {
                 try {
                     await applyServerProfilePatchToLocal({
-                        cat_score: payload?.cat?.score,
-                        cat_level: payload?.cat?.level,
-                        cat_theta: payload?.cat?.theta,
-                        cat_se: payload?.cat?.se,
-                        cat_points: payload?.cat?.points,
-                        cat_current_band: payload?.cat?.currentBand,
-                        cat_updated_at: payload?.cat?.updatedAt ?? new Date().toISOString(),
-                        reading_coins: payload?.readingCoins?.balance,
+                        cat_score: payload.cat?.score,
+                        cat_level: payload.cat?.level,
+                        cat_theta: payload.cat?.theta,
+                        cat_se: payload.cat?.se ?? undefined,
+                        cat_points: payload.cat?.points,
+                        cat_current_band: payload.cat?.currentBand,
+                        cat_updated_at: payload.cat?.updatedAt ?? new Date().toISOString(),
+                        reading_coins: payload.readingCoins?.balance,
                     });
 
                     const profileRow = await db.user_profile.orderBy("id").first();
                     if (profileRow?.id !== undefined) {
                         await db.user_profile.update(profileRow.id, {
-                            cat_pending_difficulty_signal: Number(payload?.session?.difficultySignal ?? 0),
+                            cat_pending_difficulty_signal: Number(payload.session?.difficultySignal ?? 0),
                         });
                     }
                     if (currentArticleUrl) {
@@ -1307,6 +1356,16 @@ function ReadingPageContent() {
     }, []);
 
     useEffect(() => {
+        if (typeof window === "undefined") return;
+        const handleSelectionAskDock = (event: Event) => {
+            const customEvent = event as CustomEvent<{ open?: boolean }>;
+            setShowSelectionAskDock(customEvent.detail?.open === true);
+        };
+        window.addEventListener(READ_SELECTION_ASK_DOCK_EVENT, handleSelectionAskDock as EventListener);
+        return () => window.removeEventListener(READ_SELECTION_ASK_DOCK_EVENT, handleSelectionAskDock as EventListener);
+    }, []);
+
+    useEffect(() => {
         if (!isQuizPanelDragging) return;
         const handlePointerMove = (event: PointerEvent) => {
             const dragState = quizPanelDragStateRef.current;
@@ -1502,6 +1561,7 @@ function ReadingPageContent() {
                     textContent: cached.textContent,
                     byline: cached.byline,
                     siteName: cached.siteName,
+                    videoUrl: cached.videoUrl ?? undefined,
                     blocks: cached.blocks,
                     url: cached.url,
                     difficulty: cached.difficulty,
@@ -1518,7 +1578,7 @@ function ReadingPageContent() {
                     quizCorrect: cached.quizCorrect,
                     quizTotal: cached.quizTotal,
                     quizScorePercent: cached.quizScorePercent,
-                    quizQuestions: Array.isArray(cached.quizQuestions) ? cached.quizQuestions as QuizQuestion[] : undefined,
+                    quizQuestions: Array.isArray(cached.quizQuestions) ? cached.quizQuestions : undefined,
                     quizAnswers: cached.quizAnswers,
                     quizResponses: cached.quizResponses,
                     quizQualityTier: cached.quizQualityTier,
@@ -1864,7 +1924,7 @@ function ReadingPageContent() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] as const }}
                 />
             )}
 
@@ -1876,7 +1936,7 @@ function ReadingPageContent() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] as const }}
                     >
                         <motion.div
                             className={cn(
@@ -1887,7 +1947,7 @@ function ReadingPageContent() {
                             )}
                             initial={{ scale: 1.05, filter: "blur(12px)", opacity: 0.8 }}
                             animate={{ scale: 1, filter: "blur(0px)", opacity: 1 }}
-                            transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
+                            transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] as const }}
                         />
                     </motion.div>
                 )}
@@ -1917,14 +1977,14 @@ function ReadingPageContent() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] as const }}
                     >
                         <motion.div
                             className={cn("absolute inset-0 backdrop-blur-[10px]", catSettlementFilm)}
                             initial={{ opacity: 0.6, scale: 1.05 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 1.02 }}
-                            transition={{ duration: 0.52, ease: [0.16, 1, 0.3, 1] }}
+                            transition={{ duration: 0.52, ease: [0.16, 1, 0.3, 1] as const }}
                         />
                         <div
                             className="absolute inset-0 flex items-center justify-center px-4"
@@ -1934,7 +1994,7 @@ function ReadingPageContent() {
                                 initial={{ opacity: 0, y: 28, scale: 0.96, filter: "blur(10px)" }}
                                 animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
                                 exit={{ opacity: 0, y: -8, scale: 0.98, filter: "blur(6px)" }}
-                                transition={{ duration: 0.6, ease: [0.2, 1, 0.32, 1] }}
+                                transition={{ duration: 0.6, ease: [0.2, 1, 0.32, 1] as const }}
                                 className="w-full max-w-2xl rounded-[30px] border border-white/65 bg-white/40 p-6 shadow-[0_40px_90px_-42px_rgba(15,23,42,0.9)] ring-1 ring-white/65 backdrop-blur-3xl md:p-7"
                             >
                                 <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">CAT Settlement</p>
@@ -1977,7 +2037,7 @@ function ReadingPageContent() {
                                     <motion.div
                                         initial={{ scale: 0.94 }}
                                         animate={{ scale: catSettlement.isRankUp ? [1, 1.04, 1] : 1 }}
-                                        transition={{ duration: 0.62, ease: [0.2, 1, 0.3, 1] }}
+                                        transition={{ duration: 0.62, ease: [0.2, 1, 0.3, 1] as const }}
                                         className={cn(
                                             "rounded-2xl border px-4 py-3",
                                             catSettlement.isRankUp
@@ -2082,8 +2142,8 @@ function ReadingPageContent() {
                 exit={{ opacity: 0 }}
                 transition={article
                     ? (isDockVisible
-                        ? { type: "spring", stiffness: 320, damping: 32, mass: 0.72 }
-                        : { duration: 0.34, ease: [0.4, 0, 1, 1] })
+                        ? { type: "spring" as const, stiffness: 320, damping: 32, mass: 0.72 }
+                        : { duration: 0.34, ease: [0.4, 0, 1, 1] as const })
                     : { duration: 0 }}
                 onMouseEnter={() => {
                     if (!article) return;
@@ -2338,13 +2398,13 @@ function ReadingPageContent() {
                         {/* Reading Column */}
                         <motion.div
                             layout
-                            transition={{ type: "spring", stiffness: 320, damping: 28, mass: 0.8 }}
+                            transition={{ type: "spring" as const, stiffness: 320, damping: 28, mass: 0.8 }}
                             key={readingViewportKey}
                             ref={readingColumnRef}
                             data-reading-scroll-container="true"
                             className={cn(
                                 "space-y-8 xl:space-y-10 overflow-visible mx-auto max-w-4xl",
-                                showStandardSplitQuiz && "xl:mr-[440px] xl:max-w-none",
+                                (showStandardSplitQuiz || showSelectionAskDock) && "xl:mr-[440px] xl:max-w-none",
                             )}
                         >
                             <ArticleDisplay
@@ -2380,7 +2440,7 @@ function ReadingPageContent() {
                             initial={{ opacity: 0, x: 36, y: 16, rotate: 3, scale: 0.94 }}
                             animate={{ opacity: 1, x: 0, y: 0, rotate: 0, scale: 1 }}
                             exit={{ opacity: 0, x: 36, y: 16, rotate: 3, scale: 0.94 }}
-                            transition={{ type: "spring", stiffness: 320, damping: 28, mass: 0.8 }}
+                            transition={{ type: "spring" as const, stiffness: 320, damping: 28, mass: 0.8 }}
                             className="fixed top-28 right-10 z-40 origin-bottom-right pointer-events-none"
                         >
                             <div
@@ -2426,7 +2486,7 @@ function ReadingPageContent() {
                     <motion.button
                         initial={{ opacity: 0, scale: 0.8, rotate: -20 }}
                         animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                        transition={{ delay: 1, type: "spring", stiffness: 300, damping: 20 }}
+                        transition={{ delay: 1, type: "spring" as const, stiffness: 300, damping: 20 }}
                         whileHover={{ scale: 1.1, rotate: 15 }}
                         whileTap={{ scale: 0.9 }}
                         onClick={() => setShowReadTour(true)}

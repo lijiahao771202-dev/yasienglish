@@ -96,8 +96,9 @@ export function useTTS(text: string) {
         audio.onerror = (e) => {
             const mediaError = audioRef.current?.error;
             const sourceText = latestTextRef.current;
+            const eventType = typeof e === "object" && e !== null && "type" in e ? e.type : "unknown";
             console.error("Audio playback error", {
-                eventType: e?.type ?? "unknown",
+                eventType,
                 code: mediaError?.code ?? null,
                 reason: describeHtmlMediaErrorCode(mediaError?.code),
                 src: audioRef.current?.src ?? null,

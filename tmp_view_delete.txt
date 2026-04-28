@@ -1,0 +1,201 @@
+            
+            if (ghostStr) return { ghost: ghostStr, isReplacement: isRep };
+        }
+    }
+    
+    return null;
+}
+
+
+function nlpComplete(
+    fullText: string,
+    referenceAnswer: string, 
+    allRefs?: string[],
+    stuckExtras: number = 0,
+    allowAutocorrect: boolean = true,
+    fuzzyTolerance: number = 1,
+    allowDuplicates: boolean = false,
+    semanticBranchingEnabled: boolean = false,
+    grammarCompensationEnabled: boolean = false
+): { ghost: string; isReplacement?: boolean; fuzzy?: boolean; morphologyDiff?: { uWord: string, rWord: string, type: import("@/lib/nlp").MorphologyDiffType } } | null {
+    const inputWords = fullText.trimStart().toLowerCase().split(/[\s,?!;.]+/).filter(Boolean);
+    const endsAtWordBoundary = /[\s,?!;.]$/.test(fullText);
+    const m = inputWords.length;
+    
+    // Stop if empty or if ends with space (unless stuck)
+    if (m === 0) return null;
+    if (endsAtWordBoundary && stuckExtras === 0) return null;
+    
+    const refSources = [referenceAnswer, ...(allRefs || [])];
+    
+    for (const ref of refSources) {
+        const refWordsRaw = ref.replace(/[^a-zA-Z'’\s-]/g, '').split(/\s+/).filter(w => w.length > 0);
+        const refWords = refWordsRaw.map(w => w.toLowerCase());
+        const n = refWords.length;
+        
+        let minCost = Infinity;
+        let expectedRefIndex = -1;
+
+        const dp = Array.from({ length: m + 1 }, () => Array(n + 1).fill(Infinity));
+        
+        // Allow user input to start matching from ANY point in the reference for free
+        for (let j = 0; j <= n; j++) {
+            dp[0][j] = 0;
+        }
+
+        for (let i = 0; i <= m; i++) {
+            for (let j = 0; j <= n; j++) {
+                if (i < m && j < n) {
+                    const isPartial = (!endsAtWordBoundary) && (i === m - 1);
+                    const uWordRaw = inputWords[i];
+                    const uWord = uWordRaw.replace(/[^a-z'’-]/g, '');
+                    const rWord = refWords[j];
+                    let cost = 1.5;
+                    
+                    if (uWord.length === 0) cost = 1.5;
+                    else if (uWord === rWord) cost = 0;
+                    else if (isPartial && rWord.startsWith(uWord)) cost = 0;
+                    else if (grammarCompensationEnabled && isSameRoot(uWord, rWord)) cost = 0.1;
+                    else if (allowAutocorrect && fuzzyTolerance > 0 && levenshtein(uWord, rWord) <= fuzzyTolerance) cost = 0.5;
+                    else if (allowAutocorrect && fuzzyTolerance > 0 && isPartial && uWord.length >= 2 && levenshtein(uWord, rWord.slice(0, uWord.length)) <= (fuzzyTolerance === 2 ? 1 : 0)) cost = 0.5;
+                    else if (semanticBranchingEnabled && isSemanticSynonymPrefix(uWord, rWord)) cost = 0.1;
+
+                    if (dp[i][j] + cost < dp[i+1][j+1]) {
+                        dp[i+1][j+1] = dp[i][j] + cost;
+                    }
+                }
+                if (i < m && dp[i][j] + 1 < dp[i+1][j]) {
+                    dp[i+1][j] = dp[i][j] + 1; // Penalty for skipping user word remains 1
+                }
+                if (j < n && dp[i][j] + 0.01 < dp[i][j+1]) {
+                    dp[i][j+1] = dp[i][j] + 0.01; // Negligible penalty for skipping reference words (turns off skip penalty while preserving left-to-right preference)
+                }
+            }
+        }
+
+        // Find ALL candidate endings that pass the distance threshold
+        let bestCandidate: { cost: number, refIndex: number, ghostStr: string, isRep: boolean, uWordMatchEnded: boolean, diffObj?: { uWord: string, rWord: string, type: MorphologyDiffType } } | null = null;
+        
+        for (let j = 0; j <= n; j++) {
+            const cost = dp[m][j];
+            if (cost <= Math.max(1.0, m * 0.8)) {
+                let ghostStr = '';
+                let isRep = false;
+                let uWordMatchEnded = false;
+                let valid = true;
+                let diffObj: { uWord: string, rWord: string, type: MorphologyDiffType } | undefined = undefined;
+                
+                if (!endsAtWordBoundary) {
+                    const uWordRaw = inputWords[m - 1];
+                    const uWord = uWordRaw.replace(/[^a-z'’-]/g, '');
+                    const rWordRaw = refWordsRaw[j - 1];
+                    const rWordLower = refWords[j - 1];
+                    
+                    if (!rWordLower || uWord.length === 0) {
+                        valid = false;
+                    } else if (rWordLower.startsWith(uWord)) {
+                        ghostStr = rWordRaw.slice(uWord.length);
+                        uWordMatchEnded = rWordLower === uWord;
+                    } else if (grammarCompensationEnabled && isSameRoot(uWord, rWordLower)) {
+                        ghostStr = rWordRaw;
+                        isRep = true;
+                        uWordMatchEnded = true;
+                        
+                        const diff = getMorphologyDiffType(uWord, rWordLower);
+                        if (diff) diffObj = { uWord, rWord: rWordLower, type: diff };
+
+                    } else if (allowAutocorrect && uWord.length >= 2 && levenshtein(uWord, rWordLower.slice(0, uWord.length)) <= 1) {
+                        ghostStr = rWordRaw;
+                        isRep = true;
+                        uWordMatchEnded = true;
+                    } else if (semanticBranchingEnabled && isSemanticSynonymPrefix(uWord, rWordLower)) {
+                        ghostStr = rWordRaw;
+                        isRep = true;
+                        uWordMatchEnded = true;
+                    } else {
+                        valid = false;
+                    }
+                } else if (grammarCompensationEnabled) {
+                    const uWordRaw = inputWords[m - 1];
+                    const uWord = uWordRaw?.replace(/[^a-z'’-]/g, '');
+                    const rWordRaw = refWordsRaw[j - 1];
+                    const rWordLower = refWords[j - 1];
+
+                    // If text ended at word boundary (e.g. space), check if the last word should be grammar-compensated
+                    if (rWordLower && uWord && rWordLower !== uWord && uWord.length > 0) {
+                        if (isSameRoot(uWord, rWordLower)) {
+                            ghostStr = rWordRaw;
+                            isRep = true;
+                            uWordMatchEnded = true;
+                            
+                            const diff = getMorphologyDiffType(uWord, rWordLower);
+                            if (diff) diffObj = { uWord, rWord: rWordLower, type: diff };
+                        } else {
+                            valid = false;
+                        }
+                    } else if (rWordLower && uWord && rWordLower !== uWord) {
+                        valid = false;
+                    }
+                }
+
+                if (valid && !allowDuplicates) {
+                    const rWordLower = refWords[j - 1];
+                    if (rWordLower) {
+                        let refCount = 0;
+                        for (const w of refWords) if (w === rWordLower) refCount++;
+
+                        let inputCount = 0;
+                        for (const wRaw of inputWords.slice(0, m - 1)) {
+                            const w = wRaw.replace(/[^a-z'’-]/g, '');
+                            if (w.length > 0 && w === rWordLower) inputCount++;
+                        }
+                        if (inputCount >= refCount) {
+                            valid = false;
+                        }
+                    }
+                }
+                
+                if (valid) {
+                    if (!bestCandidate || cost < bestCandidate.cost) {
+                        bestCandidate = { cost, refIndex: j - 1, ghostStr, isRep, uWordMatchEnded, diffObj };
+                    }
+                }
+            }
+        }
+        
+        if (bestCandidate) {
+            let { ghostStr, isRep, uWordMatchEnded, refIndex, diffObj } = bestCandidate;
+            
+            const WATERFALL_LIMIT = stuckExtras; // Extra words ONLY applied if user was stuck
+            const nextWords = refWordsRaw.slice(refIndex + 1, refIndex + 1 + WATERFALL_LIMIT);
+            
+            if (nextWords.length > 0) {
+                if (isRep) ghostStr += ' ' + nextWords.join(' ');
+                else if (ghostStr.length > 0) ghostStr += ' ' + nextWords.join(' ');
+                else ghostStr = (!endsAtWordBoundary && uWordMatchEnded) ? ' ' + nextWords.join(' ') : nextWords.join(' ');
+            }
+            
+            if (ghostStr) return { ghost: ghostStr, isReplacement: isRep, morphologyDiff: diffObj };
+        }
+    }
+    
+    return null;
+}
+
+// Stem matching fully outsourced to NLP module isSameRoot()
+
+// Minimal Levenshtein distance (only compute up to max 2)
+function levenshtein(a: string, b: string): number {
+    if (Math.abs(a.length - b.length) > 2) return 3;
+    const m = a.length, n = b.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, (_, i) =>
+        Array.from({ length: n + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+    );
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            dp[i][j] = a[i - 1] === b[j - 1]
+                ? dp[i - 1][j - 1]
+                : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+        }
+    }
+    return dp[m][n];

@@ -38,7 +38,7 @@ describe("grammar analysis helpers", () => {
         const text = "First sentence. Second sentence!";
         const sanitized = sanitizeGrammarBasicPayload({
             tags: ["主语"],
-            difficult_sentences: [
+            sentences: [
                 {
                     sentence: "First sentence.",
                     translation: "第一句。",
@@ -57,6 +57,7 @@ describe("grammar analysis helpers", () => {
         expect(sanitized.data.difficult_sentences).toHaveLength(2);
         expect(sanitized.data.difficult_sentences[0].highlights.length).toBeGreaterThan(0);
         expect(sanitized.data.difficult_sentences[1].sentence).toBe("Second sentence!");
+        expect(sanitized.retryRecommended).toBe(true);
         expect(sanitized.qualityScore).toBeGreaterThan(0);
     });
 
@@ -100,8 +101,15 @@ describe("grammar analysis helpers", () => {
         const basicPrompt = buildGrammarBasicPrompt("Sample sentence.");
         const deepPrompt = buildGrammarDeepPrompt("Sample sentence.");
 
-        expect(basicPrompt).toContain("Every highlight.explanation MUST include");
+        expect(basicPrompt).toContain("Every highlight.explanation MUST use very plain Chinese for learners with weak grammar.");
+        expect(basicPrompt).toContain("If a grammar term is hard, immediately explain it in simpler words.");
         expect(basicPrompt).toContain("segment_translation MUST be contextual");
+        expect(basicPrompt).toContain("FEW-SHOT EXAMPLE 1");
+        expect(basicPrompt).toContain("clause-first workflow");
+        expect(basicPrompt).toContain('"sentences": [');
+        expect(basicPrompt).toContain("Do not skip short, simple, or summary-like sentences.");
         expect(deepPrompt).toContain("avoid vague generic text");
+        expect(deepPrompt).toContain("FEW-SHOT EXAMPLE");
+        expect(deepPrompt).toContain("Identify the main clause first");
     });
 });

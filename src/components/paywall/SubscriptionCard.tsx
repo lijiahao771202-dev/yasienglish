@@ -39,7 +39,7 @@ export function SubscriptionCard({
                 <motion.div
                     layoutId="paywall-active-ring"
                     className="absolute inset-0 z-0 rounded-3xl bg-gradient-to-br from-indigo-300 via-white/80 to-purple-300 shadow-[0_0_24px_rgba(255,255,255,0.4)]"
-                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    transition={{ type: "spring" as const, stiffness: 300, damping: 30 }}
                 />
             )}
 

@@ -134,7 +134,7 @@ function DailyPlanBento() {
                 className="flex flex-col h-full rounded-[2.5rem] border-4 border-[color:var(--module-daily-bd)] bg-[color:var(--module-daily-bg)] shadow-[0_8px_0_0_var(--theme-shadow)] overflow-hidden"
             whileHover={{ scale: 1.01, y: -2 }}
             whileTap={{ scale: 0.98, y: 2 }}
-            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+            transition={{ type: "spring" as const, stiffness: 300, damping: 20 }}
         >
             {/* Header */}
             <div className="flex items-center justify-between p-5 pb-3 border-b-[3px] border-theme-border bg-theme-base-bg">
@@ -214,7 +214,7 @@ function DailyPlanBento() {
                                 animate={{ opacity: 1, y: 0 }}
                                 whileHover={{ scale: 1.02, y: -2 }}
                                 whileTap={{ scale: 0.95, y: 0 }}
-                                transition={{ type: "spring", stiffness: 450, damping: 25 }}
+                                transition={{ type: "spring" as const, stiffness: 450, damping: 25 }}
                                 onClick={handleItemClick}
                                 className={`group cursor-pointer flex items-start gap-3 p-3.5 rounded-2xl border-[3px] transition-colors duration-200 ${
                                     item.completed 
@@ -233,7 +233,7 @@ function DailyPlanBento() {
                                         <motion.div
                                             initial={{ scale: 0.5, rotate: -45 }}
                                             animate={{ scale: 1, rotate: 0 }}
-                                            transition={{ type: "spring", stiffness: 500, damping: 20 }}
+                                            transition={{ type: "spring" as const, stiffness: 500, damping: 20 }}
                                         >
                                             <CheckCircle2 className="w-6 h-6 text-theme-active-bg" />
                                         </motion.div>
@@ -292,7 +292,7 @@ function DailyPlanBento() {
                     />
                     <motion.button 
                         whileHover={inputValue.trim() ? { scale: 1.05 } : {}}
-                        whileTap={inputValue.trim() ? { scale: 0.85, y: 4, transition: { type: "spring", stiffness: 600, damping: 15 } } : {}}
+                        whileTap={inputValue.trim() ? { scale: 0.85, y: 4, transition: { type: "spring" as const, stiffness: 600, damping: 15 } } : {}}
                         onClick={handleAdd}
                         disabled={!inputValue.trim()}
                         className="w-11 h-11 flex-shrink-0 flex items-center justify-center rounded-xl bg-theme-active-bg border-[3px] border-theme-border text-theme-active-text shadow-[0_4px_0_0_var(--theme-shadow)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -366,7 +366,7 @@ export function HomeDashboardPanels_v2({
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] as const }}
             className="flex flex-col gap-5 w-full h-full relative"
         >
             {/* Exam Date Modal */}

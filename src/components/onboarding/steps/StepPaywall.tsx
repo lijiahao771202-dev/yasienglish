@@ -32,7 +32,7 @@ export function StepPaywall({ onStartTrial }: StepPaywallProps) {
                 <motion.div 
                     initial={{ y: 40, opacity: 0, scale: 0.9 }}
                     animate={{ y: 0, opacity: 1, scale: 1 }}
-                    transition={{ duration: 1.3, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                    transition={{ duration: 1.3, delay: 0.3, ease: [0.16, 1, 0.3, 1] as const }}
                     className="relative mb-8 group"
                 >
                     <div className="absolute inset-0 blur-[40px] bg-blue-500/10 rounded-full scale-125 transition-all duration-700 group-hover:scale-150 group-hover:bg-blue-500/20 pointer-events-none" />
@@ -90,7 +90,7 @@ export function StepPaywall({ onStartTrial }: StepPaywallProps) {
                                 left: selectedPlan === 'monthly' ? '0.375rem' : '50%',
                                 width: 'calc(50% - 0.5rem)'
                              }}
-                             transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
+                             transition={{ type: "spring" as const, bounce: 0.15, duration: 0.5 }}
                          />
 
                          <div 

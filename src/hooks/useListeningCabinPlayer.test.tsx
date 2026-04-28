@@ -257,6 +257,11 @@ describe("useListeningCabinPlayer", () => {
             throw new Error("Player did not initialize");
         }
 
+        await act(async () => {
+            latestPlayer?.setAutoAllMode();
+            await latestPlayer?.resumeOrPlay();
+        });
+
         expect(latestPlayer.playerState.isPlaying).toBe(true);
 
         await act(async () => {
@@ -290,6 +295,11 @@ describe("useListeningCabinPlayer", () => {
         if (!latestAudio || !latestPlayer) {
             throw new Error("Player did not initialize");
         }
+
+        await act(async () => {
+            latestPlayer?.setAutoAllMode();
+            await latestPlayer?.resumeOrPlay();
+        });
 
         await act(async () => {
             latestAudio.currentTime = 2.0;
@@ -416,6 +426,11 @@ describe("useListeningCabinPlayer", () => {
 
         await act(async () => {
             latestPlayer?.setAutoAllMode();
+            await latestPlayer?.resumeOrPlay();
+        });
+
+        await act(async () => {
+            latestPlayer?.setAutoAllMode();
             latestPlayer?.pausePlayback();
         });
 
@@ -456,6 +471,11 @@ describe("useListeningCabinPlayer", () => {
         if (!latestAudio || !latestPlayer) {
             throw new Error("Player did not initialize");
         }
+
+        await act(async () => {
+            latestPlayer?.setSinglePauseMode();
+            await latestPlayer?.resumeOrPlay();
+        });
 
         await act(async () => {
             latestPlayer?.setSinglePauseMode();
@@ -507,6 +527,11 @@ describe("useListeningCabinPlayer", () => {
         }
 
         await act(async () => {
+            latestPlayer?.setSinglePauseMode();
+            await latestPlayer?.resumeOrPlay();
+        });
+
+        await act(async () => {
             latestAudio.duration = 3.9;
             latestAudio.dispatch("loadedmetadata");
         });
@@ -553,6 +578,11 @@ describe("useListeningCabinPlayer", () => {
         }
 
         await act(async () => {
+            latestPlayer?.setSinglePauseMode();
+            await latestPlayer?.resumeOrPlay();
+        });
+
+        await act(async () => {
             latestAudio.duration = 9;
             latestAudio.dispatch("loadedmetadata");
         });
@@ -589,6 +619,11 @@ describe("useListeningCabinPlayer", () => {
         if (!latestAudio || !latestPlayer) {
             throw new Error("Player did not initialize");
         }
+
+        await act(async () => {
+            latestPlayer?.setSinglePauseMode();
+            await latestPlayer?.resumeOrPlay();
+        });
 
         await act(async () => {
             latestAudio.currentTime = 1.45;
@@ -634,6 +669,11 @@ describe("useListeningCabinPlayer", () => {
             throw new Error("Player did not initialize");
         }
 
+        await act(async () => {
+            latestPlayer?.setAutoAllMode();
+            await latestPlayer?.resumeOrPlay();
+        });
+
         expect(latestAudio.src).toBe("mock://narration");
         expect(latestPlayer.playerState.isPlaying).toBe(true);
 
@@ -671,6 +711,11 @@ describe("useListeningCabinPlayer", () => {
         if (!latestAudio || !latestPlayer) {
             throw new Error("Player did not initialize");
         }
+
+        await act(async () => {
+            latestPlayer?.setAutoAllMode();
+            await latestPlayer?.resumeOrPlay();
+        });
 
         await act(async () => {
             latestAudio.duration = 3.9;
@@ -724,6 +769,11 @@ describe("useListeningCabinPlayer", () => {
         }
 
         await act(async () => {
+            latestPlayer?.setAutoAllMode();
+            await latestPlayer?.resumeOrPlay();
+        });
+
+        await act(async () => {
             latestAudio.duration = 3.6;
             latestAudio.dispatch("loadedmetadata");
         });
@@ -767,6 +817,11 @@ describe("useListeningCabinPlayer", () => {
         if (!latestAudio || !latestPlayer) {
             throw new Error("Player did not initialize");
         }
+
+        await act(async () => {
+            latestPlayer?.setAutoAllMode();
+            await latestPlayer?.resumeOrPlay();
+        });
 
         await act(async () => {
             latestAudio.duration = 2.7;
@@ -864,6 +919,11 @@ describe("useListeningCabinPlayer", () => {
         }
 
         await act(async () => {
+            latestPlayer?.setSinglePauseMode();
+            await latestPlayer?.resumeOrPlay();
+        });
+
+        await act(async () => {
             latestAudio.duration = 3.9;
             latestAudio.dispatch("loadedmetadata");
         });
@@ -883,7 +943,7 @@ describe("useListeningCabinPlayer", () => {
             latestAudio.dispatch("timeupdate");
         });
         expect(latestPlayer.playerState.isPlaying).toBe(false);
-        expect(latestAudio.currentTime).toBeGreaterThanOrEqual(1.24);
+        expect(latestAudio.currentTime).toBeCloseTo(1.212, 3);
     });
 
     it("compensates for backward seek drift in single-pause mode so it does not leak previous audio or cut the current sentence early", async () => {
@@ -975,6 +1035,11 @@ describe("useListeningCabinPlayer", () => {
         if (!latestAudio || !latestPlayer) {
             throw new Error("Player did not initialize");
         }
+
+        await act(async () => {
+            latestPlayer?.setAutoAllMode();
+            await latestPlayer?.resumeOrPlay();
+        });
 
         await act(async () => {
             latestAudio.duration = 3.9;

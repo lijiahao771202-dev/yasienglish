@@ -23,27 +23,70 @@ import {
     type MeaningGroup,
 } from "./vocab-meanings";
 import {
+    applyTranslationEloReset,
+    DEFAULT_TRANSLATION_ELO,
+} from "./translation-elo-reset";
+import {
+    type AiProvider,
+    DEFAULT_GLM_MODEL,
+    DEFAULT_GLM_THINKING_MODE,
+    DEFAULT_DEEPSEEK_MODEL,
+    DEFAULT_DEEPSEEK_REASONING_EFFORT,
+    DEFAULT_DEEPSEEK_THINKING_MODE,
     DEFAULT_AVATAR_PRESET,
     DEFAULT_LEARNING_PREFERENCES,
     DEFAULT_PROFILE_USERNAME,
     type LearningPreferences,
+    normalizeAiProvider,
     normalizeAvatarPreset,
+    normalizeProfileGlmApiKey,
+    normalizeProfileGithubApiKey,
+    normalizeProfileGithubModel,
+    normalizeProfileNvidiaApiKey,
+    normalizeProfileNvidiaModel,
     normalizeProfileDeepSeekApiKey,
+    normalizeProfileDeepSeekModel,
+    normalizeProfileDeepSeekReasoningEffort,
+    normalizeProfileDeepSeekThinkingMode,
     normalizeLearningPreferences,
     normalizeProfileBio,
     normalizeProfileUsername,
 } from "./profile-settings";
 
 export {
+    normalizeAiProvider,
     DEFAULT_AVATAR_PRESET,
+    DEFAULT_DEEPSEEK_MODEL,
+    DEFAULT_DEEPSEEK_REASONING_EFFORT,
+    DEFAULT_DEEPSEEK_THINKING_MODE,
+    DEFAULT_GLM_MODEL,
+    DEFAULT_GLM_THINKING_MODE,
     DEFAULT_LEARNING_PREFERENCES,
     DEFAULT_PROFILE_USERNAME,
     normalizeAvatarPreset,
+    normalizeProfileGlmApiKey,
+    normalizeProfileGithubApiKey,
+    normalizeProfileGithubModel,
+    normalizeProfileNvidiaApiKey,
+    normalizeProfileNvidiaModel,
     normalizeProfileDeepSeekApiKey,
+    normalizeProfileDeepSeekModel,
+    normalizeProfileDeepSeekReasoningEffort,
+    normalizeProfileDeepSeekThinkingMode,
     normalizeLearningPreferences,
     normalizeProfileBio,
     normalizeProfileUsername,
 } from "./profile-settings";
+
+export {
+    normalizeProfileGlmModel,
+    normalizeProfileGlmThinkingMode,
+} from "./profile-settings";
+
+export {
+    applyTranslationEloReset,
+    DEFAULT_TRANSLATION_ELO,
+} from "./translation-elo-reset";
 
 export interface RemoteProfileRow {
     user_id: string;
@@ -67,7 +110,16 @@ export interface RemoteProfileRow {
     username?: string;
     avatar_preset?: string;
     bio?: string;
+    ai_provider?: AiProvider;
     deepseek_api_key?: string;
+    deepseek_model?: string;
+    deepseek_thinking_mode?: "off" | "on";
+    deepseek_reasoning_effort?: "high" | "max";
+    glm_api_key?: string;
+    nvidia_api_key?: string;
+    nvidia_model?: string;
+    github_api_key?: string;
+    github_model?: string;
     learning_preferences?: LearningPreferences;
     reading_coins?: number;
     reading_streak?: number;
@@ -270,6 +322,15 @@ export interface RemoteEloHistoryRow {
     updated_at: string;
 }
 
+export interface RemoteErrorLedgerRow {
+    id: string;
+    user_id: string;
+    text: string;
+    tag?: string;
+    created_at: number;
+    updated_at: string;
+}
+
 export const DEFAULT_BASE_ELO = 400;
 export const DEFAULT_STARTING_COINS = 500;
 export const DEFAULT_FREE_THEME = "morning_coffee";
@@ -341,11 +402,11 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
     const inventory = normalizeInventory();
     const now = Date.now();
 
-    return {
+    return applyTranslationEloReset({
         user_id: userId,
-        elo_rating: DEFAULT_BASE_ELO,
+        elo_rating: DEFAULT_TRANSLATION_ELO,
         streak_count: 0,
-        max_elo: DEFAULT_BASE_ELO,
+        max_elo: DEFAULT_TRANSLATION_ELO,
         last_practice: now,
         listening_scoring_version: 2,
         listening_elo: DEFAULT_BASE_ELO,
@@ -366,7 +427,18 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
         username: DEFAULT_PROFILE_USERNAME,
         avatar_preset: DEFAULT_AVATAR_PRESET,
         bio: "",
+        ai_provider: "deepseek",
         deepseek_api_key: "",
+        deepseek_model: DEFAULT_DEEPSEEK_MODEL,
+        deepseek_thinking_mode: DEFAULT_DEEPSEEK_THINKING_MODE,
+        deepseek_reasoning_effort: DEFAULT_DEEPSEEK_REASONING_EFFORT,
+        glm_api_key: "",
+        glm_model: DEFAULT_GLM_MODEL,
+        glm_thinking_mode: DEFAULT_GLM_THINKING_MODE,
+        nvidia_api_key: "",
+        nvidia_model: normalizeProfileNvidiaModel(undefined),
+        github_api_key: "",
+        github_model: normalizeProfileGithubModel(undefined),
         learning_preferences: DEFAULT_LEARNING_PREFERENCES,
         reading_coins: DEFAULT_READING_COINS,
         reading_streak: 0,
@@ -384,7 +456,7 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
         daily_plan_snapshots: [],
         updated_at: new Date(now).toISOString(),
         sync_status: "pending",
-    };
+    });
 }
 
 export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
@@ -392,6 +464,9 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
     const dictationElo = typeof remote.dictation_elo === "number" ? remote.dictation_elo : remote.listening_elo;
     const dictationStreak = typeof remote.dictation_streak === "number" ? remote.dictation_streak : remote.listening_streak ?? 0;
     const dictationMaxElo = typeof remote.dictation_max_elo === "number" ? remote.dictation_max_elo : remote.max_listening_elo;
+    const examType = remote.exam_type === "cet4" || remote.exam_type === "cet6" || remote.exam_type === "postgrad" || remote.exam_type === "ielts"
+        ? remote.exam_type
+        : undefined;
 
     return {
         user_id: remote.user_id,
@@ -425,7 +500,18 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
         username: normalizeProfileUsername(remote.username),
         avatar_preset: normalizeAvatarPreset(remote.avatar_preset),
         bio: normalizeProfileBio(remote.bio),
+        ai_provider: normalizeAiProvider(remote.ai_provider),
         deepseek_api_key: normalizeProfileDeepSeekApiKey(remote.deepseek_api_key),
+        deepseek_model: normalizeProfileDeepSeekModel(remote.deepseek_model),
+        deepseek_thinking_mode: normalizeProfileDeepSeekThinkingMode(remote.deepseek_thinking_mode),
+        deepseek_reasoning_effort: normalizeProfileDeepSeekReasoningEffort(remote.deepseek_reasoning_effort),
+        glm_api_key: normalizeProfileGlmApiKey(remote.glm_api_key),
+        glm_model: DEFAULT_GLM_MODEL,
+        glm_thinking_mode: DEFAULT_GLM_THINKING_MODE,
+        nvidia_api_key: normalizeProfileNvidiaApiKey(remote.nvidia_api_key),
+        nvidia_model: normalizeProfileNvidiaModel(remote.nvidia_model),
+        github_api_key: normalizeProfileGithubApiKey(remote.github_api_key),
+        github_model: normalizeProfileGithubModel(remote.github_model),
         learning_preferences: normalizeLearningPreferences(remote.learning_preferences),
         reading_coins: typeof remote.reading_coins === "number" ? remote.reading_coins : DEFAULT_READING_COINS,
         reading_streak: typeof remote.reading_streak === "number" ? remote.reading_streak : 0,
@@ -438,7 +524,7 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
         cat_current_band: typeof remote.cat_current_band === "number" ? remote.cat_current_band : DEFAULT_CAT_BAND,
         cat_updated_at: remote.cat_updated_at || remote.updated_at,
         exam_date: remote.exam_date || undefined,
-        exam_type: (remote.exam_type as any) || undefined,
+        exam_type: examType,
         exam_goal_score: typeof remote.exam_goal_score === "number" ? remote.exam_goal_score : undefined,
         daily_plan_snapshots: normalizeDailyPlanSnapshots(remote.daily_plan_snapshots),
         updated_at: remote.updated_at,
@@ -451,7 +537,7 @@ export function buildProfilePatch(
         Pick<
             LocalUserProfile,
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
-            | "deepseek_api_key" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
+            | "ai_provider" | "deepseek_api_key" | "deepseek_model" | "deepseek_thinking_mode" | "deepseek_reasoning_effort" | "glm_api_key" | "nvidia_api_key" | "nvidia_model" | "github_api_key" | "github_model" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
             | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
             | "rebuild_hidden_elo" | "rebuild_elo" | "rebuild_streak" | "rebuild_max_elo"
@@ -470,7 +556,16 @@ export function buildProfilePatch(
     if (patch.username !== undefined) nextPatch.username = normalizeProfileUsername(patch.username);
     if (patch.avatar_preset !== undefined) nextPatch.avatar_preset = normalizeAvatarPreset(patch.avatar_preset);
     if (patch.bio !== undefined) nextPatch.bio = normalizeProfileBio(patch.bio);
+    if (patch.ai_provider !== undefined) nextPatch.ai_provider = normalizeAiProvider(patch.ai_provider);
     if (patch.deepseek_api_key !== undefined) nextPatch.deepseek_api_key = normalizeProfileDeepSeekApiKey(patch.deepseek_api_key);
+    if (patch.deepseek_model !== undefined) nextPatch.deepseek_model = normalizeProfileDeepSeekModel(patch.deepseek_model);
+    if (patch.deepseek_thinking_mode !== undefined) nextPatch.deepseek_thinking_mode = normalizeProfileDeepSeekThinkingMode(patch.deepseek_thinking_mode);
+    if (patch.deepseek_reasoning_effort !== undefined) nextPatch.deepseek_reasoning_effort = normalizeProfileDeepSeekReasoningEffort(patch.deepseek_reasoning_effort);
+    if (patch.glm_api_key !== undefined) nextPatch.glm_api_key = normalizeProfileGlmApiKey(patch.glm_api_key);
+    if (patch.nvidia_api_key !== undefined) nextPatch.nvidia_api_key = normalizeProfileNvidiaApiKey(patch.nvidia_api_key);
+    if (patch.nvidia_model !== undefined) nextPatch.nvidia_model = normalizeProfileNvidiaModel(patch.nvidia_model);
+    if (patch.github_api_key !== undefined) nextPatch.github_api_key = normalizeProfileGithubApiKey(patch.github_api_key);
+    if (patch.github_model !== undefined) nextPatch.github_model = normalizeProfileGithubModel(patch.github_model);
     if (patch.learning_preferences !== undefined) {
         nextPatch.learning_preferences = normalizeLearningPreferences(patch.learning_preferences);
     }
@@ -495,11 +590,11 @@ export function buildProfilePatch(
     if (patch.rebuild_elo !== undefined) nextPatch.rebuild_elo = patch.rebuild_elo;
     if (patch.rebuild_streak !== undefined) nextPatch.rebuild_streak = patch.rebuild_streak;
     if (patch.rebuild_max_elo !== undefined) nextPatch.rebuild_max_elo = patch.rebuild_max_elo;
-    if ((patch as any).exam_date !== undefined) nextPatch.exam_date = (patch as any).exam_date || null;
-    if ((patch as any).exam_type !== undefined) nextPatch.exam_type = (patch as any).exam_type || null;
-    if ((patch as any).exam_goal_score !== undefined) nextPatch.exam_goal_score = (patch as any).exam_goal_score ?? null;
-    if ((patch as any).daily_plan_snapshots !== undefined) {
-        nextPatch.daily_plan_snapshots = normalizeDailyPlanSnapshots((patch as any).daily_plan_snapshots);
+    if (patch.exam_date !== undefined) nextPatch.exam_date = patch.exam_date || null;
+    if (patch.exam_type !== undefined) nextPatch.exam_type = patch.exam_type || null;
+    if (patch.exam_goal_score !== undefined) nextPatch.exam_goal_score = patch.exam_goal_score ?? null;
+    if (patch.daily_plan_snapshots !== undefined) {
+        nextPatch.daily_plan_snapshots = normalizeDailyPlanSnapshots(patch.daily_plan_snapshots);
     }
     if (patch.last_practice_at !== undefined && patch.last_practice_at !== null) {
         nextPatch.last_practice_at = new Date(patch.last_practice_at).toISOString();
@@ -686,6 +781,29 @@ export function toLocalEloHistoryItem(remote: RemoteEloHistoryRow): EloHistoryIt
         change: remote.change,
         timestamp: remote.timestamp_ms,
         source: remote.source,
+        updated_at: remote.updated_at,
+        sync_status: "synced",
+    };
+}
+
+export function toRemoteErrorLedgerRow(userId: string, item: import("./db").ErrorLedgerItem): RemoteErrorLedgerRow {
+    return {
+        id: item.remote_id || crypto.randomUUID(),
+        user_id: userId,
+        text: item.text,
+        tag: item.tag,
+        created_at: item.created_at,
+        updated_at: item.updated_at || new Date().toISOString(),
+    };
+}
+
+export function toLocalErrorLedgerItem(remote: RemoteErrorLedgerRow): import("./db").ErrorLedgerItem {
+    return {
+        remote_id: remote.id,
+        user_id: remote.user_id,
+        text: remote.text,
+        tag: remote.tag,
+        created_at: Number(remote.created_at),
         updated_at: remote.updated_at,
         sync_status: "synced",
     };

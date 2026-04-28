@@ -16,7 +16,7 @@ export function buildReadArticleCloudPayload(
         textContent: article.textContent || article.content || "",
         byline: article.byline,
         siteName: article.siteName,
-        videoUrl: article.videoUrl,
+        videoUrl: article.videoUrl ?? null,
         image: article.image ?? null,
         blocks: article.blocks,
         timestamp,
