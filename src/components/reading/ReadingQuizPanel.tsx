@@ -27,6 +27,7 @@ import {
     scoreObjectiveQuiz,
     type QuizAnswerValue,
 } from "@/lib/quiz-scoring";
+import { AI_PROVIDER_RATE_LIMIT_ERROR_CODE } from "@/lib/ai-provider-errors";
 
 export interface QuizQuestion {
     id: number;
@@ -400,6 +401,13 @@ export function ReadingQuizPanel({
                     }),
                 });
                 const data = await res.json();
+                if (!res.ok) {
+                    if (data?.errorCode === AI_PROVIDER_RATE_LIMIT_ERROR_CODE) {
+                        if (!cancelled) setError(data?.error || "当前 AI 模型忙，请稍后重试。");
+                        return;
+                    }
+                    throw new Error(data?.error || "Failed to generate quiz");
+                }
                 if (!cancelled) {
                     const normalizedQuestions = Array.isArray(data.questions)
                         ? data.questions

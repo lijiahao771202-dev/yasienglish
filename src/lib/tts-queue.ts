@@ -1,5 +1,5 @@
 import { saveAudioToCache } from "./tts-cache";
-import { requestTtsPayload, resolveTtsAudioBlob } from "./tts-client";
+import { isRetryableTtsError, requestTtsPayload, resolveTtsAudioBlob } from "./tts-client";
 
 export interface TTSQueueResult {
     blob: Blob;
@@ -21,7 +21,7 @@ type TTSRequest = {
 class TTSQueueManager {
     private queue: TTSRequest[] = [];
     private activeCount = 0;
-    private CONCURRENCY_LIMIT = 5;
+    private CONCURRENCY_LIMIT = 2;
     private pendingMap = new Map<string, Promise<TTSQueueResult>>();
 
     async add(text: string): Promise<TTSQueueResult> {
@@ -75,7 +75,11 @@ class TTSQueueManager {
             });
 
         } catch (error) {
-            console.error("TTS Queue Error:", error);
+            if (isRetryableTtsError(error)) {
+                console.warn("TTS temporarily unavailable:", error);
+            } else {
+                console.error("TTS Queue Error:", error);
+            }
             request.reject(error);
         } finally {
             this.activeCount--;

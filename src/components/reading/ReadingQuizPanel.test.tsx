@@ -3,10 +3,19 @@
 import React from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReadingQuizPanel, type QuizQuestion } from "./ReadingQuizPanel";
 
 const mountedRoots: Root[] = [];
+
+async function waitForText(container: HTMLElement, text: string) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+        if (container.textContent?.includes(text)) return;
+        await act(async () => {
+            await new Promise((resolve) => window.setTimeout(resolve, 20));
+        });
+    }
+}
 
 async function renderQuizPanel(
     overrides: Partial<React.ComponentProps<typeof ReadingQuizPanel>> = {},
@@ -79,6 +88,13 @@ async function renderQuizPanel(
     return { container, root };
 }
 
+beforeEach(() => {
+    Object.defineProperty(window, "scrollTo", {
+        configurable: true,
+        value: vi.fn(),
+    });
+});
+
 afterEach(async () => {
     await act(async () => {
         while (mountedRoots.length > 0) {
@@ -107,6 +123,8 @@ describe("ReadingQuizPanel", () => {
         await act(async () => {
             nextButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
+
+        await waitForText(container, "The students reviewed notes only once a month.");
 
         expect(container.textContent).toContain("The students reviewed notes only once a month.");
     });

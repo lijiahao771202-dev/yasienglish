@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { deepseek } from "@/lib/deepseek";
 import {
+    buildAiProviderRateLimitPayload,
+    getAiProviderRetryAfterSeconds,
+    isAiProviderRateLimitError,
+} from "@/lib/ai-provider-errors";
+import {
     CAT_OBJECTIVE_QUESTION_TYPES,
     type CatObjectiveQuestionType,
     buildObjectiveDistribution,
@@ -736,6 +741,18 @@ IMPORTANT:
             cacheHit: false,
         });
     } catch (error) {
+        if (isAiProviderRateLimitError(error)) {
+            console.warn("Quiz generation provider rate limited:", error);
+            const retryAfterSeconds = getAiProviderRetryAfterSeconds(error);
+            return NextResponse.json(
+                buildAiProviderRateLimitPayload("当前 AI 模型并发请求过多，测验稍后会自动重试。"),
+                {
+                    status: 429,
+                    headers: retryAfterSeconds ? { "Retry-After": String(retryAfterSeconds) } : undefined,
+                },
+            );
+        }
+
         console.error("Quiz Generation API Error:", error);
         return NextResponse.json(
             { error: "Failed to generate quiz" },

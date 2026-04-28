@@ -778,7 +778,7 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
 }
 
 
-export async function queueOutboxItem({ entity, operation, recordKey, payload }: OutboxPayload) {
+async function upsertOutboxItem({ entity, operation, recordKey, payload }: OutboxPayload) {
     const existing = await db.sync_outbox
         .where("[entity+record_key]")
         .equals([entity, recordKey] as [string, string])
@@ -810,6 +810,10 @@ export async function queueOutboxItem({ entity, operation, recordKey, payload }:
     }
 
     await db.sync_outbox.add(next);
+}
+
+export async function queueOutboxItem(item: OutboxPayload) {
+    await upsertOutboxItem(item);
 }
 
 async function syncDailyPlanMirror(userId: string) {
@@ -1897,18 +1901,20 @@ export async function deleteReadArticleSnapshot(url: string) {
     await db.transaction("rw", db.articles, db.read_articles, db.sync_outbox, async () => {
         await db.articles.delete(normalizedUrl);
         await db.read_articles.delete(normalizedUrl);
+
+        if (userId) {
+            await upsertOutboxItem({
+                entity: "read_articles",
+                operation: "delete",
+                recordKey: normalizedUrl,
+                payload: { user_id: userId, url: normalizedUrl },
+            });
+        }
     });
 
     if (!userId) {
         return;
     }
-
-    await queueOutboxItem({
-        entity: "read_articles",
-        operation: "delete",
-        recordKey: normalizedUrl,
-        payload: { user_id: userId, url: normalizedUrl },
-    });
     useSyncStatusStore.getState().setPhase("syncing");
     void scheduleBackgroundSync();
 }

@@ -30,6 +30,29 @@ export interface TtsSegmentInput {
     rate?: string;
 }
 
+const TTS_RETRY_DELAYS_MS = [350, 900, 1800];
+
+export function isRetryableTtsError(error: unknown) {
+    const normalizedError = error instanceof Error ? error : new Error(String(error || "TTS request failed"));
+    const message = normalizedError.message.toLowerCase();
+
+    return normalizedError.name === "AbortError"
+        || message.includes("timed out")
+        || message.includes("timeout")
+        || message.includes("failed to fetch")
+        || message.includes("network")
+        || message.includes("no audio data")
+        || message.includes("empty")
+        || message.includes("socket")
+        || message.includes("tls")
+        || message.includes("econnreset")
+        || message.includes("connection was established");
+}
+
+function delay(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function resolvePreferredVoice(voice?: string) {
     if (voice?.trim()) {
         return resolveLearningPreferenceTtsVoice(voice);
@@ -44,7 +67,7 @@ export async function requestTtsPayload(text: string, voice?: string, rate = "+0
     const timeoutMs = Math.min(35000, 15000 + Math.max(0, text.length - 120) * 60);
     let lastError: Error | null = null;
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt <= TTS_RETRY_DELAYS_MS.length; attempt += 1) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -69,20 +92,13 @@ export async function requestTtsPayload(text: string, voice?: string, rate = "+0
             const normalizedError = error instanceof Error ? error : new Error("TTS request failed");
             lastError = normalizedError;
 
-            const message = normalizedError.message.toLowerCase();
-            const isRetryable = normalizedError.name === "AbortError"
-                || message.includes("timed out")
-                || message.includes("failed to fetch")
-                || message.includes("network")
-                || message.includes("no audio data")
-                || message.includes("empty")
-                || message.includes("socket");
+            const isRetryable = isRetryableTtsError(normalizedError);
 
-            if (!isRetryable || attempt === 1) {
+            if (!isRetryable || attempt === TTS_RETRY_DELAYS_MS.length) {
                 break;
             }
 
-            await new Promise((resolve) => setTimeout(resolve, 250));
+            await delay(TTS_RETRY_DELAYS_MS[attempt]);
         }
     }
 
@@ -111,7 +127,7 @@ export async function requestTtsSegmentsPayload(segments: TtsSegmentInput[]) {
     );
     let lastError: Error | null = null;
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt <= TTS_RETRY_DELAYS_MS.length; attempt += 1) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -136,20 +152,13 @@ export async function requestTtsSegmentsPayload(segments: TtsSegmentInput[]) {
             const normalizedError = error instanceof Error ? error : new Error("TTS request failed");
             lastError = normalizedError;
 
-            const message = normalizedError.message.toLowerCase();
-            const isRetryable = normalizedError.name === "AbortError"
-                || message.includes("timed out")
-                || message.includes("failed to fetch")
-                || message.includes("network")
-                || message.includes("no audio data")
-                || message.includes("empty")
-                || message.includes("socket");
+            const isRetryable = isRetryableTtsError(normalizedError);
 
-            if (!isRetryable || attempt === 1) {
+            if (!isRetryable || attempt === TTS_RETRY_DELAYS_MS.length) {
                 break;
             }
 
-            await new Promise((resolve) => setTimeout(resolve, 250));
+            await delay(TTS_RETRY_DELAYS_MS[attempt]);
         }
     }
 

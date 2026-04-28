@@ -53,6 +53,7 @@ import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 import { dispatchReadSelectionAskDockEvent } from "@/lib/read-selection-ask-dock";
 import { AiRichMarkdown } from "@/components/shared/AiRichMarkdown";
 import { readAskSseStream } from "@/lib/ask-sse";
+import { AI_PROVIDER_RATE_LIMIT_ERROR_CODE } from "@/lib/ai-provider-errors";
 
 interface ParagraphCardProps {
     text: string;
@@ -143,6 +144,8 @@ interface PhraseAnalysisResult {
     }>;
 }
 
+type PhraseVocabularyItem = NonNullable<PhraseAnalysisResult["vocabulary"]>[number];
+
 interface SentenceAudioCacheEntry {
     blob: Blob;
     marks: TtsWordMark[];
@@ -151,6 +154,30 @@ interface SentenceAudioCacheEntry {
 
 type SelectionPopupMode = "selection" | "ask" | "ask-replay";
 type AskAnswerMode = "default" | "short" | "detailed";
+
+function resolveAskFailureMessage(payload: unknown) {
+    if (payload && typeof payload === "object") {
+        const record = payload as { errorCode?: unknown; error?: unknown };
+        if (record.errorCode === AI_PROVIDER_RATE_LIMIT_ERROR_CODE) {
+            return typeof record.error === "string" && record.error.trim()
+                ? record.error
+                : "当前 AI 模型正在处理上一个请求，请稍等几秒再试。";
+        }
+        if (typeof record.error === "string" && record.error.trim()) {
+            return record.error;
+        }
+    }
+
+    return "抱歉，出错了。请再试一次。";
+}
+
+function isAskRateLimitPayload(payload: unknown) {
+    return Boolean(
+        payload
+        && typeof payload === "object"
+        && (payload as { errorCode?: unknown }).errorCode === AI_PROVIDER_RATE_LIMIT_ERROR_CODE,
+    );
+}
 
 interface WordLayoutToken {
     start: number;
@@ -436,7 +463,7 @@ export function ParagraphCard({
         x: number;
         anchorTop: number;
         anchorBottom: number;
-        analyzeData?: any;
+        analyzeData?: PhraseAnalysisResult;
     } | null>(null);
     const [hoveredNoteId, setHoveredNoteId] = useState<number | null>(null);
     const [pressedAskNoteId, setPressedAskNoteId] = useState<number | null>(null);
@@ -1839,7 +1866,7 @@ export function ParagraphCard({
         }
     };
 
-    const handleDeleteReadingMark = async (markType: any) => {
+    const handleDeleteReadingMark = async (markType: ReadingMarkType) => {
         if (showGrammar) return;
         if (!onDeleteReadingMarks || !selectionOffsets) return;
 
@@ -1862,9 +1889,14 @@ export function ParagraphCard({
 
     const handleSelection = () => {
         const selection = window.getSelection();
+        const isSelectionAskDockOpen = Boolean(selectionRect)
+            && (selectionPopupMode === "ask" || selectionPopupMode === "ask-replay");
 
         // If no selection or collapsed
         if (!selection || selection.isCollapsed) {
+            if (isSelectionAskDockOpen) {
+                return;
+            }
             // Only clear if we are NOT currently viewing an analysis
             if (!phraseAnalysis && !isAnalyzingPhrase) {
                 closePhraseAnalysis();
@@ -1932,7 +1964,7 @@ export function ParagraphCard({
             // Persist the analysis as a Reading Mark
             if (onCreateReadingNote && selectedText && selectionOffsets) {
                 try {
-                    await handleCreateReadingMark("analyze" as any, JSON.stringify(data));
+                    await handleCreateReadingMark("analyze", JSON.stringify(data));
                 } catch (e) {
                     console.error("Failed to automatically save analysis:", e);
                 }
@@ -2388,7 +2420,17 @@ export function ParagraphCard({
                     await persistParagraphAskThread(insufficientMessages);
                     return;
                 }
-                throw new Error("API Error");
+                const failureContent = resolveAskFailureMessage(payload);
+                const failureMessages: AskThreadMessage[] = [
+                    ...optimisticMessages,
+                    { role: "assistant", content: failureContent, createdAt: Date.now() },
+                ];
+                if (isAskRateLimitPayload(payload)) {
+                    console.warn("Ask AI temporarily rate limited:", payload);
+                }
+                setMessages(failureMessages);
+                await persistParagraphAskThread(failureMessages);
+                return;
             }
 
             const readingBalanceHeader = res.headers.get("x-reading-coins-balance");
@@ -2568,7 +2610,17 @@ export function ParagraphCard({
                     await persistAskThreadForSelection(insufficientMessages, targetOffsets, targetText);
                     return;
                 }
-                throw new Error("API Error");
+                const failureContent = resolveAskFailureMessage(payload);
+                const failureMessages: AskThreadMessage[] = [
+                    ...optimisticMessages,
+                    { role: "assistant", content: failureContent, createdAt: Date.now() },
+                ];
+                if (isAskRateLimitPayload(payload)) {
+                    console.warn("Ask AI temporarily rate limited:", payload);
+                }
+                setSelectionAskMessages(failureMessages);
+                await persistAskThreadForSelection(failureMessages, targetOffsets, targetText);
+                return;
             }
 
             const readingBalanceHeader = res.headers.get("x-reading-coins-balance");
@@ -2721,6 +2773,7 @@ export function ParagraphCard({
     const safeHtml = text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 
     // Focus Mode Class Logic
+    const isLiquidFocus = isFocusMode && isFocusLocked;
     const getFocusClasses = () => {
         if (!isFocusMode) {
             // Default behavior (Focus Mode OFF)
@@ -2731,7 +2784,7 @@ export function ParagraphCard({
 
         if (hasActiveFocusLock) {
             if (isFocusLocked) {
-                return "opacity-100 bg-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.12)] ring-1 ring-white/50 backdrop-blur-sm rounded-xl -mx-6 px-6 py-6 z-20 my-4";
+                return "reading-focus-liquid-card opacity-100 rounded-[2rem] -mx-3 py-7 pl-6 pr-16 z-20 my-5 sm:-mx-6 sm:py-8 sm:pl-8 sm:pr-20";
             }
             return "opacity-20 blur-[1px] grayscale transition-all duration-700 pointer-events-none";
         }
@@ -2777,7 +2830,20 @@ export function ParagraphCard({
                     }}
                     aria-label="取消当前段落聚焦"
                     title="取消当前段落聚焦"
-                    className="ui-pressable absolute right-3 top-3 z-30 inline-flex h-8 w-8 items-center justify-center rounded-full border-2 border-stone-300 bg-white/92 text-stone-600 shadow-[0_3px_0_rgba(28,25,23,0.18)] transition hover:border-stone-500 hover:text-stone-950 active:translate-y-[1px] active:shadow-none"
+                    className={cn(
+                        "ui-pressable absolute !left-auto !right-4 top-4 z-30 inline-flex items-center justify-center rounded-full border-2 transition hover:text-stone-950 active:translate-y-[1px] active:shadow-none",
+                        isLiquidFocus
+                            ? "reading-focus-liquid-close h-11 w-11 border-white/70 text-slate-600"
+                            : "h-9 w-9 border-stone-300 bg-white/92 text-stone-600 shadow-[0_3px_0_rgba(28,25,23,0.18)] hover:border-stone-500"
+                    )}
+                    style={{
+                        position: "absolute",
+                        left: "unset",
+                        right: "1rem",
+                        top: "1rem",
+                        insetInlineStart: "unset",
+                        insetInlineEnd: "1rem",
+                    }}
                 >
                     <X className="h-4 w-4" />
                 </button>
@@ -2849,6 +2915,7 @@ export function ParagraphCard({
             <div className="space-y-2">
                 <div
                     ref={pRef}
+                    data-paragraph-text="true"
                     contentEditable={isEditMode}
                     suppressContentEditableWarning={true}
                     onKeyDown={handleKeyDown}
@@ -3029,7 +3096,14 @@ export function ParagraphCard({
 
                 </div>
 
-                <div className="mt-2 flex w-full items-center justify-between h-8 opacity-0 group-hover:opacity-100 [.read-tour-active_&]:opacity-100 transition-opacity">
+                <div
+                    className={cn(
+                        "mt-2 flex w-full items-center justify-between transition-opacity",
+                        isLiquidFocus
+                            ? "reading-focus-liquid-toolbar h-12 px-4 opacity-100"
+                            : "h-8 opacity-0 group-hover:opacity-100 [.read-tour-active_&]:opacity-100"
+                    )}
+                >
                     <button
                         data-tour-target={index === 0 ? "paragraph-listen" : undefined}
                         onClick={() => setIsSpeakingOpen(!isSpeakingOpen)}
@@ -3776,7 +3850,7 @@ export function ParagraphCard({
                                             <div className="mb-2 mt-1 space-y-1 border-t border-stone-100/50 pt-2">
                                                 <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400">核心词汇</div>
                                                 <div className="space-y-1">
-                                                    {data.vocabulary.map((item: any, idx: number) => (
+                                                    {data.vocabulary.map((item: PhraseVocabularyItem, idx: number) => (
                                                         <div key={`${item.word || "word"}-${idx}`} className="text-xs text-stone-600">
                                                             <span className="font-semibold text-stone-800">{item.word || "词汇"}:</span> {item.definition || ""}
                                                         </div>

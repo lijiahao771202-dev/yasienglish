@@ -6,6 +6,11 @@ import {
     isReadEconomyContext,
     type ReadingEconomyContext,
 } from "@/lib/reading-economy-server";
+import {
+    buildAiProviderRateLimitPayload,
+    getAiProviderRetryAfterSeconds,
+    isAiProviderRateLimitError,
+} from "@/lib/ai-provider-errors";
 
 type AskAnswerMode = "default" | "short" | "detailed";
 type AskQuestionComplexity = "simple" | "complex";
@@ -529,6 +534,21 @@ export async function POST(req: Request) {
             },
         });
     } catch (error) {
+        if (isAiProviderRateLimitError(error)) {
+            console.warn("Ask AI provider rate limited:", error);
+            const retryAfterSeconds = getAiProviderRetryAfterSeconds(error);
+            return new Response(
+                JSON.stringify(buildAiProviderRateLimitPayload("当前 AI 模型正在处理上一个请求，请稍等几秒再试。")),
+                {
+                    status: 429,
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(retryAfterSeconds ? { "Retry-After": String(retryAfterSeconds) } : {}),
+                    },
+                },
+            );
+        }
+
         console.error("Ask AI Error:", error);
         return new Response(JSON.stringify({ error: "Failed to get answer" }), {
             status: 500,

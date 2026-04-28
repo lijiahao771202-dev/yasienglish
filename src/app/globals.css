@@ -1056,6 +1056,102 @@ body {
   transform: scale(var(--lg-tap-scale));
 }
 
+.reading-focus-liquid-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background:
+    radial-gradient(720px 360px at 22% 4%, rgba(255, 255, 255, 0.86), transparent 58%),
+    radial-gradient(620px 360px at 86% 12%, rgba(203, 229, 255, 0.48), transparent 62%),
+    radial-gradient(560px 420px at 78% 100%, rgba(255, 224, 207, 0.42), transparent 64%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.54) 0%, rgba(236, 246, 255, 0.34) 50%, rgba(255, 247, 240, 0.38) 100%);
+  backdrop-filter: blur(38px) saturate(176%) contrast(112%);
+  -webkit-backdrop-filter: blur(38px) saturate(176%) contrast(112%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    inset 0 -1px 0 rgba(170, 192, 218, 0.24),
+    inset 0 26px 44px -34px rgba(255, 255, 255, 0.86),
+    inset 0 -24px 48px -38px rgba(168, 197, 230, 0.46),
+    0 24px 68px -40px rgba(15, 23, 42, 0.42),
+    0 5px 18px -12px rgba(15, 23, 42, 0.24);
+  color: #0f172a;
+  transform: translate3d(0, 0, 0);
+}
+
+.reading-focus-liquid-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(105deg, transparent 8%, rgba(255, 255, 255, 0.24) 30%, transparent 54%),
+    radial-gradient(80% 54% at 50% 0%, rgba(255, 255, 255, 0.34), transparent 62%),
+    radial-gradient(46% 52% at 92% 12%, rgba(185, 220, 255, 0.26), transparent 70%);
+  opacity: 0.74;
+}
+
+.reading-focus-liquid-card::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    inset 0 0 42px rgba(255, 255, 255, 0.18);
+}
+
+.reading-focus-liquid-close {
+  background:
+    radial-gradient(circle at 30% 18%, rgba(255, 255, 255, 0.98), transparent 48%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.74), rgba(226, 238, 250, 0.42));
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    inset 0 -1px 0 rgba(148, 163, 184, 0.22),
+    0 10px 22px -14px rgba(15, 23, 42, 0.38),
+    0 4px 0 rgba(148, 144, 132, 0.26);
+}
+
+.reading-focus-liquid-close:hover {
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(148, 163, 184, 0.2),
+    0 14px 28px -16px rgba(59, 130, 246, 0.35),
+    0 4px 0 rgba(148, 144, 132, 0.24);
+}
+
+.reading-focus-liquid-toolbar {
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 999px;
+  background:
+    radial-gradient(420px 80px at 18% 0%, rgba(255, 255, 255, 0.72), transparent 70%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.44), rgba(229, 239, 249, 0.28));
+  backdrop-filter: blur(26px) saturate(170%);
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.74),
+    inset 0 -1px 0 rgba(148, 163, 184, 0.18),
+    0 16px 34px -26px rgba(15, 23, 42, 0.36);
+}
+
+.reading-focus-liquid-toolbar button {
+  min-height: 2.15rem;
+  border-radius: 999px;
+  padding: 0 0.75rem;
+  color: rgba(30, 41, 59, 0.66);
+}
+
+.reading-focus-liquid-toolbar button:hover:not(:disabled) {
+  color: rgba(15, 23, 42, 0.92);
+  background: rgba(255, 255, 255, 0.34);
+}
+
 html[data-hydrated="0"] .liquid-glass-panel,
 html[data-hydrated="0"] .liquid-glass-panel::before,
 html[data-hydrated="0"] .liquid-glass-panel .liquid-glass-sheen,

@@ -31,6 +31,10 @@ import {
     type GlmThinkingMode,
 } from "@/lib/profile-settings";
 import { buildGlmModelSummaries, glmModelSupportsThinking } from "@/lib/glm-model-catalog";
+import {
+    getAiProviderRetryAfterSeconds,
+    isAiProviderRateLimitError,
+} from "@/lib/ai-provider-errors";
 
 const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com";
 const GLM_BASE_URL = process.env.GLM_BASE_URL || "https://open.bigmodel.cn/api/paas/v4/";
@@ -38,6 +42,13 @@ const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || "https://integrate.api.nv
 const GITHUB_BASE_URL = process.env.GITHUB_BASE_URL || "https://models.github.ai/inference";
 const GITHUB_MODELS_BASE_URL = process.env.GITHUB_MODELS_BASE_URL || "https://models.github.ai";
 const PROFILE_KEY_CACHE_TTL_MS = 60_000;
+const GITHUB_COMPLETION_COOLDOWN_MS = process.env.NODE_ENV === "test"
+    ? 0
+    : Number(process.env.GITHUB_MODELS_COMPLETION_COOLDOWN_MS ?? 600);
+const GITHUB_COMPLETION_LOCK_TIMEOUT_MS = 90_000;
+const GITHUB_RATE_LIMIT_RETRY_DELAYS_MS = process.env.NODE_ENV === "test"
+    ? [0, 0]
+    : [1_200, 2_400, 4_800];
 
 const DEEPSEEK_CHAT_MODEL = process.env.DEEPSEEK_CHAT_MODEL || "deepseek-chat";
 const DEEPSEEK_REASONER_MODEL = process.env.DEEPSEEK_REASONER_MODEL || "deepseek-reasoner";
@@ -111,6 +122,7 @@ export type { GlmModelSummary } from "@/lib/glm-model-catalog";
 
 const cachedProfiles = new Map<string, CachedProfileEntry>();
 const cachedClientsByProviderKey = new Map<string, OpenAI>();
+let githubCompletionTail: Promise<void> = Promise.resolve();
 const GITHUB_MODEL_ID_ALIASES: Record<string, string> = {
     "gpt-4.1": "openai/gpt-4.1",
     "gpt-4o": "openai/gpt-4o",
@@ -241,6 +253,89 @@ function buildProviderSpecificBody(
     }
 
     return nextBody;
+}
+
+function wait(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<ChatCompletionChunk> {
+    return Boolean(value && typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === "function");
+}
+
+async function createCompletionWithRateLimitRetry<T>(factory: () => Promise<T>) {
+    let lastError: unknown = null;
+    const maxAttempts = GITHUB_RATE_LIMIT_RETRY_DELAYS_MS.length + 1;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+            return await factory();
+        } catch (error) {
+            lastError = error;
+            if (!isAiProviderRateLimitError(error) || attempt === maxAttempts - 1) {
+                throw error;
+            }
+
+            const retryAfterMs = (getAiProviderRetryAfterSeconds(error) ?? 0) * 1000;
+            const fallbackDelayMs = GITHUB_RATE_LIMIT_RETRY_DELAYS_MS[attempt] ?? 0;
+            await wait(Math.max(retryAfterMs, fallbackDelayMs));
+        }
+    }
+
+    throw lastError;
+}
+
+async function runGithubCompletionQueued<T>(factory: () => Promise<T>) {
+    const previous = githubCompletionTail.catch(() => undefined);
+    let releaseCurrent!: () => void;
+    const current = new Promise<void>((resolve) => {
+        releaseCurrent = resolve;
+    });
+    githubCompletionTail = previous.then(() => current).catch(() => undefined);
+
+    await previous;
+
+    let released = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        if (!released) {
+            released = true;
+            releaseCurrent();
+        }
+    }, GITHUB_COMPLETION_LOCK_TIMEOUT_MS);
+
+    const releaseAfterCooldown = async () => {
+        if (released) return;
+        released = true;
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
+        await wait(GITHUB_COMPLETION_COOLDOWN_MS);
+        releaseCurrent();
+    };
+
+    try {
+        const result = await createCompletionWithRateLimitRetry(factory);
+        if (isAsyncIterable(result)) {
+            async function* wrappedStream() {
+                try {
+                    for await (const chunk of result) {
+                        yield chunk;
+                    }
+                } finally {
+                    await releaseAfterCooldown();
+                }
+            }
+
+            return wrappedStream() as T;
+        }
+
+        await releaseAfterCooldown();
+        return result;
+    } catch (error) {
+        await releaseAfterCooldown();
+        throw error;
+    }
 }
 
 async function getProviderHintFromCookies(): Promise<{
@@ -666,10 +761,16 @@ function createCompletionWithContext(
         ];
     }
 
-    return client.chat.completions.create(
+    const create = () => client.chat.completions.create(
         buildProviderSpecificBody(context, body, resolvedModel, nextMessages) as never,
         options,
     ) as Promise<ChatCompletion | Stream<ChatCompletionChunk>>;
+
+    if (context.provider === "github") {
+        return runGithubCompletionQueued(create);
+    }
+
+    return create();
 }
 
 export async function createDeepSeekClientForCurrentUserWithOverride(overrides: {

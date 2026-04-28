@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { deleteAudioFromCache, getAudioFromCache } from "@/lib/tts-cache";
-import { requestTtsPayload } from "@/lib/tts-client";
+import { isRetryableTtsError, requestTtsPayload } from "@/lib/tts-client";
 import { ttsQueue } from "@/lib/tts-queue";
 import { describeHtmlMediaErrorCode, isLikelyPlayableMpegBlob } from "@/lib/tts-audio";
 
@@ -212,7 +212,11 @@ export function useTTS(text: string) {
             setIsLoading(false);
             return url;
         } catch (error) {
-            console.error("Failed to load TTS:", error);
+            if (isRetryableTtsError(error)) {
+                console.warn("TTS temporarily unavailable:", error);
+            } else {
+                console.error("Failed to load TTS:", error);
+            }
             setIsLoading(false);
             return null;
         }

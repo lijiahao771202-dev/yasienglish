@@ -173,6 +173,22 @@ describe("tts route", () => {
         );
     });
 
+    it("returns a retryable status for transient Edge TTS socket failures", async () => {
+        const error = new Error("Client network socket disconnected before secure TLS connection was established");
+        synthesizeMock.mockRejectedValue(error);
+
+        const { POST } = await importRoute();
+        const response = await POST(await buildRequest({
+            text: "Network failure should be retryable",
+            voice: "en-US-JennyNeural",
+            rate: "+0%",
+        }));
+        const json = await response.json();
+
+        expect(response.status).toBe(503);
+        expect(json.details).toContain("Client network socket disconnected");
+    });
+
     it("returns stable segmentTimings for mixed-segment synthesis and cache reuse", async () => {
         synthesizeMock.mockResolvedValue(undefined);
         toBufferMock
