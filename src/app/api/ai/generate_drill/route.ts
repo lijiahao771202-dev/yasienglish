@@ -229,7 +229,7 @@ function getListeningSpecificInstruction(elo: number) {
     return { tier: "处决", cefr: "PUNISHMENT", instruction: "WORD COUNT: 50+ words MINIMUM. Extremely fast, obscure idioms." };
 }
 
-export type DrillAiProvider = "deepseek" | "glm" | "nvidia" | "github";
+export type DrillAiProvider = "deepseek" | "glm" | "nvidia" | "github" | "mimo";
 
 const DRILL_SYSTEM_PROMPT = `You are a strict English drill generator. You MUST:
 1. Follow the EXACT word count specified in the prompt.
@@ -296,7 +296,7 @@ export async function POST(req: NextRequest) {
         const drillMode = mode as DrillMode;
         const isListening = drillMode === "listening";
         const effectiveTranslationVariant = translationVariant === "passage" ? "passage" : "sentence";
-        const provider: DrillAiProvider | undefined = rawProvider === "glm" || rawProvider === "nvidia" || rawProvider === "github" || rawProvider === "deepseek"
+        const provider: DrillAiProvider | undefined = rawProvider === "glm" || rawProvider === "nvidia" || rawProvider === "github" || rawProvider === "mimo" || rawProvider === "deepseek"
             ? rawProvider
             : undefined;
 

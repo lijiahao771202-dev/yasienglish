@@ -4,10 +4,6 @@ import { listNvidiaModelsForConnectionPayload } from "@/lib/deepseek";
 import { resolveRequestUser } from "@/lib/supabase/request-auth";
 import { createServerClient } from "@/lib/supabase/server";
 
-type NvidiaModelsBody = {
-    nvidia_api_key?: string;
-};
-
 export async function POST(request: Request) {
     const supabase = await createServerClient();
     const user = await resolveRequestUser(request, supabase);
@@ -16,12 +12,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "请先登录后再获取模型列表。" }, { status: 401 });
     }
 
-    const body = await request.json() as NvidiaModelsBody;
+    await request.json().catch(() => ({}));
 
     try {
-        const models = await listNvidiaModelsForConnectionPayload({
-            nvidia_api_key: body.nvidia_api_key,
-        });
+        const models = await listNvidiaModelsForConnectionPayload();
 
         return NextResponse.json({ models });
     } catch (error) {

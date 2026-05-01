@@ -12,7 +12,8 @@ import {
     ChevronDown, 
     Search,
     Loader2,
-    Github
+    Github,
+    Bot
 } from "lucide-react";
 
 import { db } from "@/lib/db";
@@ -26,12 +27,16 @@ import {
     DEFAULT_DEEPSEEK_THINKING_MODE,
     DEFAULT_GLM_MODEL,
     DEFAULT_GLM_THINKING_MODE,
+    DEFAULT_GITHUB_MODEL,
+    DEFAULT_MIMO_MODEL,
     normalizeAiProvider,
     normalizeProfileDeepSeekModel,
     normalizeProfileDeepSeekReasoningEffort,
     normalizeProfileDeepSeekThinkingMode,
     normalizeProfileGlmModel,
     normalizeProfileGlmThinkingMode,
+    normalizeProfileGithubModel,
+    normalizeProfileMimoModel,
     type AiProvider,
     type DeepSeekModel,
     type DeepSeekReasoningEffort,
@@ -138,7 +143,18 @@ const PROVIDERS = [
         detail: "极速稳定的顶级大厂模型",
         icon: Github,
     },
+    {
+        id: "mimo" as const,
+        label: "Xiaomi MiMo",
+        detail: "小米 MiMo OpenAI 兼容模型",
+        icon: Bot,
+    },
 ];
+
+function isLocalAiProviderTestHost() {
+    if (typeof window === "undefined") return false;
+    return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+}
 
 const DEEPSEEK_MODEL_OPTIONS: Array<{
     id: DeepSeekModel;
@@ -174,21 +190,42 @@ const DEEPSEEK_REASONING_OPTIONS: Array<{
     },
 ];
 
+const MIMO_MODEL_OPTIONS = [
+    {
+        id: "mimo-v2.5-pro",
+        label: "MiMo V2.5 Pro",
+        detail: "更强的综合能力，适合 AskAI 与长句讲解",
+        tag: "推荐",
+    },
+    {
+        id: "mimo-v2.5",
+        label: "MiMo V2.5",
+        detail: "速度和质量平衡，适合高频日常使用",
+    },
+    {
+        id: "mimo-v2-pro",
+        label: "MiMo V2 Pro",
+        detail: "上一代 Pro，作为稳定备选",
+    },
+    {
+        id: "mimo-v2-omni",
+        label: "MiMo V2 Omni",
+        detail: "多模态模型，文本任务可作为实验选项",
+    },
+];
+
 export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalProps) {
     const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
 
     const [aiProvider, setAiProvider] = useState<AiProvider>("deepseek");
-    const [deepSeekApiKey, setDeepSeekApiKey] = useState("");
     const [deepSeekModel, setDeepSeekModel] = useState<DeepSeekModel>(DEFAULT_DEEPSEEK_MODEL);
     const [deepSeekThinkingMode, setDeepSeekThinkingMode] = useState<DeepSeekThinkingMode>(DEFAULT_DEEPSEEK_THINKING_MODE);
     const [deepSeekReasoningEffort, setDeepSeekReasoningEffort] = useState<DeepSeekReasoningEffort>(DEFAULT_DEEPSEEK_REASONING_EFFORT);
-    const [glmApiKey, setGlmApiKey] = useState("");
     const [glmModel, setGlmModel] = useState(DEFAULT_GLM_MODEL);
     const [glmThinkingMode, setGlmThinkingMode] = useState<GlmThinkingMode>(DEFAULT_GLM_THINKING_MODE);
-    const [nvidiaApiKey, setNvidiaApiKey] = useState("");
     const [nvidiaModel, setNvidiaModel] = useState("z-ai/glm-5.1");
-    const [githubApiKey, setGithubApiKey] = useState("");
-    const [githubModel, setGithubModel] = useState("openai/gpt-4.1");
+    const [githubModel, setGithubModel] = useState(DEFAULT_GITHUB_MODEL);
+    const [mimoModel, setMimoModel] = useState(DEFAULT_MIMO_MODEL);
 
     const [profileLoaded, setProfileLoaded] = useState(false);
     
@@ -211,29 +248,21 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
     useEffect(() => {
         if (profile && !profileLoaded) {
             setAiProvider(normalizeAiProvider(profile.ai_provider));
-            setDeepSeekApiKey("");
             setDeepSeekModel(normalizeProfileDeepSeekModel(profile.deepseek_model));
             setDeepSeekThinkingMode(normalizeProfileDeepSeekThinkingMode(profile.deepseek_thinking_mode));
             setDeepSeekReasoningEffort(normalizeProfileDeepSeekReasoningEffort(profile.deepseek_reasoning_effort));
-            setGlmApiKey(profile.glm_api_key || "");
             setGlmModel(normalizeProfileGlmModel(profile.glm_model));
             setGlmThinkingMode(normalizeProfileGlmThinkingMode(profile.glm_thinking_mode));
-            setNvidiaApiKey(profile.nvidia_api_key || "");
             setNvidiaModel(profile.nvidia_model || "z-ai/glm-5.1");
-            setGithubApiKey("");
-            setGithubModel(profile.github_model || "openai/gpt-4.1");
+            setGithubModel(normalizeProfileGithubModel(profile.github_model));
+            setMimoModel(normalizeProfileMimoModel(profile.mimo_model));
             setProfileLoaded(true);
         }
     }, [profile, profileLoaded]);
 
     useEffect(() => {
         setConnectionMessage(null);
-    }, [aiProvider, deepSeekApiKey, deepSeekModel, deepSeekThinkingMode, deepSeekReasoningEffort, glmApiKey, glmModel, glmThinkingMode, nvidiaApiKey, nvidiaModel, githubApiKey, githubModel]);
-
-    useEffect(() => {
-        setAvailableGitHubModels([]);
-        setGitHubModelsError(null);
-    }, [githubApiKey]);
+    }, [aiProvider, deepSeekModel, deepSeekThinkingMode, deepSeekReasoningEffort, glmModel, glmThinkingMode, nvidiaModel, githubModel, mimoModel]);
 
     useEffect(() => {
         if (!glmModelSupportsThinking(glmModel) && glmThinkingMode !== "off") {
@@ -243,18 +272,15 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
 
     const activePayload = useMemo(() => ({
         ai_provider: aiProvider,
-        deepseek_api_key: deepSeekApiKey,
         deepseek_model: deepSeekModel,
         deepseek_thinking_mode: deepSeekThinkingMode,
         deepseek_reasoning_effort: deepSeekReasoningEffort,
-        glm_api_key: glmApiKey,
         glm_model: glmModel,
         glm_thinking_mode: glmThinkingMode,
-        nvidia_api_key: nvidiaApiKey,
         nvidia_model: nvidiaModel,
-        github_api_key: githubApiKey,
         github_model: githubModel,
-    }), [aiProvider, deepSeekApiKey, deepSeekModel, deepSeekThinkingMode, deepSeekReasoningEffort, glmApiKey, glmModel, glmThinkingMode, nvidiaApiKey, nvidiaModel, githubApiKey, githubModel]);
+        mimo_model: mimoModel,
+    }), [aiProvider, deepSeekModel, deepSeekThinkingMode, deepSeekReasoningEffort, glmModel, glmThinkingMode, nvidiaModel, githubModel, mimoModel]);
 
     const payloadSignature = useMemo(() => JSON.stringify(activePayload), [activePayload]);
     const hasHydratedRef = useRef(false);
@@ -291,9 +317,11 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
         setConnectionBusy(true);
         setConnectionMessage(null);
         try {
-            const authHeaders = await getBrowserSupabaseAuthHeaders();
+            const shouldOmitCredentials = isLocalAiProviderTestHost();
+            const authHeaders = shouldOmitCredentials ? {} : await getBrowserSupabaseAuthHeaders();
             const response = await fetch("/api/profile/test-ai-provider", {
                 method: "POST",
+                credentials: shouldOmitCredentials ? "omit" : "same-origin",
                 headers: {
                     "Content-Type": "application/json",
                     ...authHeaders,
@@ -328,7 +356,7 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
                     "Content-Type": "application/json",
                     ...authHeaders,
                 },
-                body: JSON.stringify({ github_api_key: githubApiKey }),
+                body: JSON.stringify({}),
             });
             const data = await response.json().catch(() => ({}));
             if (!response.ok) {
@@ -415,7 +443,7 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
                                     <label className="text-xs font-semibold uppercase tracking-widest text-theme-text-muted/80 ml-1">
                                         Provider
                                     </label>
-                                    <div className="grid gap-3 sm:grid-cols-3">
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                                         {PROVIDERS.map((provider) => {
                                             const Icon = provider.icon;
                                             const isActive = aiProvider === provider.id;
@@ -465,22 +493,8 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
 
                                     {aiProvider === "deepseek" && (
                                         <div className="space-y-5">
-                                            <div className="space-y-1.5">
-                                                <input
-                                                    type="password"
-                                                    name="deepseek_api_key_override"
-                                                    autoComplete="new-password"
-                                                    data-1p-ignore="true"
-                                                    data-lpignore="true"
-                                                    spellCheck={false}
-                                                    value={deepSeekApiKey}
-                                                    onChange={(e) => setDeepSeekApiKey(e.target.value)}
-                                                    placeholder="Using server DEEPSEEK_API_KEY"
-                                                    className="w-full rounded-lg border border-theme-border/60 bg-theme-base-bg px-3 py-2.5 text-[14px] text-theme-text placeholder:text-theme-text-muted/50 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-                                                />
-                                                <p className="px-1 text-[12px] text-theme-text-muted/80">
-                                                    留空时使用服务器环境变量，需要临时覆盖时再手动粘贴 Key。
-                                                </p>
+                                            <div className="rounded-lg border border-theme-border/50 bg-theme-base-bg/60 px-3 py-2.5 text-[12px] font-medium text-theme-text-muted">
+                                                API key 统一使用本地服务器环境变量 <code className="font-mono text-theme-text">DEEPSEEK_API_KEY</code>。
                                             </div>
 
                                             <div className="space-y-3">
@@ -581,22 +595,8 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
 
                                     {aiProvider === "glm" && (
                                         <div className="space-y-5">
-                                            <div className="space-y-1.5">
-                                                <input
-                                                    type="password"
-                                                    name="glm_api_key_override"
-                                                    autoComplete="new-password"
-                                                    data-1p-ignore="true"
-                                                    data-lpignore="true"
-                                                    spellCheck={false}
-                                                    value={glmApiKey}
-                                                    onChange={(e) => setGlmApiKey(e.target.value)}
-                                                    placeholder="Using server GLM_API_KEY"
-                                                    className="w-full rounded-lg border border-theme-border/60 bg-theme-base-bg px-3 py-2.5 text-[14px] text-theme-text placeholder:text-theme-text-muted/50 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-                                                />
-                                                <p className="px-1 text-[12px] text-theme-text-muted/80">
-                                                    直接选模型即可；这里不填时会使用服务器 GLM_API_KEY。
-                                                </p>
+                                            <div className="rounded-lg border border-theme-border/50 bg-theme-base-bg/60 px-3 py-2.5 text-[12px] font-medium text-theme-text-muted">
+                                                API key 统一使用本地服务器环境变量 <code className="font-mono text-theme-text">GLM_API_KEY</code>。
                                             </div>
 
                                             <div className="space-y-4">
@@ -726,19 +726,8 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
 
                                     {aiProvider === "nvidia" && (
                                         <div className="space-y-6">
-                                            <div className="space-y-1.5">
-                                                <input
-                                                    type="password"
-                                                    name="nvidia_api_key_override"
-                                                    autoComplete="new-password"
-                                                    data-1p-ignore="true"
-                                                    data-lpignore="true"
-                                                    spellCheck={false}
-                                                    value={nvidiaApiKey}
-                                                    onChange={(e) => setNvidiaApiKey(e.target.value)}
-                                                    placeholder="API Key (nvapi-...)"
-                                                    className="w-full rounded-lg border border-theme-border/60 bg-theme-base-bg px-3 py-2.5 text-[14px] text-theme-text placeholder:text-theme-text-muted/50 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-                                                />
+                                            <div className="rounded-lg border border-theme-border/50 bg-theme-base-bg/60 px-3 py-2.5 text-[12px] font-medium text-theme-text-muted">
+                                                API key 统一使用本地服务器环境变量 <code className="font-mono text-theme-text">NVIDIA_API_KEY</code>。
                                             </div>
 
                                             <div className="space-y-3">
@@ -818,22 +807,8 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
 
                                     {aiProvider === "github" && (
                                         <div className="space-y-6">
-                                            <div className="space-y-1.5">
-                                                <input
-                                                    type="password"
-                                                    name="github_api_key_override"
-                                                    autoComplete="new-password"
-                                                    data-1p-ignore="true"
-                                                    data-lpignore="true"
-                                                    spellCheck={false}
-                                                    value={githubApiKey}
-                                                    onChange={(e) => setGithubApiKey(e.target.value)}
-                                                    placeholder="Using server GITHUB_MODELS_API_KEY"
-                                                    className="w-full rounded-lg border border-theme-border/60 bg-theme-base-bg px-3 py-2.5 text-[14px] text-theme-text placeholder:text-theme-text-muted/50 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
-                                                />
-                                                <p className="px-1 text-[11px] font-medium text-theme-text-muted">
-                                                    留空时使用服务器环境变量，需要临时覆盖时再手动粘贴 PAT。
-                                                </p>
+                                            <div className="rounded-lg border border-theme-border/50 bg-theme-base-bg/60 px-3 py-2.5 text-[12px] font-medium text-theme-text-muted">
+                                                API key 统一使用本地服务器环境变量 <code className="font-mono text-theme-text">GITHUB_MODELS_API_KEY</code>。
                                             </div>
 
                                             <div className="space-y-3">
@@ -952,6 +927,65 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
                                                         </div>
                                                     ) : null}
                                                 </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {aiProvider === "mimo" && (
+                                        <div className="space-y-5">
+                                            <div className="rounded-lg border border-theme-border/50 bg-theme-base-bg/60 px-3 py-2.5 text-[12px] font-medium text-theme-text-muted">
+                                                API key 统一使用本地服务器环境变量 <code className="font-mono text-theme-text">MIMO_API_KEY</code>。
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                <div className="text-[11px] font-semibold uppercase tracking-widest text-theme-text-muted/80">
+                                                    MiMo 模型
+                                                </div>
+                                                <div className="grid gap-2 sm:grid-cols-2">
+                                                    {MIMO_MODEL_OPTIONS.map((model) => {
+                                                        const active = mimoModel === model.id;
+                                                        return (
+                                                            <button
+                                                                key={model.id}
+                                                                type="button"
+                                                                data-mimo-model={model.id}
+                                                                onClick={() => setMimoModel(model.id)}
+                                                                className={`relative rounded-xl border p-3 text-left transition-all ${
+                                                                    active
+                                                                        ? "border-sky-500 bg-sky-50/60 shadow-sm"
+                                                                        : "border-theme-border/60 bg-theme-card-bg hover:border-sky-300 hover:bg-theme-base-bg"
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center justify-between gap-3">
+                                                                    <div className={`text-[13px] font-semibold ${active ? "text-sky-700" : "text-theme-text"}`}>
+                                                                        {model.label}
+                                                                    </div>
+                                                                    {model.tag ? (
+                                                                        <span className="shrink-0 rounded-md bg-sky-100 px-2 py-1 text-[10px] font-bold text-sky-700">
+                                                                            {model.tag}
+                                                                        </span>
+                                                                    ) : null}
+                                                                </div>
+                                                                <code className={`mt-1 block text-[11px] ${active ? "text-sky-700/80" : "text-theme-text/70"}`}>
+                                                                    {model.id}
+                                                                </code>
+                                                                <p className={`mt-2 text-[11px] leading-relaxed ${active ? "text-sky-700/75" : "text-theme-text-muted"}`}>
+                                                                    {model.detail}
+                                                                </p>
+                                                                {active && (
+                                                                    <div className="absolute top-3 right-3 h-1.5 w-1.5 rounded-full bg-sky-500" />
+                                                                )}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+
+                                                <input
+                                                    value={mimoModel}
+                                                    onChange={(e) => setMimoModel(e.target.value)}
+                                                    placeholder="Custom model ID (e.g. mimo-v2.5-pro)"
+                                                    className="w-full rounded-lg border border-theme-border/60 bg-theme-base-bg px-3 py-2 text-[13px] text-theme-text placeholder:text-theme-text-muted/50 focus:border-indigo-500 focus:outline-none transition-all font-mono"
+                                                />
                                             </div>
                                         </div>
                                     )}

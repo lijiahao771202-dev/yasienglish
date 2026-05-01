@@ -60,6 +60,8 @@ describe("user sync helpers", () => {
         expect(profile.nvidia_model).toBe("z-ai/glm5");
         expect(profile.github_api_key).toBe("");
         expect(profile.github_model).toBe("openai/gpt-4.1");
+        expect(profile.mimo_api_key).toBe("");
+        expect(profile.mimo_model).toBe("mimo-v2.5-pro");
         expect(profile.learning_preferences).toEqual(DEFAULT_LEARNING_PREFERENCES);
         expect(profile.daily_plan_snapshots).toEqual([]);
         expect(profile.sync_status).toBe("pending");
@@ -111,8 +113,8 @@ describe("user sync helpers", () => {
             deepseek_model: "deepseek-v4-pro",
             deepseek_thinking_mode: "on",
             deepseek_reasoning_effort: "max",
-            github_api_key: "github-key",
             github_model: "gpt-4o-mini",
+            mimo_model: "mimo-v2.5",
             learning_preferences: {
                 target_mode: "battle",
                 english_level: "B2",
@@ -157,8 +159,10 @@ describe("user sync helpers", () => {
         expect(localProfile.deepseek_model).toBe("deepseek-v4-pro");
         expect(localProfile.deepseek_thinking_mode).toBe("on");
         expect(localProfile.deepseek_reasoning_effort).toBe("max");
-        expect(localProfile.github_api_key).toBe("github-key");
+        expect(localProfile.github_api_key).toBe("");
         expect(localProfile.github_model).toBe("gpt-4o-mini");
+        expect(localProfile.mimo_api_key).toBe("");
+        expect(localProfile.mimo_model).toBe("mimo-v2.5");
         expect(localProfile.learning_preferences?.target_mode).toBe("battle");
         expect(localProfile.learning_preferences?.tts_voice).toBe("en-US-AriaNeural");
         expect(localProfile.daily_plan_snapshots).toEqual([
@@ -190,12 +194,11 @@ describe("user sync helpers", () => {
             bio: "Focused and playful.",
             ai_provider: "nvidia",
             deepseek_model: "deepseek-v4-pro",
-            deepseek_thinking_mode: "enabled",
+            deepseek_thinking_mode: "on",
             deepseek_reasoning_effort: "max",
-            nvidia_api_key: "nvapi-123",
             nvidia_model: "z-ai/glm5",
-            github_api_key: " github-key ",
             github_model: " gpt-4o-mini ",
+            mimo_model: " mimo-v2-pro ",
             rebuild_hidden_elo: 588,
             rebuild_elo: 640,
             rebuild_streak: 3,
@@ -235,10 +238,9 @@ describe("user sync helpers", () => {
             deepseek_model: "deepseek-v4-pro",
             deepseek_thinking_mode: "on",
             deepseek_reasoning_effort: "max",
-            nvidia_api_key: "nvapi-123",
             nvidia_model: "z-ai/glm5",
-            github_api_key: "github-key",
             github_model: "gpt-4o-mini",
+            mimo_model: "mimo-v2-pro",
             rebuild_hidden_elo: 588,
             rebuild_elo: 640,
             rebuild_streak: 3,

@@ -2,7 +2,7 @@
 
 import { type ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2, X } from "lucide-react";
+import { BookPlus, Check, Loader2, Maximize2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
@@ -10,6 +10,14 @@ import rehypeRaw from "rehype-raw";
 import { cn } from "@/lib/utils";
 import { MindElixirDiagram } from "./MindElixirDiagram";
 import { MermaidDiagram } from "./MermaidDiagram";
+
+export type InlineCodeVocabActionResult = "saved" | "exists";
+
+interface AiRichMarkdownProps {
+    content: string;
+    className?: string;
+    onInlineCodeVocabAction?: (text: string) => Promise<InlineCodeVocabActionResult>;
+}
 
 function isMarkdownHorizontalRule(line: string) {
     return /^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line);
@@ -196,8 +204,36 @@ function ExpandableTable({ children }: { children: ReactNode }) {
     );
 }
 
-export function AiRichMarkdown({ content, className }: { content: string; className?: string }) {
+export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: AiRichMarkdownProps) {
     const contentWithSectionDividers = withSectionDividers(withListTitleMarksAsBold(withMarkSyntax(content)));
+    const [activeInlineCode, setActiveInlineCode] = useState<string | null>(null);
+    const [inlineCodeStatus, setInlineCodeStatus] = useState<"idle" | "saving" | "saved" | "exists" | "error">("idle");
+
+    useEffect(() => {
+        if (!activeInlineCode) return;
+
+        const handlePointerDown = (event: PointerEvent) => {
+            const target = event.target as HTMLElement | null;
+            if (target?.closest("[data-ai-inline-code-popover]")) return;
+            setActiveInlineCode(null);
+            setInlineCodeStatus("idle");
+        };
+
+        document.addEventListener("pointerdown", handlePointerDown);
+        return () => document.removeEventListener("pointerdown", handlePointerDown);
+    }, [activeInlineCode]);
+
+    const handleInlineCodeVocabAction = async (text: string) => {
+        if (!onInlineCodeVocabAction || inlineCodeStatus === "saving") return;
+        setInlineCodeStatus("saving");
+        try {
+            const result = await onInlineCodeVocabAction(text);
+            setInlineCodeStatus(result === "exists" ? "exists" : "saved");
+        } catch (error) {
+            console.error("Failed to save inline code vocab:", error);
+            setInlineCodeStatus("error");
+        }
+    };
 
     return (
         <div className={cn("prose prose-sm max-w-none text-inherit leading-relaxed prose-p:my-2 prose-ol:my-3 prose-ol:space-y-2 prose-ul:my-3 prose-ul:space-y-1.5 marker:text-stone-400", className)}>
@@ -263,6 +299,72 @@ export function AiRichMarkdown({ content, className }: { content: string; classN
                         const isInline = !language;
 
                         if (isInline) {
+                            if (onInlineCodeVocabAction) {
+                                const isActive = activeInlineCode === codeText;
+                                const isBusy = isActive && inlineCodeStatus === "saving";
+                                const statusText = inlineCodeStatus === "exists"
+                                    ? "已在生词本"
+                                    : inlineCodeStatus === "saved"
+                                        ? "已加入"
+                                        : inlineCodeStatus === "error"
+                                            ? "保存失败"
+                                            : "加入生词本";
+
+                                return (
+                                    <span
+                                        data-ai-inline-code-popover="true"
+                                        className="relative inline align-baseline"
+                                        onPointerDown={(event) => event.stopPropagation()}
+                                    >
+                                        <code
+                                            role="button"
+                                            tabIndex={0}
+                                            data-ai-inline-code-action="true"
+                                            onClick={(event) => {
+                                                event.stopPropagation();
+                                                setActiveInlineCode(isActive ? null : codeText);
+                                                setInlineCodeStatus("idle");
+                                            }}
+                                            onKeyDown={(event) => {
+                                                if (event.key !== "Enter" && event.key !== " ") return;
+                                                event.preventDefault();
+                                                setActiveInlineCode(isActive ? null : codeText);
+                                                setInlineCodeStatus("idle");
+                                            }}
+                                            className="rounded-md border border-stone-200/60 bg-stone-100/80 px-1.5 py-0.5 text-[0.9em] font-medium text-pink-600"
+                                        >
+                                            {children}
+                                        </code>
+                                        {isActive ? (
+                                            <span className="absolute left-0 top-[calc(100%+0.35rem)] z-[12000] w-max max-w-[220px] rounded-2xl border border-stone-200/80 bg-white/95 p-2 text-left shadow-[0_16px_40px_rgba(15,23,42,0.16)] backdrop-blur-md">
+                                                <span className="block max-w-[190px] truncate px-2 pb-1 text-[11px] font-semibold text-stone-500">
+                                                    {codeText}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    data-ai-inline-code-add-vocab="true"
+                                                    disabled={isBusy || inlineCodeStatus === "saved" || inlineCodeStatus === "exists"}
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        void handleInlineCodeVocabAction(codeText);
+                                                    }}
+                                                    className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-sky-50 px-3 py-2 text-[12px] font-bold text-sky-700 transition hover:bg-sky-100 disabled:cursor-default disabled:bg-stone-50 disabled:text-stone-500"
+                                                >
+                                                    {isBusy ? (
+                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                    ) : inlineCodeStatus === "saved" || inlineCodeStatus === "exists" ? (
+                                                        <Check className="h-3.5 w-3.5" />
+                                                    ) : (
+                                                        <BookPlus className="h-3.5 w-3.5" />
+                                                    )}
+                                                    {statusText}
+                                                </button>
+                                            </span>
+                                        ) : null}
+                                    </span>
+                                );
+                            }
+
                             return (
                                 <code className="rounded-md border border-stone-200/60 bg-stone-100/80 px-1.5 py-0.5 text-[0.9em] font-medium text-pink-600">
                                     {children}

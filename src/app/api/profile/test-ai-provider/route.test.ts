@@ -34,6 +34,7 @@ describe("profile test-ai-provider route", () => {
 
     afterEach(() => {
         vi.restoreAllMocks();
+        vi.unstubAllEnvs();
     });
 
     it("returns 401 when unauthenticated", async () => {
@@ -86,18 +87,16 @@ describe("profile test-ai-provider route", () => {
         expect(response.status).toBe(200);
         expect(testAiProviderConnectionMock).toHaveBeenCalledWith({
             ai_provider: "nvidia",
-            deepseek_api_key: undefined,
             deepseek_model: undefined,
             deepseek_thinking_mode: undefined,
             deepseek_reasoning_effort: undefined,
-            glm_api_key: undefined,
             glm_model: undefined,
             glm_thinking_mode: undefined,
-            nvidia_api_key: "nvapi-test",
             nvidia_model: "z-ai/glm5",
-            github_api_key: undefined,
             github_model: undefined,
+            mimo_model: undefined,
         });
+        expect(testAiProviderConnectionMock.mock.calls.at(-1)?.[0]).not.toHaveProperty("nvidia_api_key");
         expect(data.message).toBe("NVIDIA / z-ai/glm5 连通成功");
     });
 
@@ -125,11 +124,68 @@ describe("profile test-ai-provider route", () => {
         expect(response.status).toBe(200);
         expect(testAiProviderConnectionMock).toHaveBeenCalledWith(expect.objectContaining({
             ai_provider: "glm",
-            glm_api_key: "",
             glm_model: "glm-4.7-flash",
             glm_thinking_mode: "off",
         }));
+        expect(testAiProviderConnectionMock.mock.calls.at(-1)?.[0]).not.toHaveProperty("glm_api_key");
         expect(data.message).toBe("GLM / glm-4.7-flash 连通成功");
+    });
+
+    it("accepts and forwards Xiaomi MiMo connection settings", async () => {
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null }),
+            },
+        });
+        testAiProviderConnectionMock.mockResolvedValue({
+            provider: "mimo",
+            providerLabel: "Xiaomi MiMo",
+            model: "mimo-v2.5-pro",
+            content: "OK",
+        });
+
+        const response = await POST(buildRequest({
+            ai_provider: "mimo",
+            mimo_api_key: "",
+            mimo_model: "mimo-v2.5-pro",
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(testAiProviderConnectionMock).toHaveBeenCalledWith(expect.objectContaining({
+            ai_provider: "mimo",
+            mimo_model: "mimo-v2.5-pro",
+        }));
+        expect(testAiProviderConnectionMock.mock.calls.at(-1)?.[0]).not.toHaveProperty("mimo_api_key");
+        expect(data.message).toBe("Xiaomi MiMo / mimo-v2.5-pro 连通成功");
+    });
+
+    it("allows local development connection tests without a Supabase session", async () => {
+        vi.stubEnv("NODE_ENV", "development");
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+            },
+        });
+        testAiProviderConnectionMock.mockResolvedValue({
+            provider: "mimo",
+            providerLabel: "Xiaomi MiMo",
+            model: "mimo-v2.5-pro",
+            content: "OK",
+        });
+
+        const response = await POST(buildRequest({
+            ai_provider: "mimo",
+            mimo_model: "mimo-v2.5-pro",
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(testAiProviderConnectionMock).toHaveBeenCalledWith(expect.objectContaining({
+            ai_provider: "mimo",
+            mimo_model: "mimo-v2.5-pro",
+        }));
+        expect(data.message).toBe("Xiaomi MiMo / mimo-v2.5-pro 连通成功");
     });
 
     it("accepts a bearer token when the server cookie session is missing", async () => {

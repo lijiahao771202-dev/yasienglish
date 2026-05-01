@@ -214,6 +214,15 @@ Visual emphasis policy:
 15. For verbs, show the exact predicate form from the sentence, not a dictionary form.
 16. Do not mark or bold Chinese labels such as 语法功能, 语境意思, 搭配解析, 关联记忆, 主语, 谓语, 宾语.
 17. Do not mark a pronoun or generic subject by itself unless it is the actual point being taught.
+
+English-with-Chinese gloss policy:
+1. In sentence teaching mode, when you quote an English word, phrase, collocation, formula, or clause with inline code, immediately add a concise Chinese gloss in full-width parentheses unless the same local meaning is already stated right next to it.
+2. Format examples: \`This narrative\`（这种叙述）, \`suggests\`（暗示）, \`that the practice requires...\`（that 引导的宾语从句）, \`is known as\`（被称为）.
+3. Apply this consistently in 句子主干, 结构拆解, 词汇与搭配, examples, and recap content. Do not leave important inline English fragments bare.
+4. For grammar connectors or structural chunks, gloss the function and meaning, for example \`that\`（引导宾语从句） or \`who find their minds naturally active\`（修饰前面的 individuals）.
+5. Keep each gloss short and useful: prefer the contextual meaning over dictionary definitions, and avoid long explanations inside parentheses.
+6. Do not add glosses to section headings. In 结构拆解 numbered mini-block titles, put the Chinese gloss directly after the English chunk as the title itself; use **bold** only and never use <mark> there.
+7. If the exact same English chunk repeats immediately, the first occurrence must include the gloss; later nearby repeats may omit the gloss only if repeating it would make the paragraph visually noisy.
 `;
 
     const shortInstructions = `
@@ -274,12 +283,12 @@ Sentence teaching mode (DETAILED):
 5. In 句子主干, identify the real backbone first: 主语 / 谓语 / 宾语 or 表语 / 核心从句.
 6. In 结构拆解, quote the exact English chunks from left to right and explain what each chunk is doing in simple Chinese.
 7. In 结构拆解, for each key chunk, include its local Chinese meaning in context, not only its grammar label.
-8. In 结构拆解, do not use a table. Use numbered mini blocks: each block starts with the exact English chunk, then 1-2 short Chinese lines explaining role and local meaning.
+8. In 结构拆解, do not use a table. Use numbered mini blocks: each block title starts with the exact English chunk followed immediately by its Chinese meaning in full-width parentheses, then 1-2 short Chinese lines explaining role and why it matters.
 9. In 中文解释, 句子主干, 结构拆解, and 词汇与搭配, use <mark>...</mark> to mark the learner's highest-value takeaway in the explanation content.
 10. Each mini block should follow this exact shape. Do not put blank lines inside a mini block:
-   1. **English chunk**
+   1. **\`English chunk\`（中文意思）**
       - 语法功能：...
-      - 语境意思：...
+      - 说明：...
 11. In 词汇与搭配, focus on the top 1-2 highest-value words or collocations in THIS sentence by default. Do not dump a full dictionary entry list.
 12. Do not stay abstract. Make the learner feel that the sentence has been broken into understandable pieces.
 13. If a final recap would help, you may add ## 总结 after the required sections. Do not add it by default. The summary may be 1-3 bullets or a compact Markdown table if that is easier to scan.

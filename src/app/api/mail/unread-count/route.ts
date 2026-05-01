@@ -7,17 +7,24 @@ export async function GET() {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = await createServerClient();
-    const { count, error: queryError } = await supabase
-        .from("user_messages")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", user.id)
-        .eq("is_read", false);
+    let count: number | null = 0;
+    let queryError: { message?: string } | null = null;
+    try {
+        const supabase = await createServerClient();
+        const result = await supabase
+            .from("user_messages")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("is_read", false);
+        count = result.count ?? 0;
+        queryError = result.error;
+    } catch {
+        return NextResponse.json({ unreadCount: 0, degraded: true });
+    }
 
     if (queryError) {
-        return NextResponse.json({ error: queryError.message }, { status: 500 });
+        return NextResponse.json({ unreadCount: 0, degraded: true });
     }
 
     return NextResponse.json({ unreadCount: count ?? 0 });
 }
-

@@ -49,6 +49,8 @@ describe("deepseek provider resolution", () => {
         delete process.env.NVIDIA_API_KEY;
         delete process.env.NIM_API_KEY;
         delete process.env.GITHUB_MODELS_API_KEY;
+        delete process.env.MIMO_API_KEY;
+        delete process.env.MIMO_BASE_URL;
         openAiCreateMock.mockReset();
         openAiConstructorMock.mockClear();
     });
@@ -329,7 +331,7 @@ describe("deepseek provider resolution", () => {
         }));
     });
 
-    it("uses an explicit GitHub Models payload key before the server env key", async () => {
+    it("ignores explicit GitHub Models payload keys and uses the server env key", async () => {
         process.env.GITHUB_MODELS_API_KEY = "github-env-key";
         openAiCreateMock.mockResolvedValue({
             choices: [
@@ -344,13 +346,13 @@ describe("deepseek provider resolution", () => {
         const { testAiProviderConnection } = await import("./deepseek");
         const result = await testAiProviderConnection({
             ai_provider: "github",
-            github_api_key: "stale-profile-key",
+            github_api_key: "stale-payload-key",
             github_model: "openai/gpt-4.1-mini",
         });
 
         expect(result.model).toBe("openai/gpt-4.1-mini");
         expect(openAiConstructorMock).toHaveBeenCalledWith(expect.objectContaining({
-            apiKey: "stale-profile-key",
+            apiKey: "github-env-key",
             baseURL: "https://models.github.ai/inference",
         }));
     });
@@ -375,6 +377,73 @@ describe("deepseek provider resolution", () => {
         }));
     });
 
+    it("uses the MiMo env key and selected model for connection tests", async () => {
+        process.env.MIMO_API_KEY = "mimo-env-key";
+        openAiCreateMock.mockResolvedValue({
+            choices: [{ message: { content: "OK" } }],
+        });
+
+        const { testAiProviderConnection } = await import("./deepseek");
+        const result = await testAiProviderConnection({
+            ai_provider: "mimo",
+            mimo_api_key: "stale-payload-key",
+            mimo_model: "mimo-v2.5",
+        });
+
+        expect(result).toEqual(expect.objectContaining({
+            provider: "mimo",
+            providerLabel: "Xiaomi MiMo",
+            model: "mimo-v2.5",
+        }));
+        expect(openAiConstructorMock).toHaveBeenCalledWith(expect.objectContaining({
+            apiKey: "mimo-env-key",
+            baseURL: "https://token-plan-cn.xiaomimimo.com/v1",
+        }));
+        expect(openAiCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+            model: "mimo-v2.5",
+        }));
+    });
+
+    it("uses a direct fetch transport for MiMo connection tests", async () => {
+        process.env.MIMO_API_KEY = "mimo-env-key";
+        openAiCreateMock.mockResolvedValue({
+            choices: [{ message: { content: "OK" } }],
+        });
+
+        const { testAiProviderConnection } = await import("./deepseek");
+        await testAiProviderConnection({
+            ai_provider: "mimo",
+            mimo_model: "mimo-v2.5-pro",
+        });
+
+        expect(openAiConstructorMock).toHaveBeenCalledWith(expect.objectContaining({
+            fetch: expect.any(Function),
+        }));
+    });
+
+    it("uses a MiMo cookie preference with the server env key", async () => {
+        process.env.DEEPSEEK_API_KEY = "deepseek-env";
+        process.env.MIMO_API_KEY = "mimo-env-key";
+        cookiesMock.mockResolvedValue(buildCookieStore({
+            yasi_ai_provider: "mimo",
+            yasi_mimo_model: "mimo-v2-pro",
+        }));
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+            },
+        });
+
+        const { getCurrentAiExecutionTargetForCurrentUser } = await import("./deepseek");
+        const result = await getCurrentAiExecutionTargetForCurrentUser();
+
+        expect(result).toEqual({
+            provider: "mimo",
+            providerLabel: "Xiaomi MiMo",
+            model: "mimo-v2-pro",
+        });
+    });
+
     it("fails closed when GitHub is selected but only DeepSeek env exists", async () => {
         process.env.DEEPSEEK_API_KEY = "deepseek-env";
         cookiesMock.mockResolvedValue(buildCookieStore({
@@ -392,7 +461,7 @@ describe("deepseek provider resolution", () => {
         await expect(getCurrentAiExecutionTargetForCurrentUser()).rejects.toThrow("Missing GitHub Models API key");
     });
 
-    it("uses the stored GitHub profile key before the server env key for current-user resolution", async () => {
+    it("ignores stored GitHub profile keys and uses the server env key for current-user resolution", async () => {
         process.env.GITHUB_MODELS_API_KEY = "github-env-key";
         createServerClientMock.mockResolvedValue({
             auth: {
@@ -431,7 +500,7 @@ describe("deepseek provider resolution", () => {
         } as never);
 
         expect(openAiConstructorMock).toHaveBeenCalledWith(expect.objectContaining({
-            apiKey: "stale-profile-key",
+            apiKey: "github-env-key",
             baseURL: "https://models.github.ai/inference",
         }));
     });

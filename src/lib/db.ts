@@ -64,6 +64,7 @@ export interface ReadArticleItem {
         data: unknown;
         timestamp: number;
     }>;
+    archived_at?: number;
     remote_id?: string;
     updated_at?: string;
     sync_status?: SyncStatus;
@@ -400,6 +401,8 @@ export interface LocalUserProfile extends SyncTracked {
     nvidia_model?: string;
     github_api_key?: string;
     github_model?: string;
+    mimo_api_key?: string;
+    mimo_model?: string;
     learning_preferences?: LearningPreferences;
     reading_coins?: number;
     reading_streak?: number;
@@ -1589,6 +1592,40 @@ export class YasiDB extends Dexie {
                 }
                 if (profile.glm_thinking_mode !== "on" && profile.glm_thinking_mode !== "off") {
                     profile.glm_thinking_mode = "off";
+                }
+            });
+        });
+
+        // Version 50: Add Xiaomi MiMo provider preferences.
+        this.version(50).stores({
+            ai_cache: '++id, &[key+type], key, type, timestamp',
+            rebuild_bank_generated: '&content_key, candidate_id, topic, effective_elo, created_at, updated_at, review_status',
+            feeds: '&category, timestamp',
+            read_articles: '&url, timestamp, user_id, updated_at, sync_status',
+            vocabulary: '&word, word_key, timestamp, due, state, archived_at, updated_at, sync_status',
+            writing_history: '++id, articleTitle, timestamp, remote_id, updated_at, sync_status',
+            articles: '&url, title, timestamp, isAIGenerated',
+            reading_notes: '++id, article_key, [article_key+paragraph_order], paragraph_order, paragraph_block_index, created_at, updated_at, mark_type',
+            elo_history: '++id, remote_id, mode, timestamp, sync_status',
+            cat_sessions: '&id, user_id, created_at, status',
+            user_profile: '++id, user_id, updated_at, sync_status',
+            sync_outbox: '++id, entity, operation, record_key, [entity+record_key], created_at, sync_status',
+            sync_meta: '&key, updated_at',
+            listening_cabin_sessions: '&id, created_at, updated_at, lastPlayedAt',
+            daily_plans: '&date, updated_at',
+            vector_memory: '++id, text, source, created_at',
+            rag_vectors: '&id, text, source, created_at',
+            error_ledger: '++id, remote_id, text, tag, created_at, sync_status'
+        }).upgrade(async tx => {
+            await tx.table('user_profile').toCollection().modify((profile: LocalUserProfile) => {
+                if (profile.ai_provider !== "glm" && profile.ai_provider !== "deepseek" && profile.ai_provider !== "nvidia" && profile.ai_provider !== "github" && profile.ai_provider !== "mimo") {
+                    profile.ai_provider = "deepseek";
+                }
+                if (typeof profile.mimo_api_key !== "string") {
+                    profile.mimo_api_key = "";
+                }
+                if (typeof profile.mimo_model !== "string" || !profile.mimo_model.trim()) {
+                    profile.mimo_model = "mimo-v2.5-pro";
                 }
             });
         });

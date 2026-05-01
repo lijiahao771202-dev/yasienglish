@@ -7,6 +7,7 @@ import {
     type AICacheItem,
     type CachedArticle,
     type EloHistoryItem,
+    type ErrorLedgerItem,
     type LocalUserProfile,
     type ReadingNoteItem,
     type ReadArticleItem,
@@ -106,11 +107,42 @@ export interface ReadArticleSnapshotMetadata {
 }
 
 const REMOTE_PULL_INTERVAL_MS = 5 * 60 * 1000;
+const REMOTE_REQUEST_TIMEOUT_MS = 8_000;
 const LISTENING_SCORING_VERSION = 2;
 
 let backgroundSyncPromise: Promise<void> | null = null;
 let pendingBackgroundPull = false;
 let pendingForcedPull = false;
+
+class RemoteRequestTimeoutError extends Error {
+    constructor(label: string, timeoutMs: number) {
+        super(`${label} timed out after ${timeoutMs}ms`);
+        this.name = "RemoteRequestTimeoutError";
+    }
+}
+
+function withTimeout<T>(promise: PromiseLike<T>, label: string, timeoutMs = REMOTE_REQUEST_TIMEOUT_MS): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+            reject(new RemoteRequestTimeoutError(label, timeoutMs));
+        }, timeoutMs);
+
+        Promise.resolve(promise).then(
+            (value) => {
+                clearTimeout(timeoutId);
+                resolve(value);
+            },
+            (error) => {
+                clearTimeout(timeoutId);
+                reject(error);
+            },
+        );
+    });
+}
+
+function remote<T>(promise: PromiseLike<T>, label: string) {
+    return withTimeout(promise, label);
+}
 
 function nowIso() {
     return new Date().toISOString();
@@ -147,7 +179,10 @@ export function getUserFacingSyncError(error: unknown) {
     const normalized = message.toLowerCase();
 
     if (
-        normalized.includes("network connection required")
+        error instanceof RemoteRequestTimeoutError
+        || normalized.includes("timed out")
+        || normalized.includes("timeout")
+        || normalized.includes("network connection required")
         || normalized.includes("failed to fetch")
         || normalized.includes("networkerror")
         || normalized.includes("load failed")
@@ -172,6 +207,37 @@ export function getUserFacingSyncError(error: unknown) {
 export function assertSupabaseMutationSucceeded(result: SupabaseMutationResult, context: string) {
     if (!result.error) return;
     throw new Error(`${context}: ${result.error.message || "Unknown Supabase error"}`);
+}
+
+function getMissingRemoteProfileColumn(error: SupabaseMutationResult["error"]) {
+    const message = error?.message ?? "";
+    const match = message.match(/Could not find the '([^']+)' column of 'profiles' in the schema cache/i);
+    return match?.[1] ?? null;
+}
+
+async function writeRemoteProfileWithSchemaFallback<T extends SupabaseMutationResult>(
+    payload: Record<string, unknown>,
+    context: string,
+    write: (nextPayload: Record<string, unknown>) => PromiseLike<T>,
+): Promise<T> {
+    let nextPayload = { ...payload };
+    let lastResult: T | null = null;
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+        const result = await remote(write(nextPayload), context);
+        lastResult = result;
+
+        const missingColumn = getMissingRemoteProfileColumn(result.error);
+        if (!missingColumn || !(missingColumn in nextPayload)) {
+            return result;
+        }
+
+        const { [missingColumn]: _missingValue, ...rest } = nextPayload;
+        void _missingValue;
+        nextPayload = rest;
+    }
+
+    return lastResult ?? ({ error: { message: "Profile sync failed." } } as T);
 }
 
 function requireOnline() {
@@ -261,7 +327,7 @@ export async function hasUsableLocalCache(userId: string) {
 
 export async function getRemoteLatestUpdatedAt(userId: string) {
     const supabase = createBrowserClientSingleton();
-    const responses = await Promise.all([
+    const responses = await remote(Promise.all([
         supabase.from("profiles").select("updated_at").eq("user_id", userId).single(),
         supabase.from("vocabulary").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("writing_history").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
@@ -269,7 +335,7 @@ export async function getRemoteLatestUpdatedAt(userId: string) {
         supabase.from("elo_history").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("daily_plans").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
         supabase.from("error_ledger").select("updated_at").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
-    ]);
+    ]), "remote latest timestamp check");
 
     const timestamps = responses.flatMap((response) => {
         if (response.error || !response.data) {
@@ -359,11 +425,11 @@ async function markLocalOutboxItemSynced(item: Pick<SyncOutboxItem, "entity" | "
 
 async function ensureRemoteProfile(userId: string) {
     const supabase = createBrowserClientSingleton();
-    const { data } = await supabase
+    const { data } = await remote(supabase
         .from("profiles")
         .select("*")
         .eq("user_id", userId)
-        .maybeSingle();
+        .maybeSingle(), "profile lookup");
 
     if (data) {
         return data as RemoteProfileRow;
@@ -372,7 +438,7 @@ async function ensureRemoteProfile(userId: string) {
     const localProfile = await db.user_profile.orderBy("id").first();
     const {
         data: { user },
-    } = await supabase.auth.getUser();
+    } = await remote(supabase.auth.getUser(), "profile auth lookup");
     const metadata = user?.user_metadata ?? {};
     const nextProfile = localProfile
         ? {
@@ -398,15 +464,12 @@ async function ensureRemoteProfile(userId: string) {
             avatar_preset: normalizeAvatarPreset(localProfile.avatar_preset ?? (typeof metadata.avatar_preset === "string" ? metadata.avatar_preset : DEFAULT_AVATAR_PRESET)),
             bio: normalizeProfileBio(localProfile.bio),
             ai_provider: localProfile.ai_provider ?? "deepseek",
-            deepseek_api_key: localProfile.deepseek_api_key ?? "",
             deepseek_model: localProfile.deepseek_model ?? "deepseek-v4-flash",
             deepseek_thinking_mode: localProfile.deepseek_thinking_mode ?? "off",
             deepseek_reasoning_effort: localProfile.deepseek_reasoning_effort ?? "high",
-            glm_api_key: localProfile.glm_api_key ?? "",
-            nvidia_api_key: localProfile.nvidia_api_key ?? "",
             nvidia_model: localProfile.nvidia_model ?? "z-ai/glm5",
-            github_api_key: localProfile.github_api_key ?? "",
             github_model: localProfile.github_model ?? "openai/gpt-4.1",
+            mimo_model: localProfile.mimo_model ?? "mimo-v2.5-pro",
             learning_preferences: normalizeLearningPreferences(localProfile.learning_preferences ?? DEFAULT_LEARNING_PREFERENCES),
             reading_coins: localProfile.reading_coins ?? DEFAULT_READING_COINS,
             reading_streak: localProfile.reading_streak ?? 0,
@@ -448,15 +511,12 @@ async function ensureRemoteProfile(userId: string) {
             avatar_preset: normalizeAvatarPreset(typeof metadata.avatar_preset === "string" ? metadata.avatar_preset : DEFAULT_AVATAR_PRESET),
             bio: "",
             ai_provider: "deepseek",
-            deepseek_api_key: "",
             deepseek_model: "deepseek-v4-flash",
             deepseek_thinking_mode: "off",
             deepseek_reasoning_effort: "high",
-            glm_api_key: "",
-            nvidia_api_key: "",
             nvidia_model: "z-ai/glm5",
-            github_api_key: "",
             github_model: "openai/gpt-4.1",
+            mimo_model: "mimo-v2.5-pro",
             learning_preferences: DEFAULT_LEARNING_PREFERENCES,
             reading_coins: DEFAULT_READING_COINS,
             reading_streak: 0,
@@ -476,11 +536,15 @@ async function ensureRemoteProfile(userId: string) {
             updated_at: nowIso(),
         };
 
-    const { data: inserted, error } = await supabase
-        .from("profiles")
-        .upsert(nextProfile, { onConflict: "user_id" })
-        .select()
-        .single();
+    const { data: inserted, error } = await writeRemoteProfileWithSchemaFallback(
+        nextProfile,
+        "profile create",
+        (payload) => supabase
+            .from("profiles")
+            .upsert(payload, { onConflict: "user_id" })
+            .select()
+            .single(),
+    );
 
     if (error) throw error;
 
@@ -521,15 +585,12 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
                 avatar_preset: normalizeAvatarPreset(localProfile.avatar_preset),
                 bio: normalizeProfileBio(localProfile.bio),
                 ai_provider: localProfile.ai_provider ?? "deepseek",
-                deepseek_api_key: localProfile.deepseek_api_key ?? "",
                 deepseek_model: localProfile.deepseek_model ?? "deepseek-v4-flash",
                 deepseek_thinking_mode: localProfile.deepseek_thinking_mode ?? "off",
                 deepseek_reasoning_effort: localProfile.deepseek_reasoning_effort ?? "high",
-                glm_api_key: localProfile.glm_api_key ?? "",
-                nvidia_api_key: localProfile.nvidia_api_key ?? "",
                 nvidia_model: localProfile.nvidia_model ?? "z-ai/glm5",
-                github_api_key: localProfile.github_api_key ?? "",
                 github_model: localProfile.github_model ?? "openai/gpt-4.1",
+                mimo_model: localProfile.mimo_model ?? "mimo-v2.5-pro",
                 learning_preferences: normalizeLearningPreferences(localProfile.learning_preferences ?? DEFAULT_LEARNING_PREFERENCES),
                 reading_coins: localProfile.reading_coins ?? DEFAULT_READING_COINS,
                 reading_streak: localProfile.reading_streak ?? 0,
@@ -549,10 +610,14 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
                 updated_at: localProfile.updated_at || nowIso(),
             };
 
-            const profileResult = await supabase
-                .from("profiles")
-                .update(payload)
-                .eq("user_id", userId);
+            const profileResult = await writeRemoteProfileWithSchemaFallback(
+                payload,
+                "profile push-newer",
+                (nextPayload) => supabase
+                    .from("profiles")
+                    .update(nextPayload)
+                    .eq("user_id", userId),
+            );
             assertSupabaseMutationSucceeded(profileResult, "profile push-newer");
 
             await db.user_profile.update(localProfile.id, {
@@ -565,10 +630,10 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
 
     const [localVocabulary, remoteVocabularyRes] = await Promise.all([
         db.vocabulary.toArray(),
-        supabase
+        remote(supabase
             .from("vocabulary")
             .select("id, word_key, updated_at")
-            .eq("user_id", userId),
+            .eq("user_id", userId), "vocabulary metadata"),
     ]);
     if (remoteVocabularyRes.error) throw remoteVocabularyRes.error;
     const remoteVocabularyByWordKey = new Map<string, Pick<RemoteVocabularyRow, "id" | "word_key" | "updated_at">>();
@@ -576,6 +641,8 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
         remoteVocabularyByWordKey.set(row.word_key, row);
     }
 
+    const vocabularyUpserts: RemoteVocabularyRow[] = [];
+    const vocabularySyncedPatches: Array<{ word: string; patch: Partial<VocabItem> }> = [];
     for (const item of localVocabulary) {
         const wordKey = item.word_key || normalizeWordKey(item.word);
         const remote = remoteVocabularyByWordKey.get(wordKey);
@@ -593,27 +660,34 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
             updated_at: updatedAt,
             sync_status: "pending",
         });
-
-        const vocabResult = await supabase
-            .from("vocabulary")
-            .upsert(payload, { onConflict: "user_id,word_key" });
-        assertSupabaseMutationSucceeded(vocabResult, "vocabulary push-newer");
-
-        await db.vocabulary.update(item.word, {
-            user_id: userId,
-            remote_id: remoteId,
-            word_key: wordKey,
-            updated_at: updatedAt,
-            sync_status: "synced",
+        vocabularyUpserts.push(payload);
+        vocabularySyncedPatches.push({
+            word: item.word,
+            patch: {
+                user_id: userId,
+                remote_id: remoteId,
+                word_key: wordKey,
+                updated_at: updatedAt,
+                sync_status: "synced",
+            },
         });
+    }
+    if (vocabularyUpserts.length > 0) {
+        const vocabResult = await remote(supabase
+            .from("vocabulary")
+            .upsert(vocabularyUpserts, { onConflict: "user_id,word_key" }), "vocabulary push-newer");
+        assertSupabaseMutationSucceeded(vocabResult, "vocabulary push-newer");
+        for (const item of vocabularySyncedPatches) {
+            await db.vocabulary.update(item.word, item.patch);
+        }
     }
 
     const [localWritingHistory, remoteWritingRes] = await Promise.all([
         db.writing_history.toArray(),
-        supabase
+        remote(supabase
             .from("writing_history")
             .select("id, updated_at")
-            .eq("user_id", userId),
+            .eq("user_id", userId), "writing history metadata"),
     ]);
     if (remoteWritingRes.error) throw remoteWritingRes.error;
     const remoteWritingById = new Map<string, Pick<RemoteWritingHistoryRow, "id" | "updated_at">>();
@@ -621,6 +695,8 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
         remoteWritingById.set(row.id, row);
     }
 
+    const writingUpserts: RemoteWritingHistoryRow[] = [];
+    const writingSyncedPatches: Array<{ id: number; patch: Partial<WritingEntry> }> = [];
     for (const entry of localWritingHistory) {
         if (!entry.id) continue;
         const remoteId = entry.remote_id || crypto.randomUUID();
@@ -637,25 +713,33 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
             updated_at: updatedAt,
             sync_status: "pending",
         });
-        const writingResult = await supabase
-            .from("writing_history")
-            .upsert(payload);
-        assertSupabaseMutationSucceeded(writingResult, "writing_history push-newer");
-
-        await db.writing_history.update(entry.id, {
-            user_id: userId,
-            remote_id: remoteId,
-            updated_at: updatedAt,
-            sync_status: "synced",
+        writingUpserts.push(payload);
+        writingSyncedPatches.push({
+            id: entry.id,
+            patch: {
+                user_id: userId,
+                remote_id: remoteId,
+                updated_at: updatedAt,
+                sync_status: "synced",
+            },
         });
+    }
+    if (writingUpserts.length > 0) {
+        const writingResult = await remote(supabase
+            .from("writing_history")
+            .upsert(writingUpserts), "writing_history push-newer");
+        assertSupabaseMutationSucceeded(writingResult, "writing_history push-newer");
+        for (const item of writingSyncedPatches) {
+            await db.writing_history.update(item.id, item.patch);
+        }
     }
 
     const [localReadArticles, remoteReadRes] = await Promise.all([
         db.read_articles.toArray(),
-        supabase
+        remote(supabase
             .from("read_articles")
             .select("url, updated_at")
-            .eq("user_id", userId),
+            .eq("user_id", userId), "read articles metadata"),
     ]);
     if (remoteReadRes.error) throw remoteReadRes.error;
     const remoteReadByUrl = new Map<string, Pick<RemoteReadArticleRow, "url" | "updated_at">>();
@@ -663,6 +747,8 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
         remoteReadByUrl.set(row.url, row);
     }
 
+    const readArticleUpserts: RemoteReadArticleRow[] = [];
+    const readArticleSyncedPatches: Array<{ url: string; patch: Partial<ReadArticleItem> }> = [];
     for (const item of localReadArticles) {
         const remote = remoteReadByUrl.get(item.url);
         if (!shouldPushLocalRecord(item.updated_at, remote?.updated_at, item.sync_status)) {
@@ -679,25 +765,33 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
             updated_at: updatedAt,
             sync_status: "pending",
         });
-        const readResult = await supabase
-            .from("read_articles")
-            .upsert(payload, { onConflict: "user_id,url" });
-        assertSupabaseMutationSucceeded(readResult, "read_articles push-newer");
-
-        await db.read_articles.update(item.url, {
-            user_id: userId,
-            remote_id: remoteId,
-            updated_at: updatedAt,
-            sync_status: "synced",
+        readArticleUpserts.push(payload);
+        readArticleSyncedPatches.push({
+            url: item.url,
+            patch: {
+                user_id: userId,
+                remote_id: remoteId,
+                updated_at: updatedAt,
+                sync_status: "synced",
+            },
         });
+    }
+    if (readArticleUpserts.length > 0) {
+        const readResult = await remote(supabase
+            .from("read_articles")
+            .upsert(readArticleUpserts, { onConflict: "user_id,url" }), "read_articles push-newer");
+        assertSupabaseMutationSucceeded(readResult, "read_articles push-newer");
+        for (const item of readArticleSyncedPatches) {
+            await db.read_articles.update(item.url, item.patch);
+        }
     }
 
     const [localEloHistory, remoteEloRes] = await Promise.all([
         db.elo_history.toArray(),
-        supabase
+        remote(supabase
             .from("elo_history")
             .select("id, updated_at")
-            .eq("user_id", userId),
+            .eq("user_id", userId), "elo history metadata"),
     ]);
     if (remoteEloRes.error) throw remoteEloRes.error;
     const remoteEloById = new Map<string, Pick<RemoteEloHistoryRow, "id" | "updated_at">>();
@@ -705,6 +799,8 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
         remoteEloById.set(row.id, row);
     }
 
+    const eloHistoryUpserts: RemoteEloHistoryRow[] = [];
+    const eloHistorySyncedPatches: Array<{ id: number; patch: Partial<EloHistoryItem> }> = [];
     for (const item of localEloHistory) {
         if (!item.id) continue;
         const remoteId = item.remote_id || crypto.randomUUID();
@@ -721,25 +817,33 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
             updated_at: updatedAt,
             sync_status: "pending",
         });
-        const eloResult = await supabase
-            .from("elo_history")
-            .upsert(payload);
-        assertSupabaseMutationSucceeded(eloResult, "elo_history push-newer");
-
-        await db.elo_history.update(item.id, {
-            user_id: userId,
-            remote_id: remoteId,
-            updated_at: updatedAt,
-            sync_status: "synced",
+        eloHistoryUpserts.push(payload);
+        eloHistorySyncedPatches.push({
+            id: item.id,
+            patch: {
+                user_id: userId,
+                remote_id: remoteId,
+                updated_at: updatedAt,
+                sync_status: "synced",
+            },
         });
+    }
+    if (eloHistoryUpserts.length > 0) {
+        const eloResult = await remote(supabase
+            .from("elo_history")
+            .upsert(eloHistoryUpserts), "elo_history push-newer");
+        assertSupabaseMutationSucceeded(eloResult, "elo_history push-newer");
+        for (const item of eloHistorySyncedPatches) {
+            await db.elo_history.update(item.id, item.patch);
+        }
     }
 
     const [localErrorLedger, remoteErrorLedgerRes] = await Promise.all([
         db.error_ledger.toArray(),
-        supabase
+        remote(supabase
             .from("error_ledger")
             .select("id, updated_at")
-            .eq("user_id", userId),
+            .eq("user_id", userId), "error ledger metadata"),
     ]);
     if (remoteErrorLedgerRes.error) throw remoteErrorLedgerRes.error;
     const remoteErrorLedgerById = new Map<string, Pick<import("./user-sync").RemoteErrorLedgerRow, "id" | "updated_at">>();
@@ -747,6 +851,8 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
         remoteErrorLedgerById.set(row.id, row);
     }
 
+    const errorLedgerUpserts: import("./user-sync").RemoteErrorLedgerRow[] = [];
+    const errorLedgerSyncedPatches: Array<{ id: string; patch: Partial<ErrorLedgerItem> }> = [];
     for (const item of localErrorLedger) {
         if (!item.id) continue;
         const remoteId = item.remote_id || crypto.randomUUID();
@@ -763,17 +869,25 @@ async function pushLocalNewerRecords(userId: string, remoteProfile: RemoteProfil
             updated_at: updatedAt,
             sync_status: "pending",
         });
-        const errorLedgerResult = await supabase
-            .from("error_ledger")
-            .upsert(payload);
-        assertSupabaseMutationSucceeded(errorLedgerResult, "error_ledger push-newer");
-
-        await db.error_ledger.update(item.id, {
-            user_id: userId,
-            remote_id: remoteId,
-            updated_at: updatedAt,
-            sync_status: "synced",
+        errorLedgerUpserts.push(payload);
+        errorLedgerSyncedPatches.push({
+            id: item.id,
+            patch: {
+                user_id: userId,
+                remote_id: remoteId,
+                updated_at: updatedAt,
+                sync_status: "synced",
+            },
         });
+    }
+    if (errorLedgerUpserts.length > 0) {
+        const errorLedgerResult = await remote(supabase
+            .from("error_ledger")
+            .upsert(errorLedgerUpserts), "error_ledger push-newer");
+        assertSupabaseMutationSucceeded(errorLedgerResult, "error_ledger push-newer");
+        for (const item of errorLedgerSyncedPatches) {
+            await db.error_ledger.update(item.id, item.patch);
+        }
     }
 }
 
@@ -820,7 +934,7 @@ async function syncDailyPlanMirror(userId: string) {
     const supabase = createBrowserClientSingleton();
     const [localPlans, remoteRes] = await Promise.all([
         db.daily_plans.toArray(),
-        supabase.from("daily_plans").select("date, items, updated_at, created_at").eq("user_id", userId),
+        remote(supabase.from("daily_plans").select("date, items, updated_at, created_at").eq("user_id", userId), "daily plans metadata"),
     ]);
 
     if (remoteRes.error) {
@@ -844,9 +958,9 @@ async function syncDailyPlanMirror(userId: string) {
         .map((plan) => toRemoteDailyPlanRow(userId, plan));
 
     if (upserts.length > 0) {
-        const result = await supabase
+        const result = await remote(supabase
             .from("daily_plans")
-            .upsert(upserts, { onConflict: "user_id,date" });
+            .upsert(upserts, { onConflict: "user_id,date" }), "daily_plans push");
         assertSupabaseMutationSucceeded(result, "daily_plans push");
     }
 
@@ -855,11 +969,11 @@ async function syncDailyPlanMirror(userId: string) {
         .filter((date) => !localByDate.has(date));
 
     if (staleRemoteDates.length > 0) {
-        const result = await supabase
+        const result = await remote(supabase
             .from("daily_plans")
             .delete()
             .eq("user_id", userId)
-            .in("date", staleRemoteDates);
+            .in("date", staleRemoteDates), "daily_plans delete");
         assertSupabaseMutationSucceeded(result, "daily_plans delete");
     }
 }
@@ -868,12 +982,35 @@ export async function pullRemoteSnapshot(
     userId: string,
 ) {
     const supabase = createBrowserClientSingleton();
-    const existingLocalProfile = await db.user_profile.orderBy("id").first();
-    const pendingReadArticleDeletes = new Set(
-        (await db.sync_outbox.toArray())
-            .filter((item) => item.entity === "read_articles" && item.operation === "delete")
-            .map((item) => item.record_key),
-    );
+    const [
+        existingLocalProfile,
+        pendingOutboxItems,
+        pendingLocalVocabulary,
+        pendingLocalWriting,
+        pendingLocalRead,
+        pendingLocalElo,
+        pendingLocalErrorLedger,
+    ] = await Promise.all([
+        db.user_profile.orderBy("id").first(),
+        db.sync_outbox.toArray(),
+        db.vocabulary.toArray(),
+        db.writing_history.toArray(),
+        db.read_articles.toArray(),
+        db.elo_history.toArray(),
+        db.error_ledger.toArray(),
+    ]);
+    const pendingKeys = {
+        vocabularyUpserts: new Set(pendingOutboxItems.filter((item) => item.entity === "vocabulary" && item.operation !== "delete").map((item) => item.record_key)),
+        vocabularyDeletes: new Set(pendingOutboxItems.filter((item) => item.entity === "vocabulary" && item.operation === "delete").map((item) => item.record_key)),
+        writingUpserts: new Set(pendingOutboxItems.filter((item) => item.entity === "writing_history" && item.operation !== "delete").map((item) => item.record_key)),
+        writingDeletes: new Set(pendingOutboxItems.filter((item) => item.entity === "writing_history" && item.operation === "delete").map((item) => item.record_key)),
+        readUpserts: new Set(pendingOutboxItems.filter((item) => item.entity === "read_articles" && item.operation !== "delete").map((item) => item.record_key)),
+        readDeletes: new Set(pendingOutboxItems.filter((item) => item.entity === "read_articles" && item.operation === "delete").map((item) => item.record_key)),
+        eloUpserts: new Set(pendingOutboxItems.filter((item) => item.entity === "elo_history" && item.operation !== "delete").map((item) => item.record_key)),
+        eloDeletes: new Set(pendingOutboxItems.filter((item) => item.entity === "elo_history" && item.operation === "delete").map((item) => item.record_key)),
+        errorLedgerUpserts: new Set(pendingOutboxItems.filter((item) => item.entity === "error_ledger" && item.operation !== "delete").map((item) => item.record_key)),
+        errorLedgerDeletes: new Set(pendingOutboxItems.filter((item) => item.entity === "error_ledger" && item.operation === "delete").map((item) => item.record_key)),
+    };
 
     const [
         profileRes,
@@ -883,7 +1020,7 @@ export async function pullRemoteSnapshot(
         eloRes,
         dailyPlansRes,
         errorLedgerRes,
-    ] = await Promise.all([
+    ] = await remote(Promise.all([
         supabase.from("profiles").select("*").eq("user_id", userId).single(),
         supabase.from("vocabulary").select("*").eq("user_id", userId).order("updated_at", { ascending: false }),
         supabase.from("writing_history").select("*").eq("user_id", userId).order("timestamp_ms", { ascending: false }),
@@ -891,7 +1028,7 @@ export async function pullRemoteSnapshot(
         supabase.from("elo_history").select("*").eq("user_id", userId).order("timestamp_ms", { ascending: true }),
         supabase.from("daily_plans").select("user_id,date,items,updated_at,created_at").eq("user_id", userId).order("date", { ascending: true }),
         supabase.from("error_ledger").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
-    ]);
+    ]), "remote snapshot pull");
 
     if (profileRes.error) throw profileRes.error;
     if (vocabRes.error) throw vocabRes.error;
@@ -933,16 +1070,80 @@ export async function pullRemoteSnapshot(
     const remoteDailyPlans = ((dailyPlansRes.data as RemoteDailyPlanRow[] | null) ?? []).map(toLocalDailyPlanRecord);
     const effectiveDailyPlans = remoteDailyPlans.length > 0 ? remoteDailyPlans : localDailyPlans;
     const effectiveLocalProfile: LocalUserProfile = {
-        ...localProfile,
+        ...(existingLocalProfile?.sync_status === "pending" || existingLocalProfile?.sync_status === "error"
+            ? existingLocalProfile
+            : localProfile),
         daily_plan_snapshots: effectiveDailyPlans,
     };
-    const localVocabulary = (vocabRes.data as RemoteVocabularyRow[]).map(toLocalVocabularyItem);
-    const localWriting = (writingRes.data as RemoteWritingHistoryRow[]).map(toLocalWritingEntry);
-    const localRead = (readRes.data as RemoteReadArticleRow[])
+    const localVocabularyByKey = new Map(
+        (vocabRes.data as RemoteVocabularyRow[])
+            .map(toLocalVocabularyItem)
+            .filter((item) => !pendingKeys.vocabularyDeletes.has(item.word_key || normalizeWordKey(item.word)))
+            .map((item) => [item.word_key || normalizeWordKey(item.word), item]),
+    );
+    for (const item of pendingLocalVocabulary) {
+        const key = item.word_key || normalizeWordKey(item.word);
+        if (pendingKeys.vocabularyUpserts.has(key) || item.sync_status === "pending" || item.sync_status === "error") {
+            localVocabularyByKey.set(key, item);
+        }
+    }
+    const localVocabulary = Array.from(localVocabularyByKey.values());
+
+    const localWritingById = new Map(
+        (writingRes.data as RemoteWritingHistoryRow[])
+            .map(toLocalWritingEntry)
+            .filter((item) => item.remote_id && !pendingKeys.writingDeletes.has(item.remote_id))
+            .map((item) => [item.remote_id!, item]),
+    );
+    for (const item of pendingLocalWriting) {
+        if (!item.remote_id) continue;
+        if (pendingKeys.writingUpserts.has(item.remote_id) || item.sync_status === "pending" || item.sync_status === "error") {
+            localWritingById.set(item.remote_id, item);
+        }
+    }
+    const localWriting = Array.from(localWritingById.values());
+
+    const localReadByUrl = new Map((readRes.data as RemoteReadArticleRow[])
         .map(toLocalReadArticle)
-        .filter((item) => !pendingReadArticleDeletes.has(item.url));
-    const localElo = (eloRes.data as RemoteEloHistoryRow[]).map(toLocalEloHistoryItem);
-    const localErrorLedger = (errorLedgerRes.data as import("./user-sync").RemoteErrorLedgerRow[]).map(toLocalErrorLedgerItem);
+        .filter((item) => !pendingKeys.readDeletes.has(item.url))
+        .map((item) => [item.url, item]));
+    for (const item of pendingLocalRead) {
+        if (pendingKeys.readUpserts.has(item.url) || item.sync_status === "pending" || item.sync_status === "error") {
+            localReadByUrl.set(item.url, item);
+        } else if (typeof item.archived_at === "number") {
+            const remoteItem = localReadByUrl.get(item.url);
+            localReadByUrl.set(item.url, remoteItem ? { ...remoteItem, archived_at: item.archived_at } : item);
+        }
+    }
+    const localRead = Array.from(localReadByUrl.values());
+
+    const localEloById = new Map(
+        (eloRes.data as RemoteEloHistoryRow[])
+            .map(toLocalEloHistoryItem)
+            .filter((item) => item.remote_id && !pendingKeys.eloDeletes.has(item.remote_id))
+            .map((item) => [item.remote_id!, item]),
+    );
+    for (const item of pendingLocalElo) {
+        if (!item.remote_id) continue;
+        if (pendingKeys.eloUpserts.has(item.remote_id) || item.sync_status === "pending" || item.sync_status === "error") {
+            localEloById.set(item.remote_id, item);
+        }
+    }
+    const localElo = Array.from(localEloById.values());
+
+    const localErrorLedgerById = new Map(
+        (errorLedgerRes.data as import("./user-sync").RemoteErrorLedgerRow[])
+            .map(toLocalErrorLedgerItem)
+            .filter((item) => item.remote_id && !pendingKeys.errorLedgerDeletes.has(item.remote_id))
+            .map((item) => [item.remote_id!, item]),
+    );
+    for (const item of pendingLocalErrorLedger) {
+        if (!item.remote_id) continue;
+        if (pendingKeys.errorLedgerUpserts.has(item.remote_id) || item.sync_status === "pending" || item.sync_status === "error") {
+            localErrorLedgerById.set(item.remote_id, item);
+        }
+    }
+    const localErrorLedger = Array.from(localErrorLedgerById.values());
     const restoredArticlesByUrl = new Map<string, CachedArticle>();
     const restoredNotesByKey = new Map<string, Omit<ReadingNoteItem, "id">>();
     const restoredGrammarCacheByKey = new Map<string, AICacheItem>();
@@ -950,7 +1151,7 @@ export async function pullRemoteSnapshot(
     const allowedMarkTypes = new Set(["highlight", "underline", "note", "ask"]);
 
     for (const readItem of localRead) {
-        if (pendingReadArticleDeletes.has(readItem.url)) {
+        if (pendingKeys.readDeletes.has(readItem.url)) {
             continue;
         }
         if (readItem.article_payload && typeof readItem.article_payload === "object") {
@@ -1119,15 +1320,12 @@ async function migrateLegacyData(userId: string) {
             avatar_preset: profile.avatar_preset,
             bio: profile.bio,
             ai_provider: profile.ai_provider,
-            deepseek_api_key: profile.deepseek_api_key,
             deepseek_model: profile.deepseek_model,
             deepseek_thinking_mode: profile.deepseek_thinking_mode,
             deepseek_reasoning_effort: profile.deepseek_reasoning_effort,
-            glm_api_key: profile.glm_api_key,
-            nvidia_api_key: profile.nvidia_api_key,
             nvidia_model: profile.nvidia_model,
-            github_api_key: profile.github_api_key,
             github_model: profile.github_model,
+            mimo_model: profile.mimo_model,
             learning_preferences: profile.learning_preferences,
             reading_coins: profile.reading_coins,
             reading_streak: profile.reading_streak,
@@ -1374,64 +1572,68 @@ export async function flushOutbox() {
         try {
             if (item.entity === "profile") {
                 const patch = item.payload;
-                const { error } = await supabase
-                    .from("profiles")
-                    .update({
-                        ...patch,
-                        updated_at: nowIso(),
-                    })
-                    .eq("user_id", userId);
+                    const { error } = await writeRemoteProfileWithSchemaFallback(
+                        {
+                            ...patch,
+                            updated_at: nowIso(),
+                        },
+                        "outbox profile update",
+                        (payload) => supabase
+                            .from("profiles")
+                            .update(payload)
+                            .eq("user_id", userId),
+                    );
                 if (error) throw error;
             }
 
             if (item.entity === "vocabulary") {
                 if (item.operation === "delete") {
-                    const { error } = await supabase
+                    const { error } = await remote(supabase
                         .from("vocabulary")
                         .delete()
                         .eq("user_id", userId)
-                        .eq("word_key", item.record_key);
+                        .eq("word_key", item.record_key), "outbox vocabulary delete");
                     if (error) throw error;
                 } else {
-                    const { error } = await supabase
+                    const { error } = await remote(supabase
                         .from("vocabulary")
-                        .upsert(item.payload, { onConflict: "user_id,word_key" });
+                        .upsert(item.payload, { onConflict: "user_id,word_key" }), "outbox vocabulary upsert");
                     if (error) throw error;
                 }
             }
 
             if (item.entity === "writing_history") {
-                const { error } = await supabase
+                const { error } = await remote(supabase
                     .from("writing_history")
-                    .upsert(item.payload);
+                    .upsert(item.payload), "outbox writing_history upsert");
                 if (error) throw error;
             }
 
             if (item.entity === "read_articles") {
                 const result = item.operation === "delete"
-                    ? await supabase
+                    ? await remote(supabase
                         .from("read_articles")
                         .delete()
                         .eq("user_id", userId)
-                        .eq("url", item.record_key)
-                    : await supabase
+                        .eq("url", item.record_key), "outbox read_articles delete")
+                    : await remote(supabase
                         .from("read_articles")
-                        .upsert(item.payload, { onConflict: "user_id,url" });
+                        .upsert(item.payload, { onConflict: "user_id,url" }), "outbox read_articles upsert");
                 const { error } = result;
                 if (error) throw error;
             }
 
             if (item.entity === "elo_history") {
-                const { error } = await supabase
+                const { error } = await remote(supabase
                     .from("elo_history")
-                    .upsert(item.payload);
+                    .upsert(item.payload), "outbox elo_history upsert");
                 if (error) throw error;
             }
 
             if (item.entity === "error_ledger") {
-                const { error } = await supabase
+                const { error } = await remote(supabase
                     .from("error_ledger")
-                    .upsert(item.payload);
+                    .upsert(item.payload), "outbox error_ledger upsert");
                 if (error) throw error;
             }
 
@@ -1525,7 +1727,7 @@ export function scheduleBackgroundSync(options: RemoteSyncOptions = {}) {
                     break;
                 }
 
-                await syncRemoteMirror(userId, { pullSnapshot, forcePull });
+                await withTimeout(syncRemoteMirror(userId, { pullSnapshot, forcePull }), "background sync");
 
                 if (!pendingBackgroundPull && !pendingForcedPull) {
                     break;
@@ -1559,15 +1761,21 @@ export async function bootstrapUserSession(userId: string): Promise<BootstrapRes
     await setActiveUserId(userId);
     const canUseLocalCache = await hasUsableLocalCache(userId);
 
-    syncStore.setPhase(canUseLocalCache ? "syncing" : "bootstrapping");
-    syncStore.setReady(canUseLocalCache);
-
     if (canUseLocalCache) {
-        void scheduleBackgroundSync({ pullSnapshot: true, forcePull: true });
+        syncStore.setPhase("syncing");
+        syncStore.setReady(true);
+        void scheduleBackgroundSync({ pullSnapshot: true });
         return { usedLocalCache: true };
     }
 
-    await syncRemoteMirror(userId, { pullSnapshot: true, forcePull: true });
+    const existingProfile = await db.user_profile.orderBy("id").first();
+    if (!existingProfile) {
+        await upsertLocalProfile(createDefaultLocalProfile(userId));
+    }
+
+    syncStore.setPhase("syncing");
+    syncStore.setReady(true);
+    void scheduleBackgroundSync({ pullSnapshot: true, forcePull: true });
     return { usedLocalCache: false };
 }
 
@@ -1919,12 +2127,36 @@ export async function deleteReadArticleSnapshot(url: string) {
     void scheduleBackgroundSync();
 }
 
+export async function setReadArticleArchived(url: string, archived: boolean) {
+    const normalizedUrl = url.trim();
+    if (!normalizedUrl) {
+        throw new Error("Missing article url.");
+    }
+
+    const existing = await db.read_articles.get(normalizedUrl);
+    const nextArchivedAt = archived ? Date.now() : undefined;
+
+    if (existing) {
+        await db.read_articles.update(normalizedUrl, {
+            archived_at: nextArchivedAt,
+        });
+        return;
+    }
+
+    await db.read_articles.put({
+        url: normalizedUrl,
+        timestamp: Date.now(),
+        read_at: Date.now(),
+        archived_at: nextArchivedAt,
+    });
+}
+
 export async function saveProfilePatch(
     patch: Partial<
         Pick<
             LocalUserProfile,
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
-            | "ai_provider" | "deepseek_api_key" | "deepseek_model" | "deepseek_thinking_mode" | "deepseek_reasoning_effort" | "glm_api_key" | "glm_model" | "glm_thinking_mode" | "nvidia_api_key" | "nvidia_model" | "github_api_key" | "github_model" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
+            | "ai_provider" | "deepseek_model" | "deepseek_thinking_mode" | "deepseek_reasoning_effort" | "glm_model" | "glm_thinking_mode" | "nvidia_model" | "github_model" | "mimo_model" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
             | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
             | "rebuild_hidden_elo" | "rebuild_elo" | "rebuild_streak" | "rebuild_max_elo"
@@ -1966,6 +2198,7 @@ export async function saveProfilePatch(
         const nextGlmThinkingMode = String(patch.glm_thinking_mode !== undefined ? normalizeProfileGlmThinkingMode(patch.glm_thinking_mode) : (profile.glm_thinking_mode ?? "off"));
         const nextNvidiaModel = String(nextPatch.nvidia_model ?? profile.nvidia_model ?? "z-ai/glm5");
         const nextGithubModel = String(nextPatch.github_model ?? profile.github_model ?? "openai/gpt-4.1");
+        const nextMimoModel = String(nextPatch.mimo_model ?? profile.mimo_model ?? "mimo-v2.5-pro");
         document.cookie = `yasi_ai_provider=${encodeURIComponent(nextAiProvider)}; Path=/; Max-Age=31536000; SameSite=Lax`;
         document.cookie = `yasi_deepseek_model=${encodeURIComponent(nextDeepSeekModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
         document.cookie = `yasi_deepseek_thinking_mode=${encodeURIComponent(nextDeepSeekThinkingMode)}; Path=/; Max-Age=31536000; SameSite=Lax`;
@@ -1974,6 +2207,7 @@ export async function saveProfilePatch(
         document.cookie = `yasi_glm_thinking_mode=${encodeURIComponent(nextGlmThinkingMode)}; Path=/; Max-Age=31536000; SameSite=Lax`;
         document.cookie = `yasi_nvidia_model=${encodeURIComponent(nextNvidiaModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
         document.cookie = `yasi_github_model=${encodeURIComponent(nextGithubModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_mimo_model=${encodeURIComponent(nextMimoModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
     }
     useSyncStatusStore.getState().setPhase("syncing");
     void scheduleBackgroundSync();
@@ -1984,7 +2218,7 @@ export async function applyServerProfilePatchToLocal(
         Pick<
             LocalUserProfile,
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
-            | "ai_provider" | "deepseek_api_key" | "deepseek_model" | "deepseek_thinking_mode" | "deepseek_reasoning_effort" | "glm_api_key" | "glm_model" | "glm_thinking_mode" | "nvidia_api_key" | "nvidia_model" | "github_api_key" | "github_model" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
+            | "ai_provider" | "deepseek_model" | "deepseek_thinking_mode" | "deepseek_reasoning_effort" | "glm_model" | "glm_thinking_mode" | "nvidia_model" | "github_model" | "mimo_model" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
             | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
             | "rebuild_hidden_elo" | "rebuild_elo" | "rebuild_streak" | "rebuild_max_elo"
@@ -2018,6 +2252,7 @@ export async function applyServerProfilePatchToLocal(
         const nextGlmThinkingMode = String(patch.glm_thinking_mode !== undefined ? normalizeProfileGlmThinkingMode(patch.glm_thinking_mode) : (profile.glm_thinking_mode ?? "off"));
         const nextNvidiaModel = String(normalized.nvidia_model ?? profile.nvidia_model ?? "z-ai/glm5");
         const nextGithubModel = String(normalized.github_model ?? profile.github_model ?? "openai/gpt-4.1");
+        const nextMimoModel = String(normalized.mimo_model ?? profile.mimo_model ?? "mimo-v2.5-pro");
         document.cookie = `yasi_ai_provider=${encodeURIComponent(nextAiProvider)}; Path=/; Max-Age=31536000; SameSite=Lax`;
         document.cookie = `yasi_deepseek_model=${encodeURIComponent(nextDeepSeekModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
         document.cookie = `yasi_deepseek_thinking_mode=${encodeURIComponent(nextDeepSeekThinkingMode)}; Path=/; Max-Age=31536000; SameSite=Lax`;
@@ -2026,6 +2261,7 @@ export async function applyServerProfilePatchToLocal(
         document.cookie = `yasi_glm_thinking_mode=${encodeURIComponent(nextGlmThinkingMode)}; Path=/; Max-Age=31536000; SameSite=Lax`;
         document.cookie = `yasi_nvidia_model=${encodeURIComponent(nextNvidiaModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
         document.cookie = `yasi_github_model=${encodeURIComponent(nextGithubModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+        document.cookie = `yasi_mimo_model=${encodeURIComponent(nextMimoModel)}; Path=/; Max-Age=31536000; SameSite=Lax`;
     }
 }
 

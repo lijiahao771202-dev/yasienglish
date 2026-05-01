@@ -497,7 +497,7 @@ function BattlePageContent() {
                 setRebuildBattleElo(profile.rebuild_elo ?? profile.rebuild_hidden_elo ?? profile.listening_elo ?? 400);
                 setRebuildBattleStreak(profile.rebuild_streak ?? 0);
                 setDrillAiProvider(
-                    profile.ai_provider === "glm" || profile.ai_provider === "nvidia" || profile.ai_provider === "github"
+                    profile.ai_provider === "glm" || profile.ai_provider === "nvidia" || profile.ai_provider === "github" || profile.ai_provider === "mimo"
                         ? profile.ai_provider
                         : "deepseek",
                 );

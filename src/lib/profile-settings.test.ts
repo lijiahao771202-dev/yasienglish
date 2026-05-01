@@ -35,8 +35,9 @@ describe("profile settings", () => {
         expect(resolved.startsWith("en-IN-")).toBe(false);
     });
 
-    it("normalizes the nvidia AI provider", () => {
+    it("normalizes supported AI providers", () => {
         expect(normalizeAiProvider("nvidia")).toBe("nvidia");
+        expect(normalizeAiProvider("mimo")).toBe("mimo");
         expect(normalizeAiProvider("unknown")).toBe("deepseek");
     });
 });
