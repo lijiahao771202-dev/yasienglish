@@ -67,13 +67,11 @@ describe("profile glm-models route", () => {
             },
         ]);
 
-        const response = await POST(buildRequest({ glm_api_key: "glm_test_key" }));
+        const response = await POST(buildRequest({ glm_api_key: "ignored-client-token" }));
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(listGlmModelsForConnectionPayloadMock).toHaveBeenCalledWith({
-            glm_api_key: "glm_test_key",
-        });
+        expect(listGlmModelsForConnectionPayloadMock).toHaveBeenCalledWith();
         expect(data.models).toEqual([
             {
                 id: "glm-5.1",

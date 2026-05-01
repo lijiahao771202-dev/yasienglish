@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, Trash2, Check, Settings2, LayoutGrid, ChevronDown, Compass } from "lucide-react";
+import { Archive, Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, RotateCcw, Trash2, Check, Settings2, LayoutGrid, ChevronDown, Compass } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -10,7 +10,7 @@ import { useUserStore } from "@/lib/store";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { getPressableStyle, getPressableTap } from "@/lib/pressable";
-import { applyServerProfilePatchToLocal, deleteReadArticleSnapshot } from "@/lib/user-repository";
+import { applyServerProfilePatchToLocal, deleteReadArticleSnapshot, setReadArticleArchived } from "@/lib/user-repository";
 import { CAT_RANK_TIERS, getCatRankIconByTierId, getCatRankTier, getCatScoreToNextRank, getLegacyBandFromScore } from "@/lib/cat-score";
 import { CatGrowthChart } from "@/components/reading/CatGrowthChart";
 import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
@@ -33,6 +33,7 @@ export interface ArticleItem {
     catSelfAssessed?: boolean;
     catBand?: number;
     catScoreSnapshot?: number;
+    archivedAt?: number;
 }
 
 interface AIGenHistoryRecord {
@@ -229,6 +230,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         return 'cat_mode';
     });
     const [activeView, setActiveView] = useState<ArticleView>('all');
+    const [showArchivedHistory, setShowArchivedHistory] = useState(false);
     const [genTopic, setGenTopic] = useState("");
     const [genDifficulty, setGenDifficulty] = useState<'cet4' | 'cet6' | 'ielts'>(() => {
         const routeExam = searchParams?.get('exam_track');
@@ -241,7 +243,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const [fetchCount, setFetchCount] = useState(3); // Articles to fetch per refresh
     const [showSettings, setShowSettings] = useState(false);
     const [isFetching, setIsFetching] = useState(false); // Just for button state
-    const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+    const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
     const [loadingArticleLink, setLoadingArticleLink] = useState<string | null>(null);
     const [catTopic, setCatTopic] = useState("");
     const [isStartingCat, setIsStartingCat] = useState(false);
@@ -447,6 +449,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         };
     }, [activeView, articles, readArticleUrls]);
 
+    const historyArticles = useMemo(
+        () => sortByNewest(articles.filter((item) => showArchivedHistory ? Boolean(item.archivedAt) : !item.archivedAt)),
+        [articles, showArchivedHistory],
+    );
+    const activeHistoryCount = useMemo(() => articles.filter((item) => !item.archivedAt).length, [articles]);
+    const archivedHistoryCount = useMemo(() => articles.filter((item) => Boolean(item.archivedAt)).length, [articles]);
+
     const loadAIGenHistory = useCallback(async () => {
         try {
             const { db } = await import("@/lib/db");
@@ -454,6 +463,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 (await db.sync_outbox.toArray())
                     .filter((item) => item.entity === "read_articles" && item.operation === "delete")
                     .map((item) => item.record_key),
+            );
+            const archivedAtByUrl = new Map(
+                (await db.read_articles.toArray())
+                    .filter((item) => typeof item.archived_at === "number")
+                    .map((item) => [item.url, item.archived_at] as const),
             );
             const rows = (await db.articles
                 .toArray() as unknown as AIGenHistoryRecord[])
@@ -481,11 +495,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 catSelfAssessed: row.catSelfAssessed,
                 catBand: row.catBand,
                 catScoreSnapshot: row.catScoreSnapshot,
+                archivedAt: archivedAtByUrl.get(row.url),
             }));
 
             const ordered = sortByNewest(historyItems);
             setArticles(ordered);
-            if (onListUpdate) onListUpdate(ordered);
+            if (onListUpdate) onListUpdate(ordered.filter((item) => !item.archivedAt));
         } catch (error) {
             console.error("Failed to load AI-generated history:", error);
             setArticles([]);
@@ -500,6 +515,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 (await db.sync_outbox.toArray())
                     .filter((item) => item.entity === "read_articles" && item.operation === "delete")
                     .map((item) => item.record_key),
+            );
+            const archivedAtByUrl = new Map(
+                (await db.read_articles.toArray())
+                    .filter((item) => typeof item.archived_at === "number")
+                    .map((item) => [item.url, item.archived_at] as const),
             );
             const rows = (await db.articles
                 .toArray() as unknown as AIGenHistoryRecord[])
@@ -523,11 +543,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 catSelfAssessed: row.catSelfAssessed,
                 catBand: row.catBand,
                 catScoreSnapshot: row.catScoreSnapshot,
+                archivedAt: archivedAtByUrl.get(row.url),
             }));
 
             const ordered = sortByNewest(historyItems);
             setArticles(ordered);
-            if (onListUpdate) onListUpdate(ordered);
+            if (onListUpdate) onListUpdate(ordered.filter((item) => !item.archivedAt));
         } catch (error) {
             console.error("Failed to load CAT history:", error);
             setArticles([]);
@@ -640,6 +661,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
 
     useEffect(() => {
         setActiveView('all');
+        setShowArchivedHistory(false);
     }, [category]);
 
     const handleGenerate = async () => {
@@ -899,6 +921,35 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             await deleteArticle(category, link);
             setArticles(prev => prev.filter(a => a.link !== link));
             if (onArticleDeleted) onArticleDeleted(link);
+        }
+    };
+
+    const handleArchive = async (link: string, archived: boolean) => {
+        if (category !== "ai_gen" && category !== "cat_mode") return;
+
+        try {
+            await setReadArticleArchived(link, archived);
+            setArticles((prev) => {
+                const next = prev.map((article) => (
+                    article.link === link
+                        ? { ...article, archivedAt: archived ? Date.now() : undefined }
+                        : article
+                ));
+                if (onListUpdate) onListUpdate(next.filter((article) => !article.archivedAt));
+                return next;
+            });
+            setNotification({
+                message: archived ? "已归档文章" : "已恢复文章",
+                type: "success",
+            });
+            setTimeout(() => setNotification(null), 2200);
+        } catch (error) {
+            console.error("Archive article failed:", error);
+            setNotification({
+                message: archived ? "归档失败，请重试" : "恢复失败，请重试",
+                type: "error",
+            });
+            setTimeout(() => setNotification(null), 2600);
         }
     };
 
@@ -1318,14 +1369,42 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     </motion.section>
 
                     <motion.div variants={prefersReducedMotion ? undefined : blockEntryVariants} className="space-y-3">
-                        <div className="flex items-center justify-between px-1">
-                            <h4 className="text-sm font-black text-theme-text">历史文章</h4>
-                            <span className="text-xs text-theme-text-muted">{articles.length} 篇</span>
+                        <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+                            <h4 className="text-sm font-black text-theme-text">
+                                {showArchivedHistory ? "归档箱" : "历史文章"}
+                            </h4>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowArchivedHistory(false)}
+                                    className={cn(
+                                        "rounded-full border-2 px-3 py-1 text-[11px] font-black transition",
+                                        !showArchivedHistory
+                                            ? "border-theme-border bg-theme-primary-bg text-theme-primary-text"
+                                            : "border-theme-border/50 bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                    )}
+                                >
+                                    历史 {activeHistoryCount}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowArchivedHistory(true)}
+                                    className={cn(
+                                        "inline-flex items-center gap-1 rounded-full border-2 px-3 py-1 text-[11px] font-black transition",
+                                        showArchivedHistory
+                                            ? "border-theme-border bg-stone-100 text-stone-700"
+                                            : "border-theme-border/50 bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                    )}
+                                >
+                                    <Archive className="h-3.5 w-3.5" />
+                                    归档 {archivedHistoryCount}
+                                </button>
+                            </div>
                         </div>
 
-                        {articles.length === 0 ? (
+                        {historyArticles.length === 0 ? (
                             <div className={cn(shellCardClass, "p-8 text-center text-sm text-theme-text-muted")}>
-                                暂无历史文章，先生成一篇试试
+                                {showArchivedHistory ? "归档箱还是空的" : "暂无历史文章，先生成一篇试试"}
                             </div>
                         ) : (
                             <motion.div
@@ -1334,7 +1413,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                 initial="hidden"
                                 animate="show"
                             >
-                                {sortByNewest(articles).map((item) => (
+                                {historyArticles.map((item) => (
                                     <motion.div
                                         key={item.link}
                                         variants={listItemVariants}
@@ -1345,6 +1424,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                             category="ai_gen"
                                             onSelect={handleSelectArticle}
                                             onDelete={handleDelete}
+                                            onArchive={handleArchive}
                                             isLoading={loadingArticleLink === item.link}
                                             isAnyLoading={Boolean(loadingArticleLink)}
                                         />
@@ -1498,14 +1578,42 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     </div>
 
                     <motion.div variants={prefersReducedMotion ? undefined : blockEntryVariants} className="space-y-3">
-                        <div className="flex items-center justify-between px-1">
-                            <h4 className="text-sm font-black text-theme-text">训练历史</h4>
-                            <span className="text-xs text-theme-text-muted">{articles.length} 篇</span>
+                        <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+                            <h4 className="text-sm font-black text-theme-text">
+                                {showArchivedHistory ? "训练归档" : "训练历史"}
+                            </h4>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowArchivedHistory(false)}
+                                    className={cn(
+                                        "rounded-full border-2 px-3 py-1 text-[11px] font-black transition",
+                                        !showArchivedHistory
+                                            ? "border-theme-border bg-theme-primary-bg text-theme-primary-text"
+                                            : "border-theme-border/50 bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                    )}
+                                >
+                                    历史 {activeHistoryCount}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowArchivedHistory(true)}
+                                    className={cn(
+                                        "inline-flex items-center gap-1 rounded-full border-2 px-3 py-1 text-[11px] font-black transition",
+                                        showArchivedHistory
+                                            ? "border-theme-border bg-stone-100 text-stone-700"
+                                            : "border-theme-border/50 bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                    )}
+                                >
+                                    <Archive className="h-3.5 w-3.5" />
+                                    归档 {archivedHistoryCount}
+                                </button>
+                            </div>
                         </div>
 
-                        {articles.length === 0 ? (
+                        {historyArticles.length === 0 ? (
                             <div className={cn(shellCardClass, "p-8 text-center text-sm text-theme-text-muted")}>
-                                暂无 CAT 历史文章，先开始一局训练
+                                {showArchivedHistory ? "训练归档还是空的" : "暂无 CAT 历史文章，先开始一局训练"}
                             </div>
                         ) : (
                             <motion.div
@@ -1514,7 +1622,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                 initial="hidden"
                                 animate="show"
                             >
-                                {sortByNewest(articles).map((item) => (
+                                {historyArticles.map((item) => (
                                     <motion.div
                                         key={item.link}
                                         variants={listItemVariants}
@@ -1525,6 +1633,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                             category="cat_mode"
                                             onSelect={handleSelectArticle}
                                             onDelete={handleDelete}
+                                            onArchive={handleArchive}
                                             isLoading={loadingArticleLink === item.link}
                                             isAnyLoading={Boolean(loadingArticleLink)}
                                         />
@@ -1660,12 +1769,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     );
 }
 
-function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = false, isAnyLoading = false }: {
+function ArticleCard({ item, status, category, onSelect, onDelete, onArchive, isLoading = false, isAnyLoading = false }: {
     item: ArticleItem,
     status: ArticleStatus,
     category: FeedCategory,
     onSelect: (url: string) => void,
     onDelete: (url: string) => void,
+    onArchive?: (url: string, archived: boolean) => void,
     isLoading?: boolean,
     isAnyLoading?: boolean,
 }) {
@@ -1743,6 +1853,7 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
         if (isAnyLoading) return;
         onSelect(item.link);
     };
+    const isArchived = Boolean(item.archivedAt);
 
     return (
         <div
@@ -1783,10 +1894,25 @@ function ArticleCard({ item, status, category, onSelect, onDelete, isLoading = f
                 <div className="absolute left-3 top-3 z-20 flex items-center gap-2">
                     <div className={cn(
                         "rounded-full border-2 px-2.5 py-1 text-[10px] font-black tracking-wide",
-                        statusMeta.className
+                        isArchived ? "border-theme-border bg-stone-100 text-stone-600" : statusMeta.className
                     )}>
-                        {statusMeta.label}
+                        {isArchived ? "已归档" : statusMeta.label}
                     </div>
+                    {onArchive ? (
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onArchive(item.link, !isArchived);
+                            }}
+                            className="ui-pressable opacity-0 group-hover:opacity-100 transition-opacity flex h-7 w-7 items-center justify-center rounded-full border-2 border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text"
+                            style={getPressableStyle("var(--theme-shadow)", 3)}
+                            title={isArchived ? "恢复文章" : "归档文章"}
+                            aria-label={isArchived ? "恢复文章" : "归档文章"}
+                        >
+                            {isArchived ? <RotateCcw className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                        </button>
+                    ) : null}
                     <button
                         type="button"
                         onClick={(event) => {

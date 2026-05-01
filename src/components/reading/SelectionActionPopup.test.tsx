@@ -65,6 +65,20 @@ const renderPopup = async (overrides: RenderOverrides = {}) => {
     return { container, root };
 };
 
+const dispatchPointer = (target: Element, type: string, options: { pointerId?: number; clientX: number; clientY: number }) => {
+    const event = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        clientX: options.clientX,
+        clientY: options.clientY,
+    });
+    Object.defineProperty(event, "pointerId", {
+        configurable: true,
+        value: options.pointerId ?? 1,
+    });
+    target.dispatchEvent(event);
+};
+
 afterEach(async () => {
     await act(async () => {
         while (mountedRoots.length > 0) {
@@ -265,6 +279,66 @@ describe("SelectionActionPopup", () => {
         });
 
         expect(onAskAnswerModeChange).toHaveBeenCalledWith("short");
+    });
+
+    it("lets the ask dock move by dragging its header", async () => {
+        HTMLElement.prototype.setPointerCapture = vi.fn();
+        HTMLElement.prototype.releasePointerCapture = vi.fn();
+        HTMLElement.prototype.hasPointerCapture = vi.fn(() => true);
+
+        const { container } = await renderPopup({
+            popupMode: "ask",
+            qaPairs: [
+                { id: 1, question: "这句什么意思？", answer: "这是解释。", reasoningContent: "", isStreaming: false },
+            ],
+        });
+
+        const popup = container.querySelector<HTMLElement>('[data-selection-ask-dock="true"]');
+        const dragHandle = container.querySelector<HTMLElement>('[data-selection-ask-drag-handle="true"]');
+        expect(popup).toBeTruthy();
+        expect(dragHandle).toBeTruthy();
+
+        const initialLeft = Number.parseFloat(popup?.style.left ?? "0");
+        const initialTop = Number.parseFloat(popup?.style.top ?? "0");
+
+        await act(async () => {
+            dispatchPointer(dragHandle!, "pointerdown", { clientX: 100, clientY: 100 });
+            dispatchPointer(dragHandle!, "pointermove", { clientX: 140, clientY: 130 });
+            dispatchPointer(dragHandle!, "pointerup", { clientX: 140, clientY: 130 });
+        });
+
+        expect(Number.parseFloat(popup?.style.left ?? "0")).toBeGreaterThan(initialLeft);
+        expect(Number.parseFloat(popup?.style.top ?? "0")).toBeGreaterThan(initialTop);
+    });
+
+    it("lets the ask dock resize from its bottom-right handle", async () => {
+        HTMLElement.prototype.setPointerCapture = vi.fn();
+        HTMLElement.prototype.releasePointerCapture = vi.fn();
+        HTMLElement.prototype.hasPointerCapture = vi.fn(() => true);
+
+        const { container } = await renderPopup({
+            popupMode: "ask",
+            qaPairs: [
+                { id: 1, question: "这句什么意思？", answer: "这是解释。", reasoningContent: "", isStreaming: false },
+            ],
+        });
+
+        const popup = container.querySelector<HTMLElement>('[data-selection-ask-dock="true"]');
+        const resizeHandle = container.querySelector<HTMLElement>('[data-selection-ask-resize-handle="bottom-right"]');
+        expect(popup).toBeTruthy();
+        expect(resizeHandle).toBeTruthy();
+
+        const initialWidth = Number.parseFloat(popup?.style.width ?? "0");
+        const initialHeight = Number.parseFloat(popup?.style.height ?? "0");
+
+        await act(async () => {
+            dispatchPointer(resizeHandle!, "pointerdown", { clientX: 300, clientY: 300 });
+            dispatchPointer(resizeHandle!, "pointermove", { clientX: 360, clientY: 350 });
+            dispatchPointer(resizeHandle!, "pointerup", { clientX: 360, clientY: 350 });
+        });
+
+        expect(Number.parseFloat(popup?.style.width ?? "0")).toBeGreaterThan(initialWidth);
+        expect(Number.parseFloat(popup?.style.height ?? "0")).toBeGreaterThan(initialHeight);
     });
 
     it("shows ask replay view directly when popup mode is ask-replay", async () => {

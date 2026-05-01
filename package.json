@@ -5,7 +5,7 @@
   "description": "Yasi English learning web app",
   "author": "Yasi",
   "scripts": {
-    "dev": "next dev -p 4000",
+    "dev": "NODE_OPTIONS='--max-http-header-size=65536' next dev -p 4000",
     "build": "next build",
     "start": "next start -p 4000",
     "start:prod": "scripts/start-prod-server.sh",

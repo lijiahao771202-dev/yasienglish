@@ -4,10 +4,6 @@ import { listGlmModelsForConnectionPayload } from "@/lib/deepseek";
 import { resolveRequestUser } from "@/lib/supabase/request-auth";
 import { createServerClient } from "@/lib/supabase/server";
 
-type GlmModelsBody = {
-    glm_api_key?: string;
-};
-
 export async function POST(request: Request) {
     const supabase = await createServerClient();
     const user = await resolveRequestUser(request, supabase);
@@ -16,12 +12,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "请先登录后再获取 GLM 模型列表。" }, { status: 401 });
     }
 
-    const body = await request.json() as GlmModelsBody;
+    await request.json().catch(() => ({}));
 
     try {
-        const models = await listGlmModelsForConnectionPayload({
-            glm_api_key: body.glm_api_key,
-        });
+        const models = await listGlmModelsForConnectionPayload();
 
         return NextResponse.json({ models });
     } catch (error) {

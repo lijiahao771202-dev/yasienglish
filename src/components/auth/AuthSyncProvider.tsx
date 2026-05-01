@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
 
@@ -18,6 +18,7 @@ interface AuthSyncProviderProps {
 
 const AUTH_SESSION_TIMEOUT_MS = 5_000;
 const DESKTOP_CLOSE_SYNC_TIMEOUT_MS = 2_000;
+const BACKGROUND_SYNC_DEBOUNCE_MS = 1_200;
 
 async function getSessionWithTimeout(supabase: ReturnType<typeof createBrowserClientSingleton>) {
     return Promise.race([
@@ -37,6 +38,7 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
     const [showBlockingOverlay, setShowBlockingOverlay] = useState(false);
     const bootstrappedUserIdRef = useRef<string | null>(null);
     const pathnameRef = useRef<string | null>(pathname);
+    const backgroundSyncTimerRef = useRef<number | null>(null);
     const { phase, error, ready, reset, setPhase, setReady } = useSyncStatusStore();
     const isPublicPath = Boolean(pathname && isPublicAuthPath(pathname));
     const shouldBootstrap = Boolean(pathname && !isPublicAuthPath(pathname) && authResolved && sessionUser?.id);
@@ -44,6 +46,30 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
     useEffect(() => {
         pathnameRef.current = pathname;
     }, [pathname]);
+
+    const requestBackgroundSync = useCallback((options: Parameters<typeof scheduleBackgroundSync>[0] = {}) => {
+        if (typeof window === "undefined") {
+            void scheduleBackgroundSync(options);
+            return;
+        }
+
+        if (backgroundSyncTimerRef.current !== null) {
+            window.clearTimeout(backgroundSyncTimerRef.current);
+        }
+
+        backgroundSyncTimerRef.current = window.setTimeout(() => {
+            backgroundSyncTimerRef.current = null;
+            void scheduleBackgroundSync(options);
+        }, BACKGROUND_SYNC_DEBOUNCE_MS);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (backgroundSyncTimerRef.current !== null) {
+                window.clearTimeout(backgroundSyncTimerRef.current);
+            }
+        };
+    }, []);
 
     useEffect(() => {
         if (typeof window === "undefined") {
@@ -295,12 +321,12 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
         }
 
         const handleOnline = () => {
-            void scheduleBackgroundSync({ pullSnapshot: true });
+            requestBackgroundSync({ pullSnapshot: true });
         };
 
         const handleVisibilityChange = () => {
             if (document.visibilityState === "visible") {
-                void scheduleBackgroundSync({ pullSnapshot: true });
+                requestBackgroundSync({ pullSnapshot: true });
             }
         };
 
@@ -310,7 +336,7 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
             window.removeEventListener("online", handleOnline);
             document.removeEventListener("visibilitychange", handleVisibilityChange);
         };
-    }, [isPublicPath, ready, sessionUser?.id]);
+    }, [isPublicPath, ready, requestBackgroundSync, sessionUser?.id]);
 
     useEffect(() => {
         if (!sessionUser?.id || isPublicPath) {
@@ -329,7 +355,7 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
                     filter: `user_id=eq.${sessionUser.id}`,
                 },
                 () => {
-                    void scheduleBackgroundSync({ pullSnapshot: true });
+                    requestBackgroundSync({ pullSnapshot: true });
                 },
             )
             .subscribe();
@@ -337,7 +363,7 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
         return () => {
             void supabase.removeChannel(channel);
         };
-    }, [isPublicPath, sessionUser?.id]);
+    }, [isPublicPath, requestBackgroundSync, sessionUser?.id]);
 
     const shouldBlock = Boolean(pathname && !isPublicPath && (!authResolved || !ready));
 

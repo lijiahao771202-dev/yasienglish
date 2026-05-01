@@ -129,6 +129,7 @@ vi.mock("remark-gfm", () => ({
 
 vi.mock("@/lib/user-repository", () => ({
     applyServerProfilePatchToLocal: vi.fn(),
+    saveVocabulary: vi.fn(),
 }));
 
 vi.mock("@/components/auth/AuthSessionContext", () => ({

@@ -59,13 +59,11 @@ describe("profile nvidia-models route", () => {
             "z-ai/glm5",
         ]);
 
-        const response = await POST(buildRequest({ nvidia_api_key: "nvapi-test" }));
+        const response = await POST(buildRequest({ nvidia_api_key: "ignored-client-token" }));
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(listNvidiaModelsForConnectionPayloadMock).toHaveBeenCalledWith({
-            nvidia_api_key: "nvapi-test",
-        });
+        expect(listNvidiaModelsForConnectionPayloadMock).toHaveBeenCalledWith();
         expect(data.models).toEqual([
             "deepseek-ai/deepseek-v3.1-terminus",
             "z-ai/glm5",

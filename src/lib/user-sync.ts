@@ -39,12 +39,9 @@ import {
     type LearningPreferences,
     normalizeAiProvider,
     normalizeAvatarPreset,
-    normalizeProfileGlmApiKey,
-    normalizeProfileGithubApiKey,
     normalizeProfileGithubModel,
-    normalizeProfileNvidiaApiKey,
+    normalizeProfileMimoModel,
     normalizeProfileNvidiaModel,
-    normalizeProfileDeepSeekApiKey,
     normalizeProfileDeepSeekModel,
     normalizeProfileDeepSeekReasoningEffort,
     normalizeProfileDeepSeekThinkingMode,
@@ -67,6 +64,8 @@ export {
     normalizeProfileGlmApiKey,
     normalizeProfileGithubApiKey,
     normalizeProfileGithubModel,
+    normalizeProfileMimoApiKey,
+    normalizeProfileMimoModel,
     normalizeProfileNvidiaApiKey,
     normalizeProfileNvidiaModel,
     normalizeProfileDeepSeekApiKey,
@@ -111,15 +110,12 @@ export interface RemoteProfileRow {
     avatar_preset?: string;
     bio?: string;
     ai_provider?: AiProvider;
-    deepseek_api_key?: string;
     deepseek_model?: string;
     deepseek_thinking_mode?: "off" | "on";
     deepseek_reasoning_effort?: "high" | "max";
-    glm_api_key?: string;
-    nvidia_api_key?: string;
     nvidia_model?: string;
-    github_api_key?: string;
     github_model?: string;
+    mimo_model?: string;
     learning_preferences?: LearningPreferences;
     reading_coins?: number;
     reading_streak?: number;
@@ -439,6 +435,8 @@ export function createDefaultLocalProfile(userId: string): LocalUserProfile {
         nvidia_model: normalizeProfileNvidiaModel(undefined),
         github_api_key: "",
         github_model: normalizeProfileGithubModel(undefined),
+        mimo_api_key: "",
+        mimo_model: normalizeProfileMimoModel(undefined),
         learning_preferences: DEFAULT_LEARNING_PREFERENCES,
         reading_coins: DEFAULT_READING_COINS,
         reading_streak: 0,
@@ -501,17 +499,19 @@ export function toLocalProfile(remote: RemoteProfileRow): LocalUserProfile {
         avatar_preset: normalizeAvatarPreset(remote.avatar_preset),
         bio: normalizeProfileBio(remote.bio),
         ai_provider: normalizeAiProvider(remote.ai_provider),
-        deepseek_api_key: normalizeProfileDeepSeekApiKey(remote.deepseek_api_key),
+        deepseek_api_key: "",
         deepseek_model: normalizeProfileDeepSeekModel(remote.deepseek_model),
         deepseek_thinking_mode: normalizeProfileDeepSeekThinkingMode(remote.deepseek_thinking_mode),
         deepseek_reasoning_effort: normalizeProfileDeepSeekReasoningEffort(remote.deepseek_reasoning_effort),
-        glm_api_key: normalizeProfileGlmApiKey(remote.glm_api_key),
+        glm_api_key: "",
         glm_model: DEFAULT_GLM_MODEL,
         glm_thinking_mode: DEFAULT_GLM_THINKING_MODE,
-        nvidia_api_key: normalizeProfileNvidiaApiKey(remote.nvidia_api_key),
+        nvidia_api_key: "",
         nvidia_model: normalizeProfileNvidiaModel(remote.nvidia_model),
-        github_api_key: normalizeProfileGithubApiKey(remote.github_api_key),
+        github_api_key: "",
         github_model: normalizeProfileGithubModel(remote.github_model),
+        mimo_api_key: "",
+        mimo_model: normalizeProfileMimoModel(remote.mimo_model),
         learning_preferences: normalizeLearningPreferences(remote.learning_preferences),
         reading_coins: typeof remote.reading_coins === "number" ? remote.reading_coins : DEFAULT_READING_COINS,
         reading_streak: typeof remote.reading_streak === "number" ? remote.reading_streak : 0,
@@ -537,7 +537,7 @@ export function buildProfilePatch(
         Pick<
             LocalUserProfile,
             "coins" | "inventory" | "owned_themes" | "active_theme" | "username" | "avatar_preset" | "bio" | "learning_preferences"
-            | "ai_provider" | "deepseek_api_key" | "deepseek_model" | "deepseek_thinking_mode" | "deepseek_reasoning_effort" | "glm_api_key" | "nvidia_api_key" | "nvidia_model" | "github_api_key" | "github_model" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
+            | "ai_provider" | "deepseek_model" | "deepseek_thinking_mode" | "deepseek_reasoning_effort" | "nvidia_model" | "github_model" | "mimo_model" | "reading_coins" | "reading_streak" | "reading_last_daily_grant_at"
             | "cat_score" | "cat_level" | "cat_theta" | "cat_points" | "cat_current_band" | "cat_updated_at"
             | "cat_se" | "dictation_elo" | "dictation_streak" | "dictation_max_elo"
             | "rebuild_hidden_elo" | "rebuild_elo" | "rebuild_streak" | "rebuild_max_elo"
@@ -557,15 +557,12 @@ export function buildProfilePatch(
     if (patch.avatar_preset !== undefined) nextPatch.avatar_preset = normalizeAvatarPreset(patch.avatar_preset);
     if (patch.bio !== undefined) nextPatch.bio = normalizeProfileBio(patch.bio);
     if (patch.ai_provider !== undefined) nextPatch.ai_provider = normalizeAiProvider(patch.ai_provider);
-    if (patch.deepseek_api_key !== undefined) nextPatch.deepseek_api_key = normalizeProfileDeepSeekApiKey(patch.deepseek_api_key);
     if (patch.deepseek_model !== undefined) nextPatch.deepseek_model = normalizeProfileDeepSeekModel(patch.deepseek_model);
     if (patch.deepseek_thinking_mode !== undefined) nextPatch.deepseek_thinking_mode = normalizeProfileDeepSeekThinkingMode(patch.deepseek_thinking_mode);
     if (patch.deepseek_reasoning_effort !== undefined) nextPatch.deepseek_reasoning_effort = normalizeProfileDeepSeekReasoningEffort(patch.deepseek_reasoning_effort);
-    if (patch.glm_api_key !== undefined) nextPatch.glm_api_key = normalizeProfileGlmApiKey(patch.glm_api_key);
-    if (patch.nvidia_api_key !== undefined) nextPatch.nvidia_api_key = normalizeProfileNvidiaApiKey(patch.nvidia_api_key);
     if (patch.nvidia_model !== undefined) nextPatch.nvidia_model = normalizeProfileNvidiaModel(patch.nvidia_model);
-    if (patch.github_api_key !== undefined) nextPatch.github_api_key = normalizeProfileGithubApiKey(patch.github_api_key);
     if (patch.github_model !== undefined) nextPatch.github_model = normalizeProfileGithubModel(patch.github_model);
+    if (patch.mimo_model !== undefined) nextPatch.mimo_model = normalizeProfileMimoModel(patch.mimo_model);
     if (patch.learning_preferences !== undefined) {
         nextPatch.learning_preferences = normalizeLearningPreferences(patch.learning_preferences);
     }

@@ -6025,3 +6025,393 @@
     at Timeout.<anonymous> (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:591:28)
     at listOnTimeout (node:internal/timers:594:17)
     at process.processTimers (node:internal/timers:529:7)
+[2026-04-29T16:02:24.737Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+    at async getOrCreatePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:836:16)
+    at async POST (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:972:111)
+    at async AppRouteRouteModule.do (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37866)
+    at async AppRouteRouteModule.handle (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45156)
+    at async responseGenerator (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14849:38)
+    at async AppRouteRouteModule.handleResponse (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:1:187713)
+    at async handleResponse (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14912:32)
+    at async Module.handler (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14965:13)
+    at async DevServer.renderToResponseWithComponentsImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1422:9)
+    at async DevServer.renderPageComponent (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1474:24)
+    at async DevServer.renderToResponseImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1524:32)
+    at async DevServer.pipeImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1018:25)
+    at async NextNodeServer.handleCatchallRenderRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/next-server.js:395:17)
+    at async DevServer.handleRequestImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:909:17)
+    at async /Users/lijiahao/yasi/node_modules/next/dist/server/dev/next-dev-server.js:387:20
+    at async Span.traceAsyncFn (/Users/lijiahao/yasi/node_modules/next/dist/trace/trace.js:157:20)
+    at async DevServer.handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/dev/next-dev-server.js:383:24)
+    at async invokeRender (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:248:21)
+    at async handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:447:24)
+    at async requestHandlerImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:496:13)
+    at async Server.requestListener (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/start-server.js:226:13)
+[2026-04-29T16:02:40.648Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+    at async getOrCreatePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:836:16)
+    at async POST (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:972:111)
+    at async AppRouteRouteModule.do (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37866)
+    at async AppRouteRouteModule.handle (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45156)
+    at async responseGenerator (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14849:38)
+    at async AppRouteRouteModule.handleResponse (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:1:187713)
+    at async handleResponse (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14912:32)
+    at async Module.handler (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14965:13)
+    at async DevServer.renderToResponseWithComponentsImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1422:9)
+    at async DevServer.renderPageComponent (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1474:24)
+    at async DevServer.renderToResponseImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1524:32)
+    at async DevServer.pipeImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1018:25)
+    at async NextNodeServer.handleCatchallRenderRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/next-server.js:395:17)
+    at async DevServer.handleRequestImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:909:17)
+    at async /Users/lijiahao/yasi/node_modules/next/dist/server/dev/next-dev-server.js:387:20
+    at async Span.traceAsyncFn (/Users/lijiahao/yasi/node_modules/next/dist/trace/trace.js:157:20)
+    at async DevServer.handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/dev/next-dev-server.js:383:24)
+    at async invokeRender (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:248:21)
+    at async handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:447:24)
+    at async requestHandlerImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:496:13)
+    at async Server.requestListener (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/start-server.js:226:13)
+[2026-04-29T16:02:48.037Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+    at async getOrCreatePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:836:16)
+    at async POST (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:972:111)
+    at async AppRouteRouteModule.do (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37866)
+    at async AppRouteRouteModule.handle (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45156)
+    at async responseGenerator (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14849:38)
+    at async AppRouteRouteModule.handleResponse (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:1:187713)
+    at async handleResponse (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14912:32)
+    at async Module.handler (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14965:13)
+    at async DevServer.renderToResponseWithComponentsImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1422:9)
+    at async DevServer.renderPageComponent (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1474:24)
+    at async DevServer.renderToResponseImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1524:32)
+    at async DevServer.pipeImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1018:25)
+    at async NextNodeServer.handleCatchallRenderRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/next-server.js:395:17)
+    at async DevServer.handleRequestImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:909:17)
+    at async /Users/lijiahao/yasi/node_modules/next/dist/server/dev/next-dev-server.js:387:20
+    at async Span.traceAsyncFn (/Users/lijiahao/yasi/node_modules/next/dist/trace/trace.js:157:20)
+    at async DevServer.handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/dev/next-dev-server.js:383:24)
+    at async invokeRender (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:248:21)
+    at async handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:447:24)
+    at async requestHandlerImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:496:13)
+    at async Server.requestListener (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/start-server.js:226:13)
+[2026-04-30T08:50:47.611Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:50:47.615Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:50:47.625Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:50:47.627Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:50:49.234Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:50:49.246Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:50:53.740Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:50:53.746Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:51:04.338Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:51:04.343Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:51:19.617Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:51:19.623Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:51:19.632Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T08:51:19.648Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T10:07:57.572Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+    at async getOrCreatePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:836:16)
+    at async POST (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:972:111)
+    at async AppRouteRouteModule.do (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37866)
+    at async AppRouteRouteModule.handle (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45156)
+    at async responseGenerator (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14849:38)
+    at async AppRouteRouteModule.handleResponse (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:1:187713)
+    at async handleResponse (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14912:32)
+    at async Module.handler (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14965:13)
+    at async DevServer.renderToResponseWithComponentsImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1422:9)
+    at async DevServer.renderPageComponent (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1474:24)
+    at async DevServer.renderToResponseImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1524:32)
+    at async DevServer.pipeImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1018:25)
+    at async NextNodeServer.handleCatchallRenderRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/next-server.js:395:17)
+    at async DevServer.handleRequestImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:909:17)
+    at async /Users/lijiahao/yasi/node_modules/next/dist/server/dev/next-dev-server.js:387:20
+    at async Span.traceAsyncFn (/Users/lijiahao/yasi/node_modules/next/dist/trace/trace.js:157:20)
+    at async DevServer.handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/dev/next-dev-server.js:383:24)
+    at async invokeRender (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:248:21)
+    at async handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:447:24)
+    at async requestHandlerImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:496:13)
+    at async Server.requestListener (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/start-server.js:226:13)
+[2026-04-30T10:07:57.765Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+    at async getOrCreatePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:836:16)
+    at async POST (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:972:111)
+    at async AppRouteRouteModule.do (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37866)
+    at async AppRouteRouteModule.handle (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45156)
+    at async responseGenerator (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14849:38)
+    at async AppRouteRouteModule.handleResponse (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:1:187713)
+    at async handleResponse (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14912:32)
+    at async Module.handler (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14965:13)
+    at async DevServer.renderToResponseWithComponentsImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1422:9)
+    at async DevServer.renderPageComponent (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1474:24)
+    at async DevServer.renderToResponseImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1524:32)
+    at async DevServer.pipeImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1018:25)
+    at async NextNodeServer.handleCatchallRenderRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/next-server.js:395:17)
+    at async DevServer.handleRequestImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:909:17)
+    at async /Users/lijiahao/yasi/node_modules/next/dist/server/dev/next-dev-server.js:387:20
+    at async Span.traceAsyncFn (/Users/lijiahao/yasi/node_modules/next/dist/trace/trace.js:157:20)
+    at async DevServer.handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/dev/next-dev-server.js:383:24)
+    at async invokeRender (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:248:21)
+    at async handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:447:24)
+    at async requestHandlerImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:496:13)
+    at async Server.requestListener (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/start-server.js:226:13)
+[2026-04-30T11:08:40.374Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:08:40.380Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:08:40.386Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:08:40.393Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:08:41.846Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:08:41.850Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:08:41.853Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:08:41.857Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:08:47.914Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:08:47.924Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:09:11.237Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:09:11.244Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:09:11.248Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:09:11.252Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:09:12.333Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:09:12.338Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:09:22.749Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+    at async getOrCreatePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:836:16)
+    at async POST (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:972:111)
+    at async AppRouteRouteModule.do (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:37866)
+    at async AppRouteRouteModule.handle (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:5:45156)
+    at async responseGenerator (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14849:38)
+    at async AppRouteRouteModule.handleResponse (/Users/lijiahao/yasi/node_modules/next/dist/compiled/next-server/app-route-turbo.runtime.dev.js:1:187713)
+    at async handleResponse (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14912:32)
+    at async Module.handler (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__42817708._.js:14965:13)
+    at async DevServer.renderToResponseWithComponentsImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1422:9)
+    at async DevServer.renderPageComponent (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1474:24)
+    at async DevServer.renderToResponseImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1524:32)
+    at async DevServer.pipeImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:1018:25)
+    at async NextNodeServer.handleCatchallRenderRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/next-server.js:395:17)
+    at async DevServer.handleRequestImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/base-server.js:909:17)
+    at async /Users/lijiahao/yasi/node_modules/next/dist/server/dev/next-dev-server.js:387:20
+    at async Span.traceAsyncFn (/Users/lijiahao/yasi/node_modules/next/dist/trace/trace.js:157:20)
+    at async DevServer.handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/dev/next-dev-server.js:383:24)
+    at async invokeRender (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:248:21)
+    at async handleRequest (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:447:24)
+    at async requestHandlerImpl (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/router-server.js:496:13)
+    at async Server.requestListener (/Users/lijiahao/yasi/node_modules/next/dist/server/lib/start-server.js:226:13)
+[2026-04-30T11:09:45.853Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:09:45.860Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:09:45.864Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:09:45.870Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:10:03.634Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:10:03.642Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:10:03.647Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25
+[2026-04-30T11:10:03.653Z] Step: Generating | Error: No audio data available. Did you run synthesize() first? | Stack: Error: No audio data available. Did you run synthesize() first?
+    at EdgeTTS.toBuffer (/Users/lijiahao/yasi/node_modules/@andresaya/edge-tts/dist/services/EdgeTTS.js:487:19)
+    at /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:598:33
+    at async runSynthesis (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:600:16)
+    at async synthesizePayload (/Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:767:23)
+    at async /Users/lijiahao/yasi/.next/dev/server/chunks/[root-of-the-server]__0f7d3f70._.js:825:25

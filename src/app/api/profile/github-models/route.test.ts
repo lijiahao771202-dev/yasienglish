@@ -65,13 +65,11 @@ describe("profile github-models route", () => {
             },
         ]);
 
-        const response = await POST(buildRequest({ github_api_key: "test-github-token" }));
+        const response = await POST(buildRequest({ github_api_key: "ignored-client-token" }));
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(listGitHubModelsForConnectionPayloadMock).toHaveBeenCalledWith({
-            github_api_key: "test-github-token",
-        });
+        expect(listGitHubModelsForConnectionPayloadMock).toHaveBeenCalledWith();
         expect(data.models).toEqual([
             {
                 id: "openai/gpt-4.1",

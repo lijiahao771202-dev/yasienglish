@@ -21,7 +21,7 @@ vi.mock("./MindElixirDiagram", () => ({
 
 const mountedRoots: Root[] = [];
 
-async function renderMarkdown(content: string) {
+async function renderMarkdown(content: string, props: Partial<React.ComponentProps<typeof AiRichMarkdown>> = {}) {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -29,7 +29,7 @@ async function renderMarkdown(content: string) {
     mountedRoots.push(root);
 
     await act(async () => {
-        root.render(<AiRichMarkdown content={content} />);
+        root.render(<AiRichMarkdown content={content} {...props} />);
     });
 
     return container;
@@ -167,6 +167,31 @@ describe("AiRichMarkdown", () => {
         expect(mark?.className).toContain("text-slate-900");
         expect(mark?.className).toContain("shadow-[inset");
         expect(code?.textContent).toBe("==code stays code==");
+    });
+
+    it("shows a vocab action when inline code is clicked", async () => {
+        const onInlineCodeVocabAction = vi.fn(async () => "saved" as const);
+        const container = await renderMarkdown("核心搭配是 `grapple with`。", {
+            onInlineCodeVocabAction,
+        });
+
+        const token = container.querySelector<HTMLElement>('[data-ai-inline-code-action="true"]');
+        expect(token).toBeTruthy();
+
+        await act(async () => {
+            token?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const addButton = container.querySelector<HTMLButtonElement>('[data-ai-inline-code-add-vocab="true"]');
+        expect(addButton).toBeTruthy();
+        expect(addButton?.textContent).toContain("加入生词本");
+
+        await act(async () => {
+            addButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onInlineCodeVocabAction).toHaveBeenCalledWith("grapple with");
+        expect(container.textContent).toContain("已加入");
     });
 
     it("renders marked numbered titles as bold while keeping content marks", async () => {

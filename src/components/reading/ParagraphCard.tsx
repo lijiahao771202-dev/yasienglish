@@ -24,11 +24,13 @@ import {
     sentenceIdentity,
     type GrammarDeepSentenceResult,
 } from "@/lib/grammar-analysis";
-import { applyServerProfilePatchToLocal } from "@/lib/user-repository";
+import { applyServerProfilePatchToLocal, saveVocabulary } from "@/lib/user-repository";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { getReadingCoinCost, INSUFFICIENT_READING_COINS, type ReadingEconomyAction } from "@/lib/reading-economy";
 import { dispatchReadingCoinFx } from "@/lib/reading-coin-fx";
-import { db, type ReadingMarkType, type ReadingNoteItem } from "@/lib/db";
+import { db, type ReadingMarkType, type ReadingNoteItem, type VocabItem } from "@/lib/db";
+import { createEmptyCard } from "@/lib/fsrs";
+import { defaultVocabSourceLabel, normalizeWordKey } from "@/lib/user-sync";
 import { requestTtsPayload, resolveTtsAudioBlob } from "@/lib/tts-client";
 import {
     buildAskQaPairs,
@@ -244,8 +246,8 @@ const isRangeOverlapping = (startA: number, endA: number, startB: number, endB: 
     startA < endB && startB < endA
 );
 
-function AskReasoningBlock({ content, isStreaming = false }: { content: string; isStreaming?: boolean }) {
-    const normalized = content.trim();
+function AskReasoningBlock({ content, isStreaming = false }: { content?: string; isStreaming?: boolean }) {
+    const normalized = (content ?? "").trim();
     if (!normalized) return null;
 
     return (
@@ -303,6 +305,9 @@ export function ParagraphCard({
         if (provider === "nvidia") {
             return `${provider}:${profile?.nvidia_model ?? "z-ai/glm5"}`;
         }
+        if (provider === "mimo") {
+            return `${provider}:${profile?.mimo_model ?? "mimo-v2.5-pro"}`;
+        }
         if (provider === "glm") {
             return provider;
         }
@@ -318,6 +323,7 @@ export function ParagraphCard({
         profile?.deepseek_reasoning_effort,
         profile?.deepseek_thinking_mode,
         profile?.github_model,
+        profile?.mimo_model,
         profile?.nvidia_model,
     ]);
     const grammarBasicCacheKey = buildGrammarCacheKey({
@@ -1565,8 +1571,52 @@ export function ParagraphCard({
         );
     }, [grammarDisplayMode, grammarHighlightSentences, grammarLayoutLines, text]);
 
+    const handleAskInlineCodeVocabAction = useCallback(async (rawText: string) => {
+        const word = rawText
+            .replace(/^["'“”‘’`]+|["'“”‘’`]+$/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+        if (!word) {
+            throw new Error("Empty vocab text");
+        }
+
+        const wordKey = normalizeWordKey(word);
+        const existing = await db.vocabulary.where("word_key").equals(wordKey).first();
+        if (existing) {
+            return "exists" as const;
+        }
+
+        const now = Date.now();
+        const base = createEmptyCard(word, now);
+        const card: VocabItem = {
+            word,
+            definition: "",
+            translation: "",
+            context: text,
+            example: "",
+            source_kind: "read",
+            source_label: defaultVocabSourceLabel("read"),
+            source_sentence: text,
+            source_note: "从 AskAI 回答中的词汇/搭配词块加入",
+            timestamp: base.timestamp ?? now,
+            stability: base.stability ?? 0,
+            difficulty: base.difficulty ?? 0,
+            elapsed_days: base.elapsed_days ?? 0,
+            scheduled_days: base.scheduled_days ?? 0,
+            reps: base.reps ?? 0,
+            lapses: base.lapses ?? 0,
+            learning_steps: base.learning_steps ?? 0,
+            state: base.state ?? 0,
+            last_review: base.last_review ?? 0,
+            due: base.due ?? now,
+        };
+
+        await saveVocabulary(card);
+        return "saved" as const;
+    }, [text]);
+
     const renderAskMarkdown = (content: string) => (
-        <AiRichMarkdown content={content} />
+        <AiRichMarkdown content={content} onInlineCodeVocabAction={handleAskInlineCodeVocabAction} />
     );
 
     const syncReadingBalance = async (payload: unknown, fallbackAction?: ReadingEconomyAction) => {
@@ -3995,11 +4045,32 @@ export function SelectionActionPopup({
         originX: number;
         originY: number;
     } | null>(null);
+    const askDockInteractionRef = useRef<{
+        type: "move" | "resize";
+        pointerId: number;
+        startClientX: number;
+        startClientY: number;
+        originLeft: number;
+        originTop: number;
+        originWidth: number;
+        originHeight: number;
+    } | null>(null);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
     const [measuredHeight, setMeasuredHeight] = useState(240);
     const isAskReplayMode = popupMode === "ask-replay";
     const isAskDockMode = popupMode === "ask" || isAskReplayMode;
     const isAskComposerOpen = isAskDockMode || Boolean(askPanelDefaultOpenToken);
+    const getDefaultAskDockWindow = () => {
+        const width = Math.min(420, Math.max(360, window.innerWidth - 32));
+        const height = Math.min(760, Math.max(420, window.innerHeight - 144));
+        return {
+            left: Math.max(16, window.innerWidth - width - 40),
+            top: 112,
+            width,
+            height,
+        };
+    };
+    const [askDockWindow, setAskDockWindow] = useState(getDefaultAskDockWindow);
     const [expandedQaIds, setExpandedQaIds] = useState<number[]>(() => (
         isAskReplayMode
             ? (qaPairs.length > 0 ? [qaPairs[qaPairs.length - 1].id] : [])
@@ -4048,7 +4119,21 @@ export function SelectionActionPopup({
     const deleteActionCount = Number(canDeleteHighlight) + Number(canDeleteUnderline);
 
     const viewportPadding = 16;
-    const popupWidth = isAskDockMode ? 400 : 330;
+    const minAskDockWidth = Math.min(360, Math.max(280, window.innerWidth - viewportPadding * 2));
+    const minAskDockHeight = Math.min(420, Math.max(320, window.innerHeight - viewportPadding * 2));
+    const maxAskDockWidth = Math.max(minAskDockWidth, window.innerWidth - viewportPadding * 2);
+    const maxAskDockHeight = Math.max(minAskDockHeight, window.innerHeight - viewportPadding * 2);
+    const clampedAskDockWidth = Math.min(Math.max(askDockWindow.width, minAskDockWidth), maxAskDockWidth);
+    const clampedAskDockHeight = Math.min(Math.max(askDockWindow.height, minAskDockHeight), maxAskDockHeight);
+    const clampedAskDockLeft = Math.min(
+        Math.max(viewportPadding, askDockWindow.left),
+        Math.max(viewportPadding, window.innerWidth - clampedAskDockWidth - viewportPadding),
+    );
+    const clampedAskDockTop = Math.min(
+        Math.max(viewportPadding, askDockWindow.top),
+        Math.max(viewportPadding, window.innerHeight - clampedAskDockHeight - viewportPadding),
+    );
+    const popupWidth = isAskDockMode ? clampedAskDockWidth : 330;
     const popupHeight = Math.min(measuredHeight || 240, window.innerHeight - viewportPadding * 2);
     const preferredTop = selectionRect.bottom + 10 + dragOffset.y;
     const flippedTop = selectionRect.top - popupHeight - 10 + dragOffset.y;
@@ -4066,11 +4151,13 @@ export function SelectionActionPopup({
     );
     const popupStyle = isAskDockMode
         ? {
-            top: "112px",
-            right: "40px",
-            width: `${popupWidth}px`,
-            maxWidth: `${popupWidth}px`,
-            minWidth: `${popupWidth}px`,
+            top: `${clampedAskDockTop}px`,
+            left: `${clampedAskDockLeft}px`,
+            width: `${clampedAskDockWidth}px`,
+            height: `${clampedAskDockHeight}px`,
+            maxWidth: `${maxAskDockWidth}px`,
+            minWidth: `${minAskDockWidth}px`,
+            minHeight: `${minAskDockHeight}px`,
         }
         : {
             top: `${clampedTop}px`,
@@ -4113,10 +4200,79 @@ export function SelectionActionPopup({
         }
     };
 
+    const handleAskDockMoveStart = (event: React.PointerEvent<HTMLDivElement>) => {
+        const target = event.target as HTMLElement;
+        if (target.closest("button, textarea, input, a")) return;
+        askDockInteractionRef.current = {
+            type: "move",
+            pointerId: event.pointerId,
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            originLeft: clampedAskDockLeft,
+            originTop: clampedAskDockTop,
+            originWidth: clampedAskDockWidth,
+            originHeight: clampedAskDockHeight,
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+    };
+
+    const handleAskDockResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        askDockInteractionRef.current = {
+            type: "resize",
+            pointerId: event.pointerId,
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            originLeft: clampedAskDockLeft,
+            originTop: clampedAskDockTop,
+            originWidth: clampedAskDockWidth,
+            originHeight: clampedAskDockHeight,
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+    };
+
+    const handleAskDockInteractionMove = (event: React.PointerEvent<HTMLDivElement>) => {
+        const interaction = askDockInteractionRef.current;
+        if (!interaction || interaction.pointerId !== event.pointerId) return;
+        const deltaX = event.clientX - interaction.startClientX;
+        const deltaY = event.clientY - interaction.startClientY;
+
+        if (interaction.type === "move") {
+            setAskDockWindow((current) => ({
+                ...current,
+                left: Math.min(
+                    Math.max(viewportPadding, interaction.originLeft + deltaX),
+                    Math.max(viewportPadding, window.innerWidth - interaction.originWidth - viewportPadding),
+                ),
+                top: Math.min(
+                    Math.max(viewportPadding, interaction.originTop + deltaY),
+                    Math.max(viewportPadding, window.innerHeight - interaction.originHeight - viewportPadding),
+                ),
+            }));
+            return;
+        }
+
+        setAskDockWindow((current) => ({
+            ...current,
+            width: Math.min(Math.max(minAskDockWidth, interaction.originWidth + deltaX), maxAskDockWidth),
+            height: Math.min(Math.max(minAskDockHeight, interaction.originHeight + deltaY), maxAskDockHeight),
+        }));
+    };
+
+    const handleAskDockInteractionEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+        const interaction = askDockInteractionRef.current;
+        if (!interaction || interaction.pointerId !== event.pointerId) return;
+        askDockInteractionRef.current = null;
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+    };
+
     const popupContainerClassName = cn(
         "relative overflow-hidden rounded-[1.25rem] border border-theme-border/30 bg-theme-base-bg shadow-2xl backdrop-blur-2xl",
         isAskDockMode
-            ? "flex h-[min(760px,calc(100vh-9rem))] flex-col"
+            ? "flex h-full flex-col"
             : "max-h-[min(560px,calc(100vh-2rem))] overflow-y-auto",
         isAskReplayMode ? "p-2" : "p-3.5",
     );
@@ -4132,19 +4288,21 @@ export function SelectionActionPopup({
         <div
             ref={ref}
             className="fixed z-[9999] animate-in fade-in zoom-in-95 duration-200"
+            data-selection-ask-dock={isAskDockMode ? "true" : undefined}
             style={popupStyle}
             onMouseDown={(e) => e.stopPropagation()}
         >
             <div className={popupContainerClassName}>
                 <div
+                    data-selection-ask-drag-handle={isAskDockMode ? "true" : undefined}
                     className={cn(
                         "relative mb-3 flex items-start justify-between gap-3 border-b border-theme-border/20 pb-3",
-                        isAskDockMode || isAskReplayMode ? "" : "cursor-grab active:cursor-grabbing",
+                        isAskDockMode || isAskReplayMode ? "cursor-grab select-none active:cursor-grabbing" : "cursor-grab active:cursor-grabbing",
                     )}
-                    onPointerDown={isAskDockMode || isAskReplayMode ? undefined : handleDragStart}
-                    onPointerMove={isAskDockMode || isAskReplayMode ? undefined : handleDragMove}
-                    onPointerUp={isAskDockMode || isAskReplayMode ? undefined : handleDragEnd}
-                    onPointerCancel={isAskDockMode || isAskReplayMode ? undefined : handleDragEnd}
+                    onPointerDown={isAskDockMode || isAskReplayMode ? handleAskDockMoveStart : handleDragStart}
+                    onPointerMove={isAskDockMode || isAskReplayMode ? handleAskDockInteractionMove : handleDragMove}
+                    onPointerUp={isAskDockMode || isAskReplayMode ? handleAskDockInteractionEnd : handleDragEnd}
+                    onPointerCancel={isAskDockMode || isAskReplayMode ? handleAskDockInteractionEnd : handleDragEnd}
                 >
                     <div className="min-w-0 flex items-center gap-1">
                         {popupMode === "ask" ? (
@@ -4489,6 +4647,20 @@ export function SelectionActionPopup({
                         ) : null}
                     </div>
                 )}
+
+                {isAskDockMode ? (
+                    <div
+                        data-selection-ask-resize-handle="bottom-right"
+                        aria-hidden="true"
+                        className="absolute bottom-1.5 right-1.5 z-20 h-5 w-5 cursor-nwse-resize rounded-br-[1rem] opacity-55 transition-opacity hover:opacity-100"
+                        onPointerDown={handleAskDockResizeStart}
+                        onPointerMove={handleAskDockInteractionMove}
+                        onPointerUp={handleAskDockInteractionEnd}
+                        onPointerCancel={handleAskDockInteractionEnd}
+                    >
+                        <div className="absolute bottom-1 right-1 h-3 w-3 rounded-br-[0.55rem] border-b-2 border-r-2 border-theme-text-muted/45" />
+                    </div>
+                ) : null}
             </div>
         </div>
     );

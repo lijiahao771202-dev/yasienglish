@@ -4,7 +4,8 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { saveProfilePatchMock } = vi.hoisted(() => ({
+const { getBrowserSupabaseAuthHeadersMock, saveProfilePatchMock } = vi.hoisted(() => ({
+    getBrowserSupabaseAuthHeadersMock: vi.fn().mockResolvedValue({}),
     saveProfilePatchMock: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -21,6 +22,8 @@ vi.mock("dexie-react-hooks", () => ({
         nvidia_model: "z-ai/glm-5.1",
         github_api_key: "",
         github_model: "openai/gpt-4.1",
+        mimo_api_key: "",
+        mimo_model: "mimo-v2.5-pro",
     }),
 }));
 
@@ -65,7 +68,7 @@ vi.mock("@/lib/user-repository", () => ({
 }));
 
 vi.mock("@/lib/supabase/browser-auth", () => ({
-    getBrowserSupabaseAuthHeaders: vi.fn().mockResolvedValue({}),
+    getBrowserSupabaseAuthHeaders: getBrowserSupabaseAuthHeadersMock,
 }));
 
 import { AiModelSettingsModal } from "./AiModelSettingsModal";
@@ -75,6 +78,8 @@ describe("AiModelSettingsModal", () => {
         vi.useRealTimers();
         document.body.innerHTML = "";
         saveProfilePatchMock.mockClear();
+        getBrowserSupabaseAuthHeadersMock.mockClear();
+        vi.unstubAllGlobals();
     });
 
     it("shows only the four curated GLM models directly without parameter clutter", async () => {
@@ -96,9 +101,8 @@ describe("AiModelSettingsModal", () => {
         expect(container.textContent).not.toContain("常用参数");
         expect(container.textContent).not.toContain("temperature");
         expect(container.textContent).not.toContain("刷新当前可用 GLM 模型");
-        expect(container.textContent).toContain("这里不填时会使用服务器 GLM_API_KEY");
-        expect(container.querySelector<HTMLInputElement>('input[name="glm_api_key_override"]')?.placeholder)
-            .toBe("Using server GLM_API_KEY");
+        expect(container.textContent).toContain("API key 统一使用本地服务器环境变量");
+        expect(container.querySelector<HTMLInputElement>('input[name="glm_api_key_override"]')).toBeNull();
 
         await act(async () => {
             root.unmount();
@@ -142,6 +146,86 @@ describe("AiModelSettingsModal", () => {
             ai_provider: "glm",
             glm_model: "glm-4.7-flash",
             glm_thinking_mode: "on",
+        }));
+
+        await act(async () => {
+            root.unmount();
+        });
+    });
+
+    it("shows and saves Xiaomi MiMo model settings", async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        await act(async () => {
+            root.render(<AiModelSettingsModal isOpen onClose={vi.fn()} />);
+        });
+
+        const mimoProvider = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("Xiaomi MiMo"));
+        expect(mimoProvider).toBeTruthy();
+
+        await act(async () => {
+            mimoProvider?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(container.textContent).toContain("MIMO_API_KEY");
+        expect(container.querySelector<HTMLInputElement>('input[name="mimo_api_key_override"]')).toBeNull();
+
+        const mimoV25Button = container.querySelector<HTMLButtonElement>('button[data-mimo-model="mimo-v2.5"]');
+        expect(mimoV25Button).toBeTruthy();
+
+        await act(async () => {
+            mimoV25Button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        await act(async () => {
+            vi.advanceTimersByTime(600);
+        });
+
+        expect(saveProfilePatchMock).toHaveBeenLastCalledWith(expect.objectContaining({
+            ai_provider: "mimo",
+            mimo_model: "mimo-v2.5",
+        }));
+        expect(saveProfilePatchMock.mock.calls.at(-1)?.[0]).not.toHaveProperty("mimo_api_key");
+
+        await act(async () => {
+            root.unmount();
+        });
+    });
+
+    it("tests local AI providers without sending oversized browser auth headers", async () => {
+        vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+        const fetchMock = vi.fn(async () => ({
+            ok: true,
+            json: async () => ({ message: "Connection OK." }),
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+        getBrowserSupabaseAuthHeadersMock.mockResolvedValue({ Authorization: "Bearer local-session" });
+
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        await act(async () => {
+            root.render(<AiModelSettingsModal isOpen onClose={vi.fn()} />);
+        });
+
+        const testButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("Test Connection"));
+        expect(testButton).toBeTruthy();
+
+        await act(async () => {
+            testButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(getBrowserSupabaseAuthHeadersMock).not.toHaveBeenCalled();
+        expect(fetchMock).toHaveBeenCalledWith("/api/profile/test-ai-provider", expect.objectContaining({
+            credentials: "omit",
+            headers: { "Content-Type": "application/json" },
         }));
 
         await act(async () => {
