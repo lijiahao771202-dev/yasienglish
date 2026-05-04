@@ -19,6 +19,12 @@ vi.mock("./MindElixirDiagram", () => ({
     ),
 }));
 
+vi.mock("@/components/reading/SyntaxTreeView", () => ({
+    SyntaxTreeView: ({ data }: { data: unknown }) => (
+        <div data-testid="syntax-tree">{JSON.stringify(data)}</div>
+    ),
+}));
+
 const mountedRoots: Root[] = [];
 
 async function renderMarkdown(content: string, props: Partial<React.ComponentProps<typeof AiRichMarkdown>> = {}) {
@@ -314,5 +320,69 @@ describe("AiRichMarkdown", () => {
         expect(diagram).toBeTruthy();
         expect(diagram?.textContent).toContain("- 核心逻辑");
         expect(container.querySelector("code")?.textContent ?? "").not.toContain("- 核心逻辑");
+    });
+
+    it("lifts a complete syntax-tree fence into the tree viewer and hides the raw JSON", async () => {
+        const payload = [
+            "```syntax-tree",
+            JSON.stringify({
+                label: "主句",
+                text: "Although the plan looked simple, the team soon realized that execution would take months.",
+                zh: "尽管计划看起来很简单，团队很快意识到执行会花上好几个月",
+                children: [
+                    { label: "让步状语从句", text: "Although the plan looked simple", zh: "尽管计划看起来很简单", children: [] },
+                    { label: "主句", text: "the team soon realized that execution would take months", zh: "团队很快意识到执行会花上好几个月", children: [] },
+                ],
+            }, null, 2),
+            "```",
+            "",
+            "## 直译",
+            "",
+            "尽管计划看起来很简单，团队很快就意识到执行会花上好几个月。",
+        ].join("\n");
+
+        const container = await renderMarkdown(payload);
+
+        const tree = container.querySelector('[data-testid="syntax-tree"]');
+        expect(tree).toBeTruthy();
+        expect(tree?.textContent).toContain("让步状语从句");
+        expect(tree?.textContent).toContain("尽管计划看起来很简单");
+
+        const codes = Array.from(container.querySelectorAll("code"));
+        expect(codes.some((code) => code.textContent?.includes("\"label\""))).toBe(false);
+        expect(container.textContent).toContain("尽管计划看起来很简单");
+        expect(container.textContent).toContain("句子结构");
+    });
+
+    it("shows a streaming placeholder while the syntax-tree fence is still open", async () => {
+        const payload = [
+            "```syntax-tree",
+            "{",
+            "  \"label\": \"主句\",",
+            "  \"text\": \"Although the plan looked",
+        ].join("\n");
+
+        const container = await renderMarkdown(payload);
+
+        expect(container.querySelector('[data-testid="syntax-tree"]')).toBeNull();
+        expect(container.textContent).toContain("正在构建句子结构树");
+    });
+
+    it("falls back to showing the raw fence when the syntax-tree JSON is malformed", async () => {
+        const payload = [
+            "```syntax-tree",
+            "{ not valid json",
+            "```",
+            "",
+            "## 直译",
+            "",
+            "fallback copy.",
+        ].join("\n");
+
+        const container = await renderMarkdown(payload);
+
+        expect(container.querySelector('[data-testid="syntax-tree"]')).toBeNull();
+        expect(container.textContent).toContain("not valid json");
+        expect(container.textContent).toContain("fallback copy");
     });
 });
