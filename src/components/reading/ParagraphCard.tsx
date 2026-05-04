@@ -3416,7 +3416,7 @@ export function ParagraphCard({
                                                                     Syntax Structure
                                                                 </h5>
                                                             </div>
-                                                            <SyntaxTreeView data={activeDeepSentence.sentence_tree} />
+                                                            <SyntaxTreeView data={activeDeepSentence.sentence_tree} allowFullscreen />
                                                         </div>
                                                     ) : null}
                                                 </div>

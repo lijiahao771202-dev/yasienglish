@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { BookPlus, Check, Loader2, Maximize2, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -10,6 +10,7 @@ import rehypeRaw from "rehype-raw";
 import { cn } from "@/lib/utils";
 import { MindElixirDiagram } from "./MindElixirDiagram";
 import { MermaidDiagram } from "./MermaidDiagram";
+import { SyntaxTreeView } from "@/components/reading/SyntaxTreeView";
 
 export type InlineCodeVocabActionResult = "saved" | "exists";
 
@@ -21,6 +22,67 @@ interface AiRichMarkdownProps {
 
 function isMarkdownHorizontalRule(line: string) {
     return /^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/.test(line);
+}
+
+interface SyntaxTreeData {
+    label: string;
+    text: string;
+    zh?: string;
+    children?: SyntaxTreeData[];
+}
+
+interface SyntaxTreeExtraction {
+    cleanedContent: string;
+    tree: SyntaxTreeData | null;
+    pending: boolean;
+}
+
+const SYNTAX_TREE_CLOSED_FENCE = /```syntax-tree[^\n]*\n([\s\S]*?)\n```/;
+const SYNTAX_TREE_OPEN_FENCE = /```syntax-tree[^\n]*\n([\s\S]*)$/;
+
+function normalizeSyntaxTreeNode(raw: unknown, depth = 0): SyntaxTreeData | null {
+    if (!raw || typeof raw !== "object") return null;
+    if (depth > 6) return null;
+    const node = raw as { label?: unknown; text?: unknown; zh?: unknown; children?: unknown };
+    const label = typeof node.label === "string" ? node.label.trim() : "";
+    const text = typeof node.text === "string" ? node.text : "";
+    const zh = typeof node.zh === "string" ? node.zh.trim() : "";
+    if (!label) return null;
+    const childrenRaw = Array.isArray(node.children) ? node.children : [];
+    const children = childrenRaw
+        .map((child) => normalizeSyntaxTreeNode(child, depth + 1))
+        .filter((child): child is SyntaxTreeData => Boolean(child));
+    const normalized: SyntaxTreeData = { label, text, children };
+    if (zh) normalized.zh = zh;
+    return normalized;
+}
+
+function extractSyntaxTree(content: string): SyntaxTreeExtraction {
+    const closedMatch = content.match(SYNTAX_TREE_CLOSED_FENCE);
+    if (closedMatch) {
+        const jsonText = closedMatch[1].trim();
+        try {
+            const parsed = JSON.parse(jsonText) as unknown;
+            const normalized = normalizeSyntaxTreeNode(parsed);
+            if (normalized) {
+                const cleaned = (content.slice(0, closedMatch.index ?? 0)
+                    + content.slice((closedMatch.index ?? 0) + closedMatch[0].length))
+                    .replace(/^\s+/, "");
+                return { cleanedContent: cleaned, tree: normalized, pending: false };
+            }
+        } catch {
+            // Fall through so the fence keeps rendering as a plain code block for debugging.
+        }
+        return { cleanedContent: content, tree: null, pending: false };
+    }
+
+    const openMatch = content.match(SYNTAX_TREE_OPEN_FENCE);
+    if (openMatch && typeof openMatch.index === "number") {
+        const before = content.slice(0, openMatch.index).replace(/\s+$/, "");
+        return { cleanedContent: before, tree: null, pending: true };
+    }
+
+    return { cleanedContent: content, tree: null, pending: false };
 }
 
 function withSectionDividers(content: string) {
@@ -205,7 +267,13 @@ function ExpandableTable({ children }: { children: ReactNode }) {
 }
 
 export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: AiRichMarkdownProps) {
-    const contentWithSectionDividers = withSectionDividers(withListTitleMarksAsBold(withMarkSyntax(content)));
+    const { cleanedContent, tree: syntaxTree, pending: syntaxTreePending } = useMemo(
+        () => extractSyntaxTree(content),
+        [content],
+    );
+    const contentWithSectionDividers = withSectionDividers(
+        withListTitleMarksAsBold(withMarkSyntax(cleanedContent)),
+    );
     const [activeInlineCode, setActiveInlineCode] = useState<string | null>(null);
     const [inlineCodeStatus, setInlineCodeStatus] = useState<"idle" | "saving" | "saved" | "exists" | "error">("idle");
 
@@ -237,6 +305,22 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
 
     return (
         <div className={cn("prose prose-sm max-w-none text-inherit leading-relaxed prose-p:my-2 prose-ol:my-3 prose-ol:space-y-2 prose-ul:my-3 prose-ul:space-y-1.5 marker:text-stone-400", className)}>
+            {syntaxTree ? (
+                <div className="not-prose mb-3 overflow-hidden rounded-2xl border border-indigo-100/70 bg-white/80 shadow-[0_8px_24px_rgba(79,70,229,0.06)] backdrop-blur-sm">
+                    <div className="flex items-center gap-2 border-b border-indigo-100/70 bg-gradient-to-r from-indigo-50/90 via-white/80 to-white px-4 py-2.5 text-indigo-700">
+                        <span aria-hidden className="text-[14px]">🌳</span>
+                        <span className="text-[11px] font-black uppercase tracking-[0.18em]">句子结构</span>
+                        <span className="ml-auto text-[10px] font-medium text-indigo-400/80">点击右上角放大</span>
+                    </div>
+                    <SyntaxTreeView data={syntaxTree} allowFullscreen height={360} />
+                </div>
+            ) : null}
+            {syntaxTreePending ? (
+                <div className="not-prose mb-3 flex items-center gap-2 rounded-2xl border border-indigo-100/70 bg-indigo-50/70 px-4 py-3 text-[12px] font-medium text-indigo-600">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    正在构建句子结构树…
+                </div>
+            ) : null}
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
@@ -378,6 +462,26 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
 
                         if (language === "mermaid") {
                             return <MermaidDiagram chart={codeText} />;
+                        }
+
+                        if (language === "syntax-tree") {
+                            try {
+                                const parsed = JSON.parse(codeText) as unknown;
+                                const normalized = normalizeSyntaxTreeNode(parsed);
+                                if (normalized) {
+                                    return (
+                                        <div className="not-prose my-3 overflow-hidden rounded-2xl border border-indigo-100/70 bg-white/80 shadow-[0_8px_24px_rgba(79,70,229,0.06)] backdrop-blur-sm">
+                                            <div className="flex items-center gap-2 border-b border-indigo-100/70 bg-gradient-to-r from-indigo-50/90 via-white/80 to-white px-4 py-2.5 text-indigo-700">
+                                                <span aria-hidden className="text-[14px]">🌳</span>
+                                                <span className="text-[11px] font-black uppercase tracking-[0.18em]">句子结构</span>
+                                            </div>
+                                            <SyntaxTreeView data={normalized} allowFullscreen height={360} />
+                                        </div>
+                                    );
+                                }
+                            } catch {
+                                // fall through to raw rendering below
+                            }
                         }
 
                         return (
