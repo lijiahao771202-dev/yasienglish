@@ -28,6 +28,8 @@ interface SyntaxTreeData {
     label: string;
     text: string;
     zh?: string;
+    role_zh?: string;
+    zh_order?: number;
     children?: SyntaxTreeData[];
 }
 
@@ -45,16 +47,22 @@ const SYNTAX_TREE_MAX_CHILDREN = 6;
 
 function normalizeSyntaxTreeNode(raw: unknown, depth = 0): SyntaxTreeData | null {
     if (!raw || typeof raw !== "object") return null;
-    const node = raw as { label?: unknown; text?: unknown; zh?: unknown; children?: unknown };
+    const node = raw as { label?: unknown; text?: unknown; zh?: unknown; role_zh?: unknown; zh_order?: unknown; children?: unknown };
     const label = typeof node.label === "string" ? node.label.trim() : "";
     const text = typeof node.text === "string" ? node.text : "";
     const zh = typeof node.zh === "string" ? node.zh.trim() : "";
+    const roleZh = typeof node.role_zh === "string" ? node.role_zh.trim() : "";
+    const zhOrder = typeof node.zh_order === "number" && Number.isFinite(node.zh_order) && node.zh_order > 0
+        ? Math.floor(node.zh_order)
+        : undefined;
     if (!label) return null;
 
     // At max depth, drop any further nesting the model produced.
     if (depth >= SYNTAX_TREE_MAX_DEPTH) {
         const leaf: SyntaxTreeData = { label, text };
         if (zh) leaf.zh = zh;
+        if (roleZh) leaf.role_zh = roleZh;
+        if (zhOrder !== undefined) leaf.zh_order = zhOrder;
         return leaf;
     }
 
@@ -65,6 +73,8 @@ function normalizeSyntaxTreeNode(raw: unknown, depth = 0): SyntaxTreeData | null
         .filter((child): child is SyntaxTreeData => Boolean(child));
     const normalized: SyntaxTreeData = { label, text };
     if (zh) normalized.zh = zh;
+    if (roleZh) normalized.role_zh = roleZh;
+    if (zhOrder !== undefined) normalized.zh_order = zhOrder;
     if (children.length > 0) normalized.children = children;
     return normalized;
 }

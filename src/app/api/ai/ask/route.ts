@@ -223,8 +223,10 @@ Syntax tree visualization policy:
 5. The fence body must be strict JSON that follows this TypeScript shape exactly:
      interface TreeNode {
        label: string;      // Simplified Chinese grammar role, e.g. "主句", "并列主句", "宾语从句", "定语从句", "时间状语", "目的状语", "主语", "谓语", "宾语", "分词状语", "介词短语"
+       role_zh?: string;   // OPTIONAL but STRONGLY preferred on every non-trunk node. A plain-Chinese "what this chunk is doing" tag for Chinese students, 2-8 characters. Examples: "哪一个？"（定语从句/定语）, "做了什么？"（宾语从句）, "也就是说…"（同位语从句）, "虽然…"（让步状语从句）, "为了…"（目的状语）, "什么时候"（时间状语）, "在哪里"（地点状语）, "为什么"（原因状语）, "如果…"（条件状语）, "怎么样地"（方式状语）, "同时/正在"（伴随分词状语）, "顺便插一句"（插入语）. Do NOT put a translation here — that's what zh is for. Omit on the root and on the 主语/谓语/宾语/表语 skeleton leaves (the UI fills those in automatically).
        text: string;       // The exact English span from the sentence, copied verbatim with original casing and punctuation. For the root, the full sentence.
        zh: string;         // Required. A short Simplified Chinese gloss of THIS chunk's contextual meaning, NOT a label restatement. 6-22 characters. For the root, give a faithful one-line Chinese paraphrase of the whole sentence. For sub-clauses and phrases, give the local meaning in this sentence (例如 "机器人的推理模型过于简单" / "无法理解上下文" / "为了 ... 而 ...").
+       zh_order?: number;  // OPTIONAL but STRONGLY preferred on EVERY direct child of the root (the "意群块"). 1-based position of this chunk in the natural Chinese translation. Use this whenever the Chinese version reorders chunks. Examples: a sentence-final 时间状语从句 / 原因状语从句 / 目的状语 / 让步状语从句 typically takes zh_order=1 in Chinese; a 定语从句 modifying a noun typically takes the noun's zh_order minus 0 (i.e. it wraps in front of the noun); a 宾语从句 stays after the predicate so usually keeps its English order. Do NOT use this on level-3 clause-internal nodes (主语/谓语/宾语 inside a 从句) — only on the visible "chunks" at level 2. The numbers must form a permutation of 1..N where N is the number of root-level chunks.
        children?: TreeNode[];
      }
 6. Root rules: the root \`label\` must be "主句" for a single-clause backbone or "并列主句" for coordinated main clauses; root \`text\` must be the exact full sentence; root \`zh\` is the whole-sentence Chinese paraphrase.
@@ -259,12 +261,12 @@ Syntax tree visualization policy:
           "text": "Although the plan looked simple, the team soon realized that execution would take months.",
           "zh": "尽管计划看起来很简单，团队很快就意识到执行会花上好几个月",
           "children": [
-            { "label": "让步状语从句", "text": "Although the plan looked simple", "zh": "尽管计划看起来很简单", "children": [] },
-            { "label": "主句", "text": "the team soon realized that execution would take months", "zh": "团队很快意识到执行会花上好几个月",
+            { "label": "让步状语从句", "role_zh": "虽然…", "text": "Although the plan looked simple", "zh": "尽管计划看起来很简单", "zh_order": 1, "children": [] },
+            { "label": "主句", "text": "the team soon realized that execution would take months", "zh": "团队很快意识到执行会花上好几个月", "zh_order": 2,
               "children": [
                 { "label": "主语", "text": "the team", "zh": "团队", "children": [] },
                 { "label": "谓语", "text": "realized", "zh": "意识到", "children": [] },
-                { "label": "宾语从句", "text": "that execution would take months", "zh": "执行会花上好几个月", "children": [] }
+                { "label": "宾语从句", "role_zh": "做了/说了什么", "text": "that execution would take months", "zh": "执行会花上好几个月", "children": [] }
               ]
             }
           ]
