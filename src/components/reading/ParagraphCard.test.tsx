@@ -180,6 +180,7 @@ vi.mock("@/lib/ask-thread", () => ({
     buildAskThreadPreview: () => "",
     decodeAskThreadPayload: decodeAskThreadPayloadMock,
     encodeAskThreadPayload: () => "",
+    isLikelyTransientAskFailure: () => false,
 }));
 
 vi.mock("@/lib/ask-vocab-memory", () => ({

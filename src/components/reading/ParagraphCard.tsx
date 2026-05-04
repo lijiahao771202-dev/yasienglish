@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useMemo, useState, useRef, useEffect, useCallba
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft, Layers } from "lucide-react";
+import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft, Layers, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
@@ -37,6 +37,7 @@ import {
     buildAskThreadPreview,
     decodeAskThreadPayload,
     encodeAskThreadPayload,
+    isLikelyTransientAskFailure,
     resolveAskAssistantMessageParts,
     type AskQaPair,
     type AskThreadMessage,
@@ -225,6 +226,9 @@ const normalizeAskThreadMessages = (raw: unknown): AskThreadMessage[] => {
             if ((role !== "user" && role !== "assistant") || typeof content !== "string") {
                 return null;
             }
+            const explicitIsError = (item as { isError?: unknown }).isError === true;
+            const inferredIsError = role === "assistant" && isLikelyTransientAskFailure(content);
+            const isError = explicitIsError || inferredIsError;
             return {
                 role,
                 content,
@@ -232,6 +236,7 @@ const normalizeAskThreadMessages = (raw: unknown): AskThreadMessage[] => {
                 ...(typeof reasoningContent === "string" && reasoningContent.trim()
                     ? { reasoningContent: reasoningContent.trim() }
                     : {}),
+                ...(isError ? { isError: true } : {}),
             } as AskThreadMessage;
         })
         .filter((item): item is AskThreadMessage => Boolean(item));
@@ -2420,12 +2425,13 @@ export function ParagraphCard({
         }
     }, [text]);
 
-    const handleAskAI = async (overrideQuestion?: string) => {
+    const handleAskAI = async (overrideQuestion?: string, overrideBaseMessages?: AskThreadMessage[]) => {
         const userMessage = (overrideQuestion ?? question).trim();
         if (!userMessage) return;
 
+        const baseMessages = overrideBaseMessages ?? messages;
         const optimisticMessages: AskThreadMessage[] = [
-            ...messages,
+            ...baseMessages,
             { role: "user", content: userMessage, createdAt: Date.now() },
         ];
         setMessages(optimisticMessages);
@@ -2473,7 +2479,7 @@ export function ParagraphCard({
                 const failureContent = resolveAskFailureMessage(payload);
                 const failureMessages: AskThreadMessage[] = [
                     ...optimisticMessages,
-                    { role: "assistant", content: failureContent, createdAt: Date.now() },
+                    { role: "assistant", content: failureContent, createdAt: Date.now(), isError: true },
                 ];
                 if (isAskRateLimitPayload(payload)) {
                     console.warn("Ask AI temporarily rate limited:", payload);
@@ -2535,7 +2541,7 @@ export function ParagraphCard({
             console.error(err);
             const failureMessages: AskThreadMessage[] = [
                 ...optimisticMessages,
-                { role: "assistant", content: "抱歉，出错了。请再试一次。", createdAt: Date.now() },
+                { role: "assistant", content: "抱歉，出错了。请再试一次。", createdAt: Date.now(), isError: true },
             ];
             setMessages(failureMessages);
             setStreamingContent("");
@@ -2663,7 +2669,7 @@ export function ParagraphCard({
                 const failureContent = resolveAskFailureMessage(payload);
                 const failureMessages: AskThreadMessage[] = [
                     ...optimisticMessages,
-                    { role: "assistant", content: failureContent, createdAt: Date.now() },
+                    { role: "assistant", content: failureContent, createdAt: Date.now(), isError: true },
                 ];
                 if (isAskRateLimitPayload(payload)) {
                     console.warn("Ask AI temporarily rate limited:", payload);
@@ -2725,7 +2731,7 @@ export function ParagraphCard({
             console.error(error);
             const failureMessages: AskThreadMessage[] = [
                 ...optimisticMessages,
-                { role: "assistant", content: "抱歉，出错了。请再试一次。", createdAt: Date.now() },
+                { role: "assistant", content: "抱歉，出错了。请再试一次。", createdAt: Date.now(), isError: true },
             ];
             setSelectionAskMessages(failureMessages);
             setSelectionAskStreamingContent("");
@@ -2738,6 +2744,36 @@ export function ParagraphCard({
         } finally {
             setIsSelectionAskLoading(false);
         }
+    };
+
+    const findLastUserIndex = (list: AskThreadMessage[]): number => {
+        for (let i = list.length - 1; i >= 0; i--) {
+            if (list[i].role === "user") return i;
+        }
+        return -1;
+    };
+
+    const handleRetryAskAI = async () => {
+        if (isAskLoading) return;
+        const lastUserIdx = findLastUserIndex(messages);
+        if (lastUserIdx < 0) return;
+        const lastUserMessage = messages[lastUserIdx].content;
+        const trimmed = messages.slice(0, lastUserIdx);
+        await handleAskAI(lastUserMessage, trimmed);
+    };
+
+    const handleRetrySelectionAskAI = async () => {
+        if (isSelectionAskLoading) return;
+        const lastUserIdx = findLastUserIndex(selectionAskMessages);
+        if (lastUserIdx < 0) return;
+        const lastUserMessage = selectionAskMessages[lastUserIdx].content;
+        const trimmed = selectionAskMessages.slice(0, lastUserIdx);
+        await handleSelectionAskAI(
+            lastUserMessage,
+            selectedText ?? undefined,
+            selectionOffsets ?? undefined,
+            trimmed,
+        );
     };
 
     // isSplitting ref to prevent race condition between onKeyDown (split) and onBlur (update)
@@ -3515,6 +3551,20 @@ export function ParagraphCard({
                                                             {pair.isStreaming && (
                                                                 <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse bg-indigo-500 align-middle" />
                                                             )}
+                                                            {pair.isError && !pair.isStreaming && index === qaPairs.length - 1 ? (
+                                                                <div className="mt-3 flex items-center gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => { void handleRetryAskAI(); }}
+                                                                        disabled={isAskLoading}
+                                                                        className="inline-flex items-center gap-1.5 rounded-full border border-rose-200/80 bg-rose-50 px-3 py-1.5 text-[12px] font-bold text-rose-600 transition-colors hover:bg-rose-100 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                    >
+                                                                        <RefreshCw className={cn("h-3.5 w-3.5", isAskLoading && "animate-spin")} />
+                                                                        重试
+                                                                    </button>
+                                                                    <span className="text-[11px] text-rose-400/80">网络或服务短时波动，重试通常即可恢复。</span>
+                                                                </div>
+                                                            ) : null}
                                                         </div>
                                                     ) : null}
                                                 </div>
@@ -3839,6 +3889,7 @@ export function ParagraphCard({
                     onAskAnswerModeChange={setAskAnswerMode}
                     isAskLoading={isSelectionAskLoading}
                     onAsk={() => void handleSelectionAskAI()}
+                    onRetryAsk={() => { void handleRetrySelectionAskAI(); }}
                     onOpenAskComposer={() => setSelectionPopupMode("ask")}
                     onReturnToSelection={() => setSelectionPopupMode("selection")}
                     askPanelDefaultOpenToken={selectionAskAutoOpenToken}
@@ -3988,6 +4039,8 @@ interface SelectionActionPopupProps {
     onAskAnswerModeChange: (mode: AskAnswerMode) => void;
     isAskLoading: boolean;
     onAsk: () => void;
+    /** Re-runs the last ask attempt when the most recent assistant reply was a transient error. */
+    onRetryAsk?: () => void;
     onOpenAskComposer: () => void;
     onReturnToSelection: () => void;
     askPanelDefaultOpenToken?: number;
@@ -4029,6 +4082,7 @@ export function SelectionActionPopup({
     onAskAnswerModeChange,
     isAskLoading,
     onAsk,
+    onRetryAsk,
     onOpenAskComposer,
     onReturnToSelection,
     askPanelDefaultOpenToken,
@@ -4480,6 +4534,20 @@ export function SelectionActionPopup({
                                                         {pair.answer
                                                             ? renderAskMarkdown(pair.answer)
                                                             : <div className="opacity-70">等待回答…</div>}
+                                                        {pair.isError && !pair.isStreaming && index === qaPairs.length - 1 && onRetryAsk ? (
+                                                            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => { onRetryAsk(); }}
+                                                                    disabled={isAskLoading}
+                                                                    className="inline-flex items-center gap-1.5 rounded-full border border-rose-200/80 bg-rose-50 px-3 py-1.5 text-[11px] font-bold text-rose-600 transition-colors hover:bg-rose-100 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                                                >
+                                                                    <RefreshCw className={cn("h-3.5 w-3.5", isAskLoading && "animate-spin")} />
+                                                                    重试
+                                                                </button>
+                                                                <span className="text-[10px] text-rose-400/80">网络或服务短时波动，重试通常即可恢复。</span>
+                                                            </div>
+                                                        ) : null}
                                                     </div>
                                                 ) : null}
                                             </div>

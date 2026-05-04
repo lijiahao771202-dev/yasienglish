@@ -228,18 +228,31 @@ Syntax tree visualization policy:
        children?: TreeNode[];
      }
 6. Root rules: the root \`label\` must be "主句" for a single-clause backbone or "并列主句" for coordinated main clauses; root \`text\` must be the exact full sentence; root \`zh\` is the whole-sentence Chinese paraphrase.
-7. Depth: keep total tree depth at 3 or fewer levels (root -> clause/constituent -> optional sub-constituent). Do not tokenize down to single function words like "the" or "of".
-8. Coverage: children of a node, concatenated in order, should approximately cover the parent's span. Do not skip major chunks (subject, predicate, important modifiers).
-9. Labels must be Simplified Chinese. Do not use English phrase tags like "NP", "VP", "PP".
-10. \`zh\` must always be present and non-empty for every node, including leaf nodes such as 主语/谓语/宾语. Keep it concise; do not repeat the English text inside \`zh\`. Do not use \`zh\` as a synonym dump.
-11. JSON hygiene: no comments, no trailing commas, no surrounding prose inside the fence. Use double quotes. Escape any double quote inside \`text\` or \`zh\` with \\". If the sentence contains no double quotes, no escaping is needed.
-12. Do not repeat the same tree in a later message unless the user asks for it again.
-13. Absolute prohibitions (applies to every reply, whether you use the fence or not):
+7. Depth — HARD CAP at 3 levels. Counting starts at the root (level 1). The deepest legal node is at level 3 (root -> child -> grandchild). NEVER emit great-grandchildren. If you feel a node "still has internal structure", explain that in the regular 句子主干 / 结构拆解 prose sections instead, not by adding another tree layer. Do not tokenize down to single function words like "the" or "of".
+8. Drill-down policy — only drill the syntactic backbone, never re-drill leaves:
+    a. Level 1 → level 2 decomposes the main clause(s) into their major constituents: subordinate clauses (从句), the main subject / predicate / object trunk, and any 插入语 / 状语. For a 并列主句, level 2 is each independent clause.
+    b. Level 2 → level 3 ONLY drills 从句 nodes whose \`text\` still contains a full predicate. The drill produces 引导词 + 主语 + 谓语 + 宾语(or 表语). Do NOT drill plain noun phrases / prepositional phrases / participial phrases at level 2 even if they are long — keep them as leaves with the whole span as their \`text\` and a clear Chinese gloss in \`zh\`. Long noun phrases get explained in the 结构拆解 prose section, not by adding tree nodes.
+    c. Short parentheticals such as "for instance", "however", "in fact", "of course" stay as flat leaf nodes labeled 插入语. Do not drill them.
+    d. If you find yourself wanting to introduce labels like "核心名词", "后置定语", "中心词", "介词宾语" — STOP. Those belong to a 4th level and are forbidden. The only legal labels at the deepest level are the clause-internal roles 引导词 / 主语 / 谓语 / 宾语 / 表语 / 状语 / 插入语 / 同位语.
+9. Quota — keep the tree small enough to scan in one glance:
+    a. Total node count (including the root) MUST be ≤ 12.
+    b. Any single parent MUST have ≤ 6 direct children.
+    c. If you have to choose between drilling and the quota, respect the quota and stop drilling. A clean 2-level tree beats a noisy 3-level one.
+10. Coverage: children of a node, concatenated in order, should approximately cover the parent's span. Do not skip major chunks (subject, predicate, important modifiers).
+11. Granularity balance — inside any single parent, sibling \`text\` spans should be of comparable information density. Concretely:
+    a. Avoid placing a 1-word sibling (e.g. bare "revealed") next to a 6+ word sibling unless that single word genuinely is the isolated predicate of the backbone.
+    b. If a predicate is a single finite verb with no informative modifiers, prefer merging it with its direct object into a 谓语+宾语 super-chunk at that level instead of creating a dangling single-verb leaf.
+    c. Every node's \`text\` should stay ≤ about 14 English words when it has siblings — if it is longer and represents a 从句, drill it; if it is a long phrase, keep it as a leaf and rely on \`zh\` to make the meaning clear.
+12. Labels must be Simplified Chinese. Do not use English phrase tags like "NP", "VP", "PP".
+13. \`zh\` must always be present and non-empty for every node, including leaf nodes such as 主语/谓语/宾语. Keep it concise; do not repeat the English text inside \`zh\`. Do not use \`zh\` as a synonym dump.
+14. JSON hygiene: no comments, no trailing commas, no surrounding prose inside the fence. Use double quotes. Escape any double quote inside \`text\` or \`zh\` with \\". If the sentence contains no double quotes, no escaping is needed.
+15. Do not repeat the same tree in a later message unless the user asks for it again.
+16. Absolute prohibitions (applies to every reply, whether you use the fence or not):
     a. Never draw a sentence-structure tree using box-drawing characters such as "├──", "└──", "│", "┌", "┐", "┘", "┼", or ASCII approximations like "|--", "\\--", "+--". If you catch yourself starting a line with any of these, stop and either emit a \`syntax-tree\` fence instead or drop the tree entirely.
     b. Never simulate a tree with a numbered or bulleted outline that indents clauses under clauses purely for visual hierarchy. A flat bullet/numbered list that explains chunks left-to-right is fine; a nested outline that mimics a tree shape is not.
     c. Never format a tree as repeated inline code chunks on separate lines (for example a list where every bullet body is a single \`backtick line\` that draws part of a tree).
     d. The ONLY acceptable way to show the visual hierarchy is the \`syntax-tree\` fence described above. If the sentence does not qualify for the fence, explain the structure in plain Chinese prose inside the regular teaching sections and do not try to replace the tree with another visual.
-14. Fence format example (follow shape, not content):
+17. Fence format example (follow shape, not content):
         \`\`\`syntax-tree
         {
           "label": "主句",
