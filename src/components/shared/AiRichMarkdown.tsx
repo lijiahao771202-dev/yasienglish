@@ -40,20 +40,32 @@ interface SyntaxTreeExtraction {
 const SYNTAX_TREE_CLOSED_FENCE = /```syntax-tree[^\n]*\n([\s\S]*?)\n```/;
 const SYNTAX_TREE_OPEN_FENCE = /```syntax-tree[^\n]*\n([\s\S]*)$/;
 
+const SYNTAX_TREE_MAX_DEPTH = 2; // root is depth 0; cap at depth 2 -> 3 levels total
+const SYNTAX_TREE_MAX_CHILDREN = 6;
+
 function normalizeSyntaxTreeNode(raw: unknown, depth = 0): SyntaxTreeData | null {
     if (!raw || typeof raw !== "object") return null;
-    if (depth > 6) return null;
     const node = raw as { label?: unknown; text?: unknown; zh?: unknown; children?: unknown };
     const label = typeof node.label === "string" ? node.label.trim() : "";
     const text = typeof node.text === "string" ? node.text : "";
     const zh = typeof node.zh === "string" ? node.zh.trim() : "";
     if (!label) return null;
+
+    // At max depth, drop any further nesting the model produced.
+    if (depth >= SYNTAX_TREE_MAX_DEPTH) {
+        const leaf: SyntaxTreeData = { label, text };
+        if (zh) leaf.zh = zh;
+        return leaf;
+    }
+
     const childrenRaw = Array.isArray(node.children) ? node.children : [];
     const children = childrenRaw
+        .slice(0, SYNTAX_TREE_MAX_CHILDREN)
         .map((child) => normalizeSyntaxTreeNode(child, depth + 1))
         .filter((child): child is SyntaxTreeData => Boolean(child));
-    const normalized: SyntaxTreeData = { label, text, children };
+    const normalized: SyntaxTreeData = { label, text };
     if (zh) normalized.zh = zh;
+    if (children.length > 0) normalized.children = children;
     return normalized;
 }
 

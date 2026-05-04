@@ -77,9 +77,47 @@ function getSemanticTheme(label: string, isRoot?: boolean) {
 
 // --- Custom Node Component ---
 
-const SyntaxNode = ({ data }: { data: { label: string; text: string; zh?: string; isRoot?: boolean; isDimmed?: boolean } }) => {
+type SyntaxNodeData = {
+    label: string;
+    text: string;
+    zh?: string;
+    isRoot?: boolean;
+    isLeaf?: boolean;
+    isDimmed?: boolean;
+};
+
+const SyntaxNode = ({ data }: { data: SyntaxNodeData }) => {
     const theme = getSemanticTheme(data.label, data.isRoot);
     const isDimmed = data.isDimmed;
+    const isLeaf = data.isLeaf && !data.isRoot;
+
+    if (isLeaf) {
+        return (
+            <div className={cn(
+                "relative w-[210px] rounded-xl border px-3 py-2.5 transition-all duration-300",
+                theme.bg, theme.border,
+                isDimmed ? "opacity-30" : "opacity-100 hover:-translate-y-0.5 hover:shadow-sm"
+            )}>
+                <Handle type="target" position={Position.Left} className="!opacity-0 !border-0 !w-3 !h-3 -ml-1.5" />
+                <div className="flex flex-col gap-0.5">
+                    <span className={cn("text-[10px] font-black tracking-[0.16em] uppercase", theme.badgeText)}>
+                        {data.label}
+                    </span>
+                    {data.text ? (
+                        <div className={cn("text-[12.5px] font-semibold leading-snug tracking-tight", theme.text)}>
+                            {data.text}
+                        </div>
+                    ) : null}
+                    {data.zh ? (
+                        <div className={cn("text-[11px] leading-snug", theme.zh)}>
+                            {data.zh}
+                        </div>
+                    ) : null}
+                </div>
+                <Handle type="source" position={Position.Right} className="!opacity-0 !border-0 !w-3 !h-3 -mr-1.5" />
+            </div>
+        );
+    }
 
     return (
         <div className={cn(
@@ -120,18 +158,24 @@ const nodeTypes = {
 
 // --- Layout Helper (Dagre) ---
 
-const nodeWidth = 280;
-const nodeHeight = 120;
+const TRUNK_SIZE = { width: 280, height: 132 };
+const LEAF_SIZE = { width: 210, height: 84 };
+
+function getNodeSize(node: Node) {
+    const isLeaf = Boolean((node.data as { isLeaf?: boolean })?.isLeaf) && !(node.data as { isRoot?: boolean })?.isRoot;
+    return isLeaf ? LEAF_SIZE : TRUNK_SIZE;
+}
 
 const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
     const dagreGraph = new dagre.graphlib.Graph();
     dagreGraph.setDefaultEdgeLabel(() => ({}));
 
-    // Switch to Left-to-Right layout
-    dagreGraph.setGraph({ rankdir: 'LR', nodesep: 30, ranksep: 80 });
+    // Switch to Left-to-Right layout. Slightly tighter siblings, more separation between ranks.
+    dagreGraph.setGraph({ rankdir: 'LR', nodesep: 20, ranksep: 110 });
 
     nodes.forEach((node) => {
-        dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+        const { width, height } = getNodeSize(node);
+        dagreGraph.setNode(node.id, { width, height });
     });
 
     edges.forEach((edge) => {
@@ -141,14 +185,15 @@ const getLayoutedElements = (nodes: Node[], edges: Edge[]) => {
     dagre.layout(dagreGraph);
 
     const layoutedNodes = nodes.map((node) => {
+        const { width, height } = getNodeSize(node);
         const nodeWithPosition = dagreGraph.node(node.id);
         return {
             ...node,
             targetPosition: Position.Left,
             sourcePosition: Position.Right,
             position: {
-                x: nodeWithPosition.x - nodeWidth / 2,
-                y: nodeWithPosition.y - nodeHeight / 2,
+                x: nodeWithPosition.x - width / 2,
+                y: nodeWithPosition.y - height / 2,
             },
         };
     });
@@ -185,6 +230,7 @@ function SyntaxTreeCanvas({
 
         const traverse = (node: TreeData, parentId?: string) => {
             const currentId = `node-${idCounter++}`;
+            const hasChildren = Array.isArray(node.children) && node.children.length > 0;
 
             iNodes.push({
                 id: currentId,
@@ -194,6 +240,7 @@ function SyntaxTreeCanvas({
                     text: node.text,
                     zh: node.zh,
                     isRoot: !parentId,
+                    isLeaf: !hasChildren,
                     isDimmed: false,
                 },
                 position: { x: 0, y: 0 },
@@ -206,12 +253,12 @@ function SyntaxTreeCanvas({
                     source: parentId,
                     target: currentId,
                     type: 'default',
-                    style: { stroke: '#cbd5e1', strokeWidth: 1.5 },
+                    style: { stroke: '#e4e4e7', strokeWidth: 1 },
                 });
             }
 
-            if (node.children) {
-                node.children.forEach((child) => traverse(child, currentId));
+            if (hasChildren) {
+                node.children!.forEach((child) => traverse(child, currentId));
             }
         };
 
@@ -254,9 +301,9 @@ function SyntaxTreeCanvas({
                 animated: isActive,
                 style: {
                     ...e.style,
-                    opacity: isActive ? 1 : 0.15,
-                    strokeWidth: isActive ? 2.5 : 1.5,
-                    stroke: isActive ? '#818cf8' : '#cbd5e1',
+                    opacity: isActive ? 1 : 0.18,
+                    strokeWidth: isActive ? 2 : 1,
+                    stroke: isActive ? '#818cf8' : '#e4e4e7',
                 },
                 zIndex: isActive ? 10 : 0
             };
@@ -274,8 +321,8 @@ function SyntaxTreeCanvas({
             style: {
                 ...e.style,
                 opacity: 1,
-                strokeWidth: 1.5,
-                stroke: '#cbd5e1',
+                strokeWidth: 1,
+                stroke: '#e4e4e7',
             },
             zIndex: 0
         })));

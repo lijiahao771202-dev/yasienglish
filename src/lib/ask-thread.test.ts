@@ -84,6 +84,26 @@ describe("ask-thread", () => {
         });
     });
 
+    it("preserves the isError flag through sanitize, encode/decode, and qa pair building", () => {
+        const sanitized = sanitizeAskThreadMessages([
+            { role: "user", content: "why?", createdAt: 1 },
+            { role: "assistant", content: "抱歉，出错了。请再试一次。", createdAt: 2, isError: true },
+        ]);
+        expect(sanitized[1].isError).toBe(true);
+
+        const raw = encodeAskThreadPayload(sanitized);
+        const decoded = decodeAskThreadPayload(raw);
+        expect(decoded.messages[1].isError).toBe(true);
+
+        const pairs = buildAskQaPairs(sanitized);
+        expect(pairs).toHaveLength(1);
+        expect(pairs[0]).toMatchObject({
+            question: "why?",
+            answer: "抱歉，出错了。请再试一次。",
+            isError: true,
+        });
+    });
+
     it("uses reasoning as the visible answer when providers never emit final content", () => {
         expect(resolveAskAssistantMessageParts("", "reasoning-only answer")).toEqual({
             content: "reasoning-only answer",

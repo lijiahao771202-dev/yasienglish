@@ -5,6 +5,13 @@ export interface AskThreadMessage {
     content: string;
     createdAt: number;
     reasoningContent?: string;
+    /**
+     * Set to true on assistant messages that came from a transient failure
+     * (network error, 5xx, rate limit). Used to decorate the bubble with a
+     * retry affordance. Does NOT apply to business-level errors such as
+     * insufficient reading coins, which require user action rather than a retry.
+     */
+    isError?: boolean;
 }
 
 export interface AskThreadPayload {
@@ -21,9 +28,27 @@ export interface AskQaPair {
     reasoningContent: string;
     isStreaming: boolean;
     isReasoningStreaming: boolean;
+    /** True when the assistant answer was a transient failure that can be retried. */
+    isError: boolean;
 }
 
 const ASK_THREAD_VERSION = 1 as const;
+
+const TRANSIENT_FAILURE_CONTENTS = new Set<string>([
+    "抱歉，出错了。请再试一次。",
+    "当前 AI 模型正在处理上一个请求，请稍等几秒再试。",
+]);
+
+/**
+ * Returns true when the assistant content matches a known transient-failure template.
+ * Used as a content-based fallback for legacy persisted messages that predate the
+ * explicit isError flag, so the retry button still shows up after an upgrade.
+ */
+export function isLikelyTransientAskFailure(content: string): boolean {
+    const trimmed = content.trim();
+    if (!trimmed) return false;
+    return TRANSIENT_FAILURE_CONTENTS.has(trimmed);
+}
 
 function isAskRole(raw: unknown): raw is AskRole {
     return raw === "user" || raw === "assistant";
@@ -39,16 +64,21 @@ export function sanitizeAskThreadMessages(input: unknown): AskThreadMessage[] {
             const content = (item as { content?: unknown }).content;
             const reasoningContent = (item as { reasoningContent?: unknown }).reasoningContent;
             const createdAt = Number((item as { createdAt?: unknown }).createdAt);
+            const explicitIsError = (item as { isError?: unknown }).isError === true;
             if (!isAskRole(role)) return null;
             if (typeof content !== "string" || !content.trim()) return null;
+            const trimmedContent = content.trim();
+            const inferredIsError = role === "assistant" && isLikelyTransientAskFailure(trimmedContent);
+            const isError = explicitIsError || inferredIsError;
 
             return {
                 role,
-                content: content.trim(),
+                content: trimmedContent,
                 createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Date.now(),
                 ...(typeof reasoningContent === "string" && reasoningContent.trim()
                     ? { reasoningContent: reasoningContent.trim() }
                     : {}),
+                ...(isError ? { isError: true } : {}),
             };
         })
         .filter((item): item is AskThreadMessage => item !== null);
@@ -101,7 +131,7 @@ export function encodeAskThreadPayload(messages: AskThreadMessage[], summary?: s
 }
 
 export function buildAskQaPairs(
-    messages: ReadonlyArray<{ role: AskRole; content: string; reasoningContent?: string }>,
+    messages: ReadonlyArray<{ role: AskRole; content: string; reasoningContent?: string; isError?: boolean }>,
     streamingContent = "",
     isLoading = false,
     streamingReasoningContent = "",
@@ -120,20 +150,24 @@ export function buildAskQaPairs(
                     reasoningContent: "",
                     isStreaming: false,
                     isReasoningStreaming: false,
+                    isError: false,
                 });
             }
             pendingQuestion = msg.content;
             continue;
         }
 
+        const assistantReasoning = "reasoningContent" in msg && typeof msg.reasoningContent === "string" ? msg.reasoningContent : "";
+        const assistantIsError = Boolean((msg as { isError?: boolean }).isError);
         if (pendingQuestion) {
             pairs.push({
                 id: idx++,
                 question: pendingQuestion,
                 answer: msg.content,
-                reasoningContent: "reasoningContent" in msg && typeof msg.reasoningContent === "string" ? msg.reasoningContent : "",
+                reasoningContent: assistantReasoning,
                 isStreaming: false,
                 isReasoningStreaming: false,
+                isError: assistantIsError,
             });
             pendingQuestion = null;
         } else {
@@ -141,9 +175,10 @@ export function buildAskQaPairs(
                 id: idx++,
                 question: "",
                 answer: msg.content,
-                reasoningContent: "reasoningContent" in msg && typeof msg.reasoningContent === "string" ? msg.reasoningContent : "",
+                reasoningContent: assistantReasoning,
                 isStreaming: false,
                 isReasoningStreaming: false,
+                isError: assistantIsError,
             });
         }
     }
@@ -156,6 +191,7 @@ export function buildAskQaPairs(
             reasoningContent: streamingReasoningContent,
             isStreaming: isLoading || Boolean(streamingContent),
             isReasoningStreaming: isLoading && Boolean(streamingReasoningContent) && !streamingContent,
+            isError: false,
         });
     } else if (streamingContent) {
         pairs.push({
@@ -165,6 +201,7 @@ export function buildAskQaPairs(
             reasoningContent: streamingReasoningContent,
             isStreaming: true,
             isReasoningStreaming: false,
+            isError: false,
         });
     }
 
