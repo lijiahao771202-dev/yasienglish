@@ -888,6 +888,11 @@ function ReadingPageContent() {
             ? cachedArticle.timestamp
             : Date.now();
 
+        // Re-check tombstone right before cloud write. The function opened with this check,
+        // but several awaits ran since then; if the user deleted the article in that window,
+        // markArticleAsReadCloud would re-insert into db.read_articles and enqueue an outbox
+        // upsert that later resurrects the article after the delete is flushed.
+        if (deletedArticleUrlsRef.current.has(articleUrl)) return;
         await markArticleAsReadCloud(articleUrl, {
             articleKey,
             articleTitle: targetArticle.title,
