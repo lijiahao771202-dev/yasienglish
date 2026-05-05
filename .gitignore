@@ -64,3 +64,7 @@ public/models/
 scratch.*
 test_github_*.mjs
 test_models.js
+
+# local caches and runtime logs
+/.npm-cache/
+tts_error.log
