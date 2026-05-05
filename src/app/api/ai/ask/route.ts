@@ -190,7 +190,9 @@ General instructions:
 Visual rendering capabilities:
 1. Do not use tables as the default way to break down a sentence. Use prose, bullets, and numbered chunks for the main teaching flow.
 2. Use tables only for compact side-by-side comparison or an optional final summary. Keep table cells short.
-3. Do not output mindmap, Mermaid, flowchart, graph, or diagram fences. The only visual diagram fence allowed is the \`syntax-tree\` fence described in the "Syntax tree visualization" policy; use it strictly under those rules.
+3. ${teachingGoal === "sentence_coach"
+            ? "Do not output mindmap, Mermaid, flowchart, graph, or diagram fences. The only visual diagram fence allowed is the `syntax-tree` fence described in the \"Syntax tree visualization\" policy; use it strictly under those rules."
+            : "Do not output any visual diagram fences (mindmap, Mermaid, flowchart, graph, diagram, syntax-tree). Explain structure with plain prose."}
 4. Optional final summary: add ## 总结 only when it genuinely helps the learner review the answer. Do not add ## 总结 by default.
 5. Use a compact Markdown table for the summary only when it genuinely improves scanning; otherwise summarize with 1-3 bullets.
 6. IMPORTANT: if you use a table, output a real Markdown table with one row per line and a blank line before and after it.
@@ -214,7 +216,10 @@ Visual emphasis policy:
 15. For verbs, show the exact predicate form from the sentence, not a dictionary form.
 16. Do not mark or bold Chinese labels such as 语法功能, 语境意思, 搭配解析, 关联记忆, 主语, 谓语, 宾语.
 17. Do not mark a pronoun or generic subject by itself unless it is the actual point being taught.
+`;
 
+    // Heavy ~4KB block. Only included for sentence_coach mode to keep TTFT low for general questions.
+    const sentenceCoachAddenda = `
 Syntax tree visualization policy:
 1. This policy only applies when Teaching Goal is "sentence_coach". In any other goal, never emit a \`syntax-tree\` fence.
 2. Decide whether the highlighted sentence is structurally complex. A sentence counts as complex if it has AT LEAST ONE of: a subordinate clause (宾语从句/定语从句/状语从句/同位语从句/主语从句/表语从句), a non-finite structure doing a real grammar job (分词短语、动名词短语、不定式短语作主语/宾语/状语/定语), inversion, cleft ("It is ... that/who ..."), fronted adverbial longer than one short phrase, coordinated independent clauses joined by ",", ";", "and", "but", "or", "so", "yet", parallel structures joined by "not only... but also", "either... or", "neither... nor", "both... and", or a correlative comparative ("the more ..., the more ..."). A plain SVO sentence with a single short adverbial does NOT count as complex.
@@ -378,7 +383,7 @@ Response Profile: "${responseProfile}"
 Teaching Goal: "${teachingGoal}"
 
 ${commonInstructions}
-${profileInstructions}`;
+${profileInstructions}${teachingGoal === "sentence_coach" ? `\n${sentenceCoachAddenda}` : ""}`;
 }
 
 export async function POST(req: Request) {
@@ -480,19 +485,28 @@ export async function POST(req: Request) {
             chatMessages.push({ role: "user", content: normalizedQuestion });
         }
 
-        const stream = await deepseek.chat.completions.create({
-            messages: chatMessages,
-            model: "deepseek-chat",
-            temperature: 0.4,
-            max_tokens: maxTokens,
-            stream: true, // Enable streaming
-        });
-
-        // Create a ReadableStream for SSE
+        // Create a ReadableStream for SSE.
+        // IMPORTANT: We do NOT await deepseek.chat.completions.create() out here. Doing so
+        // would force the HTTP response to wait for DeepSeek's TTFT (which can be 2-8s for
+        // a long sentence-coach prompt) before any byte is sent to the client. By moving the
+        // model call inside the stream's start() callback, the HTTP response returns to the
+        // browser immediately and we can send a synthetic "ready" event so the chat UI can
+        // flip from "等待回答..." to "正在生成..." within ~50ms.
         const encoder = new TextEncoder();
         const readable = new ReadableStream({
             async start(controller) {
                 try {
+                    // Synthetic ready signal: lets the client know the request is in flight.
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ ready: true })}\n\n`));
+
+                    const stream = await deepseek.chat.completions.create({
+                        messages: chatMessages,
+                        model: "deepseek-chat",
+                        temperature: 0.4,
+                        max_tokens: maxTokens,
+                        stream: true,
+                    });
+
                     let streamedContent = "";
                     let streamedReasoningContent = "";
                     const pumpStreamToClient = async (

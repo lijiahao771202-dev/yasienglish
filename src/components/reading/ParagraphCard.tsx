@@ -4533,7 +4533,12 @@ export function SelectionActionPopup({
                                                         <AskReasoningBlock content={pair.reasoningContent} isStreaming={pair.isReasoningStreaming} />
                                                         {pair.answer
                                                             ? renderAskMarkdown(pair.answer)
-                                                            : <div className="opacity-70">等待回答…</div>}
+                                                            : (
+                                                                <div className="flex items-center gap-2 opacity-70">
+                                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                    <span>正在思考…</span>
+                                                                </div>
+                                                            )}
                                                         {pair.isError && !pair.isStreaming && index === qaPairs.length - 1 && onRetryAsk ? (
                                                             <div className="mt-2.5 flex flex-wrap items-center gap-2">
                                                                 <button
