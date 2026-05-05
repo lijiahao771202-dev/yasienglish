@@ -131,8 +131,8 @@ function resolveAskTeachingGoal(question: string, selection: string): AskTeachin
     );
 
     const hasSentenceCoachSignal = (
-        /(这句话|这个句子|整句|句子|翻译这句|翻译这句话|语法结构|词汇搭配|拆解|拆开|揉碎|逐词|逐句|主干)/u.test(normalizedQuestion)
-        || /(translate|break down|grammar|structure|collocation|sentence|clause|parse|main clause)/i.test(lowerQuestion)
+        /(这句话|这个句子|整句|句子|翻译这句|翻译这句话|语法结构|语法树|结构树|句法树|树状|词汇搭配|拆解|拆开|揉碎|逐词|逐句|主干)/u.test(normalizedQuestion)
+        || /(translate|break down|grammar|structure|collocation|sentence|clause|parse|main clause|syntax tree|parse tree)/i.test(lowerQuestion)
     );
 
     const hasMeaningSignal = (

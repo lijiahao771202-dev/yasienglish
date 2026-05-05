@@ -158,6 +158,18 @@ interface SentenceAudioCacheEntry {
 type SelectionPopupMode = "selection" | "ask" | "ask-replay";
 type AskAnswerMode = "default" | "short" | "detailed";
 
+interface PinnedAskSnapshot {
+    rect: DOMRect;
+    text: string;
+    offsets: { startOffset: number; endOffset: number };
+    mode: "ask" | "ask-replay";
+    messages: AskThreadMessage[];
+    streamingContent: string;
+    streamingReasoningContent: string;
+    isLoading: boolean;
+    autoOpenToken: number;
+}
+
 function resolveAskFailureMessage(payload: unknown) {
     if (payload && typeof payload === "object") {
         const record = payload as { errorCode?: unknown; error?: unknown };
@@ -464,6 +476,7 @@ export function ParagraphCard({
     const [isSelectionAskLoading, setIsSelectionAskLoading] = useState(false);
     const [selectionAskAutoOpenToken, setSelectionAskAutoOpenToken] = useState(0);
     const [selectionPopupMode, setSelectionPopupMode] = useState<SelectionPopupMode>("selection");
+    const [pinnedAsk, setPinnedAsk] = useState<PinnedAskSnapshot | null>(null);
     const [phraseAnalysis, setPhraseAnalysis] = useState<PhraseAnalysisResult | null>(null);
     const [isAnalyzingPhrase, setIsAnalyzingPhrase] = useState(false);
     const [isSavingReadingNote, setIsSavingReadingNote] = useState(false);
@@ -888,16 +901,16 @@ export function ParagraphCard({
     }, [showGrammar]);
 
     useEffect(() => {
-        const shouldDockSelectionAsk = Boolean(selectionRect) && (
+        const shouldDockSelectionAsk = (Boolean(selectionRect) && (
             selectionPopupMode === "ask" || selectionPopupMode === "ask-replay"
-        );
+        )) || Boolean(pinnedAsk);
         dispatchReadSelectionAskDockEvent(shouldDockSelectionAsk);
         return () => {
             if (shouldDockSelectionAsk) {
                 dispatchReadSelectionAskDockEvent(false);
             }
         };
-    }, [selectionPopupMode, selectionRect]);
+    }, [selectionPopupMode, selectionRect, pinnedAsk]);
 
     useEffect(() => {
         if (!showGrammar) {
@@ -1969,6 +1982,28 @@ export function ParagraphCard({
         const offsets = getSelectionOffsets(range);
         if (!offsets) return;
         const rect = range.getBoundingClientRect();
+
+        // Pin the currently open AskAI panel (if any) so it stays visible
+        // while the user works with the new selection.
+        if (
+            isSelectionAskDockOpen
+            && selectionRect
+            && selectedText
+            && selectionOffsets
+            && (selectionPopupMode === "ask" || selectionPopupMode === "ask-replay")
+        ) {
+            setPinnedAsk({
+                rect: selectionRect,
+                text: selectedText,
+                offsets: selectionOffsets,
+                mode: selectionPopupMode,
+                messages: selectionAskMessages,
+                streamingContent: selectionAskStreamingContent,
+                streamingReasoningContent: selectionAskStreamingReasoningContent,
+                isLoading: false,
+                autoOpenToken: selectionAskAutoOpenToken,
+            });
+        }
 
         setSelectionRect(rect);
         setSelectedText(selectedStr);
@@ -3895,6 +3930,57 @@ export function ParagraphCard({
                     askPanelDefaultOpenToken={selectionAskAutoOpenToken}
                     renderAskMarkdown={renderAskMarkdown}
                     onClose={closePhraseAnalysis}
+                />,
+                document.body
+            )}
+
+            {pinnedAsk && typeof document !== 'undefined' && createPortal(
+                <SelectionActionPopup
+                    key={`pinned-ask-popup:${pinnedAsk.offsets.startOffset}:${pinnedAsk.offsets.endOffset}:${pinnedAsk.autoOpenToken}`}
+                    selectionRect={pinnedAsk.rect}
+                    selectedText={pinnedAsk.text}
+                    popupMode={pinnedAsk.mode}
+                    phraseAnalysis={null}
+                    isAnalyzingPhrase={false}
+                    isSavingReadingNote={false}
+                    canCreateReadingNote={false}
+                    noteLayerHidden={showGrammar}
+                    isNoteComposerOpen={false}
+                    isEditingNote={false}
+                    noteDraft=""
+                    onNoteDraftChange={() => {}}
+                    onOpenNoteComposer={() => {}}
+                    onCancelNoteComposer={() => {}}
+                    onCreateHighlight={() => {}}
+                    onCreateUnderline={() => {}}
+                    canDeleteHighlight={false}
+                    canDeleteUnderline={false}
+                    canDeleteNote={false}
+                    onEditNote={() => {}}
+                    onDeleteHighlight={() => {}}
+                    onDeleteUnderline={() => {}}
+                    onDeleteNote={() => {}}
+                    onSaveNote={() => {}}
+                    onAnalyze={() => {}}
+                    onLookupWord={() => {}}
+                    qaPairs={buildAskQaPairs(
+                        pinnedAsk.messages,
+                        pinnedAsk.streamingContent,
+                        pinnedAsk.isLoading,
+                        pinnedAsk.streamingReasoningContent,
+                    )}
+                    question=""
+                    onQuestionChange={() => {}}
+                    askAnswerMode={askAnswerMode}
+                    onAskAnswerModeChange={setAskAnswerMode}
+                    isAskLoading={false}
+                    onAsk={() => {}}
+                    onRetryAsk={() => {}}
+                    onOpenAskComposer={() => {}}
+                    onReturnToSelection={() => setPinnedAsk(null)}
+                    askPanelDefaultOpenToken={pinnedAsk.autoOpenToken}
+                    renderAskMarkdown={renderAskMarkdown}
+                    onClose={() => setPinnedAsk(null)}
                 />,
                 document.body
             )}
