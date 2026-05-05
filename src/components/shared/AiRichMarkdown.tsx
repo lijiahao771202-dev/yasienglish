@@ -428,7 +428,7 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
                                     setActiveInlineCode(isActive ? null : codeText);
                                     setInlineCodeStatus("idle");
                                 }}
-                                className="text-[0.95em] font-medium text-pink-600"
+                                className="text-[0.95em] font-medium text-sky-600"
                             >
                                 {children}
                             </code>
@@ -463,7 +463,7 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
                 }
 
                 return (
-                    <code className="text-[0.95em] font-medium text-pink-600">
+                    <code className="text-[0.95em] font-medium text-sky-600">
                         {children}
                     </code>
                 );

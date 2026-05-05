@@ -1060,96 +1060,87 @@ body {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.32);
   background:
-    radial-gradient(720px 360px at 22% 4%, rgba(255, 255, 255, 0.86), transparent 58%),
-    radial-gradient(620px 360px at 86% 12%, rgba(203, 229, 255, 0.48), transparent 62%),
-    radial-gradient(560px 420px at 78% 100%, rgba(255, 224, 207, 0.42), transparent 64%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.54) 0%, rgba(236, 246, 255, 0.34) 50%, rgba(255, 247, 240, 0.38) 100%);
-  backdrop-filter: blur(38px) saturate(176%) contrast(112%);
-  -webkit-backdrop-filter: blur(38px) saturate(176%) contrast(112%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.12) 100%);
+  backdrop-filter: blur(28px) saturate(140%);
+  -webkit-backdrop-filter: blur(28px) saturate(140%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.82),
-    inset 0 -1px 0 rgba(170, 192, 218, 0.24),
-    inset 0 26px 44px -34px rgba(255, 255, 255, 0.86),
-    inset 0 -24px 48px -38px rgba(168, 197, 230, 0.46),
-    0 24px 68px -40px rgba(15, 23, 42, 0.42),
-    0 5px 18px -12px rgba(15, 23, 42, 0.24);
-  color: #0f172a;
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 18px 48px -28px rgba(15, 23, 42, 0.45);
+  color: inherit;
   transform: translate3d(0, 0, 0);
 }
 
 .reading-focus-liquid-card::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background:
-    linear-gradient(105deg, transparent 8%, rgba(255, 255, 255, 0.24) 30%, transparent 54%),
-    radial-gradient(80% 54% at 50% 0%, rgba(255, 255, 255, 0.34), transparent 62%),
-    radial-gradient(46% 52% at 92% 12%, rgba(185, 220, 255, 0.26), transparent 70%);
-  opacity: 0.74;
+  content: none;
 }
 
 .reading-focus-liquid-card::after {
-  content: "";
-  position: absolute;
-  inset: 1px;
-  border-radius: inherit;
-  pointer-events: none;
-  border: 1px solid rgba(255, 255, 255, 0.46);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
-    inset 0 0 42px rgba(255, 255, 255, 0.18);
+  content: none;
 }
 
 .reading-focus-liquid-close {
-  background:
-    radial-gradient(circle at 30% 18%, rgba(255, 255, 255, 0.98), transparent 48%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.74), rgba(226, 238, 250, 0.42));
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.78),
-    inset 0 -1px 0 rgba(148, 163, 184, 0.22),
-    0 10px 22px -14px rgba(15, 23, 42, 0.38),
-    0 4px 0 rgba(148, 144, 132, 0.26);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 10px 22px -14px rgba(15, 23, 42, 0.4);
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .reading-focus-liquid-close:hover {
-  border-color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.26);
+  border-color: rgba(255, 255, 255, 0.5);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    inset 0 -1px 0 rgba(148, 163, 184, 0.2),
-    0 14px 28px -16px rgba(59, 130, 246, 0.35),
-    0 4px 0 rgba(148, 144, 132, 0.24);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.34),
+    0 14px 28px -16px rgba(15, 23, 42, 0.4);
 }
 
 .reading-focus-liquid-toolbar {
-  border: 1px solid rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 999px;
-  background:
-    radial-gradient(420px 80px at 18% 0%, rgba(255, 255, 255, 0.72), transparent 70%),
-    linear-gradient(145deg, rgba(255, 255, 255, 0.44), rgba(229, 239, 249, 0.28));
-  backdrop-filter: blur(26px) saturate(170%);
-  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.74),
-    inset 0 -1px 0 rgba(148, 163, 184, 0.18),
-    0 16px 34px -26px rgba(15, 23, 42, 0.36);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 12px 28px -22px rgba(15, 23, 42, 0.4);
 }
 
 .reading-focus-liquid-toolbar button {
   min-height: 2.15rem;
   border-radius: 999px;
   padding: 0 0.75rem;
-  color: rgba(30, 41, 59, 0.66);
+  color: var(--theme-text, rgba(15, 23, 42, 0.78));
 }
 
 .reading-focus-liquid-toolbar button:hover:not(:disabled) {
-  color: rgba(15, 23, 42, 0.92);
-  background: rgba(255, 255, 255, 0.34);
+  color: var(--theme-text, rgba(15, 23, 42, 0.92));
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* Ask AI / Selection popup — outer chrome stays theme-aware (adapts to user theme),
+   but the actual AI answer body is rendered on a stable light "reading canvas" (similar to
+   the thought-process block) because `AiRichMarkdown` uses hardcoded stone/indigo text colours
+   that only read well on a light surface. */
+.ask-ai-panel {
+  background: var(--theme-base-bg);
+  color: var(--theme-text);
+}
+
+.ask-ai-answer-canvas {
+  background: #ffffff;
+  color: #1c1917;
+  border: 1px solid rgba(231, 229, 228, 0.9);
+  border-radius: 14px;
+  padding: 0.85rem 0.95rem;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
+}
+
+.ask-ai-answer-canvas a {
+  color: #4f46e5;
 }
 
 html[data-hydrated="0"] .liquid-glass-panel,

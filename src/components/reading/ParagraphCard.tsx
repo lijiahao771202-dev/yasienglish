@@ -419,7 +419,7 @@ export function ParagraphCard({
     // Ask AI State - Multi-turn chat with streaming
     const [isAskOpen, setIsAskOpen] = useState(false);
     const [question, setQuestion] = useState("");
-    const [askAnswerMode, setAskAnswerMode] = useState<AskAnswerMode>("default");
+    const [askAnswerMode, setAskAnswerMode] = useState<AskAnswerMode>("detailed");
     const [messages, setMessages] = useState<AskThreadMessage[]>([]);
     const [isAskLoading, setIsAskLoading] = useState(false);
     const [streamingContent, setStreamingContent] = useState("");
@@ -1502,8 +1502,8 @@ export function ParagraphCard({
                             {i + 1}
                         </div>
 
-                        {/* Content Block */}
-                        <div data-segment-content="true" className="leading-[1.7] text-[15px] tracking-[0.015em] relative flex-1 text-theme-text">
+                        {/* Content Block — inherit font size from the outer paragraph (fontSizeClass) */}
+                        <div data-segment-content="true" className="leading-[1.7] tracking-[0.015em] relative flex-1 text-theme-text">
                             {renderTextWithReadingMarks(unit.text, undefined, unit.start, locateMarkerRange)}
                         </div>
                     </motion.div>
@@ -3522,9 +3522,9 @@ export function ParagraphCard({
                             transition={{ duration: 0.2, ease: "easeOut" }}
                             className="mt-3 overflow-hidden origin-top"
                         >
-                            <div className="overflow-hidden rounded-2xl border border-theme-border/20 bg-theme-base-bg shadow-[0_2px_8px_rgba(0,0,0,0.04)] ring-1 ring-theme-border/5">
-                                <div className="flex items-center justify-between border-b border-theme-border/10 bg-theme-surface/80 px-4 py-2.5">
-                                    <div className="flex items-center gap-2 text-theme-text">
+                            <div className="overflow-hidden rounded-2xl border border-stone-200/70 bg-white text-stone-800 shadow-[0_8px_32px_rgba(15,23,42,0.12)] ring-1 ring-stone-200/60">
+                                <div className="flex items-center justify-between border-b border-stone-200/70 bg-stone-50/80 px-4 py-2.5">
+                                    <div className="flex items-center gap-2 text-stone-800">
                                         <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
                                         <span className="text-xs font-bold tracking-wide">Yasi AI</span>
                                     </div>
@@ -3533,11 +3533,11 @@ export function ParagraphCard({
                                     </div>
                                 </div>
 
-                                <div className="max-h-80 min-h-[160px] overflow-y-auto space-y-4 p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-theme-border/30">
+                                <div className="max-h-80 min-h-[160px] overflow-y-auto space-y-4 p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-stone-300">
                                     {qaPairs.length === 0 ? (
-                                        <div className="flex h-full flex-col items-center justify-center space-y-2 py-6 text-center text-theme-text-muted">
-                                            <div className="rounded-full border border-theme-border/20 bg-theme-surface p-2.5">
-                                                <MessageCircleQuestion className="h-5 w-5 text-theme-text-muted/50" />
+                                        <div className="flex h-full flex-col items-center justify-center space-y-2 py-6 text-center text-stone-500">
+                                            <div className="rounded-full border border-stone-200 bg-stone-50 p-2.5">
+                                                <MessageCircleQuestion className="h-5 w-5 text-stone-400" />
                                             </div>
                                             <p className="text-[12px]">向 AI 自由提问当前段落内容<br/>支持 Markdown 高级排版输出</p>
                                         </div>
@@ -3546,7 +3546,7 @@ export function ParagraphCard({
                                             {qaPairs.map((pair, index) => {
                                                 const isExpanded = expandedAskQaIds.includes(pair.id);
                                                 return (
-                                                <div key={pair.id} className="mb-4 overflow-hidden rounded-2xl border border-theme-border/20 bg-theme-base-bg shadow-[0_2px_8px_rgba(0,0,0,0.04)] ring-1 ring-theme-border/5">
+                                                <div key={pair.id} className="mb-4 overflow-hidden rounded-2xl border border-stone-200/70 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)] ring-1 ring-stone-200/40">
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -3556,13 +3556,13 @@ export function ParagraphCard({
                                                                     : [...prev, pair.id]
                                                             )
                                                         }}
-                                                        className="flex w-full items-start justify-between gap-3 border-b border-theme-border/10 bg-theme-surface/50 px-4 py-3.5 text-left transition-colors hover:bg-theme-surface"
+                                                        className="flex w-full items-start justify-between gap-3 border-b border-stone-200/60 bg-stone-50/60 px-4 py-3.5 text-left transition-colors hover:bg-stone-100"
                                                     >
                                                         <div className="flex items-start gap-2">
                                                             <div className="mt-0.5 shrink-0 rounded-full bg-indigo-500/10 p-1 text-indigo-500">
                                                                 <MessageCircleQuestion className="h-3.5 w-3.5" />
                                                             </div>
-                                                            <div className={cn("text-[13px] font-bold leading-relaxed text-theme-text transition-all", !isExpanded && "line-clamp-2 text-theme-text-muted")}>
+                                                            <div className={cn("text-[13px] font-bold leading-relaxed text-stone-800 transition-all", !isExpanded && "line-clamp-2 text-stone-500")}>
                                                                 {pair.question || `问题 ${index + 1}`}
                                                             </div>
                                                         </div>
@@ -3571,10 +3571,10 @@ export function ParagraphCard({
                                                         </div>
                                                     </button>
                                                     {isExpanded ? (
-                                                        <div className="px-5 py-4 text-[13px] leading-relaxed text-theme-text">
+                                                        <div className="px-5 py-4 text-[13px] leading-relaxed text-stone-800">
                                                             <AskReasoningBlock content={pair.reasoningContent} isStreaming={pair.isReasoningStreaming} />
                                                             {pair.answer ? (
-                                                                <div className="prose prose-sm prose-stone max-w-none text-theme-text">
+                                                                <div className="prose prose-sm prose-stone max-w-none text-stone-800">
                                                                     {renderAskMarkdown(pair.answer)}
                                                                 </div>
                                                             ) : (
@@ -3608,33 +3608,33 @@ export function ParagraphCard({
                                     )}
                                 </div>
 
-                                <div className="border-t border-theme-border/10 bg-theme-base-bg p-3">
+                                <div className="border-t border-stone-200/70 bg-white p-3">
                                     <div className="mb-3 flex items-center justify-between gap-2">
                                         <div className="flex flex-wrap gap-1.5">
                                             <button
                                                 onClick={() => handleAskAI("帮我分析这段话的语法结构")}
                                                 disabled={isAskLoading}
-                                                className="rounded-lg border border-theme-border/20 bg-theme-surface px-2.5 py-1 text-[11px] font-medium text-theme-text-muted transition-colors hover:bg-theme-active-hover hover:text-theme-text disabled:opacity-50"
+                                                className="rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-medium text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:opacity-50"
                                             >
                                                 🔍 语法分析
                                             </button>
                                             <button
                                                 onClick={() => handleAskAI("用一句话总结这段话的大意")}
                                                 disabled={isAskLoading}
-                                                className="rounded-lg border border-theme-border/20 bg-theme-surface px-2.5 py-1 text-[11px] font-medium text-theme-text-muted transition-colors hover:bg-theme-active-hover hover:text-theme-text disabled:opacity-50"
+                                                className="rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-medium text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:opacity-50"
                                             >
                                                 📝 总结大意
                                             </button>
                                             <button
                                                 onClick={() => handleAskAI("列出这段话中的高级词汇并解释")}
                                                 disabled={isAskLoading}
-                                                className="rounded-lg border border-theme-border/20 bg-theme-surface px-2.5 py-1 text-[11px] font-medium text-theme-text-muted transition-colors hover:bg-theme-active-hover hover:text-theme-text disabled:opacity-50"
+                                                className="rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-medium text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:opacity-50"
                                             >
                                                 ✨ 难词解析
                                             </button>
                                         </div>
 
-                                        <div className="shrink-0 flex items-center rounded-lg border border-theme-border/20 bg-theme-surface p-0.5">
+                                        <div className="shrink-0 flex items-center rounded-lg border border-stone-200 bg-stone-50 p-0.5">
                                             {ASK_ANSWER_MODE_OPTIONS.map((option) => (
                                                 <button
                                                     key={`ask-mode-paragraph-${option.mode}`}
@@ -3644,8 +3644,8 @@ export function ParagraphCard({
                                                     className={cn(
                                                         "rounded-md px-2 py-0.5 text-[10px] font-bold transition-all",
                                                         askAnswerMode === option.mode
-                                                            ? "bg-theme-active-hover text-indigo-600 shadow-sm border border-theme-border/10"
-                                                            : "text-theme-text-muted hover:text-theme-text",
+                                                            ? "bg-white text-indigo-600 shadow-sm border border-stone-200"
+                                                            : "text-stone-500 hover:text-stone-800",
                                                     )}
                                                 >
                                                     {option.label}
@@ -3661,12 +3661,12 @@ export function ParagraphCard({
                                             onChange={(e) => setQuestion(e.target.value)}
                                             onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleAskAI()}
                                             placeholder={selectedText ? "针对选中文本提问..." : "输入你的问题，按回车发送..."}
-                                            className="w-full rounded-xl border border-theme-border/30 bg-theme-surface/70 py-2.5 pl-3.5 pr-10 text-[13px] text-theme-text placeholder:text-theme-text-muted/60 transition-colors focus:border-indigo-400 focus:bg-theme-base-bg focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                            className="w-full rounded-xl border border-stone-200 bg-stone-50 py-2.5 pl-3.5 pr-10 text-[13px] text-stone-900 placeholder:text-stone-400 transition-colors focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
                                         />
                                         <button
                                             onClick={() => handleAskAI()}
                                             disabled={isAskLoading || !question.trim()}
-                                            className="absolute right-1.5 top-1/2 flex -translate-y-1/2 h-7 w-7 items-center justify-center rounded-lg text-indigo-500 transition-all hover:bg-indigo-500/10 disabled:text-theme-text-muted/40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                                            className="absolute right-1.5 top-1/2 flex -translate-y-1/2 h-7 w-7 items-center justify-center rounded-lg text-indigo-500 transition-all hover:bg-indigo-500/10 disabled:text-stone-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
                                         >
                                             {isAskLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 -ml-0.5" />}
                                         </button>
@@ -4410,7 +4410,7 @@ export function SelectionActionPopup({
     };
 
     const popupContainerClassName = cn(
-        "relative overflow-hidden rounded-[1.25rem] border border-theme-border/30 bg-theme-base-bg shadow-2xl backdrop-blur-2xl",
+        "ask-ai-panel relative overflow-hidden rounded-[1.25rem] border border-theme-border/30 shadow-2xl backdrop-blur-2xl",
         isAskDockMode
             ? "flex h-full flex-col"
             : "max-h-[min(560px,calc(100vh-2rem))] overflow-y-auto",
@@ -4615,10 +4615,14 @@ export function SelectionActionPopup({
                                                     </span>
                                                 </motion.button>
                                                 {isExpanded ? (
-                                                    <div className="px-3 py-2.5 text-xs leading-6 text-theme-text-muted">
+                                                    <div className="px-3 py-2.5 text-xs leading-6 text-theme-text">
                                                         <AskReasoningBlock content={pair.reasoningContent} isStreaming={pair.isReasoningStreaming} />
                                                         {pair.answer
-                                                            ? renderAskMarkdown(pair.answer)
+                                                            ? (
+                                                                <div className="ask-ai-answer-canvas mt-2">
+                                                                    {renderAskMarkdown(pair.answer)}
+                                                                </div>
+                                                            )
                                                             : (
                                                                 <div className="flex items-center gap-2 opacity-70">
                                                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
