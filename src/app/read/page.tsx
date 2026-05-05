@@ -950,14 +950,29 @@ function ReadingPageContent() {
     }, [sessionUser?.id]);
 
     useEffect(() => {
+        let rafId: number | null = null;
+        let lastPct = -1;
         const handleScroll = () => {
-            const totalScroll = document.documentElement.scrollTop;
-            const windowHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-            const scroll = `${totalScroll / windowHeight}`;
-            setScrollProgress(Number(scroll));
-        }
-        window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
+            // rAF 节流：同一帧内多次触发 scroll 时只执行一次
+            if (rafId !== null) return;
+            rafId = requestAnimationFrame(() => {
+                rafId = null;
+                const totalScroll = document.documentElement.scrollTop;
+                const windowHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+                const raw = windowHeight > 0 ? totalScroll / windowHeight : 0;
+                const pct = Math.round(raw * 100);
+                // 百分比没变化就不 setState，避免整个页面无意义重渲染
+                if (pct === lastPct) return;
+                lastPct = pct;
+                setScrollProgress(raw);
+            });
+        };
+        // passive listener：告诉浏览器我们不会 preventDefault，滚动主线程不被阻塞
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        return () => {
+            window.removeEventListener('scroll', handleScroll);
+            if (rafId !== null) cancelAnimationFrame(rafId);
+        };
     }, []);
 
     useEffect(() => {

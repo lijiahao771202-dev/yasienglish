@@ -11,7 +11,6 @@ import {
     Node,
     Edge,
     Background,
-    Controls,
     useReactFlow,
     ReactFlowProvider,
 } from '@xyflow/react';
@@ -109,11 +108,12 @@ interface SyntaxTreeViewProps {
     data: TreeData;
     /**
      * Show a top-right "放大" button that opens the same tree in a fullscreen modal.
-     * Defaults to false so existing call sites keep their original layout.
+     * Defaults to true if not specified.
      */
     allowFullscreen?: boolean;
-    /** Inline canvas height in pixels. Defaults to 400. */
-    height?: number;
+    height?: number | string;
+    minZoom?: number;
+    maxZoom?: number;
 }
 
 // --- Semantic Theme Engine (按 tier 分层：根 / 骨架 / 从句 / 修饰) ---
@@ -663,10 +663,16 @@ function SyntaxTreeCanvas({
         setNodes(layoutedNodes);
         setEdges(layoutedEdges);
 
-        const timer = setTimeout(() => {
-            fitView({ padding: 0.15 });
-        }, 50);
-        return () => clearTimeout(timer);
+        // 第一次 fitView：初始 layout 完成后立刻执行。
+        const t1 = setTimeout(() => fitView({ padding: 0.22 }), 50);
+        // 第二次 fitView：处理 portal/lightbox 打开导致的容器尺寸变化。
+        // 不用 ResizeObserver，因为它在 Next.js dev 下容易触发 "ResizeObserver loop" 警告，
+        // 引发错误覆盖层闪烁。500ms 足够浏览器完成 lightbox 的入场动画后再 fit 一次。
+        const t2 = setTimeout(() => fitView({ padding: 0.22 }), 500);
+        return () => {
+            clearTimeout(t1);
+            clearTimeout(t2);
+        };
     }, [initialNodes, initialEdges, setNodes, setEdges, fitView]);
 
     // Propagate skeletonOnly toggle into each node's data so <SyntaxNode/> can fade non-backbone nodes.
@@ -763,12 +769,13 @@ function SyntaxTreeCanvas({
                 onNodeMouseLeave={onNodeMouseLeave}
                 nodeTypes={nodeTypes}
                 fitView
-                attributionPosition="bottom-right"
+                fitViewOptions={{ padding: 0.22 }}
+                attributionPosition="bottom-left"
                 minZoom={minZoom}
                 maxZoom={maxZoom}
+                proOptions={{ hideAttribution: true }}
             >
                 <Background color="#e7e5e4" gap={20} size={1} />
-                <Controls className="!bg-white/80 !backdrop-blur-sm !border-stone-200 !shadow-sm" />
             </ReactFlow>
             <button
                 type="button"
@@ -800,7 +807,7 @@ function SyntaxTreeCanvas({
     );
 }
 
-function SyntaxTreeViewInner({ data, allowFullscreen, height = 400 }: SyntaxTreeViewProps) {
+function SyntaxTreeViewInner({ data, allowFullscreen, height = 400, minZoom, maxZoom }: SyntaxTreeViewProps) {
     const [isLightboxOpen, setIsLightboxOpen] = useState(false);
 
     useEffect(() => {
@@ -863,14 +870,15 @@ function SyntaxTreeViewInner({ data, allowFullscreen, height = 400 }: SyntaxTree
     return (
         <>
             <div
-                className="relative w-full overflow-hidden rounded-xl border border-stone-100 bg-stone-50/30 group"
+                className="relative border-stone-200"
                 style={{ height }}
             >
-                <div className="absolute inset-0 pointer-events-none shadow-[inset_0_0_40px_rgba(0,0,0,0.02)] z-10 rounded-xl"></div>
                 <SyntaxTreeCanvas
                     data={data}
-                    showEnlargeButton={Boolean(allowFullscreen)}
+                    showEnlargeButton={allowFullscreen}
                     onRequestEnlarge={() => setIsLightboxOpen(true)}
+                    minZoom={minZoom}
+                    maxZoom={maxZoom}
                 />
             </div>
             {lightbox}
