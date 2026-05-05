@@ -216,25 +216,25 @@ function ExpandableTable({ children }: { children: ReactNode }) {
                     role="dialog"
                     aria-modal="true"
                     aria-label="放大查看表格"
-                    className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-[1.5rem] border border-stone-200/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)]"
+                    className="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-[1.5rem] border border-theme-border/40 bg-theme-base-bg shadow-[0_24px_80px_rgba(0,0,0,0.4)]"
                     onClick={(event) => event.stopPropagation()}
                 >
-                    <div className="flex items-center justify-between border-b border-stone-200/80 px-4 py-3 sm:px-5">
+                    <div className="flex items-center justify-between border-b border-theme-border/40 px-4 py-3 sm:px-5">
                         <div className="min-w-0">
-                            <p className="text-[12px] font-black uppercase tracking-[0.16em] text-stone-500">Table</p>
-                            <p className="mt-1 text-[15px] font-bold text-stone-800">放大查看表格</p>
+                            <p className="text-[12px] font-black uppercase tracking-[0.16em] text-theme-text-muted">Table</p>
+                            <p className="mt-1 text-[15px] font-bold text-theme-text">放大查看表格</p>
                         </div>
                         <button
                             type="button"
                             onClick={() => setIsLightboxOpen(false)}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-stone-50 text-stone-600 transition hover:bg-stone-100 hover:text-stone-900"
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-theme-border/20 bg-theme-surface text-theme-text-muted transition hover:bg-theme-active-hover hover:text-theme-text"
                             aria-label="关闭放大表格"
                         >
                             <X className="h-5 w-5" />
                         </button>
                     </div>
-                    <div className="flex-1 overflow-auto bg-stone-50 px-3 py-4 sm:px-5 sm:py-5">
-                        <div className="min-w-[720px] overflow-hidden rounded-[1.25rem] border border-stone-200/80 bg-white shadow-sm ring-1 ring-black/[0.02]">
+                    <div className="flex-1 overflow-auto bg-theme-surface/40 px-3 py-4 sm:px-5 sm:py-5">
+                        <div className="min-w-[720px] overflow-hidden rounded-[1.25rem] border border-theme-border/40 bg-theme-base-bg shadow-sm ring-1 ring-theme-border/5">
                             <div className="overflow-x-auto">
                                 <table className="min-w-[720px] table-fixed border-collapse text-left text-[14px] leading-7">
                                     {children}
@@ -251,7 +251,7 @@ function ExpandableTable({ children }: { children: ReactNode }) {
     return (
         <>
             <div
-                className="group my-4 overflow-hidden rounded-xl border border-stone-200/80 bg-white shadow-sm ring-1 ring-black/[0.02] transition hover:shadow-md"
+                className="group my-4 overflow-hidden rounded-xl border border-theme-border/40 bg-theme-base-bg shadow-sm ring-1 ring-theme-border/5 transition hover:shadow-md"
                 role="button"
                 tabIndex={0}
                 aria-label="放大表格"
@@ -263,7 +263,7 @@ function ExpandableTable({ children }: { children: ReactNode }) {
                     }
                 }}
                 >
-                <div className="flex items-center justify-end border-b border-stone-200/80 px-3 py-2">
+                <div className="flex items-center justify-end border-b border-theme-border/40 px-3 py-2 bg-theme-surface/30">
                     <button
                         type="button"
                         onClick={(event) => {
@@ -271,7 +271,7 @@ function ExpandableTable({ children }: { children: ReactNode }) {
                             setIsLightboxOpen(true);
                         }}
                         aria-label="放大表格"
-                        className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
+                        className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold text-theme-text-muted transition hover:bg-theme-active-hover hover:text-theme-text"
                     >
                         <Maximize2 className="h-3.5 w-3.5" />
                         放大
@@ -338,58 +338,58 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
     const isSentenceCoach = Boolean(syntaxTree) || syntaxTreePending;
 
     const markdownComponents = {
-        h1: ({ children }: { children?: ReactNode }) => <h1 className="mb-3 mt-5 text-[16px] font-black tracking-tight text-indigo-900">{children}</h1>,
-        h2: ({ children }: { children?: ReactNode }) => <h2 className="mb-3 mt-5 text-[15px] font-extrabold text-indigo-800">{children}</h2>,
-        h3: ({ children }: { children?: ReactNode }) => <h3 className="mb-2 mt-4 text-[14px] font-bold text-emerald-800">{children}</h3>,
-        h4: ({ children }: { children?: ReactNode }) => <h4 className="mb-1.5 mt-3 text-[13px] font-bold text-amber-800">{children}</h4>,
-        p: ({ children }: { children?: ReactNode }) => <p className="my-2 leading-7 text-stone-700">{children}</p>,
-        ol: ({ children }: { children?: ReactNode }) => <ol className="my-3 list-decimal space-y-2 pl-6 marker:font-bold marker:text-indigo-500">{children}</ol>,
-        ul: ({ children }: { children?: ReactNode }) => <ul className="my-2 list-disc space-y-1.5 pl-5 marker:text-stone-400">{children}</ul>,
+        h1: ({ children }: { children?: ReactNode }) => <h1 className="mb-3 mt-5 text-[16px] font-black tracking-tight text-theme-text">{children}</h1>,
+        h2: ({ children }: { children?: ReactNode }) => <h2 className="mb-3 mt-5 text-[15px] font-extrabold text-theme-text opacity-90">{children}</h2>,
+        h3: ({ children }: { children?: ReactNode }) => <h3 className="mb-2 mt-4 text-[14px] font-bold text-theme-primary-text bg-theme-primary-bg/10 inline-block px-2 py-0.5 rounded-md border border-theme-primary-bg/20">{children}</h3>,
+        h4: ({ children }: { children?: ReactNode }) => <h4 className="mb-1.5 mt-3 text-[13px] font-bold text-theme-text opacity-80">{children}</h4>,
+        p: ({ children }: { children?: ReactNode }) => <p className="my-2 leading-7 text-theme-text">{children}</p>,
+        ol: ({ children }: { children?: ReactNode }) => <ol className="my-3 list-decimal space-y-2 pl-6 marker:font-bold marker:text-theme-primary-bg">{children}</ol>,
+        ul: ({ children }: { children?: ReactNode }) => <ul className="my-2 list-disc space-y-1.5 pl-5 marker:text-theme-text-muted">{children}</ul>,
         li: ({ children }: { children?: ReactNode }) => (
-            <li className="my-1 leading-7 text-stone-700 [&>p]:my-1 [&>ul]:mb-0 [&>ul]:mt-1.5">
+            <li className="my-1 leading-7 text-theme-text [&>p]:my-1 [&>ul]:mb-0 [&>ul]:mt-1.5">
                 {children}
             </li>
         ),
         blockquote: ({ children }: { children?: ReactNode }) => (
-            <blockquote className="my-3 rounded-r-xl border-l-4 border-indigo-400 bg-indigo-50/50 px-4 py-2.5 text-indigo-900 shadow-sm [&>p]:m-0">
+            <blockquote className="my-3 rounded-r-xl border-l-4 border-theme-primary-bg bg-theme-primary-bg/10 px-4 py-2.5 text-theme-text shadow-sm [&>p]:m-0">
                 {children}
             </blockquote>
         ),
         table: ({ children }: { children?: ReactNode }) => <ExpandableTable>{children}</ExpandableTable>,
-        thead: ({ children }: { children?: ReactNode }) => <thead className="border-b border-stone-200/80 bg-stone-50">{children}</thead>,
-        tbody: ({ children }: { children?: ReactNode }) => <tbody className="divide-y divide-stone-100">{children}</tbody>,
-        tr: ({ children }: { children?: ReactNode }) => <tr className="align-top transition-colors hover:bg-stone-50/50">{children}</tr>,
+        thead: ({ children }: { children?: ReactNode }) => <thead className="border-b border-theme-border/80 bg-theme-surface/50">{children}</thead>,
+        tbody: ({ children }: { children?: ReactNode }) => <tbody className="divide-y divide-theme-border/40">{children}</tbody>,
+        tr: ({ children }: { children?: ReactNode }) => <tr className="align-top transition-colors hover:bg-theme-surface/50">{children}</tr>,
         th: ({ children }: { children?: ReactNode }) => (
-            <th className="whitespace-normal break-words border-b border-stone-200/70 bg-stone-50/70 px-3 py-2.5 text-[11px] font-bold text-stone-500 align-top">
+            <th className="whitespace-normal break-words border-b border-theme-border/70 bg-theme-surface/70 px-3 py-2.5 text-[11px] font-bold text-theme-text-muted align-top">
                 {children}
             </th>
         ),
         td: ({ children }: { children?: ReactNode }) => (
-            <td className="whitespace-normal break-words px-3 py-3 align-top text-[13px] text-stone-700 [overflow-wrap:anywhere] [word-break:normal]">
+            <td className="whitespace-normal break-words px-3 py-3 align-top text-[13px] text-theme-text [overflow-wrap:anywhere] [word-break:normal]">
                 {children}
             </td>
         ),
         strong: ({ children }: { children?: ReactNode }) => (
-            <strong className="font-bold text-stone-950">
+            <strong className="font-bold text-theme-text drop-shadow-[0_0_8px_currentColor]">
                 {children}
             </strong>
         ),
         u: ({ children }: { children?: ReactNode }) => (
-            <u className="decoration-[#f2c94c]/80 decoration-[2px] underline-offset-[3px] text-stone-800 font-medium">
+            <u className="decoration-theme-primary-bg decoration-[2px] underline-offset-[3px] text-theme-text font-medium">
                 {children}
             </u>
         ),
         ins: ({ children }: { children?: ReactNode }) => (
-            <ins className="decoration-[#f2c94c]/80 decoration-[2px] underline-offset-[3px] text-stone-800 font-medium no-underline">
+            <ins className="decoration-theme-primary-bg decoration-[2px] underline-offset-[3px] text-theme-text font-medium no-underline">
                 {children}
             </ins>
         ),
         mark: ({ children }: { children?: ReactNode }) => (
-            <mark className="box-decoration-clone rounded-[0.22em] bg-[linear-gradient(100deg,rgba(219,234,254,0)_0%,rgba(191,219,254,0.34)_8%,rgba(147,197,253,0.42)_52%,rgba(191,219,254,0.3)_94%,rgba(219,234,254,0)_100%)] px-1 py-[0.03em] font-semibold text-slate-900 shadow-[inset_0_-0.14em_0_rgba(96,165,250,0.16)]">
+            <mark className="box-decoration-clone rounded-[0.22em] bg-theme-primary-bg/20 px-1 py-[0.03em] font-semibold text-theme-text shadow-[inset_0_-0.14em_0_var(--theme-primary-bg)]">
                 {children}
             </mark>
         ),
-        hr: () => <hr className="my-6 border-0 border-t border-stone-300/70" />,
+        hr: () => <hr className="my-6 border-0 border-t border-theme-border/70" />,
         code: ({ children, className: codeClassName, ...props }: { children?: ReactNode; className?: string }) => {
             const language = String(codeClassName || "").replace(/^language-/, "");
             const codeText = String(children).replace(/\n$/, "");
@@ -428,7 +428,13 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
                                     setActiveInlineCode(isActive ? null : codeText);
                                     setInlineCodeStatus("idle");
                                 }}
-                                className="text-[0.95em] font-medium text-sky-600"
+                                className={cn(
+                                    "cursor-pointer rounded-[4px] px-[0.3em] py-[0.1em] font-mono text-[0.9em] font-semibold transition-all select-text",
+                                    isActive
+                                        ? "bg-theme-primary-bg/20 text-theme-primary-bg shadow-[inset_0_0_0_1px_var(--theme-primary-bg)]"
+                                        : "bg-theme-primary-bg/10 text-theme-primary-text hover:bg-theme-primary-bg/20 hover:text-theme-primary-hover",
+                                )}
+                                {...props}
                             >
                                 {children}
                             </code>

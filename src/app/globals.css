@@ -1121,26 +1121,10 @@ body {
   background: rgba(255, 255, 255, 0.18);
 }
 
-/* Ask AI / Selection popup — outer chrome stays theme-aware (adapts to user theme),
-   but the actual AI answer body is rendered on a stable light "reading canvas" (similar to
-   the thought-process block) because `AiRichMarkdown` uses hardcoded stone/indigo text colours
-   that only read well on a light surface. */
+/* Ask AI / Selection popup — completely theme-aware markdown */
 .ask-ai-panel {
   background: var(--theme-base-bg);
   color: var(--theme-text);
-}
-
-.ask-ai-answer-canvas {
-  background: #ffffff;
-  color: #1c1917;
-  border: 1px solid rgba(231, 229, 228, 0.9);
-  border-radius: 14px;
-  padding: 0.85rem 0.95rem;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.06);
-}
-
-.ask-ai-answer-canvas a {
-  color: #4f46e5;
 }
 
 html[data-hydrated="0"] .liquid-glass-panel,

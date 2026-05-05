@@ -268,15 +268,15 @@ function AskReasoningBlock({ content, isStreaming = false }: { content?: string;
     if (!normalized) return null;
 
     return (
-        <details className="group mb-3 overflow-hidden rounded-[14px] border border-indigo-200/50 bg-indigo-50/45 text-indigo-950 shadow-sm" open={isStreaming}>
-            <summary className="flex cursor-pointer select-none items-center justify-between gap-3 px-3 py-2 text-[12px] font-black">
+        <details className="group mb-3 overflow-hidden rounded-[14px] border border-theme-border/30 bg-theme-surface/40 text-theme-text shadow-sm" open={isStreaming}>
+            <summary className="flex cursor-pointer select-none items-center justify-between gap-3 px-3 py-2 text-[12px] font-black hover:bg-theme-surface/60 transition-colors">
                 <span className="inline-flex min-w-0 items-center gap-2">
-                    {isStreaming ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-indigo-500" /> : <Lightbulb className="h-3.5 w-3.5 shrink-0 text-indigo-500" />}
-                    <span>{isStreaming ? "正在思考" : "思考过程"}</span>
+                    {isStreaming ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-theme-primary-bg" /> : <Lightbulb className="h-3.5 w-3.5 shrink-0 text-theme-primary-bg opacity-80" />}
+                    <span className="opacity-90">{isStreaming ? "正在思考" : "思考过程"}</span>
                 </span>
-                <span className="text-[10px] font-bold text-indigo-400">展开</span>
+                <span className="text-[10px] font-bold text-theme-text-muted opacity-70">展开</span>
             </summary>
-            <div className="whitespace-pre-wrap border-t border-indigo-200/50 px-3 py-2.5 text-[12px] leading-6 text-indigo-900/85">
+            <div className="whitespace-pre-wrap border-t border-theme-border/20 px-3 py-2.5 text-[12px] leading-6 text-theme-text opacity-85 bg-theme-surface/20">
                 {normalized}
             </div>
         </details>
@@ -4618,11 +4618,7 @@ export function SelectionActionPopup({
                                                     <div className="px-3 py-2.5 text-xs leading-6 text-theme-text">
                                                         <AskReasoningBlock content={pair.reasoningContent} isStreaming={pair.isReasoningStreaming} />
                                                         {pair.answer
-                                                            ? (
-                                                                <div className="ask-ai-answer-canvas mt-2">
-                                                                    {renderAskMarkdown(pair.answer)}
-                                                                </div>
-                                                            )
+                                                            ? renderAskMarkdown(pair.answer)
                                                             : (
                                                                 <div className="flex items-center gap-2 opacity-70">
                                                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
