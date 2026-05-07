@@ -1376,7 +1376,7 @@ function sseChunk(event: string, payload: unknown): string {
     return `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
 }
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
     try {

@@ -1,0 +1,131 @@
+
+> yasienglish@0.1.0 build
+> next build
+
+▲ Next.js 16.1.1 (Turbopack)
+- Environments: .env.local, .env
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 23.8s
+  Running TypeScript ...
+  Collecting page data using 9 workers ...
+  Generating static pages using 9 workers (0/88) ...
+  Generating static pages using 9 workers (22/88) 
+  Generating static pages using 9 workers (44/88) 
+  Generating static pages using 9 workers (66/88) 
+✓ Generating static pages using 9 workers (88/88) in 1326.5ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /admin
+├ ƒ /api/admin/grant-coins
+├ ƒ /api/admin/grant-items
+├ ƒ /api/admin/is-admin
+├ ƒ /api/admin/send-message
+├ ƒ /api/admin/update-cat
+├ ƒ /api/admin/update-elo
+├ ƒ /api/admin/update-reading-coins
+├ ƒ /api/admin/users
+├ ƒ /api/ai/analyze_drill
+├ ƒ /api/ai/analyze-phrase
+├ ƒ /api/ai/ask
+├ ƒ /api/ai/ask_tutor
+├ ƒ /api/ai/cat/history
+├ ƒ /api/ai/cat/session/start
+├ ƒ /api/ai/cat/session/submit
+├ ƒ /api/ai/coach
+├ ƒ /api/ai/coach_inline_stream
+├ ƒ /api/ai/coach_stream
+├ ƒ /api/ai/critique-translation
+├ ƒ /api/ai/define
+├ ƒ /api/ai/embed-words
+├ ƒ /api/ai/evaluate
+├ ƒ /api/ai/generate
+├ ƒ /api/ai/generate_drill
+├ ƒ /api/ai/generate-quiz
+├ ƒ /api/ai/grammar
+├ ƒ /api/ai/grammar/basic
+├ ƒ /api/ai/grammar/deep
+├ ƒ /api/ai/guided_hint
+├ ƒ /api/ai/guided_script
+├ ƒ /api/ai/listening-cabin/generate
+├ ƒ /api/ai/listening-cabin/random-topic
+├ ƒ /api/ai/predict
+├ ƒ /api/ai/qwen-complete
+├ ƒ /api/ai/rewrite-practice
+├ ƒ /api/ai/score
+├ ƒ /api/ai/score_translation
+├ ƒ /api/ai/task-split
+├ ƒ /api/ai/teach
+├ ƒ /api/ai/translate
+├ ƒ /api/ai/translation
+├ ƒ /api/ai/verify_synonym
+├ ƒ /api/ai/writing_guide
+├ ƒ /api/analyze-shadowing
+├ ƒ /api/backgrounds/bing
+├ ƒ /api/dictionary
+├ ƒ /api/drill/next
+├ ƒ /api/feed
+├ ƒ /api/mail/claim
+├ ƒ /api/mail/delete-read
+├ ƒ /api/mail/mark-read
+├ ƒ /api/mail/messages
+├ ƒ /api/mail/unread-count
+├ ƒ /api/models/[...path]
+├ ƒ /api/parse
+├ ƒ /api/profile/github-models
+├ ƒ /api/profile/glm-models
+├ ƒ /api/profile/nvidia-models
+├ ƒ /api/profile/settle
+├ ƒ /api/profile/test-ai-provider
+├ ƒ /api/reading/economy/apply
+├ ƒ /api/reading/economy/status
+├ ƒ /api/tts
+├ ƒ /api/tts-stream
+├ ƒ /api/unsplash
+├ ƒ /auth/callback
+├ ○ /battle
+├ ○ /dashboard
+├ ƒ /forgot-password
+├ ○ /listening-cabin
+├ ƒ /listening-cabin/[sessionId]
+├ ƒ /login
+├ ƒ /logout
+├ ○ /mail
+├ ○ /offline
+├ ○ /paywall-demo
+├ ○ /profile
+├ ○ /rag
+├ ○ /read
+├ ○ /read/rewrite
+├ ○ /read/rewrite-score
+├ ƒ /register
+├ ○ /reset-password
+├ ○ /vocab
+└ ○ /vocab/review
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+Starting production server on http://lijiahaodeMacBook-Air.local:4000
+▲ Next.js 16.1.1
+- Local:         http://lijiahaodeMacBook-Air.local:4000
+- Network:       http://lijiahaodeMacBook-Air.local:4000
+
+✓ Starting...
+✓ Ready in 140ms
+⨯ Error: TypeError: fetch failed
+    at r (.next/server/chunks/_13823d2e._.js:1:3566)
+    at async o (.next/server/chunks/_13823d2e._.js:1:4544)
+    at async v (.next/server/chunks/[root-of-the-server]__ba2cc599._.js:1:12132)
+    at async d (.next/server/chunks/[root-of-the-server]__ba2cc599._.js:1:15310)
+    at async l (.next/server/chunks/[root-of-the-server]__ba2cc599._.js:1:16351)
+    at async Module.E (.next/server/chunks/[root-of-the-server]__ba2cc599._.js:1:17429)
+[AI] Xiaomi MiMo → mimo-v2.5-pro
+Quiz Generation API Error: SyntaxError: Unterminated string in JSON at position 6486 (line 94 column 119)
+    at JSON.parse (<anonymous>)

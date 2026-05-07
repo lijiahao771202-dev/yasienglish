@@ -463,6 +463,9 @@ export function setSavedBackgroundTheme(themeId: BackgroundThemeId, userId?: str
     if (typeof window === "undefined") return;
     const key = buildBackgroundStorageKey(userId);
     window.localStorage.setItem(key, themeId);
+    // Mirror to a stable key so the boot script can read it without
+    // iterating localStorage and without knowing the userId.
+    try { window.localStorage.setItem("yasi:bg:last", themeId); } catch {}
     document.documentElement.setAttribute("data-bg-theme", themeId);
     window.dispatchEvent(new CustomEvent(BACKGROUND_CHANGED_EVENT, { detail: { themeId } }));
 }

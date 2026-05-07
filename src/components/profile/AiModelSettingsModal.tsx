@@ -153,6 +153,10 @@ const PROVIDERS = [
 
 function isLocalAiProviderTestHost() {
     if (typeof window === "undefined") return false;
+    // Only bypass credentials in development. In a production build hosted on
+    // localhost the server still enforces Supabase auth, so we must send the
+    // cookie / bearer header instead of stripping them.
+    if (process.env.NODE_ENV !== "development") return false;
     return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 }
 

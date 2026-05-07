@@ -7,7 +7,7 @@ import {
     shouldUseRemotePrediction,
 } from "@/lib/predictHint";
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 function takeNextWords(text: string, count: number) {
     const match = text.trimStart().match(new RegExp(`^(\\S+\\s*){1,${count}}`));

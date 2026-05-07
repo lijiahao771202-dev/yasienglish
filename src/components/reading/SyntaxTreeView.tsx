@@ -870,7 +870,7 @@ function SyntaxTreeViewInner({ data, allowFullscreen, height = 400, minZoom, max
     return (
         <>
             <div
-                className="relative border-stone-200"
+                className="relative rounded-b-[16px]"
                 style={{ height }}
             >
                 <SyntaxTreeCanvas

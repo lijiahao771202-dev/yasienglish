@@ -951,7 +951,7 @@ function ReadingPageContent() {
 
     useEffect(() => {
         let rafId: number | null = null;
-        let lastPct = -1;
+        let lastBucket = -1;
         const handleScroll = () => {
             // rAF 节流：同一帧内多次触发 scroll 时只执行一次
             if (rafId !== null) return;
@@ -960,10 +960,12 @@ function ReadingPageContent() {
                 const totalScroll = document.documentElement.scrollTop;
                 const windowHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
                 const raw = windowHeight > 0 ? totalScroll / windowHeight : 0;
-                const pct = Math.round(raw * 100);
-                // 百分比没变化就不 setState，避免整个页面无意义重渲染
-                if (pct === lastPct) return;
-                lastPct = pct;
+                // Re-render only every 5% step. With a 2k-line tree this drops
+                // ~80% of needless renders during continuous scroll, which is
+                // the dominant cause of paint flashes on this page.
+                const bucket = Math.round(raw * 20);
+                if (bucket === lastBucket) return;
+                lastBucket = bucket;
                 setScrollProgress(raw);
             });
         };
@@ -1937,7 +1939,13 @@ function ReadingPageContent() {
             )}
         >
             {shouldUseGlobalBackgroundLayers && (
-                <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+                <div
+                    className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
+                    // Promote to its own compositor layer so scrolling content
+                    // above does not invalidate the (often expensive) backdrop
+                    // filters used by the theme glass layer.
+                    style={{ transform: "translateZ(0)", willChange: "transform", contain: "layout paint" }}
+                >
                     <div className={`absolute inset-0 ${backgroundSpec.baseLayer}`} />
                     {backgroundSpec.coverGradient && <div className="absolute inset-0 opacity-[0.25]" style={{ backgroundImage: backgroundSpec.coverGradient, mixBlendMode: 'overlay' }} />}
                     {backgroundSpec.glassLayer && <div className={`absolute inset-0 ${backgroundSpec.glassLayer}`} />}

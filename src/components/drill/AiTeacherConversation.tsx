@@ -163,7 +163,7 @@ export function ChalkboardUI({ content }: { content: string }) {
 
 export function TutorMarkdown({ content, className }: { content: string; className?: string }) {
     return (
-        <div className={cn("prose prose-sm max-w-none text-inherit leading-7 prose-p:my-2 prose-ol:my-2 prose-ol:space-y-1.5 prose-ul:my-2 prose-ul:space-y-1.5 prose-headings:mb-2 prose-headings:mt-4 first:prose-headings:mt-0", className)}>
+        <div className={cn("yasi-markdown", className)}>
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}

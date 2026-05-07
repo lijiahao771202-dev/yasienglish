@@ -18,6 +18,7 @@
     "stitch:projects": "node scripts/stitch-projects.mjs",
     "stitch:generate": "node scripts/stitch-generate.mjs",
     "stitch:mcp": "node scripts/stitch-mcp.mjs",
+    "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "test:unit": "vitest run"
   },
   "dependencies": {

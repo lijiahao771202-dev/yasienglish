@@ -1,0 +1,48 @@
+{
+  "name": "Yasi English — DeepSeek IELTS Flow",
+  "short_name": "Yasi",
+  "description": "Acquire in Context, Internalize by Speech, Consolidate by Output.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#0F172A",
+  "theme_color": "#4F46E5",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["education", "productivity", "books"],
+  "id": "/?source=pwa",
+  "icons": [
+    { "src": "/icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
+    { "src": "/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "/icon-256.png", "type": "image/png", "sizes": "256x256", "purpose": "any" },
+    { "src": "/icon-384.png", "type": "image/png", "sizes": "384x384", "purpose": "any" },
+    { "src": "/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "/icon-maskable-192.png", "type": "image/png", "sizes": "192x192", "purpose": "maskable" },
+    { "src": "/icon-maskable-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Read",
+      "short_name": "Read",
+      "description": "Open the reading workspace",
+      "url": "/read",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Listening Cabin",
+      "short_name": "Listen",
+      "description": "Open the listening cabin",
+      "url": "/listening-cabin",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Battle",
+      "short_name": "Battle",
+      "description": "Practice arena",
+      "url": "/battle",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

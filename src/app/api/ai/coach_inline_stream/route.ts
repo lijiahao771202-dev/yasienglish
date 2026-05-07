@@ -7,7 +7,7 @@ import type {
     InlineCoachTipType,
 } from "@/lib/inline-coach-stream";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 interface InlineCoachRequest {
     systemPrompt: string;

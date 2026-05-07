@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Yasi English">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1E1B4B"/>
+      <stop offset="45%" stop-color="#4F46E5"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#E0F2FE"/>
+    </linearGradient>
+    <radialGradient id="spark" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#FDE68A"/>
+      <stop offset="60%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#F59E0B" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+  </defs>
+  <!-- Full-bleed background (no rounded corners, OS will mask) -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <circle cx="780" cy="240" r="220" fill="#A78BFA" opacity="0.32" filter="url(#soft)"/>
+  <circle cx="220" cy="820" r="260" fill="#22D3EE" opacity="0.28" filter="url(#soft)"/>
+
+  <!-- Content kept within ~80% safe area, scale 0.82 about center (512,512) -->
+  <g transform="translate(512 512) scale(0.82) translate(-512 -512)">
+    <path fill="url(#mark)" d="
+      M 296 174
+      Q 254 174 240 213
+      Q 226 252 256 282
+      L 452 504
+      L 452 808
+      Q 452 856 512 856
+      Q 572 856 572 808
+      L 572 504
+      L 768 282
+      Q 798 252 784 213
+      Q 770 174 728 174
+      Q 700 174 681 195
+      L 512 392
+      L 343 195
+      Q 324 174 296 174 Z"/>
+    <g transform="translate(770 200) rotate(20)">
+      <path d="M0 -78 L 16 -16 L 78 0 L 16 16 L 0 78 L -16 16 L -78 0 L -16 -16 Z" fill="url(#spark)"/>
+      <circle cx="0" cy="0" r="22" fill="#FFFBEB"/>
+    </g>
+    <g fill="#ffffff">
+      <rect x="232" y="888" width="280" height="10" rx="5" opacity="0.32"/>
+      <rect x="528" y="888" width="180" height="10" rx="5" opacity="0.22"/>
+      <rect x="724" y="888" width="68"  height="10" rx="5" opacity="0.16"/>
+    </g>
+  </g>
+</svg>

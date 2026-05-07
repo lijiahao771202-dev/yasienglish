@@ -3574,7 +3574,7 @@ export function ParagraphCard({
                                                         <div className="px-5 py-4 text-[13px] leading-relaxed text-stone-800">
                                                             <AskReasoningBlock content={pair.reasoningContent} isStreaming={pair.isReasoningStreaming} />
                                                             {pair.answer ? (
-                                                                <div className="prose prose-sm prose-stone max-w-none text-stone-800">
+                                                                <div className="yasi-markdown">
                                                                     {renderAskMarkdown(pair.answer)}
                                                                 </div>
                                                             ) : (
@@ -4410,7 +4410,11 @@ export function SelectionActionPopup({
     };
 
     const popupContainerClassName = cn(
-        "ask-ai-panel relative overflow-hidden rounded-[1.25rem] border border-theme-border/30 shadow-2xl backdrop-blur-2xl",
+        // Removed backdrop-blur entirely — it caused per-frame recomposition
+        // while the inner content scrolled, producing the flicker. The panel
+        // now uses a solid theme background, paired with GPU promotion in
+        // `.ask-ai-panel` for smooth scrolling.
+        "ask-ai-panel relative overflow-hidden rounded-[1.25rem] border border-theme-border/30 shadow-2xl",
         isAskDockMode
             ? "flex h-full flex-col"
             : "max-h-[min(560px,calc(100vh-2rem))] overflow-y-auto",
@@ -4429,7 +4433,7 @@ export function SelectionActionPopup({
             ref={ref}
             className="fixed z-[9999] animate-in fade-in zoom-in-95 duration-200"
             data-selection-ask-dock={isAskDockMode ? "true" : undefined}
-            style={popupStyle}
+            style={{ ...popupStyle, transform: "translateZ(0)", willChange: "transform" }}
             onMouseDown={(e) => e.stopPropagation()}
         >
             <div className={popupContainerClassName}>
@@ -4618,7 +4622,11 @@ export function SelectionActionPopup({
                                                     <div className="px-3 py-2.5 text-xs leading-6 text-theme-text">
                                                         <AskReasoningBlock content={pair.reasoningContent} isStreaming={pair.isReasoningStreaming} />
                                                         {pair.answer
-                                                            ? renderAskMarkdown(pair.answer)
+                                                            ? (
+                                                                <div className="yasi-markdown">
+                                                                    {renderAskMarkdown(pair.answer)}
+                                                                </div>
+                                                            )
                                                             : (
                                                                 <div className="flex items-center gap-2 opacity-70">
                                                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />

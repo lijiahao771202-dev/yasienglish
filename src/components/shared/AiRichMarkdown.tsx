@@ -370,7 +370,10 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
             </td>
         ),
         strong: ({ children }: { children?: ReactNode }) => (
-            <strong className="font-bold text-theme-text drop-shadow-[0_0_8px_currentColor]">
+            // Soft sky-blue accent for bold text — no drop-shadow halo
+            // (which previously rendered as a dark "marker pen" smudge on
+            // warm themes), no excessive weight.
+            <strong className="font-semibold text-sky-700 dark:text-sky-300">
                 {children}
             </strong>
         ),
@@ -385,7 +388,10 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
             </ins>
         ),
         mark: ({ children }: { children?: ReactNode }) => (
-            <mark className="box-decoration-clone rounded-[0.22em] bg-theme-primary-bg/20 px-1 py-[0.03em] font-semibold text-theme-text shadow-[inset_0_-0.14em_0_var(--theme-primary-bg)]">
+            // Soft sky-blue highlight — clean, minimal, theme-neutral.
+            // No inset marker-pen shadow (was rendering near-black on warm
+            // themes), no extra padding, regular weight inherited from text.
+            <mark className="box-decoration-clone rounded-[0.2em] bg-sky-400/15 px-[0.25em] text-sky-700 dark:text-sky-300">
                 {children}
             </mark>
         ),
@@ -429,10 +435,13 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
                                     setInlineCodeStatus("idle");
                                 }}
                                 className={cn(
-                                    "cursor-pointer rounded-[4px] px-[0.3em] py-[0.1em] font-mono text-[0.9em] font-semibold transition-all select-text",
+                                    // Inline code: clean sky-blue accent so English fragments
+                                    // (e.g. `discourse`) visually pop against Chinese body text,
+                                    // without dark fills or shadows.
+                                    "cursor-pointer rounded-[3px] px-[0.25em] font-mono text-[0.92em] font-medium transition-colors select-text",
                                     isActive
-                                        ? "bg-theme-primary-bg/20 text-theme-primary-bg shadow-[inset_0_0_0_1px_var(--theme-primary-bg)]"
-                                        : "bg-theme-primary-bg/10 text-theme-primary-text hover:bg-theme-primary-bg/20 hover:text-theme-primary-hover",
+                                        ? "bg-sky-400/20 text-sky-700 dark:text-sky-200 underline decoration-sky-400/60 underline-offset-[3px]"
+                                        : "text-sky-700 dark:text-sky-300 hover:bg-sky-400/10",
                                 )}
                                 {...props}
                             >
@@ -469,7 +478,7 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
                 }
 
                 return (
-                    <code className="text-[0.95em] font-medium text-sky-600">
+                    <code className="font-mono text-[0.92em] font-normal text-theme-text/90">
                         {children}
                     </code>
                 );
@@ -489,8 +498,8 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
                     const normalized = normalizeSyntaxTreeNode(parsed);
                     if (normalized) {
                         return (
-                            <div className="not-prose my-3 overflow-hidden rounded-2xl border border-indigo-100/70 bg-white/80 shadow-[0_8px_24px_rgba(79,70,229,0.06)] backdrop-blur-sm">
-                                <div className="flex items-center gap-2 border-b border-indigo-100/70 bg-gradient-to-r from-indigo-50/90 via-white/80 to-white px-4 py-2.5 text-indigo-700">
+                            <div className="my-3 overflow-hidden rounded-[16px] border border-theme-border/30 bg-theme-border/5 shadow-sm backdrop-blur-md">
+                                <div className="flex items-center gap-2 border-b border-theme-border/20 bg-theme-border/10 px-4 py-2.5 text-theme-active-bg">
                                     <span aria-hidden className="text-[14px]">🌳</span>
                                     <span className="text-[11px] font-black uppercase tracking-[0.18em]">句子结构</span>
                                 </div>
@@ -519,10 +528,10 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
     // Render the chat view: syntax tree (if any) + markdown below it.
     // The fullscreen modal (Lightbox) is still available via the tree's "放大" button.
     return (
-        <div className={cn("prose prose-sm max-w-none text-inherit leading-relaxed prose-p:my-2 prose-ol:my-3 prose-ol:space-y-2 prose-ul:my-3 prose-ul:space-y-1.5 marker:text-stone-400", className)}>
+        <div className={cn("yasi-markdown", className)}>
             {syntaxTree ? (
-                <div className="not-prose mb-3 overflow-hidden rounded-2xl border border-indigo-100/70 bg-white/80 shadow-[0_8px_24px_rgba(79,70,229,0.06)] backdrop-blur-sm">
-                    <div className="flex items-center gap-2 border-b border-indigo-100/70 bg-gradient-to-r from-indigo-50/90 via-white/80 to-white px-4 py-2.5 text-indigo-700">
+                <div className="mb-4 rounded-[16px] border border-theme-border/30 bg-theme-border/5 shadow-sm backdrop-blur-md">
+                    <div className="flex items-center gap-2 rounded-t-[16px] border-b border-theme-border/20 bg-theme-border/10 px-4 py-2.5 text-theme-active-bg">
                         <span aria-hidden className="text-[14px]">🌳</span>
                         <span className="text-[11px] font-black uppercase tracking-[0.18em]">句子结构</span>
                         <button
@@ -539,8 +548,8 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
                 </div>
             ) : null}
             {syntaxTreePending ? (
-                <div className="not-prose mb-3 flex items-center gap-2 rounded-2xl border border-indigo-100/70 bg-indigo-50/70 px-4 py-3 text-[12px] font-medium text-indigo-600">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                <div className="mb-4 flex items-center gap-2 rounded-[12px] border border-theme-border/30 bg-theme-border/10 px-4 py-3 text-[12px] font-medium text-theme-active-bg">
+                    <Loader2 className="h-4 w-4 animate-spin opacity-70" />
                     正在构建句子结构树…
                 </div>
             ) : null}
@@ -548,11 +557,14 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
             {/* If we are in SentenceCoach and they open the lightbox, render the full-screen report */}
             {isSentenceCoach && isCoachLightboxOpen && typeof document !== "undefined"
                 ? createPortal(
-                    <div className="fixed inset-0 z-[12000] flex flex-col bg-stone-950/70 backdrop-blur-md sm:p-4 md:p-6 lg:p-8">
-                        <div className="flex w-full flex-1 flex-col overflow-hidden rounded-[1.5rem] bg-white shadow-2xl lg:flex-row">
+                    <div
+                        className="fixed inset-0 z-[12000] flex flex-col bg-stone-950/80 sm:p-4 md:p-6 lg:p-8"
+                        style={{ transform: "translateZ(0)" }}
+                    >
+                        <div className="flex w-full flex-1 flex-col overflow-hidden rounded-[1.5rem] bg-white shadow-2xl lg:flex-row" style={{ contain: "layout paint" }}>
                             {/* Left Side: Infinite Canvas */}
-                            <div className="relative flex min-h-[40vh] flex-col border-b border-stone-200/80 bg-stone-50/50 lg:w-[60%] lg:border-b-0 lg:border-r">
-                                <div className="absolute left-0 right-0 top-0 z-10 flex h-14 items-center justify-between border-b border-stone-200/80 bg-white/60 px-5 backdrop-blur-md">
+                            <div className="relative flex min-h-[40vh] flex-col border-b border-stone-200/80 bg-stone-50 lg:w-[60%] lg:border-b-0 lg:border-r">
+                                <div className="absolute left-0 right-0 top-0 z-10 flex h-14 items-center justify-between border-b border-stone-200/80 bg-white px-5">
                                     <div className="flex items-center gap-2">
                                         <span aria-hidden className="text-[16px]">🌳</span>
                                         <span className="text-[12px] font-black uppercase tracking-[0.2em] text-stone-600">语法树</span>
@@ -586,14 +598,14 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
                                         <X className="h-4 w-4" />
                                     </button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-8">
-                                    <div className="prose prose-sm max-w-none text-inherit leading-relaxed prose-p:my-2 prose-ol:my-3 prose-ol:space-y-2 prose-ul:my-3 prose-ul:space-y-1.5 marker:text-stone-400">
+                                <div className="flex-1 overflow-y-auto px-5 py-6 sm:px-8 sm:py-8 bg-theme-base-bg text-theme-text">
+                                    <div className="yasi-markdown">
                                         <ReactMarkdown
                                             remarkPlugins={[remarkGfm]}
                                             rehypePlugins={[rehypeRaw]}
                                             components={markdownComponents}
                                         >
-                                            {contentWithSectionDividers}
+                                            {cleanedContent}
                                         </ReactMarkdown>
                                     </div>
                                 </div>
@@ -604,13 +616,15 @@ export function AiRichMarkdown({ content, className, onInlineCodeVocabAction }: 
                 )
                 : null}
 
-            <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
-                components={markdownComponents}
-            >
-                {contentWithSectionDividers}
-            </ReactMarkdown>
+            <div className="yasi-markdown">
+                <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    rehypePlugins={[rehypeRaw]}
+                    components={markdownComponents}
+                >
+                    {cleanedContent}
+                </ReactMarkdown>
+            </div>
         </div>
     );
 }
