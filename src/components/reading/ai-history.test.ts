@@ -32,8 +32,8 @@ describe("ai history helpers", () => {
         expect(formatLongformHistoryDescriptor({
             difficulty: "ielts",
             generationMode: "longform",
-            longformStyle: { name: "商业经济" },
+            longformStyle: { name: "机制拆解" },
             lengthTier: { targetWordCount: 1600 },
-        })).toBe("雅思 · 长文 · 商业经济 · 1600词");
+        })).toBe("雅思 · 长文 · 机制拆解 · 1600词");
     });
 });

@@ -126,7 +126,7 @@ describe("rag-ingestion", () => {
     it("resumes an interrupted system dictionary instead of starting over", async () => {
         const store = vi.fn().mockResolvedValue(true);
 
-        const result = await processSystemDictionaryTask("cet4", {
+        const result = await processSystemDictionaryTask("cet6", {
             initWorker: vi.fn(),
             ensureReady: vi.fn().mockResolvedValue(true),
             getCurrentModelId: vi.fn(() => "Xenova/bge-m3"),
@@ -157,7 +157,7 @@ describe("rag-ingestion", () => {
         const store = vi.fn().mockResolvedValue(true);
         const states: RagSyncTaskState[] = [];
 
-        const result = await processSystemDictionaryTask("cet4", {
+        const result = await processSystemDictionaryTask("cet6", {
             initWorker: vi.fn(),
             ensureReady: vi.fn().mockResolvedValue(true),
             getCurrentModelId: vi.fn(() => "Xenova/bge-m3"),
@@ -189,14 +189,14 @@ describe("rag-ingestion", () => {
     it("does not duplicate existing system vectors created before deterministic ids", async () => {
         const store = vi.fn().mockResolvedValue(true);
 
-        const result = await processSystemDictionaryTask("cet4", {
+        const result = await processSystemDictionaryTask("cet6", {
             initWorker: vi.fn(),
             ensureReady: vi.fn().mockResolvedValue(true),
             getCurrentModelId: vi.fn(() => "Xenova/bge-m3"),
             getTaskState: vi.fn(async (): Promise<RagSyncTaskState> => ({ status: "idle", completed: 0, total: 0, updatedAt: 1 })),
             setTaskState: vi.fn(),
             listExistingVectors: vi.fn(async () => [
-                createSystemVector("legacy-random-id", "cet4", "abandon"),
+                createSystemVector("legacy-random-id", "cet6", "abandon"),
             ]),
             fetchEntries: vi.fn(async () => ([
                 { word: "abandon", translations: [{ translation: "放弃" }] },
@@ -214,7 +214,7 @@ describe("rag-ingestion", () => {
         const fetchEntries = vi.fn();
         const store = vi.fn();
 
-        const result = await processSystemDictionaryTask("cet4", {
+        const result = await processSystemDictionaryTask("cet6", {
             initWorker: vi.fn(),
             ensureReady: vi.fn().mockResolvedValue(true),
             getCurrentModelId: vi.fn(() => "Xenova/bge-m3"),
@@ -241,7 +241,7 @@ describe("rag-ingestion", () => {
         const states: RagSyncTaskState[] = [];
         const store = vi.fn().mockResolvedValue(true);
 
-        const result = await processSystemDictionaryTask("cet4", {
+        const result = await processSystemDictionaryTask("cet6", {
             initWorker: vi.fn(),
             ensureReady: vi.fn().mockResolvedValue(true),
             getCurrentModelId: vi.fn(() => "Xenova/bge-large-en-v1.5"),
@@ -273,7 +273,7 @@ describe("rag-ingestion", () => {
         });
     });
 
-    it("limits automatic background system dictionary ingestion to one small idle batch", async () => {
+    it("continues automatic background system dictionary ingestion across idle batches", async () => {
         const store = vi.fn().mockResolvedValue(true);
         const statesByTask = new Map<string, RagSyncTaskState[]>();
         const getStates = (taskName: string) => {
@@ -281,47 +281,67 @@ describe("rag-ingestion", () => {
             statesByTask.set(taskName, states);
             return states;
         };
-
-        const result = await processDefaultRagIngestionQueue(["cet4", "cet6"], {
-            systemBatchSize: 2,
-            vocabularyDeps: {
-                initWorker: vi.fn(),
-                ensureReady: vi.fn().mockResolvedValue(true),
-                getCurrentModelId: vi.fn(() => "Xenova/bge-m3"),
-                getTaskState: vi.fn(async () => null),
-                setTaskState: vi.fn(),
-                listVocabulary: vi.fn(async () => []),
-                listVocabVectors: vi.fn(async () => []),
-                deleteVectors: vi.fn(),
-                store: vi.fn(),
-            },
-            createSystemDeps: (level) => ({
-                initWorker: vi.fn(),
-                ensureReady: vi.fn().mockResolvedValue(true),
-                getCurrentModelId: vi.fn(() => "Xenova/bge-m3"),
-                getTaskState: vi.fn(async () => null),
-                setTaskState: vi.fn(async (state) => {
-                    getStates(level).push(state);
-                }),
-                countExistingVectors: vi.fn(async () => 0),
-                listExistingVectors: vi.fn(async () => []),
-                fetchEntries: vi.fn(async () => [
-                    { word: `${level}-a`, translations: [{ translation: "A" }] },
-                    { word: `${level}-b`, translations: [{ translation: "B" }] },
-                    { word: `${level}-c`, translations: [{ translation: "C" }] },
-                ]),
-                store,
+        const scheduledTimeouts: Array<() => void> = [];
+        const originalWindow = globalThis.window;
+        vi.stubGlobal("window", {
+            setTimeout: vi.fn((fn: () => void) => {
+                scheduledTimeouts.push(fn);
+                return 1;
             }),
-            waitForSlot: vi.fn(async () => undefined),
         });
 
-        expect(result).toHaveLength(2);
-        expect(store).toHaveBeenCalledTimes(2);
-        expect(getStates("cet4").at(-1)).toMatchObject({
-            status: "running",
-            completed: 2,
-            total: 3,
-        });
-        expect(getStates("cet6")).toEqual([]);
+        try {
+            const result = await processDefaultRagIngestionQueue(["cet6", "ielts"], {
+                systemBatchSize: 2,
+                vocabularyDeps: {
+                    initWorker: vi.fn(),
+                    ensureReady: vi.fn().mockResolvedValue(true),
+                    getCurrentModelId: vi.fn(() => "Xenova/bge-m3"),
+                    getTaskState: vi.fn(async () => null),
+                    setTaskState: vi.fn(),
+                    listVocabulary: vi.fn(async () => []),
+                    listVocabVectors: vi.fn(async () => []),
+                    deleteVectors: vi.fn(),
+                    store: vi.fn(),
+                },
+                createSystemDeps: (level) => ({
+                    initWorker: vi.fn(),
+                    ensureReady: vi.fn().mockResolvedValue(true),
+                    getCurrentModelId: vi.fn(() => "Xenova/bge-m3"),
+                    getTaskState: vi.fn(async () => null),
+                    setTaskState: vi.fn(async (state) => {
+                        getStates(level).push(state);
+                    }),
+                    countExistingVectors: vi.fn(async () => 0),
+                    listExistingVectors: vi.fn(async () => []),
+                    fetchEntries: vi.fn(async () => [
+                        { word: `${level}-a`, translations: [{ translation: "A" }] },
+                        { word: `${level}-b`, translations: [{ translation: "B" }] },
+                        { word: `${level}-c`, translations: [{ translation: "C" }] },
+                    ]),
+                    store,
+                }),
+                waitForSlot: vi.fn(async () => undefined),
+            });
+
+            expect(result).toHaveLength(3);
+            expect(store).toHaveBeenCalledTimes(4);
+            expect(getStates("cet6").at(-1)).toMatchObject({
+                status: "running",
+                completed: 2,
+                total: 3,
+            });
+            expect(getStates("ielts").at(-1)).toMatchObject({
+                status: "running",
+                completed: 2,
+                total: 3,
+            });
+            expect(scheduledTimeouts).toHaveLength(1);
+        } finally {
+            vi.unstubAllGlobals();
+            if (originalWindow) {
+                vi.stubGlobal("window", originalWindow);
+            }
+        }
     });
 });

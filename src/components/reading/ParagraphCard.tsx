@@ -66,6 +66,7 @@ interface ParagraphCardProps {
     paragraphOrder?: number;
     articleTitle?: string;
     articleUrl?: string;
+    ragAppliedWords?: string[];
     readingNotes?: ReadingNoteItem[];
     onCreateReadingNote?: (payload: {
         paragraphOrder: number;
@@ -201,6 +202,41 @@ function isAskRateLimitPayload(payload: unknown) {
     );
 }
 
+function escapeRegExp(input: string) {
+    return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildRagUnderlineMarkers(paragraphText: string, ragAppliedWords: string[]) {
+    if (!paragraphText.trim() || ragAppliedWords.length === 0) return [];
+
+    const markers: Array<{ start: number; end: number; type: "underline" }> = [];
+    const occupied: Array<{ start: number; end: number }> = [];
+    const uniqueWords = Array.from(new Set(
+        ragAppliedWords
+            .map((item) => item.trim())
+            .filter(Boolean)
+            .sort((left, right) => right.length - left.length),
+    ));
+
+    for (const word of uniqueWords) {
+        const matcher = new RegExp(`(^|\\W)(${escapeRegExp(word)})(?=$|\\W)`, "gi");
+        let match: RegExpExecArray | null = null;
+        while ((match = matcher.exec(paragraphText)) !== null) {
+            const prefix = match[1] ?? "";
+            const matchedText = match[2] ?? "";
+            if (!matchedText) continue;
+            const start = match.index + prefix.length;
+            const end = start + matchedText.length;
+            const overlaps = occupied.some((segment) => !(end <= segment.start || start >= segment.end));
+            if (overlaps) continue;
+            occupied.push({ start, end });
+            markers.push({ start, end, type: "underline" });
+        }
+    }
+
+    return markers.sort((left, right) => left.start - right.start);
+}
+
 interface WordLayoutToken {
     start: number;
     end: number;
@@ -317,6 +353,7 @@ export function ParagraphCard({
     paragraphOrder = 0,
     articleTitle,
     articleUrl,
+    ragAppliedWords = [],
     readingNotes = [],
     onCreateReadingNote,
     onDeleteReadingMarks,
@@ -1367,6 +1404,10 @@ export function ParagraphCard({
                     type: "locate",
                 });
             }
+        }
+
+        for (const ragMarker of buildRagUnderlineMarkers(paragraphText, ragAppliedWords)) {
+            markers.push(ragMarker);
         }
 
         if (markers.length === 0) return paragraphText;

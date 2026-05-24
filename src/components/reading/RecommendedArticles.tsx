@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, RotateCcw, Trash2, Check, Settings2, LayoutGrid, ChevronDown, Compass } from "lucide-react";
+import { Archive, Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, RotateCcw, Trash2, Check, Settings2, LayoutGrid, ChevronDown, Compass, Dices } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 import { applyServerProfilePatchToLocal, deleteReadArticleSnapshot, setReadArticleArchived } from "@/lib/user-repository";
+import { saveProfilePatch } from "@/lib/user-repository";
 import { CAT_RANK_TIERS, getCatRankIconByTierId, getCatRankTier, getCatScoreToNextRank, getLegacyBandFromScore } from "@/lib/cat-score";
 import { CatGrowthChart } from "@/components/reading/CatGrowthChart";
 import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
@@ -19,11 +20,18 @@ import { TranslationSlotMachine } from "@/components/battle/TranslationSlotMachi
 import { filterAIGenerationHistory, getAIGenerationDifficultyCounts, type HistoryDifficultyFilter } from "./ai-history";
 import {
     AI_GENERATION_MODE_OPTIONS,
+    AI_GENERATION_RAG_MODE_OPTIONS,
+    AI_GENERATION_RAG_SOURCE_OPTIONS,
     buildAIGenerationRequestBody,
+    DEFAULT_AI_GENERATION_RAG_SELECTION,
     formatLongformHistoryDescriptor,
     LONGFORM_LENGTH_TIERS,
     LONGFORM_STYLE_OPTIONS,
     type AIGenerationMode,
+    type AIGenerationRagConfig,
+    type AIGenerationRagMode,
+    type AIGenerationRagSelection,
+    type AIGenerationRagSource,
     type LongformLengthTierMeta,
     type LongformLengthTierId,
     type LongformStyleMeta,
@@ -39,6 +47,9 @@ export interface ArticleItem {
     image?: string;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     generationMode?: AIGenerationMode;
+    ragMode?: AIGenerationRagMode;
+    ragSource?: AIGenerationRagSource;
+    ragAppliedWords?: string[];
     quizEligible?: boolean;
     longformStyle?: LongformStyleMeta;
     lengthTier?: LongformLengthTierMeta;
@@ -63,6 +74,9 @@ interface AIGenHistoryRecord {
     timestamp: number;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     generationMode?: AIGenerationMode;
+    ragMode?: AIGenerationRagMode;
+    ragSource?: AIGenerationRagSource;
+    ragAppliedWords?: string[];
     quizEligible?: boolean;
     longformStyle?: LongformStyleMeta;
     lengthTier?: LongformLengthTierMeta;
@@ -93,6 +107,9 @@ interface GeneratedArticleData {
     image?: string | null;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     generationMode?: AIGenerationMode;
+    ragMode?: AIGenerationRagMode;
+    ragSource?: AIGenerationRagSource;
+    ragAppliedWords?: string[];
     quizEligible?: boolean;
     longformStyle?: LongformStyleMeta;
     lengthTier?: LongformLengthTierMeta;
@@ -243,6 +260,22 @@ function isArticleItem(value: unknown): value is ArticleItem {
     );
 }
 
+function buildNextAiReadingRagSelection(
+    current: AIGenerationRagSelection | null | undefined,
+    mode: AIGenerationMode,
+    patch: Partial<AIGenerationRagConfig>,
+): AIGenerationRagSelection {
+    const base = current ?? DEFAULT_AI_GENERATION_RAG_SELECTION;
+    return {
+        standard: { ...base.standard },
+        longform: { ...base.longform },
+        [mode]: {
+            ...base[mode],
+            ...patch,
+        },
+    };
+}
+
 export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, onArticleDeleted }: RecommendedArticlesProps) {
     const prefersReducedMotion = useReducedMotion();
     const reducedMotion = Boolean(prefersReducedMotion);
@@ -261,12 +294,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const [aiHistoryDifficultyFilter, setAiHistoryDifficultyFilter] = useState<HistoryDifficultyFilter>('all');
     const [genTopic, setGenTopic] = useState("");
     const [genMode, setGenMode] = useState<AIGenerationMode>("standard");
+    const [aiReadingRag, setAiReadingRag] = useState<AIGenerationRagSelection>(DEFAULT_AI_GENERATION_RAG_SELECTION);
     const [genDifficulty, setGenDifficulty] = useState<'cet4' | 'cet6' | 'ielts'>(() => {
         const routeExam = searchParams?.get('exam_track');
         if (routeExam === 'cet4' || routeExam === 'cet6' || routeExam === 'ielts') return routeExam as 'cet4' | 'cet6' | 'ielts';
         return 'ielts';
     });
-    const [longformStyleId, setLongformStyleId] = useState<LongformStyleId>("science");
+    const [longformStyleId, setLongformStyleId] = useState<LongformStyleId>("explainer");
     const [lengthTierId, setLengthTierId] = useState<LongformLengthTierId>("w1200");
     const [isGenerating, setIsGenerating] = useState(false);
 
@@ -288,6 +322,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         retrievedWords: { core: [], lower: [], stretch: [] },
         logs: []
     });
+
+    const activeRagConfig = aiReadingRag[genMode] ?? DEFAULT_AI_GENERATION_RAG_SELECTION[genMode];
 
     useEffect(() => {
         if (category === "cat_mode") {
@@ -378,6 +414,33 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const { setFeed, getFeed, loadFeedFromDB, deleteArticle } = useFeedStore();
     const { readArticleUrls } = useUserStore();
     const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
+    useEffect(() => {
+        setAiReadingRag(profile?.learning_preferences?.ai_reading_rag ?? DEFAULT_AI_GENERATION_RAG_SELECTION);
+    }, [profile?.learning_preferences?.ai_reading_rag]);
+    const persistAiReadingRagSelection = useCallback(async (nextSelection: AIGenerationRagSelection) => {
+        setAiReadingRag(nextSelection);
+        if (!profile) return;
+        try {
+            await saveProfilePatch({
+                learning_preferences: {
+                    target_mode: profile.learning_preferences?.target_mode ?? "read",
+                    english_level: profile.learning_preferences?.english_level ?? "B1",
+                    daily_goal_minutes: profile.learning_preferences?.daily_goal_minutes ?? 20,
+                    ui_theme_preference: profile.learning_preferences?.ui_theme_preference ?? "bubblegum_pop",
+                    tts_voice: profile.learning_preferences?.tts_voice ?? "en-US-JennyNeural",
+                    rebuild_auto_open_shadowing_prompt: profile.learning_preferences?.rebuild_auto_open_shadowing_prompt ?? true,
+                    ai_reading_rag: nextSelection,
+                },
+            });
+        } catch (error) {
+            console.error("Failed to persist AI reading RAG preferences:", error);
+            setNotification({
+                message: "RAG 设置保存失败，稍后会重试同步。",
+                type: "error",
+            });
+            setTimeout(() => setNotification(null), 2600);
+        }
+    }, [profile]);
     const catScore = typeof profile?.cat_score === "number" ? profile.cat_score : 1000;
     const catBand = typeof profile?.cat_current_band === "number"
         ? profile.cat_current_band
@@ -419,6 +482,10 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             onListUpdate(nextArticles);
         }
     }, [onListUpdate]);
+    const updateAiReadingRagConfig = useCallback((patch: Partial<AIGenerationRagConfig>) => {
+        const nextSelection = buildNextAiReadingRagSelection(aiReadingRag, genMode, patch);
+        void persistAiReadingRagSelection(nextSelection);
+    }, [aiReadingRag, genMode, persistAiReadingRagSelection]);
     const feedViewModel = useMemo(() => {
         const now = Date.now();
         const ONE_DAY = 24 * 60 * 60 * 1000;
@@ -527,6 +594,9 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 snippet: (row.textContent || row.content || "").slice(0, 180),
                 image: row.image ?? undefined,
                 difficulty: row.difficulty,
+                ragMode: row.ragMode,
+                ragSource: row.ragSource,
+                ragAppliedWords: row.ragAppliedWords,
                 generationMode: row.generationMode,
                 quizEligible: row.quizEligible,
                 longformStyle: row.longformStyle,
@@ -580,6 +650,9 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 snippet: (row.textContent || row.content || "").slice(0, 180),
                 image: row.image ?? undefined,
                 difficulty: row.difficulty,
+                ragMode: row.ragMode,
+                ragSource: row.ragSource,
+                ragAppliedWords: row.ragAppliedWords,
                 generationMode: row.generationMode,
                 quizEligible: row.quizEligible,
                 longformStyle: row.longformStyle,
@@ -730,26 +803,48 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             setGenProgress({ step: 'topic_established', topic: queryTopic, retrievedWords: { core: [], lower: [], stretch: [] }, logs: [`Topic established: [${queryTopic}]...`] });
             await new Promise(r => setTimeout(r, 250));
 
-            setGenProgress(prev => ({ ...prev, step: 'rag_searching', logs: [...prev.logs, 'Scanning local IndexedDB vector space...'] }));
-            await new Promise(r => setTimeout(r, 150));
-
             let injectedVocabulary: string[] = [];
+            let resolvedRagMode: AIGenerationRagMode = activeRagConfig.mode;
+            let resolvedRagSource: AIGenerationRagSource = activeRagConfig.source;
 
-            try {
-                injectedVocabulary = await collectAIGenerationVocabulary({
-                    queryTopic,
-                    difficulty: genDifficulty,
-                });
-                
-                if (injectedVocabulary.length > 0) {
-                     setGenProgress(prev => ({ ...prev, step: 'rag_found', retrievedWords: { ...prev.retrievedWords, core: injectedVocabulary }, logs: [...prev.logs, `Intercepted ${injectedVocabulary.length} semantic matches for ${genDifficulty}`] }));
-                     await new Promise(r => setTimeout(r, 250));
-                } else {
-                     setGenProgress(prev => ({ ...prev, logs: [...prev.logs, `0 matches found for level '${genDifficulty}'. Vector DB might be empty. Engaging default zero-shot generation...`] }));
-                     await new Promise(r => setTimeout(r, 120));
+            if (activeRagConfig.mode === "off") {
+                setGenProgress(prev => ({ ...prev, logs: [...prev.logs, 'RAG disabled. Proceeding with direct generation...'] }));
+                await new Promise(r => setTimeout(r, 120));
+            } else {
+                setGenProgress(prev => ({ ...prev, step: 'rag_searching', logs: [...prev.logs, 'Scanning local IndexedDB vector space...'] }));
+                await new Promise(r => setTimeout(r, 150));
+
+                try {
+                    const ragResult = await collectAIGenerationVocabulary({
+                        queryTopic,
+                        difficulty: genDifficulty,
+                        generationMode: genMode,
+                        ragMode: activeRagConfig.mode,
+                        ragSource: activeRagConfig.source,
+                    });
+                    resolvedRagMode = ragResult.mode;
+                    resolvedRagSource = ragResult.source;
+                    injectedVocabulary = ragResult.words.map((item) => item.text);
+
+                    if (injectedVocabulary.length > 0) {
+                        const foundLabel = resolvedRagMode === "strict" ? "required lexical anchors" : "semantic matches";
+                        setGenProgress(prev => ({
+                            ...prev,
+                            step: 'rag_found',
+                            retrievedWords: { ...prev.retrievedWords, core: injectedVocabulary },
+                            logs: [...prev.logs, `Intercepted ${injectedVocabulary.length} ${foundLabel} via ${resolvedRagSource}.`],
+                        }));
+                        await new Promise(r => setTimeout(r, 1600));
+                    } else {
+                        setGenProgress(prev => ({
+                            ...prev,
+                            logs: [...prev.logs, `0 matches found for source '${resolvedRagSource}'. Engaging default generation path...`],
+                        }));
+                        await new Promise(r => setTimeout(r, 120));
+                    }
+                } catch (ragErr) {
+                    console.warn("RAG single-track retrieval failed, falling back to pure generation", ragErr);
                 }
-            } catch (ragErr) {
-                console.warn("RAG single-track retrieval failed, falling back to pure generation", ragErr);
             }
 
             setGenProgress(prev => ({ ...prev, step: 'payload_compiling', logs: [...prev.logs, 'Compiling semantic payload...'] }));
@@ -765,6 +860,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     topicSeed: generationTopicSeed,
                     difficulty: genDifficulty,
                     generationMode: genMode,
+                    ragMode: resolvedRagMode,
+                    ragSource: resolvedRagSource,
                     longformStyleId,
                     lengthTierId,
                     injectedVocabulary,
@@ -799,6 +896,9 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     timestamp,
                     difficulty: genDifficulty,
                     isAIGenerated: true,
+                    ragMode: data.ragMode,
+                    ragSource: data.ragSource,
+                    ragAppliedWords: data.ragAppliedWords,
                     generationMode: data.generationMode,
                     quizEligible: data.quizEligible,
                     longformStyle: data.longformStyle,
@@ -815,6 +915,9 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     snippet: (data.textContent || data.content || "").slice(0, 180),
                     image: typeof data.image === "string" ? data.image : undefined,
                     difficulty: genDifficulty,
+                    ragMode: data.ragMode,
+                    ragSource: data.ragSource,
+                    ragAppliedWords: data.ragAppliedWords,
                     generationMode: data.generationMode,
                     quizEligible: data.quizEligible,
                     longformStyle: data.longformStyle,
@@ -846,6 +949,20 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             setGenProgress(prev => ({ ...prev, step: 'idle' }));
         }
     };
+
+    const handleRollTopic = useCallback(async () => {
+        const { pickAIGenerationTopicSeed } = await import('@/lib/content-topic-pool');
+        const rolled = pickAIGenerationTopicSeed({
+            difficulty: genDifficulty,
+            userTopic: "",
+        });
+        setGenTopic(rolled.topicLine);
+        setNotification({
+            message: "已摇出新主题，满意后再生成。",
+            type: "info",
+        });
+        setTimeout(() => setNotification(null), 2200);
+    }, [genDifficulty]);
 
     const handleRefresh = async () => {
         if (category === "cat_mode") {
@@ -1465,6 +1582,80 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                             ) : null}
                         </div>
 
+                        <div className={cn(insetCardClass, "mt-5 p-4 md:p-5")}>
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <h5 className="text-sm font-black text-theme-text">RAG 注入</h5>
+                                <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-2.5 py-1 text-[11px] font-black text-theme-text-muted">
+                                    {genMode === "standard" ? "标准模式记忆" : "长文模式记忆"}
+                                </span>
+                            </div>
+
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <div>
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                        <h6 className="text-xs font-black tracking-wide text-theme-text">RAG 模式</h6>
+                                        <span className="text-[11px] font-bold text-theme-text-muted">
+                                            {activeRagConfig.mode === "off" ? "完全关闭" : activeRagConfig.mode === "strict" ? "强制命中" : "软参考"}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {AI_GENERATION_RAG_MODE_OPTIONS.map((option) => {
+                                            const isActive = activeRagConfig.mode === option.id;
+                                            return (
+                                                <button
+                                                    key={option.id}
+                                                    type="button"
+                                                    onClick={() => updateAiReadingRagConfig({ mode: option.id })}
+                                                    className={cn(
+                                                        "ui-pressable rounded-[18px] border-3 px-3 py-3 text-left transition-all",
+                                                        isActive
+                                                            ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                            : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                                    )}
+                                                    style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                >
+                                                    <p className="text-sm font-black">{option.label}</p>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                        <h6 className="text-xs font-black tracking-wide text-theme-text">RAG 来源</h6>
+                                        <span className="text-[11px] font-bold text-theme-text-muted">
+                                            {activeRagConfig.source === "vocab" ? "生词本" : activeRagConfig.source === "dictionary" ? "词典" : "混合"}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        {AI_GENERATION_RAG_SOURCE_OPTIONS.map((option) => {
+                                            const isActive = activeRagConfig.source === option.id;
+                                            return (
+                                                <button
+                                                    key={option.id}
+                                                    type="button"
+                                                    onClick={() => updateAiReadingRagConfig({ source: option.id })}
+                                                    disabled={activeRagConfig.mode === "off"}
+                                                    className={cn(
+                                                        "ui-pressable rounded-[18px] border-3 px-3 py-3 text-left transition-all",
+                                                        activeRagConfig.mode === "off"
+                                                            ? "cursor-not-allowed border-theme-border bg-theme-base-bg text-theme-text-muted opacity-55"
+                                                            : isActive
+                                                                ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                                : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                                    )}
+                                                    style={getPressableStyle(activeRagConfig.mode === "off" ? "rgba(0,0,0,0.04)" : isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                >
+                                                    <p className="text-sm font-black">{option.label}</p>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div data-tour-target="hub-ai-topic" className={cn(insetCardClass, "mt-5 p-4 md:p-5")}>
                                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                                     <h5 className="text-sm font-black text-theme-text">主题选择</h5>
@@ -1501,7 +1692,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                     ))}
                                 </div>
 
-                                <div className="grid grid-cols-1 gap-2.5 md:grid-cols-[1fr_auto]">
+                                <div className="grid grid-cols-1 gap-2.5 md:grid-cols-[1fr_auto_auto]">
                                     <input
                                         type="text"
                                         value={genTopic}
@@ -1510,6 +1701,27 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         placeholder="输入主题（留空则随机），例如：Quantum Computing"
                                         className="w-full rounded-full border-4 border-theme-border bg-theme-base-bg px-5 py-3 text-sm font-medium text-theme-text transition-all placeholder:text-theme-text-muted/60 focus:border-theme-border focus:ring-4 focus:ring-theme-primary-bg focus:outline-none"
                                     />
+                                    <motion.button
+                                        type="button"
+                                        onClick={handleRollTopic}
+                                        disabled={isGenerating}
+                                        whileHover={isGenerating ? undefined : { y: -1, scale: 1.01 }}
+                                        whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 6, 0.985)}
+                                        style={getPressableStyle(isGenerating ? "rgba(0,0,0,0.1)" : "var(--theme-shadow)", 6)}
+                                        className={cn(
+                                            "ui-pressable group relative overflow-hidden rounded-full px-4 py-3 text-sm font-black transition-all duration-300 disabled:shadow-none",
+                                            isGenerating
+                                                ? "cursor-not-allowed border-4 border-theme-border bg-theme-card-bg text-theme-text-muted"
+                                                : "border-4 border-theme-border bg-theme-card-bg text-theme-text hover:bg-theme-base-bg"
+                                        )}
+                                        aria-label="摇一个主题"
+                                        title="摇一个主题"
+                                    >
+                                        <span className="relative flex items-center gap-2">
+                                            <Dices className="h-4 w-4" />
+                                            摇主题
+                                        </span>
+                                    </motion.button>
                                     <motion.button
                                         type="button"
                                         onClick={handleGenerate}

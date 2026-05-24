@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { motion, AnimatePresence } from "framer-motion";
@@ -15,6 +15,7 @@ import {
     processSystemDictionaryTask,
     processVocabularyTask,
     readRagTaskState,
+    type RagSyncTaskState,
     type SystemDictionaryKey,
 } from "@/lib/rag-ingestion";
 import { normalizeWordKey } from "@/lib/user-sync";
@@ -26,6 +27,25 @@ interface RagProbeResult {
     text: string;
     score: number;
     latency: string;
+}
+
+const SYSTEM_DICTIONARY_CARDS: Array<{
+    id: SystemDictionaryKey;
+    label: string;
+    detail: string;
+    accentClass: string;
+}> = [
+    { id: "cet6", label: "六级词典", detail: "CET-6 重点词", accentClass: "border-purple-300 bg-purple-50 text-purple-700" },
+    { id: "ielts", label: "雅思词典", detail: "IELTS 学术词", accentClass: "border-rose-300 bg-rose-50 text-rose-700" },
+    { id: "cefr", label: "牛津 5000", detail: "Oxford CEFR", accentClass: "border-amber-300 bg-amber-50 text-amber-700" },
+];
+
+function formatTaskStatusLabel(state?: RagSyncTaskState | null) {
+    if (!state) return "未开始";
+    if (state.status === "completed") return "已完成";
+    if (state.status === "error") return "出错";
+    if (state.status === "running") return "后台补全中";
+    return "未开始";
 }
 
 function getErrorMessage(error: unknown) {
@@ -41,8 +61,9 @@ export function RagDashboardClient() {
     
     const vectorizedVocabIds = new Set(vectorMemories.map(v => normalizeWordKey(String(v.metadata?.wordKey || v.metadata?.vocabId || v.id?.replace(/^vocab:/, "") || v.text.split(/\s+-\s+/)[0] || ""))));
     const pendingVocab = vocabList.filter(v => !vectorizedVocabIds.has(normalizeWordKey(v.word_key || v.word)));
+    const syncedVocabCount = vocabList.length - pendingVocab.length;
     const vocabProgress = vocabList.length > 0 
-        ? Math.round(((vocabList.length - pendingVocab.length) / vocabList.length) * 100)
+        ? Math.round((syncedVocabCount / vocabList.length) * 100)
         : 0;
 
     const [inputText, setInputText] = useState("");
@@ -61,6 +82,8 @@ export function RagDashboardClient() {
     const [bgeError, setBgeError] = useState<string | null>(null);
     const [progress, setProgress] = useState({ current: 0, total: 0, label: "" });
     const [injectedDicts, setInjectedDicts] = useState<Record<SystemDictionaryKey, boolean>>({} as Record<SystemDictionaryKey, boolean>);
+    const [systemTaskStates, setSystemTaskStates] = useState<Partial<Record<SystemDictionaryKey, RagSyncTaskState | null>>>({});
+    const [vocabularyTaskState, setVocabularyTaskState] = useState<RagSyncTaskState | null>(null);
 
     useEffect(() => {
         initBGEWorker();
@@ -76,14 +99,29 @@ export function RagDashboardClient() {
         };
     }, []);
 
+    useEffect(() => {
+        void refreshInjectedDictionaryStatuses();
+        const timer = window.setInterval(() => {
+            void refreshInjectedDictionaryStatuses();
+        }, 3000);
+        return () => {
+            window.clearInterval(timer);
+        };
+    }, []);
+
     const refreshInjectedDictionaryStatuses = async () => {
         const statuses: Record<SystemDictionaryKey, boolean> = {} as Record<SystemDictionaryKey, boolean>;
+        const nextSystemStates: Partial<Record<SystemDictionaryKey, RagSyncTaskState | null>> = {};
+        const vocabState = await readRagTaskState("vocabulary");
         await Promise.all(DEFAULT_RAG_SYSTEM_DICTIONARIES.map(async (key) => {
             const state = await readRagTaskState(`system:${key}`);
+            nextSystemStates[key] = state;
             if (state?.status === "completed" && state.total > 0 && state.completed >= state.total) {
                 statuses[key] = true;
             }
         }));
+        setVocabularyTaskState(vocabState);
+        setSystemTaskStates(nextSystemStates);
         setInjectedDicts(statuses);
     };
 
@@ -176,6 +214,16 @@ export function RagDashboardClient() {
 
     const isBusy = isProcessingChunk || isSyncingVocab;
     const statusView = getBgeStatusView(bgeStatus, bgeError);
+    const systemDictionaryCards = useMemo(() => {
+        return SYSTEM_DICTIONARY_CARDS.map((card) => {
+            const state = systemTaskStates[card.id] ?? null;
+            return {
+                ...card,
+                state,
+                statusLabel: formatTaskStatusLabel(state),
+            };
+        });
+    }, [systemTaskStates]);
     const modelSelectDisabled = isVectorModelSelectDisabled({
         status: bgeStatus,
         isBusy,
@@ -298,7 +346,9 @@ export function RagDashboardClient() {
                                 <div className="flex-1 w-full relative">
                                     <div className="flex justify-between items-end mb-2">
                                         <span className="text-sm font-black text-theme-text">当前同步进度</span>
-                                        <span className="text-2xl font-welcome-display font-black text-theme-text">{vocabProgress}%</span>
+                                        <span className="text-sm font-black text-theme-text">
+                                            {vocabularyTaskState ? formatTaskStatusLabel(vocabularyTaskState) : `${vocabProgress}%`}
+                                        </span>
                                     </div>
                                     <div className="h-6 w-full bg-theme-base-bg border-[3px] border-theme-border rounded-full overflow-hidden p-1">
                                         <motion.div 
@@ -308,7 +358,11 @@ export function RagDashboardClient() {
                                         />
                                     </div>
                                     <p className="text-xs font-bold text-theme-text-muted mt-2 text-right">
-                                        已同步 {vocabList.length - pendingVocab.length} / 共 {vocabList.length} 词
+                                        {vocabList.length > 0
+                                            ? `${syncedVocabCount} / ${vocabList.length} · ${formatTaskStatusLabel(vocabularyTaskState)}`
+                                            : (vocabularyTaskState
+                                                ? `${vocabularyTaskState.completed} / ${vocabularyTaskState.total} · ${formatTaskStatusLabel(vocabularyTaskState)}`
+                                                : "0 / 0 · 未开始")}
                                     </p>
                                 </div>
                                 
@@ -337,12 +391,12 @@ export function RagDashboardClient() {
                         {/* System Vocab Ingest Module */}
                         <div className="rounded-[2.5rem] border-4 border-theme-border bg-theme-card-bg p-8 shadow-[0_12px_0_0_var(--theme-shadow)] relative transition-colors bg-gradient-to-br from-indigo-50/50 to-purple-50/50 dark:from-indigo-900/10 dark:to-purple-900/10 border-indigo-200 dark:border-indigo-800">
                             <h3 className="font-welcome-display text-2xl font-black text-indigo-700 dark:text-indigo-400 flex items-center gap-3">
-                                核心大纲词库强行灌脑 (实验性)
+                                核心词典后台补全
                             </h3>
                             <p className="mt-2 text-sm font-bold text-theme-text-muted">
-                                一键将开源框架大纲（CET-4 / CET-6 等）压入底层向量数据库。供 CAT 测验或 AI 写作老师参考。由于数据量庞大（几千词），可能需要 1~2 分钟。您可以点击后去其他页面，它会在后台默默完成。
+                                系统默认只保留六级、雅思和牛津三套词典。应用可见且向量模型就绪时会自动在后台补全，不需要手动点注入。
                             </p>
-                            
+
                             {isIngestingSysVocab && (
                                 <div className="mt-4 bg-indigo-50 dark:bg-indigo-900/20 border-2 border-indigo-200 dark:border-indigo-800 rounded-xl p-4 shadow-inner">
                                     <div className="flex justify-between flex-wrap gap-2 items-center mb-2 px-1">
@@ -354,89 +408,52 @@ export function RagDashboardClient() {
                                             {progress.current} / {progress.total}
                                         </span>
                                     </div>
-                                    <div className="h-3 w-full bg-indigo-200/50 dark:bg-indigo-900/50 rounded-full overflow-hidden p-[2px]">
-                                        <motion.div 
-                                            className="h-full bg-indigo-500 rounded-full shrink-0" 
-                                            initial={{ width: 0 }}
-                                            animate={{ width: `${Math.max(1, (progress.current / (progress.total || 1)) * 100)}%` }}
-                                            transition={{ ease: "linear" }}
-                                        />
-                                    </div>
+                                    <p className="text-xs font-bold text-indigo-700/80 dark:text-indigo-300/80">
+                                        后台继续补全中，不再使用误导性的接近满格百分比。
+                                    </p>
                                 </div>
                             )}
-                            
-                            <div className="mt-5 grid grid-cols-2 lg:grid-cols-3 gap-4">
-                                <motion.button 
-                                    whileHover={!isBusy && bgeStatus === 'ready' && !injectedDicts['chuzhong'] ? { scale: 1.05 } : {}}
-                                    whileTap={!isBusy && bgeStatus === 'ready' && !injectedDicts['chuzhong'] ? { scale: 0.95 } : {}}
-                                    onClick={() => handleIngestSysVocab('chuzhong')}
-                                    disabled={isIngestingSysVocab || bgeStatus !== 'ready' || injectedDicts['chuzhong']}
-                                    className={`w-full h-14 px-2 rounded-2xl border-[3px] border-cyan-300 dark:border-cyan-700 font-black text-[13px] sm:text-[14px] shadow-[0_4px_0_0_var(--theme-shadow)] flex items-center justify-center gap-2 transition-all
-                                        ${injectedDicts['chuzhong'] ? 'bg-cyan-500/20 text-cyan-600 border-cyan-500/30 cursor-not-allowed opacity-60' : isIngestingSysVocab ? 'bg-cyan-100 text-cyan-600 opacity-50' : 'bg-cyan-50 hover:bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300 dark:hover:bg-cyan-900/50 hover:-translate-y-1 hover:shadow-[0_6px_0_0_rgba(6,182,212,0.2)]'}`}
-                                >
-                                    {isIngestingSysVocab && !injectedDicts['chuzhong'] ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Database className="w-4 h-4 shrink-0" />}
-                                    <span className="truncate">{injectedDicts['chuzhong'] ? '已注入 (3000词)' : '初中基础 3000词'}</span>
-                                </motion.button>
-                                
-                                <motion.button 
-                                    whileHover={!isBusy && bgeStatus === 'ready' && !injectedDicts['gaozhong'] ? { scale: 1.05 } : {}}
-                                    whileTap={!isBusy && bgeStatus === 'ready' && !injectedDicts['gaozhong'] ? { scale: 0.95 } : {}}
-                                    onClick={() => handleIngestSysVocab('gaozhong')}
-                                    disabled={isIngestingSysVocab || bgeStatus !== 'ready' || injectedDicts['gaozhong']}
-                                    className={`w-full h-14 px-2 rounded-2xl border-[3px] border-sky-300 dark:border-sky-700 font-black text-[13px] sm:text-[14px] shadow-[0_4px_0_0_var(--theme-shadow)] flex items-center justify-center gap-2 transition-all
-                                        ${injectedDicts['gaozhong'] ? 'bg-sky-500/20 text-sky-600 border-sky-500/30 cursor-not-allowed opacity-60' : isIngestingSysVocab ? 'bg-sky-100 text-sky-600 opacity-50' : 'bg-sky-50 hover:bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 dark:hover:bg-sky-900/50 hover:-translate-y-1 hover:shadow-[0_6px_0_0_rgba(14,165,233,0.2)]'}`}
-                                >
-                                    {isIngestingSysVocab && !injectedDicts['gaozhong'] ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Database className="w-4 h-4 shrink-0" />}
-                                    <span className="truncate">{injectedDicts['gaozhong'] ? '已注入 (4600词)' : '高中进阶 4600词'}</span>
-                                </motion.button>
-                                
-                                <motion.button 
-                                    whileHover={!isBusy && bgeStatus === 'ready' && !injectedDicts['cet4'] ? { scale: 1.05 } : {}}
-                                    whileTap={!isBusy && bgeStatus === 'ready' && !injectedDicts['cet4'] ? { scale: 0.95 } : {}}
-                                    onClick={() => handleIngestSysVocab('cet4')}
-                                    disabled={isIngestingSysVocab || bgeStatus !== 'ready' || injectedDicts['cet4']}
-                                    className={`w-full h-14 px-2 rounded-2xl border-[3px] border-indigo-300 dark:border-indigo-700 font-black text-[13px] sm:text-[14px] shadow-[0_4px_0_0_var(--theme-shadow)] flex items-center justify-center gap-2 transition-all
-                                        ${injectedDicts['cet4'] ? 'bg-indigo-500/20 text-indigo-500 border-indigo-500/30 cursor-not-allowed opacity-60' : isIngestingSysVocab ? 'bg-indigo-100 text-indigo-600 opacity-50' : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/50 hover:-translate-y-1 hover:shadow-[0_6px_0_0_rgba(99,102,241,0.2)]'}`}
-                                >
-                                    {isIngestingSysVocab && !injectedDicts['cet4'] ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Database className="w-4 h-4 shrink-0" />}
-                                    <span className="truncate">{injectedDicts['cet4'] ? '已注入 (5300词)' : '注入 5300 四级词'}</span>
-                                </motion.button>
 
-                                <motion.button 
-                                    whileHover={!isBusy && bgeStatus === 'ready' && !injectedDicts['cet6'] ? { scale: 1.05 } : {}}
-                                    whileTap={!isBusy && bgeStatus === 'ready' && !injectedDicts['cet6'] ? { scale: 0.95 } : {}}
-                                    onClick={() => handleIngestSysVocab('cet6')}
-                                    disabled={isIngestingSysVocab || bgeStatus !== 'ready' || injectedDicts['cet6']}
-                                    className={`w-full h-14 px-2 rounded-2xl border-[3px] border-purple-300 dark:border-purple-700 font-black text-[13px] sm:text-[14px] shadow-[0_4px_0_0_var(--theme-shadow)] flex items-center justify-center gap-2 transition-all
-                                        ${injectedDicts['cet6'] ? 'bg-purple-500/20 text-purple-600 border-purple-500/30 cursor-not-allowed opacity-60' : isIngestingSysVocab ? 'bg-purple-100 text-purple-600 opacity-50' : 'bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 dark:hover:bg-purple-900/50 hover:-translate-y-1 hover:shadow-[0_6px_0_0_rgba(168,85,247,0.2)]'}`}
-                                >
-                                    {isIngestingSysVocab && !injectedDicts['cet6'] ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Database className="w-4 h-4 shrink-0" />}
-                                    <span className="truncate">{injectedDicts['cet6'] ? '已注入 (2900词)' : '注入 2900 六级词'}</span>
-                                </motion.button>
-
-                                <motion.button 
-                                    whileHover={!isBusy && bgeStatus === 'ready' && !injectedDicts['ielts'] ? { scale: 1.05 } : {}}
-                                    whileTap={!isBusy && bgeStatus === 'ready' && !injectedDicts['ielts'] ? { scale: 0.95 } : {}}
-                                    onClick={() => handleIngestSysVocab('ielts')}
-                                    disabled={isIngestingSysVocab || bgeStatus !== 'ready' || injectedDicts['ielts']}
-                                    className={`w-full h-14 px-2 rounded-2xl border-[3px] border-rose-300 dark:border-rose-700 font-black text-[13px] sm:text-[14px] shadow-[0_4px_0_0_var(--theme-shadow)] flex items-center justify-center gap-2 transition-all
-                                        ${injectedDicts['ielts'] ? 'bg-rose-500/20 text-rose-600 border-rose-500/30 cursor-not-allowed opacity-60' : isIngestingSysVocab ? 'bg-rose-100 text-rose-600 opacity-50' : 'bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 dark:hover:bg-rose-900/50 hover:-translate-y-1 hover:shadow-[0_6px_0_0_rgba(244,63,94,0.2)]'}`}
-                                >
-                                    {isIngestingSysVocab && !injectedDicts['ielts'] ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Database className="w-4 h-4 shrink-0" />}
-                                    <span className="truncate">{injectedDicts['ielts'] ? '已注入 (7000词)' : '注入 7000 雅思词'}</span>
-                                </motion.button>
-                                
-                                <motion.button 
-                                    whileHover={!isBusy && bgeStatus === 'ready' && !injectedDicts['cefr'] ? { scale: 1.05 } : {}}
-                                    whileTap={!isBusy && bgeStatus === 'ready' && !injectedDicts['cefr'] ? { scale: 0.95 } : {}}
-                                    onClick={() => handleIngestSysVocab('cefr')}
-                                    disabled={isIngestingSysVocab || bgeStatus !== 'ready' || injectedDicts['cefr']}
-                                    className={`w-full col-span-2 lg:col-span-1 h-14 px-2 rounded-2xl border-[3px] border-amber-300 dark:border-amber-700 font-black text-[13px] sm:text-[14px] shadow-[0_4px_0_0_var(--theme-shadow)] flex items-center justify-center gap-2 transition-all
-                                        ${injectedDicts['cefr'] ? 'bg-amber-500/20 text-amber-600 border-amber-500/30 cursor-not-allowed opacity-60' : isIngestingSysVocab ? 'bg-amber-100 text-amber-600 opacity-50' : 'bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/50 hover:-translate-y-1 hover:shadow-[0_6px_0_0_rgba(245,158,11,0.2)]'}`}
-                                >
-                                    {isIngestingSysVocab && !injectedDicts['cefr'] ? <Loader2 className="w-4 h-4 animate-spin shrink-0" /> : <Database className="w-4 h-4 shrink-0" />}
-                                    <span className="truncate">{injectedDicts['cefr'] ? '已注入 (牛津5000)' : '牛津 5000 (CEFR难度)'}</span>
-                                </motion.button>
+                            <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-3">
+                                {systemDictionaryCards.map((card) => {
+                                    const isCompleted = injectedDicts[card.id];
+                                    const isRunning = card.state?.status === "running";
+                                    const isErrored = card.state?.status === "error";
+                                    return (
+                                        <motion.button
+                                            key={card.id}
+                                            whileHover={!isBusy && bgeStatus === 'ready' && !isCompleted ? { scale: 1.03 } : {}}
+                                            whileTap={!isBusy && bgeStatus === 'ready' && !isCompleted ? { scale: 0.98 } : {}}
+                                            onClick={() => handleIngestSysVocab(card.id)}
+                                            disabled={isIngestingSysVocab || bgeStatus !== 'ready'}
+                                            className="w-full rounded-[24px] border-[3px] border-theme-border bg-theme-card-bg p-4 text-left shadow-[0_4px_0_0_var(--theme-shadow)] transition-all hover:-translate-y-1"
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-sm font-black text-theme-text">{card.label}</p>
+                                                    <p className="mt-1 text-xs font-semibold text-theme-text-muted">{card.detail}</p>
+                                                </div>
+                                                <span className={`rounded-full border px-2 py-1 text-[10px] font-black ${card.accentClass}`}>
+                                                    {card.statusLabel}
+                                                </span>
+                                            </div>
+                                            <div className="mt-4 rounded-[16px] border-2 border-theme-border bg-theme-base-bg px-3 py-2">
+                                                <p className="text-xs font-black text-theme-text">
+                                                    {card.state ? `${card.state.completed} / ${card.state.total || 0}` : "0 / 0"}
+                                                </p>
+                                                <p className="mt-1 text-[11px] font-semibold text-theme-text-muted">
+                                                    {isErrored
+                                                        ? (card.state?.error || "任务执行失败")
+                                                        : isCompleted
+                                                            ? "词典已完成向量化。"
+                                                            : isRunning
+                                                                ? "后台继续补全中。"
+                                                                : "等待后台自动补全或手动重试。"}
+                                                </p>
+                                            </div>
+                                        </motion.button>
+                                    );
+                                })}
                             </div>
                         </div>
 

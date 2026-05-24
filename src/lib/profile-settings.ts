@@ -1,3 +1,11 @@
+import {
+    DEFAULT_AI_GENERATION_RAG_SELECTION,
+    normalizeAIGenerationRagMode,
+    normalizeAIGenerationRagSource,
+    type AIGenerationRagConfig,
+    type AIGenerationRagSelection,
+} from "./ai-reading-generation";
+
 export type LearningTargetMode = "read" | "battle" | "vocab";
 export type EnglishLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 export type UiThemePreference = "bubblegum_pop" | "starlight_arcade" | "peach_glow";
@@ -86,6 +94,7 @@ export interface LearningPreferences {
     ui_theme_preference: UiThemePreference;
     tts_voice: LearningPreferenceTtsVoice;
     rebuild_auto_open_shadowing_prompt?: boolean;
+    ai_reading_rag?: AIGenerationRagSelection;
 }
 
 export const DEFAULT_PROFILE_USERNAME = "Yasi Learner";
@@ -382,7 +391,22 @@ export const DEFAULT_LEARNING_PREFERENCES: LearningPreferences = {
     ui_theme_preference: "bubblegum_pop",
     tts_voice: DEFAULT_TTS_VOICE,
     rebuild_auto_open_shadowing_prompt: true,
+    ai_reading_rag: DEFAULT_AI_GENERATION_RAG_SELECTION,
 };
+
+function normalizeAiReadingRagConfig(input?: Partial<AIGenerationRagConfig> | null): AIGenerationRagConfig {
+    return {
+        mode: normalizeAIGenerationRagMode(input?.mode),
+        source: normalizeAIGenerationRagSource(input?.source),
+    };
+}
+
+function normalizeAiReadingRagSelection(input?: Partial<AIGenerationRagSelection> | null): AIGenerationRagSelection {
+    return {
+        standard: normalizeAiReadingRagConfig(input?.standard),
+        longform: normalizeAiReadingRagConfig(input?.longform),
+    };
+}
 
 const TARGET_MODES = new Set<LearningTargetMode>(["read", "battle", "vocab"]);
 const ENGLISH_LEVELS = new Set<EnglishLevel>(["A1", "A2", "B1", "B2", "C1", "C2"]);
@@ -532,5 +556,6 @@ export function normalizeLearningPreferences(
         rebuild_auto_open_shadowing_prompt: typeof preferences?.rebuild_auto_open_shadowing_prompt === "boolean"
             ? preferences.rebuild_auto_open_shadowing_prompt
             : DEFAULT_LEARNING_PREFERENCES.rebuild_auto_open_shadowing_prompt,
+        ai_reading_rag: normalizeAiReadingRagSelection(preferences?.ai_reading_rag),
     };
 }

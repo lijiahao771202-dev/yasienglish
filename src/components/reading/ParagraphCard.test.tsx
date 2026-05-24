@@ -364,6 +364,21 @@ describe("ParagraphCard", () => {
         expect(container.textContent).not.toContain("仿写");
     });
 
+    it("underlines injected RAG words when they appear in the paragraph text", async () => {
+        const container = await renderCard({
+            text: "Affordable housing depends on public trust and careful allocation.",
+            ragAppliedWords: ["public trust", "allocation", "unmatched term"],
+        });
+
+        const underlinedSpans = Array.from(container.querySelectorAll("span"))
+            .filter((node) => node.className.includes("decoration-fuchsia-500"));
+
+        const renderedText = underlinedSpans.map((node) => node.textContent?.trim()).filter(Boolean);
+        expect(renderedText).toContain("public trust");
+        expect(renderedText).toContain("allocation");
+        expect(renderedText).not.toContain("unmatched term");
+    });
+
     it("ignores stale invalid grammar cache and re-fetches basic analysis", async () => {
         analysisStoreMock.grammarAnalyses = {
             "grammar:basic:old-cache-key": {

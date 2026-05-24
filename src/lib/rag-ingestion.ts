@@ -4,7 +4,7 @@ import { mapFsrsDifficultyToExamTrack } from "@/lib/vocab-difficulty";
 import { normalizeWordKey } from "@/lib/user-sync";
 import { useVectorEngineStore } from "@/lib/vector-engine-store";
 
-export type SystemDictionaryKey = "chuzhong" | "gaozhong" | "cet4" | "cet6" | "ielts" | "cefr";
+export type SystemDictionaryKey = "cet6" | "ielts" | "cefr";
 
 export type RagSyncTaskStatus = "idle" | "running" | "completed" | "error";
 
@@ -71,27 +71,23 @@ interface DefaultRagIngestionOptions {
 }
 
 const SYSTEM_DICTIONARY_FILE_NAMES: Record<SystemDictionaryKey, string> = {
-    chuzhong: "1-CHUZHONG-顺序.json",
-    gaozhong: "2-GAOZHONG-顺序.json",
-    cet4: "3-CET4-顺序.json",
     cet6: "4-CET6-顺序.json",
     ielts: "5-IELTS-顺序.json",
     cefr: "6-OXFORD-5000.json",
 };
 
 export const DEFAULT_RAG_SYSTEM_DICTIONARIES: SystemDictionaryKey[] = [
-    "chuzhong",
-    "gaozhong",
-    "cet4",
     "cet6",
     "ielts",
     "cefr",
 ];
 
 const DEFAULT_AUTO_SYSTEM_BATCH_SIZE = 25;
+const AUTO_QUEUE_CONTINUE_DELAY_MS = 1200;
 
 let pendingAutoIngestion: Promise<RagTaskResult[]> | null = null;
 let pendingVocabularyIngestion: Promise<RagTaskResult> | null = null;
+let queuedAutoContinuation = false;
 
 function waitForBackgroundIngestionSlot() {
     if (typeof window === "undefined") {
@@ -533,6 +529,8 @@ export async function processDefaultRagIngestionQueue(
 
     results.push(await processVocabularyTask(options.vocabularyDeps));
 
+    let shouldContinue = false;
+
     for (const dictionary of dictionaries) {
         await waitForSlot();
         try {
@@ -541,13 +539,24 @@ export async function processDefaultRagIngestionQueue(
                 maxNewVectors: systemBatchSize,
             });
             results.push(result);
-            if (result.processed > 0 && result.processed >= systemBatchSize) {
-                break;
+            if (!result.skipped && result.total > 0 && result.processed >= systemBatchSize) {
+                shouldContinue = true;
+            }
+            if (!result.skipped && result.total > 0 && result.processed < result.total) {
+                shouldContinue = true;
             }
         } catch (error) {
             console.warn(`RAG system dictionary ingestion failed for ${dictionary}`, error);
             results.push({ processed: 0, total: 0, skipped: true });
         }
+    }
+
+    if (shouldContinue && typeof window !== "undefined" && !queuedAutoContinuation) {
+        queuedAutoContinuation = true;
+        window.setTimeout(() => {
+            queuedAutoContinuation = false;
+            void scheduleDefaultRagIngestionQueue(dictionaries);
+        }, AUTO_QUEUE_CONTINUE_DELAY_MS);
     }
 
     return results;

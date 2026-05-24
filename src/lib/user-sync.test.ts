@@ -219,6 +219,10 @@ describe("user sync helpers", () => {
             ],
             last_practice_at: "2026-03-13T13:00:00.000Z",
             learning_preferences: {
+                ai_reading_rag: {
+                    standard: { mode: "reference", source: "hybrid" },
+                    longform: { mode: "reference", source: "hybrid" },
+                },
                 target_mode: "vocab",
                 english_level: "C1",
                 daily_goal_minutes: 45,
@@ -261,6 +265,10 @@ describe("user sync helpers", () => {
             ],
             last_practice_at: "2026-03-13T13:00:00.000Z",
             learning_preferences: {
+                ai_reading_rag: {
+                    standard: { mode: "reference", source: "hybrid" },
+                    longform: { mode: "reference", source: "hybrid" },
+                },
                 target_mode: "vocab",
                 english_level: "C1",
                 daily_goal_minutes: 45,
@@ -547,5 +555,34 @@ describe("user sync helpers", () => {
         });
         expect(local.article_payload?.lengthTier?.targetWordCount).toBe(1600);
         expect(local.article_payload?.wordCount).toBe(1548);
+    });
+
+    it("preserves RAG article payload metadata for cloud round-trip", () => {
+        const remote = toRemoteReadArticle("user-1", {
+            url: "ai-gen://ielts/999",
+            timestamp: 777,
+            read_at: 777,
+            article_payload: {
+                url: "ai-gen://ielts/999",
+                title: "Strict RAG Snapshot",
+                content: "Paragraph one.",
+                textContent: "Paragraph one.",
+                timestamp: 777,
+                difficulty: "ielts",
+                isAIGenerated: true,
+                ragMode: "strict",
+                ragSource: "dictionary",
+                ragAppliedWords: ["allocation", "public trust"],
+            },
+        });
+
+        const local = toLocalReadArticle({
+            ...remote,
+            updated_at: "2026-05-24T10:20:00.000Z",
+        });
+
+        expect(local.article_payload?.ragMode).toBe("strict");
+        expect(local.article_payload?.ragSource).toBe("dictionary");
+        expect(local.article_payload?.ragAppliedWords).toEqual(["allocation", "public trust"]);
     });
 });

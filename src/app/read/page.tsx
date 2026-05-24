@@ -56,6 +56,8 @@ import {
 import { AI_PROVIDER_RATE_LIMIT_ERROR_CODE } from "@/lib/ai-provider-errors";
 import type {
     AIGenerationMode,
+    AIGenerationRagMode,
+    AIGenerationRagSource,
     LongformLengthTierMeta,
     LongformStyleMeta,
 } from "@/lib/ai-reading-generation";
@@ -74,6 +76,9 @@ interface ArticleData {
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     isAIGenerated?: boolean;
     generationMode?: AIGenerationMode;
+    ragMode?: AIGenerationRagMode;
+    ragSource?: AIGenerationRagSource;
+    ragAppliedWords?: string[];
     quizEligible?: boolean;
     longformStyle?: LongformStyleMeta;
     lengthTier?: LongformLengthTierMeta;
@@ -836,6 +841,9 @@ function ReadingPageContent() {
             difficulty: targetArticle.difficulty,
             isAIGenerated: targetArticle.isAIGenerated,
             generationMode: targetArticle.generationMode,
+            ragMode: targetArticle.ragMode,
+            ragSource: targetArticle.ragSource,
+            ragAppliedWords: targetArticle.ragAppliedWords,
             quizEligible: targetArticle.quizEligible,
             longformStyle: targetArticle.longformStyle,
             lengthTier: targetArticle.lengthTier,
@@ -1519,6 +1527,7 @@ function ReadingPageContent() {
     }, [quizDbKey, quizCacheKey, quizCacheHydrated]);
 
     useEffect(() => {
+        if (!article) return;
         if (!quizEligibleForArticle) return;
         if (!quizCacheKey || !quizDbKey) return;
         if (article.isCatMode && Array.isArray(article.catSessionBlueprint?.items) && article.catSessionBlueprint.items.length > 0) {
@@ -1613,6 +1622,9 @@ function ReadingPageContent() {
                     difficulty: cached.difficulty,
                     isAIGenerated: cached.isAIGenerated,
                     generationMode: cached.generationMode,
+                    ragMode: cached.ragMode,
+                    ragSource: cached.ragSource,
+                    ragAppliedWords: cached.ragAppliedWords,
                     quizEligible: cached.quizEligible,
                     longformStyle: cached.longformStyle,
                     lengthTier: cached.lengthTier,
@@ -1878,6 +1890,7 @@ function ReadingPageContent() {
     };
 
     const renderQuizToggleButton = () => {
+        if (!article) return null;
         if (!quizEligibleForArticle) return null;
         return (
             <button
@@ -2338,8 +2351,8 @@ function ReadingPageContent() {
             {quizEligibleForArticle && activeArticleKey ? (
                 <ReadPretestOverlay
                     visible={isPretestOverlayOpen}
-                    articleTitle={article.title}
-                    articleText={article.textContent || article.content}
+                    articleTitle={article?.title || ""}
+                    articleText={article?.textContent || article?.content || ""}
                     articleKey={activeArticleKey}
                     currentElo={profile?.elo_rating}
                     onClose={() => setIsPretestOverlayOpen(false)}
@@ -2462,6 +2475,7 @@ function ReadingPageContent() {
                                 siteName={article.siteName}
                                 videoUrl={article.videoUrl}
                                 articleUrl={article.url}
+                                ragAppliedWords={article.ragAppliedWords}
                                 difficulty={article.difficulty}
                                 isEditMode={isEditMode}
                                 locateRequest={quizLocateRequest}

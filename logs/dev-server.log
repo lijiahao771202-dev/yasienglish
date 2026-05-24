@@ -1,1 +1,112 @@
  GET / 200 in 3.6s (compile: 100ms, render: 3.5s)
+✓ Compiled in 1315ms
+ GET /rag 200 in 3.8s (compile: 1050ms, render: 2.8s)
+✓ Compiled in 10.3s
+ GET /rag 200 in 2.5s (compile: 160ms, render: 2.4s)
+ GET /rag 200 in 6.4s (compile: 25ms, render: 6.3s)
+ GET /login 200 in 4.2s (compile: 1709ms, proxy.ts: 499ms, render: 1987ms)
+ GET /login 200 in 11.5s (compile: 3.2s, proxy.ts: 872ms, render: 7.5s)
+ GET /rag 200 in 8.0s (compile: 132ms, render: 7.9s)
+ GET /login 200 in 12.6s (compile: 620ms, proxy.ts: 3.3s, render: 8.7s)
+✓ Finished writing to filesystem cache in 14.4s
+✓ Finished filesystem cache database compaction in 12.4s
+✓ Finished writing to filesystem cache in 10.7s
+✓ Compiled in 835ms
+✓ Compiled in 862ms
+✓ Compiled in 480ms
+✓ Compiled in 1552ms
+✓ Compiled in 371ms
+✓ Compiled in 239ms
+ GET / 200 in 868ms (compile: 399ms, render: 469ms)
+ GET /api/mail/unread-count 200 in 9.4s (compile: 376ms, render: 9.0s)
+ GET /api/mail/unread-count 200 in 9.6s (compile: 36ms, render: 9.5s)
+ GET /read?from=home 200 in 1700ms (compile: 1443ms, render: 257ms)
+ POST /api/reading/economy/apply 200 in 5.6s (compile: 13ms, render: 5.6s)
+ POST /api/reading/economy/apply 200 in 5.9s (compile: 3ms, render: 5.9s)
+ GET /api/mail/unread-count 200 in 16.8s (compile: 132ms, render: 16.7s)
+ GET /api/ai/cat/history?limit=48 200 in 11.6s (compile: 22ms, render: 11.5s)
+ GET /api/ai/cat/history?limit=48 200 in 11.7s (compile: 9ms, render: 11.7s)
+[AI] DeepSeek → deepseek-v4-flash
+✓ Compiled in 2.7s
+[AI] DeepSeek → deepseek-v4-flash
+ POST /api/ai/generate 502 in 78s (compile: 16.3s, render: 62s)
+✓ Compiled in 3.3s
+✓ Compiled in 2.8s
+✓ Compiled in 7.3s
+ GET /api/ai/cat/history?limit=48 200 in 2.3s (compile: 71ms, render: 2.2s)
+✓ Finished filesystem cache database compaction in 28.9s
+✓ Compiled in 18.1s
+✓ Finished filesystem cache database compaction in 32.5s
+ GET /read?from=home 200 in 16.0s (compile: 6.4s, render: 9.5s)
+ POST /api/reading/economy/apply 200 in 508ms (compile: 3ms, render: 506ms)
+ GET /api/ai/cat/history?limit=48 200 in 805ms (compile: 4ms, render: 802ms)
+[AI] DeepSeek → deepseek-v4-flash
+ POST /api/ai/generate 200 in 22.9s (compile: 21ms, render: 22.9s)
+ POST /api/reading/economy/apply 200 in 919ms (compile: 116ms, render: 804ms)
+[AI] DeepSeek → deepseek-v4-flash
+ POST /api/ai/generate-quiz 500 in 20.0s (compile: 1566ms, render: 18.4s)
+ POST /api/tts 200 in 20.0s (compile: 5.7s, render: 14.2s)
+ GET /api/tts?key=3fa95b63b5adbcff11cb9629b216362b2b99de8f0ce150a8b1483958b9608cf7 200 in 14ms (compile: 3ms, render: 11ms)
+ POST /api/tts 200 in 20.8s (compile: 5.9s, render: 14.9s)
+ GET /api/tts?key=28f84e90938821657bba57038e66f9939eff1cd744a8848871b589f10fcc97d9 200 in 34ms (compile: 4ms, render: 31ms)
+ POST /api/tts 200 in 2.2s (compile: 8ms, render: 2.2s)
+ GET /api/tts?key=9f9b1cae8287835d8144c853a9f29ba73bc36832db06c5e460bd9e320a50892b 200 in 28ms (compile: 7ms, render: 21ms)
+ POST /api/tts 200 in 14.9s (compile: 2ms, render: 14.9s)
+ GET /api/tts?key=0d930c7ea70accd5c791a41c5c09f9160a155581b8da5a9db3e078e782eed67d 200 in 12ms (compile: 3ms, render: 9ms)
+ POST /api/tts 200 in 13.4s (compile: 18ms, render: 13.4s)
+ GET /api/tts?key=423c22fd3a048c68d91010083b4e4637845232daf2d9b903dc76e78918060bf2 200 in 7ms (compile: 1744µs, render: 5ms)
+[AI] DeepSeek → deepseek-v4-flash
+ POST /api/ai/generate 200 in 28.0s (compile: 69ms, render: 27.9s)
+ POST /api/reading/economy/apply 200 in 1458ms (compile: 44ms, render: 1414ms)
+ POST /api/tts 200 in 3.3s (compile: 45ms, render: 3.3s)
+ GET /api/tts?key=ad68235974048f5ae5cae612c72bf474b45d0e3934ae087ce6367ea506356775 200 in 16ms (compile: 5ms, render: 11ms)
+ POST /api/tts 200 in 2.2s (compile: 5ms, render: 2.2s)
+ GET /api/tts?key=f38e21a5d1a26e3d6bd4acf7a4b9e460301e6995d1a9cd9b3261267d4ce02894 200 in 21ms (compile: 5ms, render: 15ms)
+ POST /api/tts 200 in 2.5s (compile: 7ms, render: 2.5s)
+ GET /api/tts?key=0a0e03e5c83d453bc23066dbd465ba1414a11d249e2e7c98fd052779d5df9e1c 200 in 23ms (compile: 5ms, render: 18ms)
+ POST /api/tts 200 in 4.2s (compile: 6ms, render: 4.2s)
+ GET /api/tts?key=fe1ed41ca0f7651d294e9f92bbe615a6ebbf60ed9c55de2f4c124dac6d3af53e 200 in 15ms (compile: 3ms, render: 12ms)
+ POST /api/tts 200 in 13.6s (compile: 14ms, render: 13.6s)
+ GET /api/tts?key=d7d7fa7042aa53829429f55d5ff09fe4420d50273f02822c38802c59d8eee9c1 200 in 12ms (compile: 3ms, render: 8ms)
+ POST /api/tts 200 in 2.1s (compile: 4ms, render: 2.1s)
+ GET /api/tts?key=40e9a07f55860be7906997b00ee59d200770be8a2b6f78b705f3c18bd59a0152 200 in 15ms (compile: 7ms, render: 9ms)
+ POST /api/tts 200 in 2.5s (compile: 4ms, render: 2.5s)
+ GET /api/tts?key=27e5629b530aef8fbd747f3d31375cc2c79a67942826e05c4d7649b37a7e0cb5 200 in 7ms (compile: 1909µs, render: 5ms)
+[AI] DeepSeek → deepseek-v4-flash
+ POST /api/tts 200 in 3.0s (compile: 3ms, render: 3.0s)
+ GET /api/tts?key=79677d1054e248516a34a88c57d6fd7cb04cfbea95257103071efa117d6396b2 200 in 12ms (compile: 4ms, render: 9ms)
+ POST /api/tts 200 in 3.1s (compile: 1639µs, render: 3.1s)
+ GET /api/tts?key=b182e80fbf63c7c8c7e62ca6b59292178a09f02ff21b949f9cbf78cb42292357 200 in 9ms (compile: 3ms, render: 6ms)
+ POST /api/dictionary 200 in 131ms (compile: 2ms, render: 129ms)
+ POST /api/dictionary 200 in 116ms (compile: 2ms, render: 113ms)
+ POST /api/dictionary 200 in 52ms (compile: 5ms, render: 47ms)
+[AI] DeepSeek → deepseek-v4-flash
+ POST /api/ai/define 200 in 4.7s (compile: 417ms, render: 4.3s)
+ POST /api/dictionary 200 in 171ms (compile: 1752µs, render: 169ms)
+ POST /api/dictionary 200 in 45ms (compile: 3ms, render: 42ms)
+ POST /api/ai/grammar/basic 200 in 49s (compile: 400ms, render: 49s)
+✓ Compiled in 16.6s
+✓ Compiled in 0ms
+ POST /api/reading/economy/apply 200 in 4.6s (compile: 1540ms, render: 3.0s)
+ POST /api/reading/economy/apply 200 in 4.7s (compile: 778ms, render: 3.9s)
+✓ Finished writing to filesystem cache in 10.1s
+✓ Compiled in 3.4s
+✓ Compiled in 0ms
+ POST /api/reading/economy/apply 200 in 1637ms (compile: 11ms, render: 1626ms)
+ POST /api/reading/economy/apply 200 in 3.4s (compile: 180ms, render: 3.2s)
+✓ Compiled in 12.1s
+✓ Finished writing to filesystem cache in 37.8s
+ HEAD / 200 in 38.3s (compile: 9.4s, render: 28.9s)
+ GET / 200 in 38.2s (compile: 5.3s, render: 33.0s)
+✓ Compiled in 2.1s
+✓ Compiled in 0ms
+ POST /api/reading/economy/apply 200 in 2.1s (compile: 41ms, render: 2.0s)
+ POST /api/reading/economy/apply 200 in 3.5s (compile: 83ms, render: 3.4s)
+✓ Compiled in 2.4s
+✓ Compiled in 1210ms
+ POST /api/reading/economy/apply 200 in 1021ms (compile: 15ms, render: 1006ms)
+✓ Compiled in 1650ms
+✓ Compiled in 435ms
+✓ Compiled in 392ms
+✓ Compiled in 496ms
+✓ Finished writing to filesystem cache in 10.0s

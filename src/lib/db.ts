@@ -5,6 +5,8 @@ import type { ListeningCabinSession } from "@/lib/listening-cabin";
 import type { MeaningGroup } from "@/lib/vocab-meanings";
 import type {
     AIGenerationMode,
+    AIGenerationRagMode,
+    AIGenerationRagSource,
     LongformLengthTierMeta,
     LongformStyleMeta,
 } from "@/lib/ai-reading-generation";
@@ -138,6 +140,9 @@ export interface CachedArticle {
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     isAIGenerated?: boolean;
     generationMode?: AIGenerationMode;
+    ragMode?: AIGenerationRagMode;
+    ragSource?: AIGenerationRagSource;
+    ragAppliedWords?: string[];
     quizEligible?: boolean;
     longformStyle?: LongformStyleMeta;
     lengthTier?: LongformLengthTierMeta;

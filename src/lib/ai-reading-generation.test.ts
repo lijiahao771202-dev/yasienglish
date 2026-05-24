@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
     buildAIGenerationRequestBody,
+    DEFAULT_AI_GENERATION_RAG_SELECTION,
     formatLongformHistoryDescriptor,
+    getStrictRagLimit,
     getLongformLengthTierMeta,
     getLongformStyleMeta,
     isQuizEligibleArticle,
     normalizeAIGenerationMode,
+    normalizeAIGenerationRagMode,
+    normalizeAIGenerationRagSource,
     normalizeLongformLengthTierId,
     normalizeLongformStyleId,
 } from "./ai-reading-generation";
@@ -15,20 +19,28 @@ describe("ai reading generation helpers", () => {
         expect(normalizeAIGenerationMode("longform")).toBe("longform");
         expect(normalizeAIGenerationMode("anything")).toBe("standard");
         expect(normalizeLongformStyleId("science")).toBe("science");
+        expect(normalizeLongformStyleId("explainer")).toBe("explainer");
+        expect(normalizeLongformStyleId("case")).toBe("profile");
         expect(normalizeLongformStyleId("unknown")).toBeNull();
         expect(normalizeLongformLengthTierId("w1200")).toBe("w1200");
+        expect(normalizeLongformLengthTierId("w4200")).toBe("w4200");
         expect(normalizeLongformLengthTierId("w42")).toBeNull();
     });
 
     it("returns style and length metadata for longform selections", () => {
-        expect(getLongformStyleMeta("campus")).toEqual({
-            id: "campus",
-            name: "校园成长",
+        expect(getLongformStyleMeta("profile")).toEqual({
+            id: "profile",
+            name: "人物特写",
         });
         expect(getLongformLengthTierMeta("w1600")).toEqual({
             id: "w1600",
             label: "长篇",
             targetWordCount: 1600,
+        });
+        expect(getLongformLengthTierMeta("w4200")).toEqual({
+            id: "w4200",
+            label: "马拉松",
+            targetWordCount: 4200,
         });
     });
 
@@ -46,6 +58,8 @@ describe("ai reading generation helpers", () => {
             topicSeed: { topicLine: "城市治理 · Urban policy tradeoffs" },
             difficulty: "ielts",
             generationMode: "standard",
+            ragMode: "reference",
+            ragSource: "hybrid",
             longformStyleId: undefined,
             lengthTierId: undefined,
             injectedVocabulary: ["equity", "allocation"],
@@ -64,10 +78,27 @@ describe("ai reading generation helpers", () => {
             topicSeed: { topicLine: "公众科学 · Science habits" },
             difficulty: "cet6",
             generationMode: "longform",
+            ragMode: "reference",
+            ragSource: "hybrid",
             longformStyleId: "science",
             lengthTierId: "w1200",
             injectedVocabulary: undefined,
         });
+    });
+
+    it("normalizes RAG settings and strict limits", () => {
+        expect(DEFAULT_AI_GENERATION_RAG_SELECTION).toEqual({
+            standard: { mode: "reference", source: "hybrid" },
+            longform: { mode: "reference", source: "hybrid" },
+        });
+        expect(normalizeAIGenerationRagMode("off")).toBe("off");
+        expect(normalizeAIGenerationRagMode("strict")).toBe("strict");
+        expect(normalizeAIGenerationRagMode("weird")).toBe("reference");
+        expect(normalizeAIGenerationRagSource("vocab")).toBe("vocab");
+        expect(normalizeAIGenerationRagSource("dictionary")).toBe("dictionary");
+        expect(normalizeAIGenerationRagSource("else")).toBe("hybrid");
+        expect(getStrictRagLimit("standard")).toBe(20);
+        expect(getStrictRagLimit("longform")).toBe(40);
     });
 
     it("treats longform generated articles as quiz-ineligible when flagged false", () => {

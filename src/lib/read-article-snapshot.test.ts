@@ -80,4 +80,22 @@ describe("buildReadArticleCloudPayload", () => {
         });
         expect(payload.wordCount).toBe(1176);
     });
+
+    it("preserves RAG generation metadata in the cloud snapshot payload", () => {
+        const payload = buildReadArticleCloudPayload({
+            url: "ai-gen://ielts/789",
+            title: "RAG Article",
+            content: "content",
+            textContent: "content",
+            difficulty: "ielts",
+            isAIGenerated: true,
+            ragMode: "strict",
+            ragSource: "hybrid",
+            ragAppliedWords: ["allocation", "public trust"],
+        }, 1234567890);
+
+        expect(payload.ragMode).toBe("strict");
+        expect(payload.ragSource).toBe("hybrid");
+        expect(payload.ragAppliedWords).toEqual(["allocation", "public trust"]);
+    });
 });

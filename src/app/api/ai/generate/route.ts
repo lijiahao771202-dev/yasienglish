@@ -2,14 +2,19 @@ import { NextResponse } from "next/server";
 import { deepseek } from "@/lib/deepseek";
 import { pickAIGenerationTopicSeed, type TopicSelection } from "@/lib/content-topic-pool";
 import {
+    getStrictRagLimit,
     getLongformLengthTierMeta,
     getLongformStyleMeta,
     LONGFORM_LENGTH_TIERS,
     LONGFORM_STYLE_OPTIONS,
+    normalizeAIGenerationRagMode,
+    normalizeAIGenerationRagSource,
     normalizeAIGenerationMode,
     normalizeLongformLengthTierId,
     normalizeLongformStyleId,
     type AIGenerationMode,
+    type AIGenerationRagMode,
+    type AIGenerationRagSource,
     type LongformLengthTierId,
     type LongformStyleId,
 } from "@/lib/ai-reading-generation";
@@ -36,11 +41,19 @@ interface GenerationTheme {
 }
 
 interface LongformPromptParams {
+    difficulty: Difficulty;
     difficultyLabel: string;
     topicSeed: TopicSelection;
     longformStyleId: LongformStyleId;
     lengthTierId: LongformLengthTierId;
     injectedVocabSection: string;
+}
+
+interface GeneratedArticlePayload {
+    title?: string;
+    content?: string;
+    byline?: string;
+    wordCount?: number;
 }
 
 const DIFFICULTY_CONFIGS: Record<Difficulty, DifficultyConfig> = {
@@ -263,11 +276,32 @@ function buildLongformPrompt(params: LongformPromptParams) {
 
     const minWords = Math.round(lengthTier.targetWordCount * (1 - lengthTier.toleranceRatio));
     const maxWords = Math.round(lengthTier.targetWordCount * (1 + lengthTier.toleranceRatio));
-    const difficultyInstruction = params.difficultyLabel === "CET-4 (大学英语四级)"
-        ? `- Keep vocabulary in CET-4 range and syntax mostly straightforward, with only moderate clause depth.\n- Use familiar and concrete wording, but keep the prose mature and polished.`
-        : params.difficultyLabel === "CET-6 (大学英语六级)"
-            ? `- Keep vocabulary and syntax aligned with CET-6: semi-academic, readable, and more analytically developed than CET-4.\n- Use controlled complex sentences, but do not drift into overly dense IELTS-style abstraction.`
-            : `- Keep vocabulary and syntax aligned with IELTS Academic: advanced, precise, and analytically mature.\n- Use nuanced reasoning and richer sentence structures without becoming bloated or unreadable.`;
+    const difficultyInstruction = params.difficulty === "cet4"
+        ? `
+CET-4 LONGFORM PROFILE:
+- Use concrete, accessible vocabulary with only a light layer of stretch words.
+- Keep most sentences straightforward or moderately extended, with clear reference chains and limited clause nesting.
+- Build paragraphs around one visible idea at a time, using examples and plain transitions rather than compressed abstraction.
+- Let the tone sound mature and polished, but still highly readable for an upper-intermediate learner.
+- Avoid IELTS-like density, policy abstraction, and over-packed paragraphs.
+`
+        : params.difficulty === "cet6"
+            ? `
+CET-6 LONGFORM PROFILE:
+- Use semi-academic vocabulary with explicit reasoning and controlled clause layering.
+- Allow more developed explanation, contrast, and cause-effect logic than CET-4, while preserving readability.
+- Use complex sentences selectively: relative clauses, concessive framing, passive voice, and analytical transitions are welcome when they remain transparent.
+- Let the piece sound serious, informed, and intellectually adult without drifting into research-paper stiffness.
+- Avoid shallow CET-4 simplification, but also avoid IELTS-level density in every paragraph.
+`
+            : `
+IELTS LONGFORM PROFILE:
+- Use advanced academic vocabulary selectively, with nuance, hedging, and analytical precision.
+- Support claims with mechanisms, tradeoffs, counterpositions, and carefully qualified judgments where appropriate.
+- Use longer sentence architecture when useful, including embedded clauses and nominalization, but keep the prose controlled and readable.
+- Let the article feel publication-grade for advanced reading practice: rigorous, layered, and conceptually confident.
+- Avoid school-essay simplification, obvious moralizing, and thin one-idea paragraphs.
+`;
 
     return `
 You are a senior English material writer creating a longform reading passage for Chinese learners.
@@ -291,6 +325,8 @@ LONGFORM STRUCTURE REQUIREMENTS:
 - Expand ideas with natural paragraph development, transitions, examples, and sustained explanation.
 - Keep the article as flowing prose with a clear beginning, middle, and end.
 - Use natural paragraphing appropriate for a ${lengthTier.targetWordCount}-word reading piece.
+- Finish the entire article in one response. Do not stop early, trail off, summarize unfinished sections, or imply continuation later.
+- The style controls voice, pacing, and paragraph behavior only; topic scope still comes from the chosen theme and topic seed.
 
 STYLE LENS:
 - ${style.lens}
@@ -307,6 +343,7 @@ FACTUAL AND PEDAGOGICAL RULES:
 - Keep the article plausible, readable, and suitable for deep reading practice.
 - Maintain a polished title and disciplined topic focus throughout.
 - The prose should feel substantial and immersive, not padded.
+- If the draft feels too short for the target range, continue developing the article until the body reaches the required scale naturally.
 ${params.injectedVocabSection}
 OUTPUT RULES:
 - Return valid JSON only.
@@ -315,6 +352,77 @@ OUTPUT RULES:
 - "byline" must be "AI Generator · ${params.difficultyLabel}".
 - "wordCount" must be an integer estimate.
 `;
+}
+
+function escapeRegExp(input: string) {
+    return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeArticleTextForMatch(input: string) {
+    return input.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function getMissingStrictWords(content: string, requiredWords: string[]) {
+    const haystack = normalizeArticleTextForMatch(content);
+    return requiredWords.filter((word) => {
+        const normalized = normalizeArticleTextForMatch(word);
+        if (!normalized) return false;
+        const matcher = new RegExp(`(^|\\W)${escapeRegExp(normalized)}(?=$|\\W)`, "i");
+        return !matcher.test(haystack);
+    });
+}
+
+function getGenerationMaxTokens(params: {
+    generationMode: AIGenerationMode;
+    lengthTierId?: LongformLengthTierId | null;
+}) {
+    if (params.generationMode !== "longform") return 1400;
+
+    const lengthTier = LONGFORM_LENGTH_TIERS.find((item) => item.id === params.lengthTierId);
+    const targetWords = lengthTier?.targetWordCount ?? 1200;
+
+    if (targetWords <= 900) return 2400;
+    if (targetWords <= 1200) return 3200;
+    if (targetWords <= 1600) return 4200;
+    if (targetWords <= 2200) return 5600;
+    if (targetWords <= 3000) return 7600;
+    return 10_500;
+}
+
+function estimateGeneratedWordCount(result: GeneratedArticlePayload) {
+    if (typeof result.wordCount === "number" && Number.isFinite(result.wordCount) && result.wordCount > 0) {
+        return Math.round(result.wordCount);
+    }
+
+    const content = typeof result.content === "string" ? result.content.trim() : "";
+    if (!content) return 0;
+    return content.split(/\s+/).filter(Boolean).length;
+}
+
+function shouldRetryLongformForLength(result: GeneratedArticlePayload, lengthTierId: LongformLengthTierId) {
+    const lengthTier = LONGFORM_LENGTH_TIERS.find((item) => item.id === lengthTierId);
+    if (!lengthTier) return false;
+    const minWords = Math.round(lengthTier.targetWordCount * (1 - lengthTier.toleranceRatio));
+    return estimateGeneratedWordCount(result) < minWords;
+}
+
+async function generateArticlePayload(prompt: string, options?: {
+    generationMode?: AIGenerationMode;
+    lengthTierId?: LongformLengthTierId | null;
+}) {
+    const completion = await deepseek.chat.completions.create({
+        messages: [{ role: "user", content: prompt }],
+        model: "deepseek-chat",
+        response_format: { type: "json_object" },
+        max_tokens: getGenerationMaxTokens({
+            generationMode: options?.generationMode ?? "standard",
+            lengthTierId: options?.lengthTierId,
+        }),
+    });
+
+    const content = completion.choices[0].message.content;
+    if (!content) throw new Error("No content received");
+    return JSON.parse(content) as GeneratedArticlePayload;
 }
 
 function normalizeTopicSeed(value: unknown): TopicSelection | null {
@@ -355,6 +463,8 @@ export async function POST(req: Request) {
             difficulty = "ielts",
             injectedVocabulary = [],
             generationMode: rawGenerationMode,
+            ragMode: rawRagMode,
+            ragSource: rawRagSource,
             longformStyleId: rawLongformStyleId,
             lengthTierId: rawLengthTierId,
         } = await req.json();
@@ -365,6 +475,8 @@ export async function POST(req: Request) {
         const safeDifficulty: Difficulty =
             diff === "cet4" || diff === "cet6" || diff === "ielts" ? diff : "ielts";
         const generationMode: AIGenerationMode = normalizeAIGenerationMode(rawGenerationMode);
+        const ragMode: AIGenerationRagMode = normalizeAIGenerationRagMode(rawRagMode);
+        const ragSource: AIGenerationRagSource = normalizeAIGenerationRagSource(rawRagSource);
         const longformStyleId = normalizeLongformStyleId(rawLongformStyleId);
         const lengthTierId = normalizeLongformLengthTierId(rawLengthTierId);
         const normalizedTopic = typeof topic === "string" ? topic.trim() : "";
@@ -379,14 +491,35 @@ export async function POST(req: Request) {
         const generationTheme = pickRandomGenerationTheme();
         const diversitySeed = `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
 
-        const injectedVocabSection = Array.isArray(injectedVocabulary) && injectedVocabulary.length > 0
-            ? `\nREFERENCE LEXICAL POOL (OPTIONAL, SOFT REFERENCE ONLY):
+        const cleanedInjectedVocabulary = Array.isArray(injectedVocabulary)
+            ? injectedVocabulary
+                .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+                .map((item) => item.trim())
+            : [];
+        const strictRagWords = ragMode === "strict"
+            ? cleanedInjectedVocabulary.slice(0, getStrictRagLimit(generationMode))
+            : [];
+        const ragAppliedWords = ragMode === "off"
+            ? []
+            : ragMode === "strict"
+                ? strictRagWords
+                : cleanedInjectedVocabulary;
+        const injectedVocabSection = ragMode === "off" || cleanedInjectedVocabulary.length === 0
+            ? ""
+            : ragMode === "strict"
+                ? `\nSTRICT RAG INJECTION (MANDATORY):
+- RAG source mode: ${ragSource}
+- You MUST naturally write every required item below into the article body.
+- Do not list them mechanically; integrate them into fluent prose.
+- Required items (${strictRagWords.length}): ${strictRagWords.join(", ")}\n`
+                : `\nREFERENCE LEXICAL POOL (OPTIONAL, SOFT REFERENCE ONLY):
 - These words and phrases come from retrieval and can help align tone and difficulty.
 - Treat them as optional support, not as a mandatory checklist.
 - Do not force every reference word into the article.
+- Use the items only when they are genuinely relevant to the article topic and local paragraph meaning.
 - Use only the items that fit naturally, and ignore the rest without apology.
-- Reference Pool: ${injectedVocabulary.slice(0, 50).join(", ")}\n`
-            : "";
+- RAG source mode: ${ragSource}
+- Reference Pool: ${cleanedInjectedVocabulary.slice(0, 60).join(", ")}\n`;
 
         if (generationMode === "longform" && (!longformStyleId || !lengthTierId)) {
             return NextResponse.json(
@@ -397,6 +530,7 @@ export async function POST(req: Request) {
 
         const promptBody = generationMode === "longform"
             ? buildLongformPrompt({
+                difficulty: safeDifficulty,
                 difficultyLabel: config.label,
                 topicSeed,
                 longformStyleId: longformStyleId!,
@@ -421,22 +555,60 @@ Provide the response in JSON format:
 }
 `;
 
-        const completion = await deepseek.chat.completions.create({
-            messages: [{ role: "user", content: prompt }],
-            model: "deepseek-chat",
-            response_format: { type: "json_object" },
+        let result = await generateArticlePayload(prompt, {
+            generationMode,
+            lengthTierId,
         });
+        if (generationMode === "longform" && lengthTierId && shouldRetryLongformForLength(result, lengthTierId)) {
+            const tier = LONGFORM_LENGTH_TIERS.find((item) => item.id === lengthTierId);
+            const retryPrompt = `${prompt}
 
-        const content = completion.choices[0].message.content;
-        if (!content) throw new Error("No content received");
+LENGTH RECOVERY NOTICE:
+- Your previous draft was below the minimum usable range for this longform request.
+- Previous estimated length: ${estimateGeneratedWordCount(result)} words.
+- Required minimum: ${tier ? Math.round(tier.targetWordCount * (1 - tier.toleranceRatio)) : "unknown"} words.
+- Regenerate the full article from the beginning.
+- Expand the body with complete paragraph development instead of summary padding.
+`;
+            result = await generateArticlePayload(retryPrompt, {
+                generationMode,
+                lengthTierId,
+            });
+        }
+        if (ragMode === "strict" && strictRagWords.length > 0) {
+            const initialContent = typeof result.content === "string" ? result.content : "";
+            const missingWords = getMissingStrictWords(initialContent, strictRagWords);
+            if (missingWords.length > 0) {
+                const retryPrompt = `${prompt}
 
-        const result = JSON.parse(content);
+STRICT REGENERATION NOTICE:
+- Your previous draft failed strict RAG enforcement.
+- The following required items were missing from the article body: ${missingWords.join(", ")}
+- Regenerate the full article now.
+- Every required item must appear naturally in the prose body.
+`;
+                result = await generateArticlePayload(retryPrompt, {
+                    generationMode,
+                    lengthTierId,
+                });
+                const retryContent = typeof result.content === "string" ? result.content : "";
+                const remainingMissingWords = getMissingStrictWords(retryContent, strictRagWords);
+                if (remainingMissingWords.length > 0) {
+                    return NextResponse.json(
+                        { error: `Strict RAG injection failed. Missing required terms: ${remainingMissingWords.join(", ")}` },
+                        { status: 502 },
+                    );
+                }
+            }
+        }
+
         const longformStyle = generationMode === "longform" ? getLongformStyleMeta(longformStyleId) : null;
         const lengthTier = generationMode === "longform" ? getLongformLengthTierMeta(lengthTierId) : null;
         const quizEligible = generationMode !== "longform";
 
         // Format for frontend
-        const blocks = result.content
+        const articleContent = result.content ?? "";
+        const blocks = articleContent
             .split("\n\n")
             .map((p: string) => ({
                 type: "paragraph",
@@ -447,10 +619,14 @@ Provide the response in JSON format:
         return NextResponse.json({
             ...result,
             blocks,
-            textContent: result.content,
+            content: articleContent,
+            textContent: articleContent,
             difficulty: safeDifficulty,
             isAIGenerated: true,
             generationMode,
+            ragMode,
+            ragSource,
+            ragAppliedWords,
             quizEligible,
             longformStyle: longformStyle ?? undefined,
             lengthTier: lengthTier ?? undefined,

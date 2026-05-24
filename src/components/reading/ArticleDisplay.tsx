@@ -31,6 +31,7 @@ interface ArticleDisplayProps {
     siteName?: string;   // To detect TED articles
     videoUrl?: string;   // TED video URL
     articleUrl?: string; // Original article URL for download
+    ragAppliedWords?: string[];
     difficulty?: "cet4" | "cet6" | "ielts";
     isEditMode?: boolean; // New prop for edit mode
     locateRequest?: {
@@ -68,6 +69,7 @@ export function ArticleDisplay({
     siteName,
     videoUrl,
     articleUrl,
+    ragAppliedWords = [],
     isEditMode,
     locateRequest,
     readingNotes = [],
@@ -558,6 +560,7 @@ export function ArticleDisplay({
                                             paragraphOrder={currentParagraphOrder}
                                             articleTitle={title}
                                             articleUrl={articleUrl}
+                                            ragAppliedWords={ragAppliedWords}
                                             readingNotes={notesByParagraph.get(currentParagraphOrder) ?? []}
                                             onCreateReadingNote={onCreateReadingNote}
                                             onDeleteReadingMarks={onDeleteReadingMarks}
