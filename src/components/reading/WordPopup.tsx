@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { X, Loader2, Book, Volume2, Check, BookPlus, Sparkles } from "lucide-react";
+import { X, Loader2, Volume2, Check, BookPlus } from "lucide-react";
 import { db, type VocabItem, type VocabSourceKind } from "@/lib/db";
 import { createEmptyCard } from "@/lib/fsrs";
 import { applyServerProfilePatchToLocal, saveVocabulary } from "@/lib/user-repository";
@@ -11,7 +11,7 @@ import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { buildWordLookupDedupeKey, INSUFFICIENT_READING_COINS, type ReadingEconomyAction } from "@/lib/reading-economy";
 import { dispatchReadingCoinFx } from "@/lib/reading-coin-fx";
 import { type MeaningGroup } from "@/lib/vocab-meanings";
-import { getPressableStyle, getPressableTap } from "@/lib/pressable";
+import { getPressableTap } from "@/lib/pressable";
 import { retryClientAction, type RetryableClientError } from "@/lib/client-retry";
 
 export interface PopupState {
@@ -146,7 +146,7 @@ export function WordPopup({
     showAiDefinitionButton = false,
     battleConsumeLookupTicket,
     battleConsumeDeepAnalyzeTicket,
-    battleLookupCostHint = "Battle 查词不消耗阅读币。",
+    battleLookupCostHint,
     battleInsufficientHint = "关键词券不足，请先购买。",
 }: WordPopupProps) {
     const sessionUser = useAuthSessionUser();
@@ -173,9 +173,6 @@ export function WordPopup({
     const isMinimal = appearance === "minimal";
     const reducedMotion = useReducedMotion();
     const candyTap = getPressableTap(Boolean(reducedMotion), 4, 0.985);
-    const candyPressStyle = getPressableStyle("rgba(244, 211, 231, 0.96)", 4);
-    const mintPressStyle = getPressableStyle("rgba(186, 239, 219, 0.96)", 4);
-    const lavenderPressStyle = getPressableStyle("rgba(220, 212, 255, 0.96)", 4);
 
     const clampPopupPosition = useCallback((left: number, top: number, flipYOriginBottom?: number, isResizeOrDrag = false) => {
         if (typeof window === "undefined") return { left, top };
@@ -217,7 +214,7 @@ export function WordPopup({
         } | null)?.readingCoins;
         if (!readingCoins) return;
 
-        if (typeof readingCoins.balance === "number") {
+        if (typeof readingCoins.balance === "number" && Number(readingCoins.delta ?? 0) !== 0) {
             await applyServerProfilePatchToLocal({
                 reading_coins: readingCoins.balance,
             });
@@ -366,7 +363,7 @@ export function WordPopup({
                     });
                     const data = await res.json();
                     if (!res.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
-                        setReadingError("阅读币不足，完成阅读或测验可获得阅读币。");
+                        setReadingError("当前暂时无法查询，请稍后重试。");
                         return null;
                     }
                     if (!res.ok || !data?.definition) return null;
@@ -646,7 +643,7 @@ export function WordPopup({
                 setSaveError(null);
                 setReadingError(null);
             } else if (responseData?.errorCode === INSUFFICIENT_READING_COINS) {
-                rollbackOptimisticSave({ readingError: "阅读币不足，暂时无法加入生词本。" });
+                rollbackOptimisticSave({ readingError: "当前暂时无法加入生词本，请稍后重试。" });
             } else {
                 rollbackOptimisticSave({ saveError: "保存失败，请重试" });
             }
@@ -929,6 +926,11 @@ export function WordPopup({
                                 点击上方 <span className="font-bold text-theme-primary-bg">AI</span> 生成。
                             </p>
                         )}
+                    </div>
+                ) : null}
+                {!isReadingMode && battleLookupCostHint ? (
+                    <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-semibold text-slate-500">
+                        {battleLookupCostHint}
                     </div>
                 ) : null}
                 {(aiError || saveError || (saveNotice && !saveError) || readingError) ? (

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, BookAudio, BookOpenText, BrainCircuit, Clock3, Sparkles, Stars, Swords, X, Compass } from "lucide-react";
@@ -12,6 +11,7 @@ import { buildHomeDashboardModel } from "@/components/home/home-data";
 import { db } from "@/lib/db";
 import { saveProfilePatch } from "@/lib/user-repository";
 import { normalizeLearningPreferences, RANDOM_ENGLISH_TTS_VOICE } from "@/lib/profile-settings";
+import { useSafeLiveQuery } from "@/lib/use-safe-live-query";
 import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 import { Volume2, CloudUpload, Loader2, Check } from "lucide-react";
 
@@ -28,37 +28,51 @@ export function HomeConsole_v2({ passwordUpdated = false }: HomeConsoleProps) {
         const now = new Date();
         return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
     }, []);
-    const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
-    const readCount = useLiveQuery(() => db.read_articles.count(), []);
-    const vocabularyCount = useLiveQuery(() => db.vocabulary.count(), []);
-    const writingCount = useLiveQuery(() => db.writing_history.count(), []);
-    const recentReadArticles = useLiveQuery(
+    const profile = useSafeLiveQuery(() => db.user_profile.orderBy("id").first(), [], undefined, "home.profile");
+    const readCount = useSafeLiveQuery(() => db.read_articles.count(), [], 0, "home.read-count");
+    const vocabularyCount = useSafeLiveQuery(() => db.vocabulary.count(), [], 0, "home.vocabulary-count");
+    const writingCount = useSafeLiveQuery(() => db.writing_history.count(), [], 0, "home.writing-count");
+    const recentReadArticles = useSafeLiveQuery(
         () => db.read_articles.where("timestamp").aboveOrEqual(activityCutoff).toArray(),
         [activityCutoff],
+        [],
+        "home.recent-read-articles",
     );
-    const recentVocabulary = useLiveQuery(
+    const recentVocabulary = useSafeLiveQuery(
         () => db.vocabulary.where("timestamp").aboveOrEqual(activityCutoff).toArray(),
         [activityCutoff],
+        [],
+        "home.recent-vocabulary",
     );
-    const dueVocabularyCount = useLiveQuery(
+    const dueVocabularyCount = useSafeLiveQuery(
         () => db.vocabulary.where("due").belowOrEqual(reviewReminderNow).count(),
         [reviewReminderNow],
+        0,
+        "home.due-vocabulary-count",
     );
-    const dueVocabularyPreview = useLiveQuery(
+    const dueVocabularyPreview = useSafeLiveQuery(
         () => db.vocabulary.where("due").belowOrEqual(reviewReminderNow).limit(3).toArray(),
         [reviewReminderNow],
+        [],
+        "home.due-vocabulary-preview",
     );
-    const recentWritingEntries = useLiveQuery(
+    const recentWritingEntries = useSafeLiveQuery(
         () => db.writing_history.where("timestamp").aboveOrEqual(activityCutoff).toArray(),
         [activityCutoff],
+        [],
+        "home.recent-writing-entries",
     );
-    const eloHistory = useLiveQuery(
+    const eloHistory = useSafeLiveQuery(
         () => db.elo_history.orderBy("timestamp").reverse().limit(36).toArray(),
         [],
+        [],
+        "home.elo-history",
     );
-    const recentListeningSessions = useLiveQuery(
+    const recentListeningSessions = useSafeLiveQuery(
         () => db.listening_cabin_sessions.where("created_at").aboveOrEqual(activityCutoff).toArray(),
         [activityCutoff],
+        [],
+        "home.recent-listening-sessions",
     );
     const resolvedPasswordUpdated = passwordUpdated || searchParams.get("password") === "updated";
     const fromBattle = searchParams.get("from") === "battle";

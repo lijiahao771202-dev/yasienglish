@@ -1,19 +1,53 @@
 import { pipeline, FeatureExtractionPipeline, env } from '@huggingface/transformers';
 import { db } from '../lib/db';
+import type { VectorMemoryItem } from '../lib/db';
+import { createRagQueryCollector } from '../lib/rag-query';
 
 // Optimization for Domestic Network
 env.allowLocalModels = false;
 env.remoteHost = self.location.origin + '/api/models';
 
 let generator: FeatureExtractionPipeline | null = null;
-let isInitializing = false;
 let initPromise: Promise<void> | null = null;
 
-async function initModel(modelId: string, onProgress: (progress: any) => void) {
+type EmbeddingOutput = {
+    data: Float32Array | number[];
+};
+
+const VECTOR_SOURCES = new Set<VectorMemoryItem["source"]>([
+    "vocab",
+    "chunk",
+    "note",
+    "system",
+    "error_ledger",
+]);
+
+function getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : String(error);
+}
+
+function asEmbeddingOutput(value: unknown): EmbeddingOutput {
+    return value as EmbeddingOutput;
+}
+
+function normalizeVectorSource(source: unknown): VectorMemoryItem["source"] {
+    return typeof source === "string" && VECTOR_SOURCES.has(source as VectorMemoryItem["source"])
+        ? source as VectorMemoryItem["source"]
+        : "chunk";
+}
+
+function normalizeMetadataFilter(value: unknown): Record<string, string> | undefined {
+    if (!value || typeof value !== "object") {
+        return undefined;
+    }
+    const entries = Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string");
+    return Object.fromEntries(entries);
+}
+
+async function initModel(modelId: string, onProgress: (progress: unknown) => void) {
     if (generator) return;
     if (initPromise) return initPromise;
     
-    isInitializing = true;
     initPromise = (async () => {
         try {
             // Strip all forced configurations (device, dtype, quantizations)
@@ -25,11 +59,9 @@ async function initModel(modelId: string, onProgress: (progress: any) => void) {
                     progress_callback: onProgress,
                 }
             );
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error("Initialization Error:", err);
-            throw new Error(`Failed to load model. Error: ${err.message || String(err)}`);
-        } finally {
-            isInitializing = false;
+            throw new Error(`Failed to load model. Error: ${getErrorMessage(err)}`);
         }
     })();
     
@@ -65,8 +97,8 @@ self.addEventListener('message', async (e) => {
                 self.postMessage({ id, type: 'init_progress', payload: progress });
             });
             self.postMessage({ id, type: 'init_ready' });
-        } catch (error: any) {
-            self.postMessage({ id, type: 'init_error', payload: error.message || String(error) });
+        } catch (error: unknown) {
+            self.postMessage({ id, type: 'init_error', payload: getErrorMessage(error) });
         }
     } 
     else if (type === 'predict') {
@@ -85,7 +117,7 @@ self.addEventListener('message', async (e) => {
             
             // 1. Get input embedding
             // We use pooling: 'cls' to get the single sentence-level embedding vector
-            const inputOut = await generator(rawClean, { pooling: 'cls', normalize: true }) as any;
+            const inputOut = asEmbeddingOutput(await generator(rawClean, { pooling: 'cls', normalize: true }));
             const inputVector = inputOut.data;
             
             // 2. Generate prefix chunks of reference
@@ -104,9 +136,9 @@ self.addEventListener('message', async (e) => {
             let maxSim = -Infinity;
             let bestIndex = -1;
             
-            const prefixOuts: any[] = [];
+            const prefixOuts: EmbeddingOutput[] = [];
             for (const p of prefixStrings) {
-                const out = await generator(p, { pooling: 'cls', normalize: true }) as any;
+                const out = asEmbeddingOutput(await generator(p, { pooling: 'cls', normalize: true }));
                 prefixOuts.push(out);
             }
             
@@ -126,8 +158,8 @@ self.addEventListener('message', async (e) => {
                 self.postMessage({ id, type: 'predict_done', payload: "" });
             }
             
-        } catch (error: any) {
-             self.postMessage({ id, type: 'predict_error', payload: error.message || String(error) });
+        } catch (error: unknown) {
+             self.postMessage({ id, type: 'predict_error', payload: getErrorMessage(error) });
         }
     }
     else if (type === 'grade') {
@@ -144,13 +176,13 @@ self.addEventListener('message', async (e) => {
                 return;
             }
             // Run sequentially to prevent ONNX Session deadlocks
-            const userOut = await generator(userRaw, { pooling: 'cls', normalize: true }) as any;
-            const refOut = await generator(refRaw, { pooling: 'cls', normalize: true }) as any;
+            const userOut = asEmbeddingOutput(await generator(userRaw, { pooling: 'cls', normalize: true }));
+            const refOut = asEmbeddingOutput(await generator(refRaw, { pooling: 'cls', normalize: true }));
             
             const sim = cosineSimilarity(userOut.data, refOut.data);
             self.postMessage({ id, type: 'grade_done', payload: sim });
-        } catch(error: any) {
-            self.postMessage({ id, type: 'grade_error', payload: error.message || String(error) });
+        } catch(error: unknown) {
+            self.postMessage({ id, type: 'grade_error', payload: getErrorMessage(error) });
         }
     }
     else if (type === 'embed') {
@@ -166,12 +198,12 @@ self.addEventListener('message', async (e) => {
             }
             const embeddings: number[][] = [];
             for (const input of inputs) {
-                const out = await generator(input, { pooling: 'cls', normalize: true }) as any;
+                const out = asEmbeddingOutput(await generator(input, { pooling: 'cls', normalize: true }));
                 embeddings.push(Array.from(out.data));
             }
             self.postMessage({ id, type: 'embed_done', payload: embeddings });
-        } catch(error: any) {
-            self.postMessage({ id, type: 'embed_error', payload: error.message || String(error) });
+        } catch(error: unknown) {
+            self.postMessage({ id, type: 'embed_error', payload: getErrorMessage(error) });
         }
     }
     else if (type === 'rag_store') {
@@ -185,21 +217,24 @@ self.addEventListener('message', async (e) => {
                 self.postMessage({ id, type: 'rag_store_done', payload: false });
                 return;
             }
-            const out = await generator(text.trim(), { pooling: 'cls', normalize: true }) as any;
+            const out = asEmbeddingOutput(await generator(text.trim(), { pooling: 'cls', normalize: true }));
             const floatArray = out.data; // Float32Array
+            const vectorId = typeof metadata?.vectorId === 'string' && metadata.vectorId.trim()
+                ? metadata.vectorId.trim()
+                : crypto.randomUUID();
             
             await db.rag_vectors.put({
-                id: crypto.randomUUID(),
+                id: vectorId,
                 text: text.trim(),
                 embedding: Array.from(floatArray),
-                source: source || 'chunk',
+                source: normalizeVectorSource(source),
                 metadata,
                 created_at: Date.now()
             });
             
             self.postMessage({ id, type: 'rag_store_done', payload: true });
-        } catch(error: any) {
-            self.postMessage({ id, type: 'rag_store_error', payload: error.message || String(error) });
+        } catch(error: unknown) {
+            self.postMessage({ id, type: 'rag_store_error', payload: getErrorMessage(error) });
         }
     }
     else if (type === 'rag_query') {
@@ -213,46 +248,30 @@ self.addEventListener('message', async (e) => {
                 self.postMessage({ id, type: 'rag_query_done', payload: [] });
                 return;
             }
-            const out = await generator(query.trim(), { pooling: 'cls', normalize: true }) as any;
+            const out = asEmbeddingOutput(await generator(query.trim(), { pooling: 'cls', normalize: true }));
             const queryVector = out.data;
+            const normalizedNamespace = normalizeVectorSource(namespace);
+            const hasNamespace = typeof namespace === "string" && VECTOR_SOURCES.has(namespace as VectorMemoryItem["source"]);
             
-            let allRecords = await db.rag_vectors.toArray();
-            if (namespace) {
-                allRecords = allRecords.filter(doc => doc.source === namespace);
-            }
+            const collector = createRagQueryCollector({
+                queryVector,
+                topK,
+                threshold,
+                namespace: hasNamespace ? normalizedNamespace : undefined,
+                metadataFilter: normalizeMetadataFilter(metadataFilter),
+            });
+            const collection = hasNamespace
+                ? db.rag_vectors.where('source').equals(normalizedNamespace)
+                : db.rag_vectors.toCollection();
 
-            if (metadataFilter && typeof metadataFilter === 'object') {
-                allRecords = allRecords.filter(doc => {
-                    if (!doc.metadata) return false;
-                    for (const [key, value] of Object.entries(metadataFilter)) {
-                        if (doc.metadata[key] !== value) {
-                            return false;
-                        }
-                    }
-                    return true;
-                });
-            }
-            
-            const scored = allRecords.map(doc => ({
-                ...doc,
-                score: cosineSimilarity(queryVector, doc.embedding)
-            }));
-            
-            const filtered = scored.filter(d => d.score >= threshold);
-            filtered.sort((a, b) => b.score - a.score);
-            
-            // Remove the raw embeddings to save message serialization bandwidth
-            const results = filtered.slice(0, topK).map(d => ({
-                id: d.id,
-                text: d.text,
-                score: d.score,
-                source: d.source,
-                metadata: d.metadata
-            }));
+            await collection.each((doc) => {
+                collector.consider(doc);
+            });
+            const results = collector.getResults();
             
             self.postMessage({ id, type: 'rag_query_done', payload: results });
-        } catch(error: any) {
-            self.postMessage({ id, type: 'rag_query_error', payload: error.message || String(error) });
+        } catch(error: unknown) {
+            self.postMessage({ id, type: 'rag_query_error', payload: getErrorMessage(error) });
         }
     }
 });

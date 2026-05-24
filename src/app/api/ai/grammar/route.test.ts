@@ -259,6 +259,57 @@ describe("ai grammar route", () => {
         }));
     });
 
+    it("returns usable partial basic analysis instead of failing the whole request", async () => {
+        createCompletionMock.mockResolvedValue(
+            createCompletionPayload({
+                tags: ["主语", "谓语"],
+                overview: "首句结构清晰，第二句只补出了译文。",
+                sentences: [
+                    {
+                        sentence: "Scientists compared old records and noticed an unusual warming trend.",
+                        translation: "科学家对比了旧记录，并注意到一个异常升温趋势。",
+                        highlights: [
+                            {
+                                substring: "Scientists",
+                                type: "主语",
+                                explanation: "动作发出者。",
+                                segment_translation: "科学家",
+                            },
+                            {
+                                substring: "compared old records and noticed an unusual warming trend",
+                                type: "谓语",
+                                explanation: "核心动作链。",
+                                segment_translation: "对比旧记录并注意到异常升温趋势",
+                            },
+                        ],
+                    },
+                    {
+                        sentence: "Experts say the pattern may reshape future climate planning.",
+                        translation: "专家表示，这种模式可能会重塑未来的气候规划。",
+                        highlights: [],
+                    },
+                ],
+            }),
+        );
+
+        const response = await POST(buildRequest({
+            text: "Scientists compared old records and noticed an unusual warming trend. Experts say the pattern may reshape future climate planning.",
+            mode: "basic",
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.mode).toBe("basic");
+        expect(data.readingCoins.action).toBe("grammar_basic");
+        expect(data.difficult_sentences).toHaveLength(2);
+        expect(data.difficult_sentences[0].highlights.length).toBeGreaterThan(0);
+        expect(data.difficult_sentences[1].sentence).toBe("Experts say the pattern may reshape future climate planning.");
+        expect(data.issues).toEqual(expect.arrayContaining([
+            expect.stringContaining("has no valid highlights"),
+        ]));
+        expect(rewardReadingCoinsMock).not.toHaveBeenCalled();
+    });
+
     it("surfaces provider rate limits instead of collapsing them into a 500", async () => {
         const rateLimitHeaders = new Headers({ "retry-after": "60" });
         createCompletionMock.mockRejectedValue(Object.assign(

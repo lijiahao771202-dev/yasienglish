@@ -13,12 +13,15 @@ import { useAnalysisStore } from "@/lib/analysis-store";
 import { SyntaxTreeView } from "./SyntaxTreeView";
 import { bionicText } from "@/lib/bionic";
 import { InlineGrammarHighlights } from "@/components/shared/InlineGrammarHighlights";
+import { GrammarMarkdown } from "@/components/shared/GrammarMarkdown";
 import { PretextTextarea } from "@/components/ui/PretextTextarea";
 import { type GrammarDisplayMode, type GrammarSentenceAnalysis } from "@/lib/grammarHighlights";
 import {
+    buildReadingGrammarExecutionSignature,
     buildGrammarCacheKey,
     GRAMMAR_BASIC_PROMPT_VERSION,
     GRAMMAR_DEEP_PROMPT_VERSION,
+    hasUsableBasicGrammarResult,
     sanitizeGrammarBasicPayload,
     sanitizeGrammarDeepSentencePayload,
     sentenceIdentity,
@@ -26,7 +29,7 @@ import {
 } from "@/lib/grammar-analysis";
 import { applyServerProfilePatchToLocal, saveVocabulary } from "@/lib/user-repository";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
-import { getReadingCoinCost, INSUFFICIENT_READING_COINS, type ReadingEconomyAction } from "@/lib/reading-economy";
+import { INSUFFICIENT_READING_COINS, type ReadingEconomyAction } from "@/lib/reading-economy";
 import { dispatchReadingCoinFx } from "@/lib/reading-coin-fx";
 import { db, type ReadingMarkType, type ReadingNoteItem, type VocabItem } from "@/lib/db";
 import { createEmptyCard } from "@/lib/fsrs";
@@ -52,7 +55,6 @@ import {
 import { queryAskRelevantVocabulary } from "@/lib/ask-vocab-memory";
 import type { PopupState } from "./WordPopup";
 import { hasMeaningfulTextSelection } from "./selection-helpers";
-import { getPressableStyle, getPressableTap } from "@/lib/pressable";
 import { dispatchReadSelectionAskDockEvent } from "@/lib/read-selection-ask-dock";
 import { AiRichMarkdown } from "@/components/shared/AiRichMarkdown";
 import { readAskSseStream } from "@/lib/ask-sse";
@@ -155,6 +157,11 @@ interface SentenceAudioCacheEntry {
     objectUrl?: string;
 }
 
+interface ClickCharacterResolution {
+    index: number;
+    sentenceIndex?: number;
+}
+
 type SelectionPopupMode = "selection" | "ask" | "ask-replay";
 type AskAnswerMode = "default" | "short" | "detailed";
 
@@ -222,6 +229,8 @@ const ASK_ANSWER_MODE_OPTIONS: Array<{ mode: AskAnswerMode; label: string }> = [
     { mode: "detailed", label: "详细" },
 ];
 
+const SPEAKING_SEEK_STEP_MS = 3000;
+
 const normalizeAskThreadMessages = (raw: unknown): AskThreadMessage[] => {
     const source = Array.isArray(raw)
         ? raw
@@ -262,6 +271,25 @@ const normalizeHighlightColor = (rawColor: string | undefined) => {
 const isRangeOverlapping = (startA: number, endA: number, startB: number, endB: number) => (
     startA < endB && startB < endA
 );
+
+function getCaretRangeFromPoint(clientX: number, clientY: number) {
+    if (typeof document === "undefined") return null;
+
+    const doc = document as Document & {
+        caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+        caretRangeFromPoint?: (x: number, y: number) => Range | null;
+    };
+
+    const caretPosition = doc.caretPositionFromPoint?.(clientX, clientY);
+    if (caretPosition?.offsetNode) {
+        const range = document.createRange();
+        range.setStart(caretPosition.offsetNode, caretPosition.offset);
+        range.setEnd(caretPosition.offsetNode, caretPosition.offset);
+        return range;
+    }
+
+    return doc.caretRangeFromPoint?.(clientX, clientY) ?? null;
+}
 
 function AskReasoningBlock({ content, isStreaming = false }: { content?: string; isStreaming?: boolean }) {
     const normalized = (content ?? "").trim();
@@ -314,35 +342,7 @@ export function ParagraphCard({
     const sessionUser = useAuthSessionUser();
     const { fontSizeClass, isBionicMode } = useReadingSettings();
     const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
-    const grammarExecutionSignature = useMemo(() => {
-        const provider = profile?.ai_provider ?? "deepseek";
-        if (provider === "github") {
-            return `${provider}:${profile?.github_model ?? "openai/gpt-4.1"}`;
-        }
-        if (provider === "nvidia") {
-            return `${provider}:${profile?.nvidia_model ?? "z-ai/glm5"}`;
-        }
-        if (provider === "mimo") {
-            return `${provider}:${profile?.mimo_model ?? "mimo-v2.5-pro"}`;
-        }
-        if (provider === "glm") {
-            return provider;
-        }
-        const deepSeekModel = profile?.deepseek_model ?? "deepseek-v4-flash";
-        const deepSeekThinkingMode = profile?.deepseek_thinking_mode ?? "off";
-        const deepSeekReasoningEffort = deepSeekThinkingMode === "on"
-            ? (profile?.deepseek_reasoning_effort ?? "high")
-            : "off";
-        return `${provider}:${deepSeekModel}:thinking=${deepSeekThinkingMode}:reasoning=${deepSeekReasoningEffort}`;
-    }, [
-        profile?.ai_provider,
-        profile?.deepseek_model,
-        profile?.deepseek_reasoning_effort,
-        profile?.deepseek_thinking_mode,
-        profile?.github_model,
-        profile?.mimo_model,
-        profile?.nvidia_model,
-    ]);
+    const grammarExecutionSignature = useMemo(() => buildReadingGrammarExecutionSignature(profile), [profile]);
     const grammarBasicCacheKey = buildGrammarCacheKey({
         text,
         mode: "basic",
@@ -390,8 +390,7 @@ export function ParagraphCard({
         () => sanitizeGrammarBasicPayload(grammarAnalysis ?? null, text),
         [grammarAnalysis, text],
     );
-    const hasUsableGrammarAnalysis = !grammarAssessment.retryRecommended
-        && grammarAssessment.data.difficult_sentences.length > 0;
+    const hasUsableGrammarAnalysis = hasUsableBasicGrammarResult(grammarAssessment.data);
     const grammarHighlightSentences = useMemo(() => (
         hasUsableGrammarAnalysis
             ? grammarAssessment.data.difficult_sentences
@@ -489,7 +488,7 @@ export function ParagraphCard({
         anchorBottom: number;
         analyzeData?: PhraseAnalysisResult;
     } | null>(null);
-    const [hoveredNoteId, setHoveredNoteId] = useState<number | null>(null);
+    const [, setHoveredNoteId] = useState<number | null>(null);
     const [pressedAskNoteId, setPressedAskNoteId] = useState<number | null>(null);
     const [readingCoinHint, setReadingCoinHint] = useState<string | null>(null);
 
@@ -963,6 +962,11 @@ export function ParagraphCard({
     const playbackIsRunning = isSentenceMode ? isSentencePlaying : isPlaying;
     const playbackIsLoading = isSentenceMode ? isSentenceAudioLoading : isTTSLoading;
     const isPlaybackSessionActive = playbackIsRunning || playbackTimeMs > 0;
+    const playbackTimeMsRef = useRef(playbackTimeMs);
+
+    useEffect(() => {
+        playbackTimeMsRef.current = playbackTimeMs;
+    }, [playbackTimeMs]);
 
     const handleFullWordSeek = useCallback(async (tokenIndex: number) => {
         if (!isPlaybackSessionActive) return;
@@ -1010,6 +1014,88 @@ export function ParagraphCard({
         seekSentenceMs,
         sentenceDurationMs,
     ]);
+
+    const resolveClickCharacterIndex = useCallback((event: React.MouseEvent<HTMLElement>): ClickCharacterResolution | null => {
+        const paragraphNode = pRef.current;
+        if (!paragraphNode) return null;
+
+        const targetNode = event.target instanceof Node ? event.target : null;
+        const targetElement = targetNode instanceof Element ? targetNode : targetNode?.parentElement ?? null;
+        const segmentContentNode = targetElement?.closest<HTMLElement>("[data-speaking-segment-content='true'], [data-segment-content='true']");
+        const segmentNode = segmentContentNode?.closest<HTMLElement>("[data-speaking-segment='true'], [data-reading-layout-segment='true']");
+        const segmentStart = Number(segmentNode?.getAttribute("data-segment-start"));
+        const segmentIndex = Number(segmentNode?.getAttribute("data-speaking-segment-index"));
+        const offsetRoot = segmentContentNode && paragraphNode.contains(segmentContentNode)
+            ? segmentContentNode
+            : paragraphNode;
+        const baseOffset = Number.isFinite(segmentStart) ? segmentStart : 0;
+
+        const caretRange = getCaretRangeFromPoint(event.clientX, event.clientY);
+        if (!caretRange || !offsetRoot.contains(caretRange.endContainer)) {
+            return null;
+        }
+
+        const preCaretRange = caretRange.cloneRange();
+        preCaretRange.selectNodeContents(offsetRoot);
+        preCaretRange.setEnd(caretRange.endContainer, caretRange.endOffset);
+        return {
+            index: baseOffset + preCaretRange.toString().length,
+            sentenceIndex: Number.isFinite(segmentIndex) ? segmentIndex : undefined,
+        };
+    }, []);
+
+    const stepSpeakingPlayback = useCallback(async (deltaMs: number) => {
+        if (!isSpeakingOpen || !isPlaybackSessionActive) return;
+
+        const totalMs = Math.max(0, playbackDurationMs);
+        if (totalMs <= 0) return;
+
+        const currentMs = playbackTimeMsRef.current;
+        const nextMs = Math.max(0, Math.min(currentMs + deltaMs, totalMs));
+        playbackTimeMsRef.current = nextMs;
+        if (isSentenceMode) {
+            setSentenceCurrentTimeMs(nextMs);
+            await seekSentenceMs(nextMs, { autoplay: true });
+            return;
+        }
+
+        await seekToMs(nextMs, { autoplay: true });
+    }, [
+        isPlaybackSessionActive,
+        isSentenceMode,
+        isSpeakingOpen,
+        playbackDurationMs,
+        seekSentenceMs,
+        seekToMs,
+    ]);
+
+    useEffect(() => {
+        if (!isSpeakingOpen) return;
+
+        const handleSpeakingKeyDown = (event: KeyboardEvent) => {
+            const target = event.target;
+            if (target instanceof HTMLElement) {
+                const tagName = target.tagName.toLowerCase();
+                if (target.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select") {
+                    return;
+                }
+            }
+
+            if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                void stepSpeakingPlayback(-SPEAKING_SEEK_STEP_MS);
+                return;
+            }
+
+            if (event.key === "ArrowRight") {
+                event.preventDefault();
+                void stepSpeakingPlayback(SPEAKING_SEEK_STEP_MS);
+            }
+        };
+
+        window.addEventListener("keydown", handleSpeakingKeyDown);
+        return () => window.removeEventListener("keydown", handleSpeakingKeyDown);
+    }, [isSpeakingOpen, stepSpeakingPlayback]);
 
     const renderWordLevelKtv = useCallback((params: {
         sourceText: string;
@@ -1128,6 +1214,9 @@ export function ParagraphCard({
                     return (
                         <li
                             key={`segment-line-${unit.start}-${unit.end}`}
+                            data-speaking-segment="true"
+                            data-speaking-segment-index={unitIndex}
+                            data-segment-start={unit.start}
                             className={cn(
                                 "group/segment flex items-start gap-2 rounded-md px-1 py-0.5 transition-colors",
                                 isSentenceActive ? "bg-amber-50/70" : "hover:bg-stone-50/70",
@@ -1156,7 +1245,10 @@ export function ParagraphCard({
                             >
                                 {unitIndex + 1}
                             </button>
-                            <div className={cn("min-w-0 flex-1", playMode === "sentence" && "cursor-pointer")}>
+                            <div
+                                data-speaking-segment-content="true"
+                                className={cn("min-w-0 flex-1", playMode === "sentence" && "cursor-pointer")}
+                            >
                                 {showSentenceKtv ? (
                                     activeSentenceMarks.length > 0 ? (
                                         renderWordLevelKtv({
@@ -1311,9 +1403,6 @@ export function ParagraphCard({
                     const showAnalyzeVisual = Boolean(analyzeMarker && !showLocateVisual && !showNoteVisual && !showAskVisual);
                     const hasUnderlineVisible = hasUnderline && !showNoteVisual && !showLocateVisual && !showAskVisual && !showAnalyzeVisual;
                     const showHighlightVisual = hasHighlight && !showLocateVisual && !showNoteVisual && !showAskVisual && !showAnalyzeVisual;
-                    const isNoteHovered = Boolean(showNoteVisual && noteMarker?.id && hoveredNoteId === noteMarker.id);
-                    const isAskHovered = Boolean(showAskVisual && askMarker?.id && hoveredNoteId === askMarker.id);
-                    const isAnalyzeHovered = Boolean(showAnalyzeVisual && analyzeMarker?.id && hoveredNoteId === analyzeMarker.id);
                     const markStyle: React.CSSProperties | undefined = showHighlightVisual
                         ? { backgroundColor: highlightColor }
                         : undefined;
@@ -1354,7 +1443,6 @@ export function ParagraphCard({
                                         anchorBottom: rect.bottom,
                                     });
                                 } else if (showAnalyzeVisual && analyzeMarker?.noteText) {
-                                    if (analyzeMarker.id) setHoveredNoteId(analyzeMarker.id);
                                     const rect = event.currentTarget.getBoundingClientRect();
                                     try {
                                         const data = JSON.parse(analyzeMarker.noteText);
@@ -1365,7 +1453,7 @@ export function ParagraphCard({
                                             anchorTop: rect.top,
                                             anchorBottom: rect.bottom,
                                         });
-                                    } catch (e) {
+                                    } catch {
                                         // Ignore parse error
                                     }
                                 }
@@ -1381,7 +1469,6 @@ export function ParagraphCard({
                             onMouseLeave={(showNoteVisual && noteMarker?.noteText) || showAskVisual || (showAnalyzeVisual && analyzeMarker?.noteText)
                                 ? () => {
                                     setHoveredReadingNote(null);
-                                    setHoveredNoteId(null);
                                 }
                                 : undefined}
                             onClick={showNoteVisual && noteMarker?.id
@@ -1430,7 +1517,7 @@ export function ParagraphCard({
                                             setPhraseAnalysis(data);
                                             setIsNoteComposerOpen(false);
                                             setHoveredReadingNote(null);
-                                        } catch (e) {
+                                        } catch {
                                             // fallback
                                         }
                                     }
@@ -1648,7 +1735,7 @@ export function ParagraphCard({
         } | null)?.readingCoins;
         if (!readingCoins) return;
 
-        if (typeof readingCoins.balance === "number") {
+        if (typeof readingCoins.balance === "number" && Number(readingCoins.delta ?? 0) !== 0) {
             await applyServerProfilePatchToLocal({ reading_coins: readingCoins.balance });
         }
 
@@ -2045,7 +2132,7 @@ export function ParagraphCard({
             });
             const data = await res.json();
             if (!res.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
-                setReadingCoinHint("阅读币不足，完成阅读或测验可获得阅读币。");
+                setReadingCoinHint("当前暂时无法解读，请稍后重试。");
                 return;
             }
             await syncReadingBalance(data, "analyze_phrase");
@@ -2299,7 +2386,7 @@ export function ParagraphCard({
             });
             const data = await res.json();
             if (!res.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
-                setReadingCoinHint("阅读币不足，当前无法翻译。");
+                setReadingCoinHint("当前暂时无法翻译，请稍后重试。");
                 setShowTranslation(false);
                 return;
             }
@@ -2338,7 +2425,7 @@ export function ParagraphCard({
             });
             const data = await res.json();
             if (!res.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
-                setReadingCoinHint("阅读币不足，当前无法进行深度语法分析。");
+                setReadingCoinHint("当前暂时无法进行深度语法分析，请稍后重试。");
                 return;
             }
             if (!res.ok) {
@@ -2408,7 +2495,7 @@ export function ParagraphCard({
             });
             const data = await res.json();
             if (!res.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
-                setReadingCoinHint("阅读币不足，当前无法进行语法分析。");
+                setReadingCoinHint("当前暂时无法进行语法分析，请稍后重试。");
                 setShowGrammar(false);
                 return;
             }
@@ -2502,10 +2589,10 @@ export function ParagraphCard({
             if (!res.ok) {
                 const payload = await res.json().catch(() => ({}));
                 if (payload?.errorCode === INSUFFICIENT_READING_COINS) {
-                    setReadingCoinHint("阅读币不足，当前无法 Ask AI。");
+                    setReadingCoinHint("当前暂时无法 Ask AI，请稍后重试。");
                     const insufficientMessages: AskThreadMessage[] = [
                         ...optimisticMessages,
-                        { role: "assistant", content: "阅读币不足，请先完成阅读或测验获取阅读币。", createdAt: Date.now() },
+                        { role: "assistant", content: "当前暂时无法回答这个问题，请稍后重试。", createdAt: Date.now() },
                     ];
                     setMessages(insufficientMessages);
                     await persistParagraphAskThread(insufficientMessages);
@@ -2525,14 +2612,14 @@ export function ParagraphCard({
             }
 
             const readingBalanceHeader = res.headers.get("x-reading-coins-balance");
+            const readingDeltaHeader = Number(res.headers.get("x-reading-coins-delta") ?? 0);
+            const readingAppliedHeader = res.headers.get("x-reading-coins-applied") === "1";
             if (readingBalanceHeader) {
                 const balanceValue = Number(readingBalanceHeader);
-                if (Number.isFinite(balanceValue)) {
+                if (Number.isFinite(balanceValue) && readingAppliedHeader && readingDeltaHeader !== 0) {
                     await applyServerProfilePatchToLocal({ reading_coins: balanceValue });
                 }
             }
-            const readingDeltaHeader = Number(res.headers.get("x-reading-coins-delta") ?? 0);
-            const readingAppliedHeader = res.headers.get("x-reading-coins-applied") === "1";
             const readingActionHeader = res.headers.get("x-reading-coins-action");
             if (readingAppliedHeader && Number.isFinite(readingDeltaHeader) && readingDeltaHeader !== 0 && readingActionHeader) {
                 dispatchReadingCoinFx({
@@ -2692,11 +2779,11 @@ export function ParagraphCard({
                 if (payload?.errorCode === INSUFFICIENT_READING_COINS) {
                     const insufficientMessage: AskThreadMessage = {
                         role: "assistant",
-                        content: "阅读币不足，请先完成阅读或测验获取阅读币。",
+                        content: "当前暂时无法回答这个问题，请稍后重试。",
                         createdAt: Date.now(),
                     };
                     const insufficientMessages = [...optimisticMessages, insufficientMessage];
-                    setReadingCoinHint("阅读币不足，当前无法 Ask AI。");
+                    setReadingCoinHint("当前暂时无法 Ask AI，请稍后重试。");
                     setSelectionAskMessages(insufficientMessages);
                     await persistAskThreadForSelection(insufficientMessages, targetOffsets, targetText);
                     return;
@@ -2715,14 +2802,14 @@ export function ParagraphCard({
             }
 
             const readingBalanceHeader = res.headers.get("x-reading-coins-balance");
+            const readingDeltaHeader = Number(res.headers.get("x-reading-coins-delta") ?? 0);
+            const readingAppliedHeader = res.headers.get("x-reading-coins-applied") === "1";
             if (readingBalanceHeader) {
                 const balanceValue = Number(readingBalanceHeader);
-                if (Number.isFinite(balanceValue)) {
+                if (Number.isFinite(balanceValue) && readingAppliedHeader && readingDeltaHeader !== 0) {
                     await applyServerProfilePatchToLocal({ reading_coins: balanceValue });
                 }
             }
-            const readingDeltaHeader = Number(res.headers.get("x-reading-coins-delta") ?? 0);
-            const readingAppliedHeader = res.headers.get("x-reading-coins-applied") === "1";
             const readingActionHeader = res.headers.get("x-reading-coins-action");
             if (readingAppliedHeader && Number.isFinite(readingDeltaHeader) && readingDeltaHeader !== 0 && readingActionHeader) {
                 dispatchReadingCoinFx({
@@ -3056,37 +3143,44 @@ export function ParagraphCard({
                         if (isEditMode) return; // Disable click actions in edit mode
 
                         // 1. Calculate click position for audio seeking
-                        if (playMode === "full" && duration > 0 && isPlaybackSessionActive) {
-                            const selection = window.getSelection();
-                            if (selection && selection.rangeCount > 0) {
-                                const range = selection.getRangeAt(0);
-                                // Ensure the click is within this paragraph
-                                if (pRef.current?.contains(range.commonAncestorContainer)) {
-                                    // Create a range from the start of the paragraph to the click position
-                                    const preCaretRange = range.cloneRange();
-                                    preCaretRange.selectNodeContents(pRef.current!);
-                                    preCaretRange.setEnd(range.endContainer, range.endOffset);
-                                    const clickIndex = preCaretRange.toString().length;
-
-                                    // Calculate timestamp (linear approximation)
-                                    const targetTimeMs = (clickIndex / text.length) * duration * 1000;
-                                    void seekToMs(targetTimeMs, { autoplay: true });
-                                }
+                        const clickResolution = resolveClickCharacterIndex(e);
+                        const clickIndex = clickResolution?.index ?? null;
+                        if (clickIndex !== null && playMode === "full" && duration > 0 && isPlaybackSessionActive) {
+                            const matchedTokenIndex = fullWordTokens.findIndex((token) => clickIndex >= token.start && clickIndex <= token.end);
+                            if (matchedTokenIndex >= 0) {
+                                void handleFullWordSeek(matchedTokenIndex);
+                            } else {
+                                const targetTimeMs = (clickIndex / Math.max(1, text.length)) * duration * 1000;
+                                void seekToMs(targetTimeMs, { autoplay: true });
                             }
                         }
-                        if (playMode === "sentence" && activeSentenceUnit && sentenceDurationMs > 0 && isPlaybackSessionActive) {
-                            const selection = window.getSelection();
-                            if (selection && selection.rangeCount > 0) {
-                                const range = selection.getRangeAt(0);
-                                if (pRef.current?.contains(range.commonAncestorContainer)) {
-                                    const preCaretRange = range.cloneRange();
-                                    preCaretRange.selectNodeContents(pRef.current);
-                                    preCaretRange.setEnd(range.endContainer, range.endOffset);
-                                    const clickIndex = preCaretRange.toString().length;
-                                    const sentenceRelativeIndex = Math.max(0, Math.min(activeSentenceUnit.text.length, clickIndex - activeSentenceUnit.start));
-                                    const targetTimeMs = (sentenceRelativeIndex / Math.max(1, activeSentenceUnit.text.length)) * sentenceDurationMs;
-                                    void seekSentenceMs(targetTimeMs, { autoplay: true });
-                                }
+                        const clickSentenceIndex = clickResolution?.sentenceIndex ?? activeListenSentenceIndex;
+                        const clickSentenceUnit = sentenceUnits[clickSentenceIndex] ?? activeSentenceUnit;
+                        if (clickIndex !== null && playMode === "sentence" && clickSentenceUnit && sentenceDurationMs > 0 && isPlaybackSessionActive) {
+                            const sentenceRelativeIndex = Math.max(0, Math.min(clickSentenceUnit.text.length, clickIndex - clickSentenceUnit.start));
+                            if (clickSentenceIndex !== activeListenSentenceIndex) {
+                                const targetRatio = sentenceRelativeIndex / Math.max(1, clickSentenceUnit.text.length);
+                                void (async () => {
+                                    await playSentence(clickSentenceIndex);
+                                    const audio = sentenceAudioRef.current;
+                                    const liveDurationMs = audio && Number.isFinite(audio.duration) && audio.duration > 0
+                                        ? audio.duration * 1000
+                                        : 0;
+                                    if (liveDurationMs > 0) {
+                                        await seekSentenceMs(targetRatio * liveDurationMs, { autoplay: true });
+                                    }
+                                })();
+                                return;
+                            }
+                            const sentenceTokens = clickSentenceIndex === activeListenSentenceIndex
+                                ? activeSentenceWordTokens
+                                : extractWordTokens(clickSentenceUnit.text);
+                            const matchedTokenIndex = sentenceTokens.findIndex((token) => sentenceRelativeIndex >= token.start && sentenceRelativeIndex <= token.end);
+                            if (matchedTokenIndex >= 0) {
+                                void handleSentenceWordSeek(matchedTokenIndex);
+                            } else {
+                                const targetTimeMs = (sentenceRelativeIndex / Math.max(1, clickSentenceUnit.text.length)) * sentenceDurationMs;
+                                void seekSentenceMs(targetTimeMs, { autoplay: true });
                             }
                         }
 
@@ -3245,11 +3339,7 @@ export function ParagraphCard({
                         )}
                     >
                         {isTranslating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Languages className="w-3.5 h-3.5" />}
-                        {showTranslation ? "折叠翻译" : (
-                            <>
-                                翻译 <span className="text-[10px] text-amber-500/80">⚡{getReadingCoinCost("translate")}</span>
-                            </>
-                        )}
+                        {showTranslation ? "折叠翻译" : "翻译"}
                     </button>
 
                     <button
@@ -3261,11 +3351,7 @@ export function ParagraphCard({
                         )}
                     >
                         {isAnalyzingGrammar ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5" />}
-                        {showGrammar ? "折叠语法" : (
-                            <>
-                                语法 <span className="text-[10px] text-amber-500/80">⚡{getReadingCoinCost("grammar_basic")}</span>
-                            </>
-                        )}
+                        {showGrammar ? "折叠语法" : "语法"}
                     </button>
 
                     <button
@@ -3278,9 +3364,6 @@ export function ParagraphCard({
                     >
                         <MessageCircleQuestion className="w-3.5 h-3.5" />
                         Ask AI
-                        {!isAskOpen && (
-                            <span className="text-[10px] text-amber-500/80">⚡{getReadingCoinCost("ask_ai")}</span>
-                        )}
                     </button>
 
                     <button
@@ -3417,7 +3500,7 @@ export function ParagraphCard({
                                             )}
                                         >
                                             {isAnalyzingDeepGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : <Layers className="w-3 h-3" />}
-                                            {showDeepAnalysis ? "关闭解析" : `Deep · -${getReadingCoinCost("grammar_deep")}`}
+                                            {showDeepAnalysis ? "关闭解析" : "Deep"}
                                         </button>
                                     </div>
                                 </div>
@@ -3466,7 +3549,7 @@ export function ParagraphCard({
                                                                                 {result.point}
                                                                             </td>
                                                                             <td className="px-3 py-3 text-[12px] leading-relaxed text-theme-text-muted">
-                                                                                {result.explanation}
+                                                                                <GrammarMarkdown content={result.explanation} className="text-[12px] leading-6" />
                                                                             </td>
                                                                         </tr>
                                                                     ))}
@@ -3527,9 +3610,6 @@ export function ParagraphCard({
                                     <div className="flex items-center gap-2 text-stone-800">
                                         <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
                                         <span className="text-xs font-bold tracking-wide">Yasi AI</span>
-                                    </div>
-                                    <div className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 border border-amber-500/20">
-                                        ⚡ {getReadingCoinCost("ask_ai")} 币/次
                                     </div>
                                 </div>
 
@@ -4176,8 +4256,7 @@ export function SelectionActionPopup({
     onClose,
 }: SelectionActionPopupProps) {
     const ref = useRef<HTMLDivElement>(null);
-    const reducedMotion = useReducedMotion();
-    const shouldReduceMotion = Boolean(reducedMotion);
+    useReducedMotion();
     const dragStateRef = useRef<{
         pointerId: number;
         startClientX: number;
@@ -4516,7 +4595,7 @@ export function SelectionActionPopup({
                             className="inline-flex items-center justify-center gap-1.5 rounded-[14px] border border-indigo-500/20 bg-indigo-500/10 px-2 py-2 text-[12px] font-black text-indigo-600 shadow-sm transition-all hover:bg-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {isAnalyzingPhrase ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                            解读 · -{getReadingCoinCost("analyze_phrase")}
+                            解读
                         </motion.button>
                     </div>
                     <div className="mt-2 text-center">
@@ -4574,7 +4653,7 @@ export function SelectionActionPopup({
                             className="inline-flex w-full items-center justify-center gap-1.5 rounded-[14px] border border-indigo-500/30 bg-indigo-500/10 px-2 py-2 text-[12px] font-black text-indigo-600 shadow-sm transition-all hover:bg-indigo-500/15"
                         >
                             <MessageCircleQuestion className="h-3.5 w-3.5" />
-                            向AI提问 · -{getReadingCoinCost("ask_ai")}
+                            向AI提问
                         </motion.button>
                     </div>
                 ))}

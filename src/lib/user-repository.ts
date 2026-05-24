@@ -63,6 +63,7 @@ import {
     type RemoteVocabularyRow,
     type RemoteWritingHistoryRow,
 } from "@/lib/user-sync";
+import { scheduleVocabularyRagIngestion } from "@/lib/rag-ingestion";
 
 type SyncEntity = "profile" | "vocabulary" | "writing_history" | "read_articles" | "elo_history" | "error_ledger";
 
@@ -1103,6 +1104,9 @@ export async function pullRemoteSnapshot(
     }
     const localWriting = Array.from(localWritingById.values());
 
+    const remoteReadByUrl = new Map(
+        (readRes.data as RemoteReadArticleRow[]).map((item) => [item.url, item] as const),
+    );
     const localReadByUrl = new Map((readRes.data as RemoteReadArticleRow[])
         .map(toLocalReadArticle)
         .filter((item) => !pendingKeys.readDeletes.has(item.url))
@@ -1114,6 +1118,19 @@ export async function pullRemoteSnapshot(
             const remoteItem = localReadByUrl.get(item.url);
             localReadByUrl.set(item.url, remoteItem ? { ...remoteItem, archived_at: item.archived_at } : item);
         }
+    }
+    for (const item of pendingLocalRead) {
+        if (typeof item.archived_at !== "number") continue;
+        const remoteArchivedAt = remoteReadByUrl.get(item.url)?.archived_at_ms;
+        if (typeof remoteArchivedAt === "number") continue;
+        const currentItem = localReadByUrl.get(item.url);
+        if (!currentItem) continue;
+        localReadByUrl.set(item.url, {
+            ...currentItem,
+            archived_at: item.archived_at,
+            updated_at: item.updated_at || currentItem.updated_at || nowIso(),
+            sync_status: "pending",
+        });
     }
     const localRead = Array.from(localReadByUrl.values());
 
@@ -1880,6 +1897,7 @@ export async function saveVocabulary(item: VocabItem) {
         recordKey: nextItem.word_key || normalizeWordKey(nextItem.word),
         payload: toRemoteVocabularyRow(userId, nextItem),
     });
+    void scheduleVocabularyRagIngestion();
     useSyncStatusStore.getState().setPhase("syncing");
     void scheduleBackgroundSync();
 }
@@ -1929,6 +1947,7 @@ export async function updateVocabularyEntry(previousWord: string, item: VocabIte
     });
 
     useSyncStatusStore.getState().setPhase("syncing");
+    void scheduleVocabularyRagIngestion();
     void scheduleBackgroundSync();
     return nextItem;
 }
@@ -1945,6 +1964,7 @@ export async function deleteVocabulary(word: string) {
         recordKey: wordKey,
         payload: { user_id: userId, word_key: wordKey },
     });
+    void scheduleVocabularyRagIngestion();
     useSyncStatusStore.getState().setPhase("syncing");
     void scheduleBackgroundSync();
 }
@@ -2133,22 +2153,57 @@ export async function setReadArticleArchived(url: string, archived: boolean) {
         throw new Error("Missing article url.");
     }
 
+    const userId = await getActiveUserId();
     const existing = await db.read_articles.get(normalizedUrl);
     const nextArchivedAt = archived ? Date.now() : undefined;
+    const updatedAt = nowIso();
 
     if (existing) {
-        await db.read_articles.update(normalizedUrl, {
+        const nextItem: ReadArticleItem = {
+            ...existing,
+            user_id: existing.user_id ?? userId ?? undefined,
+            remote_id: existing.remote_id || crypto.randomUUID(),
+            updated_at: updatedAt,
+            sync_status: userId ? "pending" : existing.sync_status,
             archived_at: nextArchivedAt,
-        });
+        };
+        await db.read_articles.put(nextItem);
+        if (userId) {
+            await queueOutboxItem({
+                entity: "read_articles",
+                operation: "upsert",
+                recordKey: normalizedUrl,
+                payload: toRemoteReadArticle(userId, nextItem),
+            });
+            useSyncStatusStore.getState().setPhase("syncing");
+            void scheduleBackgroundSync();
+        }
         return;
     }
 
-    await db.read_articles.put({
+    const nextItem: ReadArticleItem = {
         url: normalizedUrl,
         timestamp: Date.now(),
         read_at: Date.now(),
+        user_id: userId ?? undefined,
+        remote_id: crypto.randomUUID(),
+        updated_at: updatedAt,
+        sync_status: userId ? "pending" : undefined,
         archived_at: nextArchivedAt,
+    };
+
+    await db.read_articles.put(nextItem);
+    if (!userId) {
+        return;
+    }
+    await queueOutboxItem({
+        entity: "read_articles",
+        operation: "upsert",
+        recordKey: normalizedUrl,
+        payload: toRemoteReadArticle(userId, nextItem),
     });
+    useSyncStatusStore.getState().setPhase("syncing");
+    void scheduleBackgroundSync();
 }
 
 export async function saveProfilePatch(

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useLiveQuery } from "dexie-react-hooks";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { BookOpen, Check, ChevronRight, CloudUpload, Image as ImageIcon, Loader2, LogOut, Mail, Play, RefreshCw, Search, Settings2, Volume2, X, BrainCircuit, Cpu } from "lucide-react";
@@ -32,6 +31,7 @@ import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
 import { MailboxPanel } from "@/components/mail/MailboxPanel";
 import { BackgroundThemePicker } from "@/components/background/BackgroundThemePicker";
+import { useSafeLiveQuery } from "@/lib/use-safe-live-query";
 
 interface UserAvatarMenuProps {
     userId?: string | null;
@@ -723,8 +723,8 @@ export function ConnectedUserAvatarMenu({
     placement?: "floating" | "sidebar" | "header";
 }) {
     const sessionUser = useAuthSessionUser();
-    const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
-    const syncMeta = useLiveQuery(() => db.sync_meta.get("last_successful_sync_at"), []);
+    const profile = useSafeLiveQuery(() => db.user_profile.orderBy("id").first(), [], undefined, "avatar.profile");
+    const syncMeta = useSafeLiveQuery(() => db.sync_meta.get("last_successful_sync_at"), [], undefined, "avatar.sync-meta");
     const { phase, error } = useSyncStatusStore();
     const [unreadCount, setUnreadCount] = useState(0);
 

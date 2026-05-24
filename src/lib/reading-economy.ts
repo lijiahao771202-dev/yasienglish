@@ -40,12 +40,12 @@ export const READING_COIN_DAILY_GAIN_CAP = 32;
 
 export function getReadingCoinCost(action?: ReadingEconomyAction | null): number {
     if (!action) return 0;
-    return READING_COIN_COSTS[action as keyof typeof READING_COIN_COSTS] ?? 0;
+    return 0;
 }
 
 export function getReadingCoinReward(action?: ReadingEconomyAction | null): number {
     if (!action) return 0;
-    return READING_COIN_REWARDS[action as keyof typeof READING_COIN_REWARDS] ?? 0;
+    return 0;
 }
 
 export function buildWordLookupDedupeKey(params: {

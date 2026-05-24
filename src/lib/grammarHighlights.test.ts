@@ -4,6 +4,7 @@ import {
     buildGrammarHighlightRanges,
     buildGrammarHighlightSegments,
     buildGrammarViewModel,
+    getGrammarHighlightPalette,
     translateGrammarType,
 } from "./grammarHighlights";
 
@@ -169,7 +170,7 @@ describe("grammarHighlights", () => {
         });
     });
 
-    it("standardizes clause aliases into canonical labels", () => {
+    it("preserves specific clause labels for distinct visual mapping", () => {
         const text = "I know that he left early.";
         const model = buildGrammarViewModel(text, [
             {
@@ -182,7 +183,28 @@ describe("grammarHighlights", () => {
             },
         ]);
 
-        expect(model.full.some((segment) => segment.highlight?.normalizedType === "名词性从句")).toBe(true);
+        expect(model.full.some((segment) => segment.highlight?.normalizedType === "宾语从句")).toBe(true);
+        expect(model.full.some((segment) => segment.highlight?.normalizedType === "名词性从句")).toBe(false);
+    });
+
+    it("keeps non-restrictive relatives and result adverbials as their own labels in the view model", () => {
+        const text = "Both methods, which many teachers recommend, can short-circuit the loop, leading to calmer decisions.";
+        const model = buildGrammarViewModel(text, [
+            {
+                sentence: text,
+                highlights: [
+                    { substring: "which many teachers recommend", type: "非限制性定语从句", explanation: "补充说明前面的 methods" },
+                    { substring: "leading to calmer decisions", type: "结果状语", explanation: "表示前面动作带来的结果" },
+                ],
+            },
+        ]);
+
+        expect(model.full.some((segment) => segment.highlight?.normalizedType === "非限制性定语从句")).toBe(true);
+        expect(model.full.some((segment) => segment.highlight?.translatedLabel === "非限制性定语从句")).toBe(true);
+        expect(model.full.some((segment) => segment.highlight?.normalizedType === "结果状语")).toBe(true);
+        expect(model.full.some((segment) => segment.highlight?.translatedLabel === "结果状语")).toBe(true);
+        expect(model.full.some((segment) => segment.highlight?.normalizedType === "定语")).toBe(false);
+        expect(model.full.some((segment) => segment.highlight?.normalizedType === "状语")).toBe(false);
     });
 
     it("exposes overlap metadata when one fragment has multiple grammar tags", () => {
@@ -225,5 +247,67 @@ describe("grammarHighlights", () => {
             expect(model.full.some((segment) => segment.start === start)).toBe(true);
             expect(model.core.some((segment) => segment.start === start)).toBe(true);
         });
+    });
+
+    it("assigns distinct palettes to a wider set of grammar roles and clause types", () => {
+        const subject = getGrammarHighlightPalette("主语");
+        const predicate = getGrammarHighlightPalette("谓语");
+        const object = getGrammarHighlightPalette("宾语");
+        const predicative = getGrammarHighlightPalette("表语");
+        const attributive = getGrammarHighlightPalette("定语");
+        const adverbial = getGrammarHighlightPalette("状语");
+        const complement = getGrammarHighlightPalette("补语");
+        const appositive = getGrammarHighlightPalette("同位语");
+        const prepPhrase = getGrammarHighlightPalette("介词短语");
+        const nounClause = getGrammarHighlightPalette("名词性从句");
+        const relativeClause = getGrammarHighlightPalette("定语从句");
+        const adverbialClause = getGrammarHighlightPalette("状语从句");
+        const nonFinite = getGrammarHighlightPalette("非谓语");
+
+        expect(subject).not.toEqual(predicate);
+        expect(predicate).not.toEqual(object);
+        expect(object).not.toEqual(predicative);
+        expect(attributive).not.toEqual(adverbial);
+        expect(complement).not.toEqual(appositive);
+        expect(prepPhrase).not.toEqual(attributive);
+        expect(nounClause).not.toEqual(relativeClause);
+        expect(relativeClause).not.toEqual(adverbialClause);
+        expect(nonFinite).not.toEqual(nounClause);
+    });
+
+    it("assigns distinct palettes to finer clause and modifier subtypes", () => {
+        const restrictiveRelative = getGrammarHighlightPalette("限制性定语从句");
+        const nonRestrictiveRelative = getGrammarHighlightPalette("非限制性定语从句");
+        const subjectClause = getGrammarHighlightPalette("主语从句");
+        const objectClause = getGrammarHighlightPalette("宾语从句");
+        const predicativeClause = getGrammarHighlightPalette("表语从句");
+        const appositiveClause = getGrammarHighlightPalette("同位语从句");
+        const timeClause = getGrammarHighlightPalette("时间状语从句");
+        const placeClause = getGrammarHighlightPalette("地点状语从句");
+        const reasonClause = getGrammarHighlightPalette("原因状语从句");
+        const purposeClause = getGrammarHighlightPalette("目的状语从句");
+        const conditionClause = getGrammarHighlightPalette("条件状语从句");
+        const concessionClause = getGrammarHighlightPalette("让步状语从句");
+        const resultClause = getGrammarHighlightPalette("结果状语从句");
+        const mannerClause = getGrammarHighlightPalette("方式状语从句");
+        const comparisonClause = getGrammarHighlightPalette("比较状语从句");
+        const timeAdverbial = getGrammarHighlightPalette("时间状语");
+        const resultAdverbial = getGrammarHighlightPalette("结果状语");
+        const prepositiveAttributive = getGrammarHighlightPalette("前置定语");
+        const postpositiveAttributive = getGrammarHighlightPalette("后置定语");
+
+        expect(restrictiveRelative).not.toEqual(nonRestrictiveRelative);
+        expect(subjectClause).not.toEqual(objectClause);
+        expect(objectClause).not.toEqual(predicativeClause);
+        expect(predicativeClause).not.toEqual(appositiveClause);
+        expect(timeClause).not.toEqual(placeClause);
+        expect(reasonClause).not.toEqual(purposeClause);
+        expect(conditionClause).not.toEqual(concessionClause);
+        expect(resultClause).not.toEqual(mannerClause);
+        expect(mannerClause).not.toEqual(comparisonClause);
+        expect(timeAdverbial).not.toEqual(resultAdverbial);
+        expect(prepositiveAttributive).not.toEqual(postpositiveAttributive);
+        expect(nonRestrictiveRelative).not.toEqual(prepositiveAttributive);
+        expect(resultClause).not.toEqual(resultAdverbial);
     });
 });

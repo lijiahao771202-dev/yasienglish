@@ -3,6 +3,11 @@ import type { LearningPreferences } from "@/lib/profile-settings";
 import type { AiProvider } from "@/lib/profile-settings";
 import type { ListeningCabinSession } from "@/lib/listening-cabin";
 import type { MeaningGroup } from "@/lib/vocab-meanings";
+import type {
+    AIGenerationMode,
+    LongformLengthTierMeta,
+    LongformStyleMeta,
+} from "@/lib/ai-reading-generation";
 import { resetVocabularySchedulingState } from "@/lib/fsrs";
 import { applyTranslationEloReset } from "@/lib/translation-elo-reset";
 
@@ -132,6 +137,11 @@ export interface CachedArticle {
     timestamp: number;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     isAIGenerated?: boolean;
+    generationMode?: AIGenerationMode;
+    quizEligible?: boolean;
+    longformStyle?: LongformStyleMeta;
+    lengthTier?: LongformLengthTierMeta;
+    wordCount?: number;
     isCatMode?: boolean;
     catSessionId?: string;
     catBand?: number;

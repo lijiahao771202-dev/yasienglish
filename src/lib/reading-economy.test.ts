@@ -15,12 +15,12 @@ describe("reading economy", () => {
         expect(INSUFFICIENT_READING_COINS).toBe("INSUFFICIENT_READING_COINS");
     });
 
-    it("returns expected costs and rewards", () => {
-        expect(getReadingCoinCost("translate")).toBe(1);
-        expect(getReadingCoinCost("grammar_deep")).toBe(3);
+    it("disables reading coin charges and rewards", () => {
+        expect(getReadingCoinCost("translate")).toBe(0);
+        expect(getReadingCoinCost("grammar_deep")).toBe(0);
         expect(getReadingCoinCost("quiz_complete")).toBe(0);
-        expect(getReadingCoinReward("daily_login")).toBe(8);
-        expect(getReadingCoinReward("quiz_complete")).toBe(6);
+        expect(getReadingCoinReward("daily_login")).toBe(0);
+        expect(getReadingCoinReward("quiz_complete")).toBe(0);
         expect(getReadingCoinReward("ask_ai")).toBe(0);
     });
 

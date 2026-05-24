@@ -1,9 +1,67 @@
+import type { LocalUserProfile } from "@/lib/db";
+import { glmModelSupportsThinking } from "@/lib/glm-model-catalog";
+import {
+    normalizeAiProvider,
+    normalizeProfileDeepSeekModel,
+    normalizeProfileDeepSeekReasoningEffort,
+    normalizeProfileDeepSeekThinkingMode,
+    normalizeProfileGithubModel,
+    normalizeProfileGlmModel,
+    normalizeProfileGlmThinkingMode,
+    normalizeProfileMimoModel,
+    normalizeProfileNvidiaModel,
+} from "@/lib/profile-settings";
+
 export type GrammarMode = "basic" | "deep";
 
 export const GRAMMAR_BASIC_MODEL = "deepseek-chat";
 export const GRAMMAR_DEEP_MODEL = "deepseek-chat";
-export const GRAMMAR_BASIC_PROMPT_VERSION = "2026-04-26-basic-v8";
+export const GRAMMAR_BASIC_PROMPT_VERSION = "2026-05-17-basic-v10";
 export const GRAMMAR_DEEP_PROMPT_VERSION = "2026-04-26-deep-v5";
+
+type GrammarProfileSource = Pick<
+    LocalUserProfile,
+    | "ai_provider"
+    | "deepseek_model"
+    | "deepseek_thinking_mode"
+    | "deepseek_reasoning_effort"
+    | "glm_model"
+    | "glm_thinking_mode"
+    | "nvidia_model"
+    | "github_model"
+    | "mimo_model"
+>;
+
+export function buildReadingGrammarExecutionSignature(profile?: Partial<GrammarProfileSource> | null) {
+    const provider = normalizeAiProvider(profile?.ai_provider);
+
+    if (provider === "github") {
+        return `${provider}:${normalizeProfileGithubModel(profile?.github_model)}`;
+    }
+
+    if (provider === "nvidia") {
+        return `${provider}:${normalizeProfileNvidiaModel(profile?.nvidia_model)}`;
+    }
+
+    if (provider === "mimo") {
+        return `${provider}:${normalizeProfileMimoModel(profile?.mimo_model)}`;
+    }
+
+    if (provider === "glm") {
+        const glmModel = normalizeProfileGlmModel(profile?.glm_model);
+        return glmModelSupportsThinking(glmModel)
+            ? `${provider}:${glmModel}:thinking=${normalizeProfileGlmThinkingMode(profile?.glm_thinking_mode)}`
+            : `${provider}:${glmModel}`;
+    }
+
+    const deepSeekModel = normalizeProfileDeepSeekModel(profile?.deepseek_model);
+    const deepSeekThinkingMode = normalizeProfileDeepSeekThinkingMode(profile?.deepseek_thinking_mode);
+    const deepSeekReasoningEffort = deepSeekThinkingMode === "on"
+        ? normalizeProfileDeepSeekReasoningEffort(profile?.deepseek_reasoning_effort)
+        : undefined;
+
+    return `${provider}:${deepSeekModel}:thinking=${deepSeekThinkingMode}:reasoning=${deepSeekReasoningEffort ?? "off"}`;
+}
 
 export interface GrammarBasicHighlight {
     substring: string;
@@ -55,19 +113,73 @@ export interface GrammarSanitizeResult<T> {
     qualityScore: number;
 }
 
+export function hasUsableBasicGrammarResult(
+    result: Pick<GrammarBasicResult, "difficult_sentences"> | null | undefined,
+) {
+    const sentences = Array.isArray(result?.difficult_sentences) ? result.difficult_sentences : [];
+    if (sentences.length === 0) return false;
+
+    return sentences.some((sentence) => {
+        const highlights = Array.isArray(sentence?.highlights) ? sentence.highlights : [];
+        return highlights.length > 0;
+    });
+}
+
 const CANONICAL_GRAMMAR_TYPES = [
     "主语",
     "谓语",
     "宾语",
     "表语",
     "定语",
+    "前置定语",
+    "后置定语",
     "状语",
+    "时间状语",
+    "地点状语",
+    "原因状语",
+    "目的状语",
+    "条件状语",
+    "让步状语",
+    "结果状语",
+    "方式状语",
+    "程度状语",
+    "伴随状语",
     "补语",
     "同位语",
+    "主句",
+    "并列句",
+    "并列主句",
     "从句",
+    "主语从句",
+    "宾语从句",
+    "表语从句",
+    "同位语从句",
+    "名词性从句",
+    "定语从句",
+    "限制性定语从句",
+    "非限制性定语从句",
+    "关系从句",
+    "状语从句",
+    "时间状语从句",
+    "地点状语从句",
+    "原因状语从句",
+    "目的状语从句",
+    "条件状语从句",
+    "让步状语从句",
+    "结果状语从句",
+    "方式状语从句",
+    "比较状语从句",
     "非谓语",
+    "分词短语",
+    "不定式短语",
+    "动名词短语",
+    "介词短语",
     "短语",
     "连接成分",
+    "倒装句",
+    "虚拟语气",
+    "强调句",
+    "插入语",
     "语法点",
 ];
 
@@ -84,15 +196,96 @@ function containsCjk(value: string) {
     return /[\u4e00-\u9fff]/.test(value);
 }
 
+const COMPLEX_SENTENCE_MARKERS = [
+    /\bthat\b/i,
+    /\bwhich\b/i,
+    /\bwho\b/i,
+    /\bwhom\b/i,
+    /\bwhose\b/i,
+    /\bwhen\b/i,
+    /\bwhere\b/i,
+    /\bwhile\b/i,
+    /\balthough\b/i,
+    /\bthough\b/i,
+    /\bbecause\b/i,
+    /\bif\b/i,
+    /\bas\b/i,
+    /\bcompared to\b/i,
+    /\bpublished in\b/i,
+    /\bincorporating\b/i,
+    /\bleading to\b/i,
+];
+
+const INTERNAL_STRUCTURE_MARKERS = [
+    /\bthat\b/i,
+    /\bwhich\b/i,
+    /\bwho\b/i,
+    /\bwhom\b/i,
+    /\bwhose\b/i,
+    /\bwhen\b/i,
+    /\bwhere\b/i,
+    /\bwhile\b/i,
+    /\balthough\b/i,
+    /\bthough\b/i,
+    /\bbecause\b/i,
+    /\bif\b/i,
+    /\bas\b/i,
+    /\bcompared to\b/i,
+    /\bpublished in\b/i,
+    /\bincorporating\b/i,
+    /\breceiving\b/i,
+    /\bleading to\b/i,
+];
+
 function normalizeGrammarType(rawType: string) {
     const type = rawType.trim();
     if (!type) return "语法点";
     if (CANONICAL_GRAMMAR_TYPES.includes(type)) return type;
 
     const normalized = type
-        .replace(/\s+/g, "")
-        .replace(/[()（）]/g, "")
+        .replace(/[\s()（）_-]+/g, "")
         .toLowerCase();
+    if (normalized.includes("mainclause") || normalized.includes("主句")) return "主句";
+    if (normalized.includes("coordinateclause") || normalized.includes("并列主句")) return "并列主句";
+    if (normalized.includes("coordinatesentence") || normalized.includes("并列句")) return "并列句";
+    if (normalized.includes("subjectclause") || normalized.includes("主语从句")) return "主语从句";
+    if (normalized.includes("objectclause") || normalized.includes("宾语从句")) return "宾语从句";
+    if (normalized.includes("predicativeclause") || normalized.includes("表语从句")) return "表语从句";
+    if (normalized.includes("appositiveclause") || normalized.includes("同位语从句")) return "同位语从句";
+    if (normalized.includes("nounclause") || normalized.includes("名词性从句")) return "名词性从句";
+    if (normalized.includes("nonrestrictiverelativeclause") || normalized.includes("nondefiningrelativeclause") || normalized.includes("非限制性定语从句") || normalized.includes("非限定性定语从句")) return "非限制性定语从句";
+    if (normalized.includes("restrictiverelativeclause") || normalized.includes("definingrelativeclause") || normalized.includes("限制性定语从句")) return "限制性定语从句";
+    if (normalized.includes("relativeclause") || normalized.includes("adjectiveclause") || normalized.includes("关系从句") || normalized.includes("定语从句")) return "定语从句";
+    if (normalized.includes("timeadverbialclause") || normalized.includes("时间状语从句")) return "时间状语从句";
+    if (normalized.includes("placeadverbialclause") || normalized.includes("地点状语从句")) return "地点状语从句";
+    if (normalized.includes("causeadverbialclause") || normalized.includes("reasonadverbialclause") || normalized.includes("原因状语从句")) return "原因状语从句";
+    if (normalized.includes("purposeadverbialclause") || normalized.includes("目的状语从句")) return "目的状语从句";
+    if (normalized.includes("conditionadverbialclause") || normalized.includes("条件状语从句")) return "条件状语从句";
+    if (normalized.includes("concessionadverbialclause") || normalized.includes("让步状语从句")) return "让步状语从句";
+    if (normalized.includes("resultadverbialclause") || normalized.includes("结果状语从句")) return "结果状语从句";
+    if (normalized.includes("manneradverbialclause") || normalized.includes("方式状语从句")) return "方式状语从句";
+    if (normalized.includes("comparisonadverbialclause") || normalized.includes("比较状语从句")) return "比较状语从句";
+    if (normalized.includes("adverbialclause") || normalized.includes("状语从句")) return "状语从句";
+    if (normalized.includes("prepositiveattributive") || normalized.includes("前置定语")) return "前置定语";
+    if (normalized.includes("postpositiveattributive") || normalized.includes("后置定语")) return "后置定语";
+    if (normalized.includes("timeadverbial") || normalized.includes("时间状语")) return "时间状语";
+    if (normalized.includes("placeadverbial") || normalized.includes("地点状语")) return "地点状语";
+    if (normalized.includes("reasonadverbial") || normalized.includes("causeadverbial") || normalized.includes("原因状语")) return "原因状语";
+    if (normalized.includes("purposeadverbial") || normalized.includes("目的状语")) return "目的状语";
+    if (normalized.includes("conditionadverbial") || normalized.includes("条件状语")) return "条件状语";
+    if (normalized.includes("concessionadverbial") || normalized.includes("让步状语")) return "让步状语";
+    if (normalized.includes("resultadverbial") || normalized.includes("结果状语")) return "结果状语";
+    if (normalized.includes("manneradverbial") || normalized.includes("方式状语")) return "方式状语";
+    if (normalized.includes("degreeadverbial") || normalized.includes("程度状语")) return "程度状语";
+    if (normalized.includes("accompanyingadverbial") || normalized.includes("accompanimentadverbial") || normalized.includes("伴随状语")) return "伴随状语";
+    if (normalized.includes("prepositionalphrase") || normalized.includes("prepphrase") || normalized.includes("介词短语")) return "介词短语";
+    if (normalized.includes("participlephrase") || normalized.includes("分词短语")) return "分词短语";
+    if (normalized.includes("infinitivephrase") || normalized.includes("不定式短语")) return "不定式短语";
+    if (normalized.includes("gerundphrase") || normalized.includes("动名词短语")) return "动名词短语";
+    if (normalized.includes("inversion") || normalized.includes("倒装")) return "倒装句";
+    if (normalized.includes("subjunctive") || normalized.includes("虚拟")) return "虚拟语气";
+    if (normalized.includes("cleft") || normalized.includes("emphatic") || normalized.includes("强调句")) return "强调句";
+    if (normalized.includes("parenthetical") || normalized.includes("插入语")) return "插入语";
     if (normalized.includes("subject") || normalized.includes("主语")) return "主语";
     if (normalized.includes("predicate") || normalized.includes("谓语")) return "谓语";
     if (normalized.includes("object") || normalized.includes("宾语")) return "宾语";
@@ -118,7 +311,7 @@ function enrichBasicExplanation(type: string, substring: string, rawExplanation:
     const normalized = rawExplanation.trim();
     if (!isWeakExplanation(normalized)) return normalized;
     const safeType = type.trim() || "语法点";
-    return `结构判断：这部分属于${safeType}；句中作用：帮助你看清这句话里的意思。`;
+    return `**结构判断**：这部分属于${safeType}。\n\n**句中作用**：帮助你看清这句话里的意思。`;
 }
 
 function normalizeSegmentTranslation(rawTranslation: string, substring: string) {
@@ -133,7 +326,7 @@ function enrichDeepExplanation(raw: string, point: string) {
     const normalized = raw.trim();
     if (!isWeakExplanation(normalized)) return normalized;
     const safePoint = point.trim() || "该语法点";
-    return `结构判断：句子包含${safePoint}；句中作用：支撑语义组织并影响信息重心。`;
+    return `**结构判断**：句子包含${safePoint}。\n\n**句中作用**：支撑语义组织并影响信息重心。`;
 }
 
 function toFiniteString(value: unknown) {
@@ -228,13 +421,29 @@ OBJECTIVE:
    - Main components: Subject (主语), Predicate/Verb (谓语), Object/Predicative (宾语/表语).
    - Modifiers: Attributive (定语), Adverbial (状语), Complement (补语), Appositive (同位语).
    - Clauses/structures when present.
-5. Every highlight.explanation MUST use very plain Chinese for learners with weak grammar.
-   - Prefer 2 to 3 short parts, not a long paragraph.
-   - Must explain: 这部分是什么结构 + 它在句里干什么.
-   - If a grammar term is hard, immediately explain it in simpler words.
-   - Only add 主干关系 / 理解提醒 when genuinely useful.
-   - Avoid textbook jargon if a simpler wording works.
-6. Every segment_translation MUST be contextual (in THIS sentence), not dictionary-only.
+   - The goal is teaching-ready chunking, not minimum-viable labeling.
+5. Prefer the most specific grammar type possible for highlight.type.
+   - Use 时间状语从句 / 条件状语从句 / 让步状语从句 / 原因状语从句 / 目的状语从句 when the subtype is clear.
+   - Use 宾语从句 / 主语从句 / 表语从句 / 同位语从句 instead of generic 从句 or 名词性从句 when the clause role is clear.
+   - Use 定语从句 instead of generic 从句 when it modifies a noun.
+   - Use 介词短语 / 分词短语 / 不定式短语 / 动名词短语 instead of generic 短语 when the phrase form is clear.
+   - Use 非谓语 only when the exact phrase form is not clear.
+   - Do NOT collapse a specific structure into a broad label unless you genuinely cannot identify the subtype.
+6. Every highlight.explanation MUST be Markdown-ready and teacher-like.
+   - Lead with one bold judgment sentence.
+   - Then use 1 to 3 short lines, bullets, or a short blockquote to explain the role in the sentence.
+   - Explain: 这部分是什么 + 它在句里干什么 + 为什么值得单独标出来.
+   - If a grammar term is hard, immediately unpack it in simpler words.
+   - Avoid rigid textbook labels as section headers; prefer natural explanation.
+7. Every segment_translation MUST be contextual (in THIS sentence), not dictionary-only.
+8. Chunking Rules for long / complex sentences:
+   - Do NOT stop at the outer clause boundary.
+   - If a chunk still contains an internal clause, non-finite modifier, appositive, comparison, publication/source detail, or time detail, split it again.
+   - Avoid oversized chunks. Each chunk should usually carry one main grammar job only.
+   - Long noun phrases must be decomposed when they contain post-modifiers such as relative clauses, participial phrases, prepositional phrases, appositives, publication/source details, or year/time details.
+   - After labeling a clause such as 宾语从句 / 定语从句 / 状语从句, continue exposing its internal backbone when that backbone is still pedagogically important.
+   - Prefer 5-12 meaningful chunks for a long complex sentence rather than 2-4 oversized chunks.
+   - Never merge a clause label and all of its internal content into one giant chunk when the internal structure is still analyzable.
 
 FEW-SHOT EXAMPLE 1:
 Sentence: "When students feel lost, they often look for a checklist."
@@ -245,20 +454,20 @@ Good JSON fragment:
       "highlights": [
         {
           "substring": "When students feel lost",
-          "type": "状语",
-          "explanation": "结构判断：这是 when 引导的时间状语从句，也就是交代时间的一小句；句中作用：用来说明后面的动作是什么时候发生的；提醒：不要把它看成主句。",
+          "type": "时间状语从句",
+          "explanation": "**这部分是 when 引导的时间状语从句。**\n\n- 它交代后面动作发生的时间。\n- 这里不要把它当成主句。\n\n> 提醒：先抓主句，再看这个从句。",
           "segment_translation": "当学生感到迷茫时"
         },
         {
           "substring": "they",
           "type": "主语",
-          "explanation": "结构判断：they 是主语，也就是表示“谁”的部分；句中作用：指出是谁在执行 look for 这个动作。",
+          "explanation": "**they 是主语。**\n\n- 它表示“谁”在做事。\n- 这里具体指前面的学生。",
           "segment_translation": "他们"
         },
         {
           "substring": "look for a checklist",
           "type": "谓语",
-          "explanation": "结构判断：这是谓语部分，也就是表示动作的部分；句中作用：说明主语具体做了什么。",
+          "explanation": "**这是谓语部分。**\n\n- 它表示动作本身。\n- 这里说明主语具体做了什么。",
           "segment_translation": "寻找一份清单"
         }
       ]
@@ -273,20 +482,20 @@ Good JSON fragment:
       "highlights": [
         {
           "substring": "By explicitly rating options according to agreed criteria",
-          "type": "状语",
-          "explanation": "结构判断：这是 by 引导的方式状语，也就是补充“怎么做”的部分；句中作用：说明后面的动作是通过什么方式实现的。",
+          "type": "介词短语",
+          "explanation": "**这是 by 引导的方式状语。**\n\n- 它补充说明“怎么做”。\n- 这里强调动作是通过什么方式实现的。",
           "segment_translation": "通过按照既定标准明确地给选项打分"
         },
         {
           "substring": "individuals",
           "type": "主语",
-          "explanation": "结构判断：individuals 是主语，也就是表示“谁”的部分；句中作用：指出是谁在做 decrease 这个动作。",
+          "explanation": "**individuals 是主语。**\n\n- 它就是“谁”在做 decrease。\n- 指的是这些人。",
           "segment_translation": "人们"
         },
         {
           "substring": "of being influenced by transient emotions",
-          "type": "短语",
-          "explanation": "结构判断：这是 of 后面的一个动作短语；句中作用：补充说明 the chance 具体指什么。",
+          "type": "介词短语",
+          "explanation": "**这是 of 后面的补充短语。**\n\n- 它在解释 the chance 具体指什么。\n- 这样整句的意思更完整。",
           "segment_translation": "被短暂情绪影响"
         }
       ]
@@ -316,11 +525,15 @@ CONSTRAINTS:
 - Keep sentence order exactly as original paragraph.
 - You MUST return one entry for every input sentence. Do not skip short, simple, or summary-like sentences.
 - "sentence" must be an exact substring.
-- "type" must be Simplified Chinese and should prefer: 主语/谓语/宾语/表语/定语/状语/补语/同位语/从句/非谓语/短语/连接成分.
+- "type" must be Simplified Chinese and should prefer specific labels such as 主语/谓语/宾语/表语/定语/状语/补语/同位语/主句/宾语从句/主语从句/表语从句/同位语从句/定语从句/时间状语从句/原因状语从句/目的状语从句/条件状语从句/让步状语从句/介词短语/分词短语/不定式短语/动名词短语/倒装句/虚拟语气/强调句.
 - Each sentence should contain at least one highlight unless truly trivial.
 - For long sentences, at least one highlight should capture the clause backbone, not only isolated words.
 - Prefer exact clause spans over dictionary-like single-word labels when a clause is doing the real grammar work.
+- Do NOT stop at the outer clause boundary for long sentences.
+- Avoid oversized chunks.
+- Long noun phrases must be decomposed when they include internal modifiers or source/time tails.
 - Explanations should sound like a teacher speaking to a learner in simple Chinese.
+- Markdown is allowed inside explanation string values, but the outer response must remain valid JSON.
 - Keep each explanation compact and easy to scan.
 - Imagine the learner does not really understand grammar terms yet.
 - Return JSON object only, no markdown, no extra text.
@@ -347,7 +560,7 @@ Sentence:
 WORKFLOW:
 1. Identify the main clause first.
 2. Then place subordinate clauses / non-finite phrases / inserted structures under the correct parent.
-3. In analysis_results, explain the real grammatical leverage points, not generic textbook definitions.
+3. In analysis_results, explain the real grammatical leverage points, not generic textbook definitions. Markdown is allowed inside the explanation strings.
 
 FEW-SHOT EXAMPLE:
 Sentence: "When students feel lost, they often look for a checklist that gives them a starting point."
@@ -373,11 +586,11 @@ Good JSON:
   "analysis_results": [
     {
       "point": "时间状语从句",
-      "explanation": "结构判断：When students feel lost 是 when 引导的时间状语从句；句中作用：交代主句动作发生的条件背景；主干关系：它修饰主句 they often look for a checklist。"
+      "explanation": "**When students feel lost 是时间状语从句。**\n\n- 它交代主句动作发生的时间背景。\n- 先看主句 they often look for a checklist，再看这块怎么挂上去。"
     },
     {
       "point": "定语从句修饰先行词",
-      "explanation": "结构判断：that gives them a starting point 是修饰 checklist 的定语从句；句中作用：补充说明 checklist 的具体功能；依附关系：它附着在先行词 checklist 后面，不属于主句主干。"
+      "explanation": "**that gives them a starting point 是修饰 checklist 的定语从句。**\n\n- 它补充说明 checklist 的具体功能。\n- 它依附在先行词 checklist 后面，不属于主句主干。"
     }
   ]
 }
@@ -532,6 +745,39 @@ function scoreBasicQuality(result: GrammarBasicResult, expectedSentences: string
     ).toFixed(4));
 }
 
+function countAsciiWords(value: string) {
+    return (value.match(/[A-Za-z]+(?:[-'][A-Za-z]+)*/g) ?? []).length;
+}
+
+function isComplexSentenceLikely(sentence: string) {
+    const normalized = normalizeGrammarText(sentence);
+    if (countAsciiWords(normalized) >= 25) return true;
+    return COMPLEX_SENTENCE_MARKERS.some((pattern) => pattern.test(normalized));
+}
+
+function isStructurallyRichType(type: string) {
+    return /(从句|短语|状语|定语|同位语|补语|插入语|非谓语)/.test(type);
+}
+
+function sentenceHasCoarseChunking(sentence: GrammarBasicSentence) {
+    if (!isComplexSentenceLikely(sentence.sentence)) return false;
+
+    const highlights = sentence.highlights;
+    if (highlights.length <= 3) return true;
+
+    const sentenceWordCount = countAsciiWords(sentence.sentence);
+    if (sentenceWordCount < 22) return false;
+
+    const oversizedStructuredChunks = highlights.filter((highlight) => {
+        if (!isStructurallyRichType(highlight.type)) return false;
+        const wordCount = countAsciiWords(highlight.substring);
+        if (wordCount < 12) return false;
+        return INTERNAL_STRUCTURE_MARKERS.some((pattern) => pattern.test(highlight.substring));
+    });
+
+    return oversizedStructuredChunks.length > 0;
+}
+
 export function sanitizeGrammarBasicPayload(raw: unknown, paragraphText: string): GrammarSanitizeResult<GrammarBasicResult> {
     const issues: string[] = [];
     const fallback = buildFallbackBasic(paragraphText);
@@ -609,6 +855,11 @@ export function sanitizeGrammarBasicPayload(raw: unknown, paragraphText: string)
         issues.push("no valid sentence entries");
     }
 
+    const coarseChunkedSentences = difficultSentences.filter(sentenceHasCoarseChunking);
+    coarseChunkedSentences.forEach((sentence) => {
+        issues.push(`sentence "${sentence.sentence.slice(0, 32)}" chunking is too coarse for a complex sentence`);
+    });
+
     const highlightCount = difficultSentences.reduce((sum, sentence) => sum + sentence.highlights.length, 0);
     if (highlightCount === 0) {
         issues.push("no valid highlights");
@@ -621,10 +872,10 @@ export function sanitizeGrammarBasicPayload(raw: unknown, paragraphText: string)
         difficult_sentences: difficultSentences.length > 0 ? difficultSentences : fallback.difficult_sentences,
     };
     const qualityScore = scoreBasicQuality(data, expectedSentences);
-    const sentenceCount = Math.max(1, expectedSentences.length || data.difficult_sentences.length);
     const severeCoverageIssue =
         missingHighlightSentenceCount > 0
-        || missingTranslationCount > 0;
+        || missingTranslationCount > 0
+        || coarseChunkedSentences.length > 0;
 
     return {
         data,

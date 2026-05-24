@@ -16,6 +16,19 @@ import { CatGrowthChart } from "@/components/reading/CatGrowthChart";
 import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 import { GenerationOverlay, type GenerationProgressState } from "./GenerationOverlay";
 import { TranslationSlotMachine } from "@/components/battle/TranslationSlotMachine";
+import { filterAIGenerationHistory, getAIGenerationDifficultyCounts, type HistoryDifficultyFilter } from "./ai-history";
+import {
+    AI_GENERATION_MODE_OPTIONS,
+    buildAIGenerationRequestBody,
+    formatLongformHistoryDescriptor,
+    LONGFORM_LENGTH_TIERS,
+    LONGFORM_STYLE_OPTIONS,
+    type AIGenerationMode,
+    type LongformLengthTierMeta,
+    type LongformLengthTierId,
+    type LongformStyleMeta,
+    type LongformStyleId,
+} from "@/lib/ai-reading-generation";
 
 export interface ArticleItem {
     title: string;
@@ -25,6 +38,11 @@ export interface ArticleItem {
     snippet?: string;
     image?: string;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
+    generationMode?: AIGenerationMode;
+    quizEligible?: boolean;
+    longformStyle?: LongformStyleMeta;
+    lengthTier?: LongformLengthTierMeta;
+    wordCount?: number;
     fetchedAt?: number;
     quizCompleted?: boolean;
     quizCorrect?: number;
@@ -44,6 +62,11 @@ interface AIGenHistoryRecord {
     image?: string | null;
     timestamp: number;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
+    generationMode?: AIGenerationMode;
+    quizEligible?: boolean;
+    longformStyle?: LongformStyleMeta;
+    lengthTier?: LongformLengthTierMeta;
+    wordCount?: number;
     isAIGenerated?: boolean;
     isCatMode?: boolean;
     quizCompleted?: boolean;
@@ -58,7 +81,6 @@ interface AIGenHistoryRecord {
 type FeedCategory = 'psychology' | 'ai_news' | 'ai_gen' | 'cat_mode';
 type ArticleView = 'all' | 'new' | 'unread' | 'read';
 type ArticleStatus = 'new' | 'unread' | 'read';
-
 interface GeneratedArticleData {
     title: string;
     content: string;
@@ -70,6 +92,11 @@ interface GeneratedArticleData {
     url?: string;
     image?: string | null;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
+    generationMode?: AIGenerationMode;
+    quizEligible?: boolean;
+    longformStyle?: LongformStyleMeta;
+    lengthTier?: LongformLengthTierMeta;
+    wordCount?: number;
     isAIGenerated?: boolean;
     isCatMode?: boolean;
     catSessionId?: string;
@@ -231,12 +258,16 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     });
     const [activeView, setActiveView] = useState<ArticleView>('all');
     const [showArchivedHistory, setShowArchivedHistory] = useState(false);
+    const [aiHistoryDifficultyFilter, setAiHistoryDifficultyFilter] = useState<HistoryDifficultyFilter>('all');
     const [genTopic, setGenTopic] = useState("");
+    const [genMode, setGenMode] = useState<AIGenerationMode>("standard");
     const [genDifficulty, setGenDifficulty] = useState<'cet4' | 'cet6' | 'ielts'>(() => {
         const routeExam = searchParams?.get('exam_track');
         if (routeExam === 'cet4' || routeExam === 'cet6' || routeExam === 'ielts') return routeExam as 'cet4' | 'cet6' | 'ielts';
         return 'ielts';
     });
+    const [longformStyleId, setLongformStyleId] = useState<LongformStyleId>("science");
+    const [lengthTierId, setLengthTierId] = useState<LongformLengthTierId>("w1200");
     const [isGenerating, setIsGenerating] = useState(false);
 
     // New states for enhanced UX
@@ -453,6 +484,15 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         () => sortByNewest(articles.filter((item) => showArchivedHistory ? Boolean(item.archivedAt) : !item.archivedAt)),
         [articles, showArchivedHistory],
     );
+    const aiHistoryDifficultyItems = useMemo(() => getAIGenerationDifficultyCounts(historyArticles).map((item) => ({
+        ...item,
+        icon: item.id === "all" ? LayoutGrid : item.id === "cet4" ? BookOpen : item.id === "cet6" ? Cpu : Brain,
+    })), [historyArticles]);
+    const visibleHistoryArticles = useMemo(() => {
+        return category === "ai_gen"
+            ? filterAIGenerationHistory(historyArticles, aiHistoryDifficultyFilter)
+            : historyArticles;
+    }, [aiHistoryDifficultyFilter, category, historyArticles]);
     const activeHistoryCount = useMemo(() => articles.filter((item) => !item.archivedAt).length, [articles]);
     const archivedHistoryCount = useMemo(() => articles.filter((item) => Boolean(item.archivedAt)).length, [articles]);
 
@@ -487,6 +527,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 snippet: (row.textContent || row.content || "").slice(0, 180),
                 image: row.image ?? undefined,
                 difficulty: row.difficulty,
+                generationMode: row.generationMode,
+                quizEligible: row.quizEligible,
+                longformStyle: row.longformStyle,
+                lengthTier: row.lengthTier,
+                wordCount: row.wordCount,
                 fetchedAt: row.timestamp || Date.now(),
                 quizCompleted: row.quizCompleted,
                 quizCorrect: row.quizCorrect,
@@ -535,6 +580,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 snippet: (row.textContent || row.content || "").slice(0, 180),
                 image: row.image ?? undefined,
                 difficulty: row.difficulty,
+                generationMode: row.generationMode,
+                quizEligible: row.quizEligible,
+                longformStyle: row.longformStyle,
+                lengthTier: row.lengthTier,
+                wordCount: row.wordCount,
                 fetchedAt: row.timestamp || Date.now(),
                 quizCompleted: row.quizCompleted,
                 quizCorrect: row.quizCorrect,
@@ -662,61 +712,69 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     useEffect(() => {
         setActiveView('all');
         setShowArchivedHistory(false);
+        setAiHistoryDifficultyFilter('all');
     }, [category]);
 
     const handleGenerate = async () => {
         setIsGenerating(true);
         try {
             const normalizedTopic = genTopic.trim();
-            const { pickCatTopicSeed } = await import('@/lib/content-topic-pool');
-            const queryTopic = normalizedTopic || pickCatTopicSeed({ score: 1000, userTopic: "", recentTopicLines: [] }).topicLine;
+            const { pickAIGenerationTopicSeed } = await import('@/lib/content-topic-pool');
+            const { collectAIGenerationVocabulary } = await import('@/lib/ai-generation-rag');
+            const generationTopicSeed = pickAIGenerationTopicSeed({
+                difficulty: genDifficulty,
+                userTopic: normalizedTopic || "",
+            });
+            const queryTopic = generationTopicSeed.topicLine;
             
             setGenProgress({ step: 'topic_established', topic: queryTopic, retrievedWords: { core: [], lower: [], stretch: [] }, logs: [`Topic established: [${queryTopic}]...`] });
-            await new Promise(r => setTimeout(r, 2200));
+            await new Promise(r => setTimeout(r, 250));
 
             setGenProgress(prev => ({ ...prev, step: 'rag_searching', logs: [...prev.logs, 'Scanning local IndexedDB vector space...'] }));
-            await new Promise(r => setTimeout(r, 1500));
+            await new Promise(r => setTimeout(r, 150));
 
             let injectedVocabulary: string[] = [];
 
             try {
-                const { requestRagQuery, ensureBGEReady } = await import('@/lib/bge-client');
-                
-                // Boot Neural Engine if sleeping
-                const isReady = await ensureBGEReady();
-                if (!isReady) throw new Error("BGE Matrix failed to boot.");
-
-                // Single-track RAG for Sandbox (namespace=undefined to search both vocab and system)
-                // Lowered threshold to 0.1 because BGE word-to-phrase cosine similarity can sometimes be around 0.3-0.4
-                const ragResults = await requestRagQuery(queryTopic, 40, 0.1, undefined, { level: genDifficulty });
-                injectedVocabulary = ragResults.map(r => r.text);
+                injectedVocabulary = await collectAIGenerationVocabulary({
+                    queryTopic,
+                    difficulty: genDifficulty,
+                });
                 
                 if (injectedVocabulary.length > 0) {
                      setGenProgress(prev => ({ ...prev, step: 'rag_found', retrievedWords: { ...prev.retrievedWords, core: injectedVocabulary }, logs: [...prev.logs, `Intercepted ${injectedVocabulary.length} semantic matches for ${genDifficulty}`] }));
-                     await new Promise(r => setTimeout(r, 4500));
+                     await new Promise(r => setTimeout(r, 250));
                 } else {
                      setGenProgress(prev => ({ ...prev, logs: [...prev.logs, `0 matches found for level '${genDifficulty}'. Vector DB might be empty. Engaging default zero-shot generation...`] }));
-                     await new Promise(r => setTimeout(r, 1500));
+                     await new Promise(r => setTimeout(r, 120));
                 }
             } catch (ragErr) {
                 console.warn("RAG single-track retrieval failed, falling back to pure generation", ragErr);
             }
 
             setGenProgress(prev => ({ ...prev, step: 'payload_compiling', logs: [...prev.logs, 'Compiling semantic payload...'] }));
-            await new Promise(r => setTimeout(r, 1800));
+            await new Promise(r => setTimeout(r, 120));
 
             setGenProgress(prev => ({ ...prev, step: 'ai_generating', logs: [...prev.logs, 'Payload injected. Handshake with AI matrix...'] }));
 
             const res = await fetch("/api/ai/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    topic: normalizedTopic || undefined,
+                body: JSON.stringify(buildAIGenerationRequestBody({
+                    topic: normalizedTopic,
+                    topicSeed: generationTopicSeed,
                     difficulty: genDifficulty,
-                    injectedVocabulary: injectedVocabulary.length > 0 ? injectedVocabulary : undefined,
-                }),
+                    generationMode: genMode,
+                    longformStyleId,
+                    lengthTierId,
+                    injectedVocabulary,
+                })),
             });
             setGenProgress(prev => ({ ...prev, step: 'finishing', logs: [...prev.logs, 'Stream acquired. Decrypting...'] }));
+            if (!res.ok) {
+                const errorPayload = await safeParseResponsePayload(res);
+                throw new Error(typeof errorPayload?.error === "string" ? errorPayload.error : "生成失败，请稍后重试。");
+            }
             const data = await res.json();
             const articleUrl = `ai-gen://${genDifficulty}/${Date.now()}`;
             data.url = articleUrl;
@@ -741,6 +799,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     timestamp,
                     difficulty: genDifficulty,
                     isAIGenerated: true,
+                    generationMode: data.generationMode,
+                    quizEligible: data.quizEligible,
+                    longformStyle: data.longformStyle,
+                    lengthTier: data.lengthTier,
+                    wordCount: data.wordCount,
                     quizCompleted: false,
                 });
 
@@ -752,6 +815,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     snippet: (data.textContent || data.content || "").slice(0, 180),
                     image: typeof data.image === "string" ? data.image : undefined,
                     difficulty: genDifficulty,
+                    generationMode: data.generationMode,
+                    quizEligible: data.quizEligible,
+                    longformStyle: data.longformStyle,
+                    lengthTier: data.lengthTier,
+                    wordCount: data.wordCount,
                     fetchedAt: timestamp,
                     quizCompleted: false,
                 };
@@ -769,6 +837,10 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             }
         } catch (error) {
             console.error("Generation error:", error);
+            setNotification({
+                type: "error",
+                message: error instanceof Error ? error.message : "生成失败，请稍后重试。",
+            });
         } finally {
             setIsGenerating(false);
             setGenProgress(prev => ({ ...prev, step: 'idle' }));
@@ -809,10 +881,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
 
             try {
                 const { requestRagQuery, ensureBGEReady } = await import('@/lib/bge-client');
+                const { waitForRagReady } = await import('@/lib/rag-readiness');
                 const { getCatArticleTargets } = await import('@/lib/cat-score');
                 
                 // Boot Neural Engine if sleeping
-                const isReady = await ensureBGEReady();
+                const isReady = await waitForRagReady(ensureBGEReady, 4500);
                 if (!isReady) throw new Error("BGE Matrix failed to boot.");
 
                 const difficultyTargets = getCatArticleTargets(catScore);
@@ -1242,7 +1315,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                     {
                                         id: 'cet4' as const,
                                         label: 'CET-4 四级',
-                                        desc: '4000 词汇 · 300-400 词',
+                                        desc: genMode === "longform" ? `长文模式 · 目标 ${LONGFORM_LENGTH_TIERS.find((item) => item.id === lengthTierId)?.targetWordCount ?? 1200} 词` : '4000 词汇 · 300-400 词',
                                         detail: '简单句为主，日常话题',
                                         icon: BookOpen,
                                         activeClass: 'border-emerald-300/90 bg-emerald-50/65 text-emerald-900 shadow-[0_18px_35px_-22px_rgba(16,185,129,0.5)]',
@@ -1251,7 +1324,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                     {
                                         id: 'cet6' as const,
                                         label: 'CET-6 六级',
-                                        desc: '6000 词汇 · 400-500 词',
+                                        desc: genMode === "longform" ? `长文模式 · 目标 ${LONGFORM_LENGTH_TIERS.find((item) => item.id === lengthTierId)?.targetWordCount ?? 1200} 词` : '6000 词汇 · 400-500 词',
                                         detail: '复合句+被动语态',
                                         icon: Cpu,
                                         activeClass: 'border-sky-300/90 bg-sky-50/65 text-sky-900 shadow-[0_18px_35px_-22px_rgba(14,165,233,0.5)]',
@@ -1260,7 +1333,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                     {
                                         id: 'ielts' as const,
                                         label: 'IELTS 雅思',
-                                        desc: '8000+ 词汇 · 500-700 词',
+                                        desc: genMode === "longform" ? `长文模式 · 目标 ${LONGFORM_LENGTH_TIERS.find((item) => item.id === lengthTierId)?.targetWordCount ?? 1200} 词` : '8000+ 词汇 · 500-700 词',
                                         detail: '学术词汇+复杂句式',
                                         icon: Brain,
                                         activeClass: 'border-violet-300/90 bg-violet-50/65 text-violet-900 shadow-[0_18px_35px_-22px_rgba(139,92,246,0.5)]',
@@ -1300,6 +1373,98 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                 })}
                         </div>
 
+                        <div className={cn(insetCardClass, "mt-5 p-4 md:p-5")}>
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <h5 className="text-sm font-black text-theme-text">模式选择</h5>
+                                <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-2.5 py-1 text-[11px] font-black text-theme-text-muted">
+                                    {genMode === "standard" ? "标准考试逻辑" : "纯阅读长文"}
+                                </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 rounded-[20px] border-3 border-theme-border bg-theme-base-bg p-1.5">
+                                {AI_GENERATION_MODE_OPTIONS.map((option) => {
+                                    const isActive = genMode === option.id;
+                                    return (
+                                        <button
+                                            key={option.id}
+                                            type="button"
+                                            onClick={() => setGenMode(option.id)}
+                                            className={cn(
+                                                "ui-pressable rounded-[16px] border-2 px-3 py-2 text-sm font-black transition-all",
+                                                isActive
+                                                    ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                    : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                            )}
+                                            style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            {genMode === "longform" ? (
+                                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                                    <div>
+                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                            <h6 className="text-xs font-black tracking-wide text-theme-text">长度档位</h6>
+                                            <span className="text-[11px] font-bold text-theme-text-muted">±15%</span>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                            {LONGFORM_LENGTH_TIERS.map((tier) => {
+                                                const isActive = lengthTierId === tier.id;
+                                                return (
+                                                    <button
+                                                        key={tier.id}
+                                                        type="button"
+                                                        onClick={() => setLengthTierId(tier.id)}
+                                                        className={cn(
+                                                            "ui-pressable rounded-[18px] border-3 px-3 py-3 text-left transition-all",
+                                                            isActive
+                                                                ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                                : "border-theme-border bg-theme-card-bg text-theme-text hover:text-theme-text",
+                                                        )}
+                                                        style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                    >
+                                                        <p className="text-sm font-black">{tier.label}</p>
+                                                        <p className="mt-1 text-[11px] font-semibold opacity-80">目标 {tier.targetWordCount} 词</p>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                            <h6 className="text-xs font-black tracking-wide text-theme-text">风格选择</h6>
+                                            <span className="text-[11px] font-bold text-theme-text-muted">长文专属</span>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {LONGFORM_STYLE_OPTIONS.map((style) => {
+                                                const isActive = longformStyleId === style.id;
+                                                return (
+                                                    <button
+                                                        key={style.id}
+                                                        type="button"
+                                                        onClick={() => setLongformStyleId(style.id)}
+                                                        className={cn(
+                                                            "ui-pressable rounded-[18px] border-3 px-3 py-2.5 text-left text-sm font-black transition-all",
+                                                            isActive
+                                                                ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                                : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                                        )}
+                                                        style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                    >
+                                                        {style.name}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : null}
+                        </div>
+
                         <div data-tour-target="hub-ai-topic" className={cn(insetCardClass, "mt-5 p-4 md:p-5")}>
                                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                                     <h5 className="text-sm font-black text-theme-text">主题选择</h5>
@@ -1310,7 +1475,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                             genDifficulty === 'cet6' && "border-sky-200/80 bg-sky-100/75 text-sky-700",
                                             genDifficulty === 'ielts' && "border-violet-200/80 bg-violet-100/75 text-violet-700"
                                         )}>
-                                            {genDifficulty === 'cet4' ? '四级' : genDifficulty === 'cet6' ? '六级' : '雅思'} · {genTopic}
+                                            {genDifficulty === 'cet4' ? '四级' : genDifficulty === 'cet6' ? '六级' : '雅思'}{genMode === "longform" ? ` · 长文 · ${LONGFORM_STYLE_OPTIONS.find((item) => item.id === longformStyleId)?.name ?? "科普"}` : ""} · {genTopic}
                                         </span>
                                     )}
                                 </div>
@@ -1402,9 +1567,53 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                             </div>
                         </div>
 
-                        {historyArticles.length === 0 ? (
+                        <div className="grid gap-3 rounded-[24px] border-4 border-theme-border bg-theme-card-bg p-2 shadow-[0_3px_0_var(--theme-shadow)] md:grid-cols-4">
+                            {aiHistoryDifficultyItems.map((filterItem) => {
+                                const Icon = filterItem.icon;
+                                const isActive = aiHistoryDifficultyFilter === filterItem.id;
+                                return (
+                                    <button
+                                        key={filterItem.id}
+                                        type="button"
+                                        aria-label={`按${filterItem.label}筛选历史`}
+                                        onClick={() => setAiHistoryDifficultyFilter(filterItem.id)}
+                                        className={cn(
+                                            "ui-pressable relative flex min-h-[48px] items-center justify-center gap-2 overflow-hidden rounded-full px-3 py-2 text-sm font-black",
+                                            isActive
+                                                ? "text-theme-primary-text"
+                                                : "bg-theme-base-bg text-theme-text-muted hover:text-theme-text",
+                                        )}
+                                        style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.1)", 4)}
+                                    >
+                                        {isActive ? (
+                                            <motion.span
+                                                layoutId="ai-history-difficulty-pill"
+                                                className="absolute inset-0 rounded-full border-[3px] border-theme-border bg-theme-primary-bg shadow-[0_6px_0_0_var(--theme-shadow)]"
+                                                transition={panelTransition}
+                                            />
+                                        ) : null}
+                                        <span className="relative z-10 flex items-center gap-2">
+                                            <Icon className="h-4 w-4" />
+                                            <span>{filterItem.label}</span>
+                                            <span className={cn(
+                                                "rounded-full border-2 px-2 py-0.5 text-[10px] font-black",
+                                                isActive
+                                                    ? "border-theme-border bg-theme-card-bg text-theme-primary-text"
+                                                    : "border-theme-border bg-theme-card-bg text-theme-text",
+                                            )}>
+                                                {filterItem.count}
+                                            </span>
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {visibleHistoryArticles.length === 0 ? (
                             <div className={cn(shellCardClass, "p-8 text-center text-sm text-theme-text-muted")}>
-                                {showArchivedHistory ? "归档箱还是空的" : "暂无历史文章，先生成一篇试试"}
+                                {showArchivedHistory
+                                    ? "这个难度下还没有归档文章"
+                                    : "这个难度下还没有历史文章，先生成一篇试试"}
                             </div>
                         ) : (
                             <motion.div
@@ -1413,7 +1622,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                 initial="hidden"
                                 animate="show"
                             >
-                                {historyArticles.map((item) => (
+                                {visibleHistoryArticles.map((item) => (
                                     <motion.div
                                         key={item.link}
                                         variants={listItemVariants}
@@ -1819,6 +2028,9 @@ function ArticleCard({ item, status, category, onSelect, onDelete, onArchive, is
     }
 
     const sourceLabel = category === "ai_gen" ? "AI Studio" : (item.source || "Feed");
+    const longformDescriptor = category === "ai_gen"
+        ? formatLongformHistoryDescriptor(item)
+        : null;
     const primaryImageUrl = typeof item.image === "string" && item.image.trim().length > 0 ? item.image.trim() : null;
     const backupImageUrl = `https://picsum.photos/seed/${encodeURIComponent((item.title || item.link).slice(0, 64))}/960/540`;
     const imageCandidates = Array.from(
@@ -1953,6 +2165,12 @@ function ArticleCard({ item, status, category, onSelect, onDelete, onArchive, is
                         </span>
                     ) : null}
                 </div>
+
+                {longformDescriptor ? (
+                    <div className="rounded-[16px] border-2 border-theme-border bg-theme-base-bg px-3 py-2 text-[11px] font-black text-theme-text">
+                        {longformDescriptor}
+                    </div>
+                ) : null}
 
                 <h4 className={cn(
                     "line-clamp-2 font-welcome-ui text-[1.05rem] font-black leading-[1.2] tracking-[-0.02em] transition-colors md:text-[1.14rem]",

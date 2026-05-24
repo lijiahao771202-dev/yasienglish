@@ -328,6 +328,18 @@ export async function rewardReadingCoins(params: {
     dailyGainCap?: number;
 }) : Promise<ReadingCoinMutationResult> {
     const reward = Math.max(0, params.delta ?? getReadingCoinReward(params.action));
+    if (reward <= 0) {
+        return {
+            ok: true,
+            insufficient: false,
+            balance: 0,
+            action: params.action,
+            applied: false,
+            delta: 0,
+            ledgerId: null,
+            dedupeKey: params.dedupeKey ?? null,
+        };
+    }
     const row = await runReadingCoinEvent({
         action: params.action,
         delta: reward,

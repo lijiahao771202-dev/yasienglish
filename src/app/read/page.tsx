@@ -30,13 +30,11 @@ import {
 } from "@/lib/reading-economy";
 import { applyServerProfilePatchToLocal, markArticleAsRead as markArticleAsReadCloud } from "@/lib/user-repository";
 import {
+    buildReadingGrammarExecutionSignature,
     buildGrammarCacheKey,
-    GRAMMAR_BASIC_MODEL,
     GRAMMAR_BASIC_PROMPT_VERSION,
-    GRAMMAR_DEEP_MODEL,
     GRAMMAR_DEEP_PROMPT_VERSION,
 } from "@/lib/grammar-analysis";
-import { ReadingCoinIsland } from "@/components/reading/ReadingCoinIsland";
 import {
     READING_COIN_FX_EVENT,
     createReadingCoinFxEvent,
@@ -56,6 +54,12 @@ import {
     type PreparedCatSettlementSnapshot,
 } from "@/lib/cat-settlement-preview";
 import { AI_PROVIDER_RATE_LIMIT_ERROR_CODE } from "@/lib/ai-provider-errors";
+import type {
+    AIGenerationMode,
+    LongformLengthTierMeta,
+    LongformStyleMeta,
+} from "@/lib/ai-reading-generation";
+import { isQuizEligibleArticle } from "@/lib/ai-reading-generation";
 
 interface ArticleData {
     title: string;
@@ -69,6 +73,11 @@ interface ArticleData {
     image?: string | null;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     isAIGenerated?: boolean;
+    generationMode?: AIGenerationMode;
+    quizEligible?: boolean;
+    longformStyle?: LongformStyleMeta;
+    lengthTier?: LongformLengthTierMeta;
+    wordCount?: number;
     isCatMode?: boolean;
     catSessionId?: string;
     catBand?: number;
@@ -426,12 +435,6 @@ function ReadingPageContent() {
             placement: "bottom"
         },
         {
-            targetId: "read-coin-balance",
-            title: "阅读金币积累",
-            content: "在这里随时查看您的财富！每当您完成一篇精读或通过单词测试，都会触发沉浸式的金币奖励特效。努力积攒，后续可解锁高级能力！",
-            placement: "bottom"
-        },
-        {
             targetId: "read-quiz-toggle",
             title: "终极试炼：AI 题卡库",
             content: "我们为文章潜藏了专属的【题卡库 / AI Studio】！只要您觉得文章精读完毕，点击这里即可弹出隐藏的训练面板，接受四六级/雅思难度的灵魂拷问！",
@@ -456,6 +459,8 @@ function ReadingPageContent() {
     const [showSelectionAskDock, setShowSelectionAskDock] = useState(false);
     const [, forceBackgroundRefresh] = useState(0);
     const { loadUserData, markArticleAsRead: markReadArticleInStore } = useUserStore();
+    const isCatQuizArticle = Boolean(article?.isCatMode && article?.difficulty);
+    const quizEligibleForArticle = isCatQuizArticle || isQuizEligibleArticle(article);
     const activeArticleKey = article ? buildReadingArticleKey(article) : null;
     const pretestCompletionCacheKey = activeArticleKey ? `read-pretest-complete::${activeArticleKey}` : "";
     const readingNotes = useLiveQuery(async () => {
@@ -755,7 +760,9 @@ function ReadingPageContent() {
                         cat_points: payload.cat?.points,
                         cat_current_band: payload.cat?.currentBand,
                         cat_updated_at: payload.cat?.updatedAt ?? new Date().toISOString(),
-                        reading_coins: payload.readingCoins?.balance,
+                        ...(Number(payload.readingCoins?.delta ?? 0) !== 0
+                            ? { reading_coins: payload.readingCoins?.balance }
+                            : {}),
                     });
 
                     const profileRow = await db.user_profile.orderBy("id").first();
@@ -828,6 +835,11 @@ function ReadingPageContent() {
             timestamp: Date.now(),
             difficulty: targetArticle.difficulty,
             isAIGenerated: targetArticle.isAIGenerated,
+            generationMode: targetArticle.generationMode,
+            quizEligible: targetArticle.quizEligible,
+            longformStyle: targetArticle.longformStyle,
+            lengthTier: targetArticle.lengthTier,
+            wordCount: targetArticle.wordCount,
             isCatMode: targetArticle.isCatMode,
             catSessionId: targetArticle.catSessionId,
             catBand: targetArticle.catBand,
@@ -856,6 +868,7 @@ function ReadingPageContent() {
 
         const articleKey = buildReadingArticleKey(targetArticle);
         const paragraphTexts = extractParagraphTextsForGrammar(targetArticle);
+        const grammarExecutionSignature = buildReadingGrammarExecutionSignature(profile);
         const grammarKeys = Array.from(new Set(paragraphTexts.flatMap((paragraphText) => {
             const trimmed = paragraphText.trim();
             if (!trimmed) return [];
@@ -863,13 +876,13 @@ function ReadingPageContent() {
                 text: trimmed,
                 mode: "basic",
                 promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
-                model: GRAMMAR_BASIC_MODEL,
+                model: grammarExecutionSignature,
             });
             const deepKey = buildGrammarCacheKey({
                 text: trimmed,
                 mode: "deep",
                 promptVersion: GRAMMAR_DEEP_PROMPT_VERSION,
-                model: GRAMMAR_DEEP_MODEL,
+                model: `${grammarExecutionSignature}:deep`,
             });
             return [basicKey, deepKey];
         })));
@@ -909,7 +922,7 @@ function ReadingPageContent() {
                 timestamp: row.timestamp,
             })),
         });
-    }, []);
+    }, [profile]);
 
     const scheduleDockHide = useCallback((delay = 1100) => {
         if (showReadTour) return;
@@ -1001,9 +1014,9 @@ function ReadingPageContent() {
     }, [pretestCompletionCacheKey]);
 
     useEffect(() => {
-        if (article?.isAIGenerated && article?.difficulty) return;
+        if (quizEligibleForArticle) return;
         setIsPretestOverlayOpen(false);
-    }, [article?.difficulty, article?.isAIGenerated]);
+    }, [quizEligibleForArticle]);
 
     const persistPretestCompletion = useCallback(async () => {
         if (!pretestCompletionCacheKey) return;
@@ -1059,7 +1072,8 @@ function ReadingPageContent() {
             return null;
         }
         const balance = payload?.result?.balance;
-        if (typeof balance === "number") {
+        const delta = Number(payload?.result?.delta ?? 0);
+        if (typeof balance === "number" && delta !== 0) {
             await applyServerProfilePatchToLocal({ reading_coins: balance });
         }
         return payload?.result ?? null;
@@ -1331,7 +1345,7 @@ function ReadingPageContent() {
         });
     }, [applyReadingEconomy, pushReadingCoinFx, sessionUser?.id]);
 
-    const canShowQuizPanel = Boolean(isQuizMode && article?.isAIGenerated && article?.difficulty);
+    const canShowQuizPanel = Boolean(isQuizMode && quizEligibleForArticle);
     const showStandardSplitQuiz = canShowQuizPanel;
     const readingViewportKey = `${article?.url || article?.title || "reading"}`;
     const quizCacheKey = article ? `${article.url || article.title}::${article.difficulty || "unknown"}` : "";
@@ -1439,10 +1453,10 @@ function ReadingPageContent() {
     }, [showStandardSplitQuiz]);
 
     useEffect(() => {
-        if (isQuizMode && (!article?.isAIGenerated || !article?.difficulty)) {
+        if (isQuizMode && !quizEligibleForArticle) {
             setIsQuizMode(false);
         }
-    }, [isQuizMode, article?.isAIGenerated, article?.difficulty]);
+    }, [isQuizMode, quizEligibleForArticle]);
 
     useLayoutEffect(() => {
         if (!article) {
@@ -1505,7 +1519,7 @@ function ReadingPageContent() {
     }, [quizDbKey, quizCacheKey, quizCacheHydrated]);
 
     useEffect(() => {
-        if (!article?.isAIGenerated || !article?.difficulty) return;
+        if (!quizEligibleForArticle) return;
         if (!quizCacheKey || !quizDbKey) return;
         if (article.isCatMode && Array.isArray(article.catSessionBlueprint?.items) && article.catSessionBlueprint.items.length > 0) {
             return;
@@ -1575,6 +1589,7 @@ function ReadingPageContent() {
         quizCache,
         quizCacheKey,
         quizDbKey,
+        quizEligibleForArticle,
     ]);
 
     const handleUrlSubmit = useCallback(async (url: string) => {
@@ -1597,6 +1612,11 @@ function ReadingPageContent() {
                     url: cached.url,
                     difficulty: cached.difficulty,
                     isAIGenerated: cached.isAIGenerated,
+                    generationMode: cached.generationMode,
+                    quizEligible: cached.quizEligible,
+                    longformStyle: cached.longformStyle,
+                    lengthTier: cached.lengthTier,
+                    wordCount: cached.wordCount,
                     isCatMode: cached.isCatMode,
                     catSessionId: cached.catSessionId,
                     catBand: cached.catBand,
@@ -1858,7 +1878,7 @@ function ReadingPageContent() {
     };
 
     const renderQuizToggleButton = () => {
-        if (!article?.isAIGenerated || !article?.difficulty) return null;
+        if (!quizEligibleForArticle) return null;
         return (
             <button
                 data-tour-target="read-quiz-toggle"
@@ -2277,10 +2297,6 @@ function ReadingPageContent() {
                             已读 {Math.round(scrollProgress * 100)}%
                         </div>
 
-                        <div data-tour-target="read-coin-balance" className="hidden items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-active-bg px-3 py-2 text-sm font-black text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] md:flex">
-                            <span>阅读币</span>
-                            <span className="rounded-full border-2 border-theme-border bg-theme-card-bg px-2 py-0.5 text-theme-text">{profile?.reading_coins ?? 0}</span>
-                        </div>
                     </div>
                 ) : (
                     <div className="flex items-center gap-2 rounded-full border-4 border-[color:var(--mist-read-bd)] bg-[color:var(--mist-read-bg)] px-3 py-2 shadow-[0_8px_0_0_var(--mist-read-sd)]">
@@ -2314,18 +2330,12 @@ function ReadingPageContent() {
                                 <AppearanceMenu onClose={() => setIsThemeMenuOpen(false)} />
                             )}
                         </div>
-                        <div data-tour-target="read-coin-balance" className="ml-1 hidden items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-active-bg px-3 py-2 text-sm font-black text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)] md:flex">
-                            <span>阅读币</span>
-                            <span className="rounded-full bg-theme-card-bg border-2 border-theme-border px-2 py-0.5 text-theme-text">{profile?.reading_coins ?? 0}</span>
-                        </div>
                     </div>
                 )}
             </motion.nav>
             )}
 
-            <ReadingCoinIsland event={activeReadingCoinFx} />
-
-            {article?.isAIGenerated && article?.difficulty && activeArticleKey ? (
+            {quizEligibleForArticle && activeArticleKey ? (
                 <ReadPretestOverlay
                     visible={isPretestOverlayOpen}
                     articleTitle={article.title}
@@ -2459,7 +2469,7 @@ function ReadingPageContent() {
                                 onCreateReadingNote={handleCreateReadingNote}
                                 onDeleteReadingMarks={handleDeleteReadingMarks}
                                 onArticleSnapshotDirty={markArticleSnapshotDirty}
-                                topActionNode={article.isAIGenerated && article.difficulty ? renderQuizToggleButton() : undefined}
+                                topActionNode={quizEligibleForArticle ? renderQuizToggleButton() : undefined}
                             />
 
                             <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">

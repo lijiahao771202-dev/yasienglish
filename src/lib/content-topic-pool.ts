@@ -199,12 +199,6 @@ const TOPIC_DOMAINS: TopicDomain[] = [
     },
 ];
 
-const AI_DOMAIN_IDS_BY_DIFFICULTY: Record<TopicDifficulty, string[]> = {
-    cet4: ["education", "psychology", "city-life", "health", "technology-ai", "culture-history"],
-    cet6: ["education", "psychology", "city-life", "health", "technology-ai", "economy", "media-communication", "career-workplace", "environment"],
-    ielts: TOPIC_DOMAINS.map((domain) => domain.id),
-};
-
 const ALL_TOPIC_DOMAIN_IDS = TOPIC_DOMAINS.map((domain) => domain.id);
 
 const CAT_DOMAIN_IDS_BY_RANK_ID: Record<string, string[]> = {
@@ -381,7 +375,7 @@ export function pickAIGenerationTopicSeed(params: {
         };
     }
 
-    return pickRandomFromDomains(AI_DOMAIN_IDS_BY_DIFFICULTY[params.difficulty], "ai_gen");
+    return pickRandomFromDomains(ALL_TOPIC_DOMAIN_IDS, "ai_gen");
 }
 
 function catDomainIdsByScore(score: number) {

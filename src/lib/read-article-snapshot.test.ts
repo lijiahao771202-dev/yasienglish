@@ -44,4 +44,40 @@ describe("buildReadArticleCloudPayload", () => {
         expect(payload.videoUrl).toBe("https://cdn.example.com/video.mp4");
         expect(payload.quizQuestions).toEqual(quizQuestions);
     });
+
+    it("preserves longform reading metadata in the cloud snapshot payload", () => {
+        const payload = buildReadArticleCloudPayload({
+            url: "ai-gen://cet6/456",
+            title: "Longform Article",
+            content: "content",
+            textContent: "content",
+            difficulty: "cet6",
+            isAIGenerated: true,
+            generationMode: "longform",
+            quizEligible: false,
+            longformStyle: {
+                id: "science",
+                name: "科普",
+            },
+            lengthTier: {
+                id: "w1200",
+                label: "中篇",
+                targetWordCount: 1200,
+            },
+            wordCount: 1176,
+        }, 1234567890);
+
+        expect(payload.generationMode).toBe("longform");
+        expect(payload.quizEligible).toBe(false);
+        expect(payload.longformStyle).toEqual({
+            id: "science",
+            name: "科普",
+        });
+        expect(payload.lengthTier).toEqual({
+            id: "w1200",
+            label: "中篇",
+            targetWordCount: 1200,
+        });
+        expect(payload.wordCount).toBe(1176);
+    });
 });

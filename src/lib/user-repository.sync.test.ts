@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { scheduleVocabularyRagIngestionMock } = vi.hoisted(() => ({
+    scheduleVocabularyRagIngestionMock: vi.fn(),
+}));
+
 type SupabaseMockResult = { data: unknown; error: unknown };
 type SupabaseMockResponse = SupabaseMockResult | Promise<SupabaseMockResult>;
 type SupabaseMockResponseConfig = SupabaseMockResponse | SupabaseMockResponse[];
@@ -89,6 +93,7 @@ function createDbMock() {
                 bulkPut: vi.fn(async () => undefined),
                 put: vi.fn(async () => undefined),
                 update: vi.fn(async () => undefined),
+                delete: vi.fn(async () => undefined),
                 toArray: vi.fn(async () => vocabularyRows),
                 count: counts.vocabulary,
                 where: vi.fn(() => ({
@@ -223,6 +228,9 @@ async function loadUserRepository(options?: {
             getState: () => syncState,
         },
     }));
+    vi.doMock("@/lib/rag-ingestion", () => ({
+        scheduleVocabularyRagIngestion: scheduleVocabularyRagIngestionMock,
+    }));
 
     const mod = await import("./user-repository");
 
@@ -237,6 +245,8 @@ async function loadUserRepository(options?: {
 describe("user repository error-ledger sync regressions", () => {
     beforeEach(() => {
         vi.restoreAllMocks();
+        scheduleVocabularyRagIngestionMock.mockReset();
+        scheduleVocabularyRagIngestionMock.mockResolvedValue({ processed: 0, total: 0, skipped: true });
         vi.stubGlobal("navigator", { onLine: true });
     });
 
@@ -357,6 +367,64 @@ describe("user repository error-ledger sync regressions", () => {
         randomUuidSpy.mockRestore();
     });
 
+    it("schedules learner vocab RAG hydration after saving vocabulary", async () => {
+        const { mod } = await loadUserRepository();
+
+        await mod.saveVocabulary({
+            word: "solidify",
+            definition: "to make stronger",
+            translation: "巩固",
+            context: "",
+            example: "",
+            timestamp: 1713000000000,
+            stability: 0,
+            difficulty: 0,
+            elapsed_days: 0,
+            scheduled_days: 0,
+            reps: 0,
+            lapses: 0,
+            learning_steps: 0,
+            state: 0,
+            last_review: 0,
+            due: 1713000000000,
+        });
+
+        expect(scheduleVocabularyRagIngestionMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("schedules learner vocab RAG hydration after editing vocabulary", async () => {
+        const { mod } = await loadUserRepository();
+
+        await mod.updateVocabularyEntry("solidify", {
+            word: "solidify",
+            definition: "to make stronger",
+            translation: "巩固；使稳固",
+            context: "",
+            example: "",
+            timestamp: 1713000000000,
+            stability: 0,
+            difficulty: 0,
+            elapsed_days: 0,
+            scheduled_days: 0,
+            reps: 0,
+            lapses: 0,
+            learning_steps: 0,
+            state: 0,
+            last_review: 0,
+            due: 1713000000000,
+        });
+
+        expect(scheduleVocabularyRagIngestionMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("schedules learner vocab RAG hydration after deleting vocabulary", async () => {
+        const { mod } = await loadUserRepository();
+
+        await mod.deleteVocabulary("solidify");
+
+        expect(scheduleVocabularyRagIngestionMock).toHaveBeenCalledTimes(1);
+    });
+
     it("queues generated article deletes in the same transaction as local removal", async () => {
         const { mod, dbMock, syncState } = await loadUserRepository();
 
@@ -380,25 +448,37 @@ describe("user repository error-ledger sync regressions", () => {
         expect(syncState.setPhase).toHaveBeenCalledWith("syncing");
     });
 
-    it("archives generated articles locally without queuing a remote schema write", async () => {
+    it("archives generated articles and queues a sync upsert", async () => {
         const { mod, dbMock, syncState } = await loadUserRepository();
         dbMock.db.read_articles.get.mockResolvedValue({ url: "https://example.com/read", timestamp: 123 });
 
         await mod.setReadArticleArchived(" https://example.com/read ", true);
 
-        expect(dbMock.db.read_articles.update).toHaveBeenCalledWith(
-            "https://example.com/read",
+        expect(dbMock.db.read_articles.put).toHaveBeenCalledWith(
             expect.objectContaining({
+                url: "https://example.com/read",
                 archived_at: expect.any(Number),
+                sync_status: "pending",
+                updated_at: expect.any(String),
             }),
         );
-        expect(dbMock.db.read_articles.put).not.toHaveBeenCalled();
-        expect(dbMock.db.sync_outbox.add).not.toHaveBeenCalled();
-        expect(syncState.setPhase).not.toHaveBeenCalled();
+        expect(dbMock.db.sync_outbox.add).toHaveBeenCalledWith(
+            expect.objectContaining({
+                entity: "read_articles",
+                operation: "upsert",
+                record_key: "https://example.com/read",
+                payload: expect.objectContaining({
+                    user_id: "user-1",
+                    url: "https://example.com/read",
+                    archived_at_ms: expect.any(Number),
+                }),
+            }),
+        );
+        expect(syncState.setPhase).toHaveBeenCalledWith("syncing");
     });
 
-    it("can restore locally archived generated articles", async () => {
-        const { mod, dbMock } = await loadUserRepository();
+    it("can restore locally archived generated articles and sync the change", async () => {
+        const { mod, dbMock, syncState } = await loadUserRepository();
         dbMock.db.read_articles.get.mockResolvedValue({
             url: "https://example.com/read",
             timestamp: 123,
@@ -407,11 +487,27 @@ describe("user repository error-ledger sync regressions", () => {
 
         await mod.setReadArticleArchived("https://example.com/read", false);
 
-        expect(dbMock.db.read_articles.update).toHaveBeenCalledWith(
-            "https://example.com/read",
-            { archived_at: undefined },
+        expect(dbMock.db.read_articles.put).toHaveBeenCalledWith(
+            expect.objectContaining({
+                url: "https://example.com/read",
+                archived_at: undefined,
+                sync_status: "pending",
+                updated_at: expect.any(String),
+            }),
         );
-        expect(dbMock.db.sync_outbox.add).not.toHaveBeenCalled();
+        expect(dbMock.db.sync_outbox.add).toHaveBeenCalledWith(
+            expect.objectContaining({
+                entity: "read_articles",
+                operation: "upsert",
+                record_key: "https://example.com/read",
+                payload: expect.objectContaining({
+                    user_id: "user-1",
+                    url: "https://example.com/read",
+                    archived_at_ms: null,
+                }),
+            }),
+        );
+        expect(syncState.setPhase).toHaveBeenCalledWith("syncing");
     });
 
     it("retries profile outbox sync without columns missing from the remote schema cache", async () => {
@@ -598,6 +694,181 @@ describe("user repository error-ledger sync regressions", () => {
             expect.objectContaining({
                 word: "local-only",
                 sync_status: "pending",
+            }),
+        ]);
+    });
+
+    it("preserves archived AI history entries when applying a remote snapshot", async () => {
+        const dbMock = createDbMock();
+        dbMock.rows.read_articles.push({
+            url: "ai-gen://cet6/123",
+            timestamp: 1713000000000,
+            read_at: 1713000000000,
+            archived_at: 1713000100000,
+            updated_at: "2026-04-13T10:10:00.000Z",
+            sync_status: "pending",
+        });
+        dbMock.syncOutboxToArray.mockResolvedValue([
+            {
+                entity: "read_articles",
+                operation: "upsert",
+                record_key: "ai-gen://cet6/123",
+                payload: {
+                    user_id: "user-1",
+                    url: "ai-gen://cet6/123",
+                    read_at: "2026-04-13T10:00:00.000Z",
+                    timestamp_ms: 1713000000000,
+                    archived_at_ms: 1713000100000,
+                    updated_at: "2026-04-13T10:10:00.000Z",
+                },
+            },
+        ]);
+
+        const profile = {
+            user_id: "user-1",
+            translation_elo: 400,
+            listening_elo: 400,
+            streak_count: 0,
+            max_translation_elo: 400,
+            max_listening_elo: 400,
+            coins: 10,
+            inventory: {},
+            owned_themes: ["morning_coffee"],
+            active_theme: "morning_coffee",
+            updated_at: "2026-04-13T10:00:00.000Z",
+            last_practice_at: "2026-04-13T10:00:00.000Z",
+        };
+
+        const { mod } = await loadUserRepository({
+            dbMock,
+            responses: {
+                profiles: { data: profile, error: null },
+                vocabulary: { data: [], error: null },
+                writing_history: { data: [], error: null },
+                read_articles: {
+                    data: [
+                        {
+                            id: "remote-read-1",
+                            user_id: "user-1",
+                            url: "ai-gen://cet6/123",
+                            read_at: "2026-04-13T10:00:00.000Z",
+                            timestamp_ms: 1713000000000,
+                            archived_at_ms: null,
+                            article_key: null,
+                            article_title: null,
+                            article_payload: null,
+                            reading_notes_payload: null,
+                            grammar_payload: null,
+                            ask_payload: null,
+                            updated_at: "2026-04-13T10:00:00.000Z",
+                        },
+                    ],
+                    error: null,
+                },
+                elo_history: { data: [], error: null },
+                daily_plans: { data: [], error: null },
+                error_ledger: { data: [], error: null },
+            },
+        });
+
+        await mod.pullRemoteSnapshot("user-1");
+
+        expect(dbMock.db.read_articles.bulkPut).toHaveBeenCalledWith([
+            expect.objectContaining({
+                url: "ai-gen://cet6/123",
+                archived_at: 1713000100000,
+                sync_status: "pending",
+            }),
+        ]);
+    });
+
+    it("restores longform AI article metadata into the local article cache from remote snapshots", async () => {
+        const dbMock = createDbMock();
+        const profile = {
+            user_id: "user-1",
+            translation_elo: 400,
+            listening_elo: 400,
+            streak_count: 0,
+            max_translation_elo: 400,
+            max_listening_elo: 400,
+            coins: 10,
+            inventory: {},
+            owned_themes: ["morning_coffee"],
+            active_theme: "morning_coffee",
+            updated_at: "2026-04-13T10:00:00.000Z",
+            last_practice_at: "2026-04-13T10:00:00.000Z",
+        };
+
+        const { mod } = await loadUserRepository({
+            dbMock,
+            responses: {
+                profiles: { data: profile, error: null },
+                vocabulary: { data: [], error: null },
+                writing_history: { data: [], error: null },
+                read_articles: {
+                    data: [
+                        {
+                            id: "remote-read-longform-1",
+                            user_id: "user-1",
+                            url: "ai-gen://ielts/longform-1",
+                            read_at: "2026-04-13T10:00:00.000Z",
+                            timestamp_ms: 1713000000000,
+                            archived_at_ms: null,
+                            article_key: "ai-gen://ielts/longform-1",
+                            article_title: "The Shape of Public Trust",
+                            article_payload: {
+                                url: "ai-gen://ielts/longform-1",
+                                title: "The Shape of Public Trust",
+                                content: "Paragraph one.\n\nParagraph two.",
+                                textContent: "Paragraph one.\n\nParagraph two.",
+                                timestamp: 1713000000000,
+                                difficulty: "ielts",
+                                isAIGenerated: true,
+                                generationMode: "longform",
+                                quizEligible: false,
+                                longformStyle: {
+                                    id: "commentary",
+                                    name: "观点评论",
+                                },
+                                lengthTier: {
+                                    id: "w1600",
+                                    label: "长篇",
+                                    targetWordCount: 1600,
+                                },
+                                wordCount: 1548,
+                            },
+                            reading_notes_payload: null,
+                            grammar_payload: null,
+                            ask_payload: null,
+                            updated_at: "2026-04-13T10:00:00.000Z",
+                        },
+                    ],
+                    error: null,
+                },
+                elo_history: { data: [], error: null },
+                daily_plans: { data: [], error: null },
+                error_ledger: { data: [], error: null },
+            },
+        });
+
+        await mod.pullRemoteSnapshot("user-1");
+
+        expect(dbMock.db.articles.bulkPut).toHaveBeenCalledWith([
+            expect.objectContaining({
+                url: "ai-gen://ielts/longform-1",
+                title: "The Shape of Public Trust",
+                generationMode: "longform",
+                quizEligible: false,
+                longformStyle: {
+                    id: "commentary",
+                    name: "观点评论",
+                },
+                lengthTier: {
+                    id: "w1600",
+                    label: "长篇",
+                    targetWordCount: 1600,
+                },
+                wordCount: 1548,
             }),
         ]);
     });

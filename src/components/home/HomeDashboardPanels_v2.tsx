@@ -2,12 +2,12 @@
 
 import { useMemo, useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useLiveQuery } from "dexie-react-hooks";
 import { Sparkles, Flame, BrainCircuit, BookOpenText, Target, CalendarDays, ChevronLeft, ChevronRight, CheckCircle2, Circle, Plus, ListTodo, Waves, Headphones, BellRing, Play, Database } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { useDailyPlans } from "@/hooks/useDailyPlans";
 import { db } from "@/lib/db";
 import { saveProfilePatch } from "@/lib/user-repository";
+import { useSafeLiveQuery } from "@/lib/use-safe-live-query";
 import { useRouter } from "next/navigation";
 
 import type { HomeDashboardViewModel } from "@/components/home/home-data";
@@ -78,7 +78,7 @@ function DailyPlanBento() {
     const { planRecord, addPlanItem, addSmartPlanItem, batchAddSmartPlanItems, togglePlanItem, removePlanItem } = useDailyPlans(viewDate);
     const [inputValue, setInputValue] = useState("");
     const [isWizardOpen, setIsWizardOpen] = useState(false);
-    const bentoProfile = useLiveQuery(() => db.user_profile.toCollection().first());
+    const bentoProfile = useSafeLiveQuery(() => db.user_profile.toCollection().first(), [], undefined, "home.daily-plan.profile");
     const bentoRemainingDays = useMemo(() => {
         if (!bentoProfile?.exam_date) return null;
         const exam = new Date(bentoProfile.exam_date);
@@ -318,7 +318,7 @@ export function HomeDashboardPanels_v2({
     const [tempExamType, setTempExamType] = useState<'cet4' | 'cet6' | 'postgrad' | 'ielts'>('cet4');
     const { vitalSigns } = model;
 
-    const profile = useLiveQuery(() => db.user_profile.toCollection().first());
+    const profile = useSafeLiveQuery(() => db.user_profile.toCollection().first(), [], undefined, "home.panels.profile");
 
     const EXAM_TYPES = [
         { value: 'cet4' as const, label: '四级', emoji: '📗' },

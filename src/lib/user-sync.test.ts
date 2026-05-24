@@ -453,6 +453,7 @@ describe("user sync helpers", () => {
             url: "ai-gen://ielts/123",
             timestamp: 123,
             read_at: 123,
+            archived_at: 456,
             article_key: "ai-gen://ielts/123",
             article_title: "AI Snapshot",
             article_payload: {
@@ -495,11 +496,56 @@ describe("user sync helpers", () => {
             updated_at: "2026-04-02T10:00:00.000Z",
         });
 
+        expect(remote.archived_at_ms).toBe(456);
+        expect(local.archived_at).toBe(456);
         expect(local.article_key).toBe("ai-gen://ielts/123");
         expect(local.article_title).toBe("AI Snapshot");
         expect(local.article_payload?.isAIGenerated).toBe(true);
         expect(local.reading_notes_payload?.[0]?.selected_text).toBe("Paragraph");
         expect(local.grammar_payload?.[0]?.key).toBe("grammar:basic:key");
         expect(local.ask_payload?.[0]?.key).toBe("ask:ai-gen://ielts/123:p1");
+    });
+
+    it("preserves longform article payload metadata for cloud round-trip", () => {
+        const remote = toRemoteReadArticle("user-1", {
+            url: "ai-gen://cet6/888",
+            timestamp: 456,
+            read_at: 456,
+            article_payload: {
+                url: "ai-gen://cet6/888",
+                title: "Longform Snapshot",
+                content: "Paragraph one.",
+                textContent: "Paragraph one.",
+                timestamp: 456,
+                difficulty: "cet6",
+                isAIGenerated: true,
+                generationMode: "longform",
+                quizEligible: false,
+                longformStyle: {
+                    id: "science",
+                    name: "科普",
+                },
+                lengthTier: {
+                    id: "w1600",
+                    label: "长篇",
+                    targetWordCount: 1600,
+                },
+                wordCount: 1548,
+            },
+        });
+
+        const local = toLocalReadArticle({
+            ...remote,
+            updated_at: "2026-05-24T10:00:00.000Z",
+        });
+
+        expect(local.article_payload?.generationMode).toBe("longform");
+        expect(local.article_payload?.quizEligible).toBe(false);
+        expect(local.article_payload?.longformStyle).toEqual({
+            id: "science",
+            name: "科普",
+        });
+        expect(local.article_payload?.lengthTier?.targetWordCount).toBe(1600);
+        expect(local.article_payload?.wordCount).toBe(1548);
     });
 });

@@ -6,14 +6,14 @@
 - Environments: .env.local, .env
 
   Creating an optimized production build ...
-✓ Compiled successfully in 23.8s
+✓ Compiled successfully in 11.4s
   Running TypeScript ...
   Collecting page data using 9 workers ...
   Generating static pages using 9 workers (0/88) ...
   Generating static pages using 9 workers (22/88) 
   Generating static pages using 9 workers (44/88) 
   Generating static pages using 9 workers (66/88) 
-✓ Generating static pages using 9 workers (88/88) in 1326.5ms
+✓ Generating static pages using 9 workers (88/88) in 717.1ms
   Finalizing page optimization ...
 
 Route (app)
@@ -118,14 +118,133 @@ Starting production server on http://lijiahaodeMacBook-Air.local:4000
 - Network:       http://lijiahaodeMacBook-Air.local:4000
 
 ✓ Starting...
-✓ Ready in 140ms
-⨯ Error: TypeError: fetch failed
-    at r (.next/server/chunks/_13823d2e._.js:1:3566)
-    at async o (.next/server/chunks/_13823d2e._.js:1:4544)
-    at async v (.next/server/chunks/[root-of-the-server]__ba2cc599._.js:1:12132)
-    at async d (.next/server/chunks/[root-of-the-server]__ba2cc599._.js:1:15310)
-    at async l (.next/server/chunks/[root-of-the-server]__ba2cc599._.js:1:16351)
-    at async Module.E (.next/server/chunks/[root-of-the-server]__ba2cc599._.js:1:17429)
+✓ Ready in 64ms
+TypeError: fetch failed
+    at async tG (.next/server/chunks/_d53e0753._.js:24:38707)
+    at async tz (.next/server/chunks/_d53e0753._.js:24:38235)
+    at async (.next/server/chunks/_d53e0753._.js:37:14222)
+    at async rw._useSession (.next/server/chunks/_d53e0753._.js:37:11740)
+    at async rw._getUser (.next/server/chunks/_d53e0753._.js:37:14059)
+    at async (.next/server/chunks/_d53e0753._.js:37:13853)
+    at async (.next/server/chunks/_d53e0753._.js:37:11020) {
+  [cause]: Error: Client network socket disconnected before secure TLS connection was established
+      at ignore-listed frames {
+    code: 'ECONNRESET',
+    path: undefined,
+    host: 'femluwivyawmssgwzaic.supabase.co',
+    port: 443,
+    localAddress: null
+  }
+}
+TypeError: fetch failed
+    at async tG (.next/server/chunks/_d53e0753._.js:24:38707)
+    at async tz (.next/server/chunks/_d53e0753._.js:24:38235)
+    at async (.next/server/chunks/_d53e0753._.js:37:14222)
+    at async rw._useSession (.next/server/chunks/_d53e0753._.js:37:11740)
+    at async rw._getUser (.next/server/chunks/_d53e0753._.js:37:14059)
+    at async (.next/server/chunks/_d53e0753._.js:37:13853)
+    at async (.next/server/chunks/_d53e0753._.js:37:11020) {
+  [cause]: Error: read ECONNRESET
+      at ignore-listed frames {
+    errno: -54,
+    code: 'ECONNRESET',
+    syscall: 'read'
+  }
+}
+TypeError: fetch failed
+    at async tG (.next/server/chunks/_d53e0753._.js:24:38707)
+    at async tz (.next/server/chunks/_d53e0753._.js:24:38235)
+    at async (.next/server/chunks/_d53e0753._.js:37:14222)
+    at async rw._useSession (.next/server/chunks/_d53e0753._.js:37:11740)
+    at async rw._getUser (.next/server/chunks/_d53e0753._.js:37:14059)
+    at async (.next/server/chunks/_d53e0753._.js:37:13853)
+    at async (.next/server/chunks/_d53e0753._.js:37:11020) {
+  [cause]: Error [ConnectTimeoutError]: Connect Timeout Error (attempted address: femluwivyawmssgwzaic.supabase.co:443, timeout: 10000ms)
+      at <unknown> (.next/server/chunks/_61960346._.js:1:24368)
+      at Immediate._onImmediate (.next/server/chunks/_61960346._.js:1:24407) {
+    code: 'UND_ERR_CONNECT_TIMEOUT'
+  }
+}
 [AI] Xiaomi MiMo → mimo-v2.5-pro
-Quiz Generation API Error: SyntaxError: Unterminated string in JSON at position 6486 (line 94 column 119)
-    at JSON.parse (<anonymous>)
+[TTS] Rate-adjusted synthesis failed, retrying without rate. Error: Edge TTS request timed out
+    at ignore-listed frames
+TypeError: fetch failed
+    at async tG (.next/server/chunks/_d53e0753._.js:24:38707)
+    at async tz (.next/server/chunks/_d53e0753._.js:24:38235)
+    at async (.next/server/chunks/_d53e0753._.js:37:14222)
+    at async rw._useSession (.next/server/chunks/_d53e0753._.js:37:11740)
+    at async rw._getUser (.next/server/chunks/_d53e0753._.js:37:14059)
+    at async (.next/server/chunks/_d53e0753._.js:37:13853)
+    at async (.next/server/chunks/_d53e0753._.js:37:11020) {
+  [cause]: Error: getaddrinfo ENOTFOUND femluwivyawmssgwzaic.supabase.co
+      at ignore-listed frames {
+    errno: -3008,
+    code: 'ENOTFOUND',
+    syscall: 'getaddrinfo',
+    hostname: 'femluwivyawmssgwzaic.supabase.co'
+  }
+}
+TypeError: fetch failed
+    at async tG (.next/server/chunks/_d53e0753._.js:24:38707)
+    at async tz (.next/server/chunks/_d53e0753._.js:24:38235)
+    at async (.next/server/chunks/_d53e0753._.js:37:14222)
+    at async rw._useSession (.next/server/chunks/_d53e0753._.js:37:11740)
+    at async rw._getUser (.next/server/chunks/_d53e0753._.js:37:14059)
+    at async (.next/server/chunks/_d53e0753._.js:37:13853)
+    at async (.next/server/chunks/_d53e0753._.js:37:11020) {
+  [cause]: Error: getaddrinfo ENOTFOUND femluwivyawmssgwzaic.supabase.co
+      at ignore-listed frames {
+    errno: -3008,
+    code: 'ENOTFOUND',
+    syscall: 'getaddrinfo',
+    hostname: 'femluwivyawmssgwzaic.supabase.co'
+  }
+}
+TypeError: fetch failed
+    at async tG (.next/server/chunks/_d53e0753._.js:24:38707)
+    at async tz (.next/server/chunks/_d53e0753._.js:24:38235)
+    at async (.next/server/chunks/_d53e0753._.js:37:14222)
+    at async rw._useSession (.next/server/chunks/_d53e0753._.js:37:11740)
+    at async rw._getUser (.next/server/chunks/_d53e0753._.js:37:14059)
+    at async (.next/server/chunks/_d53e0753._.js:37:13853)
+    at async (.next/server/chunks/_d53e0753._.js:37:11020) {
+  [cause]: Error: getaddrinfo ENOTFOUND femluwivyawmssgwzaic.supabase.co
+      at ignore-listed frames {
+    errno: -3008,
+    code: 'ENOTFOUND',
+    syscall: 'getaddrinfo',
+    hostname: 'femluwivyawmssgwzaic.supabase.co'
+  }
+}
+TypeError: fetch failed
+    at async tG (.next/server/chunks/_d53e0753._.js:24:38707)
+    at async tz (.next/server/chunks/_d53e0753._.js:24:38235)
+    at async (.next/server/chunks/_d53e0753._.js:37:14222)
+    at async rw._useSession (.next/server/chunks/_d53e0753._.js:37:11740)
+    at async rw._getUser (.next/server/chunks/_d53e0753._.js:37:14059)
+    at async (.next/server/chunks/_d53e0753._.js:37:13853)
+    at async (.next/server/chunks/_d53e0753._.js:37:11020) {
+  [cause]: Error: getaddrinfo ENOTFOUND femluwivyawmssgwzaic.supabase.co
+      at ignore-listed frames {
+    errno: -3008,
+    code: 'ENOTFOUND',
+    syscall: 'getaddrinfo',
+    hostname: 'femluwivyawmssgwzaic.supabase.co'
+  }
+}
+TypeError: fetch failed
+    at async tG (.next/server/chunks/_d53e0753._.js:24:38707)
+    at async tz (.next/server/chunks/_d53e0753._.js:24:38235)
+    at async (.next/server/chunks/_d53e0753._.js:37:14222)
+    at async rw._useSession (.next/server/chunks/_d53e0753._.js:37:11740)
+    at async rw._getUser (.next/server/chunks/_d53e0753._.js:37:14059)
+    at async (.next/server/chunks/_d53e0753._.js:37:13853)
+    at async (.next/server/chunks/_d53e0753._.js:37:11020) {
+  [cause]: Error: getaddrinfo ENOTFOUND femluwivyawmssgwzaic.supabase.co
+      at ignore-listed frames {
+    errno: -3008,
+    code: 'ENOTFOUND',
+    syscall: 'getaddrinfo',
+    hostname: 'femluwivyawmssgwzaic.supabase.co'
+  }
+}

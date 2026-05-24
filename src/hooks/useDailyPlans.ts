@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db";
 import {
     inferSmartPlanExamTrack,
@@ -13,6 +12,7 @@ import {
 } from "@/lib/db";
 import { readDailyDrillProgress, setStoredDailyDrillGoal } from "@/lib/daily-drill-progress";
 import { saveProfilePatch } from "@/lib/user-repository";
+import { useSafeLiveQuery } from "@/lib/use-safe-live-query";
 
 const MAX_DAILY_PLAN_SNAPSHOT_COUNT = 90;
 
@@ -45,12 +45,14 @@ function normalizeDailyPlanItemShape(item: DailyPlanItem, fallbackExamTrack?: Sm
 
 export function useDailyPlans(date: Date) {
     const targetDateKey = getDateKey(date);
-    const profile = useLiveQuery(() => db.user_profile.toCollection().first(), []);
+    const profile = useSafeLiveQuery(() => db.user_profile.toCollection().first(), [], undefined, "daily-plans.profile");
     const profileExamTrack = resolveSupportedExamTrack(profile?.exam_type);
 
-    const planRecord = useLiveQuery(
+    const planRecord = useSafeLiveQuery(
         () => db.daily_plans.get(targetDateKey),
-        [targetDateKey]
+        [targetDateKey],
+        undefined,
+        "daily-plans.record",
     );
 
     const persistDailyPlanSnapshots = async () => {

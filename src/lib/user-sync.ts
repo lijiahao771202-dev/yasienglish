@@ -289,6 +289,7 @@ export interface RemoteReadArticleRow {
     url: string;
     read_at: string;
     timestamp_ms: number;
+    archived_at_ms?: number | null;
     article_key?: string | null;
     article_title?: string | null;
     article_payload?: CachedArticle | null;
@@ -728,6 +729,7 @@ export function toRemoteReadArticle(userId: string, item: ReadArticleItem): Remo
         url: item.url,
         read_at: new Date(item.read_at || item.timestamp).toISOString(),
         timestamp_ms: item.timestamp,
+        archived_at_ms: item.archived_at ?? null,
         article_key: item.article_key || null,
         article_title: item.article_title || null,
         article_payload: item.article_payload || null,
@@ -745,6 +747,7 @@ export function toLocalReadArticle(remote: RemoteReadArticleRow): ReadArticleIte
         url: remote.url,
         timestamp: remote.timestamp_ms,
         read_at: Date.parse(remote.read_at),
+        archived_at: typeof remote.archived_at_ms === "number" ? remote.archived_at_ms : undefined,
         article_key: remote.article_key || undefined,
         article_title: remote.article_title || undefined,
         article_payload: remote.article_payload || undefined,

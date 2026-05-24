@@ -7,10 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const {
     bootstrapUserSessionMock,
     replaceMock,
+    scheduleDefaultRagIngestionQueueMock,
+    scheduleMissingErrorLedgerVectorSyncMock,
     scheduleBackgroundSyncMock,
 } = vi.hoisted(() => ({
     bootstrapUserSessionMock: vi.fn(),
     replaceMock: vi.fn(),
+    scheduleDefaultRagIngestionQueueMock: vi.fn(),
+    scheduleMissingErrorLedgerVectorSyncMock: vi.fn(),
     scheduleBackgroundSyncMock: vi.fn(),
 }));
 
@@ -52,6 +56,14 @@ vi.mock("@/lib/user-repository", () => ({
     scheduleBackgroundSync: scheduleBackgroundSyncMock,
 }));
 
+vi.mock("@/lib/bge-client", () => ({
+    scheduleMissingErrorLedgerVectorSync: scheduleMissingErrorLedgerVectorSyncMock,
+}));
+
+vi.mock("@/lib/rag-ingestion", () => ({
+    scheduleDefaultRagIngestionQueue: scheduleDefaultRagIngestionQueueMock,
+}));
+
 import { useSyncStatusStore } from "@/lib/sync-status";
 import { AuthSyncProvider } from "./AuthSyncProvider";
 
@@ -85,6 +97,10 @@ describe("AuthSyncProvider", () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         replaceMock.mockReset();
+        scheduleDefaultRagIngestionQueueMock.mockReset();
+        scheduleDefaultRagIngestionQueueMock.mockResolvedValue([]);
+        scheduleMissingErrorLedgerVectorSyncMock.mockReset();
+        scheduleMissingErrorLedgerVectorSyncMock.mockResolvedValue(0);
         scheduleBackgroundSyncMock.mockReset();
         useSyncStatusStore.getState().reset();
         bootstrapUserSessionMock.mockImplementation(async () => {
@@ -104,6 +120,17 @@ describe("AuthSyncProvider", () => {
         await Promise.resolve();
         expect(view.container.textContent).toContain("Learning shell");
         expect(view.container.textContent).not.toContain("同步受阻");
+
+        await view.cleanup();
+    });
+
+    it("starts the RAG ingestion queue after protected pages become ready", async () => {
+        const view = await renderProvider();
+
+        await vi.waitFor(() => {
+            expect(scheduleDefaultRagIngestionQueueMock).toHaveBeenCalled();
+            expect(scheduleMissingErrorLedgerVectorSyncMock).toHaveBeenCalled();
+        });
 
         await view.cleanup();
     });

@@ -8,7 +8,13 @@ import { ParagraphCard } from "./ParagraphCard";
 import { buildGrammarCacheKey, GRAMMAR_BASIC_PROMPT_VERSION } from "@/lib/grammar-analysis";
 
 const mountedRoots: Root[] = [];
-const { analysisStoreMock, fetchMock, decodeAskThreadPayloadMock, queryAskRelevantVocabularyMock } = vi.hoisted(() => ({
+const {
+    analysisStoreMock,
+    fetchMock,
+    decodeAskThreadPayloadMock,
+    queryAskRelevantVocabularyMock,
+    useTtsMock,
+} = vi.hoisted(() => ({
     analysisStoreMock: {
         translations: {},
         setTranslation: vi.fn(),
@@ -20,6 +26,19 @@ const { analysisStoreMock, fetchMock, decodeAskThreadPayloadMock, queryAskReleva
     fetchMock: vi.fn(),
     decodeAskThreadPayloadMock: vi.fn(() => null),
     queryAskRelevantVocabularyMock: vi.fn(),
+    useTtsMock: {
+        play: vi.fn(),
+        isPlaying: false,
+        isLoading: false,
+        preload: vi.fn(),
+        currentTime: 0,
+        duration: 0,
+        seekToMs: vi.fn(),
+        marks: [],
+        playbackRate: 1,
+        setPlaybackRate: vi.fn(),
+        stop: vi.fn(),
+    },
 }));
 
 vi.mock("next/navigation", () => ({
@@ -80,19 +99,7 @@ vi.mock("@/contexts/ReadingSettingsContext", () => ({
 }));
 
 vi.mock("@/hooks/useTTS", () => ({
-    useTTS: () => ({
-        play: vi.fn(),
-        isPlaying: false,
-        isLoading: false,
-        preload: vi.fn(),
-        currentTime: 0,
-        duration: 0,
-        seekToMs: vi.fn(),
-        marks: [],
-        playbackRate: 1,
-        setPlaybackRate: vi.fn(),
-        stop: vi.fn(),
-    }),
+    useTTS: () => useTtsMock,
 }));
 
 vi.mock("@/hooks/usePretextMeasuredLayout", () => ({
@@ -104,7 +111,20 @@ vi.mock("@/lib/analysis-store", () => ({
 }));
 
 vi.mock("./SpeakingPanel", () => ({
-    SpeakingPanel: () => null,
+    SpeakingPanel: (props: {
+        onPlayOriginal: () => void;
+        onToggleSegmentList: () => void;
+        onClose: () => void;
+        isSegmentListOpen: boolean;
+    }) => (
+        <div data-testid="speaking-panel">
+            <button type="button" onClick={props.onPlayOriginal}>听全部</button>
+            <button type="button" onClick={props.onToggleSegmentList}>
+                {props.isSegmentListOpen ? "还原整段" : "排版"}
+            </button>
+            <button type="button" onClick={props.onClose}>关闭</button>
+        </div>
+    ),
 }));
 
 vi.mock("./SyntaxTreeView", () => ({
@@ -171,8 +191,11 @@ vi.mock("@/lib/db", () => ({
 }));
 
 vi.mock("@/lib/tts-client", () => ({
-    requestTtsPayload: vi.fn(),
-    resolveTtsAudioBlob: vi.fn(),
+    requestTtsPayload: vi.fn(async () => ({
+        audio: "data:audio/mpeg;base64,ZmFrZQ==",
+        marks: [],
+    })),
+    resolveTtsAudioBlob: vi.fn(async () => new Blob(["fake-audio"], { type: "audio/mpeg" })),
 }));
 
 vi.mock("@/lib/ask-thread", () => ({
@@ -224,6 +247,84 @@ async function renderCard(overrides: Partial<React.ComponentProps<typeof Paragra
     return container;
 }
 
+function createRangeAtTextOffset(root: Node, offset: number) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let remaining = Math.max(0, offset);
+    let current = walker.nextNode();
+
+    while (current) {
+        const length = current.textContent?.length ?? 0;
+        if (remaining <= length) {
+            const range = document.createRange();
+            range.setStart(current, remaining);
+            range.setEnd(current, remaining);
+            return range;
+        }
+
+        remaining -= length;
+        current = walker.nextNode();
+    }
+
+    const range = document.createRange();
+    range.selectNodeContents(root);
+    range.collapse(false);
+    return range;
+}
+
+function installFakeAudio(durationSeconds = 5) {
+    const instances: Array<{
+        currentTime: number;
+        duration: number;
+        paused: boolean;
+        ended: boolean;
+        playbackRate: number;
+        play: () => Promise<void>;
+        pause: () => void;
+        onloadedmetadata: ((event: Event) => void) | null;
+        onplay: ((event: Event) => void) | null;
+        onpause: ((event: Event) => void) | null;
+        onended: ((event: Event) => void) | null;
+    }> = [];
+
+    class FakeAudio {
+        src: string;
+        currentTime = 0;
+        duration = durationSeconds;
+        paused = true;
+        ended = false;
+        playbackRate = 1;
+        onloadedmetadata: ((event: Event) => void) | null = null;
+        onplay: ((event: Event) => void) | null = null;
+        onpause: ((event: Event) => void) | null = null;
+        onended: ((event: Event) => void) | null = null;
+
+        constructor(src = "") {
+            this.src = src;
+            instances.push(this);
+        }
+
+        async play() {
+            this.paused = false;
+            this.onloadedmetadata?.(new Event("loadedmetadata"));
+            this.onplay?.(new Event("play"));
+        }
+
+        pause() {
+            this.paused = true;
+            this.onpause?.(new Event("pause"));
+        }
+    }
+
+    vi.stubGlobal("Audio", FakeAudio);
+    vi.stubGlobal("URL", {
+        ...URL,
+        createObjectURL: vi.fn(() => "blob:fake-audio"),
+        revokeObjectURL: vi.fn(),
+    });
+
+    return instances;
+}
+
 afterEach(async () => {
     await act(async () => {
         while (mountedRoots.length > 0) {
@@ -242,6 +343,17 @@ afterEach(async () => {
     decodeAskThreadPayloadMock.mockReturnValue(null);
     queryAskRelevantVocabularyMock.mockReset();
     queryAskRelevantVocabularyMock.mockResolvedValue({ status: "empty", vocabulary: [] });
+    useTtsMock.play.mockReset();
+    useTtsMock.isPlaying = false;
+    useTtsMock.isLoading = false;
+    useTtsMock.preload.mockReset();
+    useTtsMock.currentTime = 0;
+    useTtsMock.duration = 0;
+    useTtsMock.seekToMs.mockReset();
+    useTtsMock.marks = [];
+    useTtsMock.playbackRate = 1;
+    useTtsMock.setPlaybackRate.mockReset();
+    useTtsMock.stop.mockReset();
     vi.unstubAllGlobals();
 });
 
@@ -295,7 +407,7 @@ describe("ParagraphCard", () => {
             method: "POST",
         }));
         expect(analysisStoreMock.setGrammarAnalysis).toHaveBeenCalledWith(
-            expect.stringContaining("grammar:basic:2026-04-26-basic-v8"),
+            expect.stringContaining(`grammar:basic:${GRAMMAR_BASIC_PROMPT_VERSION}`),
             expect.objectContaining({ mode: "basic" }),
         );
     });
@@ -548,5 +660,141 @@ describe("ParagraphCard", () => {
                 translation: "巩固；使稳固",
             }),
         ]);
+    });
+
+    it("seeks playback forward and backward with arrow keys while speaking mode is open", async () => {
+        useTtsMock.currentTime = 5;
+        useTtsMock.duration = 30;
+        useTtsMock.seekToMs.mockImplementation(async (timeMs: number) => {
+            useTtsMock.currentTime = timeMs / 1000;
+        });
+
+        const container = await renderCard();
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        expect(speakingButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        await act(async () => {
+            window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+        });
+
+        await act(async () => {
+            window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+        });
+
+        expect(useTtsMock.seekToMs).toHaveBeenNthCalledWith(
+            1,
+            8000,
+            expect.objectContaining({ autoplay: true }),
+        );
+        expect(useTtsMock.seekToMs).toHaveBeenNthCalledWith(
+            2,
+            5000,
+            expect.objectContaining({ autoplay: true }),
+        );
+    });
+
+    it("seeks to the clicked text position while speaking mode is open", async () => {
+        useTtsMock.currentTime = 6;
+        useTtsMock.duration = 40;
+        useTtsMock.marks = [
+            { time: 0, type: "word", start: 0, end: 500, value: "Plants" },
+            { time: 500, type: "word", start: 500, end: 1000, value: "need" },
+            { time: 1000, type: "word", start: 1000, end: 1500, value: "sunlight" },
+            { time: 1500, type: "word", start: 1500, end: 2000, value: "and" },
+            { time: 2000, type: "word", start: 2000, end: 2500, value: "water" },
+            { time: 2500, type: "word", start: 2500, end: 3000, value: "to" },
+            { time: 3000, type: "word", start: 3000, end: 3500, value: "grow" },
+        ];
+
+        const container = await renderCard();
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        expect(speakingButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const paragraphText = container.querySelector<HTMLElement>('[data-paragraph-text="true"]');
+        const targetWord = paragraphText?.querySelector<HTMLElement>('[data-ktv-word-index="4"]');
+        const targetNode = targetWord?.firstChild;
+        expect(paragraphText).toBeTruthy();
+        expect(targetWord).toBeTruthy();
+        expect(targetNode?.nodeType).toBe(Node.TEXT_NODE);
+
+        const clickRange = document.createRange();
+        clickRange.setStart(targetNode!, 2);
+        clickRange.setEnd(targetNode!, 2);
+
+        Object.defineProperty(document, "caretRangeFromPoint", {
+            configurable: true,
+            value: vi.fn(() => clickRange),
+        });
+
+        await act(async () => {
+            paragraphText?.dispatchEvent(new MouseEvent("click", {
+                bubbles: true,
+                clientX: 180,
+                clientY: 60,
+            }));
+        });
+
+        expect(useTtsMock.seekToMs).toHaveBeenCalledTimes(1);
+        expect(useTtsMock.seekToMs.mock.calls[0]?.[0]).toBe(2000);
+        expect(useTtsMock.seekToMs).toHaveBeenCalledWith(
+            expect.any(Number),
+            expect.objectContaining({ autoplay: true }),
+        );
+    });
+
+    it("uses sentence text instead of list chrome when clicking in sentence listening layout", async () => {
+        const audioInstances = installFakeAudio(5);
+        const text = "Plants need sunlight and water to grow. Water helps roots stay strong.";
+
+        const container = await renderCard({ text });
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        expect(speakingButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const segmentLayoutButton = Array.from(container.querySelectorAll('[data-testid="speaking-panel"] button')).find((button) => button.textContent?.includes("排版"));
+        expect(segmentLayoutButton).toBeTruthy();
+
+        await act(async () => {
+            segmentLayoutButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const sentenceBadge = container.querySelector<HTMLElement>('[data-speaking-segment-index="0"] button');
+        expect(sentenceBadge).toBeTruthy();
+
+        await act(async () => {
+            sentenceBadge?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const sentenceContent = container.querySelector<HTMLElement>('[data-speaking-segment-index="0"] [data-speaking-segment-content="true"]');
+        expect(sentenceContent).toBeTruthy();
+
+        const clickOffset = 7;
+        const clickRange = createRangeAtTextOffset(sentenceContent!, clickOffset);
+        Object.defineProperty(document, "caretRangeFromPoint", {
+            configurable: true,
+            value: vi.fn(() => clickRange),
+        });
+
+        await act(async () => {
+            sentenceContent?.dispatchEvent(new MouseEvent("click", {
+                bubbles: true,
+                clientX: 240,
+                clientY: 90,
+            }));
+        });
+
+        const firstSentenceLength = "Plants need sunlight and water to grow.".length;
+        expect(audioInstances[0]?.currentTime).toBeCloseTo((clickOffset / firstSentenceLength) * 5, 4);
     });
 });

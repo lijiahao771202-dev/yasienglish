@@ -10,6 +10,8 @@ import { createBrowserClientSingleton } from "@/lib/supabase/browser";
 import { useSyncStatusStore } from "@/lib/sync-status";
 import { bootstrapUserSession, scheduleBackgroundSync } from "@/lib/user-repository";
 import { applyBackgroundThemeToDocument, getSavedBackgroundTheme } from "@/lib/background-preferences";
+import { scheduleMissingErrorLedgerVectorSync } from "@/lib/bge-client";
+import { scheduleDefaultRagIngestionQueue } from "@/lib/rag-ingestion";
 
 interface AuthSyncProviderProps {
     initialUser: SessionUserSummary | null;
@@ -76,16 +78,92 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
             return;
         }
 
-        const updateOnlineState = () => {
-            setIsOffline(!window.navigator.onLine);
+        // `navigator.onLine` is notoriously unreliable (false negatives on
+        // VPN switches, Wi-Fi flaps, Electron quirks, DNS hiccups). To avoid
+        // flashing a misleading "network failed" banner, we only trust it
+        // when an active probe also fails, and we debounce the offline
+        // decision with a short delay.
+        const OFFLINE_DEBOUNCE_MS = 3_000;
+        const PROBE_INTERVAL_MS = 20_000;
+        let offlineTimer: number | null = null;
+        let probeTimer: number | null = null;
+        let abortController: AbortController | null = null;
+        let disposed = false;
+
+        const clearOfflineTimer = () => {
+            if (offlineTimer !== null) {
+                window.clearTimeout(offlineTimer);
+                offlineTimer = null;
+            }
         };
 
-        updateOnlineState();
-        window.addEventListener("online", updateOnlineState);
-        window.addEventListener("offline", updateOnlineState);
+        const probeNetwork = async (): Promise<boolean> => {
+            try {
+                abortController?.abort();
+                abortController = new AbortController();
+                const timeout = window.setTimeout(() => abortController?.abort(), 4_000);
+                const response = await fetch(`/favicon.ico?_probe=${Date.now()}`, {
+                    method: "HEAD",
+                    cache: "no-store",
+                    signal: abortController.signal,
+                });
+                window.clearTimeout(timeout);
+                return response.ok || response.status < 500;
+            } catch {
+                return false;
+            }
+        };
+
+        const confirmOffline = async () => {
+            if (disposed) return;
+            const reachable = await probeNetwork();
+            if (disposed) return;
+            setIsOffline(!reachable);
+        };
+
+        const handleOffline = () => {
+            clearOfflineTimer();
+            offlineTimer = window.setTimeout(() => {
+                offlineTimer = null;
+                void confirmOffline();
+            }, OFFLINE_DEBOUNCE_MS);
+        };
+
+        const handleOnline = () => {
+            clearOfflineTimer();
+            // Trust the browser's recovery signal immediately.
+            setIsOffline(false);
+        };
+
+        // Initial check: if the browser *claims* offline at boot, verify
+        // with a probe before showing the banner.
+        if (!window.navigator.onLine) {
+            handleOffline();
+        }
+
+        // Background probe: self-heal if we ever got stuck in an "offline"
+        // state while traffic is actually flowing.
+        const schedulePeriodicProbe = () => {
+            probeTimer = window.setInterval(async () => {
+                if (disposed) return;
+                // Only probe when currently offline, to avoid needless requests.
+                const reachable = await probeNetwork();
+                if (disposed) return;
+                if (reachable) setIsOffline(false);
+                else if (!window.navigator.onLine) setIsOffline(true);
+            }, PROBE_INTERVAL_MS);
+        };
+        schedulePeriodicProbe();
+
+        window.addEventListener("online", handleOnline);
+        window.addEventListener("offline", handleOffline);
         return () => {
-            window.removeEventListener("online", updateOnlineState);
-            window.removeEventListener("offline", updateOnlineState);
+            disposed = true;
+            clearOfflineTimer();
+            if (probeTimer !== null) window.clearInterval(probeTimer);
+            abortController?.abort();
+            window.removeEventListener("online", handleOnline);
+            window.removeEventListener("offline", handleOffline);
         };
     }, []);
 
@@ -320,13 +398,20 @@ export function AuthSyncProvider({ initialUser, children }: AuthSyncProviderProp
             return;
         }
 
+        void scheduleMissingErrorLedgerVectorSync().catch((error) => {
+            console.warn("Missing error ledger vector sync failed", error);
+        });
+        void scheduleDefaultRagIngestionQueue();
+
         const handleOnline = () => {
             requestBackgroundSync({ pullSnapshot: true });
+            void scheduleDefaultRagIngestionQueue();
         };
 
         const handleVisibilityChange = () => {
             if (document.visibilityState === "visible") {
                 requestBackgroundSync({ pullSnapshot: true });
+                void scheduleDefaultRagIngestionQueue();
             }
         };
 

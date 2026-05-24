@@ -5,6 +5,37 @@ import { describe, expect, it } from "vitest";
 import { InlineGrammarHighlights } from "./InlineGrammarHighlights";
 
 describe("InlineGrammarHighlights", () => {
+    it("renders markdown grammar explanations inside the tooltip", () => {
+        const html = renderToStaticMarkup(
+            <InlineGrammarHighlights
+                text="The result subtly shifts the balance."
+                sentences={[
+                    {
+                        sentence: "The result subtly shifts the balance.",
+                        translation: "结果悄悄改变了平衡。",
+                        highlights: [
+                            {
+                                substring: "subtly shifts the balance",
+                                type: "状语",
+                                explanation: "**这部分不是主句主干。**\n\n- 它是一个状语短语。\n- 它补充说明变化是怎么发生的。\n\n> 片段义：悄悄改变平衡。",
+                                segment_translation: "悄悄改变平衡",
+                            },
+                        ],
+                    },
+                ]}
+                displayMode="full"
+                showSegmentTranslation
+            />,
+        );
+
+        expect(html).toMatch(/<strong[^>]*>这部分不是主句主干。<\/strong>/);
+        expect(html).toMatch(/<li[^>]*>它是一个状语短语。<\/li>/);
+        expect(html).toMatch(/<blockquote[^>]*>/);
+        expect(html).toContain("片段义：悄悄改变平衡。");
+        expect(html).not.toContain("结构判断：");
+        expect(html).not.toContain("句中作用：");
+    });
+
     it("renders a compact tooltip with plain grammar explanation", () => {
         const html = renderToStaticMarkup(
             <InlineGrammarHighlights
@@ -28,7 +59,7 @@ describe("InlineGrammarHighlights", () => {
         );
 
         expect(html).toContain("谓语");
-        expect(html).toContain("语法提示");
+        expect(html).toContain("语法讲解");
         expect(html).toContain("这里是核心动作");
         expect(html).toContain("说明主语接下来会做什么");
         expect(html).toContain("主句骨架");

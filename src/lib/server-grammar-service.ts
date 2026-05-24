@@ -20,6 +20,7 @@ import {
     GRAMMAR_DEEP_MODEL,
     GRAMMAR_DEEP_PROMPT_VERSION,
     normalizeGrammarText,
+    hasUsableBasicGrammarResult,
     sanitizeGrammarBasicPayload,
     sanitizeGrammarDeepSentencePayload,
     sentenceIdentity,
@@ -282,7 +283,7 @@ export async function runBasicGrammarService(input: GrammarBasicRequest): Promis
 
     try {
         const parsed = await runBasicInference(client, normalizedText);
-        if (parsed.retryRecommended) {
+        if (parsed.retryRecommended && !hasUsableBasicGrammarResult(parsed.data)) {
             await refundIfNeeded({
                 charged,
                 action: "grammar_basic",

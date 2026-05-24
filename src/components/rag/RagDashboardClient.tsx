@@ -8,7 +8,29 @@ import { ArrowLeft, BrainCircuit, Database, Loader2, Sparkles, Send, Play, Searc
 
 import { db } from "@/lib/db";
 import { initBGEWorker, requestRagStore, requestRagQuery, subscribeBGEStatus, switchBGEModel, type BGEStatus } from "@/lib/bge-client";
+import { getBgeStatusView, isVectorModelSelectDisabled } from "@/lib/rag-dashboard-status";
+import {
+    DEFAULT_RAG_SYSTEM_DICTIONARIES,
+    getRagTaskMetaKey,
+    processSystemDictionaryTask,
+    processVocabularyTask,
+    readRagTaskState,
+    type SystemDictionaryKey,
+} from "@/lib/rag-ingestion";
+import { normalizeWordKey } from "@/lib/user-sync";
 import { useVectorEngineStore } from "@/lib/vector-engine-store";
+
+type ExamType = SystemDictionaryKey;
+
+interface RagProbeResult {
+    text: string;
+    score: number;
+    latency: string;
+}
+
+function getErrorMessage(error: unknown) {
+    return error instanceof Error ? error.message : String(error);
+}
 
 export function RagDashboardClient() {
     const memoryCount = useLiveQuery(() => db.rag_vectors.count()) || 0;
@@ -17,9 +39,8 @@ export function RagDashboardClient() {
     const vocabList = useLiveQuery(() => db.vocabulary.toArray()) || [];
     const vectorMemories = useLiveQuery(() => db.rag_vectors.where('source').equals('vocab').toArray()) || [];
     
-    // We map vectorized vocab via text for simplicity, or by metadata
-    const vectorizedVocabIds = new Set(vectorMemories.map(v => v.metadata?.vocabId || v.id));
-    const pendingVocab = vocabList.filter(v => !vectorizedVocabIds.has(v.word));
+    const vectorizedVocabIds = new Set(vectorMemories.map(v => normalizeWordKey(String(v.metadata?.wordKey || v.metadata?.vocabId || v.id?.replace(/^vocab:/, "") || v.text.split(/\s+-\s+/)[0] || ""))));
+    const pendingVocab = vocabList.filter(v => !vectorizedVocabIds.has(normalizeWordKey(v.word_key || v.word)));
     const vocabProgress = vocabList.length > 0 
         ? Math.round(((vocabList.length - pendingVocab.length) / vocabList.length) * 100)
         : 0;
@@ -31,32 +52,40 @@ export function RagDashboardClient() {
     
     // Testing Probe State
     const [probeQuery, setProbeQuery] = useState("");
-    const [probeResults, setProbeResults] = useState<any[]>([]);
+    const [probeResults, setProbeResults] = useState<RagProbeResult[]>([]);
     const [isProbing, setIsProbing] = useState(false);
     
     const vectorModelId = useVectorEngineStore((state) => state.vectorModelId);
     
     const [bgeStatus, setBgeStatus] = useState<BGEStatus>('idle');
+    const [bgeError, setBgeError] = useState<string | null>(null);
     const [progress, setProgress] = useState({ current: 0, total: 0, label: "" });
-    const [injectedDicts, setInjectedDicts] = useState<Record<string, boolean>>({});
+    const [injectedDicts, setInjectedDicts] = useState<Record<SystemDictionaryKey, boolean>>({} as Record<SystemDictionaryKey, boolean>);
 
     useEffect(() => {
         initBGEWorker();
-        const unsub = subscribeBGEStatus((status) => setBgeStatus(status));
-        
-        // Load initial injected dict statuses
-        const statuses: Record<string, boolean> = {};
-        ['chuzhong', 'gaozhong', 'cet4', 'cet6', 'ielts', 'cefr'].forEach(key => {
-            if (localStorage.getItem(`dict_injected_${key}`) === 'true') {
-                statuses[key] = true;
-            }
+        const unsub = subscribeBGEStatus((status, error) => {
+            setBgeStatus(status);
+            setBgeError(error);
         });
-        setInjectedDicts(statuses);
+        
+        void refreshInjectedDictionaryStatuses();
         
         return () => {
             unsub();
         };
     }, []);
+
+    const refreshInjectedDictionaryStatuses = async () => {
+        const statuses: Record<SystemDictionaryKey, boolean> = {} as Record<SystemDictionaryKey, boolean>;
+        await Promise.all(DEFAULT_RAG_SYSTEM_DICTIONARIES.map(async (key) => {
+            const state = await readRagTaskState(`system:${key}`);
+            if (state?.status === "completed" && state.total > 0 && state.completed >= state.total) {
+                statuses[key] = true;
+            }
+        }));
+        setInjectedDicts(statuses);
+    };
 
     const handleIngestDocs = async () => {
         if (!inputText.trim() || bgeStatus !== 'ready') return;
@@ -84,83 +113,50 @@ export function RagDashboardClient() {
         
         setIsSyncingVocab(true);
         setProgress({ current: 0, total: pendingVocab.length, label: "生词本向量化..." });
-        
-        for (let i = 0; i < pendingVocab.length; i++) {
-            const v = pendingVocab[i];
-            try {
-                const textToEmbed = `${v.word} - ${v.translation}`;
-                await requestRagStore(textToEmbed, 'vocab', { vocabId: v.word });
-            } catch (e) {
-                console.warn("Failed to vectorize vocab", e);
-            }
-            // Add a tiny delay to not freeze the UI too much
-            await new Promise(r => setTimeout(r, 10));
-            setProgress({ current: i + 1, total: pendingVocab.length, label: "生词本向量化..." });
+        try {
+            await processVocabularyTask({
+                setTaskState: async (state) => {
+                    await db.sync_meta.put({
+                        key: getRagTaskMetaKey("vocabulary"),
+                        value: state,
+                        updated_at: state.updatedAt,
+                    });
+                    setProgress({ current: state.completed, total: state.total, label: "生词本向量化..." });
+                },
+            });
+        } catch (e) {
+            console.warn("Failed to vectorize vocab", e);
+        } finally {
+            setIsSyncingVocab(false);
         }
-        
-        setIsSyncingVocab(false);
     };
 
-    const handleIngestSysVocab = async (examType: 'chuzhong' | 'gaozhong' | 'cet4' | 'cet6' | 'ielts' | 'cefr') => {
+    const handleIngestSysVocab = async (examType: ExamType) => {
         if (bgeStatus !== 'ready' || isBusy || isIngestingSysVocab) return;
         
         setIsIngestingSysVocab(true);
         try {
-            const fileNameMap: Record<string, string> = {
-                'chuzhong': '1-CHUZHONG-顺序.json',
-                'gaozhong': '2-GAOZHONG-顺序.json',
-                'cet4': '3-CET4-顺序.json',
-                'cet6': '4-CET6-顺序.json',
-                'ielts': '5-IELTS-顺序.json',
-                'cefr': '6-OXFORD-5000.json'
-            };
-            const fileName = fileNameMap[examType];
             setProgress({ current: 0, total: 1, label: `正在拉取 ${examType.toUpperCase()} 大纲数据集...` });
-            const res = await fetch(`/data/${fileName}`);
-            if (!res.ok) throw new Error("JSON file not found in public/data/");
-            const json = await res.json();
-            
-            // Limit to first 2000 for rapid testing, or all if we want the full dictionary. We'll load all.
-            const dataToProcess = json;
-            setProgress({ current: 0, total: dataToProcess.length, label: `深度灌注 ${examType.toUpperCase()} 记忆池...` });
-            
-            for (let i = 0; i < dataToProcess.length; i++) {
-                const doc = dataToProcess[i];
-                if (!doc.word || !doc.translations) continue;
-                
-                // Format: "apple - n. 苹果"
-                const meanings = doc.translations.map((t: any) => `${t.type || ''} ${t.translation}`).join('; ');
-                const textToEmbed = `${doc.word} - ${meanings}`.trim();
-
-                let specificCefrLevel = undefined;
-                if (examType === 'cefr' && doc.translations.length > 0) {
-                    const firstType = doc.translations[0].type || '';
-                    const match = firstType.match(/^(A1|A2|B1|B2|C1|C2)/i);
-                    if (match) {
-                        specificCefrLevel = match[1].toUpperCase();
-                    }
-                }
-                
-                await requestRagStore(textToEmbed, 'system', { 
-                    vocabId: doc.word, 
-                    level: examType,
-                    cefrLevel: specificCefrLevel,
-                    type: 'system_dictionary'
-                });
-                
-                // Let the UI breathe every 10 items
-                if (i % 10 === 0) {
-                    await new Promise(r => setTimeout(r, 0));
-                    setProgress({ current: i + 1, total: dataToProcess.length, label: `深度灌注 ${examType.toUpperCase()} 记忆池...` });
-                }
-            }
-        } catch (e: any) {
+            await processSystemDictionaryTask(examType, {
+                setTaskState: async (state) => {
+                    await db.sync_meta.put({
+                        key: getRagTaskMetaKey(`system:${examType}`),
+                        value: state,
+                        updated_at: state.updatedAt,
+                    });
+                    setProgress({
+                        current: state.completed,
+                        total: state.total,
+                        label: `深度灌注 ${examType.toUpperCase()} 记忆池...`,
+                    });
+                },
+            });
+        } catch (e: unknown) {
             console.error("SysVocab Ingest Error:", e);
-            alert(`导入失败: ${e.message}`);
+            alert(`导入失败: ${getErrorMessage(e)}`);
         } finally {
             setIsIngestingSysVocab(false);
-            localStorage.setItem(`dict_injected_${examType}`, 'true');
-            setInjectedDicts(prev => ({ ...prev, [examType]: true }));
+            await refreshInjectedDictionaryStatuses();
         }
     };
 
@@ -179,6 +175,12 @@ export function RagDashboardClient() {
     };
 
     const isBusy = isProcessingChunk || isSyncingVocab;
+    const statusView = getBgeStatusView(bgeStatus, bgeError);
+    const modelSelectDisabled = isVectorModelSelectDisabled({
+        status: bgeStatus,
+        isBusy,
+        isIngestingSysVocab,
+    });
 
     return (
         <main className="font-welcome-ui min-h-screen bg-theme-base-bg px-4 py-12 sm:px-6 lg:px-8 overflow-hidden relative transition-colors duration-300">
@@ -219,11 +221,16 @@ export function RagDashboardClient() {
                         
                         <div className="bg-theme-active-bg px-5 py-3 rounded-2xl border-[3px] border-theme-border flex flex-col items-center gap-1.5 shadow-[0_4px_0_0_var(--theme-shadow)] z-10 w-full justify-center">
                             <div className="flex items-center gap-3">
-                                <div className={`w-4 h-4 rounded-full shadow-inner ${bgeStatus === 'ready' ? 'bg-emerald-500 animate-pulse shadow-emerald-500/50' : 'bg-amber-500 shadow-amber-500/50'}`} />
+                                <div className={`w-4 h-4 rounded-full shadow-inner ${statusView.dotClassName}`} />
                                 <span className="font-black text-[15px] tracking-wide text-theme-active-text uppercase">
-                                    {bgeStatus === 'ready' ? '算力引擎：在线计算中' : '算力引擎：握手点火中...'}
+                                    {statusView.label}
                                 </span>
                             </div>
+                            {statusView.detail && (
+                                <p className="w-full rounded-lg bg-red-500/10 px-3 py-2 text-[11px] font-bold leading-4 text-red-600">
+                                    {statusView.detail}
+                                </p>
+                            )}
                             <div className="flex items-center gap-2 mt-2 w-full px-2">
                                 <span className="text-[9px] font-black text-theme-text-muted tracking-widest uppercase shrink-0">全局模型</span>
                                 <select 
@@ -233,7 +240,7 @@ export function RagDashboardClient() {
                                             switchBGEModel(e.target.value);
                                         }
                                     }}
-                                    disabled={bgeStatus === 'loading'}
+                                    disabled={modelSelectDisabled}
                                     className="flex-1 min-w-0 bg-theme-base-bg border border-theme-border/50 text-[10px] font-bold text-theme-text rounded-md px-2 py-1 outline-none focus:border-emerald-500/50 cursor-pointer disabled:opacity-50 transition-colors"
                                 >
                                     <option value="Xenova/bge-m3">Xenova/bge-m3 (1024维/多语种/最高精度)</option>
@@ -251,8 +258,11 @@ export function RagDashboardClient() {
                                 onClick={async () => {
                                     if(confirm('警告：这将会彻底清空你所有的向量记忆缓存（生词、错误记录、笔记），是否继续？清空后需重新同步！')) {
                                         await db.rag_vectors.clear();
-                                        ['chuzhong', 'gaozhong', 'cet4', 'cet6', 'ielts', 'cefr'].forEach(key => localStorage.removeItem(`dict_injected_${key}`));
-                                        setInjectedDicts({});
+                                        await db.sync_meta
+                                            .where("key")
+                                            .startsWith(getRagTaskMetaKey(""))
+                                            .delete();
+                                        setInjectedDicts({} as Record<SystemDictionaryKey, boolean>);
                                         alert('🧹 向量数据库已完全格式化并清空！请重新进行各项同步。');
                                     }
                                 }}
