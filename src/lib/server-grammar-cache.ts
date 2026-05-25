@@ -39,3 +39,7 @@ export function setServerGrammarCache<T>(key: string, payload: T, ttlMs = DEFAUL
         if (typeof firstKey === "string") cache.delete(firstKey);
     }
 }
+
+export function clearServerGrammarCache() {
+    getCacheMap().clear();
+}

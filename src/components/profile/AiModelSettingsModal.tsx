@@ -49,6 +49,30 @@ interface AiModelSettingsModalProps {
     onClose: () => void;
 }
 
+function writeAiProviderCookies(payload: {
+    ai_provider: AiProvider;
+    deepseek_model: DeepSeekModel;
+    deepseek_thinking_mode: DeepSeekThinkingMode;
+    deepseek_reasoning_effort: DeepSeekReasoningEffort;
+    glm_model: string;
+    glm_thinking_mode: GlmThinkingMode;
+    nvidia_model: string;
+    github_model: string;
+    mimo_model: string;
+}) {
+    if (typeof document === "undefined") return;
+
+    document.cookie = `yasi_ai_provider=${encodeURIComponent(payload.ai_provider)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    document.cookie = `yasi_deepseek_model=${encodeURIComponent(payload.deepseek_model)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    document.cookie = `yasi_deepseek_thinking_mode=${encodeURIComponent(payload.deepseek_thinking_mode)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    document.cookie = `yasi_deepseek_reasoning_effort=${encodeURIComponent(payload.deepseek_reasoning_effort)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    document.cookie = `yasi_glm_model=${encodeURIComponent(payload.glm_model)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    document.cookie = `yasi_glm_thinking_mode=${encodeURIComponent(payload.glm_thinking_mode)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    document.cookie = `yasi_nvidia_model=${encodeURIComponent(payload.nvidia_model)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    document.cookie = `yasi_github_model=${encodeURIComponent(payload.github_model)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    document.cookie = `yasi_mimo_model=${encodeURIComponent(payload.mimo_model)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+}
+
 const NVIDIA_CATEGORIES = [
     {
         id: "qwen",
@@ -289,6 +313,11 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
     const payloadSignature = useMemo(() => JSON.stringify(activePayload), [activePayload]);
     const hasHydratedRef = useRef(false);
     const lastSavedSignatureRef = useRef(payloadSignature);
+
+    useEffect(() => {
+        if (!isOpen || !profileLoaded) return;
+        writeAiProviderCookies(activePayload);
+    }, [activePayload, isOpen, profileLoaded]);
 
     useEffect(() => {
         if (!isOpen || !profileLoaded) return;

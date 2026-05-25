@@ -399,37 +399,12 @@ describe("ParagraphCard", () => {
         expect(renderedText).toContain("allocation");
     });
 
-    it("ignores stale invalid grammar cache and re-fetches basic analysis", async () => {
-        analysisStoreMock.grammarAnalyses = {
-            "grammar:basic:old-cache-key": {
-                error: "Failed to analyze grammar",
-            },
-        };
-        fetchMock.mockResolvedValue({
-            ok: true,
-            json: async () => ({
-                mode: "basic",
-                tags: ["主语", "谓语"],
-                overview: "句子主干完整。",
-                difficult_sentences: [
-                    {
-                        sentence: "Plants need sunlight and water to grow.",
-                        translation: "植物需要阳光和水才能生长。",
-                        highlights: [
-                            {
-                                substring: "Plants",
-                                type: "主语",
-                                explanation: "结构判断：Plants 作主语；句中作用：发出 need 这一动作。",
-                                segment_translation: "植物",
-                            },
-                        ],
-                    },
-                ],
-            }),
-        });
+    it("clicking grammar only expands the sentence list and does not auto-request analysis", async () => {
         vi.stubGlobal("fetch", fetchMock);
 
-        const container = await renderCard();
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
         const grammarButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("语法"));
 
         expect(grammarButton).toBeTruthy();
@@ -438,16 +413,110 @@ describe("ParagraphCard", () => {
             grammarButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        expect(fetchMock).toHaveBeenCalledWith("/api/ai/grammar/basic", expect.objectContaining({
-            method: "POST",
-        }));
-        expect(analysisStoreMock.setGrammarAnalysis).toHaveBeenCalledWith(
-            expect.stringContaining(`grammar:basic:${GRAMMAR_BASIC_PROMPT_VERSION}`),
-            expect.objectContaining({ mode: "basic" }),
-        );
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(container.textContent).toContain("1");
+        expect(container.textContent).toContain("2");
+        expect(container.textContent).toContain("Plants need sunlight and water to grow.");
+        expect(container.textContent).toContain("Water helps roots stay strong.");
     });
 
-    it("opens grammar analysis directly in layout mode", async () => {
+    it("micro-batches rapid sentence clicks into a single request", async () => {
+        vi.useFakeTimers();
+        fetchMock.mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                mode: "basic",
+                results: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        cacheKey: "grammar:basic:sentence-1",
+                        data: {
+                            mode: "basic",
+                            tags: ["主语", "谓语"],
+                            overview: "句子主干完整。",
+                            difficult_sentences: [
+                                {
+                                    sentence: "Plants need sunlight and water to grow.",
+                                    translation: "植物需要阳光和水才能生长。",
+                                    highlights: [
+                                        {
+                                            substring: "Plants",
+                                            type: "主语",
+                                            explanation: "结构判断：Plants 作主语；句中作用：发出 need 这一动作。",
+                                            segment_translation: "植物",
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        cacheKey: "grammar:basic:sentence-2",
+                        data: {
+                            mode: "basic",
+                            tags: ["主语", "谓语"],
+                            overview: "句子主干完整。",
+                            difficult_sentences: [
+                                {
+                                    sentence: "Water helps roots stay strong.",
+                                    translation: "水能帮助根部保持强壮。",
+                                    highlights: [
+                                        {
+                                            substring: "Water",
+                                            type: "主语",
+                                            explanation: "结构判断：Water 作主语；句中作用：发出 helps 这一动作。",
+                                            segment_translation: "水",
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        try {
+            const container = await renderCard({
+                text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+            });
+            const grammarButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("语法"));
+            expect(grammarButton).toBeTruthy();
+
+            await act(async () => {
+                grammarButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+
+            const sentenceButtons = Array.from(container.querySelectorAll("button")).filter((button) => {
+                const label = button.getAttribute("aria-label") ?? "";
+                return label.includes("第 1 句") || label.includes("第 2 句");
+            });
+            expect(sentenceButtons).toHaveLength(2);
+
+            await act(async () => {
+                sentenceButtons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                sentenceButtons[1]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+
+            await act(async () => {
+                vi.advanceTimersByTime(260);
+            });
+
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            const [, requestInit] = fetchMock.mock.calls[0];
+            const payload = JSON.parse(String(requestInit.body));
+            expect(payload.sentences).toEqual([
+                "Plants need sunlight and water to grow.",
+                "Water helps roots stay strong.",
+            ]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("already analyzed sentence click only toggles display without refetching", async () => {
         const text = "Plants need sunlight and water to grow.";
         const grammarCacheKey = buildGrammarCacheKey({
             text,
@@ -493,8 +562,88 @@ describe("ParagraphCard", () => {
             grammarButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        expect(container.textContent).toContain("取消排版");
-        expect(container.textContent).toContain("主干结构");
+        const sentenceButton = Array.from(container.querySelectorAll("button")).find((button) => (button.getAttribute("aria-label") ?? "").includes("第 1 句"));
+        expect(sentenceButton).toBeTruthy();
+
+        await act(async () => {
+            sentenceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(container.textContent).toContain("植物需要阳光和水才能生长。");
+
+        await act(async () => {
+            sentenceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("does not trigger grammar analysis when clicking sentence text", async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal("fetch", fetchMock);
+
+        try {
+            const container = await renderCard({
+                text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+            });
+            const grammarButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("语法"));
+            expect(grammarButton).toBeTruthy();
+
+            await act(async () => {
+                grammarButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+
+            const sentenceText = Array.from(container.querySelectorAll("li div"))
+                .find((node) => node.textContent?.includes("Plants need sunlight and water to grow."));
+            expect(sentenceText).toBeTruthy();
+
+            await act(async () => {
+                sentenceText?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                vi.advanceTimersByTime(260);
+            });
+
+            expect(fetchMock).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("shows retry affordance and stops spinner when grammar sentence analysis fails", async () => {
+        vi.useFakeTimers();
+        fetchMock.mockRejectedValueOnce(new Error("语法分析暂时不可用，请稍后重试。"));
+        vi.stubGlobal("fetch", fetchMock);
+
+        try {
+            const container = await renderCard({
+                text: "Plants need sunlight and water to grow.",
+            });
+            const grammarButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("语法"));
+            expect(grammarButton).toBeTruthy();
+
+            await act(async () => {
+                grammarButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+
+            const sentenceButton = Array.from(container.querySelectorAll("button")).find((button) => (button.getAttribute("aria-label") ?? "").includes("第 1 句"));
+            expect(sentenceButton).toBeTruthy();
+
+            await act(async () => {
+                sentenceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                vi.advanceTimersByTime(260);
+            });
+
+            await act(async () => {
+                await Promise.resolve();
+            });
+
+            const retryButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("重试"));
+            expect(retryButton).toBeTruthy();
+            expect(container.textContent).toContain("语法分析暂时不可用");
+            expect(sentenceButton?.textContent).toContain("1");
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("keeps every sentence visible in grammar layout even when the grammar payload only analyzes some of them", async () => {

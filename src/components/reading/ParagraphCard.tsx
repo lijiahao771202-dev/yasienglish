@@ -19,6 +19,7 @@ import {
     buildGrammarCacheKey,
     GRAMMAR_BASIC_PROMPT_VERSION,
     hasUsableBasicGrammarResult,
+    normalizeGrammarSentenceList,
     sanitizeGrammarBasicPayload,
     sentenceIdentity,
 } from "@/lib/grammar-analysis";
@@ -107,6 +108,34 @@ interface GrammarBasicCachePayload {
     difficult_sentences?: GrammarSentenceAnalysis[];
 }
 
+interface GrammarSentenceApiResult extends GrammarBasicCachePayload {
+    sentence: string;
+    cacheKey: string;
+    issues?: string[];
+    retryRecommended?: boolean;
+    qualityScore?: number;
+    repairAttempted?: boolean;
+    repairAttempts?: number;
+    cache?: {
+        key: string;
+        hit: boolean;
+        layer: "server" | "miss";
+        mode: "basic";
+        promptVersion: string;
+        model: string;
+    };
+    error?: string;
+    data?: GrammarBasicCachePayload;
+}
+
+type GrammarBasicApiResponse = GrammarBasicCachePayload & {
+    results?: GrammarSentenceApiResult[];
+    readingCoins?: unknown;
+};
+
+const GRAMMAR_RETRY_REPLAY_TTL_MS = 30000;
+const GRAMMAR_SENTENCE_BATCH_WINDOW_MS = 220;
+
 interface RewritePracticePrompt {
     source_sentence_en: string;
     imitation_prompt_cn: string;
@@ -156,6 +185,15 @@ interface SentenceAudioCacheEntry {
 interface ClickCharacterResolution {
     index: number;
     sentenceIndex?: number;
+}
+
+interface SentenceGrammarUiState {
+    cacheKey: string;
+    sentence: string;
+    analysis: GrammarBasicCachePayload | null;
+    error: string | null;
+    loading: boolean;
+    expanded: boolean;
 }
 
 type SelectionPopupMode = "selection" | "ask" | "ask-replay";
@@ -403,45 +441,29 @@ export function ParagraphCard({
     const { fontSizeClass, isBionicMode } = useReadingSettings();
     const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
     const grammarExecutionSignature = useMemo(() => buildReadingGrammarExecutionSignature(profile), [profile]);
-    const grammarBasicCacheKey = buildGrammarCacheKey({
-        text,
-        mode: "basic",
-        promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
-        model: grammarExecutionSignature,
-    });
     const {
         translations, setTranslation: setStoreTranslation,
         grammarAnalyses, setGrammarAnalysis: setStoreGrammarAnalysis,
-        loadFromDB,
+        loadFromDB, loadGrammarFromDB,
     } = useAnalysisStore();
 
     // Local visibility state
     const [showTranslation, setShowTranslation] = useState(false);
     const [showGrammar, setShowGrammar] = useState(false);
     const [grammarDisplayMode, setGrammarDisplayMode] = useState<GrammarDisplayMode>("core");
-    const [isGrammarLayoutMode, setIsGrammarLayoutMode] = useState(false);
     const [isReadingLayoutMode, setIsReadingLayoutMode] = useState(false);
     const [activeListenSentenceIndex, setActiveListenSentenceIndex] = useState(0);
 
     const [isTranslating, setIsTranslating] = useState(false);
     const [isAnalyzingGrammar, setIsAnalyzingGrammar] = useState(false);
+    const [sentenceGrammarUi, setSentenceGrammarUi] = useState<Record<string, SentenceGrammarUiState>>({});
     // Load from DB on mount
     useEffect(() => {
-        loadFromDB(text, grammarBasicCacheKey);
-    }, [text, grammarBasicCacheKey, loadFromDB]);
+        void loadFromDB(text);
+    }, [text, loadFromDB]);
 
     // Derived data from store
     const translation = translations[text];
-    const grammarAnalysis = grammarAnalyses[grammarBasicCacheKey] as GrammarBasicCachePayload | undefined;
-    const grammarAssessment = useMemo(
-        () => sanitizeGrammarBasicPayload(grammarAnalysis ?? null, text),
-        [grammarAnalysis, text],
-    );
-    const hasUsableGrammarAnalysis = hasUsableBasicGrammarResult(grammarAssessment.data);
-    const grammarHighlightSentences = useMemo(() => {
-        if (!hasUsableGrammarAnalysis) return [];
-        return grammarAssessment.data.difficult_sentences;
-    }, [grammarAssessment.data.difficult_sentences, hasUsableGrammarAnalysis]);
     const paragraphAskCacheKey = useMemo(() => {
         const normalizedUrl = typeof articleUrl === "string" ? articleUrl.trim() : "";
         const normalizedTitle = typeof articleTitle === "string" ? articleTitle.trim().toLowerCase() : "";
@@ -527,6 +549,15 @@ export function ParagraphCard({
 
     const pRef = useRef<HTMLDivElement>(null);
     const sentenceAudioRef = useRef<HTMLAudioElement | null>(null);
+    const grammarRequestReplayRef = useRef<Map<string, {
+        promise: Promise<GrammarBasicApiResponse> | null;
+        settledAt: number;
+        data?: GrammarBasicApiResponse;
+        error?: Error;
+    }>>(new Map());
+    const grammarSentenceQueueRef = useRef<Set<string>>(new Set());
+    const grammarSentenceTimerRef = useRef<number | null>(null);
+    const grammarSentenceInflightRef = useRef<Set<string>>(new Set());
     const sentenceAudioIndexRef = useRef<number | null>(null);
     const sentenceAudioCacheRef = useRef<Map<number, SentenceAudioCacheEntry>>(new Map());
     const sentenceAudioInflightRef = useRef<Map<number, Promise<SentenceAudioCacheEntry>>>(new Map());
@@ -567,51 +598,39 @@ export function ParagraphCard({
     const sentenceUnits = useMemo(() => (
         buildSentenceUnits(text, sentenceBoundaries)
     ), [sentenceBoundaries, text]);
+    const grammarSentenceEntries = useMemo(() => {
+        return sentenceUnits.map((unit, unitIndex) => {
+            const normalizedSentence = normalizeGrammarSentenceList([unit.text])[0] ?? unit.text.trim();
+            const cacheKey = buildGrammarCacheKey({
+                text: normalizedSentence,
+                mode: "basic",
+                promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
+                model: grammarExecutionSignature,
+            });
+            const storedAnalysis = grammarAnalyses[cacheKey] as GrammarBasicCachePayload | undefined;
+            const uiState = sentenceGrammarUi[cacheKey];
+            const analysis = uiState?.analysis ?? storedAnalysis ?? null;
+            const assessment = sanitizeGrammarBasicPayload(analysis ?? null, [normalizedSentence]);
+            const hasUsableAnalysis = hasUsableBasicGrammarResult(assessment.data);
+            return {
+                unit,
+                unitIndex,
+                sentence: normalizedSentence,
+                cacheKey,
+                analysis,
+                assessment,
+                hasUsableAnalysis,
+                loading: uiState?.loading ?? false,
+                error: uiState?.error ?? null,
+                expanded: uiState?.expanded ?? false,
+            };
+        });
+    }, [grammarAnalyses, grammarExecutionSignature, sentenceGrammarUi, sentenceUnits]);
     const sentenceUnitsRef = useRef(sentenceUnits);
     useEffect(() => {
         sentenceUnitsRef.current = sentenceUnits;
     }, [sentenceUnits]);
-    const grammarLayoutLines = useMemo(() => {
-        const fromGrammarAnalysis = grammarHighlightSentences
-            .map((item) => item?.sentence?.trim() ?? "")
-            .filter(Boolean);
-        if (fromGrammarAnalysis.length > 0) return fromGrammarAnalysis;
-
-        return sentenceUnits
-            .map((unit) => unit.text.trim())
-            .filter(Boolean);
-    }, [grammarHighlightSentences, sentenceUnits]);
-    const grammarLayoutSentences = useMemo(() => {
-        const byIdentity = new Map(
-            grammarHighlightSentences
-                .map((item) => [sentenceIdentity(item?.sentence?.trim() ?? ""), item] as const)
-                .filter(([key]) => Boolean(key)),
-        );
-
-        const orderedFromParagraph = sentenceUnits
-            .map((unit) => unit.text.trim())
-            .filter(Boolean)
-            .map((sentence, index) => {
-                const matched = byIdentity.get(sentenceIdentity(sentence));
-                return {
-                    sentence,
-                    translation: matched?.translation ?? "",
-                    highlights: matched?.highlights ?? [],
-                    sourceIndex: index,
-                };
-            });
-
-        if (orderedFromParagraph.length > 0) {
-            return orderedFromParagraph;
-        }
-
-        return grammarHighlightSentences.map((item, index) => ({
-            sentence: item?.sentence?.trim() ?? "",
-            translation: item?.translation ?? "",
-            highlights: item?.highlights ?? [],
-            sourceIndex: index,
-        })).filter((item) => item.sentence);
-    }, [grammarHighlightSentences, sentenceUnits]);
+    const hasUsableGrammarAnalysis = grammarSentenceEntries.some((entry) => entry.hasUsableAnalysis);
 
     const activeSentenceUnit = sentenceUnits[activeListenSentenceIndex] ?? null;
 
@@ -977,7 +996,13 @@ export function ParagraphCard({
 
     useEffect(() => {
         if (!showGrammar) {
-            setIsGrammarLayoutMode(false);
+            setSentenceGrammarUi((prev) => {
+                const next = { ...prev };
+                for (const key of Object.keys(next)) {
+                    next[key] = { ...next[key], expanded: false, loading: false };
+                }
+                return next;
+            });
         }
     }, [showGrammar]);
 
@@ -986,6 +1011,13 @@ export function ParagraphCard({
         setActiveListenSentenceIndex(0);
         setIsSegmentListOpen(false);
         setPlayMode("full");
+        setSentenceGrammarUi({});
+        grammarSentenceQueueRef.current.clear();
+        grammarSentenceInflightRef.current.clear();
+        if (grammarSentenceTimerRef.current !== null) {
+            window.clearTimeout(grammarSentenceTimerRef.current);
+            grammarSentenceTimerRef.current = null;
+        }
         clearSentencePlayback();
         clearSentenceAudioCache();
     }, [clearSentenceAudioCache, clearSentencePlayback, text]);
@@ -1668,89 +1700,101 @@ export function ParagraphCard({
         );
     };
 
-    const renderGrammarLayoutList = useCallback(() => {
-        const renderGrammarSentenceBadge = (index: number, translation?: string) => (
-            <span className="group/trans-icon relative mt-[0.24em] inline-flex h-5 w-5 shrink-0 select-none align-top">
-                <span
-                    tabIndex={0}
-                    role="button"
-                    className="flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-[#ecdab5] bg-[linear-gradient(180deg,#fff8e8,#f7e7be)] font-sans text-[10px] font-bold text-amber-700 shadow-[0_4px_14px_rgba(180,134,43,0.16)] transition-[border-color,box-shadow,background-color,color] duration-150 hover:border-amber-400 hover:bg-[linear-gradient(180deg,#fff2d2,#f3d487)] hover:text-amber-800 hover:ring-2 hover:ring-amber-200/60 hover:shadow-[0_8px_20px_rgba(180,134,43,0.28)] focus-visible:border-amber-400 focus-visible:bg-[linear-gradient(180deg,#fff2d2,#f3d487)] focus-visible:text-amber-800 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:shadow-[0_8px_20px_rgba(180,134,43,0.28)]"
-                    aria-label={`第 ${index + 1} 句`}
-                >
-                    {index + 1}
-                </span>
-                {translation ? (
-                    <span className="pointer-events-none absolute bottom-full left-0 z-30 mb-3 w-80 rounded-[22px] border border-stone-200/90 bg-[linear-gradient(180deg,rgba(255,253,248,0.98),rgba(250,247,240,0.96))] p-4 text-left opacity-0 shadow-[0_18px_44px_rgba(28,25,23,0.16)] transition-opacity duration-150 ease-out group-hover/trans-icon:opacity-100 group-focus-within/trans-icon:opacity-100">
-                        <span className="mb-2 flex items-center justify-between border-b border-stone-200/80 pb-2">
-                            <span className="font-sans text-[10px] font-bold uppercase tracking-[0.24em] text-amber-700">
-                                第 {index + 1} 句
-                            </span>
-                            <span className="rounded-full border border-stone-200/80 bg-white/80 px-2 py-0.5 font-sans text-[10px] font-medium text-stone-500">
-                                译文
-                            </span>
-                        </span>
-                        <span className="block font-sans text-sm leading-6 text-stone-700">
-                            {translation}
-                        </span>
-                    </span>
-                ) : null}
-            </span>
-        );
-
-        if (grammarLayoutSentences.length === 0) {
-            if (grammarLayoutLines.length === 0) {
-                return <span className="text-stone-700">{text}</span>;
-            }
-
-            return (
-                <ul className="list-none space-y-2 pl-0">
-                    {grammarLayoutLines.map((line, index) => (
-                        <li
-                            key={`grammar-layout-fallback-${index}-${line.slice(0, 20)}`}
-                            className="grid grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-x-2.5"
-                        >
-                            {renderGrammarSentenceBadge(index)}
-                            <span className="min-w-0 text-stone-800 leading-[1.48]">{line}</span>
-                        </li>
-                    ))}
-                </ul>
-            );
+    function renderGrammarLayoutList() {
+        if (grammarSentenceEntries.length === 0) {
+            return <span className="text-stone-700">{text}</span>;
         }
 
         return (
-            <ul className="list-none space-y-2 pl-0">
-                {grammarLayoutSentences.map((item, index) => {
-                    const sentenceText = item.sentence.trim();
-                    if (!sentenceText) return null;
+            <ul className="list-none space-y-3 pl-0">
+                {grammarSentenceEntries.map((entry, index) => {
+                    const analysisSentence = entry.assessment.data.difficult_sentences[0] ?? {
+                        sentence: entry.sentence,
+                        translation: "",
+                        highlights: [],
+                    };
 
                     return (
                         <li
-                            key={`grammar-layout-highlight-${index}-${sentenceText.slice(0, 20)}`}
-                            className="grid grid-cols-[1.25rem_minmax(0,1fr)] items-start gap-x-2.5"
+                            key={`grammar-sentence-${entry.cacheKey}`}
+                            className="grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-x-3"
                         >
-                            {renderGrammarSentenceBadge(index, item.translation)}
-                            <span className="min-w-0 text-stone-800 leading-[1.48]">
-                                {item.highlights.length > 0 ? (
-                                    <InlineGrammarHighlights
-                                        text={sentenceText}
-                                        sentences={[{
-                                            sentence: sentenceText,
-                                            translation: item.translation,
-                                            highlights: item.highlights,
-                                        }]}
-                                        displayMode={grammarDisplayMode}
-                                        showSegmentTranslation
-                                    />
-                                ) : (
-                                    sentenceText
+                            <button
+                                type="button"
+                                aria-label={`第 ${index + 1} 句`}
+                                onClick={() => {
+                                    if (entry.loading) return;
+                                    if (!entry.hasUsableAnalysis) {
+                                        queueGrammarSentence(entry.unitIndex);
+                                        return;
+                                    }
+                                    setSentenceGrammarUi((prev) => ({
+                                        ...prev,
+                                        [entry.cacheKey]: {
+                                            cacheKey: entry.cacheKey,
+                                            sentence: entry.sentence,
+                                            analysis: prev[entry.cacheKey]?.analysis ?? entry.analysis ?? null,
+                                            error: prev[entry.cacheKey]?.error ?? null,
+                                            loading: prev[entry.cacheKey]?.loading ?? false,
+                                            expanded: !prev[entry.cacheKey]?.expanded,
+                                        },
+                                    }));
+                                }}
+                                className={cn(
+                                    "mt-[2px] inline-flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-bold transition-colors",
+                                    entry.loading
+                                        ? "border-teal-200 bg-teal-50 text-teal-600"
+                                        : entry.hasUsableAnalysis
+                                            ? "border-amber-200 bg-amber-50 text-amber-700"
+                                            : "border-theme-border/30 bg-theme-surface text-theme-text-muted hover:border-teal-300 hover:text-teal-700",
                                 )}
-                            </span>
+                                title={entry.hasUsableAnalysis ? "展开或收起该句解析" : "点击分析该句"}
+                            >
+                                {entry.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : (index + 1)}
+                            </button>
+
+                            <div className="min-w-0">
+                                <div className="w-full text-left text-stone-800 leading-[1.6]">
+                                    {entry.hasUsableAnalysis && entry.expanded ? (
+                                        <InlineGrammarHighlights
+                                            text={analysisSentence.sentence}
+                                            sentences={[{
+                                                sentence: analysisSentence.sentence,
+                                                translation: analysisSentence.translation,
+                                                highlights: analysisSentence.highlights,
+                                            }]}
+                                            displayMode={grammarDisplayMode}
+                                            showSegmentTranslation
+                                        />
+                                    ) : (
+                                        entry.unit.text
+                                    )}
+                                </div>
+                                {entry.error ? (
+                                    <div className="mt-1 flex items-center gap-2 text-xs text-rose-600">
+                                        <span>{entry.error}</span>
+                                        <button
+                                            type="button"
+                                            className="inline-flex items-center gap-1 rounded-full border border-rose-200 px-2 py-0.5 text-[11px] font-medium text-rose-600 hover:bg-rose-50"
+                                            onClick={() => queueGrammarSentence(entry.unitIndex, { forceRegenerate: true })}
+                                        >
+                                            <RefreshCw className="h-3 w-3" />
+                                            重试
+                                        </button>
+                                    </div>
+                                ) : null}
+                                {!entry.error && entry.hasUsableAnalysis && entry.assessment.data.difficult_sentences[0]?.translation && entry.expanded ? (
+                                    <div className="mt-2 text-sm leading-6 text-stone-500">
+                                        {entry.assessment.data.difficult_sentences[0]?.translation}
+                                    </div>
+                                ) : null}
+                            </div>
                         </li>
                     );
                 })}
             </ul>
         );
-    }, [grammarDisplayMode, grammarLayoutLines, grammarLayoutSentences, text]);
+    }
 
     const handleAskInlineCodeVocabAction = useCallback(async (rawText: string) => {
         const word = rawText
@@ -2475,59 +2519,210 @@ export function ParagraphCard({
         }
     };
 
-    const handleGrammarAnalysis = async (forceRegenerate = false) => {
-        if (!forceRegenerate && hasUsableGrammarAnalysis) {
-            const nextShowGrammar = !showGrammar;
-            setShowGrammar(nextShowGrammar);
-            if (nextShowGrammar) {
-                setGrammarDisplayMode("core");
-                setIsGrammarLayoutMode(true);
+    const flushQueuedGrammarSentences = useCallback(async (forceRegenerate = false) => {
+        const pendingEntries = grammarSentenceEntries.filter((entry) => grammarSentenceQueueRef.current.has(entry.cacheKey));
+        if (pendingEntries.length === 0) return;
+        const pendingCacheKeys = new Set(pendingEntries.map((entry) => entry.cacheKey));
+
+        pendingEntries.forEach((entry) => {
+            grammarSentenceQueueRef.current.delete(entry.cacheKey);
+            grammarSentenceInflightRef.current.add(entry.cacheKey);
+        });
+        setSentenceGrammarUi((prev) => {
+            const next = { ...prev };
+            for (const entry of pendingEntries) {
+                next[entry.cacheKey] = {
+                    cacheKey: entry.cacheKey,
+                    sentence: entry.sentence,
+                    analysis: prev[entry.cacheKey]?.analysis ?? entry.analysis ?? null,
+                    error: null,
+                    loading: true,
+                    expanded: true,
+                };
             }
+            return next;
+        });
+        setIsAnalyzingGrammar(true);
+        setReadingCoinHint(null);
+
+        const requestKey = pendingEntries.map((entry) => entry.cacheKey).sort().join("|");
+        const replayEntry = grammarRequestReplayRef.current.get(requestKey);
+        const now = Date.now();
+
+        const runRequest = async () => {
+            const response = await fetch("/api/ai/grammar/basic", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    sentences: pendingEntries.map((entry) => entry.sentence),
+                    forceRegenerate,
+                    economyContext: readEconomyContext("grammar_basic", requestKey),
+                }),
+            });
+            const payload = await response.json();
+
+            if (!response.ok && payload?.errorCode === INSUFFICIENT_READING_COINS) {
+                throw new Error("当前暂时无法进行语法分析，请稍后重试。");
+            }
+            if (!response.ok) {
+                throw new Error(payload?.error || "语法分析暂时不可用");
+            }
+
+            return payload as GrammarBasicApiResponse;
+        };
+
+        let data: GrammarBasicApiResponse;
+        let shouldApplyFreshEffects = false;
+
+        if (replayEntry?.promise) {
+            data = await replayEntry.promise;
+        } else if (replayEntry && now - replayEntry.settledAt < GRAMMAR_RETRY_REPLAY_TTL_MS) {
+            if (replayEntry.error) throw replayEntry.error;
+            if (replayEntry.data) {
+                data = replayEntry.data;
+            } else {
+                const requestPromise = runRequest();
+                grammarRequestReplayRef.current.set(requestKey, { promise: requestPromise, settledAt: 0 });
+                shouldApplyFreshEffects = true;
+                data = await requestPromise;
+                grammarRequestReplayRef.current.set(requestKey, { promise: null, settledAt: Date.now(), data });
+            }
+        } else {
+            const requestPromise = runRequest();
+            grammarRequestReplayRef.current.set(requestKey, { promise: requestPromise, settledAt: 0 });
+            shouldApplyFreshEffects = true;
+            try {
+                data = await requestPromise;
+                grammarRequestReplayRef.current.set(requestKey, { promise: null, settledAt: Date.now(), data });
+            } catch (error) {
+                const normalized = error instanceof Error ? error : new Error("语法分析暂时不可用");
+                grammarRequestReplayRef.current.set(requestKey, { promise: null, settledAt: Date.now(), error: normalized });
+                throw normalized;
+            }
+        }
+
+        if (shouldApplyFreshEffects) {
+            await syncReadingBalance(data, "grammar_basic");
+        }
+
+        const results = Array.isArray(data.results) ? data.results : [];
+        await Promise.all(results.map(async (result) => {
+            const resolvedData = result.data ?? result;
+            if (result.cacheKey) {
+                await setStoreGrammarAnalysis(result.cacheKey, resolvedData);
+            }
+        }));
+        setSentenceGrammarUi((prev) => {
+            const next = { ...prev };
+            for (const entry of pendingEntries) {
+                const result = results.find((item) => item.cacheKey === entry.cacheKey || item.sentence === entry.sentence);
+                const resolvedData = (result?.data ?? result) as GrammarBasicCachePayload | undefined;
+                next[entry.cacheKey] = {
+                    cacheKey: entry.cacheKey,
+                    sentence: entry.sentence,
+                    analysis: resolvedData ?? prev[entry.cacheKey]?.analysis ?? null,
+                    error: result?.error ?? null,
+                    loading: false,
+                    expanded: true,
+                };
+            }
+            return next;
+        });
+        pendingEntries.forEach((entry) => grammarSentenceInflightRef.current.delete(entry.cacheKey));
+        onSnapshotDirty?.();
+        setIsAnalyzingGrammar(false);
+        return;
+    }, [grammarSentenceEntries, onSnapshotDirty, readEconomyContext, setStoreGrammarAnalysis]);
+
+    const queueGrammarSentence = useCallback((sentenceIndex: number, options?: { forceRegenerate?: boolean }) => {
+        const entry = grammarSentenceEntries[sentenceIndex];
+        if (!entry) return;
+        if (entry.loading || grammarSentenceInflightRef.current.has(entry.cacheKey)) return;
+
+        if (entry.hasUsableAnalysis && !options?.forceRegenerate) {
+            setSentenceGrammarUi((prev) => ({
+                ...prev,
+                [entry.cacheKey]: {
+                    cacheKey: entry.cacheKey,
+                    sentence: entry.sentence,
+                    analysis: prev[entry.cacheKey]?.analysis ?? entry.analysis ?? null,
+                    error: prev[entry.cacheKey]?.error ?? null,
+                    loading: false,
+                    expanded: !prev[entry.cacheKey]?.expanded,
+                },
+            }));
             return;
         }
 
-        if (!forceRegenerate && showGrammar) {
+        grammarSentenceQueueRef.current.add(entry.cacheKey);
+        setSentenceGrammarUi((prev) => ({
+            ...prev,
+            [entry.cacheKey]: {
+                cacheKey: entry.cacheKey,
+                sentence: entry.sentence,
+                analysis: prev[entry.cacheKey]?.analysis ?? entry.analysis ?? null,
+                error: null,
+                loading: false,
+                expanded: true,
+            },
+        }));
+
+        if (grammarSentenceTimerRef.current !== null) {
+            window.clearTimeout(grammarSentenceTimerRef.current);
+        }
+        grammarSentenceTimerRef.current = window.setTimeout(() => {
+            grammarSentenceTimerRef.current = null;
+            const batchEntries = grammarSentenceEntries.filter((target) => (
+                grammarSentenceQueueRef.current.has(target.cacheKey)
+                || grammarSentenceInflightRef.current.has(target.cacheKey)
+            ));
+            void flushQueuedGrammarSentences(Boolean(options?.forceRegenerate)).catch((error) => {
+                console.error(error);
+                const message = error instanceof Error ? error.message : "语法分析暂时不可用，请稍后重试。";
+                setReadingCoinHint(message);
+                setSentenceGrammarUi((prev) => {
+                    const next = { ...prev };
+                    for (const target of batchEntries) {
+                        next[target.cacheKey] = {
+                            cacheKey: target.cacheKey,
+                            sentence: target.sentence,
+                            analysis: prev[target.cacheKey]?.analysis ?? target.analysis ?? null,
+                            error: message,
+                            loading: false,
+                            expanded: true,
+                        };
+                        grammarSentenceInflightRef.current.delete(target.cacheKey);
+                        grammarSentenceQueueRef.current.delete(target.cacheKey);
+                    }
+                    return next;
+                });
+                setIsAnalyzingGrammar(false);
+            });
+        }, GRAMMAR_SENTENCE_BATCH_WINDOW_MS);
+    }, [flushQueuedGrammarSentences, grammarSentenceEntries]);
+
+    const handleGrammarAnalysis = async () => {
+        if (showGrammar) {
             setShowGrammar(false);
             return;
         }
 
         setShowGrammar(true);
         setGrammarDisplayMode("core");
-        setIsGrammarLayoutMode(true);
-
-        setIsAnalyzingGrammar(true);
-        setReadingCoinHint(null);
-        try {
-            const res = await fetch("/api/ai/grammar/basic", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    text,
-                    forceRegenerate,
-                    economyContext: readEconomyContext("grammar_basic", grammarBasicCacheKey),
-                }),
-            });
-            const data = await res.json();
-            if (!res.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
-                setReadingCoinHint("当前暂时无法进行语法分析，请稍后重试。");
-                setShowGrammar(false);
-                return;
+        setSentenceGrammarUi((prev) => {
+            const next = { ...prev };
+            for (const entry of grammarSentenceEntries) {
+                next[entry.cacheKey] = {
+                    cacheKey: entry.cacheKey,
+                    sentence: entry.sentence,
+                    analysis: prev[entry.cacheKey]?.analysis ?? entry.analysis ?? null,
+                    error: prev[entry.cacheKey]?.error ?? null,
+                    loading: prev[entry.cacheKey]?.loading ?? false,
+                    expanded: prev[entry.cacheKey]?.expanded ?? false,
+                };
             }
-            if (!res.ok) {
-                throw new Error(data?.error || "语法分析暂时不可用");
-            }
-            await syncReadingBalance(data, "grammar_basic");
-
-            setStoreGrammarAnalysis(grammarBasicCacheKey, data);
-            setIsGrammarLayoutMode(true);
-            onSnapshotDirty?.();
-        } catch (err) {
-            console.error(err);
-            setReadingCoinHint(err instanceof Error ? err.message : "语法分析暂时不可用，请稍后重试。");
-            setShowGrammar(false);
-        } finally {
-            setIsAnalyzingGrammar(false);
-        }
+            return next;
+        });
     };
 
     const grammarModeLabel = grammarDisplayMode === "core" ? "主干视图" : "完整视图";
@@ -3194,23 +3389,9 @@ export function ParagraphCard({
                     {isEditMode ? null : (
                         <AnimatePresence mode="wait">
                             {shouldRenderGrammarLayer ? (
-                                hasUsableGrammarAnalysis ? (
-                                    <motion.div key="grammar-layer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
-                                        {isGrammarLayoutMode ? (
-                                            renderGrammarLayoutList()
-                                        ) : (
-                                            <InlineGrammarHighlights
-                                                text={text}
-                                                sentences={grammarHighlightSentences}
-                                                displayMode={grammarDisplayMode}
-                                                showSentenceMarkers
-                                                showSegmentTranslation
-                                            />
-                                        )}
-                                    </motion.div>
-                                ) : (
-                                    <motion.span key="default-grammar-text" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-stone-700 inline-block">{text}</motion.span>
-                                )
+                                <motion.div key="grammar-layer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
+                                    {renderGrammarLayoutList()}
+                                </motion.div>
                             ) : (
                                 isSpeakingOpen && isSegmentListOpen ? (
                                     <motion.div key="speaking-layer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
@@ -3336,7 +3517,7 @@ export function ParagraphCard({
 
                     <button
                         data-tour-target={index === 0 ? "paragraph-grammar" : undefined}
-                        onClick={() => handleGrammarAnalysis(false)}
+                        onClick={() => void handleGrammarAnalysis()}
                         className={cn(
                             "flex items-center gap-1.5 text-xs font-semibold transition-colors",
                             showGrammar ? "text-teal-600" : "text-stone-400/80 hover:text-stone-600"
@@ -3418,7 +3599,7 @@ export function ParagraphCard({
                 }
 
                 <AnimatePresence>
-                    {showGrammar && hasUsableGrammarAnalysis && (
+                    {showGrammar && (
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: "auto" }}
@@ -3432,26 +3613,9 @@ export function ParagraphCard({
                                         <span className="rounded-md border border-theme-border/20 bg-theme-surface px-2.5 py-1 text-[10px] font-bold tracking-wider text-theme-text-muted">
                                             {grammarModeLabel}
                                         </span>
-                                        <button
-                                            onClick={() => setIsGrammarLayoutMode((prev) => !prev)}
-                                            className={cn(
-                                                "rounded-md border px-2.5 py-1 text-[10px] font-bold tracking-wide transition-colors",
-                                                isGrammarLayoutMode
-                                                    ? "border-theme-border/30 bg-theme-active-hover text-theme-text"
-                                                    : "border-theme-border/10 bg-theme-surface/80 text-theme-text-muted hover:bg-theme-surface hover:text-theme-text",
-                                            )}
-                                            title={isGrammarLayoutMode ? "取消排版" : "打开大纲模式进行排版"}
-                                        >
-                                            {isGrammarLayoutMode ? "取消排版" : "段落大纲"}
-                                        </button>
-                                        <button
-                                            onClick={() => handleGrammarAnalysis(true)}
-                                            disabled={isAnalyzingGrammar}
-                                            className="rounded-md border border-theme-border/10 bg-theme-surface/80 p-1 text-theme-text-muted transition-colors hover:bg-theme-surface hover:text-theme-text disabled:opacity-50"
-                                            title="重新分析语法结构"
-                                        >
-                                            <RotateCcw className={cn("h-3.5 w-3.5", isAnalyzingGrammar && "animate-spin")} />
-                                        </button>
+                                        <span className="rounded-md border border-theme-border/10 bg-theme-surface/80 px-2.5 py-1 text-[10px] font-medium text-theme-text-muted">
+                                            点击句号编号开始分析
+                                        </span>
                                     </div>
 
                                     <div className="flex flex-wrap items-center justify-end gap-2">

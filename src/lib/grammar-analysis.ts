@@ -15,7 +15,7 @@ import {
 export type GrammarMode = "basic" | "deep";
 
 export const GRAMMAR_BASIC_MODEL = "deepseek-chat";
-export const GRAMMAR_BASIC_PROMPT_VERSION = "2026-05-17-basic-v10";
+export const GRAMMAR_BASIC_PROMPT_VERSION = "2026-05-26-basic-v13";
 
 type GrammarProfileSource = Pick<
     LocalUserProfile,
@@ -81,12 +81,26 @@ export interface GrammarBasicResult {
     difficult_sentences: GrammarBasicSentence[];
 }
 
+export interface GrammarBasicPromptOptions {
+    repairHints?: string[];
+    repairCategories?: string[];
+    patchMode?: boolean;
+    existingAnalyses?: GrammarBasicSentence[];
+}
+
+export type GrammarSentenceSource = string | string[];
+
 export interface GrammarSanitizeResult<T> {
     data: T;
     issues: string[];
     retryRecommended: boolean;
     qualityScore: number;
 }
+
+export type GrammarRepairCategory =
+    | "missing_translation"
+    | "missing_highlights"
+    | "coarse_chunking";
 
 export function hasUsableBasicGrammarResult(
     result: Pick<GrammarBasicResult, "difficult_sentences"> | null | undefined,
@@ -330,7 +344,23 @@ export function normalizeGrammarText(text: string) {
 }
 
 export function sentenceIdentity(sentence: string) {
-    return normalizeGrammarText(sentence).replace(/\s+/g, " ").toLowerCase();
+    return normalizeGrammarText(sentence)
+        .replace(/\s+/g, " ")
+        .replace(/[“”]/g, "\"")
+        .replace(/[‘’]/g, "'")
+        .replace(/[—–]/g, "-")
+        .replace(/\s*([,.;:!?])/g, "$1")
+        .toLowerCase();
+}
+
+export function normalizeGrammarSentenceList(input: GrammarSentenceSource) {
+    if (Array.isArray(input)) {
+        return input
+            .map((item) => normalizeGrammarText(typeof item === "string" ? item : ""))
+            .filter(Boolean);
+    }
+
+    return splitGrammarSentences(input);
 }
 
 export function splitGrammarSentences(text: string) {
@@ -362,49 +392,74 @@ export function buildGrammarCacheKey(params: {
     return `grammar:${params.mode}:${params.promptVersion}:${params.model}:${normalizedText.length}:${digest}`;
 }
 
-export function buildGrammarBasicPrompt(text: string, repairHints: string[] = []) {
-    const repairBlock = repairHints.length > 0
+export function buildGrammarBasicPrompt(
+    input: GrammarSentenceSource,
+    repairHintsOrOptions: string[] | GrammarBasicPromptOptions = [],
+) {
+    const sentences = normalizeGrammarSentenceList(input);
+    const options = Array.isArray(repairHintsOrOptions)
+        ? { repairHints: repairHintsOrOptions }
+        : repairHintsOrOptions;
+    const repairCategories = Array.isArray(options.repairCategories)
+        ? Array.from(new Set(options.repairCategories.filter(Boolean)))
+        : [];
+    const patchMode = options.patchMode === true;
+    const existingAnalyses = Array.isArray(options.existingAnalyses) ? options.existingAnalyses : [];
+
+    const repairBlock = repairCategories.length > 0
         ? `
 REPAIR REQUIREMENTS:
-- You previously missed required fields.
-- Fix the following issues exactly:
-${repairHints.map((hint) => `- ${hint}`).join("\n")}
+- You are repairing a previously incomplete sentence batch.
+- Repair categories for this batch:
+${repairCategories.length > 0 ? repairCategories.map((category) => `- ${category}`).join("\n") : "- unspecified_repair"}
+`
+        : "";
+
+    const patchContextBlock = patchMode
+        ? `
+PATCH MODE:
+- This request is repairing a small sentence batch, not regenerating the whole paragraph.
+- Return analysis ONLY for the sentences inside this batch.
+- Keep any already-correct coverage and only patch missing translations, missing highlights, or coarse chunking.
+- Do not drop a sentence that already appears in this batch.
+${existingAnalyses.length > 0 ? `CURRENT BATCH STATUS:
+${existingAnalyses.map((item, index) => {
+    const translationStatus = item.translation.trim() ? "present" : "missing";
+    const highlightStatus = item.highlights.length > 0 ? `present(${Math.min(item.highlights.length, 4)})` : "missing";
+    return `- Sentence ${index + 1}: "${item.sentence}"\n  - translation_status: ${translationStatus}\n  - highlight_status: ${highlightStatus}`;
+}).join("\n")}` : ""}
 `
         : "";
 
     return `
-Analyze the grammar of the following English paragraph for a Chinese native speaker learning English.
-
-Paragraph:
-"""${text}"""
+Analyze the grammar of the following English sentences for a Chinese native speaker learning English.
 
 OBJECTIVE:
-1. Split the paragraph into individual sentences. You MUST include EVERY sentence.
-2. For EACH sentence, provide a natural Chinese translation.
-3. Use a clause-first workflow before highlighting:
+1. For EACH target sentence, provide a natural Chinese translation.
+2. Use a clause-first workflow before highlighting:
    - Identify the main clause first.
    - Then identify subordinate clauses / relative clauses / adverbial clauses / non-finite structures / parenthetical inserts.
    - For long sentences, prioritize the real backbone over decorative wording.
-4. Analyze sentence structure with high coverage:
+3. Analyze sentence structure with high coverage:
    - Main components: Subject (主语), Predicate/Verb (谓语), Object/Predicative (宾语/表语).
    - Modifiers: Attributive (定语), Adverbial (状语), Complement (补语), Appositive (同位语).
    - Clauses/structures when present.
    - The goal is teaching-ready chunking, not minimum-viable labeling.
-5. Prefer the most specific grammar type possible for highlight.type.
+4. Prefer the most specific grammar type possible for highlight.type.
    - Use 时间状语从句 / 条件状语从句 / 让步状语从句 / 原因状语从句 / 目的状语从句 when the subtype is clear.
    - Use 宾语从句 / 主语从句 / 表语从句 / 同位语从句 instead of generic 从句 or 名词性从句 when the clause role is clear.
    - Use 定语从句 instead of generic 从句 when it modifies a noun.
    - Use 介词短语 / 分词短语 / 不定式短语 / 动名词短语 instead of generic 短语 when the phrase form is clear.
    - Use 非谓语 only when the exact phrase form is not clear.
    - Do NOT collapse a specific structure into a broad label unless you genuinely cannot identify the subtype.
-6. Every highlight.explanation MUST be Markdown-ready and teacher-like.
+5. Every highlight.explanation MUST be Markdown-ready and teacher-like.
    - Lead with one bold judgment sentence.
-   - Then use 1 to 3 short lines, bullets, or a short blockquote to explain the role in the sentence.
+   - Then use 1 to 2 short lines or bullets to explain the role in the sentence.
    - Explain: 这部分是什么 + 它在句里干什么 + 为什么值得单独标出来.
    - If a grammar term is hard, immediately unpack it in simpler words.
    - Avoid rigid textbook labels as section headers; prefer natural explanation.
-7. Every segment_translation MUST be contextual (in THIS sentence), not dictionary-only.
-8. Chunking Rules for long / complex sentences:
+6. Every segment_translation MUST be contextual (in THIS sentence), not dictionary-only.
+7. Chunking Rules for long / complex sentences:
    - Do NOT stop at the outer clause boundary.
    - If a chunk still contains an internal clause, non-finite modifier, appositive, comparison, publication/source detail, or time detail, split it again.
    - Avoid oversized chunks. Each chunk should usually carry one main grammar job only.
@@ -413,61 +468,8 @@ OBJECTIVE:
    - Prefer 5-12 meaningful chunks for a long complex sentence rather than 2-4 oversized chunks.
    - Never merge a clause label and all of its internal content into one giant chunk when the internal structure is still analyzable.
 
-FEW-SHOT EXAMPLE 1:
-Sentence: "When students feel lost, they often look for a checklist."
-Good JSON fragment:
-{
-      "sentence": "When students feel lost, they often look for a checklist.",
-      "translation": "当学生感到迷茫时，他们往往会去找一份清单。",
-      "highlights": [
-        {
-          "substring": "When students feel lost",
-          "type": "时间状语从句",
-          "explanation": "**这部分是 when 引导的时间状语从句。**\n\n- 它交代后面动作发生的时间。\n- 这里不要把它当成主句。\n\n> 提醒：先抓主句，再看这个从句。",
-          "segment_translation": "当学生感到迷茫时"
-        },
-        {
-          "substring": "they",
-          "type": "主语",
-          "explanation": "**they 是主语。**\n\n- 它表示“谁”在做事。\n- 这里具体指前面的学生。",
-          "segment_translation": "他们"
-        },
-        {
-          "substring": "look for a checklist",
-          "type": "谓语",
-          "explanation": "**这是谓语部分。**\n\n- 它表示动作本身。\n- 这里说明主语具体做了什么。",
-          "segment_translation": "寻找一份清单"
-        }
-      ]
-}
-
-FEW-SHOT EXAMPLE 2:
-Sentence: "By explicitly rating options according to agreed criteria, individuals decrease the chance of being influenced by transient emotions."
-Good JSON fragment:
-{
-      "sentence": "By explicitly rating options according to agreed criteria, individuals decrease the chance of being influenced by transient emotions.",
-      "translation": "通过按照既定标准明确地给选项打分，人们会降低被短暂情绪影响的可能性。",
-      "highlights": [
-        {
-          "substring": "By explicitly rating options according to agreed criteria",
-          "type": "介词短语",
-          "explanation": "**这是 by 引导的方式状语。**\n\n- 它补充说明“怎么做”。\n- 这里强调动作是通过什么方式实现的。",
-          "segment_translation": "通过按照既定标准明确地给选项打分"
-        },
-        {
-          "substring": "individuals",
-          "type": "主语",
-          "explanation": "**individuals 是主语。**\n\n- 它就是“谁”在做 decrease。\n- 指的是这些人。",
-          "segment_translation": "人们"
-        },
-        {
-          "substring": "of being influenced by transient emotions",
-          "type": "介词短语",
-          "explanation": "**这是 of 后面的补充短语。**\n\n- 它在解释 the chance 具体指什么。\n- 这样整句的意思更完整。",
-          "segment_translation": "被短暂情绪影响"
-        }
-      ]
-}
+Target sentences:
+${sentences.map((sentence, index) => `${index + 1}. ${sentence}`).join("\n")}
 
 OUTPUT STRICT JSON ONLY:
 {
@@ -490,21 +492,19 @@ OUTPUT STRICT JSON ONLY:
 }
 
 CONSTRAINTS:
-- Keep sentence order exactly as original paragraph.
-- You MUST return one entry for every input sentence. Do not skip short, simple, or summary-like sentences.
+- Keep sentence order exactly as listed in Target sentences.
+- You MUST return one entry for every target sentence. Do not skip short, simple, or summary-like sentences.
 - "sentence" must be an exact substring.
 - "type" must be Simplified Chinese and should prefer specific labels such as 主语/谓语/宾语/表语/定语/状语/补语/同位语/主句/宾语从句/主语从句/表语从句/同位语从句/定语从句/时间状语从句/原因状语从句/目的状语从句/条件状语从句/让步状语从句/介词短语/分词短语/不定式短语/动名词短语/倒装句/虚拟语气/强调句.
 - Each sentence should contain at least one highlight unless truly trivial.
 - For long sentences, at least one highlight should capture the clause backbone, not only isolated words.
-- Prefer exact clause spans over dictionary-like single-word labels when a clause is doing the real grammar work.
 - Do NOT stop at the outer clause boundary for long sentences.
 - Avoid oversized chunks.
 - Long noun phrases must be decomposed when they include internal modifiers or source/time tails.
 - Explanations should sound like a teacher speaking to a learner in simple Chinese.
-- Markdown is allowed inside explanation string values, but the outer response must remain valid JSON.
 - Keep each explanation compact and easy to scan.
-- Imagine the learner does not really understand grammar terms yet.
 - Return JSON object only, no markdown, no extra text.
+${patchContextBlock}
 ${repairBlock}
 `.trim();
 }
@@ -585,8 +585,8 @@ function matchRawSentenceItem(
     return null;
 }
 
-function buildFallbackBasic(paragraphText: string): GrammarBasicResult {
-    const sentences = splitGrammarSentences(paragraphText);
+function buildFallbackBasic(source: GrammarSentenceSource): GrammarBasicResult {
+    const sentences = normalizeGrammarSentenceList(source);
     return {
         mode: "basic",
         tags: ["句子主干", "结构拆分"],
@@ -659,9 +659,9 @@ function sentenceHasCoarseChunking(sentence: GrammarBasicSentence) {
     return oversizedStructuredChunks.length > 0;
 }
 
-export function sanitizeGrammarBasicPayload(raw: unknown, paragraphText: string): GrammarSanitizeResult<GrammarBasicResult> {
+export function sanitizeGrammarBasicPayload(raw: unknown, source: GrammarSentenceSource): GrammarSanitizeResult<GrammarBasicResult> {
     const issues: string[] = [];
-    const fallback = buildFallbackBasic(paragraphText);
+    const fallback = buildFallbackBasic(source);
     const payload = raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
     if (!payload) {
         issues.push("payload is not an object");
@@ -673,7 +673,7 @@ export function sanitizeGrammarBasicPayload(raw: unknown, paragraphText: string)
         };
     }
 
-    const expectedSentences = splitGrammarSentences(paragraphText);
+    const expectedSentences = normalizeGrammarSentenceList(source);
     const rawTags = Array.isArray(payload.tags) ? payload.tags.map((item) => toFiniteString(item)) : [];
     if (!Array.isArray(payload.tags)) {
         issues.push("tags is missing or not an array");

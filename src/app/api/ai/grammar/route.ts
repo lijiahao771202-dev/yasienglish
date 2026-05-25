@@ -6,12 +6,14 @@ export async function POST(req: Request) {
     try {
         const payload = await req.json() as {
             text?: string;
+            sentences?: string[];
             forceRegenerate?: boolean;
             economyContext?: ReadingEconomyContext;
         };
 
         const result = await runBasicGrammarService({
             text: payload.text,
+            sentences: payload.sentences,
             mode: "basic",
             forceRegenerate: payload.forceRegenerate,
             economyContext: payload.economyContext,

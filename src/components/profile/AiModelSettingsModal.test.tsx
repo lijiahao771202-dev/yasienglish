@@ -172,6 +172,9 @@ describe("AiModelSettingsModal", () => {
             mimoProvider?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
+        expect(document.cookie).toContain("yasi_ai_provider=mimo");
+        expect(saveProfilePatchMock).not.toHaveBeenCalled();
+
         expect(container.textContent).toContain("MIMO_API_KEY");
         expect(container.querySelector<HTMLInputElement>('input[name="mimo_api_key_override"]')).toBeNull();
 
@@ -181,6 +184,9 @@ describe("AiModelSettingsModal", () => {
         await act(async () => {
             mimoV25Button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
+
+        expect(document.cookie).toContain("yasi_mimo_model=mimo-v2.5");
+        expect(saveProfilePatchMock).not.toHaveBeenCalled();
 
         await act(async () => {
             vi.advanceTimersByTime(600);
@@ -222,10 +228,13 @@ describe("AiModelSettingsModal", () => {
             testButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        expect(getBrowserSupabaseAuthHeadersMock).not.toHaveBeenCalled();
+        expect(getBrowserSupabaseAuthHeadersMock).toHaveBeenCalledTimes(1);
         expect(fetchMock).toHaveBeenCalledWith("/api/profile/test-ai-provider", expect.objectContaining({
-            credentials: "omit",
-            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: "Bearer local-session",
+            },
         }));
 
         await act(async () => {

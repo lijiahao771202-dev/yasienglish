@@ -245,10 +245,48 @@ describe("grammar analysis helpers", () => {
         expect(sanitized.issues.some((issue) => issue.includes("chunking is too coarse"))).toBe(true);
     });
 
-    it("contains stronger generation constraints in prompts", () => {
-        const basicPrompt = buildGrammarBasicPrompt("Sample sentence.");
+    it("supports sentence-array sanitization for batch analysis", () => {
+        const sanitized = sanitizeGrammarBasicPayload({
+            tags: ["主语"],
+            overview: "句级批处理结果。",
+            sentences: [
+                {
+                    sentence: "First sentence.",
+                    translation: "第一句。",
+                    highlights: [
+                        {
+                            substring: "First",
+                            type: "主语",
+                            explanation: "结构判断：First 在这里承担句首核心成分。",
+                        },
+                    ],
+                },
+                {
+                    sentence: "Second sentence!",
+                    translation: "第二句！",
+                    highlights: [
+                        {
+                            substring: "Second sentence",
+                            type: "主语",
+                            explanation: "结构判断：Second sentence 是句子的核心内容。",
+                        },
+                    ],
+                },
+            ],
+        }, ["First sentence.", "Second sentence!"]);
 
-        expect(GRAMMAR_BASIC_PROMPT_VERSION).toBe("2026-05-17-basic-v10");
+        expect(sanitized.data.difficult_sentences).toHaveLength(2);
+        expect(sanitized.retryRecommended).toBe(false);
+    });
+
+    it("contains sentence-batch constraints in prompts without paragraph splitting instructions", () => {
+        const basicPrompt = buildGrammarBasicPrompt([
+            "Sample sentence one.",
+            "Sample sentence two?",
+        ]);
+
+        expect(GRAMMAR_BASIC_PROMPT_VERSION).toBe("2026-05-26-basic-v13");
+        expect(basicPrompt).toContain("Target sentences");
         expect(basicPrompt).toContain("Every highlight.explanation MUST be Markdown-ready and teacher-like.");
         expect(basicPrompt).toContain("Lead with one bold judgment sentence.");
         expect(basicPrompt).toContain("Prefer the most specific grammar type possible");
@@ -260,9 +298,38 @@ describe("grammar analysis helpers", () => {
         expect(basicPrompt).toContain("介词短语 / 分词短语 / 不定式短语 / 动名词短语");
         expect(basicPrompt).toContain("Do NOT collapse a specific structure into a broad label");
         expect(basicPrompt).toContain("segment_translation MUST be contextual");
-        expect(basicPrompt).toContain("FEW-SHOT EXAMPLE 1");
-        expect(basicPrompt).toContain("clause-first workflow");
         expect(basicPrompt).toContain('"sentences": [');
-        expect(basicPrompt).toContain("Do not skip short, simple, or summary-like sentences.");
+        expect(basicPrompt).not.toContain("Split the paragraph into individual sentences");
+        expect(basicPrompt).not.toContain("Paragraph:");
+        expect(basicPrompt).not.toContain("FEW-SHOT EXAMPLE 1");
+        expect(basicPrompt.indexOf("OBJECTIVE:")).toBeLessThan(basicPrompt.indexOf("Target sentences:"));
+        expect(basicPrompt.length).toBeLessThan(4500);
+    });
+
+    it("adds patch-mode repair context when repairing a sentence batch", () => {
+        const patchPrompt = buildGrammarBasicPrompt(["Experts say the pattern may reshape future climate planning."], {
+            patchMode: true,
+            repairCategories: ["missing_translation", "missing_highlights"],
+            repairHints: ["sentence \"Experts say the pattern may reshape\" translation is missing"],
+            existingAnalyses: [
+                {
+                    sentence: "Experts say the pattern may reshape future climate planning.",
+                    translation: "",
+                    highlights: [],
+                },
+            ],
+        });
+
+        expect(patchPrompt).toContain("PATCH MODE:");
+        expect(patchPrompt).toContain("REPAIR REQUIREMENTS:");
+        expect(patchPrompt).toContain("missing_translation");
+        expect(patchPrompt).toContain("missing_highlights");
+        expect(patchPrompt).toContain("CURRENT BATCH STATUS:");
+        expect(patchPrompt).toContain("translation_status: missing");
+        expect(patchPrompt).toContain("highlight_status: missing");
+        expect(patchPrompt).not.toContain("Human-readable notes");
+        expect(patchPrompt).not.toContain("sentence \"Experts say the pattern may reshape\" translation is missing");
+        expect(patchPrompt).not.toContain("current translation: MISSING");
+        expect(patchPrompt).not.toContain("current highlights: MISSING");
     });
 });

@@ -1,0 +1,249 @@
+
+> yasienglish@0.1.0 start:prod
+> scripts/start-prod-server.sh
+
+Starting production server on http://0.0.0.0:4000
+▲ Next.js 16.1.1
+- Local:         http://localhost:4000
+- Network:       http://0.0.0.0:4000
+
+✓ Starting...
+✓ Ready in 1618ms
+TypeError: fetch failed
+    at async tG (.next/server/chunks/_d53e0753._.js:24:38707)
+    at async tz (.next/server/chunks/_d53e0753._.js:24:38235)
+    at async (.next/server/chunks/_d53e0753._.js:37:14222)
+    at async rw._useSession (.next/server/chunks/_d53e0753._.js:37:11740)
+    at async rw._getUser (.next/server/chunks/_d53e0753._.js:37:14059) {
+  [cause]: Error [ConnectTimeoutError]: Connect Timeout Error (attempted addresses: 104.18.38.10:443, 172.64.149.246:443, timeout: 10000ms)
+      at <unknown> (.next/server/chunks/_61960346._.js:1:24368)
+      at Immediate._onImmediate (.next/server/chunks/_61960346._.js:1:24407) {
+    code: 'UND_ERR_CONNECT_TIMEOUT'
+  }
+}
+TypeError: fetch failed
+    at async tG (.next/server/chunks/_d53e0753._.js:24:38707)
+    at async tz (.next/server/chunks/_d53e0753._.js:24:38235)
+    at async (.next/server/chunks/_d53e0753._.js:37:14222)
+    at async rw._useSession (.next/server/chunks/_d53e0753._.js:37:11740)
+    at async rw._getUser (.next/server/chunks/_d53e0753._.js:37:14059)
+    at async (.next/server/chunks/_d53e0753._.js:37:13853)
+    at async (.next/server/chunks/_d53e0753._.js:37:11020) {
+  [cause]: Error [ConnectTimeoutError]: Connect Timeout Error (attempted addresses: 104.18.38.10:443, 172.64.149.246:443, timeout: 10000ms)
+      at <unknown> (.next/server/chunks/_61960346._.js:1:24368)
+      at Immediate._onImmediate (.next/server/chunks/_61960346._.js:1:24407) {
+    code: 'UND_ERR_CONNECT_TIMEOUT'
+  }
+}
+[AI] DeepSeek → deepseek-v4-flash
+Quiz Generation API Error: Error: No content received
+    at ignore-listed frames
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+[grammar][basic] failed to repair sentence SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async U (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:5139)
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+DeepSeek API Error: SyntaxError: Expected ',' or ']' after array element in JSON at position 415 (line 16 column 37)
+    at JSON.parse (<anonymous>)
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+DeepSeek API Error: SyntaxError: Expected ',' or ']' after array element in JSON at position 397 (line 15 column 79)
+    at JSON.parse (<anonymous>)
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+[AI] DeepSeek → deepseek-v4-flash
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+[AI] DeepSeek → deepseek-v4-flash
+Grammar Basic Analysis Error: SyntaxError: Unexpected end of JSON input
+    at JSON.parse (<anonymous>)
+    at async (.next/server/chunks/_61960346._.js:120:14809)
+    at async eQ.ec [as parseResponse] (.next/server/chunks/_61960346._.js:120:14277)
+    at async O (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:3907)
+    at async N (.next/server/chunks/src_lib_server-grammar-service_ts_f950265f._.js:165:4733)

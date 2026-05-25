@@ -33,6 +33,7 @@ import {
     buildReadingGrammarExecutionSignature,
     buildGrammarCacheKey,
     GRAMMAR_BASIC_PROMPT_VERSION,
+    normalizeGrammarSentenceList,
 } from "@/lib/grammar-analysis";
 import {
     READING_COIN_FX_EVENT,
@@ -877,15 +878,14 @@ function ReadingPageContent() {
         const paragraphTexts = extractParagraphTextsForGrammar(targetArticle);
         const grammarExecutionSignature = buildReadingGrammarExecutionSignature(profile);
         const grammarKeys = Array.from(new Set(paragraphTexts.flatMap((paragraphText) => {
-            const trimmed = paragraphText.trim();
-            if (!trimmed) return [];
-            const basicKey = buildGrammarCacheKey({
-                text: trimmed,
+            const sentences = normalizeGrammarSentenceList(paragraphText);
+            if (sentences.length === 0) return [];
+            return sentences.map((sentence) => buildGrammarCacheKey({
+                text: sentence,
                 mode: "basic",
                 promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
                 model: grammarExecutionSignature,
-            });
-            return [basicKey];
+            }));
         })));
 
         const [cachedArticle, noteRows, grammarRows, askRows] = await Promise.all([
