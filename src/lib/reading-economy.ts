@@ -3,7 +3,6 @@ export const INSUFFICIENT_READING_COINS = "INSUFFICIENT_READING_COINS" as const;
 export type ReadingEconomyAction =
     | "translate"
     | "grammar_basic"
-    | "grammar_deep"
     | "ask_ai"
     | "analyze_phrase"
     | "word_lookup"
@@ -14,12 +13,11 @@ export type ReadingEconomyAction =
     | "reading_streak";
 
 export const READING_COIN_COSTS: Record<
-    Extract<ReadingEconomyAction, "translate" | "grammar_basic" | "grammar_deep" | "ask_ai" | "analyze_phrase" | "word_lookup" | "word_deep_analyze">,
+    Extract<ReadingEconomyAction, "translate" | "grammar_basic" | "ask_ai" | "analyze_phrase" | "word_lookup" | "word_deep_analyze">,
     number
 > = {
     translate: 1,
     grammar_basic: 2,
-    grammar_deep: 3,
     ask_ai: 2,
     analyze_phrase: 2,
     word_lookup: 1,

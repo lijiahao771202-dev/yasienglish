@@ -60,7 +60,11 @@ interface WordPopupProps {
 const pronunciationAudioCache = new Map<string, HTMLAudioElement>();
 let lastPronounce: { word: string; at: number } = { word: "", at: 0 };
 const dictionaryMemoryCache = new Map<string, DefinitionData>();
-const dictionaryInFlight = new Map<string, Promise<DefinitionData | null>>();
+type DictionaryLookupResult =
+    | { kind: "success"; result: DefinitionData }
+    | { kind: "blocked" }
+    | { kind: "fallback" };
+const dictionaryInFlight = new Map<string, Promise<DictionaryLookupResult>>();
 type AiDefinitionResult = Pick<DefinitionData, "context_meaning" | "example" | "phonetic" | "meaning_groups" | "highlighted_meanings" | "word_breakdown" | "morphology_notes">;
 const aiDefinitionMemoryCache = new Map<string, AiDefinitionResult>();
 type AiDefinitionLoad = {
@@ -78,6 +82,14 @@ type AiDefinitionLoad = {
     };
 };
 const aiDefinitionInFlight = new Map<string, Promise<AiDefinitionLoad>>();
+
+function normalizeLookupWord(text: string) {
+    return text
+        .replace(/[‘’]/g, "'")
+        .replace(/[“”]/g, '"')
+        .replace(/\s+/g, " ")
+        .trim();
+}
 
 function extractAnalysisContext(context: string, selection: string, maxLength = 180) {
     const normalizedContext = context.replace(/\s+/g, " ").trim();
@@ -160,6 +172,7 @@ export function WordPopup({
     const [saveFeedbackTick, setSaveFeedbackTick] = useState(0);
     const [showSaveFeedback, setShowSaveFeedback] = useState(false);
     const [readingError, setReadingError] = useState<string | null>(null);
+    const [dictionaryError, setDictionaryError] = useState<string | null>(null);
     const [isLoadingAi, setIsLoadingAi] = useState(false);
     const [aiError, setAiError] = useState<string | null>(null);
     const [showAiPanel, setShowAiPanel] = useState(false);
@@ -230,6 +243,85 @@ export function WordPopup({
             dispatchReadingCoinFx({ delta, action: action as ReadingEconomyAction });
         }
     }, [isReadingMode]);
+
+    const requestAiDefinition = useCallback(async (
+        analysisContext: string,
+        options?: { skipEconomy?: boolean },
+    ): Promise<AiDefinitionLoad> => {
+        const cacheKey = buildAiDefinitionCacheKey(popup.word, analysisContext, mode);
+        const cached = aiDefinitionMemoryCache.get(cacheKey);
+        if (cached) {
+            return {
+                result: cached,
+                payload: cached,
+            };
+        }
+
+        const dedupeKey = `word_deep:${sessionUser?.id || "anon"}:${(popup.articleUrl || "unknown").toLowerCase()}:${popup.word.trim().toLowerCase()}`;
+        const existing = aiDefinitionInFlight.get(cacheKey);
+        const loadAnalysis = existing ?? retryClientAction(async (): Promise<AiDefinitionLoad> => {
+            const response = await fetch("/api/ai/define", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    word: popup.word,
+                    context: analysisContext,
+                    uiSurface: isReadingMode ? "reading_word_popup" : "battle_word_popup",
+                    economyContext: options?.skipEconomy
+                        ? undefined
+                        : isReadingMode
+                            ? {
+                                scene: "read",
+                                action: "word_deep_analyze",
+                                articleUrl: popup.articleUrl,
+                                dedupeKey,
+                            }
+                            : undefined,
+                }),
+            });
+            let data;
+            try {
+                data = await response.json();
+            } catch {
+                data = null;
+            }
+            if (!response.ok) {
+                const error = new Error(data?.error || "Failed to analyze word") as RetryableClientError;
+                error.responseData = data;
+                error.responseStatus = response.status;
+                throw error;
+            }
+
+            return {
+                result: {
+                    context_meaning: data.context_meaning,
+                    example: "",
+                    phonetic: data.phonetic,
+                    meaning_groups: Array.isArray(data.meaning_groups) ? data.meaning_groups : [],
+                    highlighted_meanings: Array.isArray(data.highlighted_meanings) ? data.highlighted_meanings : [],
+                    word_breakdown: Array.isArray(data.word_breakdown) ? data.word_breakdown : [],
+                    morphology_notes: Array.isArray(data.morphology_notes) ? data.morphology_notes : [],
+                } satisfies AiDefinitionResult,
+                payload: data,
+            };
+        });
+
+        if (!existing) {
+            const trackedPromise = loadAnalysis.finally(() => {
+                aiDefinitionInFlight.delete(cacheKey);
+            });
+            void trackedPromise.catch(() => undefined);
+            aiDefinitionInFlight.set(cacheKey, trackedPromise);
+        }
+
+        const loaded = await loadAnalysis;
+        aiDefinitionMemoryCache.set(cacheKey, loaded.result);
+        if (aiDefinitionMemoryCache.size > 500) {
+            const firstKey = aiDefinitionMemoryCache.keys().next().value;
+            if (firstKey) aiDefinitionMemoryCache.delete(firstKey);
+        }
+        return loaded;
+    }, [isReadingMode, mode, popup.articleUrl, popup.word, sessionUser?.id]);
 
     useEffect(() => {
         isMountedRef.current = true;
@@ -306,6 +398,7 @@ export function WordPopup({
         setSaveError(null);
         setSaveNotice(null);
         setReadingError(null);
+        setDictionaryError(null);
         setIsLoadingAi(false);
         setAiError(null);
         setShowAiPanel(false);
@@ -320,7 +413,7 @@ export function WordPopup({
         // Auto-play pronunciation with cache + cooldown to prevent repeated network/audio startup.
         playPronunciation(popup.word);
 
-        const normalized = popup.word.trim().toLowerCase();
+        const normalized = normalizeLookupWord(popup.word).toLowerCase();
         const cachedDict = dictionaryMemoryCache.get(normalized);
         if (cachedDict) {
             setDefinition(prev => ({ ...prev, ...cachedDict }));
@@ -343,7 +436,7 @@ export function WordPopup({
                     });
                     if (!isReadingMode && battleConsumeLookupTicket && !battleConsumeLookupTicket()) {
                         setReadingError(battleInsufficientHint);
-                        return null;
+                        return { kind: "blocked" } satisfies DictionaryLookupResult;
                     }
                     const res = await fetch("/api/dictionary", {
                         method: "POST",
@@ -364,9 +457,20 @@ export function WordPopup({
                     const data = await res.json();
                     if (!res.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
                         setReadingError("当前暂时无法查询，请稍后重试。");
-                        return null;
+                        return { kind: "blocked" } satisfies DictionaryLookupResult;
                     }
-                    if (!res.ok || !data?.definition) return null;
+                    if (!res.ok) {
+                        if (data?.error === "Definition not found") {
+                            setDictionaryError("词典未命中，已切换为 AI 释义。");
+                        } else {
+                            setDictionaryError("词典查询失败，已切换为 AI 释义。");
+                        }
+                        return { kind: "fallback" } satisfies DictionaryLookupResult;
+                    }
+                    if (!data?.definition) {
+                        setDictionaryError("词典结果不完整，已切换为 AI 释义。");
+                        return { kind: "fallback" } satisfies DictionaryLookupResult;
+                    }
                     await syncReadingBalance(data, "word_lookup");
 
                     const result: DefinitionData = {
@@ -382,10 +486,11 @@ export function WordPopup({
                         const firstKey = dictionaryMemoryCache.keys().next().value;
                         if (firstKey) dictionaryMemoryCache.delete(firstKey);
                     }
-                    return result;
+                    return { kind: "success", result } satisfies DictionaryLookupResult;
                 } catch (error) {
                     console.error("Dictionary error:", error);
-                    return null;
+                    setDictionaryError("词典查询超时，已切换为 AI 释义。");
+                    return { kind: "fallback" } satisfies DictionaryLookupResult;
                 } finally {
                     clearTimeout(timeout);
                     dictionaryInFlight.delete(normalized);
@@ -397,16 +502,42 @@ export function WordPopup({
         };
 
         loadDictionary()
-            .then((result) => {
-                if (!isMounted || !result) return;
-                setDefinition(prev => ({ ...prev, ...result }));
+            .then(async (result) => {
+                if (!isMounted) return;
+                if (result.kind === "success") {
+                    setDefinition(prev => ({ ...prev, ...result.result }));
+                    return;
+                }
+                if (result.kind === "blocked") return;
+                const analysisContext = isReadingMode
+                    ? popup.context
+                    : extractAnalysisContext(popup.context, popup.word);
+                setShowAiPanel(true);
+                setIsLoadingAi(true);
+                try {
+                    const { result: aiResult } = await requestAiDefinition(analysisContext, { skipEconomy: true });
+                    if (!isMounted) return;
+                    setDefinition((prev) => ({
+                        ...prev,
+                        ...aiResult,
+                    }));
+                } catch (error) {
+                    console.error("AI fallback definition error:", error);
+                    if (isMounted) {
+                        setAiError("AI 释义生成失败，请重试。");
+                    }
+                } finally {
+                    if (isMounted) {
+                        setIsLoadingAi(false);
+                    }
+                }
             })
             .finally(() => {
                 if (isMounted) setIsLoadingDict(false);
             });
 
         return () => { isMounted = false; };
-    }, [battleConsumeLookupTicket, battleInsufficientHint, isReadingMode, normalizedPopupWord, popup.word, popup.articleUrl, sessionUser?.id, syncReadingBalance]); // Re-run if word changes
+    }, [battleConsumeLookupTicket, battleInsufficientHint, isReadingMode, mode, normalizedPopupWord, popup.word, popup.context, popup.articleUrl, requestAiDefinition, sessionUser?.id, syncReadingBalance]); // Re-run if word changes
 
     // Close on click outside
     useEffect(() => {
@@ -418,78 +549,6 @@ export function WordPopup({
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [onClose]);
-
-    const requestAiDefinition = useCallback(async (analysisContext: string): Promise<AiDefinitionLoad> => {
-        const cacheKey = buildAiDefinitionCacheKey(popup.word, analysisContext, mode);
-        const cached = aiDefinitionMemoryCache.get(cacheKey);
-        if (cached) {
-            return {
-                result: cached,
-                payload: cached,
-            };
-        }
-
-        const dedupeKey = `word_deep:${sessionUser?.id || "anon"}:${(popup.articleUrl || "unknown").toLowerCase()}:${popup.word.trim().toLowerCase()}`;
-        const existing = aiDefinitionInFlight.get(cacheKey);
-        const loadAnalysis = existing ?? retryClientAction(async (): Promise<AiDefinitionLoad> => {
-            const response = await fetch("/api/ai/define", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    word: popup.word,
-                    context: analysisContext,
-                    uiSurface: isReadingMode ? "reading_word_popup" : "battle_word_popup",
-                    economyContext: isReadingMode
-                        ? {
-                            scene: "read",
-                            action: "word_deep_analyze",
-                            articleUrl: popup.articleUrl,
-                            dedupeKey,
-                        }
-                        : undefined,
-                }),
-            });
-            let data;
-            try {
-                data = await response.json();
-            } catch {
-                data = null;
-            }
-            if (!response.ok) {
-                const error = new Error(data?.error || "Failed to analyze word") as RetryableClientError;
-                error.responseData = data;
-                error.responseStatus = response.status;
-                throw error;
-            }
-
-            return {
-                result: {
-                    context_meaning: data.context_meaning,
-                    example: "",
-                    phonetic: data.phonetic,
-                    meaning_groups: Array.isArray(data.meaning_groups) ? data.meaning_groups : [],
-                    highlighted_meanings: Array.isArray(data.highlighted_meanings) ? data.highlighted_meanings : [],
-                    word_breakdown: Array.isArray(data.word_breakdown) ? data.word_breakdown : [],
-                    morphology_notes: Array.isArray(data.morphology_notes) ? data.morphology_notes : [],
-                } satisfies AiDefinitionResult,
-                payload: data,
-            };
-        });
-
-        if (!existing) {
-            aiDefinitionInFlight.set(cacheKey, loadAnalysis.finally(() => {
-                aiDefinitionInFlight.delete(cacheKey);
-            }));
-        }
-
-        const loaded = await loadAnalysis;
-        aiDefinitionMemoryCache.set(cacheKey, loaded.result);
-        if (aiDefinitionMemoryCache.size > 500) {
-            const firstKey = aiDefinitionMemoryCache.keys().next().value;
-            if (firstKey) aiDefinitionMemoryCache.delete(firstKey);
-        }
-        return loaded;
-    }, [isReadingMode, mode, popup.articleUrl, popup.word, sessionUser?.id]);
 
     const handleGenerateAiDefinition = useCallback(async () => {
         if (isLoadingAi) return;
@@ -560,7 +619,7 @@ export function WordPopup({
         let aiHighlightedMeanings = Array.isArray(definition?.highlighted_meanings) ? definition.highlighted_meanings : [];
         let aiWordBreakdown = Array.isArray(definition?.word_breakdown) ? definition.word_breakdown : [];
         let aiMorphologyNotes = Array.isArray(definition?.morphology_notes) ? definition.morphology_notes : [];
-        const normalizedDisplayWord = popup.word.trim().replace(/\s+/g, " ");
+    const normalizedDisplayWord = normalizeLookupWord(popup.word);
         const sourceKind = popup.sourceKind || (isReadingMode ? "read" : "legacy_local");
         const sourceLabel = popup.sourceLabel || defaultVocabSourceLabel(sourceKind);
         const sourceSentence = popup.sourceSentence?.trim() || popup.context?.trim() || "";
@@ -866,15 +925,55 @@ export function WordPopup({
                                 </p>
                             )}
                         </div>
-                    ) : (
-                        <p className={cn(
-                            "px-2.5 py-1 text-[12px] italic font-bold",
+                    ) : definition?.context_meaning ? (
+                        <div className={cn(
+                            "space-y-1.5 rounded-[10px] p-2",
                             isMinimal
-                                ? "text-slate-500"
-                                : "text-theme-text-muted",
+                                ? "bg-white"
+                                : "bg-transparent",
                         )}>
-                            No definition found.
-                        </p>
+                            <p className={cn(
+                                "text-[13px] font-bold leading-snug",
+                                isMinimal ? "text-slate-800" : "text-theme-text",
+                            )}>
+                                {definition.context_meaning.definition}
+                            </p>
+                            {definition.context_meaning.translation ? (
+                                <p className={cn(
+                                    "text-[12px] font-bold",
+                                    isMinimal ? "text-slate-600" : "text-theme-text opacity-70",
+                                )}>
+                                    {definition.context_meaning.translation}
+                                </p>
+                            ) : null}
+                            {dictionaryError ? (
+                                <p className={cn(
+                                    "pt-1 text-[11px] font-bold",
+                                    isMinimal ? "text-amber-600" : "text-theme-text-muted",
+                                )}>
+                                    {dictionaryError}
+                                </p>
+                            ) : null}
+                        </div>
+                    ) : (
+                        <div className="space-y-1">
+                            <p className={cn(
+                                "px-2.5 py-1 text-[12px] italic font-bold",
+                                isMinimal
+                                    ? "text-slate-500"
+                                    : "text-theme-text-muted",
+                            )}>
+                                {dictionaryError || "No definition found."}
+                            </p>
+                            {aiError ? (
+                                <p className={cn(
+                                    "px-2.5 pb-1 text-[11px] font-bold",
+                                    isMinimal ? "text-rose-500" : "text-theme-text-muted",
+                                )}>
+                                    {aiError}
+                                </p>
+                            ) : null}
+                        </div>
                     )}
                 </div>
                 {(showAiDefinitionButton && showAiPanel) ? (

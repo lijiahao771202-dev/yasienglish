@@ -13,7 +13,6 @@ export interface ReadingCoinFxEvent {
 const ACTION_LABELS: Record<ReadingEconomyAction, string> = {
     translate: "翻译",
     grammar_basic: "语法分析",
-    grammar_deep: "深度语法",
     ask_ai: "Ask AI",
     analyze_phrase: "短语解析",
     word_lookup: "查词",
@@ -55,4 +54,3 @@ export function dispatchReadingCoinFx(payload: {
     window.dispatchEvent(new CustomEvent<ReadingCoinFxEvent>(READING_COIN_FX_EVENT, { detail: event }));
     return event;
 }
-

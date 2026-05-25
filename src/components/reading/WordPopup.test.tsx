@@ -125,6 +125,61 @@ afterEach(async () => {
 });
 
 describe("WordPopup", () => {
+    it("falls back to AI definition automatically when dictionary lookup returns not found", async () => {
+        mocks.dbFirst.mockResolvedValue(null);
+        vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url === "/api/dictionary") {
+                return Promise.resolve(buildFetchResponse({ error: "Definition not found" }, false));
+            }
+            if (url === "/api/ai/define") {
+                return Promise.resolve(buildFetchResponse({
+                    context_meaning: {
+                        definition: "在这段语境里指被放进更大的英雄谱系中讨论",
+                        translation: "纳入同类谱系",
+                    },
+                    phonetic: "/ˈpænθiən/",
+                    meaning_groups: [{ pos: "n.", meanings: ["万神殿", "名流群"] }],
+                    highlighted_meanings: ["万神殿"],
+                    word_breakdown: [],
+                    morphology_notes: [],
+                    readingCoins: null,
+                }));
+            }
+            return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+        }));
+
+        await renderPopup(undefined, {
+            word: "pantheon",
+            context: "In the pantheon of contemporary antiheroes, few figures are as unsettling as this one.",
+        });
+
+        expect(document.body.textContent).toContain("在这段语境里指被放进更大的英雄谱系中讨论");
+        expect(document.body.textContent).toContain("词典未命中，已切换为 AI 释义。");
+    });
+
+    it("shows a dictionary failure message when dictionary and AI fallback both fail", async () => {
+        mocks.dbFirst.mockResolvedValue(null);
+        vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url === "/api/dictionary") {
+                return Promise.resolve(buildFetchResponse({ error: "Failed to fetch definition" }, false));
+            }
+            if (url === "/api/ai/define") {
+                return Promise.resolve(buildFetchResponse({ error: "Failed to analyze word" }, false));
+            }
+            return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+        }));
+
+        await renderPopup(undefined, {
+            word: "quietly drains",
+            context: "The habit quietly drains attention before people notice what is happening.",
+        });
+
+        expect(document.body.textContent).toContain("词典查询失败，已切换为 AI 释义。");
+        expect(document.body.textContent).toContain("AI 释义生成失败，请重试。");
+    });
+
     it("shows saved state immediately while background save is still pending", async () => {
         let resolveSave: (() => void) | null = null;
         mocks.dbFirst.mockResolvedValue(null);

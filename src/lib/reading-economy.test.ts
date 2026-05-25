@@ -17,7 +17,7 @@ describe("reading economy", () => {
 
     it("disables reading coin charges and rewards", () => {
         expect(getReadingCoinCost("translate")).toBe(0);
-        expect(getReadingCoinCost("grammar_deep")).toBe(0);
+        expect(getReadingCoinCost("grammar_basic")).toBe(0);
         expect(getReadingCoinCost("quiz_complete")).toBe(0);
         expect(getReadingCoinReward("daily_login")).toBe(0);
         expect(getReadingCoinReward("quiz_complete")).toBe(0);

@@ -15,9 +15,7 @@ import {
 export type GrammarMode = "basic" | "deep";
 
 export const GRAMMAR_BASIC_MODEL = "deepseek-chat";
-export const GRAMMAR_DEEP_MODEL = "deepseek-chat";
 export const GRAMMAR_BASIC_PROMPT_VERSION = "2026-05-17-basic-v10";
-export const GRAMMAR_DEEP_PROMPT_VERSION = "2026-04-26-deep-v5";
 
 type GrammarProfileSource = Pick<
     LocalUserProfile,
@@ -81,29 +79,6 @@ export interface GrammarBasicResult {
     tags: string[];
     overview: string;
     difficult_sentences: GrammarBasicSentence[];
-}
-
-export interface GrammarDeepTreeNode {
-    label: string;
-    text: string;
-    children: GrammarDeepTreeNode[];
-}
-
-export interface GrammarDeepPoint {
-    point: string;
-    explanation: string;
-}
-
-export interface GrammarDeepSentenceResult {
-    sentence: string;
-    sentence_tree: GrammarDeepTreeNode | null;
-    analysis_results: GrammarDeepPoint[];
-}
-
-export interface GrammarDeepResult {
-    mode: "deep";
-    difficult_sentences: GrammarDeepSentenceResult[];
-    partial_failures: number;
 }
 
 export interface GrammarSanitizeResult<T> {
@@ -322,13 +297,6 @@ function normalizeSegmentTranslation(rawTranslation: string, substring: string) 
     return `在本句中可理解为“${safeChunk}”所指的语义片段`;
 }
 
-function enrichDeepExplanation(raw: string, point: string) {
-    const normalized = raw.trim();
-    if (!isWeakExplanation(normalized)) return normalized;
-    const safePoint = point.trim() || "该语法点";
-    return `**结构判断**：句子包含${safePoint}。\n\n**句中作用**：支撑语义组织并影响信息重心。`;
-}
-
 function toFiniteString(value: unknown) {
     return typeof value === "string" ? value.trim() : "";
 }
@@ -537,93 +505,6 @@ CONSTRAINTS:
 - Keep each explanation compact and easy to scan.
 - Imagine the learner does not really understand grammar terms yet.
 - Return JSON object only, no markdown, no extra text.
-${repairBlock}
-`.trim();
-}
-
-export function buildGrammarDeepPrompt(sentence: string, repairHints: string[] = []) {
-    const repairBlock = repairHints.length > 0
-        ? `
-REPAIR REQUIREMENTS:
-- Your previous output missed required fields.
-- Fix these issues exactly:
-${repairHints.map((hint) => `- ${hint}`).join("\n")}
-`
-        : "";
-
-    return `
-Analyze the deep grammar structure of one English sentence for a Chinese learner.
-
-Sentence:
-"""${sentence}"""
-
-WORKFLOW:
-1. Identify the main clause first.
-2. Then place subordinate clauses / non-finite phrases / inserted structures under the correct parent.
-3. In analysis_results, explain the real grammatical leverage points, not generic textbook definitions. Markdown is allowed inside the explanation strings.
-
-FEW-SHOT EXAMPLE:
-Sentence: "When students feel lost, they often look for a checklist that gives them a starting point."
-Good JSON:
-{
-  "sentence": "When students feel lost, they often look for a checklist that gives them a starting point.",
-  "sentence_tree": {
-    "label": "主句",
-    "text": "they often look for a checklist that gives them a starting point",
-    "children": [
-      {
-        "label": "状语从句",
-        "text": "When students feel lost",
-        "children": []
-      },
-      {
-        "label": "定语从句",
-        "text": "that gives them a starting point",
-        "children": []
-      }
-    ]
-  },
-  "analysis_results": [
-    {
-      "point": "时间状语从句",
-      "explanation": "**When students feel lost 是时间状语从句。**\n\n- 它交代主句动作发生的时间背景。\n- 先看主句 they often look for a checklist，再看这块怎么挂上去。"
-    },
-    {
-      "point": "定语从句修饰先行词",
-      "explanation": "**that gives them a starting point 是修饰 checklist 的定语从句。**\n\n- 它补充说明 checklist 的具体功能。\n- 它依附在先行词 checklist 后面，不属于主句主干。"
-    }
-  ]
-}
-
-OUTPUT STRICT JSON ONLY:
-{
-  "sentence": "Exact sentence",
-  "sentence_tree": {
-    "label": "主句",
-    "text": "full or partial sentence chunk",
-    "children": [
-      {
-        "label": "状语",
-        "text": "chunk",
-        "children": []
-      }
-    ]
-  },
-  "analysis_results": [
-    {
-      "point": "语法点名称",
-      "explanation": "必须包含结构判断和句中作用，必要时补充易错点"
-    }
-  ]
-}
-
-CONSTRAINTS:
-- Keep "sentence" exactly same as input sentence.
-- sentence_tree.label must be Simplified Chinese.
-- analysis_results must be an array (can be empty).
-- Each explanation should be concrete and sentence-specific; avoid vague generic text.
-- For long sentences, explicitly separate the backbone clause from dependent structures.
-- Return JSON object only.
 ${repairBlock}
 `.trim();
 }
@@ -881,102 +762,6 @@ export function sanitizeGrammarBasicPayload(raw: unknown, paragraphText: string)
         data,
         issues,
         retryRecommended: severeCoverageIssue || (issues.length > 0 && (highlightCount === 0 || difficultSentences.length === 0 || qualityScore < 0.52)),
-        qualityScore,
-    };
-}
-
-function sanitizeTreeNode(raw: unknown, fallbackText: string, depth = 0): GrammarDeepTreeNode | null {
-    if (!raw || typeof raw !== "object") return null;
-    if (depth > 8) return null;
-
-    const payload = raw as Record<string, unknown>;
-    const label = toFiniteString(payload.label) || "语法成分";
-    const text = toFiniteString(payload.text) || fallbackText;
-    const childrenRaw = Array.isArray(payload.children) ? payload.children : [];
-    const children = childrenRaw
-        .map((item) => sanitizeTreeNode(item, fallbackText, depth + 1))
-        .filter((item): item is GrammarDeepTreeNode => Boolean(item))
-        .slice(0, 12);
-
-    return {
-        label,
-        text,
-        children,
-    };
-}
-
-function buildFallbackDeepSentence(sentence: string): GrammarDeepSentenceResult {
-    return {
-        sentence,
-        sentence_tree: {
-            label: "主句",
-            text: sentence,
-            children: [],
-        },
-        analysis_results: [],
-    };
-}
-
-export function sanitizeGrammarDeepSentencePayload(raw: unknown, sentence: string): GrammarSanitizeResult<GrammarDeepSentenceResult> {
-    const issues: string[] = [];
-    const fallback = buildFallbackDeepSentence(sentence);
-    const payload = raw && typeof raw === "object" ? raw as Record<string, unknown> : null;
-    if (!payload) {
-        issues.push("payload is not an object");
-        return {
-            data: fallback,
-            issues,
-            retryRecommended: true,
-            qualityScore: 0,
-        };
-    }
-
-    const tree = sanitizeTreeNode(payload.sentence_tree, sentence);
-    if (!tree) {
-        issues.push("sentence_tree is missing or invalid");
-    }
-
-    const resultsRaw = Array.isArray(payload.analysis_results) ? payload.analysis_results : [];
-    if (!Array.isArray(payload.analysis_results)) {
-        issues.push("analysis_results is missing or not an array");
-    }
-
-    const analysisResults: GrammarDeepPoint[] = [];
-    resultsRaw.forEach((item, index) => {
-        const pointPayload = item as Record<string, unknown>;
-        const point = toFiniteString(pointPayload?.point);
-        const explanationRaw = toFiniteString(pointPayload?.explanation);
-        if (!point || !explanationRaw) {
-            issues.push(`analysis_results[${index}] is incomplete`);
-            return;
-        }
-        analysisResults.push({
-            point,
-            explanation: enrichDeepExplanation(explanationRaw, point),
-        });
-    });
-
-    const normalizedSentence = toFiniteString(payload.sentence) || sentence;
-    if (sentenceIdentity(normalizedSentence) !== sentenceIdentity(sentence)) {
-        issues.push("sentence field mismatches request sentence");
-    }
-
-    const data: GrammarDeepSentenceResult = {
-        sentence,
-        sentence_tree: tree ?? fallback.sentence_tree,
-        analysis_results: analysisResults,
-    };
-    const detailedCount = data.analysis_results.filter((item) => !isWeakExplanation(item.explanation)).length;
-    const qualityScore = Number((
-        (data.sentence_tree ? 0.4 : 0)
-        + (data.analysis_results.length > 0 ? 0.3 : 0)
-        + (data.analysis_results.length > 0 ? (detailedCount / data.analysis_results.length) * 0.3 : 0)
-    ).toFixed(4));
-
-    return {
-        data,
-        issues,
-        retryRecommended: (issues.length > 0 && (!tree || analysisResults.length === 0)) || qualityScore < 0.42,
         qualityScore,
     };
 }

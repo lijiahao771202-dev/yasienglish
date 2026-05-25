@@ -33,7 +33,6 @@ import {
     buildReadingGrammarExecutionSignature,
     buildGrammarCacheKey,
     GRAMMAR_BASIC_PROMPT_VERSION,
-    GRAMMAR_DEEP_PROMPT_VERSION,
 } from "@/lib/grammar-analysis";
 import {
     READING_COIN_FX_EVENT,
@@ -886,13 +885,7 @@ function ReadingPageContent() {
                 promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
                 model: grammarExecutionSignature,
             });
-            const deepKey = buildGrammarCacheKey({
-                text: trimmed,
-                mode: "deep",
-                promptVersion: GRAMMAR_DEEP_PROMPT_VERSION,
-                model: `${grammarExecutionSignature}:deep`,
-            });
-            return [basicKey, deepKey];
+            return [basicKey];
         })));
 
         const [cachedArticle, noteRows, grammarRows, askRows] = await Promise.all([

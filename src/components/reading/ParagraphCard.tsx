@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useMemo, useState, useRef, useEffect, useCallba
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, Gauge, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft, Layers, RefreshCw } from "lucide-react";
+import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
@@ -10,22 +10,17 @@ import { useTTS } from "@/hooks/useTTS";
 import { usePretextMeasuredLayout } from "@/hooks/usePretextMeasuredLayout";
 import { SpeakingPanel } from "./SpeakingPanel";
 import { useAnalysisStore } from "@/lib/analysis-store";
-import { SyntaxTreeView } from "./SyntaxTreeView";
 import { bionicText } from "@/lib/bionic";
 import { InlineGrammarHighlights } from "@/components/shared/InlineGrammarHighlights";
-import { GrammarMarkdown } from "@/components/shared/GrammarMarkdown";
 import { PretextTextarea } from "@/components/ui/PretextTextarea";
 import { type GrammarDisplayMode, type GrammarSentenceAnalysis } from "@/lib/grammarHighlights";
 import {
     buildReadingGrammarExecutionSignature,
     buildGrammarCacheKey,
     GRAMMAR_BASIC_PROMPT_VERSION,
-    GRAMMAR_DEEP_PROMPT_VERSION,
     hasUsableBasicGrammarResult,
     sanitizeGrammarBasicPayload,
-    sanitizeGrammarDeepSentencePayload,
     sentenceIdentity,
-    type GrammarDeepSentenceResult,
 } from "@/lib/grammar-analysis";
 import { applyServerProfilePatchToLocal, saveVocabulary } from "@/lib/user-repository";
 import { useAuthSessionUser } from "@/components/auth/AuthSessionContext";
@@ -414,17 +409,10 @@ export function ParagraphCard({
         promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
         model: grammarExecutionSignature,
     });
-    const grammarDeepCacheKey = buildGrammarCacheKey({
-        text,
-        mode: "deep",
-        promptVersion: GRAMMAR_DEEP_PROMPT_VERSION,
-        model: `${grammarExecutionSignature}:deep`,
-    });
     const {
         translations, setTranslation: setStoreTranslation,
         grammarAnalyses, setGrammarAnalysis: setStoreGrammarAnalysis,
         loadFromDB,
-        loadGrammarFromDB,
     } = useAnalysisStore();
 
     // Local visibility state
@@ -433,20 +421,14 @@ export function ParagraphCard({
     const [grammarDisplayMode, setGrammarDisplayMode] = useState<GrammarDisplayMode>("core");
     const [isGrammarLayoutMode, setIsGrammarLayoutMode] = useState(false);
     const [isReadingLayoutMode, setIsReadingLayoutMode] = useState(false);
-    const [showDeepAnalysis, setShowDeepAnalysis] = useState(false);
     const [activeListenSentenceIndex, setActiveListenSentenceIndex] = useState(0);
 
     const [isTranslating, setIsTranslating] = useState(false);
     const [isAnalyzingGrammar, setIsAnalyzingGrammar] = useState(false);
-    const [isAnalyzingDeepGrammar, setIsAnalyzingDeepGrammar] = useState(false);
-
     // Load from DB on mount
     useEffect(() => {
         loadFromDB(text, grammarBasicCacheKey);
     }, [text, grammarBasicCacheKey, loadFromDB]);
-    useEffect(() => {
-        loadGrammarFromDB(grammarDeepCacheKey);
-    }, [grammarDeepCacheKey, loadGrammarFromDB]);
 
     // Derived data from store
     const translation = translations[text];
@@ -460,18 +442,6 @@ export function ParagraphCard({
         if (!hasUsableGrammarAnalysis) return [];
         return grammarAssessment.data.difficult_sentences;
     }, [grammarAssessment.data.difficult_sentences, hasUsableGrammarAnalysis]);
-    const grammarDeepCachePayload = grammarAnalyses[grammarDeepCacheKey] as {
-        mode?: "deep";
-        bySentence?: Record<string, GrammarDeepSentenceResult>;
-    } | undefined;
-    const deepBySentence = useMemo(() => {
-        const cached = grammarDeepCachePayload?.bySentence ?? {};
-        const entries = Object.entries(cached).filter(([, value]) => {
-            if (!value?.sentence) return false;
-            return !sanitizeGrammarDeepSentencePayload(value, value.sentence).retryRecommended;
-        });
-        return Object.fromEntries(entries) as Record<string, GrammarDeepSentenceResult>;
-    }, [grammarDeepCachePayload?.bySentence]);
     const paragraphAskCacheKey = useMemo(() => {
         const normalizedUrl = typeof articleUrl === "string" ? articleUrl.trim() : "";
         const normalizedTitle = typeof articleTitle === "string" ? articleTitle.trim().toLowerCase() : "";
@@ -519,7 +489,6 @@ export function ParagraphCard({
     const [isSpeakingOpen, setIsSpeakingOpen] = useState(false);
     const [isBlind, setIsBlind] = useState(false);
     const [playMode, setPlayMode] = useState<"full" | "sentence">("full");
-    const [activeGrammarSentenceIndex, setActiveGrammarSentenceIndex] = useState(0);
     const [sentenceBoundaries, setSentenceBoundaries] = useState<number[]>(() => buildAutoSentenceBoundaries(text));
     const [isSentenceAudioLoading, setIsSentenceAudioLoading] = useState(false);
     const [isSentencePlaying, setIsSentencePlaying] = useState(false);
@@ -2506,65 +2475,6 @@ export function ParagraphCard({
         }
     };
 
-    useEffect(() => {
-        setActiveGrammarSentenceIndex(0);
-        setShowDeepAnalysis(false);
-    }, [grammarBasicCacheKey]);
-
-    const ensureDeepAnalysisForSentence = async (sentence: string, forceRegenerate = false) => {
-        const normalizedSentence = sentence.trim();
-        if (!normalizedSentence) return;
-        const sentenceKey = sentenceIdentity(normalizedSentence);
-        if (!forceRegenerate && deepBySentence[sentenceKey]) return;
-
-        setIsAnalyzingDeepGrammar(true);
-        setReadingCoinHint(null);
-        try {
-            const res = await fetch("/api/ai/grammar/deep", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    text,
-                    sentence: normalizedSentence,
-                    forceRegenerate,
-                    economyContext: readEconomyContext("grammar_deep", `${grammarDeepCacheKey}:${sentenceKey}`),
-                }),
-            });
-            const data = await res.json();
-            if (!res.ok && data?.errorCode === INSUFFICIENT_READING_COINS) {
-                setReadingCoinHint("当前暂时无法进行深度语法分析，请稍后重试。");
-                return;
-            }
-            if (!res.ok) {
-                throw new Error(data?.error || "深度语法分析失败");
-            }
-
-            await syncReadingBalance(data, "grammar_deep");
-
-            const nextBySentence = { ...deepBySentence };
-            const deepSentences = Array.isArray(data?.difficult_sentences) ? data.difficult_sentences : [];
-            deepSentences.forEach((item: unknown) => {
-                if (!item || typeof item !== "object") return;
-                const sentenceText = typeof (item as { sentence?: unknown }).sentence === "string"
-                    ? (item as { sentence: string }).sentence
-                    : normalizedSentence;
-                const key = sentenceIdentity(sentenceText);
-                nextBySentence[key] = item as GrammarDeepSentenceResult;
-            });
-
-            setStoreGrammarAnalysis(grammarDeepCacheKey, {
-                mode: "deep",
-                bySentence: nextBySentence,
-            });
-            onSnapshotDirty?.();
-        } catch (err) {
-            console.error(err);
-            setReadingCoinHint(err instanceof Error ? err.message : "深度语法分析暂时不可用，请稍后重试。");
-        } finally {
-            setIsAnalyzingDeepGrammar(false);
-        }
-    };
-
     const handleGrammarAnalysis = async (forceRegenerate = false) => {
         if (!forceRegenerate && hasUsableGrammarAnalysis) {
             const nextShowGrammar = !showGrammar;
@@ -2572,15 +2482,12 @@ export function ParagraphCard({
             if (nextShowGrammar) {
                 setGrammarDisplayMode("core");
                 setIsGrammarLayoutMode(true);
-            } else {
-                setShowDeepAnalysis(false);
             }
             return;
         }
 
         if (!forceRegenerate && showGrammar) {
             setShowGrammar(false);
-            setShowDeepAnalysis(false);
             return;
         }
 
@@ -2612,8 +2519,6 @@ export function ParagraphCard({
             await syncReadingBalance(data, "grammar_basic");
 
             setStoreGrammarAnalysis(grammarBasicCacheKey, data);
-            setActiveGrammarSentenceIndex(0);
-            setShowDeepAnalysis(false);
             setIsGrammarLayoutMode(true);
             onSnapshotDirty?.();
         } catch (err) {
@@ -2625,20 +2530,7 @@ export function ParagraphCard({
         }
     };
 
-    const handleToggleDeepAnalysis = () => {
-        setShowDeepAnalysis((prev) => !prev);
-    };
-
-    const handleDeepSentenceChange = (nextIndex: number) => {
-        setActiveGrammarSentenceIndex(nextIndex);
-    };
-
-    const grammarSentences = grammarHighlightSentences;
     const grammarModeLabel = grammarDisplayMode === "core" ? "主干视图" : "完整视图";
-    const activeGrammarSentence = grammarSentences[activeGrammarSentenceIndex]?.sentence?.trim() ?? "";
-    const activeDeepSentence = activeGrammarSentence
-        ? deepBySentence[sentenceIdentity(activeGrammarSentence)]
-        : null;
     const shouldRenderGrammarLayer = showGrammar && !highlightSnippet;
     const recallAskVocabulary = useCallback(async (questionText: string, selectionText: string) => {
         try {
@@ -3587,110 +3479,8 @@ export function ParagraphCard({
                                                 完整分析
                                             </button>
                                         </div>
-
-                                        <button
-                                            onClick={() => void handleToggleDeepAnalysis()}
-                                            disabled={isAnalyzingDeepGrammar || grammarSentences.length === 0}
-                                            className={cn(
-                                                "flex items-center gap-1.5 rounded-lg border px-3 py-1 text-[11px] font-bold tracking-wide transition-colors",
-                                                showDeepAnalysis
-                                                    ? "border-theme-border/30 bg-theme-active-hover text-theme-text"
-                                                    : "border-theme-border/20 bg-theme-surface text-theme-text-muted hover:bg-theme-active-bg hover:text-theme-text",
-                                                "disabled:cursor-not-allowed disabled:opacity-50",
-                                            )}
-                                        >
-                                            {isAnalyzingDeepGrammar ? <Loader2 className="w-3 h-3 animate-spin" /> : <Layers className="w-3 h-3" />}
-                                            {showDeepAnalysis ? "关闭解析" : "Deep"}
-                                        </button>
                                     </div>
                                 </div>
-
-                                {showDeepAnalysis ? (
-                                    <div className="space-y-3 rounded-xl border border-theme-border/20 bg-theme-surface/50 p-3 ring-1 ring-theme-border/5">
-                                        {grammarSentences.length > 1 ? (
-                                            <div className="flex gap-1 overflow-x-auto rounded-lg bg-theme-base-bg p-1 scrollbar-hide">
-                                                {grammarSentences.map((item, idx) => (
-                                                    <button
-                                                        key={`${item.sentence || "sentence"}-${idx}`}
-                                                        onClick={() => void handleDeepSentenceChange(idx)}
-                                                        className={cn(
-                                                            "whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-bold transition-all",
-                                                            activeGrammarSentenceIndex === idx
-                                                                ? "bg-indigo-500/10 text-indigo-500"
-                                                                : "text-theme-text-muted hover:bg-theme-surface/80 hover:text-theme-text",
-                                                        )}
-                                                    >
-                                                        句 {idx + 1}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        ) : null}
-
-                                        <div className="rounded-xl border border-theme-border/10 bg-theme-base-bg p-3 shadow-sm">
-                                            {activeDeepSentence ? (
-                                                <div className="space-y-4">
-                                                    {activeDeepSentence.analysis_results.length > 0 ? (
-                                                        <div className="overflow-hidden rounded-lg border border-theme-border/20">
-                                                            <table className="min-w-full divide-y divide-theme-border/10">
-                                                                <thead className="bg-theme-surface">
-                                                                    <tr>
-                                                                        <th scope="col" className="w-1/3 px-3 py-2 text-left text-[11px] font-bold tracking-wider text-theme-text-muted/80">
-                                                                            语法考点
-                                                                        </th>
-                                                                        <th scope="col" className="px-3 py-2 text-left text-[11px] font-bold tracking-wider text-theme-text-muted/80">
-                                                                            详细解析
-                                                                        </th>
-                                                                    </tr>
-                                                                </thead>
-                                                                <tbody className="divide-y divide-theme-border/10 bg-theme-base-bg">
-                                                                    {activeDeepSentence.analysis_results.map((result, idx) => (
-                                                                        <tr key={`${result.point}-${idx}`} className="transition-colors hover:bg-theme-surface/40">
-                                                                            <td className="px-3 py-3 text-[12px] font-bold text-theme-text align-top">
-                                                                                {result.point}
-                                                                            </td>
-                                                                            <td className="px-3 py-3 text-[12px] leading-relaxed text-theme-text-muted">
-                                                                                <GrammarMarkdown content={result.explanation} className="text-[12px] leading-6" />
-                                                                            </td>
-                                                                        </tr>
-                                                                    ))}
-                                                                </tbody>
-                                                            </table>
-                                                        </div>
-                                                    ) : (
-                                                        <p className="text-xs text-theme-text-muted">
-                                                            当前句暂未提取到可展示的深度语法点，你可以点击上方重新分析刷新。
-                                                        </p>
-                                                    )}
-
-                                                    {activeDeepSentence.sentence_tree ? (
-                                                        <div className="border-t border-theme-border/10 pt-4">
-                                                            <div className="mb-3 flex items-center gap-2 text-indigo-500">
-                                                                <Gauge className="h-4 w-4" />
-                                                                <h5 className="text-[11px] font-black uppercase tracking-wider">
-                                                                    Syntax Structure
-                                                                </h5>
-                                                            </div>
-                                                            <SyntaxTreeView data={activeDeepSentence.sentence_tree} allowFullscreen />
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-                                            ) : (
-                                                <div className="flex flex-col items-center justify-center gap-3 py-6">
-                                                    <p className="text-sm text-theme-text-muted">
-                                                        当前句还没有深度结构，点击右侧按钮开始首句分析。
-                                                    </p>
-                                                    <button
-                                                        onClick={() => activeGrammarSentence && void ensureDeepAnalysisForSentence(activeGrammarSentence, false)}
-                                                        disabled={isAnalyzingDeepGrammar || !activeGrammarSentence}
-                                                        className="rounded-full border border-theme-border/20 bg-theme-surface px-4 py-2 text-xs font-bold text-theme-text transition-colors hover:bg-theme-active-bg disabled:cursor-not-allowed disabled:opacity-50"
-                                                    >
-                                                        {isAnalyzingDeepGrammar ? "正在提取深层框架..." : "开始深入解析本句"}
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ) : null}
                             </div>
                         </motion.div>
                     )}

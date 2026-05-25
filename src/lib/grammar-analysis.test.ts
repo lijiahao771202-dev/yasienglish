@@ -3,12 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
     buildReadingGrammarExecutionSignature,
     buildGrammarBasicPrompt,
-    buildGrammarDeepPrompt,
     buildGrammarCacheKey,
     GRAMMAR_BASIC_PROMPT_VERSION,
     hasUsableBasicGrammarResult,
     sanitizeGrammarBasicPayload,
-    sanitizeGrammarDeepSentencePayload,
     splitGrammarSentences,
 } from "./grammar-analysis";
 
@@ -110,15 +108,6 @@ describe("grammar analysis helpers", () => {
 
         expect(sanitized.retryRecommended).toBe(true);
         expect(hasUsableBasicGrammarResult(sanitized.data)).toBe(true);
-    });
-
-    it("returns fallback deep payload when tree is missing", () => {
-        const sentence = "Scientists noticed the trend.";
-        const sanitized = sanitizeGrammarDeepSentencePayload({}, sentence);
-        expect(sanitized.retryRecommended).toBe(true);
-        expect(sanitized.data.sentence).toBe(sentence);
-        expect(sanitized.data.sentence_tree?.label).toBe("主句");
-        expect(sanitized.qualityScore).toBe(0.4);
     });
 
     it("upgrades weak highlight explanations and contextual segment meaning", () => {
@@ -258,7 +247,6 @@ describe("grammar analysis helpers", () => {
 
     it("contains stronger generation constraints in prompts", () => {
         const basicPrompt = buildGrammarBasicPrompt("Sample sentence.");
-        const deepPrompt = buildGrammarDeepPrompt("Sample sentence.");
 
         expect(GRAMMAR_BASIC_PROMPT_VERSION).toBe("2026-05-17-basic-v10");
         expect(basicPrompt).toContain("Every highlight.explanation MUST be Markdown-ready and teacher-like.");
@@ -276,9 +264,5 @@ describe("grammar analysis helpers", () => {
         expect(basicPrompt).toContain("clause-first workflow");
         expect(basicPrompt).toContain('"sentences": [');
         expect(basicPrompt).toContain("Do not skip short, simple, or summary-like sentences.");
-        expect(deepPrompt).toContain("Markdown is allowed inside the explanation strings.");
-        expect(deepPrompt).toContain("avoid vague generic text");
-        expect(deepPrompt).toContain("FEW-SHOT EXAMPLE");
-        expect(deepPrompt).toContain("Identify the main clause first");
     });
 });

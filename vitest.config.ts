@@ -15,6 +15,7 @@ export default defineConfig({
             "**/.next/**",
             "**/dist-desktop/**",
             "**/coverage/**",
+            "**/.claude/worktrees/**",
         ],
     },
 });

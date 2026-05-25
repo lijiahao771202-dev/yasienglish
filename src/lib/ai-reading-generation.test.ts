@@ -26,6 +26,7 @@ describe("ai reading generation helpers", () => {
         expect(normalizeLongformStyleId("unknown")).toBeNull();
         expect(normalizeLongformLengthTierId("w1200")).toBe("w1200");
         expect(normalizeLongformLengthTierId("w4200")).toBe("w4200");
+        expect(normalizeLongformLengthTierId("w7200")).toBe("w7200");
         expect(normalizeLongformLengthTierId("w42")).toBeNull();
     });
 
@@ -47,6 +48,11 @@ describe("ai reading generation helpers", () => {
             id: "w4200",
             label: "马拉松",
             targetWordCount: 4200,
+        });
+        expect(getLongformLengthTierMeta("w7200")).toEqual({
+            id: "w7200",
+            label: "巨著",
+            targetWordCount: 7200,
         });
     });
 

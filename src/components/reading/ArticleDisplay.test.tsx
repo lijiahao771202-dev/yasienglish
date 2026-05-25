@@ -18,9 +18,9 @@ vi.mock("./ParagraphCard", () => ({
 }));
 
 vi.mock("./WordPopup", () => ({
-    WordPopup: ({ popup }: { popup: Record<string, unknown> }) => {
+    WordPopup: ({ popup, showAiDefinitionButton }: { popup: Record<string, unknown>; showAiDefinitionButton?: boolean }) => {
         latestWordPopup = popup;
-        return popup ? <div data-testid="word-popup">{String(popup.word)}</div> : null;
+        return popup ? <div data-testid="word-popup" data-ai-button={showAiDefinitionButton ? "true" : "false"}>{String(popup.word)}</div> : null;
     },
 }));
 
@@ -132,6 +132,7 @@ describe("ArticleDisplay", () => {
         });
 
         expect(container.querySelector('[data-testid="word-popup"]')?.textContent).toBe("conscious substitution");
+        expect(container.querySelector('[data-testid="word-popup"]')?.getAttribute("data-ai-button")).toBe("true");
         expect(latestWordPopup?.context).toBe(paragraphText);
         expect(latestWordPopup?.sourceSentence).toBe(paragraphText);
 

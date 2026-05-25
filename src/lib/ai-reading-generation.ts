@@ -12,7 +12,7 @@ export type LongformStyleId =
     | "detailed"
     | "comparative"
     | "reflective";
-export type LongformLengthTierId = "w600" | "w900" | "w1200" | "w1600" | "w2200" | "w3000" | "w4200";
+export type LongformLengthTierId = "w600" | "w900" | "w1200" | "w1600" | "w2200" | "w3000" | "w4200" | "w5000" | "w6000" | "w7200";
 
 export interface LongformStyleOption {
     id: LongformStyleId;
@@ -102,6 +102,9 @@ export const LONGFORM_LENGTH_TIERS: readonly LongformLengthTierOption[] = [
     { id: "w2200", label: "超长篇", targetWordCount: 2200, toleranceRatio: 0.15 },
     { id: "w3000", label: "巨长篇", targetWordCount: 3000, toleranceRatio: 0.15 },
     { id: "w4200", label: "马拉松", targetWordCount: 4200, toleranceRatio: 0.15 },
+    { id: "w5000", label: "超马", targetWordCount: 5000, toleranceRatio: 0.15 },
+    { id: "w6000", label: "史诗", targetWordCount: 6000, toleranceRatio: 0.15 },
+    { id: "w7200", label: "巨著", targetWordCount: 7200, toleranceRatio: 0.15 },
 ] as const;
 
 export const LONGFORM_STYLE_OPTIONS: readonly LongformStyleOption[] = [

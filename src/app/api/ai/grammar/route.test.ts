@@ -80,8 +80,8 @@ describe("ai grammar route", () => {
         chargeReadingCoinsMock.mockImplementation(async (params: { action: string }) => ({
             ok: true,
             insufficient: false,
-            balance: params.action === "grammar_deep" ? 35 : 38,
-            delta: params.action === "grammar_deep" ? -3 : -2,
+            balance: 38,
+            delta: -2,
             applied: true,
             action: params.action,
             ledgerId: "ledger_1",
@@ -160,87 +160,32 @@ describe("ai grammar route", () => {
         expect(completionParams.messages[0].content).not.toContain("\"sentence_tree\"");
     });
 
-    it("routes deep mode to deep sentence analysis and deep billing", async () => {
-        createCompletionMock.mockResolvedValueOnce(
-            createCompletionPayload({
-                sentence: "Scientists compared old records and noticed an unusual warming trend.",
-                sentence_tree: {
-                    label: "主句",
-                    text: "Scientists compared old records and noticed an unusual warming trend.",
-                    children: [],
-                },
-                analysis_results: [
-                    {
-                        point: "并列谓语",
-                        explanation: "compared 和 noticed 形成并列谓语结构。",
-                    },
-                ],
-            }),
-        );
-
-        const response = await POST(buildRequest({
-            mode: "deep",
-            sentence: "Scientists compared old records and noticed an unusual warming trend.",
-            economyContext: {
-                scene: "read",
-                action: "grammar_deep",
-                articleUrl: "https://example.com/deep",
-            },
-        }));
-        const data = await response.json();
-
-        expect(response.status).toBe(200);
-        expect(data.mode).toBe("deep");
-        expect(data.difficult_sentences).toHaveLength(1);
-        expect(data.readingCoins.action).toBe("grammar_deep");
-        expect(chargeReadingCoinsMock).toHaveBeenCalledWith(expect.objectContaining({
-            action: "grammar_deep",
-            meta: expect.objectContaining({
-                mode: "deep",
-                sentenceCount: 1,
-            }),
-        }));
-
-        const completionParams = createCompletionMock.mock.calls[0][0];
-        expect(completionParams.model).toBe("deepseek-chat");
-        expect(completionParams.messages[0].content).toContain("\"sentence_tree\"");
-    });
-
-    it("recovers within the server retry budget before surfacing a failure", async () => {
-        createCompletionMock
-            .mockResolvedValueOnce(createCompletionPayload({}))
-            .mockResolvedValueOnce(createCompletionPayload({
-                tags: ["结构"],
-                overview: "句子结构分析。",
-                difficult_sentences: [],
-            }))
-            .mockResolvedValueOnce(
-                createCompletionPayload({
-                    tags: ["主语", "谓语"],
-                    overview: "句子结构清晰，主干完整。",
-                    difficult_sentences: [
+    it("surfaces partial-but-usable basic analysis without server auto-retry", async () => {
+        createCompletionMock.mockResolvedValueOnce(createCompletionPayload({
+            tags: ["结构"],
+            overview: "首句有主干，部分句子仍可继续完善。",
+            difficult_sentences: [
+                {
+                    sentence: "Scientists compared old records and noticed an unusual warming trend.",
+                    translation: "科学家对比了旧记录，并注意到一个异常升温趋势。",
+                    highlights: [
                         {
-                            sentence: "Scientists compared old records and noticed an unusual warming trend.",
-                            translation: "科学家对比了旧记录，并注意到一个异常升温趋势。",
-                            highlights: [
-                                {
-                                    substring: "Scientists",
-                                    type: "主语",
-                                    explanation: "结构判断：Scientists 作主语；句中作用：发出 compared 和 noticed 两个动作。",
-                                    segment_translation: "科学家",
-                                },
-                            ],
+                            substring: "Scientists",
+                            type: "主语",
+                            explanation: "结构判断：Scientists 作主语；句中作用：发出 compared 和 noticed 两个动作。",
+                            segment_translation: "科学家",
                         },
                     ],
-                }),
-            );
+                },
+            ],
+        }));
 
         const response = await POST(buildRequest({ mode: "basic" }));
         const data = await response.json();
 
         expect(response.status).toBe(200);
         expect(data.mode).toBe("basic");
-        expect(createCompletionMock).toHaveBeenCalledTimes(3);
+        expect(createCompletionMock).toHaveBeenCalledTimes(1);
         expect(rewardReadingCoinsMock).not.toHaveBeenCalled();
     });
 
@@ -252,7 +197,7 @@ describe("ai grammar route", () => {
 
         expect(response.status).toBe(502);
         expect(data.errorCode).toBe("LOW_QUALITY_GRAMMAR_ANALYSIS");
-        expect(createCompletionMock).toHaveBeenCalledTimes(3);
+        expect(createCompletionMock).toHaveBeenCalledTimes(1);
         expect(rewardReadingCoinsMock).toHaveBeenCalledWith(expect.objectContaining({
             action: "grammar_basic",
             delta: 2,

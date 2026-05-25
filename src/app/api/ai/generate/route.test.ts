@@ -415,6 +415,58 @@ describe("ai generate route", () => {
         expect(request?.max_tokens).toBeGreaterThanOrEqual(10000);
     });
 
+    it("supports ultra-long longform tiers up to 7200 words", async () => {
+        createMock.mockResolvedValue({
+            choices: [
+                {
+                    message: {
+                        content: JSON.stringify({
+                            title: "An Ultra Long Reading",
+                            content: "Paragraph one.\n\nParagraph two.",
+                            byline: "AI Generator · IELTS Academic",
+                            wordCount: 7010,
+                        }),
+                    },
+                },
+            ],
+        });
+
+        const response = await POSTHandler(
+            new Request("http://localhost/api/ai/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    difficulty: "ielts",
+                    generationMode: "longform",
+                    longformStyleId: "commentary",
+                    lengthTierId: "w7200",
+                    topicSeed: {
+                        source: "random",
+                        domainId: "society-governance",
+                        domainLabel: "社会与治理",
+                        subtopicId: "public-trust",
+                        subtopicLabel: "公共信任",
+                        angle: "Why institutions survive some shocks and collapse under others",
+                        topicLine: "公共信任 · Why institutions survive some shocks and collapse under others",
+                    },
+                }),
+            }),
+        );
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        const request = createMock.mock.calls.at(-1)?.[0];
+        const prompt = request?.messages?.[0]?.content as string;
+
+        expect(prompt).toContain("Target word count: 7200 words");
+        expect(data.lengthTier).toEqual({
+            id: "w7200",
+            label: "巨著",
+            targetWordCount: 7200,
+        });
+        expect(request?.max_tokens).toBeGreaterThanOrEqual(16000);
+    });
+
     it("builds distinct CET-4 and IELTS longform prompts instead of reusing one generic difficulty block", async () => {
         createMock
             .mockResolvedValueOnce({

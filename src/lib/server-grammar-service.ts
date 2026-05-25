@@ -14,22 +14,12 @@ import {
 import {
     buildGrammarBasicPrompt,
     buildGrammarCacheKey,
-    buildGrammarDeepPrompt,
     GRAMMAR_BASIC_MODEL,
     GRAMMAR_BASIC_PROMPT_VERSION,
-    GRAMMAR_DEEP_MODEL,
-    GRAMMAR_DEEP_PROMPT_VERSION,
     normalizeGrammarText,
     hasUsableBasicGrammarResult,
     sanitizeGrammarBasicPayload,
-    sanitizeGrammarDeepSentencePayload,
-    sentenceIdentity,
-    splitGrammarSentences,
     type GrammarBasicResult,
-    type GrammarBasicSentence,
-    type GrammarSanitizeResult,
-    type GrammarDeepResult,
-    type GrammarDeepSentenceResult,
 } from "@/lib/grammar-analysis";
 import { getServerGrammarCache, setServerGrammarCache } from "@/lib/server-grammar-cache";
 
@@ -48,22 +38,16 @@ interface GrammarBasicRequest extends GrammarCommonRequest {
     mode?: "basic";
 }
 
-interface GrammarDeepRequest extends GrammarCommonRequest {
-    mode?: "deep";
-    sentence?: string;
-}
-
 interface GrammarCachedMeta {
     key: string;
     hit: boolean;
     layer: "server" | "miss";
-    mode: "basic" | "deep";
+    mode: "basic";
     promptVersion: string;
     model: string;
 }
 
 const LOW_QUALITY_GRAMMAR_ANALYSIS = "LOW_QUALITY_GRAMMAR_ANALYSIS";
-const MAX_GRAMMAR_ATTEMPTS = 3;
 const AI_PROVIDER_RATE_LIMITED = "AI_PROVIDER_RATE_LIMITED";
 
 function parseJsonObject(content: string) {
@@ -107,7 +91,7 @@ async function callDeepseekJson(client: OpenAiCompatibleClient, prompt: string, 
     return parseJsonObject(content);
 }
 
-function buildReadContext(economyContext: ReadingEconomyContext | undefined, fallbackAction: "grammar_basic" | "grammar_deep") {
+function buildReadContext(economyContext: ReadingEconomyContext | undefined, fallbackAction: "grammar_basic") {
     if (!isReadEconomyContext(economyContext)) return null;
     return {
         ...economyContext,
@@ -117,7 +101,7 @@ function buildReadContext(economyContext: ReadingEconomyContext | undefined, fal
 
 async function refundIfNeeded(params: {
     charged: ReadingCoinMutationResult | null;
-    action: "grammar_basic" | "grammar_deep";
+    action: "grammar_basic";
     reason: string;
     cacheKey: string;
 }) {
@@ -145,161 +129,12 @@ async function refundIfNeeded(params: {
 }
 
 async function runBasicInference(client: OpenAiCompatibleClient, paragraphText: string) {
-    const attempts: Array<GrammarSanitizeResult<GrammarBasicResult>> = [];
-    let repairHints: string[] = [];
-
-    for (let attempt = 0; attempt < MAX_GRAMMAR_ATTEMPTS; attempt += 1) {
-        const raw = await callDeepseekJson(
-            client,
-            buildGrammarBasicPrompt(paragraphText, repairHints),
-            GRAMMAR_BASIC_MODEL,
-        );
-        const current = sanitizeGrammarBasicPayload(raw, paragraphText);
-        attempts.push(current);
-        if (!current.retryRecommended) {
-            return current;
-        }
-        if (hasUsableBasicGrammarResult(current.data)) {
-            return current;
-        }
-        repairHints = current.issues.slice(0, 8);
-    }
-
-    const best = attempts.reduce((winner, current) => {
-        if (!winner) return current;
-        if (current.qualityScore !== winner.qualityScore) {
-            return current.qualityScore > winner.qualityScore ? current : winner;
-        }
-        return current.data.difficult_sentences.length >= winner.data.difficult_sentences.length ? current : winner;
-    }, attempts[0]);
-
-    return {
-        ...best,
-        issues: Array.from(new Set(attempts.flatMap((attempt) => attempt.issues))),
-        qualityScore: Math.max(...attempts.map((attempt) => attempt.qualityScore)),
-    };
-}
-
-async function runBasicSentenceInference(client: OpenAiCompatibleClient, sentence: string) {
     const raw = await callDeepseekJson(
         client,
-        buildGrammarBasicPrompt(sentence),
+        buildGrammarBasicPrompt(paragraphText),
         GRAMMAR_BASIC_MODEL,
     );
-    const parsed = sanitizeGrammarBasicPayload(raw, sentence);
-    const normalizedTarget = sentenceIdentity(sentence);
-    const matched = parsed.data.difficult_sentences.find((item) => sentenceIdentity(item.sentence) === normalizedTarget);
-    const fallbackSentence: GrammarBasicSentence = {
-        sentence,
-        translation: "",
-        highlights: [],
-    };
-
-    return {
-        sentence: matched ?? fallbackSentence,
-        parsed,
-    };
-}
-
-async function repairIncompleteBasicSentences(
-    client: OpenAiCompatibleClient,
-    paragraphText: string,
-    base: GrammarSanitizeResult<GrammarBasicResult>,
-) {
-    const expectedSentences = splitGrammarSentences(paragraphText);
-    if (expectedSentences.length <= 1) {
-        return base;
-    }
-
-    const needsRepair = base.data.difficult_sentences.filter((item) => {
-        const normalized = sentenceIdentity(item.sentence);
-        if (!normalized) return false;
-        const missingTranslation = item.translation.trim().length === 0;
-        const missingHighlights = item.highlights.length === 0;
-        return missingTranslation || missingHighlights;
-    });
-
-    if (needsRepair.length === 0) {
-        return base;
-    }
-
-    const repairedByIdentity = new Map<string, GrammarBasicSentence>();
-    const repairTargets = needsRepair
-        .map((item) => item.sentence)
-        .filter((sentence, index, arr) => arr.indexOf(sentence) === index);
-
-    const repairedResults = await Promise.allSettled(
-        repairTargets.map(async (sentence) => {
-            const repaired = await runBasicSentenceInference(client, sentence);
-            return repaired.sentence;
-        }),
-    );
-
-    repairedResults.forEach((result, index) => {
-        if (result.status !== "fulfilled") {
-            console.warn("[grammar][basic] failed to repair sentence", result.reason);
-            return;
-        }
-        const repairedSentence = result.value;
-        if (!repairedSentence.translation.trim() && repairedSentence.highlights.length === 0) {
-            return;
-        }
-        const identity = sentenceIdentity(repairTargets[index] ?? repairedSentence.sentence);
-        if (!identity) return;
-        repairedByIdentity.set(identity, repairedSentence);
-    });
-
-    if (repairedByIdentity.size === 0) {
-        return base;
-    }
-
-    const mergedPayload: GrammarBasicResult = {
-        ...base.data,
-        difficult_sentences: base.data.difficult_sentences.map((item) => {
-            const repaired = repairedByIdentity.get(sentenceIdentity(item.sentence));
-            return repaired ?? item;
-        }),
-    };
-
-    const merged = sanitizeGrammarBasicPayload(mergedPayload, paragraphText);
-    return {
-        ...merged,
-        issues: Array.from(new Set([...base.issues, ...merged.issues])),
-        qualityScore: Math.max(base.qualityScore, merged.qualityScore),
-    };
-}
-
-async function runDeepSentenceInference(client: OpenAiCompatibleClient, sentence: string) {
-    const attempts: Array<GrammarSanitizeResult<GrammarDeepSentenceResult>> = [];
-    let repairHints: string[] = [];
-
-    for (let attempt = 0; attempt < MAX_GRAMMAR_ATTEMPTS; attempt += 1) {
-        const raw = await callDeepseekJson(
-            client,
-            buildGrammarDeepPrompt(sentence, repairHints),
-            GRAMMAR_DEEP_MODEL,
-        );
-        const current = sanitizeGrammarDeepSentencePayload(raw, sentence);
-        attempts.push(current);
-        if (!current.retryRecommended) {
-            return current;
-        }
-        repairHints = current.issues.slice(0, 8);
-    }
-
-    const best = attempts.reduce((winner, current) => {
-        if (!winner) return current;
-        if (current.qualityScore !== winner.qualityScore) {
-            return current.qualityScore > winner.qualityScore ? current : winner;
-        }
-        return current.data.analysis_results.length >= winner.data.analysis_results.length ? current : winner;
-    }, attempts[0]);
-
-    return {
-        ...best,
-        issues: Array.from(new Set(attempts.flatMap((attempt) => attempt.issues))),
-        qualityScore: Math.max(...attempts.map((attempt) => attempt.qualityScore)),
-    };
+    return sanitizeGrammarBasicPayload(raw, paragraphText);
 }
 
 function readingCoinMutationPayload(charge: ReadingCoinMutationResult | null) {
@@ -375,8 +210,7 @@ export async function runBasicGrammarService(input: GrammarBasicRequest): Promis
     }
 
     try {
-        let parsed = await runBasicInference(client, normalizedText);
-        parsed = await repairIncompleteBasicSentences(client, normalizedText, parsed);
+        const parsed = await runBasicInference(client, normalizedText);
         if (parsed.retryRecommended && !hasUsableBasicGrammarResult(parsed.data)) {
             await refundIfNeeded({
                 charged,
@@ -433,194 +267,6 @@ export async function runBasicGrammarService(input: GrammarBasicRequest): Promis
         return {
             status: 500,
             body: { error: "Failed to analyze grammar" },
-        };
-    }
-}
-
-function dedupeSentences(sentences: string[]) {
-    const seen = new Set<string>();
-    const output: string[] = [];
-    sentences.forEach((sentence) => {
-        const normalized = sentenceIdentity(sentence);
-        if (!normalized || seen.has(normalized)) return;
-        seen.add(normalized);
-        output.push(sentence);
-    });
-    return output;
-}
-
-export async function runDeepGrammarService(input: GrammarDeepRequest): Promise<GrammarServiceResult> {
-    const normalizedText = normalizeGrammarText(input.text ?? "");
-    if (!normalizedText) {
-        return {
-            status: 400,
-            body: { error: "Text is required" },
-        };
-    }
-
-    const client = await createDeepSeekClientForCurrentUser();
-    const execution = await getCurrentAiExecutionFingerprintForCurrentUser(GRAMMAR_DEEP_MODEL);
-    const requestedSentence = normalizeGrammarText(input.sentence ?? "");
-    const sourceSentences = requestedSentence
-        ? [requestedSentence]
-        : splitGrammarSentences(normalizedText);
-    const targetSentences = dedupeSentences(sourceSentences);
-
-    if (targetSentences.length === 0) {
-        return {
-            status: 400,
-            body: { error: "No valid sentence to analyze" },
-        };
-    }
-
-    const paragraphCacheKey = buildGrammarCacheKey({
-        text: normalizedText,
-        mode: "deep",
-        promptVersion: GRAMMAR_DEEP_PROMPT_VERSION,
-        model: execution.cacheSignature,
-    });
-
-    const resultByIdentity = new Map<string, GrammarDeepSentenceResult>();
-    const cacheHitsByIdentity = new Set<string>();
-
-    const misses: Array<{ sentence: string; cacheKey: string }> = [];
-    targetSentences.forEach((sentence) => {
-        const sentenceKey = buildGrammarCacheKey({
-            text: sentence,
-            mode: "deep",
-            promptVersion: GRAMMAR_DEEP_PROMPT_VERSION,
-            model: `${execution.cacheSignature}:sentence`,
-        });
-        const id = sentenceIdentity(sentence);
-
-        if (!input.forceRegenerate) {
-            const cached = getServerGrammarCache<GrammarDeepSentenceResult>(sentenceKey);
-            if (cached) {
-                resultByIdentity.set(id, cached);
-                cacheHitsByIdentity.add(id);
-                return;
-            }
-        }
-
-        misses.push({ sentence, cacheKey: sentenceKey });
-    });
-
-    const readContext = buildReadContext(input.economyContext, "grammar_deep");
-    let charged: ReadingCoinMutationResult | null = null;
-    if (misses.length > 0 && readContext?.action) {
-        const charge = await chargeReadingCoins({
-            action: readContext.action,
-            dedupeKey: readContext.dedupeKey,
-            meta: {
-                articleUrl: readContext.articleUrl ?? null,
-                mode: "deep",
-                promptVersion: GRAMMAR_DEEP_PROMPT_VERSION,
-                sentenceCount: targetSentences.length,
-                missCount: misses.length,
-                cacheKey: paragraphCacheKey,
-                from: "api/ai/grammar/deep",
-            },
-        });
-        if (!charge.ok && charge.insufficient) {
-            return {
-                status: 402,
-                body: insufficientReadingCoinsPayload(readContext.action, charge.required ?? 3, charge.balance),
-            };
-        }
-        charged = charge;
-    }
-
-    let partialFailures = 0;
-    try {
-        for (const miss of misses) {
-            const id = sentenceIdentity(miss.sentence);
-            try {
-                const parsed = await runDeepSentenceInference(client, miss.sentence);
-                if (parsed.retryRecommended) {
-                    partialFailures += 1;
-                    continue;
-                }
-                const sanitized = parsed.data;
-                setServerGrammarCache(miss.cacheKey, sanitized);
-                resultByIdentity.set(id, sanitized);
-            } catch (sentenceError) {
-                partialFailures += 1;
-                console.error("[grammar][deep] sentence failed", sentenceError);
-            }
-        }
-
-        if (partialFailures > 0 && targetSentences.length === 1) {
-            await refundIfNeeded({
-                charged,
-                action: "grammar_deep",
-                reason: "deep_inference_low_quality",
-                cacheKey: paragraphCacheKey,
-            });
-            return {
-                status: 502,
-                body: {
-                    error: "Deep grammar analysis was incomplete. Please retry.",
-                    errorCode: LOW_QUALITY_GRAMMAR_ANALYSIS,
-                },
-            };
-        }
-
-        const orderedSentences = targetSentences
-            .map((sentence) => resultByIdentity.get(sentenceIdentity(sentence)))
-            .filter((item): item is GrammarDeepSentenceResult => Boolean(item));
-
-        const payload: GrammarDeepResult = {
-            mode: "deep",
-            difficult_sentences: orderedSentences,
-            partial_failures: partialFailures,
-        };
-
-        return {
-            status: 200,
-            body: {
-                ...payload,
-                cache: {
-                    key: paragraphCacheKey,
-                    hit: misses.length === 0,
-                    layer: misses.length === 0 ? "server" : "miss",
-                    mode: "deep",
-                    promptVersion: GRAMMAR_DEEP_PROMPT_VERSION,
-                    model: execution.model,
-                    sentenceHits: targetSentences.length - misses.length,
-                    sentenceMisses: misses.length,
-                },
-                readingCoins: readingCoinMutationPayload(charged),
-            },
-        };
-    } catch (error) {
-        const providerError = getProviderErrorDetails(error);
-        if (providerError.status === 429) {
-            await refundIfNeeded({
-                charged,
-                action: "grammar_deep",
-                reason: "deep_inference_rate_limited",
-                cacheKey: paragraphCacheKey,
-            });
-            return {
-                status: 429,
-                body: {
-                    error: "当前全局模型请求过于频繁，请稍后重试。",
-                    errorCode: AI_PROVIDER_RATE_LIMITED,
-                    retryAfter: providerError.retryAfterSeconds ?? null,
-                    details: providerError.message,
-                },
-            };
-        }
-        await refundIfNeeded({
-            charged,
-            action: "grammar_deep",
-            reason: "deep_inference_failed",
-            cacheKey: paragraphCacheKey,
-        });
-        console.error("Grammar Deep Analysis Error:", error);
-        return {
-            status: 500,
-            body: { error: "Failed to analyze grammar deeply" },
         };
     }
 }

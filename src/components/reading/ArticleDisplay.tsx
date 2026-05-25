@@ -632,7 +632,7 @@ export function ArticleDisplay({
 
             <AnimatePresence>
                 {popup && (
-                    <WordPopup popup={popup} onClose={() => setPopup(null)} />
+                    <WordPopup popup={popup} onClose={() => setPopup(null)} showAiDefinitionButton />
                 )}
             </AnimatePresence>
         </motion.article >

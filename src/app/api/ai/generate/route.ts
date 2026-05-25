@@ -481,7 +481,10 @@ function getGenerationMaxTokens(params: {
     if (targetWords <= 1600) return 4200;
     if (targetWords <= 2200) return 5600;
     if (targetWords <= 3000) return 7600;
-    return 10_500;
+    if (targetWords <= 4200) return 10_500;
+    if (targetWords <= 5000) return 12_500;
+    if (targetWords <= 6000) return 14_500;
+    return 16_500;
 }
 
 function estimateGeneratedWordCount(result: GeneratedArticlePayload) {
