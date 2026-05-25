@@ -20,6 +20,8 @@ describe("ai reading generation helpers", () => {
         expect(normalizeAIGenerationMode("anything")).toBe("standard");
         expect(normalizeLongformStyleId("science")).toBe("science");
         expect(normalizeLongformStyleId("explainer")).toBe("explainer");
+        expect(normalizeLongformStyleId("detailed")).toBe("detailed");
+        expect(normalizeLongformStyleId("detailed_explainer")).toBe("detailed");
         expect(normalizeLongformStyleId("case")).toBe("profile");
         expect(normalizeLongformStyleId("unknown")).toBeNull();
         expect(normalizeLongformLengthTierId("w1200")).toBe("w1200");
@@ -31,6 +33,10 @@ describe("ai reading generation helpers", () => {
         expect(getLongformStyleMeta("profile")).toEqual({
             id: "profile",
             name: "人物特写",
+        });
+        expect(getLongformStyleMeta("detailed")).toEqual({
+            id: "detailed",
+            name: "详细讲解",
         });
         expect(getLongformLengthTierMeta("w1600")).toEqual({
             id: "w1600",

@@ -9,6 +9,7 @@ export type LongformStyleId =
     | "profile"
     | "reportage"
     | "explainer"
+    | "detailed"
     | "comparative"
     | "reflective";
 export type LongformLengthTierId = "w600" | "w900" | "w1200" | "w1600" | "w2200" | "w3000" | "w4200";
@@ -147,6 +148,13 @@ export const LONGFORM_STYLE_OPTIONS: readonly LongformStyleOption[] = [
         constraint: "Keep the logic sequential and readable; avoid empty abstraction or vague system talk with no mechanism.",
     },
     {
+        id: "detailed",
+        name: "详细讲解",
+        promptLabel: "Detailed Guided Explainer",
+        lens: "Write as a patient, highly explicit guided explainer that introduces the topic clearly, unpacks each idea step by step, anticipates reader confusion, and uses concrete mini-examples or restatements to make difficult parts easier to follow.",
+        constraint: "Keep it as polished continuous prose rather than bullet-point notes or textbook fragments; avoid patronizing repetition, filler recap, and empty over-explaining with no new information.",
+    },
+    {
         id: "comparative",
         name: "对比评述",
         promptLabel: "Comparative Analysis",
@@ -165,6 +173,8 @@ export const LONGFORM_STYLE_OPTIONS: readonly LongformStyleOption[] = [
 const LONGFORM_STYLE_ALIASES: Partial<Record<string, LongformStyleId>> = {
     case: "profile",
     history: "explainer",
+    detailed_explainer: "detailed",
+    "detailed-explainer": "detailed",
     society: "reportage",
     business: "comparative",
     campus: "reflective",

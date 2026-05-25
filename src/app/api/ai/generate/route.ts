@@ -362,6 +362,51 @@ function normalizeArticleTextForMatch(input: string) {
     return input.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function normalizeStrictCandidate(word: string) {
+    return word
+        .replace(/[，、；：]/g, ",")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function isUsableStrictRagCandidate(word: string) {
+    const normalized = normalizeStrictCandidate(word);
+    if (!normalized) return false;
+    if (normalized.includes("...") || normalized.includes("…")) return false;
+    if (normalized.length > 48) return false;
+
+    const tokenCount = normalized.split(/\s+/).filter(Boolean).length;
+    if (tokenCount === 0 || tokenCount > 4) return false;
+
+    const hasLetter = /[a-z]/i.test(normalized);
+    if (!hasLetter) return false;
+
+    if (/^[^a-z0-9]+$/i.test(normalized)) return false;
+    if (/^(and|or|but|because|although|however)$/i.test(normalized)) return false;
+
+    return true;
+}
+
+function buildStrictRagWords(words: string[], limit: number) {
+    const seen = new Set<string>();
+    const picked: string[] = [];
+
+    for (const rawWord of words) {
+        const normalized = normalizeStrictCandidate(rawWord);
+        const dedupeKey = normalized.toLowerCase();
+        if (!isUsableStrictRagCandidate(normalized) || seen.has(dedupeKey)) {
+            continue;
+        }
+        seen.add(dedupeKey);
+        picked.push(normalized);
+        if (picked.length >= limit) {
+            break;
+        }
+    }
+
+    return picked;
+}
+
 function getMissingStrictWords(content: string, requiredWords: string[]) {
     const haystack = normalizeArticleTextForMatch(content);
     return requiredWords.filter((word) => {
@@ -370,6 +415,56 @@ function getMissingStrictWords(content: string, requiredWords: string[]) {
         const matcher = new RegExp(`(^|\\W)${escapeRegExp(normalized)}(?=$|\\W)`, "i");
         return !matcher.test(haystack);
     });
+}
+
+const STRICT_RAG_MIN_COVERAGE_RATIO = 0.75;
+
+function summarizeStrictCoverage(content: string, requiredWords: string[]) {
+    const missingWords = getMissingStrictWords(content, requiredWords);
+    const missingSet = new Set(missingWords.map((word) => normalizeArticleTextForMatch(word)));
+    const matchedWords = requiredWords.filter((word) => !missingSet.has(normalizeArticleTextForMatch(word)));
+    const total = requiredWords.length;
+    const coverage = total > 0 ? matchedWords.length / total : 1;
+
+    return {
+        matchedWords,
+        missingWords,
+        coverage,
+        meetsThreshold: coverage >= STRICT_RAG_MIN_COVERAGE_RATIO,
+    };
+}
+
+function buildStrictRevisionPrompt(params: {
+    basePrompt: string;
+    draft: GeneratedArticlePayload;
+    difficultyLabel: string;
+    requiredWords: string[];
+    missingWords: string[];
+}) {
+    const serializedDraft = JSON.stringify({
+        title: params.draft.title ?? "",
+        content: params.draft.content ?? "",
+        byline: params.draft.byline ?? `AI Generator · ${params.difficultyLabel}`,
+        wordCount: estimateGeneratedWordCount(params.draft),
+    });
+
+    return `${params.basePrompt}
+
+STRICT REVISION NOTICE:
+- The current draft is still missing some mandatory strict RAG items.
+- Revise the existing article instead of changing the topic, difficulty level, or overall structure.
+- Every required item must appear in the article body at least once EXACTLY as written.
+- Keep every required item that is already present.
+- Insert the missing items naturally by rewriting or expanding sentences where needed.
+- Do not add a checklist, vocabulary section, notes, or explanations.
+- Full required set: ${params.requiredWords.join(", ")}
+- Still missing: ${params.missingWords.join(", ")}
+
+CURRENT DRAFT JSON:
+${serializedDraft}
+
+Return one corrected full JSON article now.
+`;
 }
 
 function getGenerationMaxTokens(params: {
@@ -497,9 +592,9 @@ export async function POST(req: Request) {
                 .map((item) => item.trim())
             : [];
         const strictRagWords = ragMode === "strict"
-            ? cleanedInjectedVocabulary.slice(0, getStrictRagLimit(generationMode))
+            ? buildStrictRagWords(cleanedInjectedVocabulary, getStrictRagLimit(generationMode))
             : [];
-        const ragAppliedWords = ragMode === "off"
+        const baseRagAppliedWords = ragMode === "off"
             ? []
             : ragMode === "strict"
                 ? strictRagWords
@@ -575,15 +670,19 @@ LENGTH RECOVERY NOTICE:
                 lengthTierId,
             });
         }
+        let strictAcceptedWords = strictRagWords;
+
         if (ragMode === "strict" && strictRagWords.length > 0) {
             const initialContent = typeof result.content === "string" ? result.content : "";
-            const missingWords = getMissingStrictWords(initialContent, strictRagWords);
-            if (missingWords.length > 0) {
+            const initialCoverage = summarizeStrictCoverage(initialContent, strictRagWords);
+            if (initialCoverage.meetsThreshold) {
+                strictAcceptedWords = initialCoverage.matchedWords;
+            } else {
                 const retryPrompt = `${prompt}
 
 STRICT REGENERATION NOTICE:
 - Your previous draft failed strict RAG enforcement.
-- The following required items were missing from the article body: ${missingWords.join(", ")}
+- The following required items were missing from the article body: ${initialCoverage.missingWords.join(", ")}
 - Regenerate the full article now.
 - Every required item must appear naturally in the prose body.
 `;
@@ -592,15 +691,38 @@ STRICT REGENERATION NOTICE:
                     lengthTierId,
                 });
                 const retryContent = typeof result.content === "string" ? result.content : "";
-                const remainingMissingWords = getMissingStrictWords(retryContent, strictRagWords);
-                if (remainingMissingWords.length > 0) {
-                    return NextResponse.json(
-                        { error: `Strict RAG injection failed. Missing required terms: ${remainingMissingWords.join(", ")}` },
-                        { status: 502 },
-                    );
+                const retryCoverage = summarizeStrictCoverage(retryContent, strictRagWords);
+                if (retryCoverage.meetsThreshold) {
+                    strictAcceptedWords = retryCoverage.matchedWords;
+                } else {
+                    const revisionPrompt = buildStrictRevisionPrompt({
+                        basePrompt: prompt,
+                        draft: result,
+                        difficultyLabel: config.label,
+                        requiredWords: strictRagWords,
+                        missingWords: retryCoverage.missingWords,
+                    });
+                    result = await generateArticlePayload(revisionPrompt, {
+                        generationMode,
+                        lengthTierId,
+                    });
+                    const revisedContent = typeof result.content === "string" ? result.content : "";
+                    const revisedCoverage = summarizeStrictCoverage(revisedContent, strictRagWords);
+                    if (revisedCoverage.meetsThreshold) {
+                        strictAcceptedWords = revisedCoverage.matchedWords;
+                    } else {
+                        const coveragePercent = Math.round(revisedCoverage.coverage * 100);
+                        const thresholdPercent = Math.round(STRICT_RAG_MIN_COVERAGE_RATIO * 100);
+                        return NextResponse.json(
+                            { error: `Strict RAG injection failed. Coverage ${coveragePercent}% is below the required ${thresholdPercent}%. Missing required terms: ${revisedCoverage.missingWords.join(", ")}` },
+                            { status: 502 },
+                        );
+                    }
                 }
             }
         }
+
+        const ragAppliedWords = ragMode === "strict" ? strictAcceptedWords : baseRagAppliedWords;
 
         const longformStyle = generationMode === "longform" ? getLongformStyleMeta(longformStyleId) : null;
         const lengthTier = generationMode === "longform" ? getLongformLengthTierMeta(lengthTierId) : null;

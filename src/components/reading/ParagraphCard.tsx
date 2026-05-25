@@ -237,6 +237,34 @@ function buildRagUnderlineMarkers(paragraphText: string, ragAppliedWords: string
     return markers.sort((left, right) => left.start - right.start);
 }
 
+function renderBionicMarkedText(
+    text: string,
+    renderMarkedText: (paragraphText: string, snippet?: string, baseOffset?: number, locateRange?: { start: number; end: number } | null) => React.ReactNode,
+    highlightSnippet?: string,
+    locateRange?: { start: number; end: number } | null,
+) {
+    const marked = renderMarkedText(text, highlightSnippet, 0, locateRange);
+    if (typeof marked === "string") {
+        return (
+            <span>
+                {bionicText(marked).map((segment, i) => {
+                    if (segment.type === "word") {
+                        return (
+                            <span key={i}>
+                                <strong className="font-bold">{segment.bold}</strong>
+                                <span className="font-normal">{segment.regular}</span>
+                            </span>
+                        );
+                    }
+                    return <span key={i}>{segment.text}</span>;
+                })}
+            </span>
+        );
+    }
+
+    return marked;
+}
+
 interface WordLayoutToken {
     start: number;
     end: number;
@@ -428,11 +456,10 @@ export function ParagraphCard({
         [grammarAnalysis, text],
     );
     const hasUsableGrammarAnalysis = hasUsableBasicGrammarResult(grammarAssessment.data);
-    const grammarHighlightSentences = useMemo(() => (
-        hasUsableGrammarAnalysis
-            ? grammarAssessment.data.difficult_sentences
-            : []
-    ), [grammarAssessment.data.difficult_sentences, hasUsableGrammarAnalysis]);
+    const grammarHighlightSentences = useMemo(() => {
+        if (!hasUsableGrammarAnalysis) return [];
+        return grammarAssessment.data.difficult_sentences;
+    }, [grammarAssessment.data.difficult_sentences, hasUsableGrammarAnalysis]);
     const grammarDeepCachePayload = grammarAnalyses[grammarDeepCacheKey] as {
         mode?: "deep";
         bySentence?: Record<string, GrammarDeepSentenceResult>;
@@ -584,6 +611,37 @@ export function ParagraphCard({
         return sentenceUnits
             .map((unit) => unit.text.trim())
             .filter(Boolean);
+    }, [grammarHighlightSentences, sentenceUnits]);
+    const grammarLayoutSentences = useMemo(() => {
+        const byIdentity = new Map(
+            grammarHighlightSentences
+                .map((item) => [sentenceIdentity(item?.sentence?.trim() ?? ""), item] as const)
+                .filter(([key]) => Boolean(key)),
+        );
+
+        const orderedFromParagraph = sentenceUnits
+            .map((unit) => unit.text.trim())
+            .filter(Boolean)
+            .map((sentence, index) => {
+                const matched = byIdentity.get(sentenceIdentity(sentence));
+                return {
+                    sentence,
+                    translation: matched?.translation ?? "",
+                    highlights: matched?.highlights ?? [],
+                    sourceIndex: index,
+                };
+            });
+
+        if (orderedFromParagraph.length > 0) {
+            return orderedFromParagraph;
+        }
+
+        return grammarHighlightSentences.map((item, index) => ({
+            sentence: item?.sentence?.trim() ?? "",
+            translation: item?.translation ?? "",
+            highlights: item?.highlights ?? [],
+            sourceIndex: index,
+        })).filter((item) => item.sentence);
     }, [grammarHighlightSentences, sentenceUnits]);
 
     const activeSentenceUnit = sentenceUnits[activeListenSentenceIndex] ?? null;
@@ -1454,7 +1512,7 @@ export function ParagraphCard({
                             className={cn(
                                 "rounded-[3px] px-[1px] transition-colors",
                                 showHighlightVisual && "ring-1 ring-black/5",
-                                hasUnderlineVisible && "underline decoration-fuchsia-500 decoration-2 underline-offset-[3px]",
+                                hasUnderlineVisible && "underline decoration-slate-400/80 decoration-[1.5px] underline-offset-[2px]",
                                 showNoteVisual && "relative cursor-pointer select-text box-decoration-clone text-inherit px-[4px] py-[1px] bg-amber-200/80 dark:bg-amber-600/40 rounded-md rounded-tl-xl rounded-br-lg rounded-tr-sm rounded-bl-sm [text-shadow:0_1px_2px_rgba(180,83,0,0.3)] dark:[text-shadow:0_1px_2px_rgba(0,0,0,0.8)] transition-all duration-75 ease-out top-0 hover:-top-[1px] hover:bg-amber-300/90 dark:hover:bg-amber-600/60 hover:[text-shadow:0_3px_4px_rgba(180,83,0,0.4)] dark:hover:[text-shadow:0_3px_4px_rgba(0,0,0,0.9)] active:top-[1px] active:bg-amber-400 dark:active:bg-amber-700/60 active:[text-shadow:none]",
                                 showAskVisual && "relative cursor-pointer select-text box-decoration-clone text-inherit px-[4px] py-[1px] bg-sky-200/80 dark:bg-sky-600/40 rounded-md rounded-tl-sm rounded-br-sm rounded-tr-xl rounded-bl-lg [text-shadow:0_1px_2px_rgba(3,105,161,0.3)] dark:[text-shadow:0_1px_2px_rgba(0,0,0,0.8)] transition-all duration-75 ease-out top-0 hover:-top-[1px] hover:bg-sky-300/90 dark:hover:bg-sky-600/60 hover:[text-shadow:0_3px_4px_rgba(3,105,161,0.4)] dark:hover:[text-shadow:0_3px_4px_rgba(0,0,0,0.9)] active:top-[1px] active:bg-sky-400 dark:active:bg-sky-700/60 active:[text-shadow:none]",
                                 showAskVisual && askMarker?.id === pressedAskNoteId && "top-[1px] bg-sky-400 dark:bg-sky-700/60 [text-shadow:none]",
@@ -1670,7 +1728,7 @@ export function ParagraphCard({
             </span>
         );
 
-        if (grammarHighlightSentences.length === 0) {
+        if (grammarLayoutSentences.length === 0) {
             if (grammarLayoutLines.length === 0) {
                 return <span className="text-stone-700">{text}</span>;
             }
@@ -1692,8 +1750,8 @@ export function ParagraphCard({
 
         return (
             <ul className="list-none space-y-2 pl-0">
-                {grammarHighlightSentences.map((item, index) => {
-                    const sentenceText = item?.sentence?.trim() ?? "";
+                {grammarLayoutSentences.map((item, index) => {
+                    const sentenceText = item.sentence.trim();
                     if (!sentenceText) return null;
 
                     return (
@@ -1703,19 +1761,27 @@ export function ParagraphCard({
                         >
                             {renderGrammarSentenceBadge(index, item.translation)}
                             <span className="min-w-0 text-stone-800 leading-[1.48]">
-                                <InlineGrammarHighlights
-                                    text={sentenceText}
-                                    sentences={[item]}
-                                    displayMode={grammarDisplayMode}
-                                    showSegmentTranslation
-                                />
+                                {item.highlights.length > 0 ? (
+                                    <InlineGrammarHighlights
+                                        text={sentenceText}
+                                        sentences={[{
+                                            sentence: sentenceText,
+                                            translation: item.translation,
+                                            highlights: item.highlights,
+                                        }]}
+                                        displayMode={grammarDisplayMode}
+                                        showSegmentTranslation
+                                    />
+                                ) : (
+                                    sentenceText
+                                )}
                             </span>
                         </li>
                     );
                 })}
             </ul>
         );
-    }, [grammarDisplayMode, grammarHighlightSentences, grammarLayoutLines, text]);
+    }, [grammarDisplayMode, grammarLayoutLines, grammarLayoutSentences, text]);
 
     const handleAskInlineCodeVocabAction = useCallback(async (rawText: string) => {
         const word = rawText
@@ -3327,19 +3393,12 @@ export function ParagraphCard({
                                         ) : (
                                             // Default or Bionic Text
                                             isBionicMode ? (
-                                                <span>
-                                                    {bionicText(text).map((segment, i) => {
-                                                        if (segment.type === 'word') {
-                                                            return (
-                                                                <span key={i}>
-                                                                    <strong className="font-bold">{segment.bold}</strong>
-                                                                    <span className="font-normal">{segment.regular}</span>
-                                                                </span>
-                                                            );
-                                                        }
-                                                        return <span key={i}>{segment.text}</span>;
-                                                    })}
-                                                </span>
+                                                renderBionicMarkedText(
+                                                    text,
+                                                    renderTextWithReadingMarks,
+                                                    highlightSnippet,
+                                                    locateMarkerRange,
+                                                )
                                             ) : (
                                                 renderTextWithReadingMarks(text, highlightSnippet, 0, locateMarkerRange)
                                             )

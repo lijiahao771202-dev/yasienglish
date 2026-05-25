@@ -14,6 +14,7 @@ const {
     decodeAskThreadPayloadMock,
     queryAskRelevantVocabularyMock,
     useTtsMock,
+    readingSettingsMock,
 } = vi.hoisted(() => ({
     analysisStoreMock: {
         translations: {},
@@ -38,6 +39,10 @@ const {
         playbackRate: 1,
         setPlaybackRate: vi.fn(),
         stop: vi.fn(),
+    },
+    readingSettingsMock: {
+        fontSizeClass: "text-base",
+        isBionicMode: false,
     },
 }));
 
@@ -92,10 +97,7 @@ vi.mock("framer-motion", async () => {
 });
 
 vi.mock("@/contexts/ReadingSettingsContext", () => ({
-    useReadingSettings: () => ({
-        fontSizeClass: "text-base",
-        isBionicMode: false,
-    }),
+    useReadingSettings: () => readingSettingsMock,
 }));
 
 vi.mock("@/hooks/useTTS", () => ({
@@ -354,6 +356,8 @@ afterEach(async () => {
     useTtsMock.playbackRate = 1;
     useTtsMock.setPlaybackRate.mockReset();
     useTtsMock.stop.mockReset();
+    readingSettingsMock.fontSizeClass = "text-base";
+    readingSettingsMock.isBionicMode = false;
     vi.unstubAllGlobals();
 });
 
@@ -371,12 +375,28 @@ describe("ParagraphCard", () => {
         });
 
         const underlinedSpans = Array.from(container.querySelectorAll("span"))
-            .filter((node) => node.className.includes("decoration-fuchsia-500"));
+            .filter((node) => node.className.includes("underline") && node.className.includes("decoration-slate-400/80"));
 
         const renderedText = underlinedSpans.map((node) => node.textContent?.trim()).filter(Boolean);
         expect(renderedText).toContain("public trust");
         expect(renderedText).toContain("allocation");
         expect(renderedText).not.toContain("unmatched term");
+    });
+
+    it("keeps RAG underlines visible in bionic mode", async () => {
+        readingSettingsMock.isBionicMode = true;
+
+        const container = await renderCard({
+            text: "Affordable housing depends on public trust and careful allocation.",
+            ragAppliedWords: ["public trust", "allocation"],
+        });
+
+        const underlinedSpans = Array.from(container.querySelectorAll("span"))
+            .filter((node) => node.className.includes("underline") && node.className.includes("decoration-slate-400/80"));
+
+        const renderedText = underlinedSpans.map((node) => node.textContent?.trim()).filter(Boolean);
+        expect(renderedText).toContain("public trust");
+        expect(renderedText).toContain("allocation");
     });
 
     it("ignores stale invalid grammar cache and re-fetches basic analysis", async () => {
@@ -475,6 +495,67 @@ describe("ParagraphCard", () => {
 
         expect(container.textContent).toContain("取消排版");
         expect(container.textContent).toContain("主干结构");
+    });
+
+    it("keeps every sentence visible in grammar layout even when the grammar payload only analyzes some of them", async () => {
+        const text = "Marcus introduced Elena to the concept of metacognitive awareness in management. \"You need to think about how you think,\" he said. That's what separates a discerning leader from a mere operator.";
+        const grammarCacheKey = buildGrammarCacheKey({
+            text,
+            mode: "basic",
+            promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
+            model: "deepseek:deepseek-v4-flash:thinking=off:reasoning=off",
+        });
+
+        analysisStoreMock.grammarAnalyses = {
+            [grammarCacheKey]: {
+                mode: "basic",
+                tags: ["主语", "谓语"],
+                overview: "部分句子有主干，部分句子缺失。",
+                difficult_sentences: [
+                    {
+                        sentence: "Marcus introduced Elena to the concept of metacognitive awareness in management.",
+                        translation: "马库斯向埃琳娜介绍了管理中的元认知意识概念。",
+                        highlights: [
+                            {
+                                substring: "Marcus",
+                                type: "主语",
+                                explanation: "结构判断：Marcus 作主语；句中作用：发出 introduced 这一动作。",
+                                segment_translation: "马库斯",
+                            },
+                        ],
+                    },
+                    {
+                        sentence: "\"You need to think about how you think,\" he said.",
+                        translation: "“你需要思考你是如何思考的，”他说。",
+                        highlights: [
+                            {
+                                substring: "\"You need to think about how you think,\"",
+                                type: "宾语从句",
+                                explanation: "结构判断：引号里的内容作 said 的内容部分；句中作用：承载他说的话。",
+                                segment_translation: "你需要思考你是如何思考的",
+                            },
+                        ],
+                    },
+                    {
+                        sentence: "That's what separates a discerning leader from a mere operator.",
+                        translation: "",
+                        highlights: [],
+                    },
+                ],
+            },
+        };
+
+        const container = await renderCard({ text });
+        const grammarButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("语法"));
+
+        expect(grammarButton).toBeTruthy();
+
+        await act(async () => {
+            grammarButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(container.querySelectorAll("li")).toHaveLength(3);
+        expect(container.textContent).toContain("That's what separates a discerning leader from a mere operator.");
     });
 
     it("keeps the focus-mode clear button anchored to the right edge", async () => {

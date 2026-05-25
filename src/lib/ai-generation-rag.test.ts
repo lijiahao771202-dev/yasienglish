@@ -106,6 +106,41 @@ describe("collectAIGenerationVocabulary", () => {
         });
     });
 
+    it("does not block article generation on a long-running vocabulary catch-up task", async () => {
+        const scheduleVocabularySync = vi.fn(() => new Promise(() => void 0));
+        const requestRagQuery = vi.fn()
+            .mockResolvedValueOnce([
+                { id: "v1", text: "resilience", score: 0.84, source: "vocab", metadata: { vocabId: "resilience" } },
+            ])
+            .mockResolvedValueOnce([
+                { id: "s1", text: "support network", score: 0.76, source: "system", metadata: { level: "cet6" } },
+            ])
+            .mockResolvedValueOnce([
+                { id: "s2", text: "coping strategy", score: 0.71, source: "system", metadata: { level: "cefr" } },
+            ]);
+
+        const result = await collectAIGenerationVocabulary(
+            {
+                queryTopic: "校园成长 · Resilience under pressure",
+                difficulty: "cet6",
+            },
+            {
+                scheduleVocabularySync,
+                waitForReady: vi.fn().mockResolvedValue(true),
+                requestRagQuery,
+                ensureReady: vi.fn(),
+            },
+        );
+
+        expect(scheduleVocabularySync).toHaveBeenCalledTimes(1);
+        expect(requestRagQuery).toHaveBeenCalledTimes(3);
+        expect(result.words.map((item) => item.text)).toEqual([
+            "resilience",
+            "support network",
+            "coping strategy",
+        ]);
+    });
+
     it("returns no vocabulary when the vector engine never becomes ready", async () => {
         const requestRagQuery = vi.fn();
 

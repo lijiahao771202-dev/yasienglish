@@ -26,6 +26,7 @@ import {
     sentenceIdentity,
     splitGrammarSentences,
     type GrammarBasicResult,
+    type GrammarBasicSentence,
     type GrammarSanitizeResult,
     type GrammarDeepResult,
     type GrammarDeepSentenceResult,
@@ -158,6 +159,9 @@ async function runBasicInference(client: OpenAiCompatibleClient, paragraphText: 
         if (!current.retryRecommended) {
             return current;
         }
+        if (hasUsableBasicGrammarResult(current.data)) {
+            return current;
+        }
         repairHints = current.issues.slice(0, 8);
     }
 
@@ -173,6 +177,95 @@ async function runBasicInference(client: OpenAiCompatibleClient, paragraphText: 
         ...best,
         issues: Array.from(new Set(attempts.flatMap((attempt) => attempt.issues))),
         qualityScore: Math.max(...attempts.map((attempt) => attempt.qualityScore)),
+    };
+}
+
+async function runBasicSentenceInference(client: OpenAiCompatibleClient, sentence: string) {
+    const raw = await callDeepseekJson(
+        client,
+        buildGrammarBasicPrompt(sentence),
+        GRAMMAR_BASIC_MODEL,
+    );
+    const parsed = sanitizeGrammarBasicPayload(raw, sentence);
+    const normalizedTarget = sentenceIdentity(sentence);
+    const matched = parsed.data.difficult_sentences.find((item) => sentenceIdentity(item.sentence) === normalizedTarget);
+    const fallbackSentence: GrammarBasicSentence = {
+        sentence,
+        translation: "",
+        highlights: [],
+    };
+
+    return {
+        sentence: matched ?? fallbackSentence,
+        parsed,
+    };
+}
+
+async function repairIncompleteBasicSentences(
+    client: OpenAiCompatibleClient,
+    paragraphText: string,
+    base: GrammarSanitizeResult<GrammarBasicResult>,
+) {
+    const expectedSentences = splitGrammarSentences(paragraphText);
+    if (expectedSentences.length <= 1) {
+        return base;
+    }
+
+    const needsRepair = base.data.difficult_sentences.filter((item) => {
+        const normalized = sentenceIdentity(item.sentence);
+        if (!normalized) return false;
+        const missingTranslation = item.translation.trim().length === 0;
+        const missingHighlights = item.highlights.length === 0;
+        return missingTranslation || missingHighlights;
+    });
+
+    if (needsRepair.length === 0) {
+        return base;
+    }
+
+    const repairedByIdentity = new Map<string, GrammarBasicSentence>();
+    const repairTargets = needsRepair
+        .map((item) => item.sentence)
+        .filter((sentence, index, arr) => arr.indexOf(sentence) === index);
+
+    const repairedResults = await Promise.allSettled(
+        repairTargets.map(async (sentence) => {
+            const repaired = await runBasicSentenceInference(client, sentence);
+            return repaired.sentence;
+        }),
+    );
+
+    repairedResults.forEach((result, index) => {
+        if (result.status !== "fulfilled") {
+            console.warn("[grammar][basic] failed to repair sentence", result.reason);
+            return;
+        }
+        const repairedSentence = result.value;
+        if (!repairedSentence.translation.trim() && repairedSentence.highlights.length === 0) {
+            return;
+        }
+        const identity = sentenceIdentity(repairTargets[index] ?? repairedSentence.sentence);
+        if (!identity) return;
+        repairedByIdentity.set(identity, repairedSentence);
+    });
+
+    if (repairedByIdentity.size === 0) {
+        return base;
+    }
+
+    const mergedPayload: GrammarBasicResult = {
+        ...base.data,
+        difficult_sentences: base.data.difficult_sentences.map((item) => {
+            const repaired = repairedByIdentity.get(sentenceIdentity(item.sentence));
+            return repaired ?? item;
+        }),
+    };
+
+    const merged = sanitizeGrammarBasicPayload(mergedPayload, paragraphText);
+    return {
+        ...merged,
+        issues: Array.from(new Set([...base.issues, ...merged.issues])),
+        qualityScore: Math.max(base.qualityScore, merged.qualityScore),
     };
 }
 
@@ -282,7 +375,8 @@ export async function runBasicGrammarService(input: GrammarBasicRequest): Promis
     }
 
     try {
-        const parsed = await runBasicInference(client, normalizedText);
+        let parsed = await runBasicInference(client, normalizedText);
+        parsed = await repairIncompleteBasicSentences(client, normalizedText, parsed);
         if (parsed.retryRecommended && !hasUsableBasicGrammarResult(parsed.data)) {
             await refundIfNeeded({
                 charged,

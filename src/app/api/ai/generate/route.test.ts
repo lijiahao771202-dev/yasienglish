@@ -307,6 +307,61 @@ describe("ai generate route", () => {
         expect(request?.max_tokens).toBeGreaterThanOrEqual(3200);
     });
 
+    it("builds a detailed longform prompt that explicitly guides step-by-step explanation", async () => {
+        createMock.mockResolvedValue({
+            choices: [
+                {
+                    message: {
+                        content: JSON.stringify({
+                            title: "Why Habits Become Stable",
+                            content: "Paragraph one.\n\nParagraph two.",
+                            byline: "AI Generator · CET-4 (大学英语四级)",
+                            wordCount: 930,
+                        }),
+                    },
+                },
+            ],
+        });
+
+        const response = await POSTHandler(
+            new Request("http://localhost/api/ai/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    difficulty: "cet4",
+                    generationMode: "longform",
+                    longformStyleId: "detailed",
+                    lengthTierId: "w900",
+                    topicSeed: {
+                        source: "random",
+                        domainId: "education",
+                        domainLabel: "教育与学习",
+                        subtopicId: "habits",
+                        subtopicLabel: "学习习惯",
+                        angle: "Why small study routines become easier to keep over time",
+                        topicLine: "学习习惯 · Why small study routines become easier to keep over time",
+                    },
+                }),
+            }),
+        );
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.longformStyle).toEqual({
+            id: "detailed",
+            name: "详细讲解",
+        });
+
+        const request = createMock.mock.calls.at(-1)?.[0];
+        const prompt = request?.messages?.[0]?.content as string;
+        expect(prompt).toContain("Style name: 详细讲解");
+        expect(prompt).toContain("Style label: Detailed Guided Explainer");
+        expect(prompt).toContain("step by step");
+        expect(prompt).toContain("anticipates reader confusion");
+        expect(prompt).toContain("mini-examples or restatements");
+        expect(prompt).toContain("avoid patronizing repetition");
+    });
+
     it("supports extra-long longform tiers beyond 2200 words", async () => {
         createMock.mockResolvedValue({
             choices: [
@@ -658,7 +713,43 @@ describe("ai generate route", () => {
         expect(retryPrompt).toContain("public trust, system feedback");
     });
 
-    it("returns 502 when strict RAG generation still misses required terms after retry", async () => {
+    it("accepts strict RAG output once coverage reaches 75 percent and only returns matched words", async () => {
+        createMock
+            .mockResolvedValueOnce({
+                choices: [
+                    {
+                        message: {
+                            content: JSON.stringify({
+                                title: "Coverage Pass",
+                                content: "Allocation, public trust, and system feedback all appear here, while the fourth anchor is omitted.",
+                                byline: "AI Generator · CET-6 (大学英语六级)",
+                                wordCount: 410,
+                            }),
+                        },
+                    },
+                ],
+            });
+
+        const response = await POSTHandler(
+            new Request("http://localhost/api/ai/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    difficulty: "cet6",
+                    ragMode: "strict",
+                    ragSource: "dictionary",
+                    injectedVocabulary: ["allocation", "public trust", "system feedback", "policy drift"],
+                }),
+            }),
+        );
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(createMock).toHaveBeenCalledTimes(1);
+        expect(data.ragAppliedWords).toEqual(["allocation", "public trust", "system feedback"]);
+    });
+
+    it("falls back to strict revision and accepts the article when revised coverage reaches 75 percent", async () => {
         createMock
             .mockResolvedValueOnce({
                 choices: [
@@ -687,9 +778,23 @@ describe("ai generate route", () => {
                         },
                     },
                 ],
+            })
+            .mockResolvedValueOnce({
+                choices: [
+                    {
+                        message: {
+                            content: JSON.stringify({
+                                title: "Revision Pass",
+                                content: "Allocation, public trust, and civic trust all appear after revision, though the final anchor is still absent.",
+                                byline: "AI Generator · CET-4 (大学英语四级)",
+                                wordCount: 336,
+                            }),
+                        },
+                    },
+                ],
             });
 
-         const response = await POSTHandler(
+        const response = await POSTHandler(
             new Request("http://localhost/api/ai/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -697,14 +802,80 @@ describe("ai generate route", () => {
                     difficulty: "cet4",
                     ragMode: "strict",
                     ragSource: "dictionary",
-                    injectedVocabulary: ["allocation", "public trust"],
+                    injectedVocabulary: ["allocation", "public trust", "civic trust", "policy drift"],
+                }),
+            }),
+        );
+
+        expect(response.status).toBe(200);
+        expect(createMock).toHaveBeenCalledTimes(3);
+        const revisionPrompt = createMock.mock.calls[2]?.[0]?.messages?.[0]?.content as string;
+        expect(revisionPrompt).toContain("STRICT REVISION NOTICE");
+        const data = await response.json();
+        expect(data.ragAppliedWords).toEqual(["allocation", "public trust", "civic trust"]);
+    });
+
+    it("returns 502 when strict RAG coverage stays below 75 percent even after revision", async () => {
+        createMock
+            .mockResolvedValueOnce({
+                choices: [
+                    {
+                        message: {
+                            content: JSON.stringify({
+                                title: "Retry Fail 1",
+                                content: "Only allocation appears here.",
+                                byline: "AI Generator · CET-4 (大学英语四级)",
+                                wordCount: 320,
+                            }),
+                        },
+                    },
+                ],
+            })
+            .mockResolvedValueOnce({
+                choices: [
+                    {
+                        message: {
+                            content: JSON.stringify({
+                                title: "Retry Fail 2",
+                                content: "Allocation still appears alone.",
+                                byline: "AI Generator · CET-4 (大学英语四级)",
+                                wordCount: 322,
+                            }),
+                        },
+                    },
+                ],
+            })
+            .mockResolvedValueOnce({
+                choices: [
+                    {
+                        message: {
+                            content: JSON.stringify({
+                                title: "Revision Still Fails",
+                                content: "Allocation remains the only matching term.",
+                                byline: "AI Generator · CET-4 (大学英语四级)",
+                                wordCount: 330,
+                            }),
+                        },
+                    },
+                ],
+            });
+
+        const response = await POSTHandler(
+            new Request("http://localhost/api/ai/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    difficulty: "cet4",
+                    ragMode: "strict",
+                    ragSource: "dictionary",
+                    injectedVocabulary: ["allocation", "public trust", "civic trust", "policy drift"],
                 }),
             }),
         );
 
         expect(response.status).toBe(502);
         await expect(response.json()).resolves.toMatchObject({
-            error: expect.stringContaining("Missing required terms: public trust"),
+            error: expect.stringContaining("Coverage 25%"),
         });
     });
 
@@ -781,5 +952,50 @@ describe("ai generate route", () => {
         expect(response.status).toBe(200);
         const prompt = createMock.mock.calls[0]?.[0]?.messages?.[0]?.content as string;
         expect(prompt).toContain(`Required items (20): ${requiredTerms.join(", ")}`);
+    });
+
+    it("filters out unstable strict candidates such as ellipsis phrases and overly long fragments", async () => {
+        createMock.mockResolvedValue({
+            choices: [
+                {
+                    message: {
+                        content: JSON.stringify({
+                            title: "Strict Filtering",
+                            content: "The article includes actionable, policy design, and bridge in natural sentences.",
+                            byline: "AI Generator · CET-6 (大学英语六级)",
+                            wordCount: 452,
+                        }),
+                    },
+                },
+            ],
+        });
+
+        const response = await POSTHandler(
+            new Request("http://localhost/api/ai/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    difficulty: "cet6",
+                    ragMode: "strict",
+                    ragSource: "hybrid",
+                    injectedVocabulary: [
+                        "actionable",
+                        "grappling with...",
+                        "bridge",
+                        "this phrase is far too long to be a stable strict lexical requirement",
+                        "policy design",
+                    ],
+                }),
+            }),
+        );
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        const prompt = createMock.mock.calls[0]?.[0]?.messages?.[0]?.content as string;
+
+        expect(prompt).toContain("Required items (3): actionable, bridge, policy design");
+        expect(prompt).not.toContain("grappling with...");
+        expect(prompt).not.toContain("this phrase is far too long");
+        expect(data.ragAppliedWords).toEqual(["actionable", "bridge", "policy design"]);
     });
 });

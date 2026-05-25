@@ -159,11 +159,7 @@ export async function collectAIGenerationVocabulary(
         };
     }
 
-    try {
-        await resolved.scheduleVocabularySync();
-    } catch {
-        void 0;
-    }
+    void Promise.resolve(resolved.scheduleVocabularySync()).catch(() => void 0);
 
     const [learnerHits, systemHits] = await Promise.all([
         ragSource === "dictionary"
